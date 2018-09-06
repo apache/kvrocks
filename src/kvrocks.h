@@ -1,0 +1,7 @@
+#ifndef KVROCKS_KVROCKS_H
+#define KVROCKS_KVROCKS_H
+
+#define KVROCKS_OK 0
+#define KVROCKS_ERR -1
+
+#endif //KVROCKS_KVROCKS_H

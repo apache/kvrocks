@@ -1,0 +1,4 @@
+#pragma once
+
+#define VERSION "@PROJECT_VERSION@"
+#define GIT_COMMIT "@GIT_SHA@"

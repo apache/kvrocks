@@ -1,25 +1,61 @@
-#ifndef KVROCKS_SERVER_H
-#define KVROCKS_SERVER_H
+#pragma once
 
-#include "ev.h"
-#include "conn.h"
-#include "worker.h"
-#include <vector>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/listener.h>
+#include <cstring>
+#include <iostream>
+#include <memory>
+#include <thread>
+
+#include "storage.h"
+#include "redis_replication.h"
+
+// forward declare
+namespace Redis {
+class Request;
+}
 
 class Server {
-public:
-  Server(int workers);
-  ~Server();
-  int start();
-  int addConn(int cfd);
-  int stop();
+  friend Redis::Request;
 
-private:
-  bool _stop;
-  EV *_ev;
-  std::vector<Worker*> _workers;
+ public:
+  Server(Engine::Storage &storage, uint32_t port);
+  void Run(std::thread::id tid);
+  void Stop();
+  // TODO: callbacks for psync
+  void AddSlave();
+  void RemoveSlave();
 
-  static void _acceptHandler(EV *ev, int sfd, int mask, void *clientData);
+  // TODO: callbacks for slaveof
+  Status AddMaster(std::string host, uint32_t port);
+  void RemoveMaster();
+
+  Engine::Storage &storage_;
+
+ private:
+  static void NewConnection(evconnlistener *listener, evutil_socket_t fd,
+                            sockaddr *address, int socklen, void *ctx);
+
+  event_base *base_;
+  sockaddr_in sin_{};
+  evutil_socket_t fd_ = 0;
+  std::thread::id tid_;
+
+  // Replication related
+  bool is_slave_ = false;
+  std::string master_host_;
+  uint32_t master_port_ = 0;
+  std::unique_ptr<Redis::ReplicationThread> replication_thread_;
 };
 
-#endif //KVROCKS_SERVER_H
+class ServerThread {
+ public:
+  explicit ServerThread(Server &svr) : svr_(svr) {}
+  void Start();
+  void Join();
+
+ private:
+  std::thread t_;
+  Server &svr_;
+};

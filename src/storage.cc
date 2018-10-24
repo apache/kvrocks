@@ -51,9 +51,9 @@ namespace Engine {
   class SubKeyFilter : public rocksdb::CompactionFilter {
   public:
     SubKeyFilter(rocksdb::DB **db, std::vector<rocksdb::ColumnFamilyHandle*> *cf_handles):
-            db_(db),
             cached_key_(""),
             cached_metadata_(""),
+            db_(db),
             cf_handles_(cf_handles){}
     bool Filter(int level,
                 const Slice& key,

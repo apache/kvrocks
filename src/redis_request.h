@@ -52,13 +52,13 @@ class Request {
   // internal states related to parsing
 
   enum ParserState {
-    ArrayLen,
+    MultiBulkLen,
     BulkLen,
     BulkData
   };
-  ParserState state_ = ArrayLen;
-  size_t array_len_ = 0;
-  size_t buck_len_ = 0;
+  ParserState state_ = MultiBulkLen;
+  size_t multi_bulk_len_ = 0;
+  size_t bulk_len_ = 0;
   using CommandTokens = std::list<std::string>;
   CommandTokens tokens_;
   std::vector<CommandTokens> commands_;

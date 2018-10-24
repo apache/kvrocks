@@ -18,8 +18,9 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   std::vector<Slice> new_members;
   std::string value;
   rocksdb::WriteBatch batch;
+  std::string sub_key;
   for (const auto member : members) {
-    Slice sub_key = InternalKey(key, member, metadata.version).Encode();
+    InternalKey(key, member, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch.Put(sub_key, Slice());
@@ -40,10 +41,10 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  std::string value;
+  std::string value, sub_key;
   rocksdb::WriteBatch batch;
   for (const auto member : members) {
-    Slice sub_key = InternalKey(key, member, metadata.version).Encode();
+    InternalKey(key, member, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch.Delete(sub_key);
@@ -73,7 +74,8 @@ rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) 
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  Slice prefix = InternalKey(key, "", metadata.version).Encode();
+  std::string prefix;
+  InternalKey(key, "", metadata.version).Encode(&prefix);
   rocksdb::ReadOptions opts;
   opts.fill_cache = false;
   auto iter = db_->NewIterator(opts);
@@ -91,7 +93,8 @@ rocksdb::Status RedisSet::IsMember(Slice key, Slice member, int *ret) {
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  Slice sub_key = InternalKey(key, member, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, member, metadata.version).Encode(&sub_key);
   std::string value;
   s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (s.ok()) {
@@ -113,7 +116,8 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   rocksdb::ReadOptions opts;
   opts.fill_cache = false;
   auto iter = db_->NewIterator(opts);
-  Slice prefix = InternalKey(key, "", metadata.version).Encode();
+  std::string prefix;
+  InternalKey(key, "", metadata.version).Encode(&prefix);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {

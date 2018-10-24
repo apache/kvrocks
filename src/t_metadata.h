@@ -28,7 +28,7 @@ public:
   Slice GetKey();
   Slice GetSubKey();
   uint64_t GetVersion();
-  const Slice & Encode();
+  void Encode(std::string *out);
   bool operator==(const InternalKey &that) const;
 
 private:

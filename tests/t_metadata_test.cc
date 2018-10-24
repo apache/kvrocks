@@ -11,8 +11,9 @@ TEST(InternalKey, EncodeAndDecode) {
   ASSERT_EQ(ikey.GetKey(), key);
   ASSERT_EQ(ikey.GetSubKey(), sub_key);
   ASSERT_EQ(ikey.GetVersion(), version);
-  Slice bytes = ikey.Encode();
-  InternalKey ikey1(bytes.ToString());
+  std::string bytes;
+  ikey.Encode(&bytes);
+  InternalKey ikey1(bytes);
   EXPECT_EQ(ikey, ikey1);
 }
 

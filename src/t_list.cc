@@ -30,12 +30,12 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
     return s;
   }
 
-  char buf[8];
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   rocksdb::WriteBatch batch;
   for (auto elem : elems) {
-    EncodeFixed64(buf, index);
-    Slice sub_key = InternalKey(key, Slice(buf, 8), metadata.version).Encode();
+    std::string index_buf, sub_key;
+    PutFixed64(&index_buf, index);
+    InternalKey(key, index_buf, metadata.version).Encode(&sub_key);
     batch.Put(sub_key, elem);
     left ? --index : ++index;
   }
@@ -60,7 +60,8 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   uint64_t index = left ? metadata.head : metadata.tail-1;
   std::string buf;
   PutFixed64(&buf, index);
-  Slice sub_key = InternalKey(key, buf, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, buf, metadata.version).Encode(&sub_key);
   s = db_->Get(rocksdb::ReadOptions(), sub_key, elem);
   if (!s.ok()) {
     // FIXME: should be always exists??
@@ -90,7 +91,8 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
 
   std::string buf;
   PutFixed64(&buf, metadata.head + index);
-  Slice sub_key = InternalKey(key, buf, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, buf, metadata.version).Encode(&sub_key);
   return db_->Get(rocksdb::ReadOptions(), sub_key, elem);
 }
 
@@ -111,8 +113,9 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
 
   std::string buf;
   PutFixed64(&buf, metadata.head + start);
-  Slice start_key = InternalKey(key, buf, metadata.version).Encode();
-  Slice prefix = InternalKey(key, "", metadata.version).Encode();
+  std::string start_key, prefix;
+  InternalKey(key, buf, metadata.version).Encode(&start_key);
+  InternalKey(key, "", metadata.version).Encode(&prefix);
 
   rocksdb::ReadOptions opts;
   opts.fill_cache = false;
@@ -140,9 +143,9 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
-  std::string buf, value;
+  std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head+index);
-  Slice sub_key = InternalKey(key, buf, metadata.version).Encode();
+  InternalKey(key, buf, metadata.version).Encode(&sub_key);
   s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (!s.ok()) {
     return s;
@@ -181,13 +184,15 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   uint64_t left_index = metadata.head + start;
   for (uint64_t i = metadata.head; i < left_index; i++) {
     PutFixed64(&buf, i);
-    Slice sub_key = InternalKey(key, buf, metadata.version).Encode();
+    std::string sub_key;
+    InternalKey(key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.head++;
   }
   uint64_t right_index = metadata.head+stop+1;
   for (uint64_t i = right_index; i < metadata.tail; i++) {
-    Slice sub_key = InternalKey(key, buf, metadata.version).Encode();
+    std::string sub_key;
+    InternalKey(key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.tail--;
   }

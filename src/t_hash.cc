@@ -20,7 +20,8 @@ rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
-  Slice sub_key = InternalKey(key, field, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, field, metadata.version).Encode(&sub_key);
   return db_->Get(rocksdb::ReadOptions(), sub_key, value);
 }
 
@@ -31,7 +32,8 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  Slice sub_key = InternalKey(key, field, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, field, metadata.version).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
@@ -69,7 +71,8 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  Slice sub_key = InternalKey(key, field, metadata.version).Encode();
+  std::string sub_key;
+  InternalKey(key, field, metadata.version).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
@@ -108,15 +111,12 @@ rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vect
     return s;
   }
 
-  std::vector<InternalKey*> ikeys;
-  std::vector<Slice> sub_keys;
+  std::string sub_key, value;
   for (auto field : fields) {
-    auto ikey = new InternalKey(key, field, metadata.version);
-    sub_keys.emplace_back(ikey->Encode());
-    ikeys.push_back(ikey);
+    InternalKey(key, field, metadata.version).Encode(&sub_key);
+    db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    values->emplace_back(value);
   }
-  db_->MultiGet(rocksdb::ReadOptions(), sub_keys, values);
-  for (auto ikey : ikeys) delete ikey;
   return rocksdb::Status::OK();
 }
 
@@ -145,20 +145,15 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  std::vector<InternalKey*> ikeys;
-  std::vector<Slice> sub_keys;
-  for (auto field : fields) {
-    auto *ikey = new InternalKey(key, field, metadata.version);
-    sub_keys.push_back(ikey->Encode());
-    ikeys.push_back(ikey);
-  }
-  std::vector<std::string> values;
   rocksdb::WriteBatch batch;
-  std::vector<rocksdb::Status> statuses = db_->MultiGet(rocksdb::ReadOptions(), sub_keys, &values);
-  for (int i = 0; i < statuses.size(); i++) {
-    if (!statuses[i].ok()) continue; // skip key if not exists
-    *ret += 1;
-    batch.Delete(sub_keys[i]);
+  std::string sub_key, value;
+  for (auto field : fields) {
+    InternalKey(key, field, metadata.version).Encode(&sub_key);
+    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    if (s.ok()) {
+      *ret += 1;
+      batch.Delete(sub_key);
+    }
   }
   // size was updated
   if (*ret > 0) {
@@ -167,9 +162,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  s = db_->Write(rocksdb::WriteOptions(), &batch);
-  for (auto ikey : ikeys) delete ikey;
-  return s;
+  return db_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, int *ret) {
@@ -182,7 +175,8 @@ rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values
   int added = 0;
   rocksdb::WriteBatch batch;
   for (auto fv : field_values) {
-    Slice sub_key = InternalKey(key, fv.field, metadata.version).Encode();
+    std::string sub_key;
+    InternalKey(key, fv.field, metadata.version).Encode(&sub_key);
     if (metadata.size > 0) {
       std::string fieldValue;
       s = db_->Get(rocksdb::ReadOptions(), sub_key, &fieldValue);
@@ -212,7 +206,8 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   rocksdb::ReadOptions opts;
   opts.fill_cache = false;
   auto iter = db_->NewIterator(opts);
-  Slice prefix_key = InternalKey(key, "", metadata.version).Encode();
+  std::string prefix_key;
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
   for (iter->Seek(prefix_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {

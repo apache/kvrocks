@@ -34,10 +34,12 @@ uint64_t InternalKey::GetVersion() {
   return version_;
 }
 
-const Slice & InternalKey::Encode() {
+#include <iostream>
+void InternalKey::Encode(std::string *out) {
+  out->clear();
   size_t pos = 0;
-  size_t total = (4 + key_.size()+4+sub_key_.size());
-  if (total < sizeof(prealloc_)-12) {
+  size_t total = 4+key_.size()+8+sub_key_.size();
+  if (total < sizeof(prealloc_)) {
     buf_ = prealloc_;
   } else {
     buf_ = new char[total];
@@ -50,7 +52,7 @@ const Slice & InternalKey::Encode() {
   pos += 8;
   memcpy(buf_+pos, sub_key_.data(), sub_key_.size());
   pos += sub_key_.size();
-  return Slice(buf_, pos);
+  out->assign(buf_, pos);
 }
 
 bool InternalKey::operator==(const InternalKey &that) const {

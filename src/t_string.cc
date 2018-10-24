@@ -48,7 +48,6 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   return update(key, raw_value_bytes, value_bytes);
 }
 
-#include <iostream>
 std::vector<rocksdb::Status> RedisString::MGet(std::vector<Slice> keys, std::vector<std::string> *values) {
   std::vector<rocksdb::ColumnFamilyHandle*> cf_handles;
   cf_handles.resize(keys.size(), metadata_cf_handle_);

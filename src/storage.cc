@@ -126,18 +126,21 @@ namespace Engine {
 Status Engine::Storage::Open() {
   rocksdb::Options options;
   options.create_if_missing = true;
-  options.IncreaseParallelism(2);
+//  options.IncreaseParallelism(2);
   options.OptimizeLevelStyleCompaction();
   options.WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options.WAL_size_limit_MB = 3 * 1024;
-  rocksdb::Status s = rocksdb::DB::Open(options, db_dir_, &db_);
-  if (s.ok()) { // open will be failed, if the column family was exists
-    std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName};
-    std::vector<rocksdb::ColumnFamilyHandle*> cf_handles;
-    s = db_->CreateColumnFamilies(rocksdb::ColumnFamilyOptions(), cf_names, &cf_handles);
-    if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
-    for (auto handle : cf_handles) delete handle;
-    delete db_;
+  {
+    rocksdb::DB *tmp_db;
+    rocksdb::Status s = rocksdb::DB::Open(options, db_dir_, &tmp_db);
+    if (s.ok()) { // open will be failed, if the column family was exists
+      std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName};
+      std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
+      s = tmp_db->CreateColumnFamilies(rocksdb::ColumnFamilyOptions(), cf_names, &cf_handles);
+      if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
+      for (auto handle : cf_handles) delete handle;
+      delete tmp_db;
+    }
   }
   rocksdb::BlockBasedTableOptions table_opts;
   table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
@@ -152,7 +155,7 @@ Status Engine::Storage::Open() {
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
-  s = rocksdb::DB::Open(options, db_dir_, column_families, &cf_handles_, &db_);
+  rocksdb::Status s = rocksdb::DB::Open(options, db_dir_, column_families, &cf_handles_, &db_);
   if (!s.ok()) {
     return Status(Status::DBOpenErr, s.ToString());
   }

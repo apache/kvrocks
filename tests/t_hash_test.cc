@@ -47,9 +47,14 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   rocksdb::Status s = hash->MSet(key_, fvs, &ret);
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
   s = hash->MSet(key_, fvs, &ret);
-  EXPECT_TRUE(s.ok() && ret == 0);
+  EXPECT_EQ(ret ,0);
+  std::vector<std::string> values;
+  s = hash->MGet(key_, fields_, &values);
+  for (int i = 0; i < fields_.size(); i++) {
+    EXPECT_EQ(values[i], values_[i].ToString());
+  }
   s = hash->Delete(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_EQ(fields_.size(), ret);
   hash->Del(key_);
 }
 

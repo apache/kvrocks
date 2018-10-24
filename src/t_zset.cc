@@ -12,8 +12,9 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
 
   int added = 0;
   rocksdb::WriteBatch batch;
+  std::string member_key;
   for (auto mscore : members) {
-    Slice member_key = InternalKey(key, mscore.member, metadata.version).Encode();
+    InternalKey(key, mscore.member, metadata.version).Encode(&member_key);
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
@@ -25,23 +26,24 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
         }
         if (mscore.score != old_score) {
           old_score_bytes.append(mscore.member);
-          Slice old_score_key = InternalKey(key, old_score_bytes, metadata.version).Encode();
+          std::string old_score_key;
+          InternalKey(key, old_score_bytes, metadata.version).Encode(&old_score_key);
           batch.Delete(old_score_key);
-          std::string new_score_bytes;
+          std::string new_score_bytes, new_score_key;
           PutDouble(&new_score_bytes, mscore.score);
           batch.Put(member_key, new_score_bytes);
           new_score_bytes.append(mscore.member);
-          Slice new_score_key = InternalKey(key, new_score_bytes, metadata.version).Encode();
+          InternalKey(key, new_score_bytes, metadata.version).Encode(&new_score_key);
           batch.Put(score_cf_handle_, new_score_key, Slice());
         }
         continue;
       }
     }
-    std::string score_bytes;
+    std::string score_bytes, score_key;
     PutDouble(&score_bytes, mscore.score);
     batch.Put(member_key, score_bytes);
     score_bytes.append(mscore.member);
-    Slice score_key = InternalKey(key, score_bytes, metadata.version).Encode();
+    InternalKey(key, score_bytes, metadata.version).Encode(&score_key);
     batch.Put(score_cf_handle_, score_key, Slice());
     added++;
   }
@@ -89,8 +91,9 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
   std::string score_bytes;
   double score = min ? std::numeric_limits<double>::lowest():std::numeric_limits<double>::max();
   PutDouble(&score_bytes, score);
-  Slice start_key = InternalKey(key, score_bytes, metadata.version).Encode();
-  Slice prefix_key = InternalKey(key, "", metadata.version).Encode();
+  std::string start_key, prefix_key;
+  InternalKey(key, score_bytes, metadata.version).Encode(&start_key);
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
 
   rocksdb::WriteBatch batch;
   rocksdb::ReadOptions opts;
@@ -133,8 +136,9 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
   std::string score_bytes;
   double score = !reversed ? std::numeric_limits<double>::lowest():std::numeric_limits<double>::max();
   PutDouble(&score_bytes, score);
-  Slice start_key = InternalKey(key, score_bytes, metadata.version).Encode();
-  Slice prefix_key = InternalKey(key, "", metadata.version).Encode();
+  std::string start_key, prefix_key;
+  InternalKey(key, score_bytes, metadata.version).Encode(&start_key);
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
 
   int count = 0;
   rocksdb::ReadOptions opts;
@@ -149,7 +153,9 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
     GetDouble(&score_key, &score);
     if (count >= start) {
       if (removed) {
-        batch.Delete(InternalKey(key, score_key, metadata.version).Encode());
+        std::string sub_key;
+        InternalKey(key, score_key, metadata.version).Encode(&sub_key);
+        batch.Delete(sub_key);
         batch.Delete(score_cf_handle_, iter->key());
       }
       mscores->emplace_back(MemberScore{score_key.ToString(), score});
@@ -175,8 +181,9 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
 
   std::string start_score_bytes;
   PutDouble(&start_score_bytes, spec.min);
-  Slice start_key = InternalKey(key, start_score_bytes, metadata.version).Encode();
-  Slice prefix_key = InternalKey(key, "", metadata.version).Encode();
+  std::string start_key, prefix_key;
+  InternalKey(key, start_score_bytes, metadata.version).Encode(&start_key);
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
 
   int pos = 0;
   rocksdb::ReadOptions opts;
@@ -194,7 +201,9 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
     if (spec.minex && score <= spec.min) continue; // the min score was exclusive
     if ((spec.maxex && score >= spec.max) || score > spec.max) break;
     if (spec.removed) {
-      batch.Delete(InternalKey(key, score_key, metadata.version).Encode());
+      std::string sub_key;
+      InternalKey(key, score_key, metadata.version).Encode(&sub_key);
+      batch.Delete(sub_key);
       batch.Delete(score_cf_handle_, iter->key());
     } else {
       if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
@@ -217,8 +226,8 @@ rocksdb::Status RedisZSet::Score(Slice key, Slice member, double *score) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
 
-  Slice member_key = InternalKey(key, member, metadata.version).Encode();
-  std::string score_bytes;
+  std::string member_key, score_bytes;
+  InternalKey(key, member, metadata.version).Encode(&member_key);
   s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
   if (!s.ok()) return s;
   *score = DecodeDouble(score_bytes.data());
@@ -233,13 +242,15 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
 
   rocksdb::WriteBatch batch;
   int removed = 0;
+  std::string member_key, score_key;
   for (auto member : members) {
-    Slice member_key = InternalKey(key, member, metadata.version).Encode();
+
+    InternalKey(key, member, metadata.version).Encode(&member_key);
     std::string score_bytes;
     s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
     if (s.ok()) {
       score_bytes.append(member.ToString());
-      Slice score_key = InternalKey(key, score_bytes, metadata.version).Encode();
+      InternalKey(key, score_bytes, metadata.version).Encode(&score_key);
       batch.Delete(member_key);
       batch.Delete(score_cf_handle_, score_key);
       removed++;
@@ -273,17 +284,17 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
-  std::string score_bytes;
-  Slice member_key = InternalKey(key, member, metadata.version).Encode();
+  std::string score_bytes, member_key;
+  InternalKey(key, member, metadata.version).Encode(&member_key);
   s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
   if (!s.ok()) return s;
   double target_score = DecodeDouble(score_bytes.data());
 
-  std::string start_score_bytes;
+  std::string start_score_bytes, start_key, prefix_key;
   double start_score = !reversed ? std::numeric_limits<double>::lowest():std::numeric_limits<double>::max();
   PutDouble(&start_score_bytes, start_score);
-  Slice start_key = InternalKey(key, start_score_bytes, metadata.version).Encode();
-  Slice prefix_key = InternalKey(key, "", metadata.version).Encode();
+  InternalKey(key, start_score_bytes, metadata.version).Encode(&start_key);
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
 
   int rank = 0;
   rocksdb::ReadOptions opts;

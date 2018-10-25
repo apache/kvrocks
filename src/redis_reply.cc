@@ -20,6 +20,17 @@ std::string NilString() {
   return "$-1\r\n";
 }
 
+std::string MultiBulkString(std::vector<std::string> list) {
+  for (int i = 0; i < list.size(); i++) {
+    if (list[i].empty()) {
+      list[i] = NilString();
+    }  else {
+      list[i] = BulkString(list[i]);
+    }
+  }
+  return Array(list);
+}
+
 std::string Array(std::vector<std::string> list) {
   auto buf = "*" + std::to_string(list.size()) + CRLF;
   for (const auto &s : list) {

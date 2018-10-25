@@ -90,6 +90,12 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
       Redis::Reply(output, Redis::Error("unknown command"));
       continue;
     }
+    int arity = cmd->GetArity();
+    if ((arity > 0 && cmd_tokens.size() != arity)
+        || (arity < 0 && cmd_tokens.size() < -arity)) {
+      Redis::Reply(output, Redis::Error("wrong number of arguments"));
+      continue;
+    }
     s = cmd->Parse(cmd_tokens);
     if (!s.IsOK()) {
       Redis::Reply(output, Redis::Error(s.msg()));
@@ -98,7 +104,7 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
     if (!cmd->IsSidecar()) {
       s = cmd->Execute(svr_, &reply);
       if (!s.IsOK()) {
-        Redis::Reply(output, Redis::Error("failed to execute"));
+        Redis::Reply(output, Redis::Error(s.msg()));
         continue;
       }
       Redis::Reply(output, reply);

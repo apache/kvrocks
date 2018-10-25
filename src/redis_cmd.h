@@ -23,6 +23,7 @@ class Commander {
   explicit Commander(std::string name, int arity, bool sidecar = false)
       : name_(name), arity_(arity), is_sidecar_(sidecar) {}
   std::string Name() { return name_; }
+  int GetArity() { return arity_; }
 
   virtual Status Parse(const std::vector<std::string> &args) { args_ = args; return Status::OK(); };
   virtual bool IsSidecar() { return is_sidecar_; }

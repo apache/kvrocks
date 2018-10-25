@@ -8,7 +8,6 @@
 #include "server.h"
 
 Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
-  string_db_ = new RedisString(storage);
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;
@@ -21,6 +20,7 @@ Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
   if (bind(fd, (struct sockaddr *)&sin_, sizeof(sin_)) < 0) {
     LOG(ERROR) << "failed to bind: "
                << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    exit(1);
   }
   auto lev = evconnlistener_new(
       base_, NewConnection, this,

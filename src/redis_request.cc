@@ -48,7 +48,7 @@ void Request::Tokenize(evbuffer *input) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        array_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         state_ = BulkLen;
         break;
@@ -65,8 +65,8 @@ void Request::Tokenize(evbuffer *input) {
             reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        --array_len_;
-        if (array_len_ <= 0) {
+        --multi_bulk_len_;
+        if (multi_bulk_len_ <= 0) {
           state_ = ArrayLen;
           commands_.push_back(std::move(tokens_));
           tokens_.clear();

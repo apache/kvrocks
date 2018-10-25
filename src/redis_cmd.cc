@@ -56,7 +56,7 @@ Status CommandGet::Parse(const std::list<std::string> &args) {
 }
 
 Status CommandGet::Execute(Server *svr, std::string *output) {
-  *output = SimpleString(svr->storage_.Get(key_));
+  *output = SimpleString(svr->storage_->Get(key_));
   return Status::OK();
 }
 
@@ -89,7 +89,7 @@ Status CommandSet::Parse(const std::list<std::string> &args) {
 }
 
 Status CommandSet::Execute(Server *svr, std::string *output) {
-  svr->storage_.Set(key_, value_);
+  svr->storage_->Set(key_, value_);
   *output = SimpleString("set");
   return Status::OK();
 }
@@ -138,11 +138,10 @@ Status CommandPSync::Parse(const std::list<std::string> &args) {
 }
 
 Status CommandPSync::SidecarExecute(Server *svr, int out_fd) {
-  using namespace std::chrono_literals;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;
 
   // If seq_ is larger than storage's seq, return error
-  if (seq_ > svr->storage_.LatestSeq()) {
+  if (seq_ > svr->storage_->LatestSeq()) {
     sock_send(out_fd, Redis::Error("sequence out of range"));
     return Status(Status::RedisExecErr);
   } else {
@@ -162,10 +161,10 @@ Status CommandPSync::SidecarExecute(Server *svr, int out_fd) {
       return Status(Status::NetSendErr);
     }
 
-    auto s = svr->storage_.GetWALIter(seq_, &iter);
+    auto s = svr->storage_->GetWALIter(seq_, &iter);
     if (!s.IsOK()) {
       // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();
-      std::this_thread::sleep_for(1s);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       continue;
     }
 
@@ -174,8 +173,8 @@ Status CommandPSync::SidecarExecute(Server *svr, int out_fd) {
       auto batch = iter->GetBatch();
       auto data = batch.writeBatchPtr->Data();
       // Send data in redis bulk string format
-      std::string bulk_str = "$" + std::to_string(data.length()) + CRLF
-          + data + CRLF;
+      std::string bulk_str =
+          "$" + std::to_string(data.length()) + CRLF + data + CRLF;
       if (sock_send(out_fd, bulk_str) < 0) {
         return Status(Status::NetSendErr);
       }
@@ -184,7 +183,7 @@ Status CommandPSync::SidecarExecute(Server *svr, int out_fd) {
     }
     // if arrived here, means the wal file is rotated, a reopen is needed.
     LOG(INFO) << "WAL rotate";
-    std::this_thread::sleep_for(1s);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 }
 

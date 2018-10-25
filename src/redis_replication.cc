@@ -14,7 +14,7 @@
 
 namespace Redis {
 
-ReplicationThread::ReplicationThread(std::string host, uint32_t port, Engine::Storage &storage)
+ReplicationThread::ReplicationThread(std::string host, uint32_t port, Engine::Storage *storage)
     : host_(std::move(host)), port_(port), storage_(storage) {
   // TODO:
   // 1. check if the DB has the same base of master's, if not, we should erase
@@ -85,14 +85,13 @@ void ReplicationThread::Run() {
     free(line);
     while(true) {
       auto delta = (bulk_len + 2) - evbuffer_get_length(evbuf);
-      if (delta <= 0) {
-        // We got enough data
+      if (delta <= 0) { // We got enough data
         bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
         LOG(INFO) << "Data received: " << std::string(bulk_data, bulk_len);
-        // TODO: apply the write batch
+        storage_->WriteBatch(std::string(bulk_data, bulk_len));
         evbuffer_drain(evbuf, bulk_len + 2);
         break;
-      } else {
+      } else { // Not enough data, keep receiving
         evbuffer_read(evbuf, fd, delta);
       }
     }

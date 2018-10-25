@@ -23,6 +23,7 @@ class Storage {
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status Set(const std::string &k, const std::string &v);
   std::string Get(const std::string &k);
+  Status WriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
 
   rocksdb::Status Compact();

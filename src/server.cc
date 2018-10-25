@@ -7,7 +7,7 @@
 #include "redis_request.h"
 #include "server.h"
 
-Server::Server(Engine::Storage &storage, uint32_t port) : storage_(storage) {
+Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;
@@ -38,11 +38,9 @@ void Server::NewConnection(evconnlistener *listener, evutil_socket_t fd,
   event_base *base = evconnlistener_get_base(listener);
 
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-  std::unique_ptr<Redis::Connection> conn(new Redis::Connection(bev));
-  auto req = new Redis::Request(svr, std::move(conn));
-  bufferevent_setcb(bev, Redis::Connection::onRead, Redis::Connection::onWrite,
-                    Redis::Connection::onEvent, req);
-  timeval tmo = {3, 0};
+  auto conn = new Redis::Connection(bev, svr);
+  bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr, Redis::Connection::OnEvent, conn);
+  timeval tmo = {30, 0}; // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
 }
@@ -65,8 +63,8 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   is_slave_ = true;
   master_host_ = std::move(host);
   master_port_ = port;
-  replication_thread_ = std::make_unique<Redis::ReplicationThread>(
-      master_host_, master_port_, storage_);
+  replication_thread_ = std::unique_ptr<Redis::ReplicationThread>(
+      new Redis::ReplicationThread(master_host_, master_port_, storage_));
   replication_thread_->Start();
   return Status::OK();
 }

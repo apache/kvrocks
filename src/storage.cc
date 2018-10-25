@@ -214,6 +214,12 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
   return db_->GetLatestSequenceNumber();
 }
 
+Status Storage::WriteBatch(std::string &&raw_batch) {
+  auto bat = rocksdb::WriteBatch(std::move(raw_batch));
+  db_->Write(rocksdb::WriteOptions(), &bat);
+  return Status::OK();
+}
+
 rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(std::string name) {
   if (name == kMetadataColumnFamilyName) {
     return cf_handles_[1];

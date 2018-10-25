@@ -20,7 +20,7 @@ class Server {
   friend Redis::Request;
 
  public:
-  Server(Engine::Storage &storage, uint32_t port);
+  Server(Engine::Storage *storage, uint32_t port);
   void Run(std::thread::id tid);
   void Stop();
   // TODO: callbacks for psync
@@ -31,7 +31,7 @@ class Server {
   Status AddMaster(std::string host, uint32_t port);
   void RemoveMaster();
 
-  Engine::Storage &storage_;
+  Engine::Storage *storage_;
 
  private:
   static void NewConnection(evconnlistener *listener, evutil_socket_t fd,

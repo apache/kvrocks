@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "failed to open: " << s.msg();
     exit(1);
   }
-  Server s1(storage, FLAGS_port);
+  Server s1(&storage, FLAGS_port);
   // Server s2(storage, FLAGS_port);
   hup_handler = [&]() {
     LOG(INFO) << "bye bye";

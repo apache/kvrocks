@@ -10,7 +10,7 @@ namespace Redis {
 
 class ReplicationThread {
  public:
-  explicit ReplicationThread(std::string host, uint32_t port, Engine::Storage &storage);
+  explicit ReplicationThread(std::string host, uint32_t port, Engine::Storage *storage);
   void Start();
   void Run();
   void Stop();
@@ -20,7 +20,7 @@ class ReplicationThread {
   bool stop_flag_ = false;
   std::string host_;
   uint32_t port_;
-  Engine::Storage &storage_;
+  Engine::Storage *storage_;
   rocksdb::SequenceNumber seq_ = 0;
 };
 

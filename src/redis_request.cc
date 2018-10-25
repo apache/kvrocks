@@ -9,33 +9,27 @@
 
 namespace Redis {
 
-void Connection::onRead(struct bufferevent *bev, void *ctx) {
+void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   DLOG(INFO) << "on read: " << bufferevent_getfd(bev);
-  auto req = static_cast<Request *>(ctx);
+  auto conn = static_cast<Connection *>(ctx);
 
-  req->Tokenize(req->conn_->Input());
-  req->ExecuteCommands(req->conn_->Output());
+  conn->req_.Tokenize(conn->Input());
+  conn->req_.ExecuteCommands(conn->Output(), conn);
 }
 
-void Connection::onWrite(struct bufferevent *bev, void *ctx) {
-  auto req = static_cast<Request *>(ctx);
-  DLOG(INFO) << "on write: " << bufferevent_getfd(bev);
-  req->ExecuteCommands(req->conn_->Output());
-}
-
-void Connection::onEvent(bufferevent *bev, short events, void *ctx) {
-  auto req = static_cast<Request *>(ctx);
+void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
+  auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
     LOG(ERROR) << "bev error: "
                << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
   }
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-    DLOG(INFO) << "deleted: fd=" << req->conn_->GetFD();
-    delete req;
+    DLOG(INFO) << "deleted: fd=" << conn->GetFD();
+    delete conn;
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {
-    LOG(INFO) << "timeout, fd=" << req->conn_->GetFD();
+    LOG(INFO) << "timeout, fd=" << conn->GetFD();
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
@@ -51,29 +45,29 @@ void Request::Tokenize(evbuffer *input) {
   size_t len;
   while (true) {
     switch (state_) {
-      case MultiBulkLen:
+      case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        array_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         state_ = BulkLen;
         break;
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        bulk_len_ = std::strtoull(line + 1, nullptr, 10);
+        buck_len_ = std::strtoull(line + 1, nullptr, 10);
         free(line);
         state_ = BulkData;
         break;
       case BulkData:
-        if (evbuffer_get_length(input) < bulk_len_ + 2) return;
+        if (evbuffer_get_length(input) < buck_len_ + 2) return;
         char *data =
-            reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
-        tokens_.emplace_back(data, bulk_len_);
-        evbuffer_drain(input, bulk_len_ + 2);
-        --multi_bulk_len_;
-        if (multi_bulk_len_ <= 0) {
-          state_ = MultiBulkLen;
+            reinterpret_cast<char *>(evbuffer_pullup(input, buck_len_ + 2));
+        tokens_.emplace_back(data, buck_len_);
+        evbuffer_drain(input, buck_len_ + 2);
+        --array_len_;
+        if (array_len_ <= 0) {
+          state_ = ArrayLen;
           commands_.push_back(std::move(tokens_));
           tokens_.clear();
         } else {
@@ -84,7 +78,7 @@ void Request::Tokenize(evbuffer *input) {
   }
 }
 
-void Request::ExecuteCommands(evbuffer *output) {
+void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
   if (commands_.empty()) return;
 
   std::unique_ptr<Commander> cmd;
@@ -111,7 +105,7 @@ void Request::ExecuteCommands(evbuffer *output) {
       Redis::Reply(output, reply);
     } else {
       // Remove the bev from base, the thread will take over the bev
-      auto bev = conn_->DetachBufferEvent();
+      auto bev = conn->DetachBufferEvent();
       TakeOverBufferEvent(bev);
       // NOTE: from now on, the bev is managed by the replication thread.
       // start the replication thread

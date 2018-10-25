@@ -14,6 +14,131 @@
 #include "string_util.h"
 
 namespace Redis {
+class CommandGet : public Commander {
+ public:
+  explicit CommandGet() :Commander("get", 2) {}
+  Status Execute(Server *svr, std::string *output) override {
+    std::string value;
+    rocksdb::Status s = svr->string_db_->Get(args_[1], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
+    return Status::OK();
+  }
+};
+
+class CommandSet : public Commander {
+ public:
+  explicit CommandSet() :Commander("set", 3) {}
+  Status Execute(Server *svr, std::string *output) override {
+    rocksdb::Status s = svr->string_db_->Set(args_[1], args_[2]);
+    if (s.ok()) {
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    } else {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+  }
+};
+
+class CommandSlaveOf : public Commander {
+ public:
+  explicit CommandSlaveOf() : Commander("slaveof", 3) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    host_ = args[1];
+    auto port = args[2];
+    try {
+      auto p = std::stoul(port);
+      if (p > UINT32_MAX) {
+        throw std::overflow_error("port out of range");
+      }
+      port_ = static_cast<uint32_t>(p);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr);
+    }
+    return Status::OK();
+  }
+  Status Execute(Server *svr, std::string *output) override {
+    auto s = svr->AddMaster(host_, port_);
+    if (s.IsOK()) {
+      *output = Redis::SimpleString("OK");
+    }
+    return s;
+  }
+
+ private:
+  std::string host_;
+  uint32_t port_;
+};
+
+class CommandPSync : public Commander {
+ public:
+  explicit CommandPSync() : Commander("psync", 2, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      auto s = std::stoull(args[1]);
+      seq_ = static_cast<rocksdb::SequenceNumber>(s);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr);
+    }
+    return Status::OK();
+  }
+  Status SidecarExecute(Server *svr, int out_fd) {
+    std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+
+    // If seq_ is larger than storage's seq, return error
+    if (seq_ > svr->storage_->LatestSeq()) {
+      sock_send(out_fd, Redis::Error("sequence out of range"));
+      return Status(Status::RedisExecErr);
+    } else {
+      if (sock_send(out_fd, Redis::SimpleString("OK")) < 0) {
+        return Status(Status::NetSendErr);
+      }
+    }
+
+    while (true) {
+      // TODO: test if out_fd is closed on the other side, HEARTBEAT
+      int sock_err = 0;
+      socklen_t sock_err_len = sizeof(sock_err);
+      if (getsockopt(out_fd, SOL_SOCKET, SO_ERROR, (void *)&sock_err,
+                     &sock_err_len) < 0 ||
+          sock_err) {
+        LOG(ERROR) << "Socket err: " << evutil_socket_error_to_string(sock_err);
+        return Status(Status::NetSendErr);
+      }
+
+      auto s = svr->storage_->GetWALIter(seq_, &iter);
+      if (!s.IsOK()) {
+        // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
+      }
+
+      while (iter->Valid()) {
+        LOG(INFO) << "WAL send batch";
+        auto batch = iter->GetBatch();
+        auto data = batch.writeBatchPtr->Data();
+        // Send data in redis bulk string format
+        std::string bulk_str =
+            "$" + std::to_string(data.length()) + CRLF + data + CRLF;
+        if (sock_send(out_fd, bulk_str) < 0) {
+          return Status(Status::NetSendErr);
+        }
+        seq_ = batch.sequence + 1;
+        iter->Next();
+      }
+      // if arrived here, means the wal file is rotated, a reopen is needed.
+      LOG(INFO) << "WAL rotate";
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+  }
+
+ private:
+  rocksdb::SequenceNumber seq_;
+};
+
+using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
     {"get",
      []() -> std::unique_ptr<Commander> {
@@ -40,151 +165,6 @@ Status LookupCommand(const std::string &cmd_name,
   }
   *cmd = cmd_factory->second();
   return Status::OK();
-}
-
-/*
- * Redis Commands
- */
-
-Status CommandGet::Parse(const std::list<std::string> &args) {
-  name_ = "get";
-  if (args.size() != 1) {
-    return Status(Status::RedisInvalidCmd);
-  }
-  key_ = args.front();
-  return Status::OK();
-}
-
-Status CommandGet::Execute(Server *svr, std::string *output) {
-  *output = SimpleString(svr->storage_->Get(key_));
-  return Status::OK();
-}
-
-Status CommandSet::Parse(const std::list<std::string> &args) {
-  name_ = "set";
-  if (args.size() < 2) {
-    return Status(Status::RedisInvalidCmd);
-  }
-  auto it = args.cbegin();
-  key_ = *it++;
-  value_ = *it++;
-  std::string ex, px;
-  bool nx = false, xx = false;
-  for (auto end = args.cend(); it != end; ++it) {
-    if (Util::ToLower(*it) == "ex") {
-      ex = *++it;
-    } else if (Util::ToLower(*it) == "px") {
-      px = *++it;
-    } else if (Util::ToLower(*it) == "nx") {
-      nx = true;
-    } else if (Util::ToLower(*it) == "xx") {
-      xx = true;
-    } else {
-      break;
-    }
-  }
-  DLOG(INFO) << "SET " << key_ << "=" << value_ << ",ex=" << ex << ",px=" << px
-             << ",nx=" << nx << ",xx=" << xx;
-  return Status::OK();
-}
-
-Status CommandSet::Execute(Server *svr, std::string *output) {
-  svr->storage_->Set(key_, value_);
-  *output = SimpleString("set");
-  return Status::OK();
-}
-
-Status CommandSlaveOf::Parse(const std::list<std::string> &args) {
-  name_ = "slaveof";
-  if (args.size() != 2) {
-    return Status(Status::RedisInvalidCmd);
-  }
-  auto it = args.cbegin();
-  host_ = *it++;
-  auto port = *it++;
-  try {
-    auto p = std::stoul(port);
-    if (p > UINT32_MAX) {
-      throw std::overflow_error("port out of range");
-    }
-    port_ = static_cast<uint32_t>(p);
-  } catch (const std::exception &e) {
-    return Status(Status::RedisParseErr);
-  }
-  return Status::OK();
-}
-
-Status CommandSlaveOf::Execute(Server *svr, std::string *output) {
-  auto s = svr->AddMaster(host_, port_);
-  if (s.IsOK()) {
-    *output = Redis::SimpleString("OK");
-  }
-  return s;
-}
-
-Status CommandPSync::Parse(const std::list<std::string> &args) {
-  name_ = "psync";
-  if (args.size() != 1) {
-    return Status(Status::RedisInvalidCmd);
-  }
-  auto seq = args.front();
-  try {
-    auto s = std::stoull(seq);
-    seq_ = static_cast<rocksdb::SequenceNumber>(s);
-  } catch (const std::exception &e) {
-    return Status(Status::RedisParseErr);
-  }
-  return Status::OK();
-}
-
-Status CommandPSync::SidecarExecute(Server *svr, int out_fd) {
-  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
-
-  // If seq_ is larger than storage's seq, return error
-  if (seq_ > svr->storage_->LatestSeq()) {
-    sock_send(out_fd, Redis::Error("sequence out of range"));
-    return Status(Status::RedisExecErr);
-  } else {
-    if (sock_send(out_fd, Redis::SimpleString("OK")) < 0) {
-      return Status(Status::NetSendErr);
-    }
-  }
-
-  while (true) {
-    // TODO: test if out_fd is closed on the other side, HEARTBEAT
-    int sock_err = 0;
-    socklen_t sock_err_len = sizeof(sock_err);
-    if (getsockopt(out_fd, SOL_SOCKET, SO_ERROR, (void *)&sock_err,
-                   &sock_err_len) < 0 ||
-        sock_err) {
-      LOG(ERROR) << "Socket err: " << evutil_socket_error_to_string(sock_err);
-      return Status(Status::NetSendErr);
-    }
-
-    auto s = svr->storage_->GetWALIter(seq_, &iter);
-    if (!s.IsOK()) {
-      // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      continue;
-    }
-
-    while (iter->Valid()) {
-      LOG(INFO) << "WAL send batch";
-      auto batch = iter->GetBatch();
-      auto data = batch.writeBatchPtr->Data();
-      // Send data in redis bulk string format
-      std::string bulk_str =
-          "$" + std::to_string(data.length()) + CRLF + data + CRLF;
-      if (sock_send(out_fd, bulk_str) < 0) {
-        return Status(Status::NetSendErr);
-      }
-      seq_ = batch.sequence + 1;
-      iter->Next();
-    }
-    // if arrived here, means the wal file is rotated, a reopen is needed.
-    LOG(INFO) << "WAL rotate";
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-  }
 }
 
 /*

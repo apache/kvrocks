@@ -8,6 +8,7 @@
 #include "server.h"
 
 Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
+  string_db_ = new RedisString(storage);
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;

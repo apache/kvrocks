@@ -20,11 +20,11 @@ class Commander {
  public:
   // @name: cmd name
   // @sidecar: whether cmd will be executed in sidecar thread, eg. psync.
-  explicit Commander(std::string name, bool sidecar = false)
-      : name_(name), is_sidecar_(sidecar) {}
+  explicit Commander(std::string name, int arity, bool sidecar = false)
+      : name_(name), arity_(arity), is_sidecar_(sidecar) {}
   std::string Name() { return name_; }
 
-  virtual Status Parse(const std::list<std::string> &args) = 0;
+  virtual Status Parse(const std::vector<std::string> &args) { args_ = args; return Status::OK(); };
   virtual bool IsSidecar() { return is_sidecar_; }
   virtual Status Execute(Server *svr, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
@@ -36,56 +36,14 @@ class Commander {
   virtual ~Commander() = default;
 
  protected:
+  std::vector<std::string> args_;
   std::string name_;
+  int arity_;
   bool is_sidecar_;
 };
 
-using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
-extern std::map<std::string, CommanderFactory> command_table;
 Status LookupCommand(const std::string &cmd_name,
                      std::unique_ptr<Commander> *cmd);
-
-class CommandGet : public Commander {
- public:
-  explicit CommandGet() : Commander("get") {}
-  Status Parse(const std::list<std::string> &args) override;
-  Status Execute(Server *svr, std::string *) override;
-
- private:
-  std::string key_;
-};
-
-class CommandSet : public Commander {
- public:
-  explicit CommandSet() : Commander("set") {}
-  Status Parse(const std::list<std::string> &args) override;
-  Status Execute(Server *svr, std::string *) override;
-
- private:
-  std::string key_;
-  std::string value_;
-};
-
-class CommandSlaveOf : public Commander {
- public:
-  explicit CommandSlaveOf() : Commander("slaveof") {}
-  Status Parse(const std::list<std::string> &args) override;
-  Status Execute(Server *svr, std::string *) override;
-
- private:
-  std::string host_;
-  uint32_t port_;
-};
-
-class CommandPSync : public Commander {
- public:
-  explicit CommandPSync() : Commander("psync", true) {}
-  Status Parse(const std::list<std::string> &args) override;
-  Status SidecarExecute(Server *svr, int) override;
-
- private:
-  rocksdb::SequenceNumber seq_;
-};
 
 void TakeOverBufferEvent(bufferevent *bev);
 

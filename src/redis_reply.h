@@ -12,6 +12,7 @@ std::string SimpleString(std::string data);
 std::string Error(std::string err);
 std::string Integer(int64_t data);
 std::string BulkString(std::string data);
+std::string NilString();
 std::string Array(std::vector<std::string> list);
 
 std::string ParseSimpleString(evbuffer *input);

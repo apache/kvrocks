@@ -87,13 +87,12 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
     auto s = LookupCommand(cmd_tokens.front(), &cmd);
     if (!s.IsOK()) {
       // FIXME: change the err string
-      Redis::Reply(output, Redis::Error("failed to lookup"));
+      Redis::Reply(output, Redis::Error("unknown command"));
       continue;
     }
-    cmd_tokens.pop_front();
     s = cmd->Parse(cmd_tokens);
     if (!s.IsOK()) {
-      Redis::Reply(output, Redis::Error("failed to parse"));
+      Redis::Reply(output, Redis::Error(s.msg()));
       continue;
     }
     if (!cmd->IsSidecar()) {

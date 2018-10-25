@@ -10,6 +10,7 @@
 
 #include "storage.h"
 #include "redis_replication.h"
+#include "t_string.h"
 
 // forward declare
 namespace Redis {
@@ -32,6 +33,7 @@ class Server {
   void RemoveMaster();
 
   Engine::Storage *storage_;
+  RedisString *string_db_;
 
  private:
   static void NewConnection(evconnlistener *listener, evutil_socket_t fd,

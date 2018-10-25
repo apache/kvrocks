@@ -16,6 +16,10 @@ std::string BulkString(std::string data) {
   return "$" + std::to_string(data.length()) + CRLF + data + CRLF;
 }
 
+std::string NilString() {
+  return "$-1\r\n";
+}
+
 std::string Array(std::vector<std::string> list) {
   auto buf = "*" + std::to_string(list.size()) + CRLF;
   for (const auto &s : list) {

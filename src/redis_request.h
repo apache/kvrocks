@@ -32,7 +32,7 @@ class Request {
   ParserState state_ = ArrayLen;
   size_t array_len_ = 0;
   size_t buck_len_ = 0;
-  using CommandTokens = std::list<std::string>;
+  using CommandTokens = std::vector<std::string>;
   CommandTokens tokens_;
   std::vector<CommandTokens> commands_;
 

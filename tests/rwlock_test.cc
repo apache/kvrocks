@@ -8,7 +8,7 @@ TEST(RWLock, Lock) {
     lock.RLock();
   }
   for (int i = 0; i < 1000; i++) {
-    lock.UnLock();
+    lock.RUnLock();
   }
   for (int i = 0; i < 1000; i++) {
     lock.Lock();
@@ -35,4 +35,15 @@ TEST(RWLock, MultiThreadCounter) {
     counters[i].join();
   }
   ASSERT_EQ(expected, count);
+}
+
+TEST(RWLocks, LockKey) {
+  RWLocks locks(8);
+  std::vector<std::string> keys = {"abc", "123", "456", "abc", "123"};
+  for (const auto key : keys) {
+    locks.Lock(key);
+    locks.UnLock(key);
+    locks.RLock(key);
+    locks.RUnLock(key);
+  }
 }

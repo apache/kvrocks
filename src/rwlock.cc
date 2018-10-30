@@ -1,6 +1,7 @@
 #include "rwlock.h"
 
 #include <thread>
+
 RWLock::RWLock(): state_(0) {
 }
 
@@ -43,4 +44,46 @@ void RWLock::RUnLock() {
       gate1_.notify_one();
     }
   }
+}
+
+RWLocks::RWLocks(int hash_power): hash_power_(hash_power){
+  hash_mask_ = (1U<<hash_power) - 1;
+  unsigned size = Size();
+  for (int i = 0; i < size; i++) {
+    locks_.emplace_back(new RWLock());
+  }
+}
+
+RWLocks::~RWLocks() {
+  for(auto lock : locks_) {
+    delete lock;
+  }
+}
+
+unsigned RWLocks::Size() {
+  return (1U << hash_power_);
+}
+unsigned RWLocks::hash(std::string &key) {
+  return static_cast<unsigned>(std::hash<std::string>{}(key) & hash_mask_);
+}
+#include <iostream>
+void RWLocks::Lock(std::string key) {
+  unsigned slot = hash(key);
+  locks_[slot]->Lock();
+  std::cout << "slot:" << slot << std::endl;
+}
+
+void RWLocks::UnLock(std::string key) {
+  unsigned slot = hash(key);
+  locks_[slot]->UnLock();
+}
+
+void RWLocks::RLock(std::string key) {
+  unsigned slot = hash(key);
+  locks_[slot]->RLock();
+}
+
+void RWLocks::RUnLock(std::string key) {
+  unsigned slot = hash(key);
+  locks_[slot]->RUnLock();
 }

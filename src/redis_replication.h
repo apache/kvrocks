@@ -22,6 +22,11 @@ class ReplicationThread {
   uint32_t port_;
   Engine::Storage *storage_;
   rocksdb::SequenceNumber seq_ = 0;
+
+  Status TryPsync(int sock_fd);
+  Status IncrementBatchLoop(int sock_fd);
+  Status FullSync(int sock_fd);
+  Status FetchFile(int sock_fd, std::string path, uint32_t crc);
 };
 
 }  // namespace Redis

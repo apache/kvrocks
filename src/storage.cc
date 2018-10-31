@@ -1,9 +1,10 @@
+#include <event2/buffer.h>
+#include <fcntl.h>
 #include <glog/logging.h>
-#include <iostream>
-
 #include <rocksdb/compaction_filter.h>
-#include <rocksdb/table.h>
 #include <rocksdb/filter_policy.h>
+#include <rocksdb/table.h>
+#include <iostream>
 
 #include "storage.h"
 #include "t_metadata.h"
@@ -237,13 +238,147 @@ rocksdb::Status Storage::Compact() {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   for (auto cf_handle : cf_handles_) {
-    rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
+    rocksdb::Status s =
+        db_->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
 }
 
-rocksdb::DB* Storage::GetDB() {
-  return db_;
+rocksdb::DB *Storage::GetDB() { return db_; }
+
+// TODO: if meta_id == 0, return the latest metafile.
+int Storage::BackupManager::OpenMetaFileByID(Storage *storage,
+                                             rocksdb::BackupID meta_id,
+                                             uint64_t *file_size) {
+  if (meta_id == 0) {
+    // FIXME: when meta id == 0, use the latest meta file
+  }
+  std::string meta_file =
+      storage->backup_dir_ + "/meta/" + std::to_string(meta_id);
+  auto s = storage->backup_env_->FileExists(meta_file);
+  if (!s.ok()) {
+    LOG(ERROR) << "Meta file [" << meta_file << "] not found: " << s.ToString();
+    // return -1;
+    storage->CreateBackup();
+  }
+  storage->backup_env_->GetFileSize(meta_file, file_size);
+  // NOTE: here we use the system's open instead of using rocksdb::Env to open
+  // a sequential file, because we want to use sendfile syscall.
+  auto rv = open(meta_file.c_str(), O_RDONLY);
+  if (rv < 0) {
+    LOG(ERROR) << "Failed to open file: " << strerror(errno);
+  }
+  return rv;
 }
+
+int Storage::BackupManager::OpenDataFile(Storage *storage, std::string rel_path,
+                                         uint64_t *file_size) {
+  std::string abs_path = storage->backup_dir_ + "/" + rel_path;
+  auto s = storage->backup_env_->FileExists(abs_path);
+  if (!s.ok()) {
+    LOG(ERROR) << "Data file [" << abs_path << "] not found";
+    return -1;
+  }
+  storage->backup_env_->GetFileSize(abs_path, file_size);
+  auto rv = open(abs_path.c_str(), O_RDONLY);
+  if (rv < 0) {
+    LOG(ERROR) << "Failed to open file: " << strerror(errno);
+  }
+  return rv;
+}
+
+Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMeta(
+    evbuffer *evbuf) {
+  char *line;
+  size_t len;
+  Storage::BackupManager::MetaInfo meta;
+  // timestamp;
+  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] timestamp: " << line;
+  meta.timestamp = std::strtoll(line, nullptr, 10);
+  free(line);
+  // sequence
+  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] seq:" << line;
+  meta.seq = std::strtoull(line, nullptr, 10);
+  free(line);
+  // optional metadata
+  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  if (strncmp(line, "metadata", 8) == 0) {
+    DLOG(INFO) << "[meta] meta: " << line;
+    meta.meta_data = std::string(line, len);
+    free(line);
+    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  }
+  DLOG(INFO) << "[meta] file count: " << line;
+  free(line);
+  // file list
+  while (true) {
+    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+    if (!line) {
+      break;
+    }
+    DLOG(INFO) << "[meta] file info: " << line;
+    auto cptr = line;
+    while (*(cptr++) != ' ')
+      ;
+    auto filename = std::string(line, cptr - line - 1);
+    while (*(cptr++) != ' ')
+      ;
+    auto crc32 = std::strtoul(cptr, nullptr, 10);
+    meta.files.emplace_back(filename, crc32);
+    free(line);
+  }
+  return meta;
+}
+
+Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
+  if (env->CreateDirIfMissing(dir).ok()) return Status::OK();
+
+  std::string parent;
+  for (auto pos = dir.find('/', 1); pos != std::string::npos; pos = dir.find('/', pos + 1)) {
+    parent = dir.substr(0, pos);
+    LOG(INFO) << "===" << parent;
+    if (!env->CreateDirIfMissing(parent).ok()) {
+      LOG(ERROR) << "Failed to create directory recursively";
+      return Status(Status::NotOK);
+    }
+  }
+  if (env->CreateDirIfMissing(dir).ok()) return Status::OK();
+  return Status::NotOK;
+}
+
+std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(Storage *storage, std::string rel_path) {
+  std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
+  auto s = storage->backup_env_->FileExists(tmp_path);
+  if (s.ok()) {
+    LOG(ERROR) << "Data file exists, override";
+    storage->backup_env_->DeleteFile(tmp_path);
+  }
+  // Create directory if missing
+  auto abs_dir = tmp_path.substr(0, tmp_path.rfind('/'));
+  LOG(INFO) << "Ensure directory ["<< abs_dir << "] exists";
+  if (!MkdirRecursively(storage->backup_env_, abs_dir).IsOK()) {
+    return nullptr;
+  }
+  std::unique_ptr<rocksdb::WritableFile> wf;
+  s = storage->backup_env_->NewWritableFile(tmp_path, &wf, rocksdb::EnvOptions());
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to create data file: " << s.ToString();
+    return nullptr;
+  }
+  return wf;
+}
+
+Status Storage::BackupManager::SwapTmpFile(Storage *storage, std::string rel_path) {
+  std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
+  std::string orig_path = storage->backup_dir_ + "/" + rel_path;
+  if (!storage->backup_env_->RenameFile(tmp_path, orig_path).ok()) {
+    LOG(ERROR) << "Failed to rename: " << tmp_path;
+    return Status(Status::NotOK);
+  }
+  return Status::OK();
+}
+
 }  // namespace Engine

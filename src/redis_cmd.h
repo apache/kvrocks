@@ -1,9 +1,10 @@
 #pragma once
 
-#include <event2/event.h>
 #include <event2/bufferevent.h>
+#include <event2/event.h>
 #include <glog/logging.h>
 #include <rocksdb/types.h>
+#include <rocksdb/utilities/backupable_db.h>
 #include <list>
 #include <map>
 #include <string>
@@ -25,12 +26,15 @@ class Commander {
   std::string Name() { return name_; }
   int GetArity() { return arity_; }
 
-  virtual Status Parse(const std::vector<std::string> &args) { args_ = args; return Status::OK(); };
+  virtual Status Parse(const std::vector<std::string> &args) {
+    args_ = args;
+    return Status::OK();
+  };
   virtual bool IsSidecar() { return is_sidecar_; }
   virtual Status Execute(Server *svr, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
   }
-  virtual Status SidecarExecute(Server *svr, int out_fd) {
+  virtual Status SidecarExecute(Server *svr, int sock_fd) {
     return Status(Status::RedisExecErr, "not implemented");
   }
 

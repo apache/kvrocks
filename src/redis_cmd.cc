@@ -11,6 +11,7 @@
 #include "redis_replication.h"
 #include "server.h"
 #include "sock_util.h"
+#include "storage.h"
 #include "string_util.h"
 #include "t_string.h"
 #include "t_hash.h"
@@ -785,6 +786,7 @@ class CommandSlaveOf : public Commander {
 class CommandPSync : public Commander {
  public:
   explicit CommandPSync() : Commander("psync", 2, true) {}
+
   Status Parse(const std::vector<std::string> &args) override {
     try {
       auto s = std::stoull(args[1]);
@@ -794,24 +796,25 @@ class CommandPSync : public Commander {
     }
     return Commander::Parse(args);
   }
-  Status SidecarExecute(Server *svr, int out_fd) {
+
+  Status SidecarExecute(Server *svr, int sock_fd) override {
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
 
     // If seq_ is larger than storage's seq, return error
-    if (seq_ > svr->storage_->LatestSeq()) {
-      sock_send(out_fd, Redis::Error("sequence out of range"));
+    if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
+      sock_send(sock_fd, Redis::Error("sequence out of range"));
       return Status(Status::RedisExecErr);
     } else {
-      if (sock_send(out_fd, Redis::SimpleString("OK")) < 0) {
+      if (sock_send(sock_fd, Redis::SimpleString("OK")) < 0) {
         return Status(Status::NetSendErr);
       }
     }
 
     while (true) {
-      // TODO: test if out_fd is closed on the other side, HEARTBEAT
+      // TODO: test if sock_fd is closed on the other side, HEARTBEAT
       int sock_err = 0;
       socklen_t sock_err_len = sizeof(sock_err);
-      if (getsockopt(out_fd, SOL_SOCKET, SO_ERROR, (void *)&sock_err,
+      if (getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, (void *)&sock_err,
                      &sock_err_len) < 0 ||
           sock_err) {
         LOG(ERROR) << "Socket err: " << evutil_socket_error_to_string(sock_err);
@@ -825,6 +828,7 @@ class CommandPSync : public Commander {
         continue;
       }
 
+      // Everything is OK, streaming the batch data
       while (iter->Valid()) {
         LOG(INFO) << "WAL send batch";
         auto batch = iter->GetBatch();
@@ -832,7 +836,7 @@ class CommandPSync : public Commander {
         // Send data in redis bulk string format
         std::string bulk_str =
             "$" + std::to_string(data.length()) + CRLF + data + CRLF;
-        if (sock_send(out_fd, bulk_str) < 0) {
+        if (sock_send(sock_fd, bulk_str) < 0) {
           return Status(Status::NetSendErr);
         }
         seq_ = batch.sequence + 1;
@@ -846,6 +850,84 @@ class CommandPSync : public Commander {
 
  private:
   rocksdb::SequenceNumber seq_;
+
+  // Return OK if the seq is in the range of the current WAL
+  Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
+    // Upper bound
+    if (seq > storage->LatestSeq() + 1) {
+      return Status(Status::NotOK);
+    }
+    // Lower bound
+    std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+    auto s = storage->GetWALIter(seq, &iter);
+    if (s.IsOK() && iter->Valid()) {
+      auto batch = iter->GetBatch();
+      if (seq < batch.sequence) {
+        return Status(Status::NotOK);
+      }
+    }
+    return Status::OK();
+  }
+};
+
+class CommandFetchMeta : public Commander {
+ public:
+  explicit CommandFetchMeta() : Commander("_fetch_meta", 1, true) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    return Status::OK();
+  }
+
+  Status SidecarExecute(Server *svr, int sock_fd) override {
+    uint64_t file_size;
+    rocksdb::BackupID meta_id;
+    auto fd = Engine::Storage::BackupManager::OpenLatestMeta(svr->storage_,
+                                                             &meta_id,
+                                                             &file_size);
+    off_t offset;
+    // Send the meta ID
+    sock_send(sock_fd, std::to_string(meta_id) + CRLF);
+    // Send meta file size
+    sock_send(sock_fd, std::to_string(file_size) + CRLF);
+    // Send meta content
+    if (sendfile(fd, sock_fd, 0, &offset, nullptr, 0) < 0) {
+      LOG(ERROR) << "Failed to send meta file";
+      return Status(Status::NetSendErr);
+    }
+    return Status::OK();
+  }
+
+ private:
+  rocksdb::BackupID meta_id_;
+};
+
+class CommandFetchFile: public Commander {
+ public:
+  CommandFetchFile() : Commander("_fetch_file", 2, true) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    path_ = args[1];
+    return Status::OK();
+  }
+
+  Status SidecarExecute(Server *svr, int sock_fd) override {
+    uint64_t file_size = 0;
+    auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_, path_,
+                                                           &file_size);
+    off_t offset;
+    sock_send(sock_fd, std::to_string(file_size) + CRLF);
+    if (sendfile(fd, sock_fd, 0, &offset, nullptr, 0) < 0) {
+      LOG(ERROR) << "Failed to send data file";
+      return Status(Status::NetSendErr);
+    }
+
+    // TODO: we could keep receiving _fetch_file cmd and send file
+    // so to avoid creating thread for every _fetch_file
+    return Status::OK();
+  }
+
+ private:
+  std::string path_;
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
@@ -898,6 +980,8 @@ std::map<std::string, CommanderFactory> command_table = {
     {"slaveof", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandSlaveOf); }},
     {"psync", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPSync); }},
     {"compact", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandCompact); }},
+    {"_fetch_meta", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchMeta); }},
+    {"_fetch_file", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchFile); }},
 };
 
 Status LookupCommand(const std::string &cmd_name,

@@ -9,13 +9,14 @@
 
 #include "redis_replication.h"
 #include "redis_reply.h"
-#include "status.h"
-#include "sock_util.h"
 #include "rocksdb_crc32c.h"
+#include "sock_util.h"
+#include "status.h"
 
 namespace Redis {
 
-ReplicationThread::ReplicationThread(std::string host, uint32_t port, Engine::Storage *storage)
+ReplicationThread::ReplicationThread(std::string host, uint32_t port,
+                                     Engine::Storage *storage)
     : host_(std::move(host)), port_(port), storage_(storage) {
   // TODO:
   // 1. check if the DB has the same base of master's, if not, we should erase
@@ -62,15 +63,12 @@ void ReplicationThread::Run() {
 Status ReplicationThread::TryPsync(int sock_fd) {
   auto seq_str = std::to_string(seq_);
   auto seq_len_len = std::to_string(seq_str.length());
-  auto cmd_str = "*2" CRLF
-                 "$5" CRLF
-                 "PSYNC" CRLF
-                 "$" + seq_len_len + CRLF
-      + seq_str + CRLF;
+  auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len + CRLF +
+                 seq_str + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
-  char buf[5]; // "+OK\r\n"
+  char buf[5];  // "+OK\r\n"
   if (recv(sock_fd, buf, 5, 0) < 0) {
     LOG(ERROR) << "Failed to recv: "
                << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
@@ -90,7 +88,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
   size_t line_len = 0;
   char *bulk_data = nullptr;
   size_t bulk_len = 0;
-  while(true) {
+  while (true) {
     // Read bulk length
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
       LOG(ERROR) << "Failed to batch data";
@@ -102,15 +100,16 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
     bulk_len = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
     free(line);
     // Read bulk data (batch data)
-    while(true) {
+    while (true) {
       auto delta = (bulk_len + 2) - evbuffer_get_length(evbuf);
-      if (delta <= 0) { // We got enough data
-        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
+      if (delta <= 0) {  // We got enough data
+        bulk_data =
+            reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
         LOG(INFO) << "Data received: " << std::string(bulk_data, bulk_len);
         storage_->WriteBatch(std::string(bulk_data, bulk_len));
         evbuffer_drain(evbuf, bulk_len + 2);
         break;
-      } else { // Not enough data, keep receiving
+      } else {  // Not enough data, keep receiving
         evbuffer_read(evbuf, sock_fd, delta);
       }
     }
@@ -121,41 +120,59 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
 }
 
 Status ReplicationThread::FullSync(int sock_fd) {
-  auto cmd_str = "*2" CRLF
-                 "$11" CRLF
-                 "_fetch_meta" CRLF
-                 "$1" CRLF
-                 "1" CRLF; // FIXME: Fetch latest meta file
+  auto cmd_str = "*1" CRLF "$11" CRLF "_fetch_meta" CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
 
   char *line;
   size_t line_len, file_size;
+  rocksdb::BackupID meta_id = 0;
   evbuffer *evbuf = evbuffer_new();
-  // Read meta file size line
-  while(true) {
+  // Read meta id
+  while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "Failed to read meta file size line";
+      LOG(ERROR) << "Failed to read meta id line";
       return Status(Status::NotOK);
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if(!line) continue;
-    file_size = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+    if (!line) continue;
+    meta_id = static_cast<rocksdb::BackupID>(
+        line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
+    free(line);
+    break;
+  }
+  if (meta_id == 0) {
+    LOG(ERROR) << "Invalid meta id received";
+  }
+  // Read meta file size line
+  while (true) {
+    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    if (!line) {
+      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+        LOG(ERROR) << "Failed to read meta file size line";
+        return Status(Status::NotOK);
+      }
+      continue;
+    }
+    file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
     break;
   }
   // Read meta file content
-  while(evbuffer_get_length(evbuf) < file_size) {
+  while (evbuffer_get_length(evbuf) < file_size) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) break;
   }
   // FIXME: save the meta file
-  auto meta = Engine::Storage::BackupManager::ParseMeta(evbuf);
+  auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(storage_,
+                                                               meta_id, evbuf);
   evbuffer_free(evbuf);
-  for (auto f: meta.files) {
+  for (auto f : meta.files) {
     LOG(INFO) << "> " << f.first << " " << f.second;
     int fd2;
-    // FIXME: don't connect every time, see _fetch_file cmd implementation
+    // FIXME:
+    // 1. don't connect every time, see _fetch_file cmd implementation
+    // 2. don't fetch existing files(under the shared dir and crc checked one)
     if (sock_connect(host_, port_, &fd2) < 0) {
       return Status(Status::NotOK);
     }
@@ -165,12 +182,10 @@ Status ReplicationThread::FullSync(int sock_fd) {
   return Status::OK();
 }
 
-Status ReplicationThread::FetchFile(int sock_fd, std::string path, uint32_t crc) {
-  auto cmd_str = "*2" CRLF
-                 "$11" CRLF
-                 "_fetch_file" CRLF
-                 "$" + std::to_string(path.length()) + CRLF +
-                 path + CRLF;
+Status ReplicationThread::FetchFile(int sock_fd, std::string path,
+                                    uint32_t crc) {
+  auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
+                 std::to_string(path.length()) + CRLF + path + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
@@ -179,17 +194,17 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path, uint32_t crc)
   size_t line_len, file_size;
   evbuffer *evbuf = evbuffer_new();
   // Read file size line
-  while(true) {
+  while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
       LOG(ERROR) << "Failed to read data file size line";
       return Status(Status::NotOK);
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if(!line) continue;
+    if (!line) continue;
     if (*line == '-') {
       LOG(ERROR) << "Failed to send _fetch_file cmd: " << line;
     }
-    file_size = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+    file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
     break;
   }
@@ -207,7 +222,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path, uint32_t crc)
     if (evbuffer_get_length(evbuf) > 0) {
       auto data_len = evbuffer_remove(evbuf, data, 1024);
       if (data_len == 0) continue;
-      if ( data_len < 0) {
+      if (data_len < 0) {
         LOG(ERROR) << "Failed to read data from socket buffer";
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));

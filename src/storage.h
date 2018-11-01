@@ -40,8 +40,8 @@ class Storage {
   class BackupManager {
    public:
     // Master side
-    static int OpenMetaFileByID(Storage *storage, rocksdb::BackupID meta_id,
-                                uint64_t *file_size);
+    static int OpenLatestMeta(Storage *storage, rocksdb::BackupID *meta_id,
+                              uint64_t *file_size);
     static int OpenDataFile(Storage *storage, std::string rel_path,
                             uint64_t *file_size);
 
@@ -53,8 +53,11 @@ class Storage {
       // [[filename, checksum]...]
       std::vector<std::pair<std::string, uint32_t>> files;
     };
-    static MetaInfo ParseMeta(evbuffer *evbuf);
-    static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(Storage *storage, std::string rel_path);
+    static MetaInfo ParseMetaAndSave(Storage *storage,
+                                     rocksdb::BackupID meta_id,
+                                     evbuffer *evbuf);
+    static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
+        Storage *storage, std::string rel_path);
     static Status SwapTmpFile(Storage *storage, std::string rel_path);
   };
 

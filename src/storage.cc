@@ -183,12 +183,14 @@ std::string Storage::Get(const std::string &k) {
 
 Status Storage::CreateBackup() {
   rocksdb::BackupableDBOptions bk_option(backup_dir_);
-  auto s =
-      rocksdb::BackupEngine::Open(rocksdb::Env::Default(), bk_option, &backup_);
-  if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
+  if (!backup_) {
+    auto s =
+        rocksdb::BackupEngine::Open(rocksdb::Env::Default(), bk_option, &backup_);
+    if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
+  }
 
   auto tm = std::time(nullptr);
-  s = backup_->CreateNewBackupWithMetadata(db_,
+  auto s = backup_->CreateNewBackupWithMetadata(db_,
                                            std::asctime(std::localtime(&tm)));
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   return Status::OK();
@@ -248,20 +250,24 @@ rocksdb::Status Storage::Compact() {
 rocksdb::DB *Storage::GetDB() { return db_; }
 
 // TODO: if meta_id == 0, return the latest metafile.
-int Storage::BackupManager::OpenMetaFileByID(Storage *storage,
-                                             rocksdb::BackupID meta_id,
-                                             uint64_t *file_size) {
-  if (meta_id == 0) {
-    // FIXME: when meta id == 0, use the latest meta file
+int Storage::BackupManager::OpenLatestMeta(Storage *storage,
+                                           rocksdb::BackupID *meta_id,
+                                           uint64_t *file_size) {
+  if (!storage->CreateBackup().IsOK()) {
+    LOG(ERROR) << "Failed to create new backup";
+    return -1;
   }
+  std::vector<rocksdb::BackupInfo> backup_infos;
+  storage->backup_->GetBackupInfo(&backup_infos);
+  auto latest_backup = backup_infos.back();
+  if (!storage->backup_->VerifyBackup(latest_backup.backup_id).ok()) {
+    LOG(ERROR) << "Backup verification failed";
+    return -1;
+  }
+  *meta_id = latest_backup.backup_id;
   std::string meta_file =
-      storage->backup_dir_ + "/meta/" + std::to_string(meta_id);
+      storage->backup_dir_ + "/meta/" + std::to_string(*meta_id);
   auto s = storage->backup_env_->FileExists(meta_file);
-  if (!s.ok()) {
-    LOG(ERROR) << "Meta file [" << meta_file << "] not found: " << s.ToString();
-    // return -1;
-    storage->CreateBackup();
-  }
   storage->backup_env_->GetFileSize(meta_file, file_size);
   // NOTE: here we use the system's open instead of using rocksdb::Env to open
   // a sequential file, because we want to use sendfile syscall.
@@ -288,30 +294,37 @@ int Storage::BackupManager::OpenDataFile(Storage *storage, std::string rel_path,
   return rv;
 }
 
-Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMeta(
-    evbuffer *evbuf) {
+Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMetaAndSave(
+    Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf) {
   char *line;
   size_t len;
   Storage::BackupManager::MetaInfo meta;
+  auto meta_file = "meta/" + std::to_string(meta_id);
+  DLOG(INFO) << "[meta] id: " << meta_id;
+  auto wf = NewTmpFile(storage, meta_file);
   // timestamp;
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] timestamp: " << line;
   meta.timestamp = std::strtoll(line, nullptr, 10);
+  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // sequence
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] seq:" << line;
   meta.seq = std::strtoull(line, nullptr, 10);
+  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // optional metadata
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   if (strncmp(line, "metadata", 8) == 0) {
     DLOG(INFO) << "[meta] meta: " << line;
     meta.meta_data = std::string(line, len);
+    wf->Append(rocksdb::Slice(line, len));
     free(line);
     line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   }
   DLOG(INFO) << "[meta] file count: " << line;
+  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // file list
   while (true) {
@@ -328,8 +341,10 @@ Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMeta(
       ;
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
+    wf->Append(rocksdb::Slice(line, len));
     free(line);
   }
+  SwapTmpFile(storage, meta_file);
   return meta;
 }
 
@@ -337,7 +352,8 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   if (env->CreateDirIfMissing(dir).ok()) return Status::OK();
 
   std::string parent;
-  for (auto pos = dir.find('/', 1); pos != std::string::npos; pos = dir.find('/', pos + 1)) {
+  for (auto pos = dir.find('/', 1); pos != std::string::npos;
+       pos = dir.find('/', pos + 1)) {
     parent = dir.substr(0, pos);
     LOG(INFO) << "===" << parent;
     if (!env->CreateDirIfMissing(parent).ok()) {
@@ -349,7 +365,8 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   return Status::NotOK;
 }
 
-std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(Storage *storage, std::string rel_path) {
+std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
+    Storage *storage, std::string rel_path) {
   std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
   auto s = storage->backup_env_->FileExists(tmp_path);
   if (s.ok()) {
@@ -358,12 +375,13 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(Storag
   }
   // Create directory if missing
   auto abs_dir = tmp_path.substr(0, tmp_path.rfind('/'));
-  LOG(INFO) << "Ensure directory ["<< abs_dir << "] exists";
+  LOG(INFO) << "Ensure directory [" << abs_dir << "] exists";
   if (!MkdirRecursively(storage->backup_env_, abs_dir).IsOK()) {
     return nullptr;
   }
   std::unique_ptr<rocksdb::WritableFile> wf;
-  s = storage->backup_env_->NewWritableFile(tmp_path, &wf, rocksdb::EnvOptions());
+  s = storage->backup_env_->NewWritableFile(tmp_path, &wf,
+                                            rocksdb::EnvOptions());
   if (!s.ok()) {
     LOG(ERROR) << "Failed to create data file: " << s.ToString();
     return nullptr;
@@ -371,7 +389,8 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(Storag
   return wf;
 }
 
-Status Storage::BackupManager::SwapTmpFile(Storage *storage, std::string rel_path) {
+Status Storage::BackupManager::SwapTmpFile(Storage *storage,
+                                           std::string rel_path) {
   std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
   std::string orig_path = storage->backup_dir_ + "/" + rel_path;
   if (!storage->backup_env_->RenameFile(tmp_path, orig_path).ok()) {

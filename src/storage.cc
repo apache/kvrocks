@@ -229,14 +229,19 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
 #endif
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
+
+  // Reopen db. TODO: fix the race, use shared_ptr to hold the db ptr
+  delete db_;
+
   s = backup_->RestoreDBFromLatestBackup(db_dir_, db_dir_);
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
   }
   LOG(INFO) << "[storage] Restore from backup";
-  // Reopen db. TODO: fix the race, use shared_ptr to hold the db ptr
-  delete db_;
+  // FIXME: when delete db_ after restoring backup, SST files aren't
+  // copied, causing db Open error. I haven't figure out why. :(
+  //delete db_;
   auto s2 = Open();
   if (!s2.IsOK()) {
     LOG(ERROR) << "Failed to reopen db: " << s2.msg();

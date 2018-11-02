@@ -27,6 +27,7 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
 }
 
 void ReplicationThread::Start() {
+  LOG(INFO) << "[replication] Start";
   t_ = std::thread([this]() {
     this->Run();
     stop_flag_ = true;
@@ -36,28 +37,40 @@ void ReplicationThread::Start() {
 void ReplicationThread::Stop() {
   stop_flag_ = true;
   t_.join();
+  LOG(INFO) << "[replication] Stop";
 }
 
 void ReplicationThread::Run() {
-  // 1. Connect to master
   int fd;
-  if (sock_connect(host_, port_, &fd) < 0) {
-    return;
-  }
-
-  // 2. Send PSYNC
-  if (!TryPsync(fd).IsOK()) {
-    // FullSync, reconnect
-    close(fd);
+  while(true) {
+    // 1. Connect to master
     if (sock_connect(host_, port_, &fd) < 0) {
-      return;
+      LOG(ERROR) << "[replication] Failed to contact master, wait";
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+      continue;
     }
-    FullSync(fd);
-  } else {
-    // Keep receiving batch data and apply to DB
-    IncrementBatchLoop(fd);
+
+    // 2. Send PSYNC
+    if (!TryPsync(fd).IsOK()) {
+      // FullSync, reconnect
+      close(fd);
+      if (sock_connect(host_, port_, &fd) < 0) {
+        LOG(ERROR) << "[replication] Failed to contact master, wait";
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        continue;
+      }
+      FullSync(fd);
+      if (!storage_->RestoreFromBackup(&seq_).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to apply backup";
+        return;
+      }
+      seq_++;
+    } else {
+      // Keep receiving batch data and apply to DB
+      IncrementBatchLoop(fd);
+    }
+    close(fd);
   }
-  close(fd);
 }
 
 Status ReplicationThread::TryPsync(int sock_fd) {

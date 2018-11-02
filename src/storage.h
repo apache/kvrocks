@@ -20,7 +20,7 @@ class Storage {
   Status Open();
   Status CreateBackup();
   Status DestroyBackup();
-  Status RestoreFromBackup();
+  Status RestoreFromBackup(rocksdb::SequenceNumber *seq);
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status Set(const std::string &k, const std::string &v);

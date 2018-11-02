@@ -181,17 +181,33 @@ std::string Storage::Get(const std::string &k) {
   return "not found";
 }
 
+class DebuggingLogger : public rocksdb::Logger {
+ public:
+  explicit DebuggingLogger(
+      const rocksdb::InfoLogLevel log_level = rocksdb::InfoLogLevel::INFO_LEVEL)
+      : Logger(log_level) {}
+
+  // Brings overloaded Logv()s into scope so they're not hidden when we override
+  // a subset of them.
+  using Logger::Logv;
+
+  virtual void Logv(const char *format, va_list ap) override {
+    vfprintf(stderr, format, ap);
+    fprintf(stderr, "\n");
+  }
+};
+
 Status Storage::CreateBackup() {
+  // TODO: assert role to be master. slaves never create backup, they sync
   rocksdb::BackupableDBOptions bk_option(backup_dir_);
   if (!backup_) {
-    auto s =
-        rocksdb::BackupEngine::Open(rocksdb::Env::Default(), bk_option, &backup_);
-    if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
+    auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
+    if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   }
 
   auto tm = std::time(nullptr);
-  auto s = backup_->CreateNewBackupWithMetadata(db_,
-                                           std::asctime(std::localtime(&tm)));
+  auto s = backup_->CreateNewBackupWithMetadata(
+      db_, std::asctime(std::localtime(&tm)));
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   return Status::OK();
 }
@@ -204,9 +220,30 @@ Status Storage::DestroyBackup() {
   return Status();
 }
 
-Status Storage::RestoreFromBackup() {
-  // backup_->RestoreDBFromLatestBackup();
-  return Status();
+Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
+  // TODO: assert role to be slave
+  // We must reopen the backup engine every time, as the files is changed
+  rocksdb::BackupableDBOptions bk_option(backup_dir_);
+#ifndef NDEBUG
+  bk_option.info_log = new DebuggingLogger;
+#endif
+  auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
+  if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
+  s = backup_->RestoreDBFromLatestBackup(db_dir_, db_dir_);
+  if (!s.ok()) {
+    LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
+    return Status(Status::DBBackupErr, s.ToString());
+  }
+  LOG(INFO) << "[storage] Restore from backup";
+  // Reopen db. TODO: fix the race, use shared_ptr to hold the db ptr
+  delete db_;
+  auto s2 = Open();
+  if (!s2.IsOK()) {
+    LOG(ERROR) << "Failed to reopen db: " << s2.msg();
+    return Status(Status::DBOpenErr);
+  }
+  *seq = LatestSeq();
+  return Status::OK();
 }
 
 Status Storage::GetWALIter(
@@ -301,30 +338,33 @@ Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMetaAndSave(
   Storage::BackupManager::MetaInfo meta;
   auto meta_file = "meta/" + std::to_string(meta_id);
   DLOG(INFO) << "[meta] id: " << meta_id;
+
+  // Save the meta to tmp file
   auto wf = NewTmpFile(storage, meta_file);
+  auto data = evbuffer_pullup(evbuf, -1);
+  wf->Append(rocksdb::Slice(reinterpret_cast<char *>(data),
+                            evbuffer_get_length(evbuf)));
+  wf->Close();
+
   // timestamp;
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] timestamp: " << line;
   meta.timestamp = std::strtoll(line, nullptr, 10);
-  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // sequence
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] seq:" << line;
   meta.seq = std::strtoull(line, nullptr, 10);
-  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // optional metadata
   line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   if (strncmp(line, "metadata", 8) == 0) {
     DLOG(INFO) << "[meta] meta: " << line;
     meta.meta_data = std::string(line, len);
-    wf->Append(rocksdb::Slice(line, len));
     free(line);
     line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
   }
   DLOG(INFO) << "[meta] file count: " << line;
-  wf->Append(rocksdb::Slice(line, len));
   free(line);
   // file list
   while (true) {
@@ -341,7 +381,6 @@ Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMetaAndSave(
       ;
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
-    wf->Append(rocksdb::Slice(line, len));
     free(line);
   }
   SwapTmpFile(storage, meta_file);
@@ -355,7 +394,6 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   for (auto pos = dir.find('/', 1); pos != std::string::npos;
        pos = dir.find('/', pos + 1)) {
     parent = dir.substr(0, pos);
-    LOG(INFO) << "===" << parent;
     if (!env->CreateDirIfMissing(parent).ok()) {
       LOG(ERROR) << "Failed to create directory recursively";
       return Status(Status::NotOK);
@@ -375,7 +413,6 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
   }
   // Create directory if missing
   auto abs_dir = tmp_path.substr(0, tmp_path.rfind('/'));
-  LOG(INFO) << "Ensure directory [" << abs_dir << "] exists";
   if (!MkdirRecursively(storage->backup_env_, abs_dir).IsOK()) {
     return nullptr;
   }

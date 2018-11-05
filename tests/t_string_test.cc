@@ -91,7 +91,7 @@ TEST_F(RedisStringTest, IncrBy) {
 
 TEST_F(RedisStringTest, GetSet) {
   std::vector<Slice> values = {"a", "b", "c", "d"};
-  for(int i = 0; i < values[i].size(); i++) {
+  for(int i = 0; i < values.size(); i++) {
     std::string old_value;
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {

@@ -22,7 +22,7 @@ rocksdb::Status RedisString::get(Slice key, std::string *raw_value, std::string 
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
-  if (value) value->assign(raw_bytes.substr(5, raw_bytes.size()-1));
+  if (value) value->assign(raw_bytes.substr(5, raw_bytes.size()-5));
   if (raw_value) raw_value->assign(raw_bytes.data(), raw_bytes.size());
   return rocksdb::Status::OK();
 }
@@ -72,6 +72,7 @@ rocksdb::Status RedisString::GetSet(Slice key, Slice new_value, std::string *old
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
+  *old_value = value_bytes;
   return update(key, raw_value_bytes, new_value);
 }
 

@@ -26,8 +26,8 @@ class Commander {
   std::string Name() { return name_; }
   int GetArity() { return arity_; }
 
+  void SetArgs(const std::vector<std::string> args) { args_ = args; }
   virtual Status Parse(const std::vector<std::string> &args) {
-    args_ = args;
     return Status::OK();
   };
   virtual bool IsSidecar() { return is_sidecar_; }

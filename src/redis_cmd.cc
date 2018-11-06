@@ -50,6 +50,82 @@ class CommandSet : public Commander {
   }
 };
 
+class CommandIncr : public Commander {
+ public:
+  explicit CommandIncr() : Commander("incr", 2) {}
+  Status Execute(Server *svr, std::string *output) override {
+    int64_t ret;
+    RedisString string_db(svr->storage_);
+    rocksdb::Status s = string_db.IncrBy(args_[1], 1, &ret);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandDecr: public Commander {
+ public:
+  explicit CommandDecr() : Commander("decr", 2) {}
+  Status Execute(Server *svr, std::string *output) override {
+    int64_t ret;
+    RedisString string_db(svr->storage_);
+    rocksdb::Status s = string_db.IncrBy(args_[1], -1, &ret);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandIncrBy : public Commander {
+ public:
+  explicit CommandIncrBy() : Commander("incrby", 3) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stoll(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, std::string *output) override {
+    int64_t ret;
+    RedisString string_db(svr->storage_);
+    rocksdb::Status s = string_db.IncrBy(args_[1], increment_, &ret);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int64_t increment_;
+};
+
+class CommandDecrBy : public Commander {
+ public:
+  explicit CommandDecrBy() : Commander("decrby", 3) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stoll(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, std::string *output) override {
+    int64_t ret;
+    RedisString string_db(svr->storage_);
+    rocksdb::Status s = string_db.IncrBy(args_[1], -1*increment_, &ret);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int64_t increment_;
+};
+
 class CommandDel : public Commander {
  public:
   explicit CommandDel() :Commander("del", -2) {}
@@ -102,11 +178,10 @@ class CommandExpire: public Commander {
  public:
   explicit CommandExpire() : Commander("expire", 2) {}
   Status Parse(const std::vector<std::string> &args) override {
-    Commander::Parse(args);
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
     try {
-      seconds_ = std::stoi(args_[2]);
+      seconds_ = std::stoi(args[2]);
       // FIXME: seconds_ may overflow
       seconds_ += now;
     } catch (std::exception &e) {
@@ -243,11 +318,10 @@ class CommandHLen: public Commander {
 
 class CommandHIncrBy : public Commander {
  public:
-  explicit CommandHIncrBy() : Commander("incrby", 4) {}
+  explicit CommandHIncrBy() : Commander("hincrby", 4) {}
   Status Parse(const std::vector<std::string> &args) override {
-    Commander::Parse(args);
     try {
-      increment_ = std::stoll(args_[3]);
+      increment_ = std::stoll(args[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisExecErr, "value is not an integer or out of range");
     }
@@ -458,8 +532,8 @@ class CommandLRange : public Commander {
   explicit CommandLRange() : Commander("lrange", 4) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      start_ = std::stoi(args_[2]);
-      stop_ = std::stoi(args_[3]);
+      start_ = std::stoi(args[2]);
+      stop_ = std::stoi(args[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
@@ -500,7 +574,7 @@ class CommandLIndex: public Commander {
   explicit CommandLIndex() : Commander("lindex", 3) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      index_ = std::stoi(args_[2]);
+      index_ = std::stoi(args[2]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
@@ -526,7 +600,7 @@ class CommandLSet: public Commander {
   explicit CommandLSet() : Commander("lset", 4) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      index_ = std::stoi(args_[2]);
+      index_ = std::stoi(args[2]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
@@ -549,8 +623,8 @@ class CommandLTrim: public Commander {
   explicit CommandLTrim() : Commander("ltrim", 4) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      start_ = std::stoi(args_[2]);
-      stop_ = std::stoi(args_[3]);
+      start_ = std::stoi(args[2]);
+      stop_ = std::stoi(args[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
@@ -939,6 +1013,10 @@ std::map<std::string, CommanderFactory> command_table = {
     //string command
     {"get", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandGet); }},
     {"set", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandSet); }},
+    {"incrby", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncrBy); }},
+    {"incr", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncr); }},
+    {"decrby", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDecrBy); }},
+    {"decr", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDecr); }},
     // hash command
     {"hget", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandHGet); }},
     {"hincrby", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandHIncrBy); }},

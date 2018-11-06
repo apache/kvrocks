@@ -100,6 +100,7 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
       Redis::Reply(output, Redis::Error("wrong number of arguments"));
       continue;
     }
+    cmd->SetArgs(cmd_tokens);
     s = cmd->Parse(cmd_tokens);
     if (!s.IsOK()) {
       Redis::Reply(output, Redis::Error(s.msg()));

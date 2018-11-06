@@ -6,6 +6,7 @@ class Status {
  public:
   enum Code {
     cOK,
+    NotOK,
 
     // DB
     DBOpenErr,

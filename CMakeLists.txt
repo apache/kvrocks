@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
-project(ev
+project(kvrocks
         VERSION 0.0.0
-        DESCRIPTION "demo ev"
+        DESCRIPTION "Redis on rocksdb"
         LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -14,12 +14,11 @@ find_package(Git REQUIRED)
 execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_SHA)
 string(STRIP ${GIT_SHA} GIT_SHA)
 
-configure_file(src/version.h.in src/version.h)
+configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 LINK_DIRECTORIES(/usr/local/lib)
 include_directories(/usr/local/include)
 include_directories(${PROJECT_BINARY_DIR})
 add_executable(kvrocks
-               ${PROJECT_BINARY_DIR}/version.h
                src/server.cc
                src/server.h
                src/main.cc
@@ -34,8 +33,8 @@ add_executable(kvrocks
                src/status.h
                src/redis_reply.h
                src/redis_reply.cc
-               src/redis_replication.cc
-               src/redis_replication.h
+               src/replication.cc
+               src/replication.h
                src/t_encoding.h
                src/t_encoding.cc
                src/t_metadata.h
@@ -51,7 +50,9 @@ add_executable(kvrocks
                src/t_zset.cc
                src/t_zset.h
                src/sock_util.h
-               src/sock_util.cc src/rwlock.cc)
+               src/sock_util.cc
+               src/rwlock.cc
+               src/rocksdb_crc32c.h)
 target_link_libraries(kvrocks rocksdb event event_pthreads gflags glog)
 
 include_directories(src)

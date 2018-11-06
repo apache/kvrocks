@@ -2,7 +2,6 @@
 #include <iostream>
 
 #include "redis_cmd.h"
-#include "redis_replication.h"
 #include "redis_reply.h"
 #include "redis_request.h"
 #include "storage.h"
@@ -80,6 +79,11 @@ void Request::Tokenize(evbuffer *input) {
 
 void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
   if (commands_.empty()) return;
+
+  if (svr_->IsLockDown()) {
+    Redis::Reply(output, Redis::Error("replication in progress"));
+    return;
+  }
 
   std::unique_ptr<Commander> cmd;
   std::string reply;

@@ -1,5 +1,3 @@
-#include <utility>
-
 #include <glog/logging.h>
 #include <cctype>
 #include <utility>
@@ -14,20 +12,30 @@ Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
   sin_.sin_addr.s_addr = htonl(0);
   sin_.sin_port = htons(port);
   int fd = socket(AF_INET, SOCK_STREAM, 0);
-  evutil_make_socket_nonblocking(fd);
-  setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, nullptr,
-             0);  // to support multi-thread binding on macOS
-  if (bind(fd, (struct sockaddr *)&sin_, sizeof(sin_)) < 0) {
-    LOG(ERROR) << "failed to bind: "
+  int sock_opt = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) <
+      0) {
+    LOG(ERROR) << "Failed to set REUSEADDR: "
                << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
     exit(1);
   }
-  auto lev = evconnlistener_new(
-      base_, NewConnection, this,
-      LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE | LEV_OPT_REUSEABLE_PORT, -1,
-      fd);
+  // to support multi-thread binding on macOS
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) <
+      0) {
+    LOG(ERROR) << "Failed to set REUSEPORT: "
+               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    exit(1);
+  }
+  if (bind(fd, (struct sockaddr *)&sin_, sizeof(sin_)) < 0) {
+    LOG(ERROR) << "Failed to bind: "
+               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    exit(1);
+  }
+  evutil_make_socket_nonblocking(fd);
+  auto lev = evconnlistener_new(base_, NewConnection, this,
+                                LEV_OPT_CLOSE_ON_FREE, -1, fd);
   fd_ = evconnlistener_get_fd(lev);
-  LOG(INFO) << "listening on: " << fd_;
+  LOG(INFO) << "Listening on: " << fd_;
 }
 
 void Server::NewConnection(evconnlistener *listener, evutil_socket_t fd,
@@ -79,7 +87,7 @@ void Server::RemoveMaster() {
 }
 
 void ServerThread::Start() {
-  t_ = std::thread([this]() { this->svr_.Run(t_.get_id()); });
+  t_ = std::thread([this]() { this->svr_->Run(t_.get_id()); });
   LOG(INFO) << "thread #" << t_.get_id();
 }
 

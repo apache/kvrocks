@@ -51,11 +51,13 @@ class Server {
 
 class ServerThread {
  public:
-  explicit ServerThread(Server &svr) : svr_(svr) {}
+  explicit ServerThread(Server *svr) : svr_(svr) {}
+  ServerThread(const ServerThread&) = delete;
+  ServerThread(ServerThread&&) = delete;
   void Start();
   void Join();
 
  private:
   std::thread t_;
-  Server &svr_;
+  Server *svr_;
 };

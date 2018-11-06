@@ -17,7 +17,7 @@ extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   FLAGS_logtostderr = true;
   FLAGS_minloglevel = 0;
   google::InitGoogleLogging("ev");
@@ -35,19 +35,23 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "failed to open: " << s.msg();
     exit(1);
   }
-  Server s1(&storage, FLAGS_port);
-  // Server s2(storage, FLAGS_port);
-  hup_handler = [&]() {
+  std::vector<Server*> servers;
+  for (int i = 0; i < 2; ++i) {
+    servers.push_back(new Server(&storage, FLAGS_port));
+  }
+  hup_handler = [&servers]() {
     LOG(INFO) << "bye bye";
-    s1.Stop();
-    //s2.Stop();
+    for (auto svr : servers) {
+      svr->Stop();
+    }
   };
-  ServerThread t(s1);
-  //ServerThread t2(s2);
-
-  t.Start();
-  //t2.Start();
-  t.Join();
-  //t2.Join();
+  std::vector<ServerThread* > threads;
+  for (auto svr : servers) {
+    threads.push_back(new ServerThread(svr));
+    threads.back()->Start();
+  }
+  for (auto t : threads) {
+    t->Join();
+  }
   return 0;
 }

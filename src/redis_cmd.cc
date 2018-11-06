@@ -381,7 +381,7 @@ class CommandPush: public Commander {
     RedisList list_db(svr->storage_);
     std::vector<Slice> elems;
     for (int i = 2; i < args_.size(); i++) {
-      elems.emplace_back(Slice(args_[i]));
+      elems.emplace_back(args_[i]);
     }
     int ret;
     rocksdb::Status s;

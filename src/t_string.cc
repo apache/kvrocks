@@ -19,11 +19,11 @@ rocksdb::Status RedisString::get(Slice key, std::string *raw_value, std::string 
 
   Metadata metadata(kRedisNone);
   metadata.Decode(raw_bytes);
-  if (metadata.Type() != kRedisString) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
-  }
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
+  }
+  if (metadata.Type() != kRedisString && metadata.size > 0) {
+    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
   }
   if (value) value->assign(raw_bytes.substr(5, raw_bytes.size()-5));
   if (raw_value) raw_value->assign(raw_bytes.data(), raw_bytes.size());
@@ -53,17 +53,11 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
 }
 
 std::vector<rocksdb::Status> RedisString::MGet(std::vector<Slice> keys, std::vector<std::string> *values) {
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
-  read_options.snapshot = ss.GetSnapShot();
-  std::vector<rocksdb::ColumnFamilyHandle*> cf_handles;
-  cf_handles.resize(keys.size(), metadata_cf_handle_);
-  std::vector<rocksdb::Status> statuses = db_->MultiGet(read_options, cf_handles, keys, values);
-  for(int i = 0; i < statuses.size(); i++) {
-    // remove metadata prefix
-    if (statuses[i].ok()) {
-      (*values)[i] = (*values)[i].substr(5, (*values)[i].size() - 5);
-    }
+  std::string value;
+  std::vector<rocksdb::Status> statuses;
+  for (int i = 0; i < keys.size(); i++) {
+    statuses.emplace_back(get(keys[i], nullptr, &value));
+    values->emplace_back(value);
   }
   return statuses;
 }

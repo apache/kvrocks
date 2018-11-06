@@ -140,25 +140,24 @@ ListMetadata::ListMetadata() : Metadata(kRedisList){
 }
 
 void ListMetadata::Encode(std::string *dst) {
-Metadata::Encode(dst);
-PutFixed64(dst, head);
-PutFixed64(dst, tail);
+  Metadata::Encode(dst);
+  PutFixed64(dst, head);
+  PutFixed64(dst, tail);
 }
 
 rocksdb::Status ListMetadata::Decode(std::string &bytes) {
-// flags(1byte) + expire (4byte) + version (8bytes) + size (4bytes)
-// + head (8 bytes) + tail (8bytes)
-if (bytes.size() < 33) {
-return rocksdb::Status::InvalidArgument("the metadata was too short");
-}
-Slice input(bytes);
-GetFixed8(&input, &flags);
-GetFixed32(&input, (uint32_t *) &expire);
-GetFixed64(&input, &version);
-GetFixed32(&input, &size);
-GetFixed64(&input, &head);
-GetFixed64(&input, &tail);
-return rocksdb::Status();
+  Slice input(bytes);
+  GetFixed8(&input, &flags);
+  GetFixed32(&input, (uint32_t *) &expire);
+  if (Type() != kRedisString) {
+    GetFixed64(&input, &version);
+    GetFixed32(&input, &size);
+  }
+  if (Type() == kRedisList) {
+    GetFixed64(&input, &head);
+    GetFixed64(&input, &tail);
+  }
+  return rocksdb::Status();
 }
 
 RedisDB::RedisDB(Engine::Storage *db_wrapper) {
@@ -180,13 +179,13 @@ rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metada
   }
   metadata->Decode(bytes);
 
-  if (metadata->Type() != type)  {
-    metadata->Decode(old_metadata);
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
-  }
   if (metadata->Expired()) {
     metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("the key was Expired");
+  }
+  if (metadata->Type() != type && (metadata->size > 0 || metadata->Type() == kRedisString))  {
+    metadata->Decode(old_metadata);
+    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
   }
   if (metadata->size == 0) {
     metadata->Decode(old_metadata);

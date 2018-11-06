@@ -44,9 +44,9 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   for (int i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
-  rocksdb::Status s = hash->MSet(key_, fvs, &ret);
+  rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
-  s = hash->MSet(key_, fvs, &ret);
+  s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_EQ(ret ,0);
   std::vector<std::string> values;
   s = hash->MGet(key_, fields_, &values);

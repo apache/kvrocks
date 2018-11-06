@@ -95,12 +95,40 @@ public:
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
 
-
 protected:
   Engine::Storage *storage;
   rocksdb::DB *db_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
+
+  class LatestSnapShot {
+   public:
+    explicit LatestSnapShot(rocksdb::DB *db): db_(db) {
+      snapshot_ = db_->GetSnapshot();
+    }
+    ~LatestSnapShot() {
+      db_->ReleaseSnapshot(snapshot_);
+    }
+    const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
+   private:
+    rocksdb::DB *db_ = nullptr;
+    const rocksdb::Snapshot* snapshot_ = nullptr;
+  };
 };
 
-rocksdb::Status GetMetadataByKey(Engine::Storage *db_wrapper, Slice key, Metadata *metadata);
+class RWLocksGuard {
+ public:
+  explicit RWLocksGuard(RWLocks *locks, Slice key, bool is_write = true):
+      locks_(locks),
+      key_(key),
+      is_write_(is_write) {
+    is_write_ ? locks_->Lock(key_.ToString()):locks_->RLock(key_.ToString());
+  };
+  ~RWLocksGuard() {
+    is_write_ ? locks_->UnLock(key_.ToString()):locks_->RUnLock(key_.ToString());
+  }
+ private:
+  RWLocks *locks_ = nullptr;
+  Slice key_;
+  bool is_write_;
+};
 #endif

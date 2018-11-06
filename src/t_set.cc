@@ -15,6 +15,8 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+
+  RWLocksGuard guard(storage->GetLocks(), key);
   std::vector<Slice> new_members;
   std::string value;
   rocksdb::WriteBatch batch;
@@ -41,6 +43,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  RWLocksGuard guard(storage->GetLocks(), key);
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
   for (const auto member : members) {
@@ -76,9 +79,11 @@ rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) 
 
   std::string prefix;
   InternalKey(key, "", metadata.version).Encode(&prefix);
-  rocksdb::ReadOptions opts;
-  opts.fill_cache = false;
-  auto iter = db_->NewIterator(opts);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -93,10 +98,14 @@ rocksdb::Status RedisSet::IsMember(Slice key, Slice member, int *ret) {
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
   std::string sub_key;
   InternalKey(key, member, metadata.version).Encode(&sub_key);
   std::string value;
-  s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+  s = db_->Get(read_options, sub_key, &value);
   if (s.ok()) {
     *ret = 1;
   }
@@ -112,10 +121,13 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  if (pop) RWLocksGuard guard(storage->GetLocks(), key);
   rocksdb::WriteBatch batch;
-  rocksdb::ReadOptions opts;
-  opts.fill_cache = false;
-  auto iter = db_->NewIterator(opts);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
   std::string prefix;
   InternalKey(key, "", metadata.version).Encode(&prefix);
   for (iter->Seek(prefix);

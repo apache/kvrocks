@@ -66,11 +66,10 @@ unsigned RWLocks::Size() {
 unsigned RWLocks::hash(std::string &key) {
   return static_cast<unsigned>(std::hash<std::string>{}(key) & hash_mask_);
 }
-#include <iostream>
+
 void RWLocks::Lock(std::string key) {
   unsigned slot = hash(key);
   locks_[slot]->Lock();
-  std::cout << "slot:" << slot << std::endl;
 }
 
 void RWLocks::UnLock(std::string key) {

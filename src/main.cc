@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
   }
   std::vector<Server*> servers;
   for (int i = 0; i < 2; ++i) {
-    servers.push_back(new Server(&storage, FLAGS_port));
+    servers.push_back(new Server(&storage, FLAGS_port, &servers));
   }
   hup_handler = [&servers]() {
     LOG(INFO) << "bye bye";

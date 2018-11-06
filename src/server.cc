@@ -5,7 +5,8 @@
 #include "redis_request.h"
 #include "server.h"
 
-Server::Server(Engine::Storage *storage, uint32_t port) : storage_(storage) {
+Server::Server(Engine::Storage *storage, uint32_t port, std::vector<Server*> *all_servers) : storage_(storage) {
+  all_servers_ = all_servers;
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;
@@ -48,8 +49,9 @@ void Server::NewConnection(evconnlistener *listener, evutil_socket_t fd,
 
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
   auto conn = new Redis::Connection(bev, svr);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr, Redis::Connection::OnEvent, conn);
-  timeval tmo = {30, 0}; // TODO: timeout configs
+  bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr,
+                    Redis::Connection::OnEvent, conn);
+  timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
 }
@@ -65,24 +67,30 @@ void Server::Stop() {
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
+  // TODO: need mutex to avoid racing, so to make sure only one replication thread is running
   if (is_slave_) {
     LOG(INFO) << "Master already configured";
     return Status(Status::RedisReplicationConflict, "replication in progress");
   }
-  is_slave_ = true;
+  for (auto svr: *all_servers_) {
+    svr->is_slave_ = true;
+  }
   master_host_ = std::move(host);
   master_port_ = port;
-  replication_thread_ = std::unique_ptr<Redis::ReplicationThread>(
-      new Redis::ReplicationThread(master_host_, master_port_, storage_));
-  replication_thread_->Start();
+  replication_thread_ = std::unique_ptr<ReplicationThread>(
+      new ReplicationThread(master_host_, master_port_, storage_));
+  replication_thread_->Start([this]() { this->LockDownAllServers(); },
+                             [this]() { this->UnlockAllServers(); });
   return Status::OK();
 }
 
 void Server::RemoveMaster() {
-  if (is_slave_) {
-    master_host_ = "no one";
-    master_port_ = 0;
-    replication_thread_->Stop();
+  for (auto svr: *all_servers_) {
+    if (svr->is_slave_) {
+      master_host_ = "no one";
+      master_port_ = 0;
+      if (svr->replication_thread_) replication_thread_->Stop();
+    }
   }
 }
 

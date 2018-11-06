@@ -7,13 +7,11 @@
 #include <string>
 #include <thread>
 
-#include "redis_replication.h"
+#include "replication.h"
 #include "redis_reply.h"
 #include "rocksdb_crc32c.h"
 #include "sock_util.h"
 #include "status.h"
-
-namespace Redis {
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                                      Engine::Storage *storage)
@@ -24,12 +22,13 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
   //    NOTE: how can we know the current slave's DB can be used to do increment
   //    replication?
   // 2. set the `seq_` to the latest of DB
+  // 3. how to stop the replication when `slave of no one`? maybe use `select` to break the increment syncing loop
 }
 
-void ReplicationThread::Start() {
+void ReplicationThread::Start(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
   LOG(INFO) << "[replication] Start";
-  t_ = std::thread([this]() {
-    this->Run();
+  t_ = std::thread([this, pre_fullsync_cb, post_fullsync_cb]() {
+    this->Run(pre_fullsync_cb, post_fullsync_cb);
     stop_flag_ = true;
   });  // there might be exception here
 }
@@ -40,7 +39,7 @@ void ReplicationThread::Stop() {
   LOG(INFO) << "[replication] Stop";
 }
 
-void ReplicationThread::Run() {
+void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
   int fd;
   while(true) {
     // 1. Connect to master
@@ -59,11 +58,13 @@ void ReplicationThread::Run() {
         std::this_thread::sleep_for(std::chrono::seconds(5));
         continue;
       }
+      pre_fullsync_cb();
       FullSync(fd);
       if (!storage_->RestoreFromBackup(&seq_).IsOK()) {
         LOG(ERROR) << "[replication] Failed to apply backup";
         return;
       }
+      post_fullsync_cb();
       seq_++;
     } else {
       // Keep receiving batch data and apply to DB
@@ -102,6 +103,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
   char *bulk_data = nullptr;
   size_t bulk_len = 0;
   while (true) {
+    // TODO: test stop_flag_
     // Read bulk length
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
       LOG(ERROR) << "Failed to batch data";
@@ -119,6 +121,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
         bulk_data =
             reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
         LOG(INFO) << "Data received: " << std::string(bulk_data, bulk_len);
+        // TODO: log the batch metadata if any
         storage_->WriteBatch(std::string(bulk_data, bulk_len));
         evbuffer_drain(evbuf, bulk_len + 2);
         break;
@@ -208,6 +211,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
   evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
+    // TODO: test stop_flag_
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
       LOG(ERROR) << "Failed to read data file size line";
       return Status(Status::NotOK);
@@ -255,5 +259,3 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
   // File is OK, rename to formal name
   return Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
 }
-
-}  // namespace Redis

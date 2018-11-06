@@ -8,7 +8,7 @@
 #include <thread>
 
 #include "redis_cmd.h"
-#include "redis_replication.h"
+#include "replication.h"
 #include "server.h"
 #include "sock_util.h"
 #include "storage.h"

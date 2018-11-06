@@ -33,8 +33,8 @@ add_executable(kvrocks
                src/status.h
                src/redis_reply.h
                src/redis_reply.cc
-               src/redis_replication.cc
-               src/redis_replication.h
+               src/replication.cc
+               src/replication.h
                src/t_encoding.h
                src/t_encoding.cc
                src/t_metadata.h

@@ -34,7 +34,6 @@ uint64_t InternalKey::GetVersion() {
   return version_;
 }
 
-#include <iostream>
 void InternalKey::Encode(std::string *out) {
   out->clear();
   size_t pos = 0;
@@ -208,6 +207,8 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
+
+  RWLocksGuard guard(storage->GetLocks(), key);
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());
   // +1 to skip the flags
@@ -221,14 +222,19 @@ rocksdb::Status RedisDB::Del(Slice key) {
   std::string value;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
+
+  RWLocksGuard guard(storage->GetLocks(), key);
   return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
 }
 
 rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   *ret = 0;
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
   std::vector<std::string> values;
   std::vector<rocksdb::ColumnFamilyHandle *>handles{metadata_cf_handle_};
-  std::vector<rocksdb::Status> statuses = db_->MultiGet(rocksdb::ReadOptions(), handles, keys, &values);
+  std::vector<rocksdb::Status> statuses = db_->MultiGet(read_options, handles, keys, &values);
   for (const auto status : statuses) {
     if (status.ok()) *ret += 1;
   }
@@ -237,6 +243,9 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
 
 rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   *ttl = -2; // ttl is -2 when the key does not exist or expired
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
   std::string value;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;
@@ -249,6 +258,9 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
 
 rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   *type = kRedisNone;
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
   std::string value;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;

@@ -247,7 +247,7 @@ class CommandHIncrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Commander::Parse(args);
     try {
-      increment_ = std::stoll(args_[2]);
+      increment_ = std::stoll(args_[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisExecErr, "value is not an integer or out of range");
     }
@@ -282,9 +282,7 @@ class CommandHMGet: public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     if (s.IsNotFound()) {
-      for (const auto field : fields) {
-        values.emplace_back("");
-      }
+        values.resize(fields.size(), "");
     }
     *output = Redis::MultiBulkString(values);
     return Status::OK();
@@ -307,7 +305,7 @@ class CommandHMSet: public Commander {
     for (int i = 2; i < args_.size(); i++) {
       field_values.push_back(FieldValue{args_[i], args_[i+1]});
     }
-    rocksdb::Status s = hash_db.MSet(args_[1], field_values, &ret);
+    rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -540,6 +538,7 @@ class CommandLSet: public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+    return Status::OK();
   }
  private:
   int index_;

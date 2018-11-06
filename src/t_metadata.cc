@@ -171,8 +171,11 @@ RedisDB::RedisDB(Engine::Storage *db_wrapper) {
 rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
   std::string bytes;
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &bytes);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &bytes);
   if (!s.ok()) {
     return rocksdb::Status::NotFound();
   }

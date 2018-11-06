@@ -63,7 +63,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   for (int i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
-  rocksdb::Status s = hash->MSet(key_, fvs, &ret);
+  rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
   HashMetadata metadata;
   redis->GetMetadata(kRedisHash, key_, &metadata);
@@ -78,7 +78,7 @@ TEST_F(RedisTypeTest, Expire) {
   for (int i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
-  rocksdb::Status s = hash->MSet(key_, fvs, &ret);
+  rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);

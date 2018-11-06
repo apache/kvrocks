@@ -25,11 +25,11 @@ rocksdb::Status RedisList::PushX(Slice key, std::vector<Slice> elems, bool left,
 rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()
-      && !(create_if_missing && s.IsNotFound())) {
+  if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
     return s;
   }
 
+  RWLocksGuard guard(storage->GetLocks(), key);
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   rocksdb::WriteBatch batch;
   for (auto elem : elems) {
@@ -57,6 +57,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
 
+  RWLocksGuard guard(storage->GetLocks(), key);
   uint64_t index = left ? metadata.head : metadata.tail-1;
   std::string buf;
   PutFixed64(&buf, index);
@@ -89,11 +90,14 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
   if (index < 0) index += metadata.size;
   if (index < 0 || index >= metadata.size) return rocksdb::Status::OK();
 
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
   std::string buf;
   PutFixed64(&buf, metadata.head + index);
   std::string sub_key;
   InternalKey(key, buf, metadata.version).Encode(&sub_key);
-  return db_->Get(rocksdb::ReadOptions(), sub_key, elem);
+  return db_->Get(read_options, sub_key, elem);
 }
 
 // The offset can also be negative, -1 is the last element, -2 the penultimate
@@ -117,9 +121,11 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   InternalKey(key, buf, metadata.version).Encode(&start_key);
   InternalKey(key, "", metadata.version).Encode(&prefix);
 
-  rocksdb::ReadOptions opts;
-  opts.fill_cache = false;
-  auto iter = db_->NewIterator(opts);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -143,6 +149,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
+  RWLocksGuard guard(storage->GetLocks(), key);
   std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head+index);
   InternalKey(key, buf, metadata.version).Encode(&sub_key);
@@ -171,6 +178,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  RWLocksGuard guard(storage->GetLocks(), key);
   if (start < 0) start = metadata.size + start;
   if (stop < 0) stop = metadata.size > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,

@@ -48,4 +48,5 @@ class RWLocks {
   std::vector<RWLock*> locks_;
   unsigned hash(std::string &key);
 };
+
 #endif //KVROCKS_T_MUTEX_H

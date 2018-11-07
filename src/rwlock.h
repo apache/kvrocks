@@ -4,6 +4,7 @@
 #include <mutex>
 #include <chrono>
 #include <vector>
+#include <climits>
 #include <condition_variable>
 
 class RWLock {

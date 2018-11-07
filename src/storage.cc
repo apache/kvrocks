@@ -126,7 +126,7 @@ Status Engine::Storage::Open() {
   options.WAL_size_limit_MB = 3 * 1024;
   {
     rocksdb::DB *tmp_db;
-    rocksdb::Status s = rocksdb::DB::Open(options, db_dir_, &tmp_db);
+    rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
     if (s.ok()) {  // open will be failed, if the column family was exists
       std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                            kZSetScoreColumnFamilyName};
@@ -160,7 +160,7 @@ Status Engine::Storage::Open() {
   column_families.emplace_back(
       rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
   rocksdb::Status s =
-      rocksdb::DB::Open(options, db_dir_, column_families, &cf_handles_, &db_);
+      rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
   if (!s.ok()) {
     return Status(Status::DBOpenErr, s.ToString());
   }
@@ -199,7 +199,7 @@ class DebuggingLogger : public rocksdb::Logger {
 
 Status Storage::CreateBackup() {
   // TODO: assert role to be master. slaves never create backup, they sync
-  rocksdb::BackupableDBOptions bk_option(backup_dir_);
+  rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
   if (!backup_) {
     auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
     if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
@@ -215,7 +215,7 @@ Status Storage::CreateBackup() {
 Status Storage::DestroyBackup() {
   backup_->StopBackup();
   auto env = rocksdb::Env::Default();
-  env->DeleteDir(backup_dir_);
+  env->DeleteDir(config_->backup_dir);
   delete backup_;
   return Status();
 }
@@ -223,7 +223,7 @@ Status Storage::DestroyBackup() {
 Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
   // TODO: assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
-  rocksdb::BackupableDBOptions bk_option(backup_dir_);
+  rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
 #ifndef NDEBUG
   bk_option.info_log = new DebuggingLogger;
 #endif
@@ -233,7 +233,7 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
   // Close DB;
   delete db_;
 
-  s = backup_->RestoreDBFromLatestBackup(db_dir_, db_dir_);
+  s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
@@ -307,7 +307,7 @@ int Storage::BackupManager::OpenLatestMeta(Storage *storage,
   }
   *meta_id = latest_backup.backup_id;
   std::string meta_file =
-      storage->backup_dir_ + "/meta/" + std::to_string(*meta_id);
+      storage->config_->backup_dir + "/meta/" + std::to_string(*meta_id);
   auto s = storage->backup_env_->FileExists(meta_file);
   storage->backup_env_->GetFileSize(meta_file, file_size);
   // NOTE: here we use the system's open instead of using rocksdb::Env to open
@@ -321,7 +321,7 @@ int Storage::BackupManager::OpenLatestMeta(Storage *storage,
 
 int Storage::BackupManager::OpenDataFile(Storage *storage, std::string rel_path,
                                          uint64_t *file_size) {
-  std::string abs_path = storage->backup_dir_ + "/" + rel_path;
+  std::string abs_path = storage->config_->backup_dir + "/" + rel_path;
   auto s = storage->backup_env_->FileExists(abs_path);
   if (!s.ok()) {
     LOG(ERROR) << "Data file [" << abs_path << "] not found";
@@ -409,7 +409,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
 
 std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
     Storage *storage, std::string rel_path) {
-  std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
+  std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
   auto s = storage->backup_env_->FileExists(tmp_path);
   if (s.ok()) {
     LOG(ERROR) << "Data file exists, override";
@@ -432,8 +432,8 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
 
 Status Storage::BackupManager::SwapTmpFile(Storage *storage,
                                            std::string rel_path) {
-  std::string tmp_path = storage->backup_dir_ + "/" + rel_path + ".tmp";
-  std::string orig_path = storage->backup_dir_ + "/" + rel_path;
+  std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
+  std::string orig_path = storage->config_->backup_dir + "/" + rel_path;
   if (!storage->backup_env_->RenameFile(tmp_path, orig_path).ok()) {
     LOG(ERROR) << "Failed to rename: " << tmp_path;
     return Status(Status::NotOK);

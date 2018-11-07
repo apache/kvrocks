@@ -6,10 +6,9 @@
 #include "server.h"
 #include "storage.h"
 #include "version.h"
+#include "config.h"
 
-DEFINE_string(dbpath, "/tmp/ev", "db path");
-DEFINE_string(bkpath, "/tmp/ev_bk", "db backup path");
-DEFINE_uint32(port, 3333, "listening port");
+DEFINE_string(conf_path, "../kvrocks.conf", "config file");
 
 std::function<void()> hup_handler;
 
@@ -29,15 +28,22 @@ int main(int argc, char* argv[]) {
   signal(SIGINT, signal_handler);
 
   LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
-  Engine::Storage storage(FLAGS_dbpath, FLAGS_bkpath);
+  Config config;
+
+  std::string err;
+  if (!config.Load(FLAGS_conf_path, &err)) {
+    LOG(ERROR) << "Failed to load config, err: " << err;
+    exit(1);
+  }
+  Engine::Storage storage(&config);
   auto s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "failed to open: " << s.msg();
     exit(1);
   }
   std::vector<Server*> servers;
-  for (int i = 0; i < 2; ++i) {
-    servers.push_back(new Server(&storage, FLAGS_port, &servers));
+  for (int i = 0; i < config.workers; ++i) {
+    servers.push_back(new Server(&storage, static_cast<uint32_t>(config.port), &servers));
   }
   hup_handler = [&servers]() {
     LOG(INFO) << "bye bye";

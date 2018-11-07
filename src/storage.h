@@ -8,15 +8,15 @@
 
 #include "status.h"
 #include "rwlock.h"
+#include "config.h"
 
 namespace Engine {
 
 class Storage {
  public:
-  explicit Storage(std::string db_dir, std::string backup_dir)
-      : db_dir_(std::move(db_dir)),
-        backup_dir_(std::move(backup_dir)),
-        backup_env_(rocksdb::Env::Default()),
+  explicit Storage(Config *config)
+      :backup_env_(rocksdb::Env::Default()),
+       config_(config),
        locks_(16) {}
 
   Status Open();
@@ -67,9 +67,8 @@ class Storage {
  private:
   rocksdb::DB *db_ = nullptr;
   rocksdb::BackupEngine *backup_ = nullptr;
-  std::string db_dir_;
-  std::string backup_dir_;
   rocksdb::Env *backup_env_;
+  Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   RWLocks locks_;
 };

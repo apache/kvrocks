@@ -132,7 +132,7 @@ class CommandDel : public Commander {
   Status Execute(Server *svr, std::string *output) override {
     int cnt = 0;
     RedisDB redis(svr->storage_);
-    for (int i = 1; i < args_.size(); i++) {
+    for (unsigned int i = 1; i < args_.size(); i++) {
       rocksdb::Status s = redis.Del(args_[i]);
       if (s.ok()) cnt++;
     }
@@ -274,7 +274,7 @@ class CommandHDel: public Commander {
     int ret;
     RedisHash hash_db(svr->storage_);
     std::vector<Slice> fields;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
     }
     rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
@@ -347,7 +347,7 @@ class CommandHMGet: public Commander {
   Status Execute(Server *svr, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::vector<Slice> fields;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
     }
     std::vector<std::string> values;
@@ -376,7 +376,7 @@ class CommandHMSet: public Commander {
     int ret;
     RedisHash hash_db(svr->storage_);
     std::vector<FieldValue> field_values;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       field_values.push_back(FieldValue{args_[i], args_[i+1]});
     }
     rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
@@ -448,13 +448,14 @@ class CommandHGetAll: public Commander {
 class CommandPush: public Commander {
  public:
   explicit CommandPush(bool create_if_missing, bool left)
-      : create_if_missing_(create_if_missing),
-        left_(left),
-      Commander("push", -3) {}
+      :Commander("push", -3) {
+    left_ = left;
+    create_if_missing_ = create_if_missing;
+  }
   Status Execute(Server *svr, std::string *output) override {
     RedisList list_db(svr->storage_);
     std::vector<Slice> elems;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       elems.emplace_back(args_[i]);
     }
     int ret;
@@ -497,7 +498,9 @@ class CommandRPushX : public CommandPush{
 
 class CommandPop: public Commander {
  public:
-  explicit CommandPop(bool left) : left_(left), Commander("pop", 2) {}
+  explicit CommandPop(bool left) : Commander("pop", 2) {
+    left_ = left;
+  }
   Status Execute(Server *svr, std::string *output) override {
     RedisList list_db(svr->storage_);
     std::string elem;
@@ -665,7 +668,7 @@ class CommandSAdd : public  Commander {
   Status Execute(Server *svr, std::string *output) override {
     RedisSet set_db(svr->storage_);
     std::vector<Slice> members;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
     int ret;
@@ -684,7 +687,7 @@ class CommandSRem: public  Commander {
   Status Execute(Server *svr, std::string *output) override {
     RedisSet set_db(svr->storage_);
     std::vector<Slice> members;
-    for (int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
     int ret;

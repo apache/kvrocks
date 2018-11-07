@@ -11,9 +11,9 @@ RWLock::~RWLock() {
 
 void RWLock::Lock() {
   std::unique_lock<mutex_t> lock(mu_);
-  gate1_.wait(lock, [this]{ return !(state_ & write_entered_); });
+  gate1_.wait(lock, [this]()->bool{ return !(state_ & write_entered_); });
   state_ |= write_entered_;
-  gate2_.wait(lock, [this]{ return !(state_ & readers_mask_); });
+  gate2_.wait(lock, [this]()->bool{ return !(state_ & readers_mask_); });
 }
 
 void RWLock::UnLock() {
@@ -24,7 +24,7 @@ void RWLock::UnLock() {
 
 void RWLock::RLock() {
   std::unique_lock<mutex_t> lock(mu_);
-  gate1_.wait(lock, [this]{return !((state_ & write_entered_) || (state_ & readers_mask_) == readers_mask_);});
+  gate1_.wait(lock, [this]()->bool{return !((state_ & write_entered_) || (state_ & readers_mask_) == readers_mask_);});
   unsigned n_readers = (state_ & readers_mask_)+1;
   state_ &= ~readers_mask_;
   state_ |= n_readers;

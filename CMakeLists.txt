@@ -4,8 +4,9 @@ project(kvrocks
         DESCRIPTION "Redis on rocksdb"
         LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "-Wall -Wpedantic -g -fsanitize=address")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_COMPILER g++)
+set(CMAKE_CXX_FLAGS "-Wall -Wpedantic -g -Wshadow -Wsign-compare -Wreturn-type")
 
 #find_package(gflags REQUIRED)
 #find_package(glog REQUIRED)
@@ -52,7 +53,7 @@ add_executable(kvrocks
                src/sock_util.h
                src/sock_util.cc
                src/rwlock.cc
-               src/rocksdb_crc32c.h)
+               src/rocksdb_crc32c.h src/config.cc src/config.h)
 target_link_libraries(kvrocks rocksdb event event_pthreads gflags glog)
 
 include_directories(src)

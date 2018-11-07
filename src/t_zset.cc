@@ -14,7 +14,7 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
   int added = 0;
   rocksdb::WriteBatch batch;
   std::string member_key;
-  for (int i = 0; i < mscores.size(); i++) {
+  for (unsigned i = 0; i < mscores.size(); i++) {
     InternalKey(key, mscores[i].member, metadata.version).Encode(&member_key);
     if (metadata.size > 0) {
       std::string old_score_bytes;
@@ -88,7 +88,7 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
   if (count <=0) return rocksdb::Status::OK();
-  if (count > metadata.size) count = metadata.size;
+  if (count > static_cast<int>(metadata.size)) count = metadata.size;
 
   std::string score_bytes;
   double score = min ? std::numeric_limits<double>::lowest():std::numeric_limits<double>::max();
@@ -113,7 +113,7 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
     mscores->emplace_back(MemberScore{score_key.ToString(), score});
     batch.Delete(score_key);
     batch.Delete(score_cf_handle_, iter->key());
-    if (mscores->size() >= count) break;
+    if (mscores->size() >= static_cast<unsigned>(count)) break;
   }
   if (mscores->size() > 0) {
     metadata.size -= mscores->size();
@@ -221,7 +221,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
       if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
     }
     if (size) *size += 1;
-    if (spec.count > 0 && mscores && mscores->size() >= spec.count) break;
+    if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
   if (spec.removed && *size > 0) {
     metadata.size -= *size;

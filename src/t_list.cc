@@ -88,7 +88,7 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
   if (!s.ok()) return s;
 
   if (index < 0) index += metadata.size;
-  if (index < 0 || index >= metadata.size) return rocksdb::Status::OK();
+  if (index < 0 || index >= static_cast<int>(metadata.size)) return rocksdb::Status::OK();
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -145,7 +145,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
   if (index < 0) index = metadata.size + index;
-  if (index < 0 || index >= metadata.size) {
+  if (index < 0 || index >= static_cast<int>(metadata.size)) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
@@ -180,7 +180,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
 
   RWLocksGuard guard(storage->GetLocks(), key);
   if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = metadata.size > -1 * stop ? metadata.size+stop : metadata.size;
+  if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start < 0 || start > stop) {

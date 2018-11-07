@@ -21,7 +21,7 @@ std::string NilString() {
 }
 
 std::string MultiBulkString(std::vector<std::string> list) {
-  for (int i = 0; i < list.size(); i++) {
+  for (unsigned i = 0; i < list.size(); i++) {
     if (list[i].empty()) {
       list[i] = NilString();
     }  else {

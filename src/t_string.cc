@@ -55,7 +55,7 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
 std::vector<rocksdb::Status> RedisString::MGet(std::vector<Slice> keys, std::vector<std::string> *values) {
   std::string value;
   std::vector<rocksdb::Status> statuses;
-  for (int i = 0; i < keys.size(); i++) {
+  for (unsigned i = 0; i < keys.size(); i++) {
     statuses.emplace_back(get(keys[i], nullptr, &value));
     values->emplace_back(value);
   }
@@ -100,7 +100,7 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
-  if (offset > value_bytes.size()) {
+  if (offset > static_cast<int>(value_bytes.size())) {
     // padding the value with zero byte while offset is longer than value size
     int paddings = offset-int(value_bytes.size());
     value_bytes.append(paddings, '\0');
@@ -109,7 +109,7 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
     value_bytes = value_bytes.substr(0, offset);
     value_bytes.append(value.ToString());
   } else {
-    for(int i = 0; i < value.size(); i++) {
+    for(unsigned i = 0; i < value.size(); i++) {
       value_bytes[i] = value[i];
     }
   }

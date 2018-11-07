@@ -125,7 +125,7 @@ bool Metadata::Expired() const {
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   // version is nanosecond
-  if (Type() != kRedisString && version >= now * 1000000000) { // creating the key metadata
+  if (Type() != kRedisString && version >= static_cast<uint64_t>(now * 1000000000)) { // creating the key metadata
     return false;
   }
   if (expire > 0 && expire < now) {

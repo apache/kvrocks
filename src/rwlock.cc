@@ -49,7 +49,7 @@ void RWLock::RUnLock() {
 RWLocks::RWLocks(int hash_power): hash_power_(hash_power){
   hash_mask_ = (1U<<hash_power) - 1;
   unsigned size = Size();
-  for (int i = 0; i < size; i++) {
+  for (unsigned i = 0; i < size; i++) {
     locks_.emplace_back(new RWLock());
   }
 }

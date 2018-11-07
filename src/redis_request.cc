@@ -95,8 +95,9 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
       continue;
     }
     int arity = cmd->GetArity();
-    if ((arity > 0 && cmd_tokens.size() != arity)
-        || (arity < 0 && cmd_tokens.size() < -arity)) {
+    int tokens = static_cast<int>(cmd_tokens.size());
+    if ((arity > 0 && tokens != arity)
+        || (arity < 0 && tokens < -arity)) {
       Redis::Reply(output, Redis::Error("wrong number of arguments"));
       continue;
     }

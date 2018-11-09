@@ -12,6 +12,7 @@ class Status {
     DBOpenErr,
     DBBackupErr,
     DBGetWALErr,
+    DBBackupFileErr,
 
     // Redis
     RedisUnknownCmd,

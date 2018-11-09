@@ -1403,6 +1403,10 @@ class CommandFetchMeta : public Commander {
     auto fd = Engine::Storage::BackupManager::OpenLatestMeta(svr->storage_,
                                                              &meta_id,
                                                              &file_size);
+    if (fd < 0) {
+      sock_send(sock_fd, Redis::Error("failed to open"));
+      return Status(Status::DBBackupFileErr);
+    }
     off_t offset;
     // Send the meta ID
     sock_send(sock_fd, std::to_string(meta_id) + CRLF);
@@ -1416,9 +1420,6 @@ class CommandFetchMeta : public Commander {
     svr->stats_.IncrFullSyncCounter();
     return Status::OK();
   }
-
- private:
-  rocksdb::BackupID meta_id_;
 };
 
 class CommandFetchFile: public Commander {
@@ -1434,6 +1435,11 @@ class CommandFetchFile: public Commander {
     uint64_t file_size = 0;
     auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_, path_,
                                                            &file_size);
+    if (fd < 0) {
+      sock_send(conn->GetFD(), Redis::Error("failed to open"));
+      return Status(Status::DBBackupFileErr);
+    }
+
     off_t offset;
     sock_send(conn->GetFD(), std::to_string(file_size) + CRLF);
     if (sendfile(fd, conn->GetFD(), 0, &offset, nullptr, 0) < 0) {

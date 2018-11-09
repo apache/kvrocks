@@ -62,6 +62,7 @@ class Storage {
     static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
         Storage *storage, std::string rel_path);
     static Status SwapTmpFile(Storage *storage, std::string rel_path);
+    static bool FileExists(Storage *storage, std::string rel_path);
   };
 
  private:

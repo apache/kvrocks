@@ -59,7 +59,11 @@ void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function
         continue;
       }
       pre_fullsync_cb();
-      FullSync(fd);
+      if (!FullSync(fd).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to full-sync";
+        post_fullsync_cb();
+        continue;
+      }
       if (!storage_->RestoreFromBackup(&seq_).IsOK()) {
         LOG(ERROR) << "[replication] Failed to apply backup";
         return;
@@ -189,9 +193,11 @@ Status ReplicationThread::FullSync(int sock_fd) {
   for (auto f : meta.files) {
     LOG(INFO) << "> " << f.first << " " << f.second;
     int fd2;
-    // FIXME:
-    // 1. don't connect every time, see _fetch_file cmd implementation
-    // 2. don't fetch existing files(under the shared dir and crc checked one)
+    // Don't fetch existing files
+    if (Engine::Storage::BackupManager::FileExists(storage_, f.first)) {
+      continue;
+    }
+    // FIXME: don't connect every time, see _fetch_file cmd implementation
     if (sock_connect(host_, port_, &fd2) < 0) {
       return Status(Status::NotOK);
     }

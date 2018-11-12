@@ -8,6 +8,7 @@
 
 #include "storage.h"
 #include "t_metadata.h"
+#include "config.h"
 
 namespace Engine {
 
@@ -120,8 +121,18 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
 Status Engine::Storage::Open() {
   rocksdb::Options options;
   options.create_if_missing = true;
-  //  options.IncreaseParallelism(2);
+  // options.IncreaseParallelism(2);
+  // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
+  // See: https://github.com/facebook/rocksdb/wiki/Statistics
+  options.statistics = rocksdb::CreateDBStatistics();
   options.OptimizeLevelStyleCompaction();
+  options.max_open_files = config_->rocksdb_options.max_open_files;
+  options.OptimizeForPointLookup(config_->rocksdb_options.block_cache_size);
+  options.max_subcompactions = config_->rocksdb_options.max_sub_compactions;
+  options.max_background_flushes = config_->rocksdb_options.max_background_flushes;
+  options.max_background_compactions = config_->rocksdb_options.max_background_compactions;
+  options.max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
+  options.write_buffer_size = config_->rocksdb_options.write_buffer_size;
   options.WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options.WAL_size_limit_MB = 3 * 1024;
   {

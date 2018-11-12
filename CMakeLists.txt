@@ -53,7 +53,7 @@ add_executable(kvrocks
                src/sock_util.h
                src/sock_util.cc
                src/rwlock.cc
-               src/rocksdb_crc32c.h src/config.cc src/config.h)
+               src/rocksdb_crc32c.h src/config.cc src/config.h src/stats.cc src/stats.h)
 target_link_libraries(kvrocks rocksdb event event_pthreads gflags glog)
 
 include_directories(src)
@@ -68,6 +68,7 @@ add_executable(unittest
         src/string_util.cc
         src/storage.cc
         src/rwlock.cc
+        src/stats.cc
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc
@@ -78,5 +79,5 @@ add_executable(unittest
         tests/t_zset_test.cc
         tests/t_metadata_test.cc
         tests/string_util_test.cc
-        tests/rwlock_test.cc)
+        tests/rwlock_test.cc tests/stats_test.cc)
 target_link_libraries(unittest gtest rocksdb event event_pthreads gflags glog)

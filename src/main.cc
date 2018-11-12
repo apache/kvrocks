@@ -17,8 +17,6 @@ extern "C" void signal_handler(int sig) {
 }
 
 int main(int argc, char* argv[]) {
-  FLAGS_logtostderr = true;
-  FLAGS_minloglevel = 0;
   google::InitGoogleLogging("ev");
   gflags::SetUsageMessage("A Useless Server");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -29,12 +27,14 @@ int main(int argc, char* argv[]) {
 
   LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   Config config;
-
   std::string err;
   if (!config.Load(FLAGS_conf_path, &err)) {
     LOG(ERROR) << "Failed to load config, err: " << err;
     exit(1);
   }
+  FLAGS_logtostderr = true;
+  FLAGS_minloglevel = config.loglevel;
+
   Engine::Storage storage(&config);
   auto s = storage.Open();
   if (!s.IsOK()) {

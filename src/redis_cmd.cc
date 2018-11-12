@@ -20,6 +20,15 @@
 #include "t_zset.h"
 
 namespace Redis {
+class CommandPing : public Commander {
+ public:
+  explicit CommandPing() : Commander("ping", 1) {}
+  Status Execute(Server *svr, std::string *output) override {
+    *output = Redis::SimpleString("PONG");
+    return Status::OK();
+  }
+};
+
 class CommandGet : public Commander {
  public:
   explicit CommandGet() :Commander("get", 2) {}
@@ -1008,6 +1017,7 @@ class CommandFetchFile: public Commander {
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
+    {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

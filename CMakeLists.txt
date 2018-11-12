@@ -20,8 +20,8 @@ LINK_DIRECTORIES(/usr/local/lib)
 include_directories(/usr/local/include)
 include_directories(${PROJECT_BINARY_DIR})
 add_executable(kvrocks
-               src/server.cc
-               src/server.h
+        src/worker.cc
+        src/worker.h
                src/main.cc
                src/redis_request.cc
                src/redis_request.h
@@ -53,7 +53,7 @@ add_executable(kvrocks
                src/sock_util.h
                src/sock_util.cc
                src/rwlock.cc
-               src/rocksdb_crc32c.h src/config.cc src/config.h src/stats.cc src/stats.h)
+               src/rocksdb_crc32c.h src/config.cc src/config.h src/stats.cc src/stats.h src/server.cc src/server.h)
 target_link_libraries(kvrocks rocksdb event event_pthreads gflags glog)
 
 include_directories(src)

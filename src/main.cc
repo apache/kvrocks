@@ -3,10 +3,11 @@
 #include <glog/logging.h>
 #include <csignal>
 
-#include "server.h"
+#include "worker.h"
 #include "storage.h"
 #include "version.h"
 #include "config.h"
+#include "server.h"
 
 DEFINE_string(conf_path, "../kvrocks.conf", "config file");
 
@@ -18,7 +19,7 @@ extern "C" void signal_handler(int sig) {
 
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging("ev");
-  gflags::SetUsageMessage("A Useless Server");
+  gflags::SetUsageMessage("A Useless Worker");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   evthread_use_pthreads();
 
@@ -41,23 +42,13 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "failed to open: " << s.msg();
     exit(1);
   }
-  std::vector<Server*> servers;
-  for (int i = 0; i < config.workers; ++i) {
-    servers.push_back(new Server(&storage, static_cast<uint32_t>(config.port), &servers));
-  }
-  hup_handler = [&servers]() {
+
+  Server svr(&storage, config.port, config.workers);
+  hup_handler = [&svr]() {
     LOG(INFO) << "bye bye";
-    for (auto svr : servers) {
-      svr->Stop();
-    }
+    svr.Stop();
   };
-  std::vector<ServerThread* > threads;
-  for (auto svr : servers) {
-    threads.push_back(new ServerThread(svr));
-    threads.back()->Start();
-  }
-  for (auto t : threads) {
-    t->Join();
-  }
+  svr.Start();
+  svr.Join();
   return 0;
 }

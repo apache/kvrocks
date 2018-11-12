@@ -123,7 +123,7 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
       assert(bev != nullptr);
       auto t = new SidecarCommandThread(std::move(cmd), bev, svr_);
       t->Start();
-      // TODO: track this thread in Server class; delete the req and sidecar obj
+      // TODO: track this thread in Worker class; delete the req and sidecar obj
       // when done.
       return;  // NOTE: we break out the pipeline, even some commands left
     }

@@ -44,6 +44,8 @@ class Commander {
   std::vector<std::string> args_;
   std::string name_;
   int arity_;
+  int64_t calls_;
+  int64_t microseconds;
   bool is_sidecar_;
 };
 

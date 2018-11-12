@@ -8,7 +8,10 @@
 class TestBase : public testing::Test {
 protected:
   explicit TestBase() {
-    storage_ = new Engine::Storage("testsdb", "testsdb_backup");
+    Config config;
+    config.db_dir = "testsdb";
+    config.backup_dir = "testsdb_bak";
+    storage_ = new Engine::Storage(&config);
     rocksdb::Options opts;
     opts.create_if_missing = true;
     Status s = storage_->Open();

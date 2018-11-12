@@ -49,12 +49,12 @@ bool Config::parseRocksdbOption(std::string key, std::string value, std::string 
       return false;
     }
     rocksdb_options.max_background_flushes = n;
-  } else if (!strncasecmp(key.data(), "max_sub_compaction", strlen("max_sub_compaction"))) {
+  } else if (!strncasecmp(key.data(), "max_sub_compactions", strlen("max_sub_compactions"))) {
     if (n < 1 || n > 8) {
-      *err = "max_sub_compaction should be between 1 and 8";
+      *err = "max_sub_compactions should be between 1 and 8";
       return false;
     }
-    rocksdb_options.max_sub_compaction = static_cast<uint32_t>(n);
+    rocksdb_options.max_sub_compactions = static_cast<uint32_t>(n);
   } else {
     *err = "Bad directive or wrong number of arguments";
     return false;
@@ -93,6 +93,14 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     backlog = std::stoi(args[1]);
   } else if (!strncasecmp(key, "pidfile", strlen("pidfile")) && args.size() == 2) {
     pidfile = args[1];
+  } else if (!strncasecmp(key, "loglevel", strlen("loglevel")) && args.size() == 2) {
+    std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
+    for (int i = 0; i < loglevels.size(); i++) {
+      if (Util::ToLower(args[1]) == loglevels[i]) {
+        loglevel = i;
+        break;
+      }
+    }
   } else if (!strncasecmp(key, "rocksdb.", 8) && args.size() == 2) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
   } else {

@@ -8,6 +8,7 @@ typedef struct Config {
   int timeout = 0 ;
   int backlog = 1024;
   bool daemonize = false;
+  int loglevel = 0;
   std::vector<std::string> binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";
   std::string db_dir = "/tmp/ev";
@@ -15,11 +16,12 @@ typedef struct Config {
 
   struct {
     int max_open_files = 4096;
-    size_t write_buffer_size = 256;
+    size_t write_buffer_size = 256; // unit is MB
     int max_write_buffer_number = 2;
     int max_background_compactions = 2;
     int max_background_flushes = 2;
-    uint32_t max_sub_compaction = 1;
+    uint32_t max_sub_compactions = 1;
+    uint64_t block_cache_size = 1024 * 1024; // unit is MB
   } rocksdb_options;
 
  public:

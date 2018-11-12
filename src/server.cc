@@ -54,6 +54,7 @@ void Server::NewConnection(evconnlistener *listener, evutil_socket_t fd,
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
+  svr->AddConnection(conn);
 }
 
 void Server::Run(std::thread::id tid) {
@@ -91,6 +92,24 @@ void Server::RemoveMaster() {
       master_port_ = 0;
       if (svr->replication_thread_) replication_thread_->Stop();
     }
+  }
+}
+
+Status Server::AddConnection(Redis::Connection *c) {
+  auto iter = conns_.find(c->GetFD());
+  if (iter != conns_.end()) {
+    // TODO: Connection exists
+    return Status(Status::NotOK, "connection was exists");
+  }
+  conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
+  return Status::OK();
+}
+
+void Server::RemoveConnection(int fd) {
+  auto iter = conns_.find(fd);
+  if (iter != conns_.end()) {
+    delete iter->second;
+    conns_.erase(fd);
   }
 }
 

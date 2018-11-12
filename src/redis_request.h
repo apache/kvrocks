@@ -41,7 +41,7 @@ class Request {
 
 class Connection {
  public:
-  explicit Connection(bufferevent *bev, Server *svr) : bev_(bev), req_(svr) {}
+  explicit Connection(bufferevent *bev, Server *svr) : bev_(bev), req_(svr), owner_(svr) {}
   ~Connection() {
     if (bev_) bufferevent_free(bev_);
   }
@@ -57,10 +57,12 @@ class Connection {
     return tmp;
   }
 
+  int GetFD();
+
  private:
   bufferevent *bev_;
   Request req_;
-  int GetFD();
+  Server *owner_;
 };
 
 }  // namespace Redis

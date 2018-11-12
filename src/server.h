@@ -5,15 +5,18 @@
 #include <event2/listener.h>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <thread>
 
 #include "storage.h"
+#include "redis_request.h"
 #include "replication.h"
 
 // forward declare
 namespace Redis {
 class Request;
+class Connection;
 }
 
 class Server {
@@ -32,6 +35,8 @@ class Server {
   // TODO: callbacks for slaveof
   Status AddMaster(std::string host, uint32_t port);
   void RemoveMaster();
+  Status AddConnection(Redis::Connection *c);
+  void RemoveConnection(int fd);
 
   // Lock down the server(slave) so we can start the replication
   bool IsLockDown() {
@@ -66,6 +71,7 @@ class Server {
   uint32_t master_port_ = 0;
   std::unique_ptr<ReplicationThread> replication_thread_;
   std::vector<Server*> *all_servers_;
+  std::map<int, Redis::Connection*> conns_;
 };
 
 class ServerThread {

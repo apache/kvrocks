@@ -8,6 +8,7 @@
 #include "worker.h"
 #include "status.h"
 #include "storage.h"
+#include "server.h"
 
 namespace Redis {
 
@@ -15,7 +16,7 @@ class Connection;
 
 class Request {
  public:
-  explicit Request(Worker *svr) : svr_(svr) {}
+  explicit Request(Server *svr) : svr_(svr) {}
   // Not copyable
   Request(const Request &) = delete;
   Request &operator=(const Request &) = delete;
@@ -36,12 +37,12 @@ class Request {
   CommandTokens tokens_;
   std::vector<CommandTokens> commands_;
 
-  Worker *svr_;
+  Server *svr_;
 };
 
 class Connection {
  public:
-  explicit Connection(bufferevent *bev, Worker *svr) : bev_(bev), req_(svr), owner_(svr) {}
+  explicit Connection(bufferevent *bev, Worker *owner) : bev_(bev), req_(owner->svr_), owner_(owner) {}
   ~Connection() {
     if (bev_) bufferevent_free(bev_);
   }

@@ -12,9 +12,7 @@
 
 #include "redis_reply.h"
 #include "status.h"
-
-// forward declare
-class Worker;
+#include "server.h"
 
 namespace Redis {
 class Commander {
@@ -31,10 +29,10 @@ class Commander {
     return Status::OK();
   };
   virtual bool IsSidecar() { return is_sidecar_; }
-  virtual Status Execute(Worker *svr, std::string *output) {
+  virtual Status Execute(Server *svr, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
   }
-  virtual Status SidecarExecute(Worker *svr, int sock_fd) {
+  virtual Status SidecarExecute(Server *svr, int sock_fd) {
     return Status(Status::RedisExecErr, "not implemented");
   }
 
@@ -57,7 +55,7 @@ void TakeOverBufferEvent(bufferevent *bev);
 class SidecarCommandThread {
  public:
   explicit SidecarCommandThread(std::unique_ptr<Commander> cmd,
-                                bufferevent *bev, Worker *svr)
+                                bufferevent *bev, Server *svr)
       : cmd_(std::move(cmd)), svr_(svr), bev_(bev) {}
   Status Start();
   void Stop() {
@@ -66,7 +64,7 @@ class SidecarCommandThread {
 
  private:
   std::unique_ptr<Commander> cmd_;
-  Worker *svr_;
+  Server *svr_;
   std::thread t_;
   bufferevent *bev_;
 

@@ -10,9 +10,9 @@
 #include <thread>
 
 #include "storage.h"
-#include "redis_request.h"
 #include "replication.h"
 
+class Server;
 // forward declare
 namespace Redis {
 class Request;
@@ -23,18 +23,12 @@ class Worker{
   friend Redis::Request;
 
  public:
-  Worker(Engine::Storage *storage, uint32_t port, std::vector<Worker*> *all_servers);
+  Worker(Server *svr, uint32_t port);
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
   void Run(std::thread::id tid);
   void Stop();
-  // TODO: callbacks for psync
-  void AddSlave();
-  void RemoveSlave();
 
-  // TODO: callbacks for slaveof
-  Status AddMaster(std::string host, uint32_t port);
-  void RemoveMaster();
   Status AddConnection(Redis::Connection *c);
   void RemoveConnection(int fd);
 
@@ -42,17 +36,8 @@ class Worker{
   bool IsLockDown() {
     return locked_;
   }
-  void LockDownAllServers() {
-    for (auto svr: *all_servers_) {
-      svr->locked_ = true;
-    }
-  }
-  void UnlockAllServers() {
-    for (auto svr: *all_servers_) {
-      svr->locked_ = false;
-    }
-  }
 
+  Server *svr_;
   Engine::Storage *storage_;
 
  private:
@@ -70,7 +55,6 @@ class Worker{
   std::string master_host_;
   uint32_t master_port_ = 0;
   std::unique_ptr<ReplicationThread> replication_thread_;
-  std::vector<Worker*> *all_servers_;
   std::map<int, Redis::Connection*> conns_;
 };
 

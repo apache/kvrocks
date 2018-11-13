@@ -3,10 +3,9 @@
 #include <utility>
 
 #include "redis_request.h"
-#include "worker.h"
+#include "server.h"
 
-Worker::Worker(Engine::Storage *storage, uint32_t port, std::vector<Worker*> *all_servers) : storage_(storage) {
-  all_servers_ = all_servers;
+Worker::Worker(Server *svr, uint32_t port) : svr_(svr), storage_(svr->storage_) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;
@@ -41,20 +40,20 @@ Worker::Worker(Engine::Storage *storage, uint32_t port, std::vector<Worker*> *al
 
 void Worker::NewConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
-  auto svr = static_cast<Worker *>(ctx);
+  auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "new connection: fd=" << fd
-             << " from port: " << ntohs(svr->sin_.sin_port) << " thread #"
-             << svr->tid_;
+             << " from port: " << ntohs(worker->sin_.sin_port) << " thread #"
+             << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
 
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-  auto conn = new Redis::Connection(bev, svr);
+  auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr,
                     Redis::Connection::OnEvent, conn);
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
-  svr->AddConnection(conn);
+  worker->AddConnection(conn);
 }
 
 void Worker::Run(std::thread::id tid) {
@@ -65,34 +64,6 @@ void Worker::Run(std::thread::id tid) {
 void Worker::Stop() {
   event_base_loopbreak(base_);
   if (fd_ > 0) close(fd_);
-}
-
-Status Worker::AddMaster(std::string host, uint32_t port) {
-  // TODO: need mutex to avoid racing, so to make sure only one replication thread is running
-  if (is_slave_) {
-    LOG(INFO) << "Master already configured";
-    return Status(Status::RedisReplicationConflict, "replication in progress");
-  }
-  for (auto svr: *all_servers_) {
-    svr->is_slave_ = true;
-  }
-  master_host_ = std::move(host);
-  master_port_ = port;
-  replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(master_host_, master_port_, storage_));
-  replication_thread_->Start([this]() { this->LockDownAllServers(); },
-                             [this]() { this->UnlockAllServers(); });
-  return Status::OK();
-}
-
-void Worker::RemoveMaster() {
-  for (auto svr: *all_servers_) {
-    if (svr->is_slave_) {
-      master_host_ = "no one";
-      master_port_ = 0;
-      if (svr->replication_thread_) replication_thread_->Stop();
-    }
-  }
 }
 
 Status Worker::AddConnection(Redis::Connection *c) {

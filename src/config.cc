@@ -91,11 +91,15 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     daemonize = (i == 1);
   } else if (!strncasecmp(key, "tcp_backlog", strlen("tcp_backlog")) && args.size() == 2) {
     backlog = std::stoi(args[1]);
+  } else if (!strncasecmp(key, "db_dir", strlen("db_dir")) && args.size() == 2) {
+    db_dir = args[1];
+  } else if (!strncasecmp(key, "backup_dir", strlen("backup_dir")) && args.size() == 2) {
+    backup_dir = args[1];
   } else if (!strncasecmp(key, "pidfile", strlen("pidfile")) && args.size() == 2) {
     pidfile = args[1];
   } else if (!strncasecmp(key, "loglevel", strlen("loglevel")) && args.size() == 2) {
     std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
-    for (int i = 0; i < loglevels.size(); i++) {
+    for (unsigned i = 0; i < loglevels.size(); i++) {
       if (Util::ToLower(args[1]) == loglevels[i]) {
         loglevel = i;
         break;

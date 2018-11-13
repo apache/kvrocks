@@ -5,12 +5,12 @@
 #include "redis_request.h"
 #include "server.h"
 
-Worker::Worker(Server *svr, uint32_t port) : svr_(svr), storage_(svr->storage_) {
+Worker::Worker(Server *svr, Config *config) : svr_(svr), storage_(svr->storage_) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
   sin_.sin_family = AF_INET;
   sin_.sin_addr.s_addr = htonl(0);
-  sin_.sin_port = htons(port);
+  sin_.sin_port = htons(config->port);
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   int sock_opt = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) <

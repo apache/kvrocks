@@ -99,7 +99,7 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     pidfile = args[1];
   } else if (!strncasecmp(key, "loglevel", strlen("loglevel")) && args.size() == 2) {
     std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
-    for (unsigned i = 0; i < loglevels.size(); i++) {
+    for (size_t i = 0; i < loglevels.size(); i++) {
       if (Util::ToLower(args[1]) == loglevels[i]) {
         loglevel = i;
         break;

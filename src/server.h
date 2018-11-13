@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "stats.h"
 #include "storage.h"
 #include "replication.h"
 
@@ -27,6 +28,7 @@ class Server {
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
 
+  Stats *stats_;
   Engine::Storage *storage_;
  private:
   bool is_locked_;

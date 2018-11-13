@@ -24,7 +24,7 @@ class Request {
   // Parse the redis requests (bulk string array format)
   void Tokenize(evbuffer *input);
   // Exec return true when command finished
-  void ExecuteCommands(evbuffer *output, Connection *conn);
+  void ExecuteCommands(Connection *conn);
 
  private:
   // internal states related to parsing
@@ -49,6 +49,8 @@ class Connection {
 
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnEvent(bufferevent *bev, short events, void *ctx);
+  void Reply(const std::string &msg);
+
   void SubscribeChannel(std::string &channel);
   void UnSubscribeChannel(std::string &channel);
   void UnSubscribeAll();

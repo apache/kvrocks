@@ -13,7 +13,7 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
 
   conn->req_.Tokenize(conn->Input());
-  conn->req_.ExecuteCommands(conn->Output(), conn);
+  conn->req_.ExecuteCommands(conn);
 }
 
 void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
@@ -31,6 +31,11 @@ void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
     LOG(INFO) << "timeout, fd=" << conn->GetFD();
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
+}
+
+void Connection::Reply(const std::string &msg) {
+  owner_->svr_->stats_->incr_out_byte(msg.size());
+  Redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
 int Connection::GetFD() { return bufferevent_getfd(bev_); }
@@ -77,6 +82,7 @@ void Request::Tokenize(evbuffer *input) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
+        svr_->stats_->incr_in_byte(len);
         multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         state_ = BulkLen;
@@ -84,6 +90,7 @@ void Request::Tokenize(evbuffer *input) {
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
+        svr_->stats_->incr_in_byte(len);
         bulk_len_ = std::strtoull(line + 1, nullptr, 10);
         free(line);
         state_ = BulkData;
@@ -94,6 +101,7 @@ void Request::Tokenize(evbuffer *input) {
             reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
+        svr_->stats_->incr_in_byte(bulk_len_+2);
         --multi_bulk_len_;
         if (multi_bulk_len_ <= 0) {
           state_ = ArrayLen;
@@ -107,11 +115,11 @@ void Request::Tokenize(evbuffer *input) {
   }
 }
 
-void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
+void Request::ExecuteCommands(Connection *conn) {
   if (commands_.empty()) return;
 
   if (svr_->IsLockDown()) {
-    Redis::Reply(output, Redis::Error("replication in progress"));
+    conn->Reply(Redis::Error("replication in progress"));
     return;
   }
 
@@ -121,29 +129,31 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
     auto s = LookupCommand(cmd_tokens.front(), &cmd);
     if (!s.IsOK()) {
       // FIXME: change the err string
-      Redis::Reply(output, Redis::Error("unknown command"));
+      conn->Reply(Redis::Error("unknown command"));
       continue;
     }
     int arity = cmd->GetArity();
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity)
         || (arity < 0 && tokens < -arity)) {
-      Redis::Reply(output, Redis::Error("wrong number of arguments"));
+      conn->Reply(Redis::Error("wrong number of arguments"));
       continue;
     }
     cmd->SetArgs(cmd_tokens);
     s = cmd->Parse(cmd_tokens);
     if (!s.IsOK()) {
-      Redis::Reply(output, Redis::Error(s.msg()));
+      conn->Reply(Redis::Error(s.msg()));
       continue;
     }
+
+    svr_->stats_->incr_calls();
     if (!cmd->IsSidecar()) {
       s = cmd->Execute(svr_, conn, &reply);
       if (!s.IsOK()) {
-        Redis::Reply(output, Redis::Error(s.msg()));
+        conn->Reply(Redis::Error(s.msg()));
         continue;
       }
-      if (!reply.empty()) Redis::Reply(output, reply);
+      if (!reply.empty()) conn->Reply(reply);
     } else {
       // Remove the bev from base, the thread will take over the bev
       auto bev = conn->DetachBufferEvent();

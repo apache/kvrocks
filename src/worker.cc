@@ -45,7 +45,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
              << " from port: " << ntohs(worker->sin_.sin_port) << " thread #"
              << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
-
+  // TODO: set tcp-keepliave
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr,

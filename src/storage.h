@@ -17,7 +17,7 @@ class Storage {
   explicit Storage(Config *config)
       :backup_env_(rocksdb::Env::Default()),
        config_(config),
-       locks_(16) {}
+       db_locks_(16) {}
 
   Status Open();
   Status CreateBackup();
@@ -33,7 +33,7 @@ class Storage {
   rocksdb::Status Compact();
   rocksdb::DB *GetDB();
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
-  RWLocks *GetLocks() { return &locks_; }
+  RWLocks *GetLocks() { return &db_locks_; }
 
   ~Storage() { delete db_; }
 
@@ -70,7 +70,7 @@ class Storage {
   rocksdb::Env *backup_env_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
-  RWLocks locks_;
+  RWLocks db_locks_;
 };
 
 }  // namespace Engine

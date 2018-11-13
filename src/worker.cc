@@ -32,13 +32,13 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr), storage_(svr->storage_)
     exit(1);
   }
   evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, NewConnection, this,
-                                LEV_OPT_CLOSE_ON_FREE, -1, fd);
+  auto lev = evconnlistener_new(base_, newConnection, this,
+                                LEV_OPT_CLOSE_ON_FREE, config->backlog, fd);
   fd_ = evconnlistener_get_fd(lev);
   LOG(INFO) << "Listening on: " << fd_;
 }
 
-void Worker::NewConnection(evconnlistener *listener, evutil_socket_t fd,
+void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "new connection: fd=" << fd

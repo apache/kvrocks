@@ -36,7 +36,7 @@ class Worker{
   Engine::Storage *storage_;
 
  private:
-  static void NewConnection(evconnlistener *listener, evutil_socket_t fd,
+  static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
 
   event_base *base_;

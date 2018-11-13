@@ -4,11 +4,10 @@
 
 #include <glog/logging.h>
 
-Server::Server(Engine::Storage *storage, int port, int workers):
-  storage_(storage),
-  listen_port_(port){
-  for (int i = 0; i < workers; i++) {
-    auto worker = new Worker(this, static_cast<uint32_t>(port));
+Server::Server(Engine::Storage *storage, Config *config) :
+  storage_(storage) {
+  for (int i = 0; i < config->workers; i++) {
+    auto worker = new Worker(this, config);
     workers_.emplace_back(new WorkerThread(worker));
   }
 }

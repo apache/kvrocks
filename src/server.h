@@ -15,7 +15,7 @@ class Connection;
 class WorkerThread;
 class Server {
  public:
-  explicit Server(Engine::Storage *storage, int port, int workers);
+  explicit Server(Engine::Storage *storage, Config *config);
   void Start();
   void Stop();
   void Join();
@@ -34,7 +34,6 @@ class Server {
   uint32_t master_port_;
 
   std::vector<WorkerThread*> workers_;
-  int listen_port_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 
   // TODO: locked before modify

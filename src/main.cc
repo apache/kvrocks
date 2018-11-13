@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  Server svr(&storage, config.port, config.workers);
+  Server svr(&storage, &config);
   hup_handler = [&svr]() {
     LOG(INFO) << "bye bye";
     svr.Stop();

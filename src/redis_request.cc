@@ -39,6 +39,36 @@ evbuffer *Connection::Input() { return bufferevent_get_input(bev_); }
 
 evbuffer *Connection::Output() { return bufferevent_get_output(bev_); }
 
+void Connection::SubscribeChannel(std::string &channel) {
+  for (const auto &chan : subscribe_channels_) {
+    if (channel == chan) return;
+  }
+  subscribe_channels_.emplace_back(channel);
+  owner_->svr_->SubscribeChannel(channel, this);
+}
+
+void Connection::UnSubscribeChannel(std::string &channel) {
+  auto iter = subscribe_channels_.begin();
+  for (; iter != subscribe_channels_.end(); iter++) {
+    if (*iter == channel) {
+      subscribe_channels_.erase(iter);
+      owner_->svr_->UnSubscribeChannel(channel, this);
+    }
+  }
+}
+
+void Connection::UnSubscribeAll() {
+  if (subscribe_channels_.empty()) return;
+  for (auto chan : subscribe_channels_) {
+    owner_->svr_->UnSubscribeChannel(chan, this);
+  }
+  subscribe_channels_.clear();
+}
+
+int Connection::SubscriptionsCount() {
+  return static_cast<int>(subscribe_channels_.size());
+}
+
 void Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
@@ -108,12 +138,12 @@ void Request::ExecuteCommands(evbuffer *output, Connection *conn) {
       continue;
     }
     if (!cmd->IsSidecar()) {
-      s = cmd->Execute(svr_, &reply);
+      s = cmd->Execute(svr_, conn, &reply);
       if (!s.IsOK()) {
         Redis::Reply(output, Redis::Error(s.msg()));
         continue;
       }
-      Redis::Reply(output, reply);
+      if (!reply.empty()) Redis::Reply(output, reply);
     } else {
       // Remove the bev from base, the thread will take over the bev
       auto bev = conn->DetachBufferEvent();

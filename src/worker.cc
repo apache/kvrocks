@@ -79,6 +79,8 @@ Status Worker::AddConnection(Redis::Connection *c) {
 void Worker::RemoveConnection(int fd) {
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
+    // unscribe all channels if exists
+    iter->second->UnSubscribeAll();
     delete iter->second;
     conns_.erase(fd);
   }

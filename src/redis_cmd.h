@@ -29,7 +29,7 @@ class Commander {
     return Status::OK();
   };
   virtual bool IsSidecar() { return is_sidecar_; }
-  virtual Status Execute(Server *svr, std::string *output) {
+  virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
   }
   virtual Status SidecarExecute(Server *svr, int sock_fd) {

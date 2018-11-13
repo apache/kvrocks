@@ -49,6 +49,10 @@ class Connection {
 
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnEvent(bufferevent *bev, short events, void *ctx);
+  void SubscribeChannel(std::string &channel);
+  void UnSubscribeChannel(std::string &channel);
+  void UnSubscribeAll();
+  int SubscriptionsCount();
 
   evbuffer *Input();
   evbuffer *Output();
@@ -64,6 +68,7 @@ class Connection {
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
+  std::vector<std::string> subscribe_channels_;
 };
 
 }  // namespace Redis

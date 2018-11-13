@@ -20,6 +20,10 @@ std::string NilString() {
   return "$-1\r\n";
 }
 
+std::string MultiLen(int64_t len) {
+  return "*"+std::to_string(len)+"\r\n";
+}
+
 std::string MultiBulkString(std::vector<std::string> list) {
   for (unsigned i = 0; i < list.size(); i++) {
     if (list[i].empty()) {

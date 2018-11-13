@@ -13,6 +13,7 @@ std::string Error(std::string err);
 std::string Integer(int64_t data);
 std::string BulkString(std::string data);
 std::string NilString();
+std::string MultiLen(int64_t len);
 std::string MultiBulkString(std::vector<std::string> list);
 std::string Array(std::vector<std::string> list);
 

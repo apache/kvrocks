@@ -1,5 +1,6 @@
 #include "server.h"
 #include "worker.h"
+#include "redis_request.h"
 
 #include <glog/logging.h>
 
@@ -53,3 +54,45 @@ void Server::RemoveMaster() {
   }
 }
 
+int Server::PublishMessage(std::string &channel, std::string &msg) {
+  int cnt = 0;
+
+  auto iter = pubsub_channels_.find(channel);
+  if (iter == pubsub_channels_.end()) {
+    return 0;
+  }
+  std::string reply;
+  reply.append(Redis::MultiLen(3));
+  reply.append(Redis::BulkString("message"));
+  reply.append(Redis::BulkString(channel));
+  reply.append(Redis::BulkString(msg));
+  for (const auto conn : iter->second) {
+    Redis::Reply(conn->Output(), reply);
+    cnt++;
+  }
+  return cnt;
+}
+
+void Server::SubscribeChannel(std::string &channel, Redis::Connection *conn) {
+  auto iter = pubsub_channels_.find(channel);
+  if (iter == pubsub_channels_.end()) {
+    std::list<Redis::Connection*> conns;
+    conns.emplace_back(conn);
+    pubsub_channels_.insert(std::pair<std::string, std::list<Redis::Connection*>>(channel, conns));
+  } else {
+    iter->second.emplace_back(conn);
+  }
+}
+
+void Server::UnSubscribeChannel(std::string &channel, Redis::Connection *conn) {
+  auto iter = pubsub_channels_.find(channel);
+  if (iter == pubsub_channels_.end()) {
+    return;
+  }
+  for (const auto c: iter->second) {
+    if (conn == c) {
+      iter->second.remove(c);
+      break;
+    }
+  }
+}

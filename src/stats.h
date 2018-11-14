@@ -2,6 +2,7 @@
 #define KVROCKS_STATS_H
 
 #include <map>
+#include <atomic>
 #include <string>
 #include <unistd.h>
 

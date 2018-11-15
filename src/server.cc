@@ -46,7 +46,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
 }
 
 void Server::RemoveMaster() {
-  if (master_host_.empty()) {
+  if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
     if (replication_thread_) replication_thread_->Stop();

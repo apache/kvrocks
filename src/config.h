@@ -16,12 +16,12 @@ typedef struct Config {
 
   struct {
     int max_open_files = 4096;
-    size_t write_buffer_size = 256; // unit is MB
+    size_t write_buffer_size = 256 * 1048576; // unit is MB
     int max_write_buffer_number = 2;
     int max_background_compactions = 2;
     int max_background_flushes = 2;
     uint32_t max_sub_compactions = 1;
-    uint64_t block_cache_size = 1024 * 1024; // unit is MB
+    uint64_t block_cache_size = 1048576; // unit is MB
   } rocksdb_options;
 
  public:

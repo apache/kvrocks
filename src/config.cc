@@ -32,7 +32,7 @@ bool Config::parseRocksdbOption(std::string key, std::string value, std::string 
       *err = "write_buffer_size should be between 16MB and 4GB";
       return false;
     }
-    rocksdb_options.write_buffer_size = static_cast<size_t>(n) * 1024 * 0124;
+    rocksdb_options.write_buffer_size = static_cast<size_t>(n) * 1048576;
   } else if (!strncasecmp(key.data(), "max_write_buffer_number", strlen("max_write_buffer_number"))) {
     if (n < 1 || n > 64) {
       *err = "max_write_buffer_number should be between 1 and 64";

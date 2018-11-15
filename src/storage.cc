@@ -456,7 +456,7 @@ Status Storage::BackupManager::SwapTmpFile(Storage *storage,
 }
 
 bool Storage::BackupManager::FileExists(Storage *storage, std::string rel_path) {
-  auto s = storage->backup_env_->FileExists(storage->backup_dir_ + "/" + rel_path);
+  auto s = storage->backup_env_->FileExists(storage->config_->backup_dir + "/" + rel_path);
   if (s.ok()) return true;
   return false;
 }

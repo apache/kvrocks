@@ -42,13 +42,25 @@ void ReplicationThread::Stop() {
 void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
   int fd;
   while(true) {
-    // 1. Connect to master
+    // Connect to master
     if (sock_connect(host_, port_, &fd) < 0) {
       LOG(ERROR) << "[replication] Failed to contact master, wait";
       std::this_thread::sleep_for(std::chrono::seconds(5));
       continue;
     }
-    // 2. Send PSYNC
+
+    // Check master's db_name
+    if (!CheckDBName(fd).IsOK()) {
+      close(fd);
+      LOG(ERROR) << "[replication] Mismatched DB name";
+      last_status = Status(Status::DBMismatched);
+      return;
+    }
+
+    // Update seq_ to the latest
+    seq_ = storage_->LatestSeq();
+
+    // Send PSYNC
     repl_state_ = REPL_SEND_PSYNC;
     if (!TryPsync(fd).IsOK()) {
       // FullSync, reconnect
@@ -78,10 +90,36 @@ void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function
   }
 }
 
+Status ReplicationThread::CheckDBName(int sock_fd) {
+  const std::string cmd_str = "*1" CRLF "$8" CRLF "_db_name" CRLF;
+  if (sock_send(sock_fd, cmd_str) < 0) {
+    return Status(Status::NotOK);
+  }
+  evbuffer *evbuf = evbuffer_new();
+  char *line;
+  size_t line_len;
+  while (true) {
+    if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+      LOG(ERROR) << "Failed to read db name";
+      break;
+    }
+    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    if (!line) continue;
+
+    if (!strncmp(line, storage_->GetName().c_str(), line_len)) {
+      free(line);
+      return Status::OK();
+    }
+    free(line);
+    break;
+  }
+  return Status(Status::NotOK);
+}
+
 Status ReplicationThread::TryPsync(int sock_fd) {
-  auto seq_str = std::to_string(seq_);
-  auto seq_len_len = std::to_string(seq_str.length());
-  auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len + CRLF +
+  const auto seq_str = std::to_string(seq_);
+  const auto seq_len_len = std::to_string(seq_str.length());
+  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len + CRLF +
                  seq_str + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
@@ -142,7 +180,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
 
 Status ReplicationThread::FullSync(int sock_fd) {
   repl_state_ = REPL_FETCH_META;
-  auto cmd_str = "*1" CRLF "$11" CRLF "_fetch_meta" CRLF;
+  const std::string cmd_str = "*1" CRLF "$11" CRLF "_fetch_meta" CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
@@ -185,7 +223,6 @@ Status ReplicationThread::FullSync(int sock_fd) {
   while (evbuffer_get_length(evbuf) < file_size) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) break;
   }
-  // FIXME: save the meta file
   auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(storage_,
                                                                meta_id, evbuf);
   evbuffer_free(evbuf);
@@ -209,7 +246,7 @@ Status ReplicationThread::FullSync(int sock_fd) {
 
 Status ReplicationThread::FetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
-  auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
+  const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                  std::to_string(path.length()) + CRLF + path + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);

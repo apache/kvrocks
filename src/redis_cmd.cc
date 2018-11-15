@@ -1456,6 +1456,20 @@ class CommandFetchFile: public Commander {
   std::string path_;
 };
 
+class CommandDBName: public Commander {
+ public:
+  CommandDBName(): Commander("_db_name", 1, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    conn->Reply(svr->storage_->GetName() + CRLF);
+    return Status::OK();
+  }
+};
+
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
@@ -1534,6 +1548,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"compact", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandCompact); }},
     {"_fetch_meta", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchMeta); }},
     {"_fetch_file", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchFile); }},
+    {"_db_name", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDBName); }},
 };
 
 Status LookupCommand(const std::string &cmd_name,

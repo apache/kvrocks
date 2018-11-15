@@ -29,8 +29,10 @@ class ReplicationThread {
   Engine::Storage *storage_;
   rocksdb::SequenceNumber seq_ = 0;
   ReplState repl_state_;
+  Status last_status = Status::OK(); // Use to indicate some fatal errors
 
   void Run(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb);
+  Status CheckDBName(int sock_fd);
   Status TryPsync(int sock_fd);
   Status IncrementBatchLoop(int sock_fd);
   Status FullSync(int sock_fd);

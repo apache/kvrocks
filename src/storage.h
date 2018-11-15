@@ -32,6 +32,9 @@ class Storage {
 
   rocksdb::Status Compact();
   rocksdb::DB *GetDB();
+  const std::string GetName() {
+    return config_->db_name;
+  }
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
   RWLocks *GetLocks() { return &db_locks_; }
 

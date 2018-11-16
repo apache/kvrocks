@@ -242,9 +242,9 @@ TEST_F(RedisZSetTest, RemoveRangeByRank) {
   }
   zset->Add(key_, 0, mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset->RemoveRangeByRank(key_, 0, fields_.size()-2, false, &ret);
+  zset->RemoveRangeByRank(key_, 0, fields_.size() - 2, &ret);
   EXPECT_EQ(fields_.size()-1, ret);
-  zset->RemoveRangeByRank(key_, 0, 2, false, &ret);
+  zset->RemoveRangeByRank(key_, 0, 2, &ret);
   EXPECT_EQ(1, ret);
 }
 
@@ -256,9 +256,9 @@ TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
   }
   zset->Add(key_, 0, mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset->RemoveRangeByRank(key_, 0, fields_.size()-2, true, &ret);
+  zset->RemoveRangeByRank(key_, 0, fields_.size() - 2, &ret);
   EXPECT_EQ(fields_.size()-1, ret);
-  zset->RemoveRangeByRank(key_, 0, 2, true, &ret);
+  zset->RemoveRangeByRank(key_, 0, 2, &ret);
   EXPECT_EQ(1, ret);
 }
 

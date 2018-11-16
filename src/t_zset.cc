@@ -286,9 +286,8 @@ rocksdb::Status RedisZSet::RemoveRangeByScore(Slice key, ZRangeSpec spec, int *r
   return RangeByScore(key, spec, nullptr, ret);
 }
 
-rocksdb::Status RedisZSet::RemoveRangeByRank(Slice key, int start, int stop, bool reversed, int *ret) {
+rocksdb::Status RedisZSet::RemoveRangeByRank(Slice key, int start, int stop, int *ret) {
   uint8_t flags = ZSET_REMOVED;
-  if (reversed) flags |= ZSET_REVERSED;
   std::vector<MemberScore> mscores;
   rocksdb::Status s = Range(key, start, stop, flags, &mscores);
   *ret = int(mscores.size());
@@ -331,4 +330,42 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
   }
   *ret = rank;
   return rocksdb::Status::OK();
+}
+
+Status RedisZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec) {
+  const char *sptr = nullptr;
+  char *eptr = nullptr;
+
+  if (min == "+inf" ||  max == "-inf") {
+    return Status(Status::NotOK, "min > max");
+  }
+
+  if (min == "-inf") {
+    spec->min = std::numeric_limits<double>::lowest();
+  } else {
+    sptr = min.data();
+    if (min[0] == '(') {
+      spec->minex = true;
+      eptr++;
+    }
+    spec->min = strtod(sptr, &eptr);
+    if (eptr[0] != '\0' || isnan(spec->min)) {
+      return Status(Status::NotOK, "the min isn't double");
+    }
+  }
+
+  if (max == "+inf") {
+    spec->max = std::numeric_limits<double>::max();
+  } else {
+    sptr = max.data();
+    if (max[0] == '(') {
+      spec->maxex = true;
+      sptr++;
+    }
+    spec->max = strtod(sptr, &eptr);
+    if (eptr[0] != '\0' || isnan(spec->max)) {
+      return Status(Status::NotOK, "the max isn't double");
+    }
+  }
+  return Status::OK();
 }

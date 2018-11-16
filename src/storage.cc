@@ -126,6 +126,7 @@ Status Engine::Storage::Open() {
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options.statistics = rocksdb::CreateDBStatistics();
   options.OptimizeLevelStyleCompaction();
+  options.stats_dump_period_sec = 10;
   options.max_open_files = config_->rocksdb_options.max_open_files;
   options.OptimizeForPointLookup(config_->rocksdb_options.block_cache_size);
   options.max_subcompactions = config_->rocksdb_options.max_sub_compactions;

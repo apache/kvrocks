@@ -27,8 +27,10 @@ typedef struct {
 } MemberScore;
 
 #define ZSET_INCR 1
-#define ZSET_REVERSED 2
-#define ZSET_REMOVED 4
+#define ZSET_NX (1<<1)
+#define ZSET_XX (1<<2)
+#define ZSET_REVERSED (1<<3)
+#define ZSET_REMOVED 1<<4
 
 class RedisZSet : public RedisDB {
 public:
@@ -44,11 +46,11 @@ public:
   rocksdb::Status Rank(Slice key, Slice member, bool reversed, int *ret);
   rocksdb::Status Remove(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status RemoveRangeByScore(Slice key, ZRangeSpec spec, int *ret);
-  rocksdb::Status RemoveRangeByRank(Slice key, int start, int stop, bool reversed, int *ret);
+  rocksdb::Status RemoveRangeByRank(Slice key, int start, int stop, int *ret);
   rocksdb::Status Pop(Slice key, int count, bool min, std::vector<MemberScore> *mscores);
   rocksdb::Status Score(Slice key, Slice member, double *score);
-
-private:
+  static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
+ private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
   rocksdb::Status GetMetadata(Slice key, ZSetMetadata *metadata);
 };

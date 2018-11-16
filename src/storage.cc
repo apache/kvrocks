@@ -276,9 +276,21 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
   return db_->GetLatestSequenceNumber();
 }
 
+// Get the timestamp data in the WriteBatch.
+// we can use this info to indicate the progress of syncing.
+class TimestampLogHandler : public rocksdb::WriteBatch::Handler {
+ public:
+  TimestampLogHandler() : rocksdb::WriteBatch::Handler() {}
+  void LogData(const Slice& blob) override {
+    LOG(INFO) << "[batch] Log data: " << blob.ToString();
+  }
+};
+
 Status Storage::WriteBatch(std::string &&raw_batch) {
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));
   db_->Write(rocksdb::WriteOptions(), &bat);
+  TimestampLogHandler handler;
+  bat.Iterate(&handler);
   return Status::OK();
 }
 

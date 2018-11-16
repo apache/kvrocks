@@ -164,7 +164,6 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
         bulk_data =
             reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
         LOG(INFO) << "Data received: " << std::string(bulk_data, bulk_len);
-        // TODO: log the batch metadata if any
         storage_->WriteBatch(std::string(bulk_data, bulk_len));
         evbuffer_drain(evbuf, bulk_len + 2);
         break;

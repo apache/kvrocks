@@ -22,7 +22,6 @@ protected:
 TEST_F(RedisSetTest, AddAndRemove) {
   int ret;
    rocksdb::Status s = set->Add(key_, fields_, &ret);
-   std::cout << "1:" << s.ok() <<std::endl;
    EXPECT_TRUE(s.ok() && fields_.size() == ret);
    s = set->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);

@@ -232,7 +232,8 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::vector<std::string> values;
-  std::vector<rocksdb::ColumnFamilyHandle *>handles{metadata_cf_handle_};
+  std::vector<rocksdb::ColumnFamilyHandle *>handles;
+  handles.resize(keys.size(), metadata_cf_handle_);
   std::vector<rocksdb::Status> statuses = db_->MultiGet(read_options, handles, keys, &values);
   for (const auto status : statuses) {
     if (status.ok()) *ret += 1;

@@ -184,6 +184,22 @@ class CommandTTL: public Commander {
   }
 };
 
+class CommandExists: public Commander {
+ public:
+  explicit CommandExists() : Commander("exists", -2) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int cnt = 0;
+    RedisDB redis(svr->storage_);
+    std::vector<rocksdb::Slice> keys;
+    for (unsigned i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    redis.Exists(keys, &cnt);
+    *output = Redis::Integer(cnt);
+    return Status::OK();
+  }
+};
+
 class CommandExpire: public Commander {
  public:
   explicit CommandExpire() : Commander("expire", 2) {}
@@ -1420,6 +1436,7 @@ std::map<std::string, CommanderFactory> command_table = {
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},
+    {"exists", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandExists); }},
     {"expire", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandExpire); }},
     {"del", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDel); }},
     //string command

@@ -29,7 +29,7 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
           old_score_bytes.append(mscores[i].member);
           std::string old_score_key;
           InternalKey(key, old_score_bytes, metadata.version).Encode(&old_score_key);
-          batch.Delete(old_score_key);
+          batch.Delete(score_cf_handle_, old_score_key);
           std::string new_score_bytes, new_score_key;
           PutDouble(&new_score_bytes, mscores[i].score);
           batch.Put(member_key, new_score_bytes);
@@ -62,7 +62,7 @@ rocksdb::Status RedisZSet::Card(Slice key, int *ret) {
   *ret = 0;
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
   *ret = metadata.size;
   return rocksdb::Status::OK();
 }
@@ -254,7 +254,7 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
   *ret = 0;
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   RWLocksGuard guard(storage->GetLocks(), key);
   rocksdb::WriteBatch batch;
@@ -276,6 +276,7 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
     *ret = removed;
     metadata.size -= removed;
     std::string bytes;
+    metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
   return db_->Write(rocksdb::WriteOptions(), &batch);
@@ -298,7 +299,7 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
   *ret = 0;
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -307,7 +308,8 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
   std::string score_bytes, member_key;
   InternalKey(key, member, metadata.version).Encode(&member_key);
   s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
+
   double target_score = DecodeDouble(score_bytes.data());
   std::string start_score_bytes, start_key, prefix_key;
   double start_score = !reversed ? std::numeric_limits<double>::lowest():std::numeric_limits<double>::max();

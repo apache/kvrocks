@@ -9,7 +9,7 @@ rocksdb::Status RedisList::Size(Slice key, uint32_t *ret) {
   *ret = 0;
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok() && !s.IsNotFound()) return s;
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
   return rocksdb::Status::OK();
 }
@@ -53,6 +53,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
 }
 
 rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
+  elem->clear();
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -83,6 +84,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
 }
 
 rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
+  elem->clear();
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;

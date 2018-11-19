@@ -600,7 +600,7 @@ class CommandLIndex: public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
+    *output = Redis::BulkString(elem);
     return Status::OK();
   }
 
@@ -865,7 +865,7 @@ class CommandZCount: public Commander {
   explicit CommandZCount() : Commander("zcount", 4) {}
   Status Parse(const std::vector<std::string> &args) override {
     Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
-    if (s.IsOK()) {
+    if (!s.IsOK()) {
       return Status(Status::RedisParseErr, s.msg());
     }
     return Commander::Parse(args);
@@ -894,7 +894,7 @@ class CommandZCard: public Commander {
 
     RedisZSet zset_db(svr->storage_);
     rocksdb::Status s = zset_db.Card(args_[1], &ret);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::Integer(ret);
@@ -932,7 +932,7 @@ class CommandZIncrBy: public Commander {
 
 class CommandZPop : public Commander {
  public:
-  explicit CommandZPop(bool min): Commander("zpop", -2) {}
+  explicit CommandZPop(bool min): Commander("zpop", -2), min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() > 2) {
@@ -948,7 +948,7 @@ class CommandZPop : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisZSet zset_db(svr->storage_);
     std::vector<MemberScore> memeber_scores;
-    rocksdb::Status s = zset_db.Pop(args_[0], count_, min_, &memeber_scores);
+    rocksdb::Status s = zset_db.Pop(args_[1], count_, min_, &memeber_scores);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1027,7 +1027,7 @@ class CommandZRangeByScore: public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      if (s.IsOK()) {
+      if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.msg());
       }
       if (args.size() == 8 && Util::ToLower(args[5]) == "limit") {
@@ -1074,7 +1074,7 @@ class CommandZRank: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank;
     RedisZSet zset_db(svr->storage_);
-    rocksdb::Status s = zset_db.Rank(args_[0], args_[1], reversed_, &rank);
+    rocksdb::Status s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1144,7 +1144,7 @@ class CommandZRemRangeByScore: public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      if (s.IsOK()) {
+      if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.msg());
       }
     } catch (const std::exception &e) {
@@ -1174,10 +1174,14 @@ class CommandZScore: public Commander {
     double score;
     RedisZSet zset_db(svr->storage_);
     rocksdb::Status s = zset_db.Score(args_[1], args_[2], &score);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::BulkString(std::to_string(score));
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(std::to_string(score));
+    }
     return Status::OK();
   }
 };

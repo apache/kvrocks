@@ -13,7 +13,10 @@ std::string Error(std::string err) { return "-" + err + CRLF; }
 std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
 std::string BulkString(std::string data) {
-  return "$" + std::to_string(data.length()) + CRLF + data + CRLF;
+  if (!data.empty()) {
+    return "$" + std::to_string(data.length()) + CRLF + data + CRLF;
+  }
+  return NilString();
 }
 
 std::string NilString() {

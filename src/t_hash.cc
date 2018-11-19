@@ -146,9 +146,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
   *ret = 0;
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()) {
-    return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  }
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   RWLocksGuard guard(storage->GetLocks(), key);
   rocksdb::WriteBatch batch;
@@ -207,9 +205,7 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   field_values->clear();
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok()) {
-    return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  }
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;

@@ -247,7 +247,7 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;
 
   Metadata metadata(kRedisNone);
@@ -262,7 +262,7 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;
 
   Metadata metadata(kRedisNone);

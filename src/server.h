@@ -27,6 +27,8 @@ class Server {
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
+  Status IncrConnections();
+  void DecrConnections();
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -34,7 +36,9 @@ class Server {
   bool is_locked_;
   std::string master_host_;
   uint32_t master_port_;
+  std::atomic<int> connections_{0};
 
+  Config *config_;
   std::vector<WorkerThread*> workers_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 

@@ -53,7 +53,12 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
-  worker->AddConnection(conn);
+  Status status = worker->AddConnection(conn);
+  if (!status.IsOK()) {
+    std::string err_msg = Redis::Error(status.msg());
+    write(fd, err_msg.data(), err_msg.size());
+    delete conn;
+  }
 }
 
 void Worker::Run(std::thread::id tid) {
@@ -72,6 +77,8 @@ Status Worker::AddConnection(Redis::Connection *c) {
     // TODO: Connection exists
     return Status(Status::NotOK, "connection was exists");
   }
+  Status status = svr_->IncrConnections();
+  if (!status.IsOK()) return status;
   conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
   return Status::OK();
 }
@@ -83,6 +90,7 @@ void Worker::RemoveConnection(int fd) {
     iter->second->UnSubscribeAll();
     delete iter->second;
     conns_.erase(fd);
+    svr_->DecrConnections();
   }
 }
 

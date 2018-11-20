@@ -8,6 +8,25 @@
 #include "config.h"
 #include "string_util.h"
 
+void Config::incrOpenFilesLimit(rlim_t maxfiles) {
+  struct rlimit limit;
+
+  rlim_t old_limit, best_limit = maxfiles, decr_step = 16;
+  if (getrlimit(RLIMIT_NOFILE, &limit) < 0 || best_limit <= limit.rlim_cur) {
+    return;
+  }
+  old_limit = limit.rlim_cur;
+  while(best_limit > old_limit) {
+    limit.rlim_cur = best_limit;
+    limit.rlim_max = best_limit;
+    if (setrlimit(RLIMIT_NOFILE,&limit) != -1) break;
+    /* We failed to set file limit to 'bestlimit'. Try with a
+     * smaller limit decrementing by a few FDs per iteration. */
+    if (best_limit < decr_step) break;
+    best_limit -= decr_step;
+  }
+}
+
 int Config::yesnotoi(std::string input) {
   if (strcasecmp(input.data(), "yes") == 0) {
     return 1;
@@ -95,6 +114,9 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     backlog = std::stoi(args[1]);
   } else if (!strncasecmp(key, "db_dir", strlen("db_dir")) && args.size() == 2) {
     db_dir = args[1];
+  } else if (!strncasecmp(key, "maxclients", strlen("maxclients")) && args.size() == 2) {
+    maxclients = std::stoi(args[1]);
+    if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
   } else if (!strncasecmp(key, "backup_dir", strlen("backup_dir")) && args.size() == 2) {
     backup_dir = args[1];
   } else if (!strncasecmp(key, "pidfile", strlen("pidfile")) && args.size() == 2) {

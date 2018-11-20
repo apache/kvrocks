@@ -6,9 +6,11 @@ typedef struct Config {
   int port = 6666;
   int workers = 4;
   int timeout = 0 ;
-  int backlog = 1024;
-  bool daemonize = false;
   int loglevel = 0;
+  int backlog = 1024;
+  int maxclients = 10240;
+  bool daemonize = false;
+
   std::vector<std::string> binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";
   std::string db_dir = "/tmp/ev";
@@ -33,6 +35,7 @@ typedef struct Config {
  private:
   std::string path_;
   int yesnotoi(std::string input);
+  void incrOpenFilesLimit(rlim_t maxfiles);
   bool parseRocksdbOption(std::string key, std::string value, std::string *err);
   bool parseConfigFromString(std::string input, std::string *err);
 } Config;

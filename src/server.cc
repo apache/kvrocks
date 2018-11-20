@@ -5,7 +5,7 @@
 #include <glog/logging.h>
 
 Server::Server(Engine::Storage *storage, Config *config) :
-  storage_(storage) {
+  storage_(storage), config_(config) {
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
     workers_.emplace_back(new WorkerThread(worker));
@@ -94,4 +94,17 @@ void Server::UnSubscribeChannel(std::string &channel, Redis::Connection *conn) {
       break;
     }
   }
+}
+
+Status Server::IncrConnections() {
+  auto connections = connections_.fetch_add(1, std::memory_order_relaxed);
+  if (config_->maxclients > 0 && connections >= config_->maxclients) {
+    connections_.fetch_sub(1, std::memory_order_relaxed);
+    return Status(Status::NotOK, "max number of clients reached");
+  }
+  return Status::OK();
+}
+
+void Server::DecrConnections() {
+  connections_.fetch_sub(1, std::memory_order_relaxed);
 }

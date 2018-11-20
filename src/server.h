@@ -39,11 +39,15 @@ class Server {
   std::atomic<int> connections_{0};
 
   Config *config_;
-  std::vector<WorkerThread*> workers_;
+  std::vector<WorkerThread*> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
+  std::thread cron_thread_;
 
   // TODO: locked before modify
   std::map<std::string, std::list<Redis::Connection*>> pubsub_channels_;
+
+  void cron();
+  void clientsCron();
 };
 
 #endif //KVROCKS_SERVER_H

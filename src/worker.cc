@@ -53,6 +53,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
+  // TODO: set tcp-keepalive
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error(status.msg());

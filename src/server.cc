@@ -8,26 +8,30 @@ Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
-    workers_.emplace_back(new WorkerThread(worker));
+    worker_threads_.emplace_back(new WorkerThread(worker));
   }
 }
 
 void Server::Start() {
-  for (const auto worker : workers_) {
+  for (const auto worker : worker_threads_) {
     worker->Start();
   }
+  // setup server cron thread
+  cron_thread_ = std::thread([this]() { this->cron(); });
 }
 
 void Server::Stop() {
-  for (const auto worker : workers_) {
+  for (const auto worker : worker_threads_) {
     worker->Stop();
   }
+  cron_thread_.join();
 }
 
 void Server::Join() {
-  for (const auto worker : workers_) {
+  for (const auto worker : worker_threads_) {
     worker->Join();
   }
+  if (cron_thread_.joinable()) cron_thread_.join();
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
@@ -107,4 +111,18 @@ Status Server::IncrConnections() {
 
 void Server::DecrConnections() {
   connections_.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void Server::clientsCron() {
+  if (config_->timeout <= 0) return;
+}
+
+void Server::cron() {
+  static uint64_t counter = 0;
+  if (counter != 0 && counter % 10000) {
+    clientsCron();
+  }
+  // wake up every millisecond
+  counter++;
+  std::this_thread::sleep_for(std::chrono::microseconds(1));
 }

@@ -1606,7 +1606,12 @@ void SidecarCommandThread::Stop() {
 }
 
 Status SidecarCommandThread::Start() {
-  t_ = std::thread([this]() { this->Run(); });
+  try {
+    t_ = std::thread([this]() { this->Run(); });
+  } catch (const std::system_error &e) {
+    LOG(ERROR) << "Failed to create thread";
+    Stop();
+  }
   return Status::OK();
 }
 

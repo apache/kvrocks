@@ -26,11 +26,17 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
 }
 
 void ReplicationThread::Start(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
+  try {
+    t_ = std::thread([this, pre_fullsync_cb, post_fullsync_cb]() {
+      this->Run(pre_fullsync_cb, post_fullsync_cb);
+      stop_flag_ = true;
+    });  // there might be exception here
+  } catch (const std::system_error &e) {
+    LOG(ERROR) << "[replication] Failed to create replication thread: "
+        << e.what();
+    return;
+  }
   LOG(INFO) << "[replication] Start";
-  t_ = std::thread([this, pre_fullsync_cb, post_fullsync_cb]() {
-    this->Run(pre_fullsync_cb, post_fullsync_cb);
-    stop_flag_ = true;
-  });  // there might be exception here
 }
 
 void ReplicationThread::Stop() {

@@ -54,12 +54,13 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   return Status::OK();
 }
 
-void Server::RemoveMaster() {
+Status Server::RemoveMaster() {
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
     if (replication_thread_) replication_thread_->Stop();
   }
+  return Status::OK();
 }
 
 int Server::PublishMessage(std::string &channel, std::string &msg) {

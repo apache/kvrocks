@@ -1274,6 +1274,10 @@ class CommandSlaveOf : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     auto port = args[2];
+    if (Util::ToLower(host_) == "no" && Util::ToLower(port) == "one") {
+      host_.clear();
+      return Status::OK();
+    }
     try {
       auto p = std::stoul(port);
       if (p > UINT32_MAX) {
@@ -1286,7 +1290,12 @@ class CommandSlaveOf : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    auto s = svr->AddMaster(host_, port_);
+    Status s;
+    if (host_.empty()) {
+      s = svr->RemoveMaster();
+    } else {
+      s = svr->AddMaster(host_, port_);
+    }
     if (s.IsOK()) {
       *output = Redis::SimpleString("OK");
     }

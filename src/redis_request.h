@@ -58,11 +58,7 @@ class Connection {
 
   evbuffer *Input();
   evbuffer *Output();
-  bufferevent *DetachBufferEvent() {
-    auto tmp = bev_;
-    bev_ = nullptr;
-    return tmp;
-  }
+  bufferevent *GetBufferEvent() { return bev_; }
 
   int GetFD();
 

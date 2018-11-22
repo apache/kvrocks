@@ -1312,8 +1312,9 @@ class CommandPSync : public Commander {
     return Commander::Parse(args);
   }
 
-  Status SidecarExecute(Server *svr, int sock_fd) override {
+  Status SidecarExecute(Server *svr, Connection *conn) override {
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+    int sock_fd = conn->GetFD();
 
     // If seq_ is larger than storage's seq, return error
     if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
@@ -1395,9 +1396,10 @@ class CommandFetchMeta : public Commander {
     return Status::OK();
   }
 
-  Status SidecarExecute(Server *svr, int sock_fd) override {
+  Status SidecarExecute(Server *svr, Connection *conn) override {
     uint64_t file_size;
     rocksdb::BackupID meta_id;
+    int sock_fd = conn->GetFD();
     auto fd = Engine::Storage::BackupManager::OpenLatestMeta(svr->storage_,
                                                              &meta_id,
                                                              &file_size);
@@ -1428,13 +1430,13 @@ class CommandFetchFile: public Commander {
     return Status::OK();
   }
 
-  Status SidecarExecute(Server *svr, int sock_fd) override {
+  Status SidecarExecute(Server *svr, Connection *conn) override {
     uint64_t file_size = 0;
     auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_, path_,
                                                            &file_size);
     off_t offset;
-    sock_send(sock_fd, std::to_string(file_size) + CRLF);
-    if (sendfile(fd, sock_fd, 0, &offset, nullptr, 0) < 0) {
+    sock_send(conn->GetFD(), std::to_string(file_size) + CRLF);
+    if (sendfile(fd, conn->GetFD(), 0, &offset, nullptr, 0) < 0) {
       LOG(ERROR) << "Failed to send data file";
       return Status(Status::NetSendErr);
     }
@@ -1561,15 +1563,26 @@ void TakeOverBufferEvent(bufferevent *bev) {
   make_socket_blocking(fd);
 }
 
+SidecarCommandThread::SidecarCommandThread(std::unique_ptr<Redis::Commander> cmd,
+                                           Server *svr,
+                                           Redis::Connection *conn)
+    : cmd_(std::move(cmd)), svr_(svr), conn_(conn) {
+  // NOTE: from now on, the bev is managed by the replication thread.
+  // start the replication thread
+    TakeOverBufferEvent(conn->GetBufferEvent());
+}
+
+void SidecarCommandThread::Stop() {
+  // TODO: remove the connection
+}
+
 Status SidecarCommandThread::Start() {
   t_ = std::thread([this]() { this->Run(); });
   return Status::OK();
 }
 
 void SidecarCommandThread::Run() {
-  std::string reply;
-  int fd = bufferevent_getfd(bev_);
-  cmd_->SidecarExecute(svr_, fd);
+  cmd_->SidecarExecute(svr_, conn_);
   Stop();
 }
 

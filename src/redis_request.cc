@@ -155,13 +155,7 @@ void Request::ExecuteCommands(Connection *conn) {
       }
       if (!reply.empty()) conn->Reply(reply);
     } else {
-      // Remove the bev from base, the thread will take over the bev
-      auto bev = conn->DetachBufferEvent();
-      TakeOverBufferEvent(bev);
-      // NOTE: from now on, the bev is managed by the replication thread.
-      // start the replication thread
-      assert(bev != nullptr);
-      auto t = new SidecarCommandThread(std::move(cmd), bev, svr_);
+      auto t = new SidecarCommandThread(std::move(cmd), svr_, conn);
       t->Start();
       // TODO: track this thread in Worker class; delete the req and sidecar obj
       // when done.

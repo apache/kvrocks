@@ -32,7 +32,7 @@ class Commander {
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
   }
-  virtual Status SidecarExecute(Server *svr, int sock_fd) {
+  virtual Status SidecarExecute(Server *svr, Connection *conn) {
     return Status(Status::RedisExecErr, "not implemented");
   }
 
@@ -54,19 +54,15 @@ void TakeOverBufferEvent(bufferevent *bev);
 
 class SidecarCommandThread {
  public:
-  explicit SidecarCommandThread(std::unique_ptr<Commander> cmd,
-                                bufferevent *bev, Server *svr)
-      : cmd_(std::move(cmd)), svr_(svr), bev_(bev) {}
+  explicit SidecarCommandThread(std::unique_ptr<Commander> cmd, Server *svr, Connection *conn);
   Status Start();
-  void Stop() {
-    if (bev_) bufferevent_free(bev_);
-  }
+  void Stop();
 
  private:
   std::unique_ptr<Commander> cmd_;
   Server *svr_;
   std::thread t_;
-  bufferevent *bev_;
+  Connection *conn_;
 
   void Run();
 };

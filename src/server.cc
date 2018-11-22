@@ -26,6 +26,7 @@ void Server::Start() {
 }
 
 void Server::Stop() {
+  replication_thread_->Stop();
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }

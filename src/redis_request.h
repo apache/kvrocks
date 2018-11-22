@@ -44,7 +44,10 @@ class Connection {
  public:
   explicit Connection(bufferevent *bev, Worker *owner) : bev_(bev), req_(owner->svr_), owner_(owner) {}
   ~Connection() {
-    if (bev_) bufferevent_free(bev_);
+    if (bev_) {
+      owner_->RemoveConnection(bufferevent_getfd(bev_));
+      bufferevent_free(bev_);
+    }
   }
 
   static void OnRead(struct bufferevent *bev, void *ctx);
@@ -56,11 +59,10 @@ class Connection {
   void UnSubscribeAll();
   int SubscriptionsCount();
 
+  int GetFD();
   evbuffer *Input();
   evbuffer *Output();
   bufferevent *GetBufferEvent() { return bev_; }
-
-  int GetFD();
 
  private:
   bufferevent *bev_;

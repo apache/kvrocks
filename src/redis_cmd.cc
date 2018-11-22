@@ -1554,7 +1554,6 @@ void make_socket_blocking(int fd) {
 }
 
 void TakeOverBufferEvent(bufferevent *bev) {
-  auto base = bufferevent_get_base(bev);
   auto fd = bufferevent_getfd(bev);
   // 1. remove FD' events
   bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);
@@ -1573,7 +1572,7 @@ SidecarCommandThread::SidecarCommandThread(std::unique_ptr<Redis::Commander> cmd
 }
 
 void SidecarCommandThread::Stop() {
-  // TODO: remove the connection
+  delete conn_;
 }
 
 Status SidecarCommandThread::Start() {

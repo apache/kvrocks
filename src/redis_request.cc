@@ -24,7 +24,7 @@ void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
   }
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
     DLOG(INFO) << "deleted: fd=" << conn->GetFD();
-    conn->owner_->RemoveConnection(conn->GetFD());
+    delete conn;
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {

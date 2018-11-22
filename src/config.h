@@ -28,6 +28,7 @@ typedef struct Config {
 
  public:
   bool Load(std::string path, std::string *err);
+
   int Rewrite();
   Config() = default;
   ~Config() = default;

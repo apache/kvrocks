@@ -1202,6 +1202,21 @@ class CommandZScore: public Commander {
   }
 };
 
+class CommandInfo: public Commander {
+ public:
+  explicit CommandInfo(): Commander("info", -1) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string section = "all";
+    if (args_.size() == 2) {
+      section = Util::ToLower(args_[1]);
+    }
+    std::string info;
+    svr->GetInfo(section, info);
+    *output = Redis::BulkString(info);
+    return Status::OK();
+  }
+};
+
 class CommandCompact: public  Commander {
  public:
   explicit CommandCompact() : Commander("compact", 2) {}
@@ -1302,9 +1317,11 @@ class CommandPSync : public Commander {
 
     // If seq_ is larger than storage's seq, return error
     if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
+      svr->stats_.IncrPSyncErrCounter();
       sock_send(sock_fd, Redis::Error("sequence out of range"));
       return Status(Status::RedisExecErr);
     } else {
+      svr->stats_.IncrPSyncOKCounter();
       if (sock_send(sock_fd, Redis::SimpleString("OK")) < 0) {
         return Status(Status::NetSendErr);
       }
@@ -1394,6 +1411,7 @@ class CommandFetchMeta : public Commander {
       LOG(ERROR) << "Failed to send meta file";
       return Status(Status::NetSendErr);
     }
+    svr->stats_.IncrFullSyncCounter();
     return Status::OK();
   }
 
@@ -1433,6 +1451,7 @@ class CommandFetchFile: public Commander {
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
+    {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

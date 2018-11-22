@@ -78,7 +78,7 @@ Status Worker::AddConnection(Redis::Connection *c) {
     // TODO: Connection exists
     return Status(Status::NotOK, "connection was exists");
   }
-  Status status = svr_->IncrConnections();
+  Status status = svr_->IncrClients();
   if (!status.IsOK()) return status;
   conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
   return Status::OK();
@@ -91,7 +91,7 @@ void Worker::RemoveConnection(int fd) {
     iter->second->UnSubscribeAll();
     delete iter->second;
     conns_.erase(fd);
-    svr_->DecrConnections();
+    svr_->DecrClients();
   }
 }
 

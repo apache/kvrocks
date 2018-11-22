@@ -15,7 +15,7 @@
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                                      Engine::Storage *storage)
-    : host_(std::move(host)), port_(port), storage_(storage) {
+    : host_(std::move(host)), port_(port), storage_(storage), repl_state_(REPL_CONNECTING) {
   // TODO:
   // 1. check if the DB has the same base of master's, if not, we should erase
   // the DB.
@@ -48,8 +48,8 @@ void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function
       std::this_thread::sleep_for(std::chrono::seconds(5));
       continue;
     }
-
     // 2. Send PSYNC
+    repl_state_ = REPL_SEND_PSYNC;
     if (!TryPsync(fd).IsOK()) {
       // FullSync, reconnect
       close(fd);
@@ -102,6 +102,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
   size_t line_len = 0;
   char *bulk_data = nullptr;
   size_t bulk_len = 0;
+  repl_state_ = REPL_CONNECTED;
   while (true) {
     // TODO: test stop_flag_
     // Read bulk length
@@ -136,6 +137,7 @@ Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
 }
 
 Status ReplicationThread::FullSync(int sock_fd) {
+  repl_state_ = REPL_FETCH_META;
   auto cmd_str = "*1" CRLF "$11" CRLF "_fetch_meta" CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
@@ -183,6 +185,7 @@ Status ReplicationThread::FullSync(int sock_fd) {
   auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(storage_,
                                                                meta_id, evbuf);
   evbuffer_free(evbuf);
+  repl_state_ = REPL_FETCH_SST;
   for (auto f : meta.files) {
     LOG(INFO) << "> " << f.first << " " << f.second;
     int fd2;

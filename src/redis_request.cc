@@ -34,7 +34,7 @@ void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->svr_->stats_.incr_out_byte(msg.size());
+  owner_->svr_->stats_.AddOutbondBytes(msg.size());
   Redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
@@ -82,7 +82,7 @@ void Request::Tokenize(evbuffer *input) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        svr_->stats_.incr_in_byte(len);
+        svr_->stats_.AddInbondBytes(len);
         multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         state_ = BulkLen;
@@ -90,7 +90,7 @@ void Request::Tokenize(evbuffer *input) {
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        svr_->stats_.incr_in_byte(len);
+        svr_->stats_.AddInbondBytes(len);
         bulk_len_ = std::strtoull(line + 1, nullptr, 10);
         free(line);
         state_ = BulkData;
@@ -101,7 +101,7 @@ void Request::Tokenize(evbuffer *input) {
             reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        svr_->stats_.incr_in_byte(bulk_len_+2);
+        svr_->stats_.AddInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
         if (multi_bulk_len_ <= 0) {
           state_ = ArrayLen;
@@ -118,7 +118,7 @@ void Request::Tokenize(evbuffer *input) {
 void Request::ExecuteCommands(Connection *conn) {
   if (commands_.empty()) return;
 
-  if (svr_->IsLockDown()) {
+  if (svr_->IsLoading()) {
     conn->Reply(Redis::Error("replication in progress"));
     return;
   }
@@ -146,7 +146,7 @@ void Request::ExecuteCommands(Connection *conn) {
       continue;
     }
 
-    svr_->stats_.incr_calls();
+    svr_->stats_.IncrCalls();
     if (!cmd->IsSidecar()) {
       s = cmd->Execute(svr_, conn, &reply);
       if (!s.IsOK()) {

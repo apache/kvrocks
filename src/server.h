@@ -23,20 +23,31 @@ class Server {
 
   Status AddMaster(std::string host, uint32_t port);
   void RemoveMaster();
-  bool IsLockDown() {return is_locked_;}
+  bool IsLoading() {return is_loading_;}
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
-  Status IncrConnections();
-  void DecrConnections();
+
+  Status IncrClients();
+  void DecrClients();
+  void GetInfo(std::string section, std::string &info);
+  void GetStatsInfo(std::string &info);
+  void GetServerInfo(std::string &info);
+  void GetRocksDBInfo(std::string &info);
+  void GetReplicationInfo(std::string &info);
+  void GetClientsInfo(std::string &info);
+  void GetMemoryInfo(std::string &info);
 
   Stats stats_;
   Engine::Storage *storage_;
  private:
-  bool is_locked_;
+  bool is_loading_;
+  time_t start_time_;
   std::string master_host_;
   uint32_t master_port_;
-  std::atomic<int> connections_{0};
+
+  std::atomic<int> connected_clients_{0};
+  std::atomic<uint64_t> total_clients_{0};
 
   Config *config_;
   std::vector<WorkerThread*> worker_threads_;

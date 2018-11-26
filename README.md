@@ -1,13 +1,11 @@
-## Dev setup
+## Building
 
 ```
 # install requirements
-brew install rocksdb glog gflags libevent
-```
+git submodule init
+git submodule update
 
-## Build
 
-```
 mkdir build; cd build
 cmake ..
 make -j2

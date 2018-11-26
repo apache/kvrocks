@@ -1,7 +1,10 @@
 #ifndef KVROCKS_CONFIG_H
 #define KVROCKS_CONFIG_H
 
-typedef struct Config {
+#include <string>
+#include <vector>
+
+struct Config {
  public:
   int port = 6666;
   int workers = 4;
@@ -14,6 +17,7 @@ typedef struct Config {
   std::vector<std::string> binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";
   std::string db_dir = "/tmp/ev";
+  std::string db_name = "changeme.name";
   std::string backup_dir = "/tmp/ev_bak";
 
   struct {
@@ -39,6 +43,6 @@ typedef struct Config {
   void incrOpenFilesLimit(rlim_t maxfiles);
   bool parseRocksdbOption(std::string key, std::string value, std::string *err);
   bool parseConfigFromString(std::string input, std::string *err);
-} Config;
+};
 
 #endif //KVROCKS_CONFIG_H

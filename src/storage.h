@@ -32,6 +32,9 @@ class Storage {
 
   rocksdb::Status Compact();
   rocksdb::DB *GetDB();
+  const std::string GetName() {
+    return config_->db_name;
+  }
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
   RWLocks *GetLocks() { return &db_locks_; }
 
@@ -62,6 +65,7 @@ class Storage {
     static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
         Storage *storage, std::string rel_path);
     static Status SwapTmpFile(Storage *storage, std::string rel_path);
+    static bool FileExists(Storage *storage, std::string rel_path);
   };
 
  private:

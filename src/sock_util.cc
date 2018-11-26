@@ -1,4 +1,3 @@
-#include <arpa/inet.h>
 #include <event2/util.h>
 #include <glog/logging.h>
 #include <netinet/tcp.h>
@@ -6,6 +5,14 @@
 #include <string>
 
 #include "sock_util.h"
+
+sockaddr_in new_sockaddr_inet(std::string host, uint32_t port) {
+  sockaddr_in sin{};
+  sin.sin_family = AF_INET;
+  sin.sin_addr.s_addr = inet_addr(host.c_str());
+  sin.sin_port = htons(port);
+  return sin;
+}
 
 int sock_connect(std::string host, uint32_t port, int* fd) {
   sockaddr_in sin{};

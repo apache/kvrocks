@@ -117,6 +117,8 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (!strncasecmp(key, "maxclients", strlen("maxclients")) && args.size() == 2) {
     maxclients = std::stoi(args[1]);
     if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
+  } else if (!strncasecmp(key, "db_name", strlen("db_name")) && args.size() == 2){
+    db_name = args[1];
   } else if (!strncasecmp(key, "backup_dir", strlen("backup_dir")) && args.size() == 2) {
     backup_dir = args[1];
   } else if (!strncasecmp(key, "pidfile", strlen("pidfile")) && args.size() == 2) {

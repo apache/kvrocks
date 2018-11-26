@@ -12,6 +12,10 @@ class Status {
     DBOpenErr,
     DBBackupErr,
     DBGetWALErr,
+    DBBackupFileErr,
+
+    // Replication
+    DBMismatched,
 
     // Redis
     RedisUnknownCmd,

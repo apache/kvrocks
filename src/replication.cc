@@ -13,197 +13,264 @@
 #include "sock_util.h"
 #include "status.h"
 
+void send_string(bufferevent *bev, const std::string& data) {
+  auto output = bufferevent_get_output(bev);
+  evbuffer_add(output, data.c_str(), data.length());
+}
+
+void conn_event_cb(bufferevent *bev, short events, void *ctx) {
+  if (events & BEV_EVENT_CONNECTED) {
+    // call write_cb when connected
+    bufferevent_data_cb write_cb;
+    bufferevent_getcb(bev, nullptr, &write_cb, nullptr, nullptr);
+    write_cb(bev, ctx);
+    return;
+  }
+  if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
+    LOG(ERROR) << "[replication] connection error/eof";
+    // TODO: restart replication procedure
+  }
+}
+
+inline void set_read_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
+  bufferevent_enable(bev, EV_READ);
+  bufferevent_setcb(bev, cb, nullptr, conn_event_cb, ctx);
+}
+
+void set_write_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
+  bufferevent_enable(bev, EV_WRITE);
+  bufferevent_setcb(bev, nullptr, cb, conn_event_cb, ctx);
+}
+
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                                      Engine::Storage *storage)
     : host_(std::move(host)), port_(port), storage_(storage), repl_state_(REPL_CONNECTING) {
-  // TODO:
-  // 1. check if the DB has the same base of master's, if not, we should erase
-  // the DB.
-  //    NOTE: how can we know the current slave's DB can be used to do increment
-  //    replication?
-  // 2. set the `seq_` to the latest of DB
-  // 3. how to stop the replication when `slave of no one`? maybe use `select` to break the increment syncing loop
 }
 
-void ReplicationThread::Start(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
+void ReplicationThread::Start(std::function<void()>&& pre_fullsync_cb, std::function<void()>&& post_fullsync_cb) {
+  pre_fullsync_cb_ = std::move(pre_fullsync_cb);
+  post_fullsync_cb_ = std::move(post_fullsync_cb);
+  try {
+    t_ = std::thread([this]() {
+      this->Run();
+      stop_flag_ = true;
+    });  // there might be exception here
+  } catch (const std::system_error &e) {
+    LOG(ERROR) << "[replication] Failed to create replication thread: "
+        << e.what();
+    return;
+  }
   LOG(INFO) << "[replication] Start";
-  t_ = std::thread([this, pre_fullsync_cb, post_fullsync_cb]() {
-    this->Run(pre_fullsync_cb, post_fullsync_cb);
-    stop_flag_ = true;
-  });  // there might be exception here
 }
 
 void ReplicationThread::Stop() {
-  stop_flag_ = true;
+  stop_flag_ = true; // Stopping procedure is asynchronous, handled by timer
   t_.join();
-  LOG(INFO) << "[replication] Stop";
+  LOG(INFO) << "[replication] Stopped";
 }
 
-void ReplicationThread::Run(std::function<void()> pre_fullsync_cb, std::function<void()> post_fullsync_cb) {
-  int fd;
-  while(true) {
-    // 1. Connect to master
-    if (sock_connect(host_, port_, &fd) < 0) {
-      LOG(ERROR) << "[replication] Failed to contact master, wait";
-      std::this_thread::sleep_for(std::chrono::seconds(5));
-      continue;
-    }
-    // 2. Send PSYNC
-    repl_state_ = REPL_SEND_PSYNC;
-    if (!TryPsync(fd).IsOK()) {
-      // FullSync, reconnect
-      close(fd);
-      if (sock_connect(host_, port_, &fd) < 0) {
-        LOG(ERROR) << "[replication] Failed to contact master, wait";
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        continue;
-      }
-      pre_fullsync_cb();
-      FullSync(fd);
-      if (!storage_->RestoreFromBackup(&seq_).IsOK()) {
-        LOG(ERROR) << "[replication] Failed to apply backup";
-        return;
-      }
-      post_fullsync_cb();
-      seq_++;
-    } else {
-      // Keep receiving batch data and apply to DB
-      IncrementBatchLoop(fd);
-    }
-    close(fd);
+/*
+ * Run connect to master, and start the following steps asynchronously
+ *  - CheckDBName
+ *  - TryPsync
+ *  - - if ok, IncrementBatchLoop
+ *  - - not, FullSync and restart TryPsync when done
+ */
+void ReplicationThread::Run() {
+  base_ = event_base_new();
+  auto sockaddr_inet = new_sockaddr_inet(host_, port_);
+  upstream_bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
+  set_write_cb(upstream_bev_, CheckDBName_write_cb, this);
+  if (bufferevent_socket_connect(upstream_bev_, reinterpret_cast<sockaddr *>(&sockaddr_inet),
+                             sizeof(sockaddr_inet)) != 0) {
+    LOG(ERROR) << "Failed to connect";
+  }
+
+  auto timer = event_new(base_, -1, EV_PERSIST, Timer_cb, this);
+  timeval tmo{1, 0}; // 1 sec
+  evtimer_add(timer, &tmo);
+
+  event_base_dispatch(base_);
+  event_base_free(base_);
+}
+
+void ReplicationThread::CheckDBName_write_cb(bufferevent *bev, void *ctx) {
+  send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
+  set_read_cb(bev, CheckDBName_read_cb, ctx);
+}
+
+void ReplicationThread::CheckDBName_read_cb(bufferevent *bev, void *ctx) {
+  char *line;
+  size_t line_len;
+  auto input = bufferevent_get_input(bev);
+  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) return; // Wait for more data
+
+  auto self = static_cast<ReplicationThread*>(ctx);
+  if (!strncmp(line, self->storage_->GetName().c_str(), line_len)) {
+    // DB name match, we should continue to next step: TryPsync
+    set_write_cb(bev, TryPsync_write_cb, ctx);
+  }
+  free(line);
+}
+
+void ReplicationThread::TryPsync_write_cb(bufferevent *bev, void *ctx) {
+  auto self = static_cast<ReplicationThread*>(ctx);
+  const auto seq_str = std::to_string(self->seq_);
+  const auto seq_len_len = std::to_string(seq_str.length());
+  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len + CRLF +
+      seq_str + CRLF;
+  send_string(bev, cmd_str);
+  set_read_cb(bev, TryPsync_read_cb, ctx);
+}
+
+void ReplicationThread::TryPsync_read_cb(bufferevent *bev, void *ctx) {
+  char *line;
+  size_t line_len;
+  auto self = static_cast<ReplicationThread*>(ctx);
+  auto input = bufferevent_get_input(bev);
+  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) return;
+
+  if (strncmp(line, "+OK", 3) != 0) {
+    // PSYNC isn't OK, we should use FullSync
+    // Reconnect so the _full_sync cmd can be processed (the server won't
+    // process other cmd once entering SidecarCommandThread
+    auto base = bufferevent_get_base(bev);
+    bufferevent_free(bev); // Close previous conn
+    auto sockaddr_inet = new_sockaddr_inet(self->host_, self->port_);
+    self->upstream_bev_ = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    set_write_cb(self->upstream_bev_, FullSync_write_cb, ctx);
+    bufferevent_socket_connect(self->upstream_bev_,
+                               reinterpret_cast<sockaddr *>(&sockaddr_inet),
+                               sizeof(sockaddr_inet));
+  } else {
+    // PSYNC is OK, use IncrementBatchLoop
+    set_read_cb(bev, IncrementBatchLoop_cb, ctx);
   }
 }
 
-Status ReplicationThread::TryPsync(int sock_fd) {
-  auto seq_str = std::to_string(seq_);
-  auto seq_len_len = std::to_string(seq_str.length());
-  auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len + CRLF +
-                 seq_str + CRLF;
-  if (sock_send(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK);
-  }
-  char buf[5];  // "+OK\r\n"
-  if (recv(sock_fd, buf, 5, 0) < 0) {
-    LOG(ERROR) << "Failed to recv: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    return Status(Status::NotOK);
-  }
-  if (strncmp(buf, "+OK", 3) != 0) {
-    // PSYNC Not OK, update backup
-    LOG(INFO) << "PSYNC not OK";
-    return Status(Status::NotOK);
-  }
-  return Status::OK();
-}
-
-Status ReplicationThread::IncrementBatchLoop(int sock_fd) {
-  evbuffer *evbuf = evbuffer_new();
+void ReplicationThread::IncrementBatchLoop_cb(bufferevent *bev, void *ctx) {
   char *line = nullptr;
   size_t line_len = 0;
   char *bulk_data = nullptr;
-  size_t bulk_len = 0;
-  repl_state_ = REPL_CONNECTED;
-  while (true) {
-    // TODO: test stop_flag_
-    // Read bulk length
-    if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "Failed to batch data";
-      break;
-    }
-    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) continue;
-    // Bulk string length received
-    bulk_len = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-    free(line);
-    // Read bulk data (batch data)
-    while (true) {
-      auto delta = (bulk_len + 2) - evbuffer_get_length(evbuf);
-      if (delta <= 0) {  // We got enough data
-        bulk_data =
-            reinterpret_cast<char *>(evbuffer_pullup(evbuf, bulk_len + 2));
-        LOG(INFO) << "Data received: " << std::string(bulk_data, bulk_len);
-        // TODO: log the batch metadata if any
-        storage_->WriteBatch(std::string(bulk_data, bulk_len));
-        evbuffer_drain(evbuf, bulk_len + 2);
-        break;
-      } else {  // Not enough data, keep receiving
-        evbuffer_read(evbuf, sock_fd, delta);
-      }
+  auto self = static_cast<ReplicationThread*>(ctx);
+  auto input = bufferevent_get_input(bev);
+  while(true) {
+    switch (self->incr_state_) {
+      case Incr_batch_size:
+        // Read bulk length
+        line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+        if (!line) return; // Wait for more data
+        self->incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        free(line);
+        if (self->incr_bulk_len_ == 0) {
+          LOG(ERROR) << "[replication] Invalid increment data size";
+          self->stop_flag_ = true;
+          return;
+        }
+        self->incr_state_ = Incr_batch_data;
+      case Incr_batch_data:
+        // Read bulk data (batch data)
+        auto delta = (self->incr_bulk_len_ + 2) - evbuffer_get_length(input);
+        if (delta <= 0) {  // We got enough data
+          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
+          self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+          evbuffer_drain(input, self->incr_bulk_len_ + 2);
+          self->incr_state_ = Incr_batch_size;
+        } else {
+          return; // Wait for more data
+        }
     }
   }
-
-  evbuffer_free(evbuf);
-  return Status::OK();
 }
 
-Status ReplicationThread::FullSync(int sock_fd) {
-  repl_state_ = REPL_FETCH_META;
-  auto cmd_str = "*1" CRLF "$11" CRLF "_fetch_meta" CRLF;
-  if (sock_send(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK);
-  }
+void ReplicationThread::FullSync_write_cb(bufferevent *bev, void *ctx) {
+  send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
+  set_read_cb(bev, FullSync_read_cb, ctx);
+}
 
+void ReplicationThread::FullSync_read_cb(bufferevent *bev, void *ctx) {
   char *line;
-  size_t line_len, file_size;
-  rocksdb::BackupID meta_id = 0;
-  evbuffer *evbuf = evbuffer_new();
-  // Read meta id
-  while (true) {
-    if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "Failed to read meta id line";
-      return Status(Status::NotOK);
-    }
-    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) continue;
-    meta_id = static_cast<rocksdb::BackupID>(
-        line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
-    free(line);
-    break;
-  }
-  if (meta_id == 0) {
-    LOG(ERROR) << "Invalid meta id received";
-  }
-  // Read meta file size line
-  while (true) {
-    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) {
-      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-        LOG(ERROR) << "Failed to read meta file size line";
-        return Status(Status::NotOK);
+  size_t line_len;
+  auto self = static_cast<ReplicationThread*>(ctx);
+  auto input = bufferevent_get_input(bev);
+  switch (self->fullsync_state_) {
+    case Fetch_meta_id:
+      line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      if (!line) return; // Wait for more data
+      self->fullsync_meta_id_ = static_cast<rocksdb::BackupID>(
+          line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
+      free(line);
+      if (self->fullsync_meta_id_ == 0) {
+        LOG(ERROR) << "[replication] Invalid meta id received";
+        self->stop_flag_ = true;
+        return;
       }
-      continue;
-    }
-    file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
-    free(line);
-    break;
+      self->fullsync_state_ = Fetch_meta_size;
+    case Fetch_meta_size:
+      line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      if (!line) return; // Wait for more data
+      self->fullsync_filesize_ = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
+      free(line);
+      if (self->fullsync_filesize_ == 0) {
+        LOG(ERROR) << "[replication] Invalid meta file size received";
+        self->stop_flag_ = true;
+      }
+      self->fullsync_state_ = Fetch_meta_content;
+    case Fetch_meta_content:
+      if (evbuffer_get_length(input) < self->fullsync_filesize_) {
+        return; // Wait for more data
+      }
+      auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(self->storage_,
+                                                                   self->fullsync_meta_id_,
+                                                                   input);
+      assert(evbuffer_get_length(input) == 0);
+      self->fullsync_state_ = Fetch_meta_id;
+
+      // TODO: this loop is still a synchronized operation without event base.
+      // we should considering some concurrent file fetching methods in the future.
+      for (auto f : meta.files) {
+        DLOG(INFO) << "> " << f.first << " " << f.second;
+        int fd2;
+        // Don't fetch existing files
+        if (Engine::Storage::BackupManager::FileExists(self->storage_, f.first)) {
+          continue;
+        }
+        // FIXME: don't connect every time, see _fetch_file cmd implementation
+        if (sock_connect(self->host_, self->port_, &fd2) < 0) {
+          LOG(ERROR) << "[replication] Failed to connect";
+          continue;
+        }
+        self->FetchFile(fd2, f.first, f.second);
+        close(fd2);
+      }
+
+      // Restore DB from backup
+      self->pre_fullsync_cb_();
+      if (!self->storage_->RestoreFromBackup(&self->seq_).IsOK()) {
+        self->post_fullsync_cb_();
+        self->stop_flag_ = true;
+        return;
+      }
+      self->post_fullsync_cb_();
+      ++self->seq_;
+
+      // Reconnect to try Psync again
+      auto base = bufferevent_get_base(bev);
+      bufferevent_free(bev); // Close previous conn
+      auto sockaddr_inet = new_sockaddr_inet(self->host_, self->port_);
+      self->upstream_bev_ = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+      set_write_cb(self->upstream_bev_, TryPsync_write_cb, ctx);
+      bufferevent_socket_connect(self->upstream_bev_,
+                                 reinterpret_cast<sockaddr *>(&sockaddr_inet),
+                                 sizeof(sockaddr_inet));
   }
-  // Read meta file content
-  while (evbuffer_get_length(evbuf) < file_size) {
-    if (evbuffer_read(evbuf, sock_fd, -1) < 0) break;
-  }
-  // FIXME: save the meta file
-  auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(storage_,
-                                                               meta_id, evbuf);
-  evbuffer_free(evbuf);
-  repl_state_ = REPL_FETCH_SST;
-  for (auto f : meta.files) {
-    LOG(INFO) << "> " << f.first << " " << f.second;
-    int fd2;
-    // FIXME:
-    // 1. don't connect every time, see _fetch_file cmd implementation
-    // 2. don't fetch existing files(under the shared dir and crc checked one)
-    if (sock_connect(host_, port_, &fd2) < 0) {
-      return Status(Status::NotOK);
-    }
-    FetchFile(fd2, f.first, f.second);
-    close(fd2);
-  }
-  return Status::OK();
 }
 
 Status ReplicationThread::FetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
-  auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
+  const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                  std::to_string(path.length()) + CRLF + path + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
@@ -216,13 +283,13 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
   while (true) {
     // TODO: test stop_flag_
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "Failed to read data file size line";
+      LOG(ERROR) << "[replication] Failed to read data file size line";
       return Status(Status::NotOK);
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
-      LOG(ERROR) << "Failed to send _fetch_file cmd: " << line;
+      LOG(ERROR) << "[replication] Failed to send _fetch_file cmd: " << line;
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
@@ -231,7 +298,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
   // Write to tmp file
   auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
   if (!tmp_file) {
-    LOG(ERROR) << "Failed to create tmp file";
+    LOG(ERROR) << "[replication] Failed to create tmp file";
     return Status(Status::NotOK);
   }
 
@@ -243,22 +310,34 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
       auto data_len = evbuffer_remove(evbuf, data, 1024);
       if (data_len == 0) continue;
       if (data_len < 0) {
-        LOG(ERROR) << "Failed to read data from socket buffer";
+        LOG(ERROR) << "[replication] Failed to read data from socket buffer";
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       seen_bytes += data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-        LOG(ERROR) << "Failed to read data file";
+        LOG(ERROR) << "[replication] Failed to read data file";
         return Status(Status::NotOK);
       }
     }
   }
   if (crc != tmp_crc) {
-    LOG(ERROR) << "CRC mismatch";
+    LOG(ERROR) << "[replication] CRC mismatch";
     return Status(Status::NotOK);
   }
   // File is OK, rename to formal name
   return Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
+}
+
+// Check if stop_flag_ is set, when do, tear down replication
+void ReplicationThread::Timer_cb(int, short, void *ctx) {
+  DLOG(INFO) << "[replication] timer";
+  auto self = static_cast<ReplicationThread*>(ctx);
+  if (self->stop_flag_) {
+    LOG(INFO) << "[replication] Stop ev loop";
+    bufferevent_free(self->upstream_bev_);
+    self->upstream_bev_ = nullptr;
+    event_base_loopbreak(self->base_);
+  }
 }

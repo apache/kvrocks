@@ -1274,6 +1274,10 @@ class CommandSlaveOf : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     auto port = args[2];
+    if (Util::ToLower(host_) == "no" && Util::ToLower(port) == "one") {
+      host_.clear();
+      return Status::OK();
+    }
     try {
       auto p = std::stoul(port);
       if (p > UINT32_MAX) {
@@ -1286,7 +1290,12 @@ class CommandSlaveOf : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    auto s = svr->AddMaster(host_, port_);
+    Status s;
+    if (host_.empty()) {
+      s = svr->RemoveMaster();
+    } else {
+      s = svr->AddMaster(host_, port_);
+    }
     if (s.IsOK()) {
       *output = Redis::SimpleString("OK");
     }
@@ -1403,6 +1412,10 @@ class CommandFetchMeta : public Commander {
     auto fd = Engine::Storage::BackupManager::OpenLatestMeta(svr->storage_,
                                                              &meta_id,
                                                              &file_size);
+    if (fd < 0) {
+      sock_send(sock_fd, Redis::Error("failed to open"));
+      return Status(Status::DBBackupFileErr);
+    }
     off_t offset;
     // Send the meta ID
     sock_send(sock_fd, std::to_string(meta_id) + CRLF);
@@ -1416,9 +1429,6 @@ class CommandFetchMeta : public Commander {
     svr->stats_.IncrFullSyncCounter();
     return Status::OK();
   }
-
- private:
-  rocksdb::BackupID meta_id_;
 };
 
 class CommandFetchFile: public Commander {
@@ -1434,6 +1444,11 @@ class CommandFetchFile: public Commander {
     uint64_t file_size = 0;
     auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_, path_,
                                                            &file_size);
+    if (fd < 0) {
+      sock_send(conn->GetFD(), Redis::Error("failed to open"));
+      return Status(Status::DBBackupFileErr);
+    }
+
     off_t offset;
     sock_send(conn->GetFD(), std::to_string(file_size) + CRLF);
     if (sendfile(fd, conn->GetFD(), 0, &offset, nullptr, 0) < 0) {
@@ -1448,6 +1463,20 @@ class CommandFetchFile: public Commander {
 
  private:
   std::string path_;
+};
+
+class CommandDBName: public Commander {
+ public:
+  CommandDBName(): Commander("_db_name", 1, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    conn->Reply(svr->storage_->GetName() + CRLF);
+    return Status::OK();
+  }
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
@@ -1528,6 +1557,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"compact", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandCompact); }},
     {"_fetch_meta", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchMeta); }},
     {"_fetch_file", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFetchFile); }},
+    {"_db_name", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDBName); }},
 };
 
 Status LookupCommand(const std::string &cmd_name,
@@ -1576,7 +1606,12 @@ void SidecarCommandThread::Stop() {
 }
 
 Status SidecarCommandThread::Start() {
-  t_ = std::thread([this]() { this->Run(); });
+  try {
+    t_ = std::thread([this]() { this->Run(); });
+  } catch (const std::system_error &e) {
+    LOG(ERROR) << "Failed to create thread";
+    Stop();
+  }
   return Status::OK();
 }
 

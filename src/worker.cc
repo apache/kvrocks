@@ -96,8 +96,13 @@ void Worker::RemoveConnection(int fd) {
 }
 
 void WorkerThread::Start() {
-  t_ = std::thread([this]() { this->worker_->Run(t_.get_id()); });
-  LOG(INFO) << "worker thread #" << t_.get_id() <<" started";
+  try {
+    t_ = std::thread([this]() { this->worker_->Run(t_.get_id()); });
+  } catch (const std::system_error &e) {
+    LOG(ERROR) << "Failed to start worker thread";
+    return;
+  }
+  LOG(INFO) << "Worker thread #" << t_.get_id() << " started";
 }
 
 void WorkerThread::Stop() {

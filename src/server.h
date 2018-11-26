@@ -22,7 +22,7 @@ class Server {
   void Join();
 
   Status AddMaster(std::string host, uint32_t port);
-  void RemoveMaster();
+  Status RemoveMaster();
   bool IsLoading() {return is_loading_;}
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);

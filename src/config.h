@@ -1,16 +1,11 @@
 #ifndef KVROCKS_CONFIG_H
 #define KVROCKS_CONFIG_H
 
-<<<<<<< HEAD
 #include <string>
 #include <vector>
-
-struct Config {
-=======
 #include "status.h"
 
-typedef struct Config {
->>>>>>> b659f81... MOD: supports config get/set/rewrite
+typedef struct {
  public:
   int port = 6666;
   int workers = 4;

@@ -1,10 +1,16 @@
 #ifndef KVROCKS_CONFIG_H
 #define KVROCKS_CONFIG_H
 
+<<<<<<< HEAD
 #include <string>
 #include <vector>
 
 struct Config {
+=======
+#include "status.h"
+
+typedef struct Config {
+>>>>>>> b659f81... MOD: supports config get/set/rewrite
  public:
   int port = 6666;
   int workers = 4;
@@ -31,9 +37,10 @@ struct Config {
   } rocksdb_options;
 
  public:
+  bool Rewrite(std::string *err);
   bool Load(std::string path, std::string *err);
-
-  int Rewrite();
+  void Get(std::string &key, std::vector<std::string> *values);
+  Status Set(std::string &key, std::string &value);
   Config() = default;
   ~Config() = default;
 
@@ -43,6 +50,7 @@ struct Config {
   void incrOpenFilesLimit(rlim_t maxfiles);
   bool parseRocksdbOption(std::string key, std::string value, std::string *err);
   bool parseConfigFromString(std::string input, std::string *err);
-};
+  bool rewriteConfigValue(std::vector<std::string> &args);
+} Config;
 
 #endif //KVROCKS_CONFIG_H

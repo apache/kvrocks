@@ -89,7 +89,6 @@ void Worker::RemoveConnection(int fd) {
   if (iter != conns_.end()) {
     // unscribe all channels if exists
     iter->second->UnSubscribeAll();
-    delete iter->second;
     conns_.erase(fd);
     svr_->DecrClients();
   }

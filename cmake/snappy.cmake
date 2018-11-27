@@ -25,7 +25,7 @@ if (NOT __SNAPPY_INCLUDED)
                  -DBUILD_PACKAGING=OFF
                  -DBUILD_TESTING=OFF
                  -DBUILD_NC_TESTS=OFF
-                 -BUILD_CONFIG_TESTS=OFF
+                 -DBUILD_CONFIG_TESTS=OFF
                  -DINSTALL_HEADERS=ON
                  -DCMAKE_C_FLAGS=${SNAPPY_C_FLAGS}
                  -DCMAKE_CXX_FLAGS=${SNAPPY_CXX_FLAGS}

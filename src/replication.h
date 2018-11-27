@@ -6,11 +6,11 @@
 #include "status.h"
 #include "storage.h"
 typedef enum {
-  REPL_CONNECTING = 1,
-  REPL_SEND_PSYNC,
-  REPL_FETCH_META,
-  REPL_FETCH_SST,
-  REPL_CONNECTED
+  kReplConnecting = 1,
+  kReplSendPSync,
+  kReplFetchMeta,
+  kReplFetchSST,
+  kReplConnected
 }ReplState;
 
 class ReplicationThread {

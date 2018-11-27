@@ -27,6 +27,7 @@ class Server {
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
+  Config *GetConfig() { return config_; }
 
   Status IncrClients();
   void DecrClients();

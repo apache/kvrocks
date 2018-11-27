@@ -30,6 +30,35 @@ class CommandPing : public Commander {
   }
 };
 
+class CommandConfig : public Commander {
+ public:
+  explicit CommandConfig() : Commander("config", -2) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string err;
+    Config *config = svr->GetConfig();
+    if (args_.size() == 2 && Util::ToLower(args_[1]) == "rewrite") {
+      if (!config->Rewrite(&err)) {
+        return Status(Status::RedisExecErr, err);
+      }
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
+      std::vector<std::string> values;
+      config->Get(args_[2], &values);
+      *output = Redis::MultiBulkString(values);
+      return Status::OK();
+    } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
+      Status s = config->Set(args_[2], args_[3]);
+      if (!s.IsOK()) {
+        return Status(Status::NotOK, s.msg()+":"+args_[2]);
+      }
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    }
+    return Status(Status::NotOK, "CONFIG subcommand must be one of GET, SET, REWRITE");
+  }
+};
+
 class CommandGet : public Commander {
  public:
   explicit CommandGet() :Commander("get", 2) {}
@@ -1483,6 +1512,7 @@ using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
+    {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

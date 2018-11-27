@@ -224,8 +224,8 @@ void Server::GetReplicationInfo(std::string &info) {
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
-    string_stream << "master_link_status:" << (state == REPL_CONNECTED? "up":"down") << "\r\n";
-    string_stream << "master_sync_in_progress:" << (state==REPL_FETCH_META||state==REPL_FETCH_SST) << "\r\n";
+    string_stream << "master_link_status:" << (state == kReplConnected? "up":"down") << "\r\n";
+    string_stream << "master_sync_in_progress:" << (state==kReplFetchMeta||state==kReplFetchSST) << "\r\n";
     // TODO: last io time, 主从同步目前修改可能比较多，后面再加
     string_stream << "master_last_io_seconds_ago:" << 0 << "\r\n";
     string_stream << "slave_repl_offset:" << replication_thread_->Offset() << "\r\n";

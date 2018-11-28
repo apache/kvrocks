@@ -21,6 +21,23 @@
 #include "t_zset.h"
 
 namespace Redis {
+class CommandAuth : public Commander {
+ public:
+  explicit CommandAuth() : Commander("auth", 2) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Config *config = svr->GetConfig();
+    if (config->require_passwd.empty()) {
+      return Status(Status::NotOK, "ERR Client sent AUTH, but no password is set");
+    }
+    if (config->require_passwd == args_[1]) {
+      *output = Redis::SimpleString("OK");
+      conn->Authenticated();
+      return Status::OK();
+    }
+    return Status(Status::NotOK, "ERR invalid password");
+  }
+};
+
 class CommandPing : public Commander {
  public:
   explicit CommandPing() : Commander("ping", 1) {}
@@ -1510,6 +1527,7 @@ class CommandDBName: public Commander {
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
+    {"auth", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandAuth); }},
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
     {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},

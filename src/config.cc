@@ -125,6 +125,10 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     db_name = args[1];
   } else if (size == 2 && args[0] == "backup_dir") {
     backup_dir = args[1];
+  } else if (size == 2 && args[0] == "masterauth") {
+    master_auth = args[1];
+  } else if (size == 2 && args[0] == "reuqirepass") {
+    require_passwd = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
     pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
@@ -238,6 +242,14 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back("backup_dir");
     values->emplace_back(backup_dir);
   }
+  if (is_all || key == "masterauth") {
+    values->emplace_back("masterauth");
+    values->emplace_back(master_auth);
+  }
+  if (is_all || key == "requirepass") {
+    values->emplace_back("requirepass");
+    values->emplace_back(require_passwd);
+  }
   if (is_all || key == "binds") {
     std::string binds_str;
     for (const auto &bind : binds) {
@@ -290,6 +302,14 @@ Status Config::Set(std::string &key, std::string &value) {
   }
   if (key == "backup_dir") {
     backup_dir = value;
+    return Status::OK();
+  }
+  if (key == "masterauth") {
+    master_auth = value;
+    return Status::OK();
+  }
+  if (key == "requirepass") {
+    require_passwd = value;
     return Status::OK();
   }
   if (key == "loglevel") {

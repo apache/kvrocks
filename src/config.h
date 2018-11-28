@@ -5,7 +5,7 @@
 #include <vector>
 #include "status.h"
 
-typedef struct {
+struct Config{
  public:
   int port = 6666;
   int workers = 4;
@@ -20,6 +20,8 @@ typedef struct {
   std::string db_dir = "/tmp/ev";
   std::string db_name = "changeme.name";
   std::string backup_dir = "/tmp/ev_bak";
+  std::string master_auth;
+  std::string require_passwd;
 
   struct {
     int max_open_files = 4096;
@@ -46,6 +48,6 @@ typedef struct {
   bool parseRocksdbOption(std::string key, std::string value, std::string *err);
   bool parseConfigFromString(std::string input, std::string *err);
   bool rewriteConfigValue(std::vector<std::string> &args);
-} Config;
+};
 
 #endif //KVROCKS_CONFIG_H

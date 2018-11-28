@@ -44,7 +44,7 @@ void set_write_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                                      Engine::Storage *storage)
-    : host_(std::move(host)), port_(port), storage_(storage), repl_state_(REPL_CONNECTING) {
+    : host_(std::move(host)), port_(port), storage_(storage), repl_state_(kReplConnecting) {
 }
 
 void ReplicationThread::Start(std::function<void()>&& pre_fullsync_cb, std::function<void()>&& post_fullsync_cb) {

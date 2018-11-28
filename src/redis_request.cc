@@ -1,6 +1,7 @@
 #include <glog/logging.h>
 #include <iostream>
 
+#include "string_util.h"
 #include "redis_cmd.h"
 #include "redis_reply.h"
 #include "redis_request.h"
@@ -123,9 +124,15 @@ void Request::ExecuteCommands(Connection *conn) {
     return;
   }
 
+  Config *config = svr_->GetConfig();
   std::unique_ptr<Commander> cmd;
   std::string reply;
   for (auto &cmd_tokens : commands_) {
+    if (!config->require_passwd.empty() && !conn->IsAuthenticated()
+        && Util::ToLower(cmd_tokens.front()) != "auth") {
+      conn->Reply(Redis::Error("NOAUTH Authentication required."));
+      continue;
+    }
     auto s = LookupCommand(cmd_tokens.front(), &cmd);
     if (!s.IsOK()) {
       // FIXME: change the err string

@@ -59,12 +59,15 @@ class Connection {
   void UnSubscribeAll();
   int SubscriptionsCount();
 
+  bool IsAuthenticated() { return is_authenticated_; }
+  void Authenticated() { is_authenticated_ = true; }
   int GetFD();
   evbuffer *Input();
   evbuffer *Output();
   bufferevent *GetBufferEvent() { return bev_; }
 
  private:
+  bool is_authenticated_ = false;
   bufferevent *bev_;
   Request req_;
   Worker *owner_;

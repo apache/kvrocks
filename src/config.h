@@ -5,7 +5,7 @@
 #include <vector>
 #include "status.h"
 
-typedef struct {
+struct Config{
  public:
   int port = 6666;
   int workers = 4;
@@ -48,6 +48,6 @@ typedef struct {
   bool parseRocksdbOption(std::string key, std::string value, std::string *err);
   bool parseConfigFromString(std::string input, std::string *err);
   bool rewriteConfigValue(std::vector<std::string> &args);
-} Config;
+};
 
 #endif //KVROCKS_CONFIG_H

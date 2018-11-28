@@ -20,6 +20,8 @@ typedef struct {
   std::string db_dir = "/tmp/ev";
   std::string db_name = "changeme.name";
   std::string backup_dir = "/tmp/ev_bak";
+  std::string master_auth;
+  std::string require_passwd;
 
   struct {
     int max_open_files = 4096;

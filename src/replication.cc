@@ -97,6 +97,8 @@ void ReplicationThread::Run() {
 void ReplicationThread::CheckDBName_write_cb(bufferevent *bev, void *ctx) {
   send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
   set_read_cb(bev, CheckDBName_read_cb, ctx);
+  auto self = static_cast<ReplicationThread*>(ctx);
+  self->repl_state_ = kReplCheckDBName;
 }
 
 void ReplicationThread::CheckDBName_read_cb(bufferevent *bev, void *ctx) {
@@ -122,6 +124,7 @@ void ReplicationThread::TryPsync_write_cb(bufferevent *bev, void *ctx) {
       seq_str + CRLF;
   send_string(bev, cmd_str);
   set_read_cb(bev, TryPsync_read_cb, ctx);
+  self->repl_state_ = kReplSendPSync;
 }
 
 void ReplicationThread::TryPsync_read_cb(bufferevent *bev, void *ctx) {
@@ -155,6 +158,7 @@ void ReplicationThread::IncrementBatchLoop_cb(bufferevent *bev, void *ctx) {
   size_t line_len = 0;
   char *bulk_data = nullptr;
   auto self = static_cast<ReplicationThread*>(ctx);
+  self->repl_state_ = kReplConnected;
   auto input = bufferevent_get_input(bev);
   while(true) {
     switch (self->incr_state_) {
@@ -188,6 +192,9 @@ void ReplicationThread::IncrementBatchLoop_cb(bufferevent *bev, void *ctx) {
 void ReplicationThread::FullSync_write_cb(bufferevent *bev, void *ctx) {
   send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
   set_read_cb(bev, FullSync_read_cb, ctx);
+
+  auto self = static_cast<ReplicationThread*>(ctx);
+  self->repl_state_ = kReplFetchMeta;
 }
 
 void ReplicationThread::FullSync_read_cb(bufferevent *bev, void *ctx) {
@@ -230,6 +237,7 @@ void ReplicationThread::FullSync_read_cb(bufferevent *bev, void *ctx) {
 
       // TODO: this loop is still a synchronized operation without event base.
       // we should considering some concurrent file fetching methods in the future.
+      self->repl_state_ = kReplFetchSST;
       for (auto f : meta.files) {
         DLOG(INFO) << "> " << f.first << " " << f.second;
         int fd2;

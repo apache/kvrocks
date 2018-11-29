@@ -116,16 +116,23 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       return false;
     }
     daemonize = (i == 1);
-  } else if (size == 2 && args[0] == "tcp_backlog") {
+  } else if (size == 2 && args[0] == "slave-read-only") {
+    int i;
+    if ((i = yesnotoi(args[1])) == -1) {
+      *err = "argument must be 'yes' or 'no'";
+      return false;
+    }
+    slave_readonly = (i == 1);
+  } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
-  } else if (size == 2 && args[0] == "db_dir") {
+  } else if (size == 2 && args[0] == "db-dir") {
     db_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
     maxclients = std::stoi(args[1]);
     if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
-  } else if (size == 2 && args[0] == "db_name") {
+  } else if (size == 2 && args[0] == "db-name") {
     db_name = args[1];
-  } else if (size == 2 && args[0] == "backup_dir") {
+  } else if (size == 2 && args[0] == "backup-dir") {
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "masterauth") {
     master_auth = args[1];
@@ -187,7 +194,7 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
       args[1] = std::to_string(maxclients);
       return true;
     }
-  } else if (size == 2 && args[0] == "backup_dir") {
+  } else if (size == 2 && args[0] == "backup-dir") {
     if (backup_dir != args[1]) {
       args[1] = backup_dir;
       return true;
@@ -232,16 +239,24 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back("daemonize");
     values->emplace_back(daemonize ? "yes" : "no");
   }
+  if (is_all || key == "slave-read-only") {
+    values->emplace_back("slave-read-only");
+    values->emplace_back(slave_readonly? "yes" : "no");
+  }
   if (is_all || key == "pidfile") {
     values->emplace_back("pidfile");
     values->emplace_back(pidfile);
   }
-  if (is_all || key == "db_dir") {
-    values->emplace_back("db_dir");
+  if (is_all || key == "db-name") {
+    values->emplace_back("db-name");
+    values->emplace_back(db_name);
+  }
+  if (is_all || key == "db-dir") {
+    values->emplace_back("db-dir");
     values->emplace_back(db_dir);
   }
-  if (is_all || key == "backup_dir") {
-    values->emplace_back("backup_dir");
+  if (is_all || key == "backup-dir") {
+    values->emplace_back("backup-dir");
     values->emplace_back(backup_dir);
   }
   if (is_all || key == "masterauth") {
@@ -312,6 +327,14 @@ Status Config::Set(std::string &key, std::string &value) {
   }
   if (key == "requirepass") {
     require_passwd = value;
+    return Status::OK();
+  }
+  if (key == "slave-read-only") {
+    int i;
+    if ((i = yesnotoi(value)) == -1) {
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+    }
+    slave_readonly = (i == 1);
     return Status::OK();
   }
   if (key == "loglevel") {

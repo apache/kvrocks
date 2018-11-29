@@ -19,10 +19,11 @@ class Commander {
  public:
   // @name: cmd name
   // @sidecar: whether cmd will be executed in sidecar thread, eg. psync.
-  explicit Commander(std::string name, int arity, bool sidecar = false)
+  explicit Commander(std::string name, int arity, bool sidecar = false, bool is_write = false)
       : name_(name), arity_(arity), is_sidecar_(sidecar) {}
   std::string Name() { return name_; }
   int GetArity() { return arity_; }
+  bool IsWrite() { return is_write_; };
 
   void SetArgs(const std::vector<std::string> args) { args_ = args; }
   virtual Status Parse(const std::vector<std::string> &args) {
@@ -45,6 +46,7 @@ class Commander {
   int64_t calls_;
   int64_t microseconds;
   bool is_sidecar_;
+  bool is_write_;
 };
 
 Status LookupCommand(const std::string &cmd_name,

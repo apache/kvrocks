@@ -152,6 +152,10 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error(s.msg()));
       continue;
     }
+    if (config->slave_readonly && svr_->IsSlave() && cmd->IsWrite()) {
+      conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
+      continue;
+    }
 
     svr_->stats_.IncrCalls();
     if (!cmd->IsSidecar()) {

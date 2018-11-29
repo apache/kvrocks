@@ -23,7 +23,7 @@
 namespace Redis {
 class CommandAuth : public Commander {
  public:
-  explicit CommandAuth() : Commander("auth", 2) {}
+  explicit CommandAuth() : Commander("auth", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
     if (config->require_passwd.empty()) {
@@ -40,7 +40,7 @@ class CommandAuth : public Commander {
 
 class CommandPing : public Commander {
  public:
-  explicit CommandPing() : Commander("ping", 1) {}
+  explicit CommandPing() : Commander("ping", 1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     *output = Redis::SimpleString("PONG");
     return Status::OK();
@@ -49,7 +49,7 @@ class CommandPing : public Commander {
 
 class CommandConfig : public Commander {
  public:
-  explicit CommandConfig() : Commander("config", -2) {}
+  explicit CommandConfig() : Commander("config", -2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string err;
     Config *config = svr->GetConfig();
@@ -78,7 +78,7 @@ class CommandConfig : public Commander {
 
 class CommandGet : public Commander {
  public:
-  explicit CommandGet() :Commander("get", 2) {}
+  explicit CommandGet() : Commander("get", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     RedisString string_db(svr->storage_);
@@ -93,7 +93,7 @@ class CommandGet : public Commander {
 
 class CommandSet : public Commander {
  public:
-  explicit CommandSet() :Commander("set", 3) {}
+  explicit CommandSet() : Commander("set", 3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisString string_db(svr->storage_);
     rocksdb::Status s = string_db.Set(args_[1], args_[2]);
@@ -108,7 +108,7 @@ class CommandSet : public Commander {
 
 class CommandIncr : public Commander {
  public:
-  explicit CommandIncr() : Commander("incr", 2) {}
+  explicit CommandIncr() : Commander("incr", 2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
     RedisString string_db(svr->storage_);
@@ -121,7 +121,7 @@ class CommandIncr : public Commander {
 
 class CommandDecr: public Commander {
  public:
-  explicit CommandDecr() : Commander("decr", 2) {}
+  explicit CommandDecr() : Commander("decr", 2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
     RedisString string_db(svr->storage_);
@@ -134,7 +134,7 @@ class CommandDecr: public Commander {
 
 class CommandIncrBy : public Commander {
  public:
-  explicit CommandIncrBy() : Commander("incrby", 3) {}
+  explicit CommandIncrBy() : Commander("incrby", 3, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       increment_ = std::stoll(args[2]);
@@ -159,7 +159,7 @@ class CommandIncrBy : public Commander {
 
 class CommandDecrBy : public Commander {
  public:
-  explicit CommandDecrBy() : Commander("decrby", 3) {}
+  explicit CommandDecrBy() : Commander("decrby", 3, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       increment_ = std::stoll(args[2]);
@@ -184,7 +184,7 @@ class CommandDecrBy : public Commander {
 
 class CommandDel : public Commander {
  public:
-  explicit CommandDel() :Commander("del", -2) {}
+  explicit CommandDel() : Commander("del", -2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
     RedisDB redis(svr->storage_);
@@ -199,7 +199,7 @@ class CommandDel : public Commander {
 
 class CommandType: public Commander {
  public:
-  explicit CommandType () : Commander("type", 2) {}
+  explicit CommandType () : Commander("type", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisDB redis(svr->storage_);
     RedisType type;
@@ -216,7 +216,7 @@ class CommandType: public Commander {
 
 class CommandTTL: public Commander {
  public:
-  explicit CommandTTL() : Commander("ttl", 2) {}
+  explicit CommandTTL() : Commander("ttl", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisDB redis(svr->storage_);
     int ttl;
@@ -232,7 +232,7 @@ class CommandTTL: public Commander {
 
 class CommandExists: public Commander {
  public:
-  explicit CommandExists() : Commander("exists", -2) {}
+  explicit CommandExists() : Commander("exists", -2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
     RedisDB redis(svr->storage_);
@@ -248,7 +248,7 @@ class CommandExists: public Commander {
 
 class CommandExpire: public Commander {
  public:
-  explicit CommandExpire() : Commander("expire", 2) {}
+  explicit CommandExpire() : Commander("expire", 2, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -279,7 +279,7 @@ class CommandExpire: public Commander {
 
 class CommandHGet : public Commander {
  public:
-  explicit CommandHGet() :Commander("hget", 3) {}
+  explicit CommandHGet() : Commander("hget", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::string value;
@@ -294,7 +294,7 @@ class CommandHGet : public Commander {
 
 class CommandHSet : public Commander {
  public:
-  explicit CommandHSet() : Commander("hset", 4) {}
+  explicit CommandHSet() : Commander("hset", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisHash hash_db(svr->storage_);
@@ -310,7 +310,7 @@ class CommandHSet : public Commander {
 
 class CommandHSetNX : public Commander {
  public:
-  explicit CommandHSetNX() : Commander("hsetnx", 4) {}
+  explicit CommandHSetNX() : Commander("hsetnx", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisHash hash_db(svr->storage_);
@@ -326,7 +326,7 @@ class CommandHSetNX : public Commander {
 
 class CommandHStrlen : public Commander {
  public:
-  explicit CommandHStrlen() : Commander("hstrlen", 3) {}
+  explicit CommandHStrlen() : Commander("hstrlen", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::string value;
@@ -341,7 +341,7 @@ class CommandHStrlen : public Commander {
 
 class CommandHDel: public Commander {
  public:
-  explicit CommandHDel() : Commander("hdel", -3) {}
+  explicit CommandHDel() : Commander("hdel", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisHash hash_db(svr->storage_);
@@ -360,7 +360,7 @@ class CommandHDel: public Commander {
 
 class CommandHExists: public Commander {
  public:
-  explicit CommandHExists() : Commander("hexists", 3) {}
+  explicit CommandHExists() : Commander("hexists", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::string value;
@@ -375,7 +375,7 @@ class CommandHExists: public Commander {
 
 class CommandHLen: public Commander {
  public:
-  explicit CommandHLen() : Commander("hlen", 3) {}
+  explicit CommandHLen() : Commander("hlen", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t count;
     RedisHash hash_db(svr->storage_);
@@ -390,7 +390,7 @@ class CommandHLen: public Commander {
 
 class CommandHIncrBy : public Commander {
  public:
-  explicit CommandHIncrBy() : Commander("hincrby", 4) {}
+  explicit CommandHIncrBy() : Commander("hincrby", 4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       increment_ = std::stoll(args[3]);
@@ -415,7 +415,7 @@ class CommandHIncrBy : public Commander {
 
 class CommandHMGet: public Commander {
  public:
-  explicit CommandHMGet() : Commander("hmget", -3) {}
+  explicit CommandHMGet() : Commander("hmget", -3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::vector<Slice> fields;
@@ -437,7 +437,7 @@ class CommandHMGet: public Commander {
 
 class CommandHMSet: public Commander {
  public:
-  explicit CommandHMSet() : Commander("hmset", -4) {}
+  explicit CommandHMSet() : Commander("hmset", -4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     if(args.size() % 2 != 0) {
       return Status(Status::RedisParseErr, "wrong number of arguments");
@@ -462,7 +462,7 @@ class CommandHMSet: public Commander {
 
 class CommandHKeys: public Commander {
  public:
-  explicit CommandHKeys() : Commander("hkeys", 2) {}
+  explicit CommandHKeys() : Commander("hkeys", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::vector<FieldValue> field_values;
@@ -481,7 +481,7 @@ class CommandHKeys: public Commander {
 
 class CommandHVals: public Commander {
  public:
-  explicit CommandHVals() : Commander("hvals", 2) {}
+  explicit CommandHVals() : Commander("hvals", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::vector<FieldValue> field_values;
@@ -500,7 +500,7 @@ class CommandHVals: public Commander {
 
 class CommandHGetAll: public Commander {
  public:
-  explicit CommandHGetAll() : Commander("hgetall", 2) {}
+  explicit CommandHGetAll() : Commander("hgetall", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_);
     std::vector<FieldValue> field_values;
@@ -520,7 +520,7 @@ class CommandHGetAll: public Commander {
 class CommandPush: public Commander {
  public:
   explicit CommandPush(bool create_if_missing, bool left)
-      :Commander("push", -3) {
+      : Commander("push", -3, false, true) {
     left_ = left;
     create_if_missing_ = create_if_missing;
   }
@@ -570,7 +570,7 @@ class CommandRPushX : public CommandPush{
 
 class CommandPop: public Commander {
  public:
-  explicit CommandPop(bool left) : Commander("pop", 2) {
+  explicit CommandPop(bool left) : Commander("pop", 2, false, true) {
     left_ = left;
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -604,7 +604,7 @@ class CommandRPop : public CommandPop {
 
 class CommandLRange : public Commander {
  public:
-  explicit CommandLRange() : Commander("lrange", 4) {}
+  explicit CommandLRange() : Commander("lrange", 4, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       start_ = std::stoi(args[2]);
@@ -631,7 +631,7 @@ class CommandLRange : public Commander {
 
 class CommandLLen : public  Commander {
  public:
-  explicit CommandLLen() : Commander("llen", 2){}
+  explicit CommandLLen() : Commander("llen", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisList list_db(svr->storage_);
     uint32_t count;
@@ -646,7 +646,7 @@ class CommandLLen : public  Commander {
 
 class CommandLIndex: public Commander {
  public:
-  explicit CommandLIndex() : Commander("lindex", 3) {}
+  explicit CommandLIndex() : Commander("lindex", 3, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       index_ = std::stoi(args[2]);
@@ -672,7 +672,7 @@ class CommandLIndex: public Commander {
 
 class CommandLSet: public Commander {
  public:
-  explicit CommandLSet() : Commander("lset", 4) {}
+  explicit CommandLSet() : Commander("lset", 4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       index_ = std::stoi(args[2]);
@@ -695,7 +695,7 @@ class CommandLSet: public Commander {
 
 class CommandLTrim: public Commander {
  public:
-  explicit CommandLTrim() : Commander("ltrim", 4) {}
+  explicit CommandLTrim() : Commander("ltrim", 4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       start_ = std::stoi(args[2]);
@@ -721,7 +721,7 @@ class CommandLTrim: public Commander {
 
 class CommandLPushRPop: public  Commander {
  public:
-  explicit CommandLPushRPop() : Commander("lpushrpop", 3){}
+  explicit CommandLPushRPop() : Commander("lpushrpop", 3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisList list_db(svr->storage_);
     std::string elem;
@@ -736,7 +736,7 @@ class CommandLPushRPop: public  Commander {
 
 class CommandSAdd : public  Commander {
  public:
-  explicit CommandSAdd() : Commander("sadd", -3) {}
+  explicit CommandSAdd() : Commander("sadd", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     std::vector<Slice> members;
@@ -755,7 +755,7 @@ class CommandSAdd : public  Commander {
 
 class CommandSRem: public  Commander {
  public:
-  explicit CommandSRem() : Commander("srem", -3) {}
+  explicit CommandSRem() : Commander("srem", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     std::vector<Slice> members;
@@ -774,7 +774,7 @@ class CommandSRem: public  Commander {
 
 class CommandSCard: public  Commander {
  public:
-  explicit CommandSCard() : Commander("scard", 2) {}
+  explicit CommandSCard() : Commander("scard", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     int ret;
@@ -789,7 +789,7 @@ class CommandSCard: public  Commander {
 
 class CommandSMembers: public  Commander {
  public:
-  explicit CommandSMembers() : Commander("smembers", 2) {}
+  explicit CommandSMembers() : Commander("smembers", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     std::vector<std::string> members;
@@ -804,7 +804,7 @@ class CommandSMembers: public  Commander {
 
 class CommandSIsMember: public  Commander {
  public:
-  explicit CommandSIsMember() : Commander("sismmeber", 3) {}
+  explicit CommandSIsMember() : Commander("sismmeber", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     int ret;
@@ -819,7 +819,7 @@ class CommandSIsMember: public  Commander {
 
 class CommandSPop: public Commander {
  public:
-  explicit CommandSPop() : Commander("spop", -2) {}
+  explicit CommandSPop() : Commander("spop", -2, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       if (args.size() == 3) {
@@ -847,7 +847,7 @@ class CommandSPop: public Commander {
 
 class CommandSRandMember: public Commander {
  public:
-  explicit CommandSRandMember() : Commander("srandmember", -2) {}
+  explicit CommandSRandMember() : Commander("srandmember", -2, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       if (args.size() == 3) {
@@ -875,7 +875,7 @@ class CommandSRandMember: public Commander {
 
 class CommandSMove: public  Commander {
  public:
-  explicit CommandSMove() : Commander("smove", 4) {}
+  explicit CommandSMove() : Commander("smove", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_);
     int ret;
@@ -890,7 +890,7 @@ class CommandSMove: public  Commander {
 
 class CommandZAdd : public Commander {
  public:
-  explicit CommandZAdd() : Commander("zadd", -4) {}
+  explicit CommandZAdd() : Commander("zadd", -4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size()%2 != 0) {
       return Status(Status::RedisParseErr, "syntax error");
@@ -924,7 +924,7 @@ class CommandZAdd : public Commander {
 
 class CommandZCount: public Commander {
  public:
-  explicit CommandZCount() : Commander("zcount", 4) {}
+  explicit CommandZCount() : Commander("zcount", 4, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
@@ -950,7 +950,7 @@ class CommandZCount: public Commander {
 
 class CommandZCard: public Commander {
  public:
-  explicit CommandZCard() : Commander("zcard", 2) {}
+  explicit CommandZCard() : Commander("zcard", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
 
@@ -966,7 +966,7 @@ class CommandZCard: public Commander {
 
 class CommandZIncrBy: public Commander {
  public:
-  explicit CommandZIncrBy(): Commander("zincrby", 4){}
+  explicit CommandZIncrBy(): Commander("zincrby", 4, false, true) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     try {
@@ -994,7 +994,7 @@ class CommandZIncrBy: public Commander {
 
 class CommandZPop : public Commander {
  public:
-  explicit CommandZPop(bool min): Commander("zpop", -2), min_(min) {}
+  explicit CommandZPop(bool min): Commander("zpop", -2, false, true), min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() > 2) {
@@ -1039,7 +1039,7 @@ class CommandZPopMax: public CommandZPop {
 
 class CommandZRange: public Commander {
  public:
-  explicit CommandZRange(bool reversed=false): Commander("zrange", -4), reversed_(reversed){}
+  explicit CommandZRange(bool reversed=false): Commander("zrange", -4, false, false), reversed_(reversed){}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       start_ = std::stoi(args[2]);
@@ -1085,7 +1085,7 @@ class CommandZRevRange: public CommandZRange {
 
 class CommandZRangeByScore: public Commander {
  public:
-  explicit CommandZRangeByScore(): Commander("zrangebyscore", -4) {}
+  explicit CommandZRangeByScore(): Commander("zrangebyscore", -4, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
@@ -1132,7 +1132,7 @@ class CommandZRangeByScore: public Commander {
 
 class CommandZRank: public Commander {
  public:
-  explicit CommandZRank(bool reversed = false) : Commander("zrank", 3), reversed_(reversed) {}
+  explicit CommandZRank(bool reversed = false) : Commander("zrank", 3, false, false), reversed_(reversed) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank;
     RedisZSet zset_db(svr->storage_);
@@ -1154,7 +1154,7 @@ class CommandZRevRank : public CommandZRank {
 
 class CommandZRem: public Commander {
  public:
-  explicit CommandZRem():Commander("zrem", -3){}
+  explicit CommandZRem(): Commander("zrem", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size;
     RedisZSet zset_db(svr->storage_);
@@ -1173,7 +1173,7 @@ class CommandZRem: public Commander {
 
 class CommandZRemRangeByRank: public Commander {
  public:
-  explicit CommandZRemRangeByRank(): Commander("zremrangebyrank", 4) {}
+  explicit CommandZRemRangeByRank(): Commander("zremrangebyrank", 4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       start_ = std::stoi(args[2]);
@@ -1202,7 +1202,7 @@ class CommandZRemRangeByRank: public Commander {
 
 class CommandZRemRangeByScore: public Commander {
  public:
-  explicit CommandZRemRangeByScore() : Commander("zremrangebyscore", -4) {}
+  explicit CommandZRemRangeByScore() : Commander("zremrangebyscore", -4, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
@@ -1231,7 +1231,7 @@ class CommandZRemRangeByScore: public Commander {
 
 class CommandZScore: public Commander {
  public:
-  explicit CommandZScore() : Commander("zscore", 3) {}
+  explicit CommandZScore() : Commander("zscore", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double score;
     RedisZSet zset_db(svr->storage_);
@@ -1250,7 +1250,7 @@ class CommandZScore: public Commander {
 
 class CommandInfo: public Commander {
  public:
-  explicit CommandInfo(): Commander("info", -1) {}
+  explicit CommandInfo(): Commander("info", -1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string section = "all";
     if (args_.size() == 2) {
@@ -1265,7 +1265,7 @@ class CommandInfo: public Commander {
 
 class CommandCompact: public  Commander {
  public:
-  explicit CommandCompact() : Commander("compact", 2) {}
+  explicit CommandCompact() : Commander("compact", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     rocksdb::Status s = svr->storage_->Compact();
     if (!s.ok()) {
@@ -1278,7 +1278,7 @@ class CommandCompact: public  Commander {
 
 class CommandPublish: public Commander {
  public:
-  explicit CommandPublish() : Commander("publish", 3) {}
+  explicit CommandPublish() : Commander("publish", 3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int receivers = svr->PublishMessage(args_[1], args_[2]);
     *output = Redis::Integer(receivers);
@@ -1288,7 +1288,7 @@ class CommandPublish: public Commander {
 
 class CommandSubscribe : public Commander {
  public:
-  explicit CommandSubscribe() : Commander("subcribe", -2) {}
+  explicit CommandSubscribe() : Commander("subcribe", -2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
@@ -1303,7 +1303,7 @@ class CommandSubscribe : public Commander {
 
 class CommandUnSubscribe : public Commander {
  public:
-  explicit CommandUnSubscribe() : Commander("unsubcribe", -1) {}
+  explicit CommandUnSubscribe() : Commander("unsubcribe", -1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() > 1) {
       conn->UnSubscribeChannel(args_[1]);
@@ -1316,7 +1316,7 @@ class CommandUnSubscribe : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
-  explicit CommandSlaveOf() : Commander("slaveof", 3) {}
+  explicit CommandSlaveOf() : Commander("slaveof", 3, false, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     auto port = args[2];
@@ -1355,7 +1355,7 @@ class CommandSlaveOf : public Commander {
 
 class CommandPSync : public Commander {
  public:
-  explicit CommandPSync() : Commander("psync", 2, true) {}
+  explicit CommandPSync() : Commander("psync", 2, true, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     try {
@@ -1445,7 +1445,7 @@ class CommandPSync : public Commander {
 
 class CommandFetchMeta : public Commander {
  public:
-  explicit CommandFetchMeta() : Commander("_fetch_meta", 1, true) {}
+  explicit CommandFetchMeta() : Commander("_fetch_meta", 1, true, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     return Status::OK();
@@ -1479,7 +1479,7 @@ class CommandFetchMeta : public Commander {
 
 class CommandFetchFile: public Commander {
  public:
-  CommandFetchFile() : Commander("_fetch_file", 2, true) {}
+  CommandFetchFile() : Commander("_fetch_file", 2, true, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     path_ = args[1];
@@ -1513,7 +1513,7 @@ class CommandFetchFile: public Commander {
 
 class CommandDBName: public Commander {
  public:
-  CommandDBName(): Commander("_db_name", 1, false) {}
+  CommandDBName(): Commander("_db_name", 1, false, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     return Status::OK();

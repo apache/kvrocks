@@ -8,41 +8,16 @@
 Worker::Worker(Server *svr, Config *config) : svr_(svr), storage_(svr->storage_) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
-  sin_.sin_family = AF_INET;
-  sin_.sin_addr.s_addr = htonl(0);
-  sin_.sin_port = htons(config->port);
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  int sock_opt = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) <
-      0) {
-    LOG(ERROR) << "Failed to set REUSEADDR: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    exit(1);
+  for (const auto &host : config->binds) {
+    Listen(host, config->port, config->backlog);
   }
-  // to support multi-thread binding on macOS
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) <
-      0) {
-    LOG(ERROR) << "Failed to set REUSEPORT: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    exit(1);
-  }
-  if (bind(fd, (struct sockaddr *)&sin_, sizeof(sin_)) < 0) {
-    LOG(ERROR) << "Failed to bind: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    exit(1);
-  }
-  evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newConnection, this,
-                                LEV_OPT_CLOSE_ON_FREE, config->backlog, fd);
-  fd_ = evconnlistener_get_fd(lev);
-  LOG(INFO) << "Listening on: " << fd_;
 }
 
 void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "new connection: fd=" << fd
-             << " from port: " << ntohs(worker->sin_.sin_port) << " thread #"
+             << " from port: " << ntohs(worker->svr_->GetConfig()->port) << " thread #"
              << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
   // TODO: set tcp-keepliave
@@ -62,6 +37,32 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   }
 }
 
+Status Worker::Listen(const std::string &host, int port, int backlog) {
+  sockaddr_in sin{};
+  sin.sin_family = AF_INET;
+  evutil_inet_pton(AF_INET, host.data(), &(sin.sin_addr));
+  sin.sin_port = htons(port);
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int sock_opt = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
+    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  }
+  // to support multi-thread binding on macOS
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
+    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  }
+  if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  }
+  evutil_make_socket_nonblocking(fd);
+  auto lev = evconnlistener_new(base_, newConnection, this,
+                                LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+  evutil_socket_t listen_fd = evconnlistener_get_fd(lev);
+  listen_fds_.emplace_back(listen_fd);
+  LOG(INFO) << "Listening on: " << listen_fd;
+  return Status::OK();
+}
+
 void Worker::Run(std::thread::id tid) {
   tid_ = tid;
   if (event_base_dispatch(base_) != 0) LOG(ERROR) << "failed to run server";
@@ -69,7 +70,9 @@ void Worker::Run(std::thread::id tid) {
 
 void Worker::Stop() {
   event_base_loopbreak(base_);
-  if (fd_ > 0) close(fd_);
+  for (const auto &fd : listen_fds_) {
+    if (fd > 0) close(fd);
+  }
 }
 
 Status Worker::AddConnection(Redis::Connection *c) {

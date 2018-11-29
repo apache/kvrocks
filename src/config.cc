@@ -104,9 +104,10 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       *err = "workers should 1024";
       return false;
     }
-  } else if (size == 2 && args[0] == "bind") {
-    Util::Split(args[1], ",", &binds);
-    // TODO: check the bind address is valid
+  } else if (size >= 2 && args[0] == "bind") {
+    for (unsigned i = 1; i < args.size(); i++) {
+      binds.emplace_back(args[i]);
+    }
   } else if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {

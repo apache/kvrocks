@@ -105,6 +105,7 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       return false;
     }
   } else if (size >= 2 && args[0] == "bind") {
+    binds.clear();
     for (unsigned i = 1; i < args.size(); i++) {
       binds.emplace_back(args[i]);
     }

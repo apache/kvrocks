@@ -14,6 +14,7 @@ struct Config{
   int backlog = 1024;
   int maxclients = 10240;
   bool daemonize = false;
+  bool slave_readonly = true;
 
   std::vector<std::string> binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";

@@ -28,6 +28,7 @@ class Server {
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
   Config *GetConfig() { return config_; }
+  bool IsSlave() { return !master_host_.empty(); }
 
   Status IncrClients();
   void DecrClients();

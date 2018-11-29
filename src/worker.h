@@ -3,6 +3,7 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
+#include <event2/util.h>
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -28,6 +29,7 @@ class Worker{
   Worker(Worker &&) = delete;
   void Run(std::thread::id tid);
   void Stop();
+  Status Listen(const std::string &host, int port, int backlog);
 
   Status AddConnection(Redis::Connection *c);
   void RemoveConnection(int fd);
@@ -40,8 +42,7 @@ class Worker{
                             sockaddr *address, int socklen, void *ctx);
 
   event_base *base_;
-  sockaddr_in sin_{};
-  evutil_socket_t fd_ = 0;
+  std::vector<evutil_socket_t> listen_fds_;
   std::thread::id tid_;
   std::map<int, Redis::Connection*> conns_;
 };

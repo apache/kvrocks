@@ -7,6 +7,7 @@
 #include "storage.h"
 typedef enum {
   kReplConnecting = 1,
+  kReplCheckDBName,
   kReplSendPSync,
   kReplFetchMeta,
   kReplFetchSST,

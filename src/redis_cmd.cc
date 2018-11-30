@@ -254,7 +254,9 @@ class CommandExpire: public Commander {
     rocksdb::Env::Default()->GetCurrentTime(&now);
     try {
       seconds_ = std::stoi(args[2]);
-      // FIXME: seconds_ may overflow
+      if (seconds_ >= INT32_MAX-now) {
+        return Status(Status::RedisParseErr, "the expire time was overflow");
+      }
       seconds_ += now;
     } catch (std::exception &e) {
       return Status(Status::RedisExecErr, "value is not an integer or out of range");

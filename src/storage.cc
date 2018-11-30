@@ -25,11 +25,11 @@ class MetadataFilter : public rocksdb::CompactionFilter {
     Metadata metadata(kRedisNone);
     rocksdb::Status s = metadata.Decode(bytes);
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to decode the metadata in metadata filter, key: "
+      LOG(WARNING) << "[MetadataFilter] Failed to decode the metadata, key: "
                    << key.ToString() << ", err: " << s.ToString();
       return false;
     }
-    DLOG(INFO) << "Compacting the metadata column family, key: " << key.ToString()
+    DLOG(INFO) << "[MetadataFilter] Compacting the key: " << key.ToString()
                << ", filter: " << (metadata.Expired() ? "deleted":"reserved");
     return metadata.Expired();
   }
@@ -62,7 +62,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
       std::string bytes;
       rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
                                       metadata_key, &bytes);
-      DLOG(INFO) << "Compacting the sub key: " << ikey.GetSubKey().ToString()
+      DLOG(INFO) << "[SubKeyFilter] Compacting the key: " << ikey.GetSubKey().ToString()
                  << ", verison: " << ikey.GetVersion() << ", metadata key: " << ikey.GetKey().ToString();
       cached_key_ = metadata_key;
       if (s.ok()) {

@@ -249,7 +249,7 @@ class CommandExists: public Commander {
 
 class CommandExpire: public Commander {
  public:
-  explicit CommandExpire() : Commander("expire", 2, false, true) {}
+  explicit CommandExpire() : Commander("expire", 3, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -1268,13 +1268,14 @@ class CommandInfo: public Commander {
 
 class CommandCompact: public  Commander {
  public:
-  explicit CommandCompact() : Commander("compact", 2, false, false) {}
+  explicit CommandCompact() : Commander("compact", 1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     rocksdb::Status s = svr->storage_->Compact();
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::SimpleString("OK");
+    LOG(INFO) << "Commpact was triggered by manual with executed success.";
     return Status::OK();
   }
 };

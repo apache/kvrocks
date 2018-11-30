@@ -58,6 +58,7 @@ class CommandConfig : public Commander {
         return Status(Status::RedisExecErr, err);
       }
       *output = Redis::SimpleString("OK");
+      LOG(INFO) << "# CONFIG REWRITE executed with success.";
       return Status::OK();
     } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
       std::vector<std::string> values;

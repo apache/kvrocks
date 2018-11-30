@@ -162,6 +162,8 @@ void Request::ExecuteCommands(Connection *conn) {
       s = cmd->Execute(svr_, conn, &reply);
       if (!s.IsOK()) {
         conn->Reply(Redis::Error(s.msg()));
+        LOG(ERROR) << "Failed to execute redis command: " << cmd->Name()
+                   << ", err: " << s.msg();
         continue;
       }
       if (!reply.empty()) conn->Reply(reply);

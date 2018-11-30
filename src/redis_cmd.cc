@@ -58,6 +58,7 @@ class CommandConfig : public Commander {
         return Status(Status::RedisExecErr, err);
       }
       *output = Redis::SimpleString("OK");
+      LOG(INFO) << "# CONFIG REWRITE executed with success.";
       return Status::OK();
     } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
       std::vector<std::string> values;
@@ -248,13 +249,15 @@ class CommandExists: public Commander {
 
 class CommandExpire: public Commander {
  public:
-  explicit CommandExpire() : Commander("expire", 2, false, true) {}
+  explicit CommandExpire() : Commander("expire", 3, false, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
     try {
       seconds_ = std::stoi(args[2]);
-      // FIXME: seconds_ may overflow
+      if (seconds_ >= INT32_MAX-now) {
+        return Status(Status::RedisParseErr, "the expire time was overflow");
+      }
       seconds_ += now;
     } catch (std::exception &e) {
       return Status(Status::RedisExecErr, "value is not an integer or out of range");
@@ -1265,13 +1268,14 @@ class CommandInfo: public Commander {
 
 class CommandCompact: public  Commander {
  public:
-  explicit CommandCompact() : Commander("compact", 2, false, false) {}
+  explicit CommandCompact() : Commander("compact", 1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     rocksdb::Status s = svr->storage_->Compact();
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::SimpleString("OK");
+    LOG(INFO) << "Commpact was triggered by manual with executed success.";
     return Status::OK();
   }
 };

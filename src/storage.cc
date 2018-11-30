@@ -24,10 +24,13 @@ class MetadataFilter : public rocksdb::CompactionFilter {
     std::string bytes = value.ToString();
     Metadata metadata(kRedisNone);
     rocksdb::Status s = metadata.Decode(bytes);
-    if (s.ok()) {
-      // TODO： log error message while encounter coruption metadata
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to decode the metadata in metadata filter, key: "
+                   << key.ToString() << ", err: " << s.ToString();
       return false;
     }
+    DLOG(INFO) << "Compacting the metadata column family, key: " << key.ToString()
+               << ", filter: " << (metadata.Expired() ? "deleted":"reserved");
     return metadata.Expired();
   }
   const char *Name() const override { return "MetadataFilter"; }
@@ -59,6 +62,8 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
       std::string bytes;
       rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
                                       metadata_key, &bytes);
+      DLOG(INFO) << "Compacting the sub key: " << ikey.GetSubKey().ToString()
+                 << ", verison: " << ikey.GetVersion() << ", metadata key: " << ikey.GetKey().ToString();
       cached_key_ = metadata_key;
       if (s.ok()) {
         cached_metadata_ = bytes;
@@ -126,7 +131,6 @@ Status Engine::Storage::Open() {
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options.statistics = rocksdb::CreateDBStatistics();
   options.OptimizeLevelStyleCompaction();
-  options.stats_dump_period_sec = 10;
   options.max_open_files = config_->rocksdb_options.max_open_files;
   options.max_subcompactions = config_->rocksdb_options.max_sub_compactions;
   options.max_background_flushes = config_->rocksdb_options.max_background_flushes;

@@ -24,7 +24,6 @@ class Stats {
   void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
   static long GetMemoryRSS();
-  static void GetRocksdbStats(std::map<std::string, std::string> *stats);
 };
 
 #endif //KVROCKS_STATS_H

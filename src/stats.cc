@@ -42,7 +42,3 @@ long Stats::GetMemoryRSS() {
   return rss * sysconf(_SC_PAGESIZE);
 }
 #endif
-
-void Stats::GetRocksdbStats(std::map<std::string, std::string> *stats) {
-
-}

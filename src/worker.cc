@@ -17,7 +17,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "new connection: fd=" << fd
-             << " from port: " << ntohs(worker->svr_->GetConfig()->port) << " thread #"
+             << " from port: " << worker->svr_->GetConfig()->port << " thread #"
              << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
   // TODO: set tcp-keepliave

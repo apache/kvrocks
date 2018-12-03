@@ -10,6 +10,7 @@
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
+
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
@@ -17,12 +18,18 @@ Server::Server(Engine::Storage *storage, Config *config) :
   time(&start_time_);
 }
 
-void Server::Start() {
+Status Server::Start() {
+  if (!config_->master_host.empty()) {
+    Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port));
+    if (!s.IsOK()) return s;
+  }
+
   for (const auto worker : worker_threads_) {
     worker->Start();
   }
   // setup server cron thread
   cron_thread_ = std::thread([this]() { this->cron(); });
+  return Status::OK();
 }
 
 void Server::Stop() {

@@ -23,6 +23,8 @@ struct Config{
   std::string backup_dir = "/tmp/ev_bak";
   std::string master_auth;
   std::string require_passwd;
+  std::string master_host;
+  int master_port = 0;
 
   struct {
     int max_open_files = 4096;

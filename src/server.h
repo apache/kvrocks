@@ -17,7 +17,7 @@ class WorkerThread;
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
-  void Start();
+  Status Start();
   void Stop();
   void Join();
 

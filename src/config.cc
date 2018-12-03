@@ -147,6 +147,15 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
         break;
       }
     }
+  } else if (size == 3 && args[0] == "slaveof") {
+    if (args[1] != "no" && args[2] != "one") {
+      master_host = args[1];
+      master_port = std::stoi(args[2]);
+      if (master_port <= 0 || master_port >= 65535) {
+        *err = "master port range should be between 0 and 65535";
+        return false;
+      }
+    }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
   } else {
@@ -267,13 +276,21 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back("requirepass");
     values->emplace_back(require_passwd);
   }
+  if (is_all || key == "slaveof") {
+    values->emplace_back("slaveof");
+    if (master_host.empty()) {
+      values->emplace_back("");
+    } else {
+      values->emplace_back(master_host+" "+ std::to_string(master_port));
+    }
+  }
   if (is_all || key == "binds") {
     std::string binds_str;
     for (const auto &bind : binds) {
       binds_str.append(bind);
       binds_str.append(",");
     }
-    binds_str.substr(0, binds_str.size()-2);
+    binds_str = binds_str.substr(0, binds_str.size()-1);
     values->emplace_back("binds");
     values->emplace_back(binds_str);
   }

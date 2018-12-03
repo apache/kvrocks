@@ -212,7 +212,10 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   memcpy(buf, value.data(), value.size());
   // +1 to skip the flags
   EncodeFixed32(buf+1, (uint32_t)timestamp);
-  s = db_->Put(rocksdb::WriteOptions(), metadata_cf_handle_, key, Slice(buf, value.size()));
+
+  rocksdb::WriteBatch batch;
+  batch.Put(metadata_cf_handle_, key, Slice(buf, value.size()));
+  s = storage->Write(rocksdb::WriteOptions(), &batch);
   delete []buf;
   return s;
 }

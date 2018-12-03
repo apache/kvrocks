@@ -65,7 +65,7 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, float *ret) {
@@ -105,7 +105,7 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vector<std::string> *values) {
@@ -166,7 +166,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, bool nx, int *ret) {
@@ -198,7 +198,7 @@ rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_values, int type) {

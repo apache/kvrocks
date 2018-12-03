@@ -49,7 +49,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, key, bytes);
   *ret = metadata.size;
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
@@ -80,7 +80,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
@@ -160,7 +160,10 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
     return s;
   }
   if (value == elem) return rocksdb::Status::OK();
-  return db_->Put(rocksdb::WriteOptions(), sub_key, elem);
+
+  rocksdb::WriteBatch batch;
+  batch.Put(sub_key, elem);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
@@ -210,5 +213,5 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, key, bytes);
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }

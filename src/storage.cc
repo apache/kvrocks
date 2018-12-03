@@ -197,20 +197,6 @@ Status Engine::Storage::Open() {
   return Status::OK();
 }
 
-Status Storage::Set(const std::string &k, const std::string &v) {
-  auto s = db_->Put(rocksdb::WriteOptions(), k, v);
-  return Status::OK();
-}
-
-std::string Storage::Get(const std::string &k) {
-  std::string v;
-  auto s = db_->Get(rocksdb::ReadOptions(), k, &v);
-  if (s.ok()) {
-    return v;
-  }
-  return "not found";
-}
-
 class DebuggingLogger : public rocksdb::Logger {
  public:
   explicit DebuggingLogger(
@@ -302,6 +288,11 @@ class TimestampLogHandler : public rocksdb::WriteBatch::Handler {
     LOG(INFO) << "[batch] Log data: " << blob.ToString();
   }
 };
+
+rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+  // TODO: hook write op here.
+  return db_->Write(options, updates);
+}
 
 Status Storage::WriteBatch(std::string &&raw_batch) {
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));

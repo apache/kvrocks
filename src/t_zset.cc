@@ -55,7 +55,7 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisZSet::Card(Slice key, int *ret) {
@@ -121,7 +121,7 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores) {
@@ -175,7 +175,7 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
-    return db_->Write(rocksdb::WriteOptions(), &batch);
+    return storage->Write(rocksdb::WriteOptions(), &batch);
   }
   return rocksdb::Status::OK();
 }
@@ -228,7 +228,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
-    return db_->Write(rocksdb::WriteOptions(), &batch);
+    return storage->Write(rocksdb::WriteOptions(), &batch);
   }
   return rocksdb::Status::OK();
 }
@@ -279,7 +279,7 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisZSet::RemoveRangeByScore(Slice key, ZRangeSpec spec, int *ret) {

@@ -38,7 +38,10 @@ rocksdb::Status RedisString::update(Slice key, Slice raw_value, Slice new_value)
     metadata_bytes = raw_value.ToString().substr(0, 5);
   }
   metadata_bytes.append(new_value.ToString());
-  return db_->Put(rocksdb::WriteOptions(), metadata_cf_handle_, key, metadata_bytes);
+
+  rocksdb::WriteBatch batch;
+  batch.Put(metadata_cf_handle_, key, metadata_bytes);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
@@ -157,7 +160,7 @@ rocksdb::Status RedisString::MSet(std::vector<StringPair> pairs, int ttl) {
     bytes.append(pair.value.ToString());
     batch.Put(metadata_cf_handle_, pair.key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
@@ -170,7 +173,10 @@ rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
     std::string bytes;
     Metadata(kRedisString).Encode(&bytes);
     bytes.append(pair.value.ToString());
-    s = db_->Put(rocksdb::WriteOptions(), metadata_cf_handle_, pair.key, bytes);
+
+    rocksdb::WriteBatch batch;
+    batch.Put(metadata_cf_handle_, pair.key, bytes);
+    s = storage->Write(rocksdb::WriteOptions(), &batch);
     if (!s.ok()) return s;
   }
   *ret = 1;

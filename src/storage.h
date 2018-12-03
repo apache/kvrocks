@@ -31,6 +31,7 @@ class Storage {
   std::string Get(const std::string &k);
   Status WriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
+  rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
 
   rocksdb::Status Compact();
   rocksdb::DB *GetDB();

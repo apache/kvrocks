@@ -34,7 +34,7 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret) {
@@ -59,7 +59,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Card(Slice key, int *ret) {
@@ -144,7 +144,7 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return db_->Write(rocksdb::WriteOptions(), &batch);
+  return storage->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Move(Slice src, Slice dst, Slice member, int *ret) {

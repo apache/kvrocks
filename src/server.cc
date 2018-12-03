@@ -33,11 +33,11 @@ Status Server::Start() {
 }
 
 void Server::Stop() {
-  replication_thread_->Stop();
+  if (replication_thread_) replication_thread_->Stop();
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }
-  cron_thread_.join();
+  if(cron_thread_.joinable()) cron_thread_.join();
 }
 
 void Server::Join() {
@@ -67,6 +67,7 @@ Status Server::RemoveMaster() {
     master_host_.clear();
     master_port_ = 0;
     if (replication_thread_) replication_thread_->Stop();
+    replication_thread_ = nullptr;
   }
   return Status::OK();
 }

@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
 
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
 
   LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   Config config;

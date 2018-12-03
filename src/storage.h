@@ -40,7 +40,10 @@ class Storage {
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
   RWLocks *GetLocks() { return &db_locks_; }
 
-  ~Storage() { delete db_; }
+  ~Storage() {
+    for (auto handle : cf_handles_) delete handle;
+    delete db_;
+  }
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

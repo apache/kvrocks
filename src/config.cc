@@ -236,8 +236,8 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back("loglevel");
     values->emplace_back(loglevels[loglevel]);
   }
-  if (is_all || key == "backlog") {
-    values->emplace_back("backlog");
+  if (is_all || key == "tcp-backlog") {
+    values->emplace_back("tcp-backlog");
     values->emplace_back(std::to_string(backlog));
   }
   if (is_all || key == "maxclients") {
@@ -334,7 +334,7 @@ Status Config::Set(std::string &key, std::string &value) {
     timeout = std::stoi(value);
     return Status::OK();
   }
-  if (key == "backup_dir") {
+  if (key == "backup-dir") {
     backup_dir = value;
     return Status::OK();
   }

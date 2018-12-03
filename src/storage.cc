@@ -123,39 +123,51 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
 };
 
-Status Engine::Storage::Open() {
-  rocksdb::Options options;
-  options.create_if_missing = true;
+void Engine::Storage::InitOptions(rocksdb::Options *options) {
+  options->create_if_missing = true;
   // options.IncreaseParallelism(2);
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
-  options.statistics = rocksdb::CreateDBStatistics();
-  options.OptimizeLevelStyleCompaction();
-  options.max_open_files = config_->rocksdb_options.max_open_files;
-  options.max_subcompactions = config_->rocksdb_options.max_sub_compactions;
-  options.max_background_flushes = config_->rocksdb_options.max_background_flushes;
-  options.max_background_compactions = config_->rocksdb_options.max_background_compactions;
-  options.max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
-  options.write_buffer_size =  config_->rocksdb_options.write_buffer_size;
-  options.target_file_size_base = 256 * 1048576;
-  options.max_manifest_file_size = 64 * 1024 * 1024;
-  options.max_log_file_size = 512 * 1024 * 1024;
-  options.WAL_ttl_seconds = 7 * 24 * 60 * 60;
-  options.WAL_size_limit_MB = 3 * 1024;
-  {
-    rocksdb::DB *tmp_db;
-    rocksdb::ColumnFamilyOptions cf_options(options);
-    rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
-    if (s.ok()) {  // open will be failed, if the column family was exists
-      std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
-                                           kZSetScoreColumnFamilyName};
-      std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
-      s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
-      if (!s.ok()) return Status(Status::DBOpenErr, s.ToString());
-      for (auto handle : cf_handles) delete handle;
+  options->statistics = rocksdb::CreateDBStatistics();
+  options->OptimizeLevelStyleCompaction();
+  options->max_open_files = config_->rocksdb_options.max_open_files;
+  options->max_subcompactions = config_->rocksdb_options.max_sub_compactions;
+  options->max_background_flushes = config_->rocksdb_options.max_background_flushes;
+  options->max_background_compactions = config_->rocksdb_options.max_background_compactions;
+  options->max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
+  options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
+  options->target_file_size_base = 256 * 1048576;
+  options->max_manifest_file_size = 64 * 1024 * 1024;
+  options->max_log_file_size = 512 * 1024 * 1024;
+  options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
+  options->WAL_size_limit_MB = 3 * 1024;
+}
+
+Status Engine::Storage::CreateColumnFamiles(rocksdb::Options &options) {
+  rocksdb::DB *tmp_db;
+  rocksdb::ColumnFamilyOptions cf_options(options);
+  rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
+  if (s.ok()) {
+    std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
+                                         kZSetScoreColumnFamilyName};
+    std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
+    s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
+    if (!s.ok()) {
       delete tmp_db;
+      return Status(Status::DBOpenErr, s.ToString());
     }
+    for (auto handle : cf_handles) delete handle;
+    delete tmp_db;
   }
+  // Open db would be failed if the column families have already exists,
+  // so we return ok here.
+  return Status::OK();
+}
+
+Status Engine::Storage::Open() {
+  rocksdb::Options options;
+  InitOptions(&options);
+  CreateColumnFamiles(options);
   rocksdb::BlockBasedTableOptions table_opts;
   table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   rocksdb::ColumnFamilyOptions metadata_opts(options);

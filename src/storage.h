@@ -19,7 +19,9 @@ class Storage {
        config_(config),
        db_locks_(16) {}
 
+  void InitOptions(rocksdb::Options *options);
   Status Open();
+  Status CreateColumnFamiles(rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();
   Status RestoreFromBackup(rocksdb::SequenceNumber *seq);

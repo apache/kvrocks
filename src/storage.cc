@@ -261,6 +261,7 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
 
   // Close DB;
+  for (auto handle : cf_handles_) delete handle;
   delete db_;
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);

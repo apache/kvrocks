@@ -1388,16 +1388,10 @@ class CommandPSync : public Commander {
     }
 
     while (true) {
-      // TODO: test if sock_fd is closed on the other side, HEARTBEAT
-      int sock_err = 0;
-      socklen_t sock_err_len = sizeof(sock_err);
-      if (getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, (void *)&sock_err,
-                     &sock_err_len) < 0 ||
-          sock_err) {
-        LOG(ERROR) << "Socket err: " << evutil_socket_error_to_string(sock_err);
+      if (!sock_check_liveness(sock_fd)) {
+        LOG(ERROR) << "Connection was closed by peer";
         return Status(Status::NetSendErr);
       }
-
       auto s = svr->storage_->GetWALIter(seq_, &iter);
       if (!s.IsOK()) {
         // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();

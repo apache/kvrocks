@@ -330,9 +330,9 @@ rocksdb::DB *Storage::GetDB() { return db_; }
 int Storage::BackupManager::OpenLatestMeta(Storage *storage,
                                            rocksdb::BackupID *meta_id,
                                            uint64_t *file_size) {
-  Status s = storage->CreateBackup();
-  if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to create new backup, err:" << s.msg();
+  Status status = storage->CreateBackup();
+  if (!status.IsOK()) {
+    LOG(ERROR) << "Failed to create new backup, err:" << status.msg();
     return -1;
   }
   std::vector<rocksdb::BackupInfo> backup_infos;

@@ -19,8 +19,13 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   DLOG(INFO) << "new connection: fd=" << fd
              << " from port: " << worker->svr_->GetConfig()->port << " thread #"
              << worker->tid_;
+  int enable = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&enable, sizeof(enable)) < 0) {
+    LOG(ERROR) << "Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);
+    evutil_closesocket(fd);
+    return;
+  }
   event_base *base = evconnlistener_get_base(listener);
-  // TODO: set tcp-keepliave
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr,
@@ -28,7 +33,6 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
-  // TODO: set tcp-keepalive
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error(status.msg());

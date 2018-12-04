@@ -215,6 +215,7 @@ class DebuggingLogger : public rocksdb::Logger {
 
 Status Storage::CreateBackup() {
   // TODO: assert role to be master. slaves never create backup, they sync
+  LOG(INFO) << "Start to create new backup";
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
   if (!backup_) {
     auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
@@ -225,6 +226,7 @@ Status Storage::CreateBackup() {
   auto s = backup_->CreateNewBackupWithMetadata(
       db_, std::asctime(std::localtime(&tm)));
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
+  LOG(INFO) << "Success to create new backup";
   return Status::OK();
 }
 
@@ -328,8 +330,9 @@ rocksdb::DB *Storage::GetDB() { return db_; }
 int Storage::BackupManager::OpenLatestMeta(Storage *storage,
                                            rocksdb::BackupID *meta_id,
                                            uint64_t *file_size) {
-  if (!storage->CreateBackup().IsOK()) {
-    LOG(ERROR) << "Failed to create new backup";
+  Status s = storage->CreateBackup();
+  if (!s.IsOK()) {
+    LOG(ERROR) << "Failed to create new backup, err:" << s.msg();
     return -1;
   }
   std::vector<rocksdb::BackupInfo> backup_infos;

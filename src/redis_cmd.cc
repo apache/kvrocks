@@ -27,14 +27,14 @@ class CommandAuth : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
     if (config->require_passwd.empty()) {
-      return Status(Status::NotOK, "ERR Client sent AUTH, but no password is set");
-    }
-    if (config->require_passwd == args_[1]) {
+      *output = Redis::Error("ERR Client sent AUTH, but no password is set");
+    } else if (config->require_passwd == args_[1]) {
       *output = Redis::SimpleString("OK");
       conn->Authenticated();
-      return Status::OK();
+    } else {
+      *output = Redis::Error("ERR invalid password");
     }
-    return Status(Status::NotOK, "ERR invalid password");
+    return Status::OK();
   }
 };
 
@@ -42,9 +42,18 @@ class CommandKeys: public Commander {
  public:
   explicit CommandKeys() : Commander("keys", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string prefix = args_[1];
     std::vector<std::string> keys;
     RedisDB redis(svr->storage_);
-    redis.Keys(keys);
+    if (prefix == "*") {
+      redis.Keys(std::string(), &keys);
+    } else {
+      if (prefix[prefix.size()-1]!= '*') {
+        *output = Redis::Error("ERR only keys prefix match was supported");
+        return Status::OK();
+      }
+      redis.Keys(prefix.substr(0, prefix.size()-1), &keys);
+    }
     *output = Redis::MultiBulkString(keys);
     return Status::OK();
   }
@@ -71,21 +80,20 @@ class CommandConfig : public Commander {
       }
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success.";
-      return Status::OK();
     } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);
-      return Status::OK();
     } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
       Status s = config->Set(args_[2], args_[3]);
       if (!s.IsOK()) {
         return Status(Status::NotOK, s.msg()+":"+args_[2]);
       }
       *output = Redis::SimpleString("OK");
-      return Status::OK();
+    } else {
+      *output = Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
     }
-    return Status(Status::NotOK, "CONFIG subcommand must be one of GET, SET, REWRITE");
+    return Status::OK();
   }
 };
 
@@ -152,7 +160,7 @@ class CommandIncrBy : public Commander {
     try {
       increment_ = std::stoll(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
     return Commander::Parse(args);
   }
@@ -177,7 +185,7 @@ class CommandDecrBy : public Commander {
     try {
       increment_ = std::stoll(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
     return Commander::Parse(args);
   }
@@ -221,9 +229,8 @@ class CommandType: public Commander {
       std::vector<std::string> type_names = {"none", "string", "hash", "list", "set", "zset"};
       *output = Redis::BulkString(type_names[type]);
       return Status::OK();
-    } else {
-      return Status(Status::RedisExecErr, s.ToString());
     }
+    return Status(Status::RedisExecErr, s.ToString());
   }
 };
 
@@ -272,7 +279,7 @@ class CommandExpire: public Commander {
       }
       seconds_ += now;
     } catch (std::exception &e) {
-      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
     return Commander::Parse(args);
   }
@@ -410,7 +417,7 @@ class CommandHIncrBy : public Commander {
     try {
       increment_ = std::stoll(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisExecErr, "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
     return Commander::Parse(args);
   }

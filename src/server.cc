@@ -247,7 +247,7 @@ void Server::GetStatsInfo(std::string &info) {
   std::ostringstream string_stream;
   string_stream << "# Stats\r\n";
   string_stream << "total_connections_received:" << total_clients_ <<"\r\n";
-  string_stream << "total_commands_processed:" << stats_.calls <<"\r\n";
+  string_stream << "total_commands_processed:" << stats_.total_calls <<"\r\n";
   string_stream << "total_net_input_bytes:" << stats_.in_bytes <<"\r\n";
   string_stream << "total_net_output_bytes:" << stats_.out_bytes <<"\r\n";
   string_stream << "sync_full:" << stats_.fullsync_counter <<"\r\n";

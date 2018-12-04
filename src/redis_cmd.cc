@@ -1419,6 +1419,7 @@ class CommandPSync : public Commander {
         seq_ = batch.sequence + 1;
         iter->Next();
       }
+
       // if arrived here, means the wal file is rotated, a reopen is needed.
       LOG(INFO) << "WAL rotate";
       std::this_thread::sleep_for(std::chrono::seconds(1));

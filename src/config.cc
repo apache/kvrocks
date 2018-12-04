@@ -136,7 +136,7 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "masterauth") {
     master_auth = args[1];
-  } else if (size == 2 && args[0] == "reuqirepass") {
+  } else if (size == 2 && args[0] == "requirepass") {
     require_passwd = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
     pidfile = args[1];

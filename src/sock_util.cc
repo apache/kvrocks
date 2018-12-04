@@ -10,7 +10,7 @@
 
 #include "sock_util.h"
 
-sockaddr_in new_sockaddr_inet(std::string host, uint32_t port) {
+sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr(host.c_str());

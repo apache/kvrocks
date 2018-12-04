@@ -56,7 +56,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   master_host_ = std::move(host);
   master_port_ = port;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(master_host_, master_port_, storage_));
+      new ReplicationThread(master_host_, master_port_, storage_, config_->master_auth));
   replication_thread_->Start([this]() { this->is_loading_ = true; },
                              [this]() { this->is_loading_ = false; });
   return Status::OK();

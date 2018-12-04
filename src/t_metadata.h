@@ -94,6 +94,7 @@ public:
   rocksdb::Status Exists(std::vector<Slice> keys, int *ret);
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
+  rocksdb::Status Keys(std::vector<std::string> &keys);
 
 protected:
   Engine::Storage *storage;

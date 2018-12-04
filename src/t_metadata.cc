@@ -259,6 +259,22 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status RedisDB::Keys(std::vector<std::string> &keys) {
+  std::string value;
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Metadata metadata(kRedisNone);
+    value = iter->value().ToString();
+    metadata.Decode(value);
+    if (!metadata.Expired()) keys.emplace_back(iter->key().ToString());
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   *type = kRedisNone;
   LatestSnapShot ss(db_);

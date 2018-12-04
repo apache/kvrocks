@@ -38,6 +38,18 @@ class CommandAuth : public Commander {
   }
 };
 
+class CommandKeys: public Commander {
+ public:
+  explicit CommandKeys() : Commander("keys", 2, false, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<std::string> keys;
+    RedisDB redis(svr->storage_);
+    redis.Keys(keys);
+    *output = Redis::MultiBulkString(keys);
+    return Status::OK();
+  }
+};
+
 class CommandPing : public Commander {
  public:
   explicit CommandPing() : Commander("ping", 1, false, false) {}
@@ -1530,6 +1542,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
     {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},
+    {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

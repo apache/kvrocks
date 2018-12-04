@@ -90,6 +90,7 @@ rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) 
     InternalKey ikey(iter->key());
     members->emplace_back(ikey.GetSubKey().ToString());
   }
+  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -138,6 +139,7 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
     if (pop) batch.Delete(iter->key());
     if (++n >= count) break;
   }
+  delete iter;
   if (pop && n > 0) {
     metadata.size -= n;
     std::string bytes;

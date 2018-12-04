@@ -276,6 +276,7 @@ rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys
     metadata.Decode(value);
     if (!metadata.Expired()) keys->emplace_back(iter->key().ToString());
   }
+  delete iter;
   return rocksdb::Status::OK();
 }
 

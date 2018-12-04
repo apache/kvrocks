@@ -115,6 +115,8 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
     batch.Delete(score_cf_handle_, iter->key());
     if (mscores->size() >= static_cast<unsigned>(count)) break;
   }
+  delete iter;
+
   if (mscores->size() > 0) {
     metadata.size -= mscores->size();
     std::string bytes;
@@ -170,6 +172,8 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
     }
     if (count++ >= stop) break;
   }
+  delete iter;
+
   if (removed &&count > 0) {
     metadata.size -= count;
     std::string bytes;
@@ -223,6 +227,8 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
     if (size) *size += 1;
     if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
+  delete iter;
+
   if (spec.removed && *size > 0) {
     metadata.size -= *size;
     std::string bytes;
@@ -330,6 +336,8 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
     if (score == target_score && score_key == member) break;
     rank++;
   }
+  delete iter;
+
   *ret = rank;
   return rocksdb::Status::OK();
 }

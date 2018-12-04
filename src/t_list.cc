@@ -139,6 +139,7 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
     if (index > metadata.head+stop) break;
     elems->push_back(iter->value().ToString());
   }
+  delete iter;
   return rocksdb::Status::OK();
 }
 

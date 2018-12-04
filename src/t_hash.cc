@@ -230,5 +230,6 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
     }
     field_values->emplace_back(fv);
   }
+  delete iter;
   return rocksdb::Status::OK();
 }

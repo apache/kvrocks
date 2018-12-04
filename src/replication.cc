@@ -42,6 +42,16 @@ void set_write_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
   bufferevent_setcb(bev, nullptr, cb, conn_event_cb, ctx);
 }
 
+ReplicationThread::CallbacksStateMachine::CallbacksStateMachine(
+    ReplicationThread *repl,
+    ReplicationThread::CallbacksStateMachine::CallbackList &&handlers)
+    : repl_(repl), handlers_(std::move(handlers)) {
+  if (!repl_->auth_.empty()) {
+    handlers_.emplace_front(CallbacksStateMachine::READ, Auth_read_cb);
+    handlers_.emplace_front(CallbacksStateMachine::WRITE, Auth_write_cb);
+  }
+}
+
 void ReplicationThread::CallbacksStateMachine::evCallback(bufferevent *bev,
                                                           void *ctx) {
   auto self = static_cast<CallbacksStateMachine *>(ctx);
@@ -51,7 +61,6 @@ LOOP_LABEL:
   DLOG(INFO) << "[replication] Execute handler[" << self->handler_idx_ << "]";
   switch (st) {
     case NEXT:
-      DLOG(INFO) << "====NEXT";
       ++self->handler_idx_;
       if (self->handlers_[self->handler_idx_].first == WRITE) {
         set_write_cb(bev, evCallback, ctx);
@@ -62,10 +71,8 @@ LOOP_LABEL:
       // have the data already.
       goto LOOP_LABEL;
     case AGAIN:
-      DLOG(INFO) << "====AGAIN";
       break;
     case QUIT:
-      DLOG(INFO) << "====QUIT";
       bufferevent_free(bev);
       break;
   }
@@ -91,9 +98,10 @@ void ReplicationThread::CallbacksStateMachine::Start() {
 }
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
-                                     Engine::Storage *storage)
+                                     Engine::Storage *storage, std::string auth)
     : host_(std::move(host)),
       port_(port),
+      auth_(std::move(auth)),
       storage_(storage),
       repl_state_(kReplConnecting),
       psync_steps_(this,
@@ -155,6 +163,30 @@ void ReplicationThread::Run() {
   event_base_free(base_);
 }
 
+ReplicationThread::CBState ReplicationThread::Auth_write_cb(bufferevent *bev,
+                                                            void *ctx) {
+  auto self = static_cast<ReplicationThread *>(ctx);
+  const auto auth_len_str = std::to_string(self->auth_.length());
+  send_string(bev, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
+                       self->auth_ + CRLF);
+  return CBState::NEXT;
+}
+
+ReplicationThread::CBState ReplicationThread::Auth_read_cb(bufferevent *bev,
+                                                           void *ctx) {
+  char *line;
+  size_t line_len;
+  auto input = bufferevent_get_input(bev);
+  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) return CBState::AGAIN;
+  if (strncmp(line, "+OK", 3) != 0) {
+    // Auth failed
+    LOG(ERROR) << "[replication] Auth failed";
+    return CBState::QUIT;
+  }
+  return CBState::NEXT;
+}
+
 ReplicationThread::CBState ReplicationThread::CheckDBName_write_cb(
     bufferevent *bev, void *ctx) {
   send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
@@ -186,8 +218,8 @@ ReplicationThread::CBState ReplicationThread::TryPsync_write_cb(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
   const auto seq_str = std::to_string(self->seq_);
-  const auto seq_len_len = std::to_string(seq_str.length());
-  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_len +
+  const auto seq_len_str = std::to_string(seq_str.length());
+  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
                        CRLF + seq_str + CRLF;
   send_string(bev, cmd_str);
   self->repl_state_ = kReplSendPSync;
@@ -273,8 +305,7 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
   switch (self->fullsync_state_) {
     case Fetch_meta_id:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-      if (!line)
-        return CBState::AGAIN;
+      if (!line) return CBState::AGAIN;
       self->fullsync_meta_id_ = static_cast<rocksdb::BackupID>(
           line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
       free(line);
@@ -344,21 +375,39 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
 
 Status ReplicationThread::FetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
+  char *line;
+  size_t line_len, file_size;
+  evbuffer *evbuf = evbuffer_new();
+
+  // Send auth when needed
+  if (!auth_.empty()) {
+    const auto auth_len_str = std::to_string(auth_.length());
+    sock_send(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
+                           CRLF + auth_ + CRLF);
+    while(true) {
+      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+        LOG(ERROR) << "[replication] Failed to auth resp";
+        return Status(Status::NotOK);
+      }
+      line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      if (!line) continue;
+      if (strncmp(line, "+OK", 3) != 0) {
+        LOG(ERROR) << "[replication] Auth failed";
+        return Status(Status::NotOK);
+      }
+    }
+  }
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
 
-  char *line;
-  size_t line_len, file_size;
-  evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
     // TODO: test stop_flag_
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "[replication] Failed to read data file "
-                    "size line";
+      LOG(ERROR) << "[replication] Failed to read size line";
       return Status(Status::NotOK);
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);

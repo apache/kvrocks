@@ -17,7 +17,7 @@ typedef enum {
 class ReplicationThread {
  public:
   explicit ReplicationThread(std::string host, uint32_t port,
-                             Engine::Storage *storage);
+                             Engine::Storage *storage, std::string auth = "");
   void Start(std::function<void()> &&pre_fullsync_cb,
              std::function<void()> &&post_fullsync_cb);
   void Stop();
@@ -30,10 +30,10 @@ class ReplicationThread {
   bool stop_flag_ = false;
   std::string host_;
   uint32_t port_;
+  std::string auth_;
   Engine::Storage *storage_;
   rocksdb::SequenceNumber seq_ = 0;
   ReplState repl_state_;
-  Status last_status = Status::OK();  // Use to indicate some fatal errors
 
   std::function<void()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;
@@ -66,11 +66,9 @@ class ReplicationThread {
       READ,
       WRITE,
     };
-    using CallbackList = std::vector<
+    using CallbackList = std::deque<
         std::pair<EventType, std::function<State(bufferevent *, void *)>>>;
-    CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers)
-        : repl_(repl),
-          handlers_(std::move(handlers)) {}
+    CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers);
 
     void Start();
     void Stop();
@@ -86,6 +84,8 @@ class ReplicationThread {
   CallbacksStateMachine psync_steps_;
   CallbacksStateMachine fullsync_steps_;
   void Run();
+  static CBState Auth_write_cb(bufferevent *bev, void *ctx);
+  static CBState Auth_read_cb(bufferevent *bev, void *ctx);
   static CBState CheckDBName_write_cb(bufferevent *bev, void *ctx);
   static CBState CheckDBName_read_cb(bufferevent *bev, void *ctx);
   static CBState TryPsync_write_cb(bufferevent *bev, void *ctx);

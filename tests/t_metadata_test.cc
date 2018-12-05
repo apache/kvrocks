@@ -6,8 +6,13 @@
 TEST(InternalKey, EncodeAndDecode) {
   Slice key = "test-metadata-key";
   Slice sub_key = "test-metadata-sub-key";
+  Slice ns = "namespace";
   uint64_t version = 12;
-  InternalKey ikey(key, sub_key, version);
+  std::string ns_key;
+  PutFixed8(&ns_key, static_cast<uint8_t>(ns.size()));
+  ns_key.append(ns.ToString());
+  ns_key.append(key.ToString());
+  InternalKey ikey(ns_key, sub_key, version);
   ASSERT_EQ(ikey.GetKey(), key);
   ASSERT_EQ(ikey.GetSubKey(), sub_key);
   ASSERT_EQ(ikey.GetVersion(), version);
@@ -42,8 +47,8 @@ TEST(Metadata, EncodeAndDeocde) {
 class RedisTypeTest : public TestBase {
 public:
   RedisTypeTest() :TestBase() {
-    redis = new RedisDB(storage_);
-    hash = new RedisHash(storage_);
+    redis = new RedisDB(storage_, "default_ns");
+    hash = new RedisHash(storage_, "default_ns");
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_  = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
@@ -66,7 +71,9 @@ TEST_F(RedisTypeTest, GetMetadata) {
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
   HashMetadata metadata;
-  redis->GetMetadata(kRedisHash, key_, &metadata);
+  std::string ns_key;
+  redis->AppendNamepacePrefix(key_, &ns_key);
+  redis->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis->Del(key_);
   EXPECT_TRUE(s.ok()) ;

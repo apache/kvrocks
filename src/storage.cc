@@ -14,23 +14,27 @@ namespace Engine {
 
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
-const char *kScanColumnFamilyName = "scan";
 using rocksdb::Slice;
 
 class MetadataFilter : public rocksdb::CompactionFilter {
  public:
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override {
-    std::string bytes = value.ToString();
+    std::string ns, real_key, bytes = value.ToString();
     Metadata metadata(kRedisNone);
     rocksdb::Status s = metadata.Decode(bytes);
+    ExtractNamespaceKey(key, &ns, &real_key);
     if (!s.ok()) {
-      LOG(WARNING) << "[MetadataFilter] Failed to decode the metadata, key: "
-                   << key.ToString() << ", err: " << s.ToString();
+      LOG(WARNING) << "[Compacting metadata key] Failed to decode,"
+                   << "namespace: " << ns
+                   << "key: " << real_key
+                   << ", err: " << s.ToString();
       return false;
     }
-    DLOG(INFO) << "[MetadataFilter] Compacting the key: " << key.ToString()
-               << ", filter: " << (metadata.Expired() ? "deleted":"reserved");
+    DLOG(INFO) << "[Compacting metadata key]"
+               << " namespace: " << ns
+               << ", key: " << real_key
+               << ", result: " << (metadata.Expired() ? "deleted":"reserved");
     return metadata.Expired();
   }
   const char *Name() const override { return "MetadataFilter"; }
@@ -62,8 +66,11 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
       std::string bytes;
       rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
                                       metadata_key, &bytes);
-      DLOG(INFO) << "[SubKeyFilter] Compacting the key: " << ikey.GetSubKey().ToString()
-                 << ", verison: " << ikey.GetVersion() << ", metadata key: " << ikey.GetKey().ToString();
+      DLOG(INFO) << "[Compacting subkey]"
+                 << " namespace: " << ikey.GetNamespace().ToString()
+                 << ", metadata key: "<< ikey.GetKey().ToString()
+                 << ", subkey: "<< ikey.GetSubKey().ToString()
+                 << ", verison: " << ikey.GetVersion();
       cached_key_ = metadata_key;
       if (s.ok()) {
         cached_metadata_ = bytes;

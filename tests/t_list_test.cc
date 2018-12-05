@@ -4,7 +4,7 @@
 class RedisListTest : public TestBase {
 protected:
   explicit RedisListTest():TestBase() {
-    list = new RedisList(storage_);
+    list = new RedisList(storage_, "list_ns");
   }
   ~RedisListTest() {
     delete list;

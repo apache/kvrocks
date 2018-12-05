@@ -19,12 +19,15 @@ enum RedisType {
 
 using rocksdb::Slice;
 
+void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
+
 class InternalKey {
 public:
   explicit InternalKey(Slice key, Slice sub_key, uint64_t version);
   explicit InternalKey(Slice input);
   ~InternalKey();
 
+  Slice GetNamespace();
   Slice GetKey();
   Slice GetSubKey();
   uint64_t GetVersion();
@@ -32,6 +35,7 @@ public:
   bool operator==(const InternalKey &that) const;
 
 private:
+  Slice namespace_;
   Slice key_;
   Slice sub_key_;
   uint64_t version_;
@@ -87,7 +91,7 @@ public:
 
 class RedisDB {
 public:
-  explicit RedisDB(Engine::Storage *storage);
+  explicit RedisDB(Engine::Storage *storage, std::string ns);
   rocksdb::Status GetMetadata(RedisType type, Slice key, Metadata *metadata);
   rocksdb::Status Expire(Slice key, int timestamp);
   rocksdb::Status Del(Slice key);
@@ -95,11 +99,13 @@ public:
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
   rocksdb::Status Keys(std::string prefix, std::vector<std::string> *keys);
+  void AppendNamepacePrefix(const Slice &key, std::string *output);
 
 protected:
   Engine::Storage *storage;
   rocksdb::DB *db_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
+  std::string namespace_;
 
   class LatestSnapShot {
    public:

@@ -12,6 +12,9 @@ rocksdb::Status RedisSet::GetMetadata(Slice key, SetMetadata*metadata) {
 rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   *ret = 0;
 
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -39,6 +42,10 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
 
 rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret) {
   *ret = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -64,6 +71,9 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
 
 rocksdb::Status RedisSet::Card(Slice key, int *ret) {
   *ret = 0;
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -73,6 +83,10 @@ rocksdb::Status RedisSet::Card(Slice key, int *ret) {
 
 rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) {
   members->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -96,6 +110,10 @@ rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) 
 
 rocksdb::Status RedisSet::IsMember(Slice key, Slice member, int *ret) {
   *ret = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -118,6 +136,9 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   members->clear();
   if (count <= 0) return rocksdb::Status::OK();
 
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

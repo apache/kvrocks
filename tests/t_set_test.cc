@@ -5,7 +5,7 @@
 class RedisSetTest : public TestBase {
 protected:
   explicit RedisSetTest() : TestBase() {
-    set = new RedisSet(storage_);
+    set = new RedisSet(storage_, "set_ns");
   }
   ~RedisSetTest() {
     delete set;

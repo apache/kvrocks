@@ -11,7 +11,7 @@
 
 class RedisList :public RedisDB {
 public:
-  explicit RedisList(Engine::Storage *storage) : RedisDB(storage) {}
+  explicit RedisList(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status Push(Slice key, std::vector<Slice> elems, bool left, int *ret);
   rocksdb::Status PushX(Slice key, std::vector<Slice> elems, bool left, int *ret);

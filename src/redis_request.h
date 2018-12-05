@@ -61,12 +61,14 @@ class Connection {
 
   bool IsAuthenticated() { return is_authenticated_; }
   void Authenticated() { is_authenticated_ = true; }
+  std::string GetNamespace() { return ns_; };
   int GetFD();
   evbuffer *Input();
   evbuffer *Output();
   bufferevent *GetBufferEvent() { return bev_; }
 
  private:
+  std::string ns_="default_ns";
   bool is_authenticated_ = false;
   bufferevent *bev_;
   Request req_;

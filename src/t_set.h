@@ -9,7 +9,7 @@
 
 class RedisSet : public RedisDB {
 public:
-  explicit RedisSet(Engine::Storage *storage) : RedisDB(storage) {}
+  explicit RedisSet(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
   rocksdb::Status Add(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status Remove(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status Card(Slice key, int *ret);

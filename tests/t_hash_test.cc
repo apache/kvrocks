@@ -5,7 +5,7 @@
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {
-    hash = new RedisHash(storage_);
+    hash = new RedisHash(storage_, "hash_ns");
   }
   ~RedisHashTest() {
     delete hash;

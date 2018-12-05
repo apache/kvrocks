@@ -10,7 +10,7 @@ typedef struct {
 
 class RedisString :public RedisDB {
 public:
-  explicit RedisString(Engine::Storage *storage): RedisDB(storage) {}
+  explicit RedisString(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
   rocksdb::Status Append(Slice key, Slice value, int *ret);
   rocksdb::Status BitCount(Slice key, int start, int stop, int *ret);
   rocksdb::Status Get(Slice key, std::string *value);

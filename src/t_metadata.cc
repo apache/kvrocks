@@ -3,6 +3,10 @@
 
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
+  uint8_t namespace_size;
+  GetFixed8(&input, &namespace_size);
+  namespace_ = Slice(input.data(), namespace_size);
+  input.remove_prefix(namespace_size);
   GetFixed32(&input, &key_size);
   key_ = Slice(input.data(), key_size);
   input.remove_prefix(key_size);
@@ -12,6 +16,10 @@ InternalKey::InternalKey(Slice input) {
 }
 
 InternalKey::InternalKey(Slice key, Slice sub_key, uint64_t version) {
+  uint8_t namespace_size;
+  GetFixed8(&key, &namespace_size);
+  namespace_ = Slice(key.data(), namespace_size);
+  key.remove_prefix(namespace_size);
   key_ = key;
   sub_key_ = sub_key;
   version_ = version;
@@ -20,6 +28,10 @@ InternalKey::InternalKey(Slice key, Slice sub_key, uint64_t version) {
 
 InternalKey::~InternalKey() {
   if (buf_ != nullptr && buf_!=prealloc_) delete []buf_;
+}
+
+Slice InternalKey::GetNamespace() {
+  return namespace_;
 }
 
 Slice InternalKey::GetKey() {
@@ -43,7 +55,11 @@ void InternalKey::Encode(std::string *out) {
   } else {
     buf_ = new char[total];
   }
-  EncodeFixed32(buf_+pos, (uint32_t) key_.size());
+  EncodeFixed8(buf_+pos, static_cast<uint8_t>(namespace_.size()));
+  pos += 1;
+  memcpy(buf_+pos, namespace_.data(), namespace_.size());
+  pos += namespace_.size();
+  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()));
   pos += 4;
   memcpy(buf_+pos, key_.data(), key_.size());
   pos += key_.size();
@@ -58,6 +74,14 @@ bool InternalKey::operator==(const InternalKey &that) const {
   if (key_ != that.key_) return false;
   if (sub_key_ != that.sub_key_) return false;
   return version_ == that.version_;
+}
+
+void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key) {
+  uint8_t namespace_size;
+  GetFixed8(&ns_key, &namespace_size);
+  *ns = ns_key.ToString().substr(0, namespace_size);
+  ns_key.remove_prefix(namespace_size);
+  *key = ns_key.ToString();
 }
 
 Metadata::Metadata(RedisType type) {
@@ -160,10 +184,11 @@ rocksdb::Status ListMetadata::Decode(std::string &bytes) {
   return rocksdb::Status();
 }
 
-RedisDB::RedisDB(Engine::Storage *db_wrapper) {
+RedisDB::RedisDB(Engine::Storage *db_wrapper, std::string ns) {
   storage = db_wrapper;
   metadata_cf_handle_ = db_wrapper->GetCFHandle("metadata");
   db_ = db_wrapper->GetDB();
+  namespace_ = std::move(ns);
 }
 
 rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metadata) {
@@ -195,6 +220,9 @@ rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metada
 }
 
 rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   std::string value;
   Metadata metadata(kRedisNone);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
@@ -221,6 +249,9 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
 }
 
 rocksdb::Status RedisDB::Del(Slice key) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   std::string value;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
@@ -234,17 +265,21 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
-  std::vector<std::string> values;
-  std::vector<rocksdb::ColumnFamilyHandle *>handles;
-  handles.resize(keys.size(), metadata_cf_handle_);
-  std::vector<rocksdb::Status> statuses = db_->MultiGet(read_options, handles, keys, &values);
-  for (const auto status : statuses) {
-    if (status.ok()) *ret += 1;
+
+  rocksdb::Status s;
+  std::string ns_key, value;
+  for (const auto &key : keys) {
+    AppendNamepacePrefix(key, &ns_key);
+    s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+    if (s.ok()) *ret += 1;
   }
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   *ttl = -2; // ttl is -2 when the key does not exist or expired
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -260,7 +295,10 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
 }
 
 rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
-  std::string value;
+  std::string ns_prefix, ns, real_key, value;
+  AppendNamepacePrefix(prefix, &ns_prefix);
+  prefix = ns_prefix;
+
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -274,13 +312,20 @@ rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys
     Metadata metadata(kRedisNone);
     value = iter->value().ToString();
     metadata.Decode(value);
-    if (!metadata.Expired()) keys->emplace_back(iter->key().ToString());
+    if (!metadata.Expired()) {
+      ExtractNamespaceKey(iter->key(), &ns, &real_key);
+      keys->emplace_back(real_key);
+    }
   }
   delete iter;
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+
   *type = kRedisNone;
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -293,4 +338,11 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   metadata.Decode(value);
   *type = metadata.Type();
   return rocksdb::Status::OK();
+}
+
+void RedisDB::AppendNamepacePrefix(const Slice &key, std::string *output) {
+  output->clear();
+  PutFixed8(output, static_cast<uint8_t>(namespace_.size()));
+  output->append(namespace_);
+  output->append(key.ToString());
 }

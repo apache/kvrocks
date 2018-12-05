@@ -7,6 +7,10 @@ rocksdb::Status RedisList::GetMetadata(Slice key, ListMetadata *metadata) {
 
 rocksdb::Status RedisList::Size(Slice key, uint32_t *ret) {
   *ret = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -23,6 +27,9 @@ rocksdb::Status RedisList::PushX(Slice key, std::vector<Slice> elems, bool left,
 }
 
 rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
@@ -54,6 +61,10 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
 
 rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   elem->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -85,6 +96,10 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
 
 rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
   elem->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -109,6 +124,10 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
 // Redis will treat it like the last element of the list.
 rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std::string> *elems) {
   elems->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -144,6 +163,9 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
 }
 
 rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -180,6 +202,9 @@ rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
 
 // Caution: trim the big list may block the server
 rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

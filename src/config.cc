@@ -11,6 +11,7 @@
 #include "status.h"
 
 static const std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
+static const std::string default_namespace = "__namespace";
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;
@@ -158,6 +159,8 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
+  } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
+    tokens[args[1]] = args[0].substr(10, args.size()-10);
   } else {
     *err = "Bad directive or wrong number of arguments";
     return false;
@@ -186,6 +189,11 @@ bool Config::Load(std::string path, std::string *err) {
     }
     line_num++;
   }
+  if (require_passwd.empty()) {
+    *err = "requirepass cannot be empty";
+    return false;
+  }
+  tokens.insert(std::pair<std::string,std::string>{require_passwd, default_namespace});
   file.close();
   return true;
 }
@@ -203,6 +211,19 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
       args[1] = std::to_string(maxclients);
       return true;
     }
+  } else if (size == 2 && args[0] == "masterauth") {
+    if (master_auth!= args[1]) {
+      args[1] = master_auth;
+      return true;
+    }
+  } else if (size == 2 && args[0] == "requirepass") {
+    if (require_passwd != args[1]) {
+      args[1] = require_passwd;
+      return true;
+    }
+  } else if (size == 2 && args[0] == "slave-read-only") {
+    args[1] = slave_readonly? "yes":"no";
+    return true;
   } else if (size == 2 && args[0] == "backup-dir") {
     if (backup_dir != args[1]) {
       args[1] = backup_dir;
@@ -343,7 +364,12 @@ Status Config::Set(std::string &key, std::string &value) {
     return Status::OK();
   }
   if (key == "requirepass") {
+    if (value.empty()) {
+      return Status(Status::NotOK, "requirepass cannot be empty");
+    }
+    tokens.erase(require_passwd);
     require_passwd = value;
+    tokens[require_passwd] = default_namespace;
     return Status::OK();
   }
   if (key == "slave-read-only") {
@@ -386,9 +412,14 @@ bool Config::Rewrite(std::string *err) {
     Util::Split(line, " \t\r\n", &args);
     if (args.empty() || args[0].front() == '#'
         || !rewriteConfigValue(args)) {
+      if (!strncasecmp(args[0].data(), "namespace.", 10)) {
+        // skip the namespace, append at the end
+        continue;
+      }
       buffer.append(line);
       buffer.append("\n");
     } else {
+      string_stream.str(std::string());
       string_stream.clear();
       for (const auto &arg : args) {
         string_stream << arg << " ";
@@ -397,6 +428,16 @@ bool Config::Rewrite(std::string *err) {
       buffer.append("\n");
     }
   }
+
+  string_stream.str(std::string());
+  string_stream.clear();
+  for (auto iter = tokens.begin(); iter != tokens.end(); ++iter) {
+    if (iter->first != require_passwd) {
+      string_stream << "namespace." << iter->second << " " << iter->first << "\n";
+    }
+  }
+  buffer.append(string_stream.str());
+
   output_file.write(buffer.data(), buffer.size());
   input_file.close();
   output_file.close();
@@ -405,4 +446,49 @@ bool Config::Rewrite(std::string *err) {
     return false;
   }
   return true;
+}
+
+void Config::GetNamespace(std::string &ns, std::string *token) {
+  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+    if (iter->second == ns) {
+      *token = iter->first;
+    }
+  }
+}
+
+Status Config::SetNamepsace(std::string &ns, std::string token) {
+  if (ns == default_namespace) {
+    return Status(Status::NotOK, "can't set the default namespace");
+  }
+  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+    if (iter->second == ns) {
+      tokens.erase(iter);
+      tokens[token] = ns;
+      return Status::OK();
+    }
+  }
+  return Status(Status::NotOK, "namespace was not found");
+}
+
+Status Config::AddNamespace(std::string &ns, std::string token) {
+  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+    if (iter->second == ns) {
+      return Status(Status::NotOK, "namespace has already exists");
+    }
+  }
+  tokens[token] = ns;
+  return Status::OK();
+}
+
+Status Config::DelNamespace(std::string &ns) {
+  if (ns == default_namespace) {
+    return Status(Status::NotOK, "can't del the default namespace");
+  }
+  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+    if (iter->second == ns) {
+      tokens.erase(iter);
+      return Status::OK();
+    }
+  }
+  return Status(Status::NotOK, "namespace was not found");
 }

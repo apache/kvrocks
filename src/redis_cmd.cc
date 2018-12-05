@@ -26,13 +26,47 @@ class CommandAuth : public Commander {
   explicit CommandAuth() : Commander("auth", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
-    if (config->require_passwd.empty()) {
-      *output = Redis::Error("ERR Client sent AUTH, but no password is set");
-    } else if (config->require_passwd == args_[1]) {
-      *output = Redis::SimpleString("OK");
-      conn->Authenticated();
-    } else {
+    auto iter = config->tokens.find(args_[1]);
+    if (iter == config->tokens.end()) {
       *output = Redis::Error("ERR invalid password");
+    } else {
+      conn->SetNamespace(iter->second);
+      *output = Redis::SimpleString("OK");
+    }
+    return Status::OK();
+  }
+};
+
+class CommandNamespace : public Commander {
+ public:
+  explicit CommandNamespace() : Commander("namespace", -3, false, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Config *config = svr->GetConfig();
+    if (args_.size() == 3 && args_[1] == "get") {
+      if (args_[2] == "*") {
+        std::vector<std::string> namespaces;
+        auto tokens = config->tokens;
+        for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+          namespaces.emplace_back(iter->second); // namespace
+          namespaces.emplace_back(iter->first); // token
+        }
+        *output = Redis::MultiBulkString(namespaces);
+      } else {
+        std::string token;
+        config->GetNamespace(args_[2], &token);
+        *output = Redis::BulkString(token);
+      }
+    } else if (args_.size() == 4 && args_[1] == "set") {
+      Status s = config->SetNamepsace(args_[2], args_[3]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else if (args_.size() == 4 && args_[1] == "add") {
+      Status s = config->AddNamespace(args_[2], args_[3]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else if (args_.size() == 3 && args_[1] == "del") {
+      Status s = config->DelNamespace(args_[2]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else {
+      *output = Redis::Error("NAMESPACE subcommand must be one of GET, SET, DEL, ADD");
     }
     return Status::OK();
   }
@@ -44,7 +78,7 @@ class CommandKeys: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string prefix = args_[1];
     std::vector<std::string> keys;
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     if (prefix == "*") {
       redis.Keys(std::string(), &keys);
     } else {
@@ -102,7 +136,7 @@ class CommandGet : public Commander {
   explicit CommandGet() : Commander("get", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Get(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -116,7 +150,7 @@ class CommandSet : public Commander {
  public:
   explicit CommandSet() : Commander("set", 3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Set(args_[1], args_[2]);
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
@@ -132,7 +166,7 @@ class CommandIncr : public Commander {
   explicit CommandIncr() : Commander("incr", 2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], 1, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(ret);
@@ -145,7 +179,7 @@ class CommandDecr: public Commander {
   explicit CommandDecr() : Commander("decr", 2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], -1, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(ret);
@@ -167,7 +201,7 @@ class CommandIncrBy : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], increment_, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(ret);
@@ -192,7 +226,7 @@ class CommandDecrBy : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
-    RedisString string_db(svr->storage_);
+    RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], -1*increment_, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(ret);
@@ -208,7 +242,7 @@ class CommandDel : public Commander {
   explicit CommandDel() : Commander("del", -2, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     for (unsigned int i = 1; i < args_.size(); i++) {
       rocksdb::Status s = redis.Del(args_[i]);
       if (s.ok()) cnt++;
@@ -222,7 +256,7 @@ class CommandType: public Commander {
  public:
   explicit CommandType () : Commander("type", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     RedisType type;
     rocksdb::Status s = redis.Type(args_[1], &type);
     if (s.ok()) {
@@ -238,7 +272,7 @@ class CommandTTL: public Commander {
  public:
   explicit CommandTTL() : Commander("ttl", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     int ttl;
     rocksdb::Status s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
@@ -255,7 +289,7 @@ class CommandExists: public Commander {
   explicit CommandExists() : Commander("exists", -2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     std::vector<rocksdb::Slice> keys;
     for (unsigned i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
@@ -285,7 +319,7 @@ class CommandExpire: public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisDB redis(svr->storage_);
+    RedisDB redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
       *output = Redis::Integer(1);
@@ -303,7 +337,7 @@ class CommandHGet : public Commander {
  public:
   explicit CommandHGet() : Commander("hget", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -319,7 +353,7 @@ class CommandHSet : public Commander {
   explicit CommandHSet() : Commander("hset", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.Set(args_[1], args_[2], args_[3], &ret);
     if (s.ok()) {
       *output = Redis::Integer(ret);
@@ -335,7 +369,7 @@ class CommandHSetNX : public Commander {
   explicit CommandHSetNX() : Commander("hsetnx", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
     if (s.ok()) {
       *output = Redis::Integer(ret);
@@ -350,7 +384,7 @@ class CommandHStrlen : public Commander {
  public:
   explicit CommandHStrlen() : Commander("hstrlen", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -366,7 +400,7 @@ class CommandHDel: public Commander {
   explicit CommandHDel() : Commander("hdel", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
@@ -384,7 +418,7 @@ class CommandHExists: public Commander {
  public:
   explicit CommandHExists() : Commander("hexists", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -400,7 +434,7 @@ class CommandHLen: public Commander {
   explicit CommandHLen() : Commander("hlen", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t count;
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -422,7 +456,7 @@ class CommandHIncrBy : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     long long ret;
     rocksdb::Status s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
@@ -439,7 +473,7 @@ class CommandHMGet: public Commander {
  public:
   explicit CommandHMGet() : Commander("hmget", -3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
@@ -468,7 +502,7 @@ class CommandHMSet: public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     for (unsigned int i = 2; i < args_.size(); i++) {
       field_values.push_back(FieldValue{args_[i], args_[i+1]});
@@ -486,7 +520,7 @@ class CommandHKeys: public Commander {
  public:
   explicit CommandHKeys() : Commander("hkeys", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 1);
     if (!s.ok()) {
@@ -505,7 +539,7 @@ class CommandHVals: public Commander {
  public:
   explicit CommandHVals() : Commander("hvals", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 2);
     if (!s.ok()) {
@@ -524,7 +558,7 @@ class CommandHGetAll: public Commander {
  public:
   explicit CommandHGetAll() : Commander("hgetall", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisHash hash_db(svr->storage_);
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
@@ -547,7 +581,7 @@ class CommandPush: public Commander {
     create_if_missing_ = create_if_missing;
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> elems;
     for (unsigned int i = 2; i < args_.size(); i++) {
       elems.emplace_back(args_[i]);
@@ -596,7 +630,7 @@ class CommandPop: public Commander {
     left_ = left;
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
     rocksdb::Status s = list_db.Pop(args_[1], &elem, left_);
     if (!s.ok() && !s.IsNotFound()) {
@@ -637,7 +671,7 @@ class CommandLRange : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> elems;
     rocksdb::Status s = list_db.Range(args_[1], start_, stop_, &elems);
     if (!s.ok() && !s.IsNotFound()) {
@@ -655,7 +689,7 @@ class CommandLLen : public  Commander {
  public:
   explicit CommandLLen() : Commander("llen", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     uint32_t count;
     rocksdb::Status s = list_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
@@ -678,7 +712,7 @@ class CommandLIndex: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
     rocksdb::Status s = list_db.Index(args_[1], index_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
@@ -704,7 +738,7 @@ class CommandLSet: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Set(args_[1], index_, args_[3]);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -728,7 +762,7 @@ class CommandLTrim: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Trim(args_[1], start_, stop_);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -745,7 +779,7 @@ class CommandLPushRPop: public  Commander {
  public:
   explicit CommandLPushRPop() : Commander("lpushrpop", 3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisList list_db(svr->storage_);
+    RedisList list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
     rocksdb::Status s = list_db.RPopLPush(args_[1], args_[2], &elem);
     if (!s.ok() && !s.IsNotFound()) {
@@ -760,7 +794,7 @@ class CommandSAdd : public  Commander {
  public:
   explicit CommandSAdd() : Commander("sadd", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (unsigned int i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
@@ -779,7 +813,7 @@ class CommandSRem: public  Commander {
  public:
   explicit CommandSRem() : Commander("srem", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (unsigned int i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
@@ -798,7 +832,7 @@ class CommandSCard: public  Commander {
  public:
   explicit CommandSCard() : Commander("scard", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     int ret;
     rocksdb::Status s = set_db.Card(args_[1], &ret);
     if (!s.ok()) {
@@ -813,7 +847,7 @@ class CommandSMembers: public  Commander {
  public:
   explicit CommandSMembers() : Commander("smembers", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Members(args_[1], &members);
     if (!s.ok()) {
@@ -828,7 +862,7 @@ class CommandSIsMember: public  Commander {
  public:
   explicit CommandSIsMember() : Commander("sismmeber", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     int ret;
     rocksdb::Status s = set_db.IsMember(args_[1], args_[2], &ret);
     if (!s.ok()) {
@@ -853,7 +887,7 @@ class CommandSPop: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Take(args_[1], &members, count_, true);
     if (!s.ok()) {
@@ -881,7 +915,7 @@ class CommandSRandMember: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Take(args_[1], &members, count_, false);
     if (!s.ok()) {
@@ -899,7 +933,7 @@ class CommandSMove: public  Commander {
  public:
   explicit CommandSMove() : Commander("smove", 4, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisSet set_db(svr->storage_);
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
     int ret;
     rocksdb::Status s = set_db.Move(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
@@ -932,7 +966,7 @@ class CommandZAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Add(args_[1], 0, member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -958,7 +992,7 @@ class CommandZCount: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
 
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -976,7 +1010,7 @@ class CommandZCard: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
 
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1002,7 +1036,7 @@ class CommandZIncrBy: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double score;
 
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.IncrBy(args_[1], args_[3], incr_, &score);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1030,7 +1064,7 @@ class CommandZPop : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> memeber_scores;
     rocksdb::Status s = zset_db.Pop(args_[1], count_, min_, &memeber_scores);
     if (!s.ok()) {
@@ -1075,7 +1109,7 @@ class CommandZRange: public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> memeber_scores;
     uint8_t flags = !reversed_ ? 0 : ZSET_REVERSED;
     rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &memeber_scores);
@@ -1129,7 +1163,7 @@ class CommandZRangeByScore: public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> memeber_scores;
     rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &memeber_scores, &size);
     if (!s.ok()) {
@@ -1157,7 +1191,7 @@ class CommandZRank: public Commander {
   explicit CommandZRank(bool reversed = false) : Commander("zrank", 3, false, false), reversed_(reversed) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1179,7 +1213,7 @@ class CommandZRem: public Commander {
   explicit CommandZRem(): Commander("zrem", -3, false, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<rocksdb::Slice> members;
     for (unsigned i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
@@ -1209,7 +1243,7 @@ class CommandZRemRangeByRank: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
 
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1239,7 +1273,7 @@ class CommandZRemRangeByScore: public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1256,7 +1290,7 @@ class CommandZScore: public Commander {
   explicit CommandZScore() : Commander("zscore", 3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double score;
-    RedisZSet zset_db(svr->storage_);
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Score(args_[1], args_[2], &score);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1549,6 +1583,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
     {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},
+    {"namespace", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandNamespace); }},
     {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},

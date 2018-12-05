@@ -59,15 +59,15 @@ class Connection {
   void UnSubscribeAll();
   int SubscriptionsCount();
 
-  bool IsAuthenticated() { return is_authenticated_; }
-  void Authenticated() { is_authenticated_ = true; }
+  std::string GetNamespace() { return ns_; };
+  void SetNamespace(std::string ns) { ns_ = ns; };
   int GetFD();
   evbuffer *Input();
   evbuffer *Output();
   bufferevent *GetBufferEvent() { return bev_; }
 
  private:
-  bool is_authenticated_ = false;
+  std::string ns_;
   bufferevent *bev_;
   Request req_;
   Worker *owner_;

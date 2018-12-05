@@ -128,7 +128,7 @@ void Request::ExecuteCommands(Connection *conn) {
   std::unique_ptr<Commander> cmd;
   std::string reply;
   for (auto &cmd_tokens : commands_) {
-    if (!config->require_passwd.empty() && !conn->IsAuthenticated()
+    if (conn->GetNamespace().empty()
         && Util::ToLower(cmd_tokens.front()) != "auth") {
       conn->Reply(Redis::Error("NOAUTH Authentication required."));
       continue;

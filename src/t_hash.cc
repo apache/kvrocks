@@ -9,6 +9,10 @@ rocksdb::Status RedisHash::GetMetadata(Slice key, HashMetadata *metadata) {
 
 rocksdb::Status RedisHash::Size(Slice key, uint32_t *ret) {
   *ret = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -17,6 +21,9 @@ rocksdb::Status RedisHash::Size(Slice key, uint32_t *ret) {
 }
 
 rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -31,6 +38,10 @@ rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
 rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, long long *ret) {
   bool exists = false;
   long long old_value = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -71,6 +82,10 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
 rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, float *ret) {
   bool exists = false;
   float old_value = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -110,6 +125,10 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
 
 rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vector<std::string> *values) {
   values->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) {
@@ -144,6 +163,10 @@ rocksdb::Status RedisHash::SetNX(Slice key, Slice field, Slice value, int *ret) 
 
 rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields, int *ret) {
   *ret = 0;
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -172,6 +195,9 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
 rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, bool nx, int *ret) {
   *ret = 0;
 
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -203,6 +229,10 @@ rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values
 
 rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_values, int type) {
   field_values->clear();
+
+  std::string ns_key;
+  AppendNamepacePrefix(key, &ns_key);
+  key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

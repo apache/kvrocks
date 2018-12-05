@@ -5,7 +5,7 @@
 class RedisStringTest : public TestBase {
 protected:
   explicit RedisStringTest() : TestBase() {
-    string = new RedisString(storage_);
+    string = new RedisString(storage_, "string_ns");
   }
   ~RedisStringTest() {
     delete string;

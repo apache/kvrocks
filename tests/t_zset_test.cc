@@ -5,7 +5,8 @@
 class RedisZSetTest : public TestBase {
 protected:
   RedisZSetTest() : TestBase() {
-    zset = new RedisZSet(storage_);
+    zset = new RedisZSet(storage_, "zset_ns"
+    );
   }
   ~RedisZSetTest() {
     delete zset;

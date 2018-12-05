@@ -49,7 +49,7 @@ uint64_t InternalKey::GetVersion() {
 void InternalKey::Encode(std::string *out) {
   out->clear();
   size_t pos = 0;
-  size_t total = 4+key_.size()+8+sub_key_.size();
+  size_t total = 1+namespace_.size()+4+key_.size()+8+sub_key_.size();
   if (total < sizeof(prealloc_)) {
     buf_ = prealloc_;
   } else {
@@ -101,6 +101,7 @@ rocksdb::Status Metadata::Decode(std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, (uint32_t *) &expire);
   if (Type() != kRedisString) {
+    if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
@@ -174,10 +175,12 @@ rocksdb::Status ListMetadata::Decode(std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, (uint32_t *) &expire);
   if (Type() != kRedisString) {
+    if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
   if (Type() == kRedisList) {
+    if (input.size() < 16) rocksdb::Status::InvalidArgument("the metadata was too short");
     GetFixed64(&input, &head);
     GetFixed64(&input, &tail);
   }

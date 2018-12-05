@@ -160,7 +160,12 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
-    tokens[args[1]] = args[0].substr(10, args.size()-10);
+    std::string ns = args[0].substr(10, args.size()-10);
+    if(ns.size() > INT8_MAX) {
+      *err = std::string("namespace size exceed limit ")+std::to_string(INT8_MAX);
+      return false;
+    }
+    tokens[args[1]] = ns;
   } else {
     *err = "Bad directive or wrong number of arguments";
     return false;
@@ -193,7 +198,7 @@ bool Config::Load(std::string path, std::string *err) {
     *err = "requirepass cannot be empty";
     return false;
   }
-  tokens.insert(std::pair<std::string,std::string>{require_passwd, default_namespace});
+  tokens[default_namespace] = default_namespace;
   file.close();
   return true;
 }
@@ -471,6 +476,7 @@ Status Config::SetNamepsace(std::string &ns, std::string token) {
 }
 
 Status Config::AddNamespace(std::string &ns, std::string token) {
+  if (ns.size() > 255) return Status(Status::NotOK, "namespace size exceed limit "+std::to_string(INT8_MAX));
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
       return Status(Status::NotOK, "namespace has already exists");

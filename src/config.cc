@@ -198,7 +198,7 @@ bool Config::Load(std::string path, std::string *err) {
     *err = "requirepass cannot be empty";
     return false;
   }
-  tokens[default_namespace] = default_namespace;
+  tokens[require_passwd] = default_namespace;
   file.close();
   return true;
 }
@@ -465,6 +465,9 @@ Status Config::SetNamepsace(std::string &ns, std::string token) {
   if (ns == default_namespace) {
     return Status(Status::NotOK, "can't set the default namespace");
   }
+  if (tokens.find(token) != tokens.end()) {
+    return Status(Status::NotOK, "the token has already exists");
+  }
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
       tokens.erase(iter);
@@ -476,7 +479,12 @@ Status Config::SetNamepsace(std::string &ns, std::string token) {
 }
 
 Status Config::AddNamespace(std::string &ns, std::string token) {
-  if (ns.size() > 255) return Status(Status::NotOK, "namespace size exceed limit "+std::to_string(INT8_MAX));
+  if (ns.size() > 255) {
+    return Status(Status::NotOK, "namespace size exceed limit " + std::to_string(INT8_MAX));
+  }
+  if (tokens.find(token) != tokens.end()) {
+    return Status(Status::NotOK, "the token has already exists");
+  }
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
       return Status(Status::NotOK, "namespace has already exists");

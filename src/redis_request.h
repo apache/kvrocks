@@ -59,6 +59,8 @@ class Connection {
   void UnSubscribeAll();
   int SubscriptionsCount();
 
+  bool IsAdmin() { return is_admin_; }
+  void BecomeAdmin() { is_admin_ = true; }
   std::string GetNamespace() { return ns_; };
   void SetNamespace(std::string ns) { ns_ = ns; };
   int GetFD();
@@ -67,6 +69,7 @@ class Connection {
   bufferevent *GetBufferEvent() { return bev_; }
 
  private:
+  bool is_admin_;
   std::string ns_;
   bufferevent *bev_;
   Request req_;

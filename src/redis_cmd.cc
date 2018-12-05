@@ -31,6 +31,9 @@ class CommandAuth : public Commander {
       *output = Redis::Error("ERR invalid password");
     } else {
       conn->SetNamespace(iter->second);
+      if (args_[1] == config->require_passwd) {
+        conn->BecomeAdmin();
+      }
       *output = Redis::SimpleString("OK");
     }
     return Status::OK();
@@ -41,6 +44,10 @@ class CommandNamespace : public Commander {
  public:
   explicit CommandNamespace() : Commander("namespace", -3, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use namespace command");
+      return Status::OK();
+    }
     Config *config = svr->GetConfig();
     if (args_.size() == 3 && args_[1] == "get") {
       if (args_[2] == "*") {
@@ -76,6 +83,11 @@ class CommandKeys: public Commander {
  public:
   explicit CommandKeys() : Commander("keys", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use keys command");
+      return Status::OK();
+    }
+
     std::string prefix = args_[1];
     std::vector<std::string> keys;
     RedisDB redis(svr->storage_, conn->GetNamespace());
@@ -106,6 +118,11 @@ class CommandConfig : public Commander {
  public:
   explicit CommandConfig() : Commander("config", -2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use config command");
+      return Status::OK();
+    }
+
     std::string err;
     Config *config = svr->GetConfig();
     if (args_.size() == 2 && Util::ToLower(args_[1]) == "rewrite") {

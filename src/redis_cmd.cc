@@ -26,13 +26,47 @@ class CommandAuth : public Commander {
   explicit CommandAuth() : Commander("auth", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
-    if (config->require_passwd.empty()) {
-      *output = Redis::Error("ERR Client sent AUTH, but no password is set");
-    } else if (config->require_passwd == args_[1]) {
-      *output = Redis::SimpleString("OK");
-      conn->Authenticated();
-    } else {
+    auto iter = config->tokens.find(args_[1]);
+    if (iter == config->tokens.end()) {
       *output = Redis::Error("ERR invalid password");
+    } else {
+      conn->SetNamespace(iter->second);
+      *output = Redis::SimpleString("OK");
+    }
+    return Status::OK();
+  }
+};
+
+class CommandNamespace : public Commander {
+ public:
+  explicit CommandNamespace() : Commander("namespace", -3, false, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Config *config = svr->GetConfig();
+    if (args_.size() == 3 && args_[1] == "get") {
+      if (args_[2] == "*") {
+        std::vector<std::string> namespaces;
+        auto tokens = config->tokens;
+        for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
+          namespaces.emplace_back(iter->second); // namespace
+          namespaces.emplace_back(iter->first); // token
+        }
+        *output = Redis::MultiBulkString(namespaces);
+      } else {
+        std::string token;
+        config->GetNamespace(args_[2], &token);
+        *output = Redis::BulkString(token);
+      }
+    } else if (args_.size() == 4 && args_[1] == "set") {
+      Status s = config->SetNamepsace(args_[2], args_[3]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else if (args_.size() == 4 && args_[1] == "add") {
+      Status s = config->AddNamespace(args_[2], args_[3]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else if (args_.size() == 3 && args_[1] == "del") {
+      Status s = config->DelNamespace(args_[2]);
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+    } else {
+      *output = Redis::Error("NAMESPACE subcommand must be one of GET, SET, DEL, ADD");
     }
     return Status::OK();
   }
@@ -1549,6 +1583,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"ping", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandPing); }},
     {"info", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandInfo); }},
     {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},
+    {"namespace", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandNamespace); }},
     {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},

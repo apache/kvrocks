@@ -2,6 +2,7 @@
 #define KVROCKS_CONFIG_H
 
 #include <string>
+#include <map>
 #include <vector>
 #include "status.h"
 
@@ -25,6 +26,7 @@ struct Config{
   std::string require_passwd;
   std::string master_host;
   int master_port = 0;
+  std::map<std::string, std::string> tokens;
 
   struct {
     int max_open_files = 4096;
@@ -41,6 +43,10 @@ struct Config{
   bool Load(std::string path, std::string *err);
   void Get(std::string &key, std::vector<std::string> *values);
   Status Set(std::string &key, std::string &value);
+  void GetNamespace(std::string &ns, std::string *token);
+  Status DelNamespace(std::string &ns);
+  Status SetNamepsace(std::string &ns, std::string token);
+  Status AddNamespace(std::string &ns, std::string token);
   Config() = default;
   ~Config() = default;
 

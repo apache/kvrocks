@@ -33,6 +33,8 @@ class CommandAuth : public Commander {
       conn->SetNamespace(iter->second);
       if (args_[1] == config->require_passwd) {
         conn->BecomeAdmin();
+      } else {
+        conn->BecomeUser();
       }
       *output = Redis::SimpleString("OK");
     }
@@ -83,11 +85,6 @@ class CommandKeys: public Commander {
  public:
   explicit CommandKeys() : Commander("keys", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!conn->IsAdmin()) {
-      *output = Redis::Error("only administrator can use keys command");
-      return Status::OK();
-    }
-
     std::string prefix = args_[1];
     std::vector<std::string> keys;
     RedisDB redis(svr->storage_, conn->GetNamespace());

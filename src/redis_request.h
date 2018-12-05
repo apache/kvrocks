@@ -61,6 +61,7 @@ class Connection {
 
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
+  void BecomeUser() { is_admin_ = false; }
   std::string GetNamespace() { return ns_; };
   void SetNamespace(std::string ns) { ns_ = ns; };
   int GetFD();

@@ -1469,15 +1469,14 @@ class CommandPSync : public Commander {
     }
 
     while (true) {
-      // FIXME: check socket error
-//      if (!sock_check_liveness(sock_fd)) {
-//        LOG(ERROR) << "Connection was closed by peer";
-//        return Status(Status::NetSendErr);
-//      }
+      // FIXME: check socket errors
+      //if (!sock_check_liveness(sock_fd)) {
+      //  LOG(ERROR) << "Connection was closed by peer";
+      //  return Status(Status::NetSendErr);
+      //}
       auto s = svr->storage_->GetWALIter(seq_, &iter);
       if (!s.IsOK()) {
-        // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        waitTilWALHasNewData(svr->storage_);
         continue;
       }
 
@@ -1493,6 +1492,7 @@ class CommandPSync : public Commander {
           return Status(Status::NetSendErr);
         }
         seq_ = batch.sequence + 1;
+        waitTilWALHasNewData(svr->storage_);
         iter->Next();
       }
 
@@ -1521,6 +1521,12 @@ class CommandPSync : public Commander {
       }
     }
     return Status::OK();
+  }
+
+  void waitTilWALHasNewData(Engine::Storage *storage) {
+    while (seq_ > storage->GetDB()->GetLatestSequenceNumber()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 };
 

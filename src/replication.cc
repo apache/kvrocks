@@ -360,6 +360,7 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       // Restore DB from backup
       self->pre_fullsync_cb_();
       if (!self->storage_->RestoreFromBackup(&self->seq_).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to restore backup";
         self->post_fullsync_cb_();
         self->stop_flag_ = true;
         return CBState::QUIT;
@@ -395,6 +396,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
         LOG(ERROR) << "[replication] Auth failed";
         return Status(Status::NotOK);
       }
+      break;
     }
   }
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
@@ -456,7 +458,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
 
 // Check if stop_flag_ is set, when do, tear down replication
 void ReplicationThread::Timer_cb(int, short, void *ctx) {
-  DLOG(INFO) << "[replication] timer";
+  // DLOG(INFO) << "[replication] timer";
   auto self = static_cast<ReplicationThread *>(ctx);
   if (self->stop_flag_) {
     LOG(INFO) << "[replication] Stop ev loop";

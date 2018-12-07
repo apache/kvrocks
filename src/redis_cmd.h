@@ -20,7 +20,7 @@ class Commander {
   // @name: cmd name
   // @sidecar: whether cmd will be executed in sidecar thread, eg. psync.
   explicit Commander(std::string name, int arity, bool sidecar = false, bool is_write = false)
-      : name_(name), arity_(arity), is_sidecar_(sidecar) {}
+      : name_(name), arity_(arity), is_sidecar_(sidecar), is_write_(is_write) {}
   std::string Name() { return name_; }
   int GetArity() { return arity_; }
   bool IsWrite() { return is_write_; };

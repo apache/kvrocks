@@ -74,6 +74,7 @@ LOOP_LABEL:
       break;
     case QUIT:
       bufferevent_free(bev);
+      self->bev_ = nullptr;
       break;
   }
 }
@@ -94,6 +95,14 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     set_write_cb(bev, evCallback, this);
   } else {
     set_read_cb(bev, evCallback, this);
+  }
+  bev_ = bev;
+}
+
+void ReplicationThread::CallbacksStateMachine::Stop() {
+  if (bev_) {
+    bufferevent_free(bev_);
+    bev_ = nullptr;
   }
 }
 
@@ -289,8 +298,6 @@ ReplicationThread::CBState ReplicationThread::IncrementBatchLoop_cb(
 ReplicationThread::CBState ReplicationThread::FullSync_write_cb(
     bufferevent *bev, void *ctx) {
   send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
-  // set_read_cb(bev, FullSync_read_cb, ctx);
-
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplFetchMeta;
   return CBState::NEXT;
@@ -463,5 +470,7 @@ void ReplicationThread::Timer_cb(int, short, void *ctx) {
   if (self->stop_flag_) {
     LOG(INFO) << "[replication] Stop ev loop";
     event_base_loopbreak(self->base_);
+    self->psync_steps_.Stop();
+    self->fullsync_steps_.Stop();
   }
 }

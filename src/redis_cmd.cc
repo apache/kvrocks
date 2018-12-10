@@ -518,7 +518,7 @@ class CommandHMSet: public Commander {
     int ret;
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (unsigned int i = 2; i < args_.size(); i+=2) {
       field_values.push_back(FieldValue{args_[i], args_[i+1]});
     }
     rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);

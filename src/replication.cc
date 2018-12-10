@@ -75,6 +75,7 @@ LOOP_LABEL:
     case QUIT:
       bufferevent_free(bev);
       self->bev_ = nullptr;
+      self->repl_->repl_state_ = kReplError;
       break;
   }
 }
@@ -331,6 +332,7 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";
         self->stop_flag_ = true;
+        return CBState::QUIT;
       }
       self->fullsync_state_ = Fetch_meta_content;
     case Fetch_meta_content:

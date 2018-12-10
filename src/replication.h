@@ -12,7 +12,8 @@ enum ReplState {
   kReplSendPSync,
   kReplFetchMeta,
   kReplFetchSST,
-  kReplConnected
+  kReplConnected,
+  kReplError,
 };
 
 class ReplicationThread {

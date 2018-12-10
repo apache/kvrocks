@@ -445,7 +445,7 @@ class CommandHExists: public Commander {
 
 class CommandHLen: public Commander {
  public:
-  explicit CommandHLen() : Commander("hlen", 3, false, false) {}
+  explicit CommandHLen() : Commander("hlen", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t count;
     RedisHash hash_db(svr->storage_, conn->GetNamespace());

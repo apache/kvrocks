@@ -4,10 +4,11 @@
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
   uint8_t namespace_size;
+  GetFixed32(&input, &key_size);
   GetFixed8(&input, &namespace_size);
   namespace_ = Slice(input.data(), namespace_size);
   input.remove_prefix(namespace_size);
-  GetFixed32(&input, &key_size);
+  key_size -= (namespace_size + 1);
   key_ = Slice(input.data(), key_size);
   input.remove_prefix(key_size);
   GetFixed64(&input, &version_);
@@ -19,7 +20,7 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
   uint8_t namespace_size;
   GetFixed8(&ns_key, &namespace_size);
   namespace_ = Slice(ns_key.data(), namespace_size);
-  ns_key.remove_prefix(namespace_size+4); // +4 remove the key size
+  ns_key.remove_prefix(namespace_size); // +4 remove the key size
   key_ = ns_key;
   sub_key_ = sub_key;
   version_ = version;
@@ -55,12 +56,12 @@ void InternalKey::Encode(std::string *out) {
   } else {
     buf_ = new char[total];
   }
+  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()+1+namespace_.size()));
+  pos += 4;
   EncodeFixed8(buf_+pos, static_cast<uint8_t>(namespace_.size()));
   pos += 1;
   memcpy(buf_+pos, namespace_.data(), namespace_.size());
   pos += namespace_.size();
-  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()));
-  pos += 4;
   memcpy(buf_+pos, key_.data(), key_.size());
   pos += key_.size();
   EncodeFixed64(buf_+pos, version_);
@@ -78,11 +79,9 @@ bool InternalKey::operator==(const InternalKey &that) const {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key) {
   uint8_t namespace_size;
-  uint32_t key_size;
   GetFixed8(&ns_key, &namespace_size);
   *ns = ns_key.ToString().substr(0, namespace_size);
   ns_key.remove_prefix(namespace_size);
-  GetFixed32(&ns_key, &key_size);
   *key = ns_key.ToString();
 }
 
@@ -90,7 +89,6 @@ void ComposeNamespaceKey(const Slice ns, const Slice key, std::string *ns_key) {
   ns_key->clear();
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
   ns_key->append(ns.ToString());
-  PutFixed32(ns_key, static_cast<uint32_t>(key.size()));
   ns_key->append(key.ToString());
 }
 

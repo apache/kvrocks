@@ -1469,10 +1469,11 @@ class CommandPSync : public Commander {
     }
 
     while (true) {
-      if (!sock_check_liveness(sock_fd)) {
-        LOG(ERROR) << "Connection was closed by peer";
-        return Status(Status::NetSendErr);
-      }
+      // FIXME: check socket error
+//      if (!sock_check_liveness(sock_fd)) {
+//        LOG(ERROR) << "Connection was closed by peer";
+//        return Status(Status::NetSendErr);
+//      }
       auto s = svr->storage_->GetWALIter(seq_, &iter);
       if (!s.IsOK()) {
         // LOG(ERROR) << "Failed to get WAL iter: " << s.msg();

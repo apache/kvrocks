@@ -74,6 +74,8 @@ LOOP_LABEL:
       break;
     case QUIT:
       bufferevent_free(bev);
+      self->bev_ = nullptr;
+      self->repl_->repl_state_ = kReplError;
       break;
   }
 }
@@ -94,6 +96,14 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     set_write_cb(bev, evCallback, this);
   } else {
     set_read_cb(bev, evCallback, this);
+  }
+  bev_ = bev;
+}
+
+void ReplicationThread::CallbacksStateMachine::Stop() {
+  if (bev_) {
+    bufferevent_free(bev_);
+    bev_ = nullptr;
   }
 }
 
@@ -289,8 +299,6 @@ ReplicationThread::CBState ReplicationThread::IncrementBatchLoop_cb(
 ReplicationThread::CBState ReplicationThread::FullSync_write_cb(
     bufferevent *bev, void *ctx) {
   send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
-  // set_read_cb(bev, FullSync_read_cb, ctx);
-
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplFetchMeta;
   return CBState::NEXT;
@@ -324,6 +332,7 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";
         self->stop_flag_ = true;
+        return CBState::QUIT;
       }
       self->fullsync_state_ = Fetch_meta_content;
     case Fetch_meta_content:
@@ -360,6 +369,7 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       // Restore DB from backup
       self->pre_fullsync_cb_();
       if (!self->storage_->RestoreFromBackup(&self->seq_).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to restore backup";
         self->post_fullsync_cb_();
         self->stop_flag_ = true;
         return CBState::QUIT;
@@ -395,6 +405,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
         LOG(ERROR) << "[replication] Auth failed";
         return Status(Status::NotOK);
       }
+      break;
     }
   }
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
@@ -456,10 +467,12 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
 
 // Check if stop_flag_ is set, when do, tear down replication
 void ReplicationThread::Timer_cb(int, short, void *ctx) {
-  DLOG(INFO) << "[replication] timer";
+  // DLOG(INFO) << "[replication] timer";
   auto self = static_cast<ReplicationThread *>(ctx);
   if (self->stop_flag_) {
     LOG(INFO) << "[replication] Stop ev loop";
     event_base_loopbreak(self->base_);
+    self->psync_steps_.Stop();
+    self->fullsync_steps_.Stop();
   }
 }

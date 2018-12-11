@@ -5,14 +5,16 @@
 
 #include "status.h"
 #include "storage.h"
-typedef enum {
+
+enum ReplState {
   kReplConnecting = 1,
   kReplCheckDBName,
   kReplSendPSync,
   kReplFetchMeta,
   kReplFetchSST,
-  kReplConnected
-} ReplState;
+  kReplConnected,
+  kReplError,
+};
 
 class ReplicationThread {
  public:
@@ -75,6 +77,7 @@ class ReplicationThread {
     static void evCallback(bufferevent *bev, void *ctx);
 
    private:
+    bufferevent *bev_ = nullptr;
     ReplicationThread *repl_;
     CallbackList handlers_;
     CallbackList::size_type handler_idx_ = 0;

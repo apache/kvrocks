@@ -1,6 +1,7 @@
 #include "rwlock.h"
 
 #include <thread>
+#include <string>
 
 RWLock::RWLock(): state_(0) {
 }

@@ -6,9 +6,10 @@
 #include <rocksdb/table.h>
 #include <iostream>
 
+#include "config.h"
 #include "storage.h"
 #include "t_metadata.h"
-#include "config.h"
+#include "event_listener.h"
 
 namespace Engine {
 
@@ -157,6 +158,7 @@ void Engine::Storage::InitOptions(rocksdb::Options *options) {
   options->max_log_file_size = 512 * 1024 * 1024;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
+  options->listeners.emplace_back(new CompactionEventListener());
 }
 
 Status Engine::Storage::CreateColumnFamiles(rocksdb::Options &options) {

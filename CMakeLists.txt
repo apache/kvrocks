@@ -90,7 +90,9 @@ target_sources(kvrocks PRIVATE
                src/stats.cc
                src/stats.h
                src/server.cc
-               src/server.h)
+               src/server.h
+               src/event_listener.h
+               src/event_listener.cc)
 
 add_executable(unittest
                src/t_metadata.cc
@@ -104,6 +106,7 @@ add_executable(unittest
                src/storage.cc
                src/rwlock.cc
                src/stats.cc
+               src/event_listener.cc
                tests/main.cc
                tests/test_base.h
                tests/t_string_test.cc

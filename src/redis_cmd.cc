@@ -102,6 +102,20 @@ class CommandKeys: public Commander {
   }
 };
 
+class CommandFlushAll: public Commander {
+ public:
+  explicit CommandFlushAll() : Commander("flushall", 1, false, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisDB redis(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = redis.FlushAll();
+    if (s.ok()) {
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    }
+    return Status(Status::RedisExecErr, s.ToString());
+  }
+};
+
 class CommandPing : public Commander {
  public:
   explicit CommandPing() : Commander("ping", 1, false, false) {}
@@ -1599,6 +1613,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"config", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandConfig); }},
     {"namespace", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandNamespace); }},
     {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
+    {"flushall", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFlushAll); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

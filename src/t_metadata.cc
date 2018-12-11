@@ -15,12 +15,12 @@ InternalKey::InternalKey(Slice input) {
   buf_ = nullptr;
 }
 
-InternalKey::InternalKey(Slice key, Slice sub_key, uint64_t version) {
+InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
   uint8_t namespace_size;
-  GetFixed8(&key, &namespace_size);
-  namespace_ = Slice(key.data(), namespace_size);
-  key.remove_prefix(namespace_size);
-  key_ = key;
+  GetFixed8(&ns_key, &namespace_size);
+  namespace_ = Slice(ns_key.data(), namespace_size);
+  ns_key.remove_prefix(namespace_size+4); // +4 remove the key size
+  key_ = ns_key;
   sub_key_ = sub_key;
   version_ = version;
   buf_ = nullptr;
@@ -78,10 +78,20 @@ bool InternalKey::operator==(const InternalKey &that) const {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key) {
   uint8_t namespace_size;
+  uint32_t key_size;
   GetFixed8(&ns_key, &namespace_size);
   *ns = ns_key.ToString().substr(0, namespace_size);
   ns_key.remove_prefix(namespace_size);
+  GetFixed32(&ns_key, &key_size);
   *key = ns_key.ToString();
+}
+
+void ComposeNamespaceKey(Slice ns, Slice key, std::string *ns_key) {
+  ns_key->clear();
+  PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
+  ns_key->append(ns.ToString());
+  PutFixed32(ns_key, static_cast<uint32_t>(key.size()));
+  ns_key->append(key.ToString());
 }
 
 Metadata::Metadata(RedisType type) {
@@ -324,6 +334,23 @@ rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status RedisDB::FlushAll() {
+  std::string prefix;
+  AppendNamepacePrefix("", &prefix);
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  for (iter->Seek(prefix);
+       iter->Valid() && iter->key().starts_with(prefix);
+       iter->Next()) {
+    db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
+  }
+  delete iter;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
@@ -344,8 +371,5 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
 }
 
 void RedisDB::AppendNamepacePrefix(const Slice &key, std::string *output) {
-  output->clear();
-  PutFixed8(output, static_cast<uint8_t>(namespace_.size()));
-  output->append(namespace_);
-  output->append(key.ToString());
+  ComposeNamespaceKey(namespace_, key, output);
 }

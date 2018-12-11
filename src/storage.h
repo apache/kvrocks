@@ -39,6 +39,7 @@ class Storage {
     return config_->db_name;
   }
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
+  std::vector<rocksdb::ColumnFamilyHandle*>* GetCFHandles();
   RWLocks *GetLocks() { return &db_locks_; }
 
   ~Storage() {

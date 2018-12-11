@@ -20,10 +20,11 @@ enum RedisType {
 using rocksdb::Slice;
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
+void ComposeNamespaceKey(Slice ns, Slice key, std::string *ns_key);
 
 class InternalKey {
 public:
-  explicit InternalKey(Slice key, Slice sub_key, uint64_t version);
+  explicit InternalKey(Slice ns_key, Slice sub_key, uint64_t version);
   explicit InternalKey(Slice input);
   ~InternalKey();
 
@@ -99,6 +100,7 @@ public:
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
   rocksdb::Status Keys(std::string prefix, std::vector<std::string> *keys);
+  rocksdb::Status FlushAll();
   void AppendNamepacePrefix(const Slice &key, std::string *output);
 
 protected:

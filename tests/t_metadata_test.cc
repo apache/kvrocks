@@ -9,9 +9,8 @@ TEST(InternalKey, EncodeAndDecode) {
   Slice ns = "namespace";
   uint64_t version = 12;
   std::string ns_key;
-  PutFixed8(&ns_key, static_cast<uint8_t>(ns.size()));
-  ns_key.append(ns.ToString());
-  ns_key.append(key.ToString());
+
+  ComposeNamespaceKey(ns, key, &ns_key);
   InternalKey ikey(ns_key, sub_key, version);
   ASSERT_EQ(ikey.GetKey(), key);
   ASSERT_EQ(ikey.GetSubKey(), sub_key);

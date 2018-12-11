@@ -61,16 +61,18 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override {
     InternalKey ikey(key);
-    Slice metadata_key = ikey.GetKey();
+    std::string metadata_key;
+
+    DLOG(INFO) << "[Compacting subkey]"
+               << " namespace: " << ikey.GetNamespace().ToString()
+               << ", metadata key: "<< ikey.GetKey().ToString()
+               << ", subkey: "<< ikey.GetSubKey().ToString()
+               << ", verison: " << ikey.GetVersion();
+    ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
     if (cached_key_.empty() || metadata_key != cached_key_) {
       std::string bytes;
       rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
                                       metadata_key, &bytes);
-      DLOG(INFO) << "[Compacting subkey]"
-                 << " namespace: " << ikey.GetNamespace().ToString()
-                 << ", metadata key: "<< ikey.GetKey().ToString()
-                 << ", subkey: "<< ikey.GetSubKey().ToString()
-                 << ", verison: " << ikey.GetVersion();
       cached_key_ = metadata_key;
       if (s.ok()) {
         cached_metadata_ = bytes;
@@ -177,16 +179,19 @@ Status Engine::Storage::Open() {
   CreateColumnFamiles(options);
   rocksdb::BlockBasedTableOptions table_opts;
   table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(
       rocksdb::NewBlockBasedTableFactory(table_opts));
   metadata_opts.compaction_filter_factory =
       std::make_shared<MetadataFilterFactory>();
+
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(
       rocksdb::NewBlockBasedTableFactory(table_opts));
   subkey_opts.compaction_filter_factory =
       std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be
   // mismatched
@@ -318,6 +323,10 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(std::string name) {
     return cf_handles_[2];
   }
   return cf_handles_[0];
+}
+
+std::vector<rocksdb::ColumnFamilyHandle *> * Storage::GetCFHandles() {
+  return &cf_handles_;
 }
 
 rocksdb::Status Storage::Compact() {

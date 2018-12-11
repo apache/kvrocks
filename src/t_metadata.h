@@ -20,7 +20,7 @@ enum RedisType {
 using rocksdb::Slice;
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
-void ComposeNamespaceKey(Slice ns, Slice key, std::string *ns_key);
+void ComposeNamespaceKey(const Slice ns, const Slice key, std::string *ns_key);
 
 class InternalKey {
 public:

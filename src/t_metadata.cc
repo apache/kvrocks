@@ -86,7 +86,7 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key) {
   *key = ns_key.ToString();
 }
 
-void ComposeNamespaceKey(Slice ns, Slice key, std::string *ns_key) {
+void ComposeNamespaceKey(const Slice ns, const Slice key, std::string *ns_key) {
   ns_key->clear();
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
   ns_key->append(ns.ToString());

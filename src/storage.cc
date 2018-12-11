@@ -58,16 +58,10 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
         cached_metadata_(""),
         db_(db),
         cf_handles_(cf_handles) {}
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override {
-    InternalKey ikey(key);
+
+  bool IsKeyExpired(InternalKey &ikey) const {
     std::string metadata_key;
 
-    DLOG(INFO) << "[Compacting subkey]"
-               << " namespace: " << ikey.GetNamespace().ToString()
-               << ", metadata key: "<< ikey.GetKey().ToString()
-               << ", subkey: "<< ikey.GetSubKey().ToString()
-               << ", verison: " << ikey.GetVersion();
     ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
     if (cached_key_.empty() || metadata_key != cached_key_) {
       std::string bytes;
@@ -102,6 +96,19 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
       return true;
     }
     return false;
+  }
+
+  bool Filter(int level, const Slice &key, const Slice &value,
+              std::string *new_value, bool *modified) const override {
+    InternalKey ikey(key);
+    bool result = IsKeyExpired(ikey);
+    DLOG(INFO) << "[Compacting subkey]"
+               << " namespace: " << ikey.GetNamespace().ToString()
+               << ", metadata key: "<< ikey.GetKey().ToString()
+               << ", subkey: "<< ikey.GetSubKey().ToString()
+               << ", verison: " << ikey.GetVersion()
+               << ", result: " << (result ? "deleted":"reserved");
+    return result;
   }
   const char *Name() const override { return "SubkeyFilter"; }
 

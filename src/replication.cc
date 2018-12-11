@@ -214,7 +214,8 @@ ReplicationThread::CBState ReplicationThread::CheckDBName_read_cb(
   if (!line) return CBState::AGAIN;
 
   auto self = static_cast<ReplicationThread *>(ctx);
-  if (!strncmp(line, self->storage_->GetName().c_str(), line_len)) {
+  std::string db_name = self->storage_->GetName();
+  if (line_len == db_name.size() && !strncmp(line, db_name.data(), line_len)) {
     // DB name match, we should continue to next step: TryPsync
     free(line);
     return CBState::NEXT;

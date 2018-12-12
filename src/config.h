@@ -1,9 +1,12 @@
 #ifndef KVROCKS_CONFIG_H
 #define KVROCKS_CONFIG_H
 
+#include <sys/resource.h>
+
 #include <string>
 #include <map>
 #include <vector>
+
 #include "status.h"
 
 struct Config{

@@ -43,10 +43,10 @@ class Server {
   Stats stats_;
   Engine::Storage *storage_;
  private:
-  bool is_loading_;
-  time_t start_time_;
+  bool is_loading_ = false;
+  time_t start_time_ = 0;
   std::string master_host_;
-  uint32_t master_port_;
+  uint32_t master_port_ = 0;
 
   std::atomic<int> connected_clients_{0};
   std::atomic<uint64_t> total_clients_{0};

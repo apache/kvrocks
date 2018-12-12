@@ -7,6 +7,12 @@ project(kvrocks
 # External Dependences
 include(ExternalProject)
 
+# GLIBC < 2.17 should explict specify the real time library when use clock_*
+find_library(REALTIME_LIB rt)
+if (REALTIME_LIB)
+    list(APPEND EXTERNAL_LIBS PRIVATE rt)
+endif()
+
 include(cmake/gflags.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${gflags_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${gflags_INCLUDE_DIRS})
@@ -41,7 +47,7 @@ configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 # Main target
 add_executable(kvrocks)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
-target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wshadow -Wsign-compare -Wreturn-type)
+target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
     target_compile_options(kvrocks PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer -fsanitize=address)

@@ -35,9 +35,10 @@ if (NOT __SNAPPY_INCLUDED)
       LOG_INSTALL 1
       )
 
+  include(GNUInstallDirs)
   set(snappy_FOUND TRUE)
   set(snappy_INCLUDE_DIRS ${snappy_INSTALL}/include)
-  set(snappy_LIBRARIES ${snappy_INSTALL}/lib/libsnappy.a)
-  set(snappy_LIBRARY_DIRS ${snappy_INSTALL}/lib)
+  set(snappy_LIBRARIES ${snappy_INSTALL}/${CMAKE_INSTALL_LIBDIR}/libsnappy.a)
+  set(snappy_LIBRARY_DIRS ${snappy_INSTALL}/${CMAKE_INSTALL_LIBDIR})
 endif()
 

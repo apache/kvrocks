@@ -38,9 +38,10 @@ if (NOT __ROCKSDB_INCLUDED)
       LOG_INSTALL 1
       )
 
+  include(GNUInstallDirs)
   set(rocksdb_FOUND TRUE)
   set(rocksdb_INCLUDE_DIRS ${rocksdb_INSTALL}/include)
-  set(rocksdb_LIBRARIES ${rocksdb_INSTALL}/lib/librocksdb.a)
-  set(rocksdb_LIBRARY_DIRS ${rocksdb_INSTALL}/lib)
+  set(rocksdb_LIBRARIES ${rocksdb_INSTALL}/${CMAKE_INSTALL_LIBDIR}/librocksdb.a)
+  set(rocksdb_LIBRARY_DIRS ${rocksdb_INSTALL}/${CMAKE_INSTALL_LIBDIR})
 endif()
 

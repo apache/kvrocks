@@ -283,7 +283,7 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
   // Reopen DB
   auto s2 = Open();
   if (!s2.IsOK()) {
-    LOG(ERROR) << "Failed to reopen db: " << s2.msg();
+    LOG(ERROR) << "Failed to reopen db: " << s2.Msg();
     return Status(Status::DBOpenErr);
   }
   *seq = LatestSeq();
@@ -357,7 +357,7 @@ int Storage::BackupManager::OpenLatestMeta(Storage *storage,
                                            uint64_t *file_size) {
   Status status = storage->CreateBackup();
   if (!status.IsOK()) {
-    LOG(ERROR) << "Failed to create new backup, err:" << status.msg();
+    LOG(ERROR) << "Failed to create new backup, err:" << status.Msg();
     return -1;
   }
   std::vector<rocksdb::BackupInfo> backup_infos;

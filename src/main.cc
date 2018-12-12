@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   Engine::Storage storage(&config);
   auto s = storage.Open();
   if (!s.IsOK()) {
-    LOG(ERROR) << "failed to open: " << s.msg();
+    LOG(ERROR) << "failed to open: " << s.Msg();
     exit(1);
   }
 

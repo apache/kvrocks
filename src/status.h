@@ -32,7 +32,7 @@ class Status {
 
   bool IsOK() { return code_ == cOK; }
 
-  std::string msg() { return msg_; }
+  std::string Msg() { return msg_; }
 
   static Status OK() { return Status(cOK, "ok"); }
 

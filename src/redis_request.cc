@@ -149,7 +149,7 @@ void Request::ExecuteCommands(Connection *conn) {
     cmd->SetArgs(cmd_tokens);
     s = cmd->Parse(cmd_tokens);
     if (!s.IsOK()) {
-      conn->Reply(Redis::Error(s.msg()));
+      conn->Reply(Redis::Error(s.Msg()));
       continue;
     }
     if (config->slave_readonly && svr_->IsSlave() && cmd->IsWrite()) {
@@ -161,9 +161,9 @@ void Request::ExecuteCommands(Connection *conn) {
     if (!cmd->IsSidecar()) {
       s = cmd->Execute(svr_, conn, &reply);
       if (!s.IsOK()) {
-        conn->Reply(Redis::Error(s.msg()));
+        conn->Reply(Redis::Error(s.Msg()));
         LOG(ERROR) << "Failed to execute redis command: " << cmd->Name()
-                   << ", err: " << s.msg();
+                   << ", err: " << s.Msg();
         continue;
       }
       if (!reply.empty()) conn->Reply(reply);

@@ -67,13 +67,13 @@ class CommandNamespace : public Commander {
       }
     } else if (args_.size() == 4 && args_[1] == "set") {
       Status s = config->SetNamepsace(args_[2], args_[3]);
-      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.Msg());
     } else if (args_.size() == 4 && args_[1] == "add") {
       Status s = config->AddNamespace(args_[2], args_[3]);
-      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.Msg());
     } else if (args_.size() == 3 && args_[1] == "del") {
       Status s = config->DelNamespace(args_[2]);
-      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.msg());
+      *output = s.IsOK() ? Redis::SimpleString("OK"):Redis::Error(s.Msg());
     } else {
       *output = Redis::Error("NAMESPACE subcommand must be one of GET, SET, DEL, ADD");
     }
@@ -149,7 +149,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
       Status s = config->Set(args_[2], args_[3]);
       if (!s.IsOK()) {
-        return Status(Status::NotOK, s.msg()+":"+args_[2]);
+        return Status(Status::NotOK, s.Msg()+":"+args_[2]);
       }
       *output = Redis::SimpleString("OK");
     } else {
@@ -1012,7 +1012,7 @@ class CommandZCount: public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.msg());
+      return Status(Status::RedisParseErr, s.Msg());
     }
     return Commander::Parse(args);
   }
@@ -1174,7 +1174,7 @@ class CommandZRangeByScore: public Commander {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
       if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.msg());
+        return Status(Status::RedisParseErr, s.Msg());
       }
       if (args.size() == 8 && Util::ToLower(args[5]) == "limit") {
         spec_.offset = std::stoi(args[6]);
@@ -1291,7 +1291,7 @@ class CommandZRemRangeByScore: public Commander {
     try {
       Status s = RedisZSet::ParseRangeSpec(args[2], args[3], &spec_);
       if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.msg());
+        return Status(Status::RedisParseErr, s.Msg());
       }
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr);

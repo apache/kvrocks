@@ -35,7 +35,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
-    std::string err_msg = Redis::Error(status.msg());
+    std::string err_msg = Redis::Error(status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     delete conn;
   }

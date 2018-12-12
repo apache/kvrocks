@@ -15,7 +15,12 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
+}
+
+Server::~Server() {
+  delete task_runner_;
 }
 
 Status Server::Start() {
@@ -27,6 +32,7 @@ Status Server::Start() {
   for (const auto worker : worker_threads_) {
     worker->Start();
   }
+  task_runner_->Start();
   // setup server cron thread
   cron_thread_ = std::thread([this]() { this->cron(); });
   return Status::OK();
@@ -37,6 +43,7 @@ void Server::Stop() {
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }
+  task_runner_->Stop();
   if(cron_thread_.joinable()) cron_thread_.join();
 }
 
@@ -258,7 +265,7 @@ void Server::GetStatsInfo(std::string &info) {
   info = string_stream.str();
 }
 
-void Server::GetInfo(std::string section, std::string &info) {
+void Server::GetInfo(std::string ns, std::string section, std::string &info) {
   info.clear();
   std::ostringstream string_stream;
   bool all = section == "all";
@@ -305,6 +312,8 @@ void Server::GetInfo(std::string section, std::string &info) {
   if (all || section == "commandstats") {
   }
   if (all || section == "keyspace") {
+    string_stream << "# Keyspace\r\n";
+    string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
   }
   if (all || section == "rocksdb") {
     std::string rocksdb_info;
@@ -312,4 +321,41 @@ void Server::GetInfo(std::string section, std::string &info) {
     string_stream << rocksdb_info;
   }
   info = string_stream.str();
+}
+
+Status Server::AsyncScanDBSize(std::string &ns) {
+  // data race is ok, needn't lock the db_scan_infos_
+  auto iter = db_scan_infos_.find(ns);
+  if(iter == db_scan_infos_.end()) {
+    db_scan_infos_[ns] = DBScanInfo{};
+  }
+  if (db_scan_infos_[ns].is_scanning) {
+    return Status(Status::NotOK, "scanning the db now");
+  }
+  db_scan_infos_[ns].is_scanning = true;
+  Task task;
+  task.arg = this;
+  task.callback = [ns](void *arg) {
+    Server *svr = static_cast<Server*>(arg);
+    RedisDB db(svr->storage_, ns);
+    svr->db_scan_infos_[ns].n_key = db.GetKeyNum();
+    svr->db_scan_infos_[ns].is_scanning = false;
+  };
+  return task_runner_->Publish(task);
+}
+
+uint64_t Server::GetLastKeyNum(std::string &ns) {
+  auto iter = db_scan_infos_.find(ns);
+  if(iter != db_scan_infos_.end()) {
+    return iter->second.n_key;
+  }
+  return 0;
+}
+
+time_t Server::GetLastScanTime(std::string &ns) {
+  auto iter = db_scan_infos_.find(ns);
+  if(iter != db_scan_infos_.end()) {
+    return iter->second.last_scan_time;
+  }
+  return 0;
 }

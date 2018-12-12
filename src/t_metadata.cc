@@ -305,7 +305,12 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
+uint64_t RedisDB::GetKeyNum(std::string prefix) {
+  return Keys(prefix, nullptr);
+}
+
+uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
+  uint64_t  cnt = 0;
   std::string ns_prefix, ns, real_key, value;
   AppendNamepacePrefix(prefix, &ns_prefix);
   prefix = ns_prefix;
@@ -323,13 +328,15 @@ rocksdb::Status RedisDB::Keys(std::string prefix, std::vector<std::string> *keys
     Metadata metadata(kRedisNone);
     value = iter->value().ToString();
     metadata.Decode(value);
-    if (!metadata.Expired()) {
+    if (metadata.Expired()) continue;
+    if (keys) {
       ExtractNamespaceKey(iter->key(), &ns, &real_key);
       keys->emplace_back(real_key);
     }
+    cnt++;
   }
   delete iter;
-  return rocksdb::Status::OK();
+  return cnt;
 }
 
 rocksdb::Status RedisDB::FlushAll() {

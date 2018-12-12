@@ -45,7 +45,7 @@ string(STRIP ${GIT_SHA} GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target
-add_executable(kvrocks)
+add_executable(kvrocks src/task_runner.cc src/task_runner.h)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
 target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
@@ -113,6 +113,7 @@ add_executable(unittest
                src/rwlock.cc
                src/stats.cc
                src/event_listener.cc
+               src/task_runner.cc
                tests/main.cc
                tests/test_base.h
                tests/t_string_test.cc
@@ -124,7 +125,7 @@ add_executable(unittest
                tests/t_metadata_test.cc
                tests/string_util_test.cc
                tests/rwlock_test.cc
-               tests/stats_test.cc)
+               tests/stats_test.cc tests/task_runner_test.cc)
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)
 target_link_libraries(unittest ${EXTERNAL_LIBS})

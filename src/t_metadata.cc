@@ -195,10 +195,10 @@ rocksdb::Status ListMetadata::Decode(std::string &bytes) {
   return rocksdb::Status();
 }
 
-RedisDB::RedisDB(Engine::Storage *db_wrapper, std::string ns) {
-  storage = db_wrapper;
-  metadata_cf_handle_ = db_wrapper->GetCFHandle("metadata");
-  db_ = db_wrapper->GetDB();
+RedisDB::RedisDB(Engine::Storage *storage, std::string ns) {
+  storage_ = storage;
+  metadata_cf_handle_ = storage->GetCFHandle("metadata");
+  db_ = storage->GetDB();
   namespace_ = std::move(ns);
 }
 
@@ -246,7 +246,7 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
     return rocksdb::Status::NotFound("no elements");
   }
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());
   // +1 to skip the flags
@@ -254,7 +254,7 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
 
   rocksdb::WriteBatch batch;
   batch.Put(metadata_cf_handle_, key, Slice(buf, value.size()));
-  s = storage->Write(rocksdb::WriteOptions(), &batch);
+  s = storage_->Write(rocksdb::WriteOptions(), &batch);
   delete []buf;
   return s;
 }
@@ -267,7 +267,7 @@ rocksdb::Status RedisDB::Del(Slice key) {
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
 }
 

@@ -104,7 +104,7 @@ public:
   void AppendNamepacePrefix(const Slice &key, std::string *output);
 
 protected:
-  Engine::Storage *storage;
+  Engine::Storage *storage_;
   rocksdb::DB *db_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;

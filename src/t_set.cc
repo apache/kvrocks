@@ -19,7 +19,7 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   std::vector<Slice> new_members;
   std::string value;
   rocksdb::WriteBatch batch;
@@ -37,7 +37,7 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret) {
@@ -50,7 +50,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
   for (const auto member : members) {
@@ -66,7 +66,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Card(Slice key, int *ret) {
@@ -143,7 +143,7 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (pop) RWLocksGuard guard(storage->GetLocks(), key);
+  if (pop) RWLocksGuard guard(storage_->GetLocks(), key);
   rocksdb::WriteBatch batch;
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -167,7 +167,7 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisSet::Move(Slice src, Slice dst, Slice member, int *ret) {

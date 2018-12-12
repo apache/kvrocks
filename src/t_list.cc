@@ -36,7 +36,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
     return s;
   }
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   rocksdb::WriteBatch batch;
   for (auto elem : elems) {
@@ -56,7 +56,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, key, bytes);
   *ret = metadata.size;
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
@@ -69,7 +69,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   uint64_t index = left ? metadata.head : metadata.tail-1;
   std::string buf;
   PutFixed64(&buf, index);
@@ -91,7 +91,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
   }
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
@@ -174,7 +174,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head+index);
   InternalKey(key, buf, metadata.version).Encode(&sub_key);
@@ -186,7 +186,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
 
   rocksdb::WriteBatch batch;
   batch.Put(sub_key, elem);
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
@@ -209,7 +209,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  RWLocksGuard guard(storage->GetLocks(), key);
+  RWLocksGuard guard(storage_->GetLocks(), key);
   if (start < 0) start = metadata.size + start;
   if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,
@@ -239,5 +239,5 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, key, bytes);
-  return storage->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }

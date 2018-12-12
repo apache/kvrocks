@@ -275,10 +275,10 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
-    LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
+    LOG(ERROR) << "[storage_] Failed to restore: " << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
   }
-  LOG(INFO) << "[storage] Restore from backup";
+  LOG(INFO) << "[storage_] Restore from backup";
 
   // Reopen DB
   auto s2 = Open();

@@ -1456,7 +1456,7 @@ class CommandPSync : public Commander {
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
     int sock_fd = conn->GetFD();
 
-    // If seq_ is larger than storage's seq, return error
+    // If seq_ is larger than storage_'s seq, return error
     if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
       sock_send(sock_fd, Redis::Error("sequence out of range"));

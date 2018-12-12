@@ -1341,7 +1341,7 @@ class CommandInfo: public Commander {
       section = Util::ToLower(args_[1]);
     }
     std::string info;
-    svr->GetInfo(section, info);
+    svr->GetInfo(conn->GetNamespace(), section, info);
     *output = Redis::BulkString(info);
     return Status::OK();
   }
@@ -1357,6 +1357,27 @@ class CommandCompact: public  Commander {
     }
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "Commpact was triggered by manual with executed success.";
+    return Status::OK();
+  }
+};
+
+class CommandDBSize: public  Commander {
+ public:
+  explicit CommandDBSize() : Commander("dbsize", -1, false, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string ns = conn->GetNamespace();
+    if(args_.size() == 1) {
+      *output = Redis::Integer(svr->GetLastKeyNum(ns));
+    } else if (args_.size() == 2 && args_[1] == "scan"){
+      Status s = svr->AsyncScanDBSize(ns);
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else {
+      *output = Redis::Error("DBSIZE subcommand only supports scan");
+    }
     return Status::OK();
   }
 };
@@ -1621,6 +1642,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"namespace", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandNamespace); }},
     {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
     {"flushall", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFlushAll); }},
+    {"dbsize", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDBSize); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

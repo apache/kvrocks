@@ -99,8 +99,9 @@ public:
   rocksdb::Status Exists(std::vector<Slice> keys, int *ret);
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
-  rocksdb::Status Keys(std::string prefix, std::vector<std::string> *keys);
   rocksdb::Status FlushAll();
+  uint64_t GetKeyNum(std::string prefix = "");
+  uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
   void AppendNamepacePrefix(const Slice &key, std::string *output);
 
 protected:

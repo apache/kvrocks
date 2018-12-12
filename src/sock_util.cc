@@ -6,9 +6,19 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <errno.h>
 #include <string>
 
 #include "sock_util.h"
+
+#ifndef POLLIN
+# define POLLIN      0x0001    /* There is data to read */
+# define POLLPRI     0x0002    /* There is urgent data to read */
+# define POLLOUT     0x0004    /* Writing now will not block */
+# define POLLERR     0x0008    /* Error condition */
+# define POLLHUP     0x0010    /* Hung up */
+# define POLLNVAL    0x0020    /* Invalid request: fd not open */
+#endif
 
 sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
   sockaddr_in sin{};
@@ -21,7 +31,7 @@ sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
 int sock_check_liveness(int fd) {
   struct pollfd rfd[1];
   rfd[0].fd = fd;
-  rfd[0].events = POLL_IN|POLL_PRI|POLL_ERR|POLL_HUP;
+  rfd[0].events = POLLIN|POLLPRI|POLLERR|POLLHUP;
   rfd[0].revents = 0;
 
   if (poll(rfd, 1, 0) > 0) {

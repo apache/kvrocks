@@ -70,3 +70,21 @@ int sock_send(int fd, const std::string &data) {
   }
   return 0;
 }
+
+int get_peer_addr(int fd, std::string *addr, uint32_t *port) {
+  sockaddr_storage sa{};
+  socklen_t sa_len = sizeof(sa);
+  if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
+    return -1;
+  }
+  if (sa.ss_family == AF_INET) {
+    auto sa4 = reinterpret_cast<sockaddr_in*>(&sa);
+    char buf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, reinterpret_cast<void*>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
+    addr->clear();
+    addr->append(buf);
+    *port = sa4->sin_port;
+    return 0;
+  }
+  return -2; // only support AF_INET currently
+}

@@ -1493,6 +1493,14 @@ class CommandPSync : public Commander {
       }
     }
 
+    std::string peer_addr;
+    uint32_t port;
+    if (get_peer_addr(sock_fd, &peer_addr, &port) < 0) {
+      peer_addr = "unknown";
+    }
+    auto slave_info_pos = svr->AddSlave(peer_addr, port);
+    svr->UpdateSlaveStats(slave_info_pos, seq_ - 1);
+
     while (true) {
       // FIXME: check socket errors
       //if (!sock_check_liveness(sock_fd)) {
@@ -1514,8 +1522,10 @@ class CommandPSync : public Commander {
         std::string bulk_str =
             "$" + std::to_string(data.length()) + CRLF + data + CRLF;
         if (sock_send(sock_fd, bulk_str) < 0) {
+          svr->RemoveSlave(slave_info_pos);
           return Status(Status::NetSendErr);
         }
+        svr->UpdateSlaveStats(slave_info_pos, seq_);
         seq_ = batch.sequence + 1;
         waitTilWALHasNewData(svr->storage_);
         iter->Next();

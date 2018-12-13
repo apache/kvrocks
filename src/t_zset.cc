@@ -297,7 +297,7 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
   rocksdb::WriteBatch batch;
   int removed = 0;
   std::string member_key, score_key;
-  for (auto member : members) {
+  for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&member_key);
     std::string score_bytes;
     s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);

@@ -25,7 +25,7 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   std::string value;
   rocksdb::WriteBatch batch;
   std::string sub_key;
-  for (const auto member : members) {
+  for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
@@ -55,7 +55,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
 
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
-  for (const auto member : members) {
+  for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;

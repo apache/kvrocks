@@ -40,7 +40,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
 
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   rocksdb::WriteBatch batch;
-  for (auto elem : elems) {
+  for (const auto &elem : elems) {
     std::string index_buf, sub_key;
     PutFixed64(&index_buf, index);
     InternalKey(key, index_buf, metadata.version).Encode(&sub_key);

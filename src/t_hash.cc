@@ -141,7 +141,7 @@ rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vect
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key, value;
-  for (auto field : fields) {
+  for (const auto &field : fields) {
     InternalKey(key, field, metadata.version).Encode(&sub_key);
     db_->Get(read_options, sub_key, &value);
     values->emplace_back(value);
@@ -177,7 +177,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
 
   rocksdb::WriteBatch batch;
   std::string sub_key, value;
-  for (auto field : fields) {
+  for (const auto &field : fields) {
     InternalKey(key, field, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
@@ -208,7 +208,7 @@ rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values
 
   int added = 0;
   rocksdb::WriteBatch batch;
-  for (auto fv : field_values) {
+  for (const auto &fv : field_values) {
     std::string sub_key;
     InternalKey(key, fv.field, metadata.version).Encode(&sub_key);
     if (metadata.size > 0) {

@@ -15,11 +15,12 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   std::vector<Slice> new_members;
   std::string value;
   rocksdb::WriteBatch batch;
@@ -46,11 +47,12 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
   for (const auto member : members) {
@@ -139,11 +141,12 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  if (pop) RWLocksGuard guard(storage_->GetLocks(), key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (pop) RWLocksGuard guard(storage_->GetLocks(), key);
   rocksdb::WriteBatch batch;
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);

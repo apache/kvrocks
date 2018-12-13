@@ -48,11 +48,11 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
   RWLocksGuard guard(storage_->GetLocks(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
-
   value_bytes.append(value.ToString());
   *ret = int(value_bytes.size());
   return update(key, raw_value_bytes, value_bytes);
@@ -81,6 +81,7 @@ rocksdb::Status RedisString::GetSet(Slice key, Slice new_value, std::string *old
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
   RWLocksGuard guard(storage_->GetLocks(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
@@ -110,6 +111,7 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
   RWLocksGuard guard(storage_->GetLocks(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
@@ -135,11 +137,11 @@ rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) 
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
   RWLocksGuard guard(storage_->GetLocks(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
-
   int64_t value = 0;
   if (!value_bytes.empty()) {
     try {

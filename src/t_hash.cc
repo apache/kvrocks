@@ -42,11 +42,12 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string sub_key;
   InternalKey(key, field, metadata.version).Encode(&sub_key);
   if (s.ok()) {
@@ -86,11 +87,12 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string sub_key;
   InternalKey(key, field, metadata.version).Encode(&sub_key);
   if (s.ok()) {
@@ -167,11 +169,12 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   rocksdb::WriteBatch batch;
   std::string sub_key, value;
   for (auto field : fields) {
@@ -194,15 +197,15 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
 
 rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, bool nx, int *ret) {
   *ret = 0;
-
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   int added = 0;
   rocksdb::WriteBatch batch;
   for (auto fv : field_values) {

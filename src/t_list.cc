@@ -30,13 +30,14 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
     return s;
   }
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   rocksdb::WriteBatch batch;
   for (auto elem : elems) {
@@ -65,11 +66,12 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   uint64_t index = left ? metadata.head : metadata.tail-1;
   std::string buf;
   PutFixed64(&buf, index);
@@ -166,6 +168,8 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -174,7 +178,6 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head+index);
   InternalKey(key, buf, metadata.version).Encode(&sub_key);
@@ -205,11 +208,12 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
+
+  RWLocksGuard guard(storage_->GetLocks(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
   if (start < 0) start = metadata.size + start;
   if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,

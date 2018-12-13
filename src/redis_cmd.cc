@@ -1442,6 +1442,10 @@ class CommandSlaveOf : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+        *output = Redis::Error("only administrator can use slaveof command");
+        return Status::OK();
+    }
     Status s;
     if (host_.empty()) {
       s = svr->RemoveMaster();

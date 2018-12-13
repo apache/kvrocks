@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "status.h"
-#include "rwlock.h"
+#include "lock_manager.h"
 #include "config.h"
 
 namespace Engine {
@@ -17,7 +17,7 @@ class Storage {
   explicit Storage(Config *config)
       :backup_env_(rocksdb::Env::Default()),
        config_(config),
-       db_locks_(16) {}
+       lock_mgr_(16) {}
 
   void InitOptions(rocksdb::Options *options);
   Status Open();
@@ -40,7 +40,7 @@ class Storage {
   }
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
   std::vector<rocksdb::ColumnFamilyHandle*>* GetCFHandles();
-  RWLocks *GetLocks() { return &db_locks_; }
+  LockManager *GetLockManager() { return &lock_mgr_; }
 
   ~Storage() {
     for (auto handle : cf_handles_) delete handle;
@@ -81,7 +81,7 @@ class Storage {
   rocksdb::Env *backup_env_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
-  RWLocks db_locks_;
+  LockManager lock_mgr_;
 };
 
 }  // namespace Engine

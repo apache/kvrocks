@@ -125,20 +125,18 @@ protected:
   };
 };
 
-class RWLocksGuard {
+class LockGuard {
  public:
-  explicit RWLocksGuard(RWLocks *locks, Slice key, bool is_write = true):
-      locks_(locks),
-      key_(key),
-      is_write_(is_write) {
-    is_write_ ? locks_->Lock(key_.ToString()):locks_->RLock(key_.ToString());
+  explicit LockGuard(LockManager *lock_mgr, Slice key):
+      lock_mgr_(lock_mgr),
+      key_(key) {
+      lock_mgr->Lock(key_);
   };
-  ~RWLocksGuard() {
-    is_write_ ? locks_->UnLock(key_.ToString()):locks_->RUnLock(key_.ToString());
+  ~LockGuard() {
+    lock_mgr_->UnLock(key_);
   }
  private:
-  RWLocks *locks_ = nullptr;
+  LockManager *lock_mgr_ = nullptr;
   Slice key_;
-  bool is_write_;
 };
 #endif

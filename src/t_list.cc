@@ -31,7 +31,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
@@ -67,7 +67,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -169,7 +169,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s;
@@ -209,7 +209,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

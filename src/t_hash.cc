@@ -43,7 +43,7 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -88,7 +88,7 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -170,7 +170,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -201,7 +201,7 @@ rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;

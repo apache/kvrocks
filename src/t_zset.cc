@@ -12,7 +12,7 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -99,7 +99,7 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -150,7 +150,7 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
 
   bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
   bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
-  if (removed) RWLocksGuard guard(storage_->GetLocks(), key);
+  if (removed) LockGuard guard(storage_->GetLockManager(), key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -211,7 +211,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  if (spec.removed) RWLocksGuard guard(storage_->GetLocks(), key);
+  if (spec.removed) LockGuard guard(storage_->GetLockManager(), key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -289,7 +289,7 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;

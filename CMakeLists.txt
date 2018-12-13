@@ -89,7 +89,7 @@ target_sources(kvrocks PRIVATE
                src/t_zset.h
                src/sock_util.h
                src/sock_util.cc
-               src/rwlock.cc
+        src/lock_manager.cc
                src/rocksdb_crc32c.h
                src/config.cc
                src/config.h
@@ -110,7 +110,7 @@ add_executable(unittest
                src/t_zset.cc
                src/string_util.cc
                src/storage.cc
-               src/rwlock.cc
+        src/lock_manager.cc
                src/stats.cc
                src/event_listener.cc
                src/task_runner.cc

@@ -237,7 +237,7 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
 
   std::string value;
   Metadata metadata(kRedisNone);
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
   metadata.Decode(value);
@@ -265,7 +265,7 @@ rocksdb::Status RedisDB::Del(Slice key) {
   key = Slice(ns_key);
 
   std::string value;
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
   return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);

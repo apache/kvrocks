@@ -49,7 +49,7 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -82,7 +82,7 @@ rocksdb::Status RedisString::GetSet(Slice key, Slice new_value, std::string *old
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -112,7 +112,7 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -138,7 +138,7 @@ rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) 
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  RWLocksGuard guard(storage_->GetLocks(), key);
+  LockGuard guard(storage_->GetLockManager(), key);
   std::string raw_value_bytes, value_bytes;
   rocksdb::Status s = get(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
@@ -186,7 +186,7 @@ rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
   std::string ns_key, value;
   for (StringPair pair : pairs) {
     AppendNamepacePrefix(pair.key, &ns_key);
-    RWLocksGuard guard(storage_->GetLocks(), ns_key);
+    LockGuard guard(storage_->GetLockManager(), ns_key);
     rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
     if (!s.IsNotFound()) return rocksdb::Status::OK();
     std::string bytes;

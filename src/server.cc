@@ -234,8 +234,8 @@ void Server::GetMemoryInfo(std::string &info) {
 void Server::GetReplicationInfo(std::string &info) {
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
-  string_stream << "role:"<< (master_host_.empty()?"master":"slave") << "\r\n";
-  if (!master_host_.empty()) {
+  if (IsSlave()) {
+    string_stream << "role: slave\r\n";
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
@@ -245,9 +245,20 @@ void Server::GetReplicationInfo(std::string &info) {
     // TODO: last io time, 主从同步目前修改可能比较多，后面再加
     string_stream << "master_last_io_seconds_ago:" << 0 << "\r\n";
     string_stream << "slave_repl_offset:" << replication_thread_->Offset() << "\r\n";
+  } else {
+    // TODO: slave priority/readonly
+    string_stream << "role: master\r\n";
+    int idx = 0;
+    rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
+    for (auto slave_info: slaves_info_) {
+      string_stream << "slave_" << std::to_string(idx) << ":";
+      string_stream << "addr=" << slave_info->addr
+                    << ",port=" << slave_info->port
+                    << ",seq=" << slave_info->seq
+                    << ",lag=" << latest_seq - slave_info->seq << "\r\n";
+      ++idx;
+    }
   }
-  // TODO: slave priority/readonly
-  // TODO: slaves
   info = string_stream.str();
 }
 

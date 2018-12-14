@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
+#include "replication.h"
 #include "stats.h"
 #include "storage.h"
-#include "replication.h"
 #include "task_runner.h"
 #include "t_metadata.h"
 
@@ -33,12 +33,31 @@ class Server {
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
-  bool IsLoading() {return is_loading_;}
+  bool IsLoading() { return is_loading_; }
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
   Config *GetConfig() { return config_; }
   bool IsSlave() { return !master_host_.empty(); }
+
+ private:
+  struct SlaveInfo;
+  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
+
+ public:
+  SlaveInfoPos AddSlave(const std::string &addr, uint32_t port) {
+    std::lock_guard<std::mutex> guard(slaves_info_mu_);
+    slaves_info_.push_back(
+        std::shared_ptr<SlaveInfo>(new SlaveInfo(addr, port)));
+    return --(slaves_info_.end());
+  }
+  void RemoveSlave(SlaveInfoPos &pos) {
+    std::lock_guard<std::mutex> guard(slaves_info_mu_);
+    slaves_info_.erase(pos);
+  }
+  void UpdateSlaveStats(SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
+    (*pos)->seq = seq;
+  }
 
   Status IncrClients();
   void DecrClients();
@@ -55,6 +74,7 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
+
  private:
   bool is_loading_ = false;
   time_t start_time_ = 0;
@@ -65,18 +85,29 @@ class Server {
   std::atomic<uint64_t> total_clients_{0};
 
   Config *config_;
-  std::vector<WorkerThread*> worker_threads_;
+  std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
   std::thread cron_thread_;
   TaskRunner *task_runner_;
 
   // TODO: locked before modify
-  std::map<std::string, std::list<Redis::Connection*>> pubsub_channels_;
   std::map<std::string, DBScanInfo> db_scan_infos_;
+  std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
+
+  // Used by master role, tracking slaves' info
+  struct SlaveInfo {
+    std::string addr;
+    uint32_t port;
+    rocksdb::SequenceNumber seq = 0;
+
+    SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
+  };
+  std::mutex slaves_info_mu_;
+  std::list<std::shared_ptr<SlaveInfo>> slaves_info_;
+  using slaves_info_iter_ = std::list<std::shared_ptr<SlaveInfo>>::iterator;
 
   void cron();
   void clientsCron();
 };
 
-
-#endif //KVROCKS_SERVER_H
+#endif  // KVROCKS_SERVER_H

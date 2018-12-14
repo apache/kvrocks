@@ -44,6 +44,7 @@ void Server::Stop() {
     worker->Stop();
   }
   task_runner_->Stop();
+  task_runner_->Join();
   if(cron_thread_.joinable()) cron_thread_.join();
 }
 

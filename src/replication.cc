@@ -124,7 +124,9 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
       fullsync_steps_(this,
                       CallbacksStateMachine::CallbackList{
                           {CallbacksStateMachine::WRITE, FullSync_write_cb},
-                          {CallbacksStateMachine::READ, FullSync_read_cb}}) {}
+                          {CallbacksStateMachine::READ, FullSync_read_cb}}) {
+  seq_ = storage_->LatestSeq();
+}
 
 void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
                               std::function<void()> &&post_fullsync_cb) {

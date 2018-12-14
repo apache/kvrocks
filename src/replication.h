@@ -75,6 +75,12 @@ class ReplicationThread {
     void Start();
     void Stop();
     static void evCallback(bufferevent *bev, void *ctx);
+    static void conn_event_cb(bufferevent *bev, short events,
+                              void *state_machine_ptr);
+    static void set_read_cb(bufferevent *bev, bufferevent_data_cb cb,
+                            void *state_machine_ptr);
+    static void set_write_cb(bufferevent *bev, bufferevent_data_cb cb,
+                             void *state_machine_ptr);
 
    private:
     bufferevent *bev_ = nullptr;

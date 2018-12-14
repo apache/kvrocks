@@ -18,28 +18,35 @@ void send_string(bufferevent *bev, const std::string &data) {
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-void conn_event_cb(bufferevent *bev, short events, void *ctx) {
+void ReplicationThread::CallbacksStateMachine::conn_event_cb(bufferevent *bev, short events, void *state_machine_ptr) {
   if (events & BEV_EVENT_CONNECTED) {
     // call write_cb when connected
     bufferevent_data_cb write_cb;
     bufferevent_getcb(bev, nullptr, &write_cb, nullptr, nullptr);
-    write_cb(bev, ctx);
+    write_cb(bev, state_machine_ptr);
     return;
   }
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
-    LOG(ERROR) << "[replication] connection error/eof";
-    // TODO: restart replication procedure
+    LOG(ERROR) << "[replication] connection error/eof, reconnect";
+    // Wait a bit and reconnect
+    auto state_m = static_cast<CallbacksStateMachine *>( state_machine_ptr);
+    state_m->repl_->repl_state_ = kReplConnecting;
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    state_m->Stop();
+    state_m->Start();
   }
 }
 
-inline void set_read_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
+void ReplicationThread::CallbacksStateMachine::set_read_cb(bufferevent *bev, bufferevent_data_cb cb,
+                        void *state_machine_ptr) {
   bufferevent_enable(bev, EV_READ);
-  bufferevent_setcb(bev, cb, nullptr, conn_event_cb, ctx);
+  bufferevent_setcb(bev, cb, nullptr, conn_event_cb, state_machine_ptr);
 }
 
-void set_write_cb(bufferevent *bev, bufferevent_data_cb cb, void *ctx) {
+void ReplicationThread::CallbacksStateMachine::set_write_cb(bufferevent *bev, bufferevent_data_cb cb,
+                  void *state_machine_ptr) {
   bufferevent_enable(bev, EV_WRITE);
-  bufferevent_setcb(bev, nullptr, cb, conn_event_cb, ctx);
+  bufferevent_setcb(bev, nullptr, cb, conn_event_cb, state_machine_ptr);
 }
 
 ReplicationThread::CallbacksStateMachine::CallbacksStateMachine(
@@ -89,7 +96,9 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   if (bufferevent_socket_connect(bev,
                                  reinterpret_cast<sockaddr *>(&sockaddr_inet),
                                  sizeof(sockaddr_inet)) != 0) {
-    LOG(ERROR) << "[replication] Failed to connect";
+    // NOTE: Connection error will not appear here, network err will be reported in conn_event_cb.
+    // the error here is something fatal.
+    LOG(ERROR) << "[replication] Failed to start";
   }
   handler_idx_ = 0;
   if (handlers_.front().first == WRITE) {
@@ -397,7 +406,7 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
     const auto auth_len_str = std::to_string(auth_.length());
     sock_send(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
                            CRLF + auth_ + CRLF);
-    while(true) {
+    while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
         LOG(ERROR) << "[replication] Failed to auth resp";
         return Status(Status::NotOK);

@@ -1542,6 +1542,9 @@ class CommandPSync : public Commander {
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
+    if (seq == storage->LatestSeq() + 1) {
+      return Status::OK();
+    }
     // Upper bound
     if (seq > storage->LatestSeq() + 1) {
       return Status(Status::NotOK);

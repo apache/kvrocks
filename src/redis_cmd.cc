@@ -1709,7 +1709,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"expire", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandExpire); }},
     {"del", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDel); }},
     //string command
-    {"getValue", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandGet); }},
+    {"get", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandGet); }},
     {"set", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandSet); }},
     {"incrby", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncrBy); }},
     {"incr", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncr); }},

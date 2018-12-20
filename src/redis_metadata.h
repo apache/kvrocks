@@ -1,5 +1,4 @@
-#ifndef KVROCKS_T_METADATA_H
-#define KVROCKS_T_METADATA_H
+#pragma once
 
 #include <rocksdb/env.h>
 #include <rocksdb/status.h>
@@ -139,4 +138,3 @@ class LockGuard {
   LockManager *lock_mgr_ = nullptr;
   Slice key_;
 };
-#endif

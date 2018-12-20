@@ -1,5 +1,4 @@
-#ifndef KVROCKS_UTIL_H
-#define KVROCKS_UTIL_H
+#pragma once
 
 #include <unistd.h>
 #include <rocksdb/slice.h>
@@ -20,5 +19,3 @@ uint8_t DecodeFixed8(const char *ptr);
 uint32_t DecodeFixed32(const char *ptr);
 uint64_t DecodeFixed64(const char *ptr);
 double DecodeDouble(const char *ptr);
-
-#endif //KVROCKS_UTIL_H

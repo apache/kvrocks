@@ -1,5 +1,4 @@
-#ifndef KVROCKS_T_MUTEX_H
-#define KVROCKS_T_MUTEX_H
+#pragma once
 
 #include <mutex>
 #include <vector>
@@ -19,5 +18,3 @@ class LockManager {
   std::vector<std::mutex*> mutex_pool_;
   unsigned hash(const rocksdb::Slice &key);
 };
-
-#endif //KVROCKS_T_MUTEX_H

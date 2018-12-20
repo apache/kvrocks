@@ -1,9 +1,4 @@
-//
-// Created by hulk on 2018/9/29.
-//
-
-#ifndef KVROCKS_T_LIST_H
-#define KVROCKS_T_LIST_H
+#pragma once
 
 #include "redis_metadata.h"
 #include "redis_encoding.h"
@@ -26,5 +21,3 @@ private:
   rocksdb::Status GetMetadata(Slice key, ListMetadata *metadata);
   rocksdb::Status push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret);
 };
-
-#endif //KVROCKS_T_LIST_H

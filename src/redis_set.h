@@ -1,9 +1,4 @@
-//
-// Created by hulk on 2018/10/9.
-//
-
-#ifndef KVROCKS_T_SET_H
-#define KVROCKS_T_SET_H
+#pragma once
 
 #include "redis_metadata.h"
 
@@ -20,5 +15,3 @@ public:
 private:
   rocksdb::Status GetMetadata(Slice key, SetMetadata *metadata);
 };
-
-#endif //KVROCKS_T_SET_H

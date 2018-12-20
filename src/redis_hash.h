@@ -1,5 +1,4 @@
-#ifndef KVROCKS_T_HASH_H
-#define KVROCKS_T_HASH_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -29,5 +28,3 @@ public:
 private:
   rocksdb::Status GetMetadata(Slice key, HashMetadata *metadata);
 };
-
-#endif //KVROCKS_T_HASH_H

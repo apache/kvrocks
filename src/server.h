@@ -1,5 +1,4 @@
-#ifndef KVROCKS_SERVER_H
-#define KVROCKS_SERVER_H
+#pragma once
 
 #include <list>
 #include <string>
@@ -126,5 +125,3 @@ class Server {
   void cron();
   void clientsCron();
 };
-
-#endif  // KVROCKS_SERVER_H

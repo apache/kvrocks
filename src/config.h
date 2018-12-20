@@ -1,5 +1,4 @@
-#ifndef KVROCKS_CONFIG_H
-#define KVROCKS_CONFIG_H
+#pragma once
 
 #include <sys/resource.h>
 
@@ -63,5 +62,3 @@ struct Config{
   bool parseConfigFromString(std::string input, std::string *err);
   bool rewriteConfigValue(std::vector<std::string> &args);
 };
-
-#endif //KVROCKS_CONFIG_H

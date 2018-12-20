@@ -1,5 +1,4 @@
-#ifndef KVROCKS_STATS_H
-#define KVROCKS_STATS_H
+#pragma once
 
 #include <map>
 #include <atomic>
@@ -27,5 +26,3 @@ class Stats {
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
   static long GetMemoryRSS();
 };
-
-#endif //KVROCKS_STATS_H

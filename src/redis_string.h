@@ -1,5 +1,4 @@
-#ifndef KVROCKS_T_STRING_H
-#define KVROCKS_T_STRING_H
+#pragma once
 
 #include "redis_metadata.h"
 
@@ -28,6 +27,3 @@ private:
   rocksdb::Status get(Slice key, std::string *raw_value, std::string *value = nullptr);
   rocksdb::Status update(Slice key, Slice raw_value, Slice new_value);
 };
-
-
-#endif //KVROCKS_T_STRING_H

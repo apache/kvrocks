@@ -1,5 +1,4 @@
-#ifndef KVROCKS_TASK_RUNNER_H
-#define KVROCKS_TASK_RUNNER_H
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -35,5 +34,3 @@ class TaskRunner {
   int n_thread_;
   std::vector<std::thread> threads_;
 };
-
-#endif //KVROCKS_TASK_RUNNER_H

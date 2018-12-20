@@ -1,9 +1,4 @@
-//
-// Created by hulk on 2018/10/16.
-//
-
-#ifndef KVROCKS_T_ZSET_H
-#define KVROCKS_T_ZSET_H
+#pragma once
 
 #include "redis_metadata.h"
 
@@ -54,6 +49,3 @@ public:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
   rocksdb::Status GetMetadata(Slice key, ZSetMetadata *metadata);
 };
-
-
-#endif //KVROCKS_T_ZSET_H

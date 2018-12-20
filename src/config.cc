@@ -166,6 +166,10 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       return false;
     }
     tokens[args[1]] = ns;
+  } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-log-slower-than")) {
+    slowlog_log_slower_than = std::stoll(args[1]);
+  } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
+    slowlog_max_len = std::stoi(args[1]);
   } else {
     *err = "Bad directive or wrong number of arguments";
     return false;

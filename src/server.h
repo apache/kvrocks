@@ -23,6 +23,13 @@ struct DBScanInfo {
   bool is_scanning = false;
 };
 
+struct SlowlogEntry {
+  std::vector<std::string> args;
+  uint64_t id;
+  uint64_t duration;
+  time_t time;
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
@@ -71,6 +78,10 @@ class Server {
   Status AsyncScanDBSize(std::string &ns);
   uint64_t GetLastKeyNum(std::string &ns);
   time_t GetLastScanTime(std::string &ns);
+  void SlowlogReset();
+  uint32_t SlowlogLen();
+  void CreateSlowlogReply(std::string *output, uint32_t count);
+  void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -105,6 +116,12 @@ class Server {
   std::mutex slaves_info_mu_;
   std::list<std::shared_ptr<SlaveInfo>> slaves_info_;
   using slaves_info_iter_ = std::list<std::shared_ptr<SlaveInfo>>::iterator;
+
+  struct SlowLog {
+    std::list<SlowlogEntry> entry_list;
+    uint64_t id = 0;
+    std::mutex mu;
+  } slowlog_;
 
   void cron();
   void clientsCron();

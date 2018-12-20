@@ -1568,6 +1568,47 @@ class CommandPSync : public Commander {
   }
 };
 
+class CommandSlowlog : public Commander {
+ public:
+  explicit CommandSlowlog() : Commander("slowlog", -2, false, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    if ((subcommand_ == "reset" || subcommand_ == "len" || subcommand_ == "get") && args.size() == 2) {
+      return Status::OK();
+    }
+    if (subcommand_ == "get" && args.size() == 3) {
+      try {
+        auto c = std::stoul(args[2]);
+        count_ = static_cast<uint32_t>(c);
+      } catch (const std::exception &e) {
+        return Status(Status::RedisParseErr);
+      }
+      return Status::OK();
+    }
+    return Status(Status::RedisInvalidCmd,"Unknown SLOWLOG subcommand or wrong # of args. Try GET, RESET, LEN.");
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (subcommand_ == "reset")  {
+      srv->SlowlogReset();
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    } else if (subcommand_ == "len") {
+      * output = Redis::Integer(srv->SlowlogLen());
+      return Status::OK();
+    } else if (subcommand_ == "get") {
+      srv->CreateSlowlogReply(output, count_);
+      return Status::OK();
+    }
+    return Status(Status::RedisInvalidCmd,"Unknown SLOWLOG subcommand or wrong # of args. Try GET, RESET, LEN.");
+  }
+
+ private:
+  std::string subcommand_;
+  uint32_t count_ = 10;
+};
+
 class CommandFetchMeta : public Commander {
  public:
   explicit CommandFetchMeta() : Commander("_fetch_meta", 1, true, false) {}
@@ -1660,6 +1701,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"keys", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandKeys); }},
     {"flushall", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandFlushAll); }},
     {"dbsize", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDBSize); }},
+    {"slowlog", []()->std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandSlowlog); }},
     // key command
     {"ttl", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandTTL); }},
     {"type", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandType); }},

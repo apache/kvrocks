@@ -17,6 +17,8 @@ struct Config{
   int loglevel = 0;
   int backlog = 1024;
   int maxclients = 10240;
+  int64_t slowlog_log_slower_than = -1;
+  unsigned int slowlog_max_len = 0;
   bool daemonize = false;
   bool slave_readonly = true;
 

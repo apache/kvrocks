@@ -371,3 +371,41 @@ time_t Server::GetLastScanTime(std::string &ns) {
   }
   return 0;
 }
+
+void Server::SlowlogReset() {
+  slowlog_.mu.lock();
+  slowlog_.entry_list.clear();
+  slowlog_.mu.unlock();
+}
+
+uint Server::SlowlogLen() {
+  std::unique_lock<std::mutex> lock(slowlog_.mu);
+  return slowlog_.entry_list.size();
+}
+
+void Server::CreateSlowlogReply(std::string *output, uint32_t count) {
+  uint32_t sent = 0;
+  slowlog_.mu.lock();
+  for (auto iter = slowlog_.entry_list.begin(); iter != slowlog_.entry_list.end() && sent < count; ++iter) {
+    sent++;
+    output->append(Redis::MultiLen(4));
+    output->append(Redis::Integer(iter->id));
+    output->append(Redis::Integer(iter->time));
+    output->append(Redis::Integer(iter->duration));
+    output->append(Redis::MultiBulkString(iter->args));
+  }
+  output->insert(0, Redis::MultiLen(sent));
+  slowlog_.mu.unlock();
+}
+
+void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration) {
+  if (config_->slowlog_log_slower_than < 0) return;
+  if (static_cast<int64_t>(duration) < config_->slowlog_log_slower_than) return;
+  slowlog_.mu.lock();
+  slowlog_.entry_list.emplace_front(SlowlogEntry{*args, ++slowlog_.id, duration, time(nullptr)});
+
+  while (slowlog_.entry_list.size() > config_->slowlog_max_len) {
+    slowlog_.entry_list.pop_back();
+  }
+  slowlog_.mu.unlock();
+}

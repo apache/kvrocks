@@ -1,5 +1,6 @@
 #include <glog/logging.h>
 #include <iostream>
+#include <chrono>
 
 #include "string_util.h"
 #include "redis_cmd.h"
@@ -159,7 +160,11 @@ void Request::ExecuteCommands(Connection *conn) {
 
     svr_->stats_.IncrCalls();
     if (!cmd->IsSidecar()) {
+      auto start = std::chrono::high_resolution_clock::now();
       s = cmd->Execute(svr_, conn, &reply);
+      auto end = std::chrono::high_resolution_clock::now();
+      long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+      svr_->SlowlogPushEntryIfNeeded(cmd->Args(), static_cast<uint64_t>(duration));
       if (!s.IsOK()) {
         conn->Reply(Redis::Error(s.Msg()));
         LOG(ERROR) << "Failed to execute redis command: " << cmd->Name()

@@ -26,6 +26,9 @@ class Commander {
   bool IsWrite() { return is_write_; };
 
   void SetArgs(const std::vector<std::string> args) { args_ = args; }
+  const std::vector<std::string>* Args() {
+    return &args_;
+  };
   virtual Status Parse(const std::vector<std::string> &args) {
     return Status::OK();
   };

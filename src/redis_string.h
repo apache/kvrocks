@@ -24,6 +24,6 @@ public:
   rocksdb::Status MSetNX(std::vector<StringPair> pairs, int *ret);
 
 private:
-  rocksdb::Status get(Slice key, std::string *raw_value, std::string *value = nullptr);
-  rocksdb::Status update(Slice key, Slice raw_value, Slice new_value);
+  rocksdb::Status getValue(Slice key, std::string *raw_value, std::string *value = nullptr);
+  rocksdb::Status updateValue(Slice key, Slice raw_value, Slice new_value);
 };

@@ -77,7 +77,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
         cached_metadata_.clear();
         return true;
       } else {
-        // failed to get metadata, clear the cached key and reserve
+        // failed to getValue metadata, clear the cached key and reserve
         cached_key_.clear();
         cached_metadata_.clear();
         return false;

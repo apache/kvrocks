@@ -51,7 +51,7 @@ class CommandNamespace : public Commander {
       return Status::OK();
     }
     Config *config = svr->GetConfig();
-    if (args_.size() == 3 && args_[1] == "get") {
+    if (args_.size() == 3 && args_[1] == "getValue") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
         auto tokens = config->tokens;
@@ -142,7 +142,7 @@ class CommandConfig : public Commander {
       }
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success.";
-    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
+    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "getValue") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);
@@ -161,7 +161,7 @@ class CommandConfig : public Commander {
 
 class CommandGet : public Commander {
  public:
-  explicit CommandGet() : Commander("get", 2, false, false) {}
+  explicit CommandGet() : Commander("getValue", 2, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     RedisString string_db(svr->storage_, conn->GetNamespace());
@@ -1574,10 +1574,10 @@ class CommandSlowlog : public Commander {
 
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
-    if ((subcommand_ == "reset" || subcommand_ == "len" || subcommand_ == "get") && args.size() == 2) {
+    if ((subcommand_ == "reset" || subcommand_ == "len" || subcommand_ == "getValue") && args.size() == 2) {
       return Status::OK();
     }
-    if (subcommand_ == "get" && args.size() == 3) {
+    if (subcommand_ == "getValue" && args.size() == 3) {
       try {
         auto c = std::stoul(args[2]);
         count_ = static_cast<uint32_t>(c);
@@ -1597,7 +1597,7 @@ class CommandSlowlog : public Commander {
     } else if (subcommand_ == "len") {
       * output = Redis::Integer(srv->SlowlogLen());
       return Status::OK();
-    } else if (subcommand_ == "get") {
+    } else if (subcommand_ == "getValue") {
       srv->CreateSlowlogReply(output, count_);
       return Status::OK();
     }
@@ -1709,7 +1709,7 @@ std::map<std::string, CommanderFactory> command_table = {
     {"expire", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandExpire); }},
     {"del", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandDel); }},
     //string command
-    {"get", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandGet); }},
+    {"getValue", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandGet); }},
     {"set", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandSet); }},
     {"incrby", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncrBy); }},
     {"incr", []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new CommandIncr); }},

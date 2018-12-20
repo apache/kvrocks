@@ -18,6 +18,7 @@ class Storage {
       :backup_env_(rocksdb::Env::Default()),
        config_(config),
        lock_mgr_(16) {}
+  ~Storage();
 
   void InitOptions(rocksdb::Options *options);
   Status Open();
@@ -27,8 +28,6 @@ class Storage {
   Status RestoreFromBackup(rocksdb::SequenceNumber *seq);
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
-  Status Set(const std::string &k, const std::string &v);
-  std::string Get(const std::string &k);
   Status WriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
@@ -41,11 +40,6 @@ class Storage {
   rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
   std::vector<rocksdb::ColumnFamilyHandle*>* GetCFHandles();
   LockManager *GetLockManager() { return &lock_mgr_; }
-
-  ~Storage() {
-    for (auto handle : cf_handles_) delete handle;
-    delete db_;
-  }
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

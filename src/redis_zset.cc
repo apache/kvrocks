@@ -1,5 +1,5 @@
 #include <math.h>
-#include "t_zset.h"
+#include "redis_zset.h"
 
 rocksdb::Status RedisZSet::GetMetadata(Slice key, ZSetMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisZSet, key, metadata);

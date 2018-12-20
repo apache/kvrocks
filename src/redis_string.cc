@@ -1,4 +1,4 @@
-#include "t_string.h"
+#include "redis_string.h"
 #include <string>
 
 rocksdb::Status RedisString::get(Slice key, std::string *raw_value, std::string *value) {

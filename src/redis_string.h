@@ -1,7 +1,7 @@
 #ifndef KVROCKS_T_STRING_H
 #define KVROCKS_T_STRING_H
 
-#include "t_metadata.h"
+#include "redis_metadata.h"
 
 typedef struct {
   Slice key;

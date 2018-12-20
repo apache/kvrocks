@@ -5,8 +5,8 @@
 #ifndef KVROCKS_T_LIST_H
 #define KVROCKS_T_LIST_H
 
-#include "t_metadata.h"
-#include "t_encoding.h"
+#include "redis_metadata.h"
+#include "redis_encoding.h"
 #include <stdint.h>
 
 class RedisList :public RedisDB {

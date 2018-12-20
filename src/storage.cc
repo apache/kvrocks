@@ -8,7 +8,7 @@
 
 #include "config.h"
 #include "storage.h"
-#include "t_metadata.h"
+#include "redis_metadata.h"
 #include "event_listener.h"
 
 namespace Engine {
@@ -139,6 +139,12 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   rocksdb::DB **db_;
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
 };
+
+Engine::Storage::~Storage() {
+  for (auto handle : cf_handles_) delete handle;
+  db_->Close();
+  delete db_;
+}
 
 void Engine::Storage::InitOptions(rocksdb::Options *options) {
   options->create_if_missing = true;

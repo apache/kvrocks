@@ -14,11 +14,11 @@
 #include "sock_util.h"
 #include "storage.h"
 #include "string_util.h"
-#include "t_string.h"
-#include "t_hash.h"
-#include "t_list.h"
-#include "t_set.h"
-#include "t_zset.h"
+#include "redis_string.h"
+#include "redis_hash.h"
+#include "redis_list.h"
+#include "redis_set.h"
+#include "redis_zset.h"
 
 namespace Redis {
 class CommandAuth : public Commander {

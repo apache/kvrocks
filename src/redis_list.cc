@@ -1,4 +1,4 @@
-#include "t_list.h"
+#include "redis_list.h"
 #include <vector>
 
 rocksdb::Status RedisList::GetMetadata(Slice key, ListMetadata *metadata) {
@@ -31,15 +31,14 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
   ListMetadata metadata;
+  rocksdb::WriteBatch batch;
+  LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
     return s;
   }
-
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
-  rocksdb::WriteBatch batch;
   for (const auto &elem : elems) {
     std::string index_buf, sub_key;
     PutFixed64(&index_buf, index);

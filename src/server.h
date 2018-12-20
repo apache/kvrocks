@@ -9,7 +9,7 @@
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
-#include "t_metadata.h"
+#include "redis_metadata.h"
 
 namespace Redis {
 class Connection;

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "t_set.h"
+#include "redis_set.h"
 #include "test_base.h"
 
 class RedisSetTest : public TestBase {

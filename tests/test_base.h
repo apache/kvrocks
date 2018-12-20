@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "t_hash.h"
+#include "redis_hash.h"
 
 class TestBase : public testing::Test {
 protected:

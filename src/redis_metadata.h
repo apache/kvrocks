@@ -5,7 +5,7 @@
 #include <rocksdb/status.h>
 #include <string>
 #include <rocksdb/db.h>
-#include "t_encoding.h"
+#include "redis_encoding.h"
 #include "storage.h"
 
 enum RedisType {

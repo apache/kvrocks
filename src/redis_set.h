@@ -5,7 +5,7 @@
 #ifndef KVROCKS_T_SET_H
 #define KVROCKS_T_SET_H
 
-#include "t_metadata.h"
+#include "redis_metadata.h"
 
 class RedisSet : public RedisDB {
 public:

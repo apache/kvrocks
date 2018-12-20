@@ -5,8 +5,8 @@
 #include <vector>
 #include <rocksdb/status.h>
 
-#include "t_encoding.h"
-#include "t_metadata.h"
+#include "redis_encoding.h"
+#include "redis_metadata.h"
 
 typedef struct FieldValue {
   std::string field;

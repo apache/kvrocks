@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "test_base.h"
-#include "t_hash.h"
+#include "redis_hash.h"
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {

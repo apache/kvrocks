@@ -1,8 +1,7 @@
-#include "t_hash.h"
+#include "redis_hash.h"
 #include <iostream>
 #include <rocksdb/status.h>
 
-// lock outside before use GetMetadata
 rocksdb::Status RedisHash::GetMetadata(Slice key, HashMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisHash, key, metadata);
 }
@@ -165,17 +164,16 @@ rocksdb::Status RedisHash::SetNX(Slice key, Slice field, Slice value, int *ret) 
 
 rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields, int *ret) {
   *ret = 0;
-
   std::string ns_key;
   AppendNamepacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
   HashMetadata metadata;
+  rocksdb::WriteBatch batch;
+  LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  rocksdb::WriteBatch batch;
   std::string sub_key, value;
   for (const auto &field : fields) {
     InternalKey(key, field, metadata.version).Encode(&sub_key);

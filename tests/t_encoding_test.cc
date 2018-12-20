@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "t_encoding.h"
+#include "redis_encoding.h"
 
 #include <limits>
 TEST(Util, EncodeAndDecodeDouble) {

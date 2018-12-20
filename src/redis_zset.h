@@ -5,7 +5,7 @@
 #ifndef KVROCKS_T_ZSET_H
 #define KVROCKS_T_ZSET_H
 
-#include "t_metadata.h"
+#include "redis_metadata.h"
 
 typedef struct ZRangeSpec {
   double min, max;

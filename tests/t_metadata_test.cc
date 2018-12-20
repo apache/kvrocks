@@ -1,5 +1,5 @@
-#include "t_metadata.h"
-#include "t_hash.h"
+#include "redis_metadata.h"
+#include "redis_hash.h"
 #include "test_base.h"
 #include <gtest/gtest.h>
 

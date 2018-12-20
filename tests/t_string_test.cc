@@ -1,6 +1,6 @@
-#include <t_string.h>
+#include <redis_string.h>
 #include "test_base.h"
-#include "t_string.h"
+#include "redis_string.h"
 
 class RedisStringTest : public TestBase {
 protected:

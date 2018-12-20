@@ -45,7 +45,7 @@ string(STRIP ${GIT_SHA} GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target
-add_executable(kvrocks src/task_runner.cc src/task_runner.h)
+add_executable(kvrocks)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
 target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
@@ -58,22 +58,24 @@ target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
 target_link_libraries(kvrocks ${EXTERNAL_LIBS})
 target_sources(kvrocks PRIVATE
-               src/worker.cc
-               src/worker.h
-               src/main.cc
-               src/redis_request.cc
-               src/redis_request.h
-               src/redis_cmd.cc
-               src/redis_cmd.h
-               src/string_util.cc
-               src/string_util.h
-               src/storage.cc
-               src/storage.h
-               src/status.h
-               src/redis_reply.h
-               src/redis_reply.cc
-               src/replication.cc
-               src/replication.h
+        src/worker.cc
+        src/worker.h
+        src/main.cc
+        src/redis_request.cc
+        src/redis_request.h
+        src/redis_cmd.cc
+        src/redis_cmd.h
+        src/string_util.cc
+        src/string_util.h
+        src/storage.cc
+        src/storage.h
+        src/status.h
+        src/redis_reply.h
+        src/redis_reply.cc
+        src/replication.cc
+        src/replication.h
+        src/task_runner.cc
+        src/task_runner.h
         src/redis_encoding.h
         src/redis_encoding.cc
         src/redis_metadata.h
@@ -88,18 +90,18 @@ target_sources(kvrocks PRIVATE
         src/redis_set.cc
         src/redis_zset.cc
         src/redis_zset.h
-               src/sock_util.h
-               src/sock_util.cc
+        src/sock_util.h
+        src/sock_util.cc
         src/lock_manager.cc
-               src/rocksdb_crc32c.h
-               src/config.cc
-               src/config.h
-               src/stats.cc
-               src/stats.h
-               src/server.cc
-               src/server.h
-               src/event_listener.h
-               src/event_listener.cc)
+        src/rocksdb_crc32c.h
+        src/config.cc
+        src/config.h
+        src/stats.cc
+        src/stats.h
+        src/server.cc
+        src/server.h
+        src/event_listener.h
+        src/event_listener.cc)
 
 add_executable(unittest
         src/redis_metadata.cc
@@ -109,24 +111,26 @@ add_executable(unittest
         src/redis_list.cc
         src/redis_set.cc
         src/redis_zset.cc
-               src/string_util.cc
-               src/storage.cc
+        src/string_util.cc
+        src/storage.cc
         src/lock_manager.cc
-               src/stats.cc
-               src/event_listener.cc
-               src/task_runner.cc
-               tests/main.cc
-               tests/test_base.h
-               tests/t_string_test.cc
-               tests/t_encoding_test.cc
-               tests/t_list_test.cc
-               tests/t_hash_test.cc
-               tests/t_set_test.cc
-               tests/t_zset_test.cc
-               tests/t_metadata_test.cc
-               tests/string_util_test.cc
-               tests/rwlock_test.cc
-               tests/stats_test.cc tests/task_runner_test.cc)
+        src/stats.cc
+        src/event_listener.cc
+        src/task_runner.cc
+        tests/main.cc
+        tests/test_base.h
+        tests/t_string_test.cc
+        tests/t_encoding_test.cc
+        tests/t_list_test.cc
+        tests/t_hash_test.cc
+        tests/t_set_test.cc
+        tests/t_zset_test.cc
+        tests/t_metadata_test.cc
+        tests/string_util_test.cc
+        tests/rwlock_test.cc
+        tests/stats_test.cc
+        tests/task_runner_test.cc)
+
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)
 target_link_libraries(unittest ${EXTERNAL_LIBS})

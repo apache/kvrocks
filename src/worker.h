@@ -20,30 +20,27 @@ class Request;
 class Connection;
 }
 
-class Worker{
+class Worker {
   friend Redis::Request;
 
  public:
   Worker(Server *svr, Config *config);
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
-  void Run(std::thread::id tid);
   void Stop();
-  Status Listen(const std::string &host, int port, int backlog);
-
-  Status AddConnection(Redis::Connection *c);
+  void Run(std::thread::id tid);
   void RemoveConnection(int fd);
+  Status AddConnection(Redis::Connection *c);
 
   Server *svr_;
-  Engine::Storage *storage_;
-
  private:
+  Status listen(const std::string &host, int port, int backlog);
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
 
   event_base *base_;
-  std::vector<evutil_socket_t> listen_fds_;
   std::thread::id tid_;
+  std::vector<evutil_socket_t> listen_fds_;
   std::map<int, Redis::Connection*> conns_;
 };
 

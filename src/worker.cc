@@ -5,11 +5,11 @@
 #include "redis_request.h"
 #include "server.h"
 
-Worker::Worker(Server *svr, Config *config) : svr_(svr), storage_(svr->storage_) {
+Worker::Worker(Server *svr, Config *config) : svr_(svr){
   base_ = event_base_new();
   if (!base_) throw std::exception();
   for (const auto &host : config->binds) {
-    Listen(host, config->port, config->backlog);
+    listen(host, config->port, config->backlog);
   }
 }
 
@@ -41,7 +41,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   }
 }
 
-Status Worker::Listen(const std::string &host, int port, int backlog) {
+Status Worker::listen(const std::string &host, int port, int backlog) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   evutil_inet_pton(AF_INET, host.data(), &(sin.sin_addr));

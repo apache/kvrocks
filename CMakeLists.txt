@@ -74,20 +74,20 @@ target_sources(kvrocks PRIVATE
                src/redis_reply.cc
                src/replication.cc
                src/replication.h
-               src/t_encoding.h
-               src/t_encoding.cc
-               src/t_metadata.h
-               src/t_metadata.cc
-               src/t_string.h
-               src/t_string.cc
-               src/t_hash.h
-               src/t_hash.cc
-               src/t_list.h
-               src/t_list.cc
-               src/t_set.h
-               src/t_set.cc
-               src/t_zset.cc
-               src/t_zset.h
+        src/redis_encoding.h
+        src/redis_encoding.cc
+        src/redis_metadata.h
+        src/redis_metadata.cc
+        src/redis_string.h
+        src/redis_string.cc
+        src/redis_hash.h
+        src/redis_hash.cc
+        src/redis_list.h
+        src/redis_list.cc
+        src/redis_set.h
+        src/redis_set.cc
+        src/redis_zset.cc
+        src/redis_zset.h
                src/sock_util.h
                src/sock_util.cc
         src/lock_manager.cc
@@ -102,13 +102,13 @@ target_sources(kvrocks PRIVATE
                src/event_listener.cc)
 
 add_executable(unittest
-               src/t_metadata.cc
-               src/t_encoding.cc
-               src/t_string.cc
-               src/t_hash.cc
-               src/t_list.cc
-               src/t_set.cc
-               src/t_zset.cc
+        src/redis_metadata.cc
+        src/redis_encoding.cc
+        src/redis_string.cc
+        src/redis_hash.cc
+        src/redis_list.cc
+        src/redis_set.cc
+        src/redis_zset.cc
                src/string_util.cc
                src/storage.cc
         src/lock_manager.cc

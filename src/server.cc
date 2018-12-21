@@ -149,9 +149,8 @@ void Server::cron() {
   if (counter != 0 && counter % 10000) {
     clientsCron();
   }
-  // wake up every millisecond
   counter++;
-  std::this_thread::sleep_for(std::chrono::microseconds(1));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
 void Server::GetRocksDBInfo(std::string &info) {

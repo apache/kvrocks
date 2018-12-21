@@ -25,6 +25,7 @@ class Worker {
 
  public:
   Worker(Server *svr, Config *config);
+  ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
   void Stop();
@@ -40,13 +41,14 @@ class Worker {
 
   event_base *base_;
   std::thread::id tid_;
-  std::vector<evutil_socket_t> listen_fds_;
+  std::vector<evconnlistener*> listen_events_;
   std::map<int, Redis::Connection*> conns_;
 };
 
 class WorkerThread {
  public:
   explicit WorkerThread(Worker *worker) : worker_(worker) {}
+  ~WorkerThread() { delete worker_; }
   WorkerThread(const WorkerThread&) = delete;
   WorkerThread(WorkerThread&&) = delete;
   void Start();

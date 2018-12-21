@@ -13,6 +13,13 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr){
   }
 }
 
+Worker::~Worker() {
+  for (const auto &conn_iter:conns_) {
+    delete conn_iter.second;
+  }
+  event_base_free(base_);
+}
+
 void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
@@ -61,9 +68,8 @@ Status Worker::listen(const std::string &host, int port, int backlog) {
   evutil_make_socket_nonblocking(fd);
   auto lev = evconnlistener_new(base_, newConnection, this,
                                 LEV_OPT_CLOSE_ON_FREE, backlog, fd);
-  evutil_socket_t listen_fd = evconnlistener_get_fd(lev);
-  listen_fds_.emplace_back(listen_fd);
-  LOG(INFO) << "Listening on: " << listen_fd;
+  listen_events_.emplace_back(lev);
+  LOG(INFO) << "Listening on: " << evconnlistener_get_fd(lev);
   return Status::OK();
 }
 
@@ -74,8 +80,10 @@ void Worker::Run(std::thread::id tid) {
 
 void Worker::Stop() {
   event_base_loopbreak(base_);
-  for (const auto &fd : listen_fds_) {
+  for (const auto &lev: listen_events_) {
+    evutil_socket_t fd = evconnlistener_get_fd(lev);
     if (fd > 0) close(fd);
+    evconnlistener_free(lev);
   }
 }
 

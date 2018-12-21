@@ -20,6 +20,9 @@ Server::Server(Engine::Storage *storage, Config *config) :
 }
 
 Server::~Server() {
+  for(const auto &worker_thread : worker_threads_) {
+    delete worker_thread;
+  }
   delete task_runner_;
 }
 

@@ -1481,7 +1481,6 @@ class CommandPSync : public Commander {
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
     int sock_fd = conn->GetFD();
 
-    // If seq_ is larger than storage_'s seq, return error
     if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
       sock_send(sock_fd, Redis::Error("sequence out of range"));
@@ -1502,11 +1501,6 @@ class CommandPSync : public Commander {
     svr->UpdateSlaveStats(slave_info_pos, seq_ - 1);
 
     while (true) {
-      // FIXME: check socket errors
-      //if (!sock_check_liveness(sock_fd)) {
-      //  LOG(ERROR) << "Connection was closed by peer";
-      //  return Status(Status::NetSendErr);
-      //}
       auto s = svr->storage_->GetWALIter(seq_, &iter);
       if (!s.IsOK()) {
         waitTilWALHasNewData(svr->storage_);

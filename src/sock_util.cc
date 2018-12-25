@@ -28,22 +28,6 @@ sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
   return sin;
 }
 
-int sock_check_liveness(int fd) {
-  struct pollfd rfd[1];
-  rfd[0].fd = fd;
-  rfd[0].events = POLLIN|POLLPRI|POLLERR|POLLHUP;
-  rfd[0].revents = 0;
-
-  if (poll(rfd, 1, 0) > 0) {
-    char buf[1];
-    ssize_t n = recv(fd, buf, sizeof(buf), MSG_PEEK);
-    if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
 int sock_connect(std::string host, uint32_t port, int* fd) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;

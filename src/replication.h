@@ -103,6 +103,7 @@ class ReplicationThread {
   static CBState FullSync_write_cb(bufferevent *bev, void *ctx);
   static CBState FullSync_read_cb(bufferevent *bev, void *ctx);
   Status FetchFile(int sock_fd, std::string path, uint32_t crc);
+  Status ParallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 
   static void Timer_cb(int, short, void *ctx);
 };

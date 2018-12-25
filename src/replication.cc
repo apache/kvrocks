@@ -4,6 +4,7 @@
 #include <event2/event.h>
 #include <glog/logging.h>
 #include <netinet/tcp.h>
+#include <future>
 #include <string>
 #include <thread>
 
@@ -18,7 +19,8 @@ void send_string(bufferevent *bev, const std::string &data) {
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-void ReplicationThread::CallbacksStateMachine::conn_event_cb(bufferevent *bev, short events, void *state_machine_ptr) {
+void ReplicationThread::CallbacksStateMachine::conn_event_cb(
+    bufferevent *bev, short events, void *state_machine_ptr) {
   if (events & BEV_EVENT_CONNECTED) {
     // call write_cb when connected
     bufferevent_data_cb write_cb;
@@ -29,7 +31,7 @@ void ReplicationThread::CallbacksStateMachine::conn_event_cb(bufferevent *bev, s
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
     LOG(ERROR) << "[replication] connection error/eof, reconnect";
     // Wait a bit and reconnect
-    auto state_m = static_cast<CallbacksStateMachine *>( state_machine_ptr);
+    auto state_m = static_cast<CallbacksStateMachine *>(state_machine_ptr);
     state_m->repl_->repl_state_ = kReplConnecting;
     std::this_thread::sleep_for(std::chrono::seconds(3));
     state_m->Stop();
@@ -37,14 +39,14 @@ void ReplicationThread::CallbacksStateMachine::conn_event_cb(bufferevent *bev, s
   }
 }
 
-void ReplicationThread::CallbacksStateMachine::set_read_cb(bufferevent *bev, bufferevent_data_cb cb,
-                        void *state_machine_ptr) {
+void ReplicationThread::CallbacksStateMachine::set_read_cb(
+    bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr) {
   bufferevent_enable(bev, EV_READ);
   bufferevent_setcb(bev, cb, nullptr, conn_event_cb, state_machine_ptr);
 }
 
-void ReplicationThread::CallbacksStateMachine::set_write_cb(bufferevent *bev, bufferevent_data_cb cb,
-                  void *state_machine_ptr) {
+void ReplicationThread::CallbacksStateMachine::set_write_cb(
+    bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr) {
   bufferevent_enable(bev, EV_WRITE);
   bufferevent_setcb(bev, nullptr, cb, conn_event_cb, state_machine_ptr);
 }
@@ -96,8 +98,8 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   if (bufferevent_socket_connect(bev,
                                  reinterpret_cast<sockaddr *>(&sockaddr_inet),
                                  sizeof(sockaddr_inet)) != 0) {
-    // NOTE: Connection error will not appear here, network err will be reported in conn_event_cb.
-    // the error here is something fatal.
+    // NOTE: Connection error will not appear here, network err will be reported
+    // in conn_event_cb. the error here is something fatal.
     LOG(ERROR) << "[replication] Failed to start";
   }
   handler_idx_ = 0;
@@ -356,26 +358,9 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = Fetch_meta_id;
 
-      // TODO: this loop is still a synchronized operation
-      // without event base. we should considering some
-      // concurrent file fetching methods in the future.
       self->repl_state_ = kReplFetchSST;
-      for (auto f : meta.files) {
-        DLOG(INFO) << "> " << f.first << " " << f.second;
-        int fd2;
-        // Don't fetch existing files
-        if (Engine::Storage::BackupManager::FileExists(self->storage_,
-                                                       f.first)) {
-          continue;
-        }
-        // FIXME: don't connect every time, see _fetch_file cmd
-        // implementation
-        if (sock_connect(self->host_, self->port_, &fd2) < 0) {
-          LOG(ERROR) << "[replication] Failed to connect";
-          continue;
-        }
-        self->FetchFile(fd2, f.first, f.second);
-        close(fd2);
+      if (!self->ParallelFetchFile(meta.files).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to fetch files";
       }
 
       // Restore DB from backup
@@ -393,6 +378,53 @@ ReplicationThread::CBState ReplicationThread::FullSync_read_cb(bufferevent *bev,
       self->psync_steps_.Start();
       return CBState::QUIT;
   }
+}
+
+Status ReplicationThread::ParallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files) {
+  size_t concurrency = 1;
+  if (files.size() > 20) {
+    // Use 4 threads to download files in parallel
+    concurrency = 4;
+  }
+  std::vector<std::future<bool>> results;
+  for (size_t tid = 0; tid < concurrency; ++tid) {
+    results.push_back(std::async(
+        std::launch::async, [this, &files, tid, concurrency]() -> bool {
+          for (auto f_idx = tid; f_idx < files.size();
+               f_idx += concurrency) {
+            const auto &f_name = files[f_idx].first;
+            const auto &f_crc = files[f_idx].second;
+            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
+            int fd2;
+            // Don't fetch existing files
+            if (Engine::Storage::BackupManager::FileExists(this->storage_,
+                                                           f_name)) {
+              continue;
+            }
+            // FIXME: don't connect every time, see _fetch_file cmd
+            // implementation
+            if (sock_connect(this->host_, this->port_, &fd2) < 0) {
+              LOG(ERROR) << "[replication] Failed to connect";
+              return false;
+            }
+            auto s = this->FetchFile(fd2, f_name, f_crc);
+            if (!s.IsOK()) {
+              return false;
+            }
+            close(fd2);
+          }
+          return true;
+        }));
+  }
+
+  // Wait til finish
+  for (auto &f : results) {
+    if (!f.get()) {
+      LOG(ERROR) << "[replication] Failed to fetch some files";
+      return Status(Status::NotOK);
+    }
+  }
+  return Status::OK();
 }
 
 Status ReplicationThread::FetchFile(int sock_fd, std::string path,

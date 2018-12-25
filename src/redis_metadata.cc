@@ -4,11 +4,10 @@
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
   uint8_t namespace_size;
-  GetFixed32(&input, &key_size);
   GetFixed8(&input, &namespace_size);
   namespace_ = Slice(input.data(), namespace_size);
   input.remove_prefix(namespace_size);
-  key_size -= (namespace_size + 1);
+  GetFixed32(&input, &key_size);
   key_ = Slice(input.data(), key_size);
   input.remove_prefix(key_size);
   GetFixed64(&input, &version_);
@@ -56,12 +55,12 @@ void InternalKey::Encode(std::string *out) {
   } else {
     buf_ = new char[total];
   }
-  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()+1+namespace_.size()));
-  pos += 4;
   EncodeFixed8(buf_+pos, static_cast<uint8_t>(namespace_.size()));
   pos += 1;
   memcpy(buf_+pos, namespace_.data(), namespace_.size());
   pos += namespace_.size();
+  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()));
+  pos += 4;
   memcpy(buf_+pos, key_.data(), key_.size());
   pos += key_.size();
   EncodeFixed64(buf_+pos, version_);

@@ -1351,10 +1351,12 @@ class CommandCompact: public  Commander {
  public:
   explicit CommandCompact() : Commander("compact", 1, false, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    rocksdb::Status s = svr->storage_->Compact();
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can compact the db");
+      return Status::OK();
     }
+    Status s = svr->AsyncCompactDB();
+    if (!s.IsOK()) return s;
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "Commpact was triggered by manual with executed success.";
     return Status::OK();

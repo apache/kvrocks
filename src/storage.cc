@@ -344,12 +344,12 @@ std::vector<rocksdb::ColumnFamilyHandle *> * Storage::GetCFHandles() {
   return &cf_handles_;
 }
 
-rocksdb::Status Storage::Compact() {
+rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   for (auto cf_handle : cf_handles_) {
     rocksdb::Status s =
-        db_->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
+        db_->CompactRange(compact_opts, cf_handle, begin, end);
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();

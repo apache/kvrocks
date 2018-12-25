@@ -74,9 +74,12 @@ class Server {
   void GetReplicationInfo(std::string &info);
   void GetClientsInfo(std::string &info);
   void GetMemoryInfo(std::string &info);
+
+  Status AsyncCompactDB();
   Status AsyncScanDBSize(std::string &ns);
   uint64_t GetLastKeyNum(std::string &ns);
   time_t GetLastScanTime(std::string &ns);
+
   void SlowlogReset();
   uint32_t SlowlogLen();
   void CreateSlowlogReply(std::string *output, uint32_t count);
@@ -100,8 +103,10 @@ class Server {
   std::thread cron_thread_;
   TaskRunner *task_runner_;
 
-  // TODO: locked before modify
+  std::mutex db_mutex_;
+  bool db_compacting_ = false;
   std::map<std::string, DBScanInfo> db_scan_infos_;
+  // TODO: locked before modify
   std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
 
   // Used by master role, tracking slaves' info

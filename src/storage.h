@@ -32,7 +32,7 @@ class Storage {
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
 
-  rocksdb::Status Compact();
+  rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   const std::string GetName() {
     return config_->db_name;

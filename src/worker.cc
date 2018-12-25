@@ -14,8 +14,12 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr){
 }
 
 Worker::~Worker() {
-  for (auto iter = conns_.cbegin(); iter != conns_.cend(); iter++) {
-    delete iter->second;
+  std::vector<int> fds;
+  for (const auto iter : conns_) {
+    fds.emplace_back(iter.first);
+  }
+  for (const auto iter : fds) {
+    RemoveConnection(iter);
   }
   event_base_free(base_);
 }

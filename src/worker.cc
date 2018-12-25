@@ -14,8 +14,8 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr){
 }
 
 Worker::~Worker() {
-  for (const auto &conn_iter:conns_) {
-    delete conn_iter.second;
+  for (auto iter = conns_.cbegin(); iter != conns_.cend(); iter++) {
+    delete iter->second;
   }
   event_base_free(base_);
 }

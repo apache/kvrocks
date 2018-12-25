@@ -15,6 +15,9 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  auto admin_worker = new Worker(this, config, true);
+  worker_threads_.emplace_back(new WorkerThread(admin_worker));
+
   task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
 }

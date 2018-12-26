@@ -216,11 +216,17 @@ Status Engine::Storage::Open() {
       kMetadataColumnFamilyName, metadata_opts));
   column_families.emplace_back(
       rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
+
+  auto start = std::chrono::high_resolution_clock::now();
   rocksdb::Status s =
       rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
+  auto end = std::chrono::high_resolution_clock::now();
+  long long duration = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
   if (!s.ok()) {
+    LOG(INFO) << "Failed to load the data from disk: " << duration << " ms";
     return Status(Status::DBOpenErr, s.ToString());
   }
+  LOG(INFO) << "Success to load the data from disk: " << duration << " ms";
   return Status::OK();
 }
 

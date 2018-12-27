@@ -1570,10 +1570,10 @@ class CommandSlowlog : public Commander {
 
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
-    if ((subcommand_ == "reset" || subcommand_ == "len" || subcommand_ == "getValue") && args.size() == 2) {
+    if ((subcommand_ == "reset" || subcommand_ == "len" || subcommand_ == "get") && args.size() == 2) {
       return Status::OK();
     }
-    if (subcommand_ == "getValue" && args.size() == 3) {
+    if (subcommand_ == "get" && args.size() == 3) {
       try {
         auto c = std::stoul(args[2]);
         count_ = static_cast<uint32_t>(c);
@@ -1593,7 +1593,7 @@ class CommandSlowlog : public Commander {
     } else if (subcommand_ == "len") {
       * output = Redis::Integer(srv->SlowlogLen());
       return Status::OK();
-    } else if (subcommand_ == "getValue") {
+    } else if (subcommand_ == "get") {
       srv->CreateSlowlogReply(output, count_);
       return Status::OK();
     }

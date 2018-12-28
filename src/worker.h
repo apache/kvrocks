@@ -24,7 +24,7 @@ class Worker {
   friend Redis::Request;
 
  public:
-  Worker(Server *svr, Config *config);
+  Worker(Server *svr, Config *config, bool repl = false);
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
@@ -32,6 +32,9 @@ class Worker {
   void Run(std::thread::id tid);
   void RemoveConnection(int fd);
   Status AddConnection(Redis::Connection *c);
+  bool IsRepl() { // Whether if worker is replication worker
+    return repl_;
+  }
 
   Server *svr_;
  private:
@@ -43,6 +46,7 @@ class Worker {
   std::thread::id tid_;
   std::vector<evconnlistener*> listen_events_;
   std::map<int, Redis::Connection*> conns_;
+  bool repl_;
 };
 
 class WorkerThread {

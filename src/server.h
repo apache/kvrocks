@@ -48,9 +48,9 @@ class Server {
 
  private:
   struct SlaveInfo;
-  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
 
  public:
+  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
   SlaveInfoPos AddSlave(const std::string &addr, uint32_t port) {
     std::lock_guard<std::mutex> guard(slaves_info_mu_);
     slaves_info_.push_back(

@@ -390,29 +390,31 @@ Status ReplicationThread::ParallelFetchFile(const std::vector<std::pair<std::str
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
         std::launch::async, [this, &files, tid, concurrency]() -> bool {
+          int sock_fd;
+          if (sock_connect(this->host_, this->port_, &sock_fd) < 0) {
+            LOG(ERROR) << "[replication] Failed to connect";
+            return false;
+          }
+          if (!this->SendAuth(sock_fd).IsOK()) {
+            LOG(ERROR) << "[replication] Failed to auth";
+            return false;
+          }
           for (auto f_idx = tid; f_idx < files.size();
                f_idx += concurrency) {
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
-            int fd2;
             // Don't fetch existing files
             if (Engine::Storage::BackupManager::FileExists(this->storage_,
                                                            f_name)) {
               continue;
             }
-            // FIXME: don't connect every time, see _fetch_file cmd
-            // implementation
-            if (sock_connect(this->host_, this->port_, &fd2) < 0) {
-              LOG(ERROR) << "[replication] Failed to connect";
-              return false;
-            }
-            auto s = this->FetchFile(fd2, f_name, f_crc);
+            auto s = this->FetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               return false;
             }
-            close(fd2);
           }
+          close(sock_fd);
           return true;
         }));
   }
@@ -427,17 +429,16 @@ Status ReplicationThread::ParallelFetchFile(const std::vector<std::pair<std::str
   return Status::OK();
 }
 
-Status ReplicationThread::FetchFile(int sock_fd, std::string path,
-                                    uint32_t crc) {
+Status ReplicationThread::SendAuth(int sock_fd) {
   char *line;
-  size_t line_len, file_size;
+  size_t line_len;
   evbuffer *evbuf = evbuffer_new();
 
   // Send auth when needed
   if (!auth_.empty()) {
     const auto auth_len_str = std::to_string(auth_.length());
     sock_send(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
-                           CRLF + auth_ + CRLF);
+        CRLF + auth_ + CRLF);
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
         LOG(ERROR) << "[replication] Failed to auth resp";
@@ -452,6 +453,16 @@ Status ReplicationThread::FetchFile(int sock_fd, std::string path,
       break;
     }
   }
+  return Status::OK();
+}
+
+
+Status ReplicationThread::FetchFile(int sock_fd, std::string path,
+                                    uint32_t crc) {
+  char *line;
+  size_t line_len, file_size;
+  evbuffer *evbuf = evbuffer_new();
+
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
   if (sock_send(sock_fd, cmd_str) < 0) {

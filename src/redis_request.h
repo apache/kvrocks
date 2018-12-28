@@ -53,6 +53,7 @@ class Connection {
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnEvent(bufferevent *bev, short events, void *ctx);
   void Reply(const std::string &msg);
+  void SendFile(int fd);
 
   void SubscribeChannel(std::string &channel);
   void UnSubscribeChannel(std::string &channel);
@@ -68,6 +69,10 @@ class Connection {
   evbuffer *Input();
   evbuffer *Output();
   bufferevent *GetBufferEvent() { return bev_; }
+  bool IsRepl() {
+    return this->owner_->IsRepl();
+  }
+  std::unique_ptr<Commander> current_cmd_;
 
  private:
   bool is_admin_;

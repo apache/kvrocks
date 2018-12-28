@@ -5,11 +5,17 @@
 #include "redis_request.h"
 #include "server.h"
 
-Worker::Worker(Server *svr, Config *config) : svr_(svr){
+Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
-  for (const auto &host : config->binds) {
-    listen(host, config->port, config->backlog);
+  if (repl_) {
+    for (const auto &host : config->repl_binds) {
+      listen(host, config->repl_port, config->backlog);
+    }
+  } else {
+    for (const auto &host : config->binds) {
+      listen(host, config->port, config->backlog);
+    }
   }
 }
 
@@ -27,9 +33,15 @@ Worker::~Worker() {
 void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  DLOG(INFO) << "new connection: fd=" << fd
-             << " from port: " << worker->svr_->GetConfig()->port << " thread #"
-             << worker->tid_;
+  if (worker->IsRepl()) {
+    DLOG(INFO) << "new connection: fd=" << fd
+               << " from port: " << worker->svr_->GetConfig()->repl_port << " thread #"
+               << worker->tid_;
+  } else {
+    DLOG(INFO) << "new connection: fd=" << fd
+               << " from port: " << worker->svr_->GetConfig()->port << " thread #"
+               << worker->tid_;
+  }
   int enable = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&enable, sizeof(enable)) < 0) {
     LOG(ERROR) << "Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);

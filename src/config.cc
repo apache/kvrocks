@@ -97,12 +97,20 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   size_t size = args.size();
   if (size == 2 && args[0] == "port") {
     port = std::stoi(args[1]);
+  } else if (size == 2 && args[0] == "repl-port") {
+    repl_port = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "timeout") {
     timeout = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "workers") {
     workers = std::stoi(args[1]);
     if (workers < 1 || workers > 1024) {
-      *err = "workers should 1024";
+      *err = "too many worker threads";
+      return false;
+    }
+  } else if (size == 2 && args[0] == "repl-workers" ){
+    repl_workers = std::stoi(args[1]);
+    if (workers < 1 || workers > 1024) {
+      *err = "too many replication worker threads";
       return false;
     }
   } else if (size >= 2 && args[0] == "bind") {
@@ -110,7 +118,12 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
     for (unsigned i = 1; i < args.size(); i++) {
       binds.emplace_back(args[i]);
     }
-  } else if (size == 2 && args[0] == "daemonize") {
+  } else if (size >= 2 && args[0] == "repl-bind") {
+    repl_binds.clear();
+    for (unsigned i = 1; i < args.size(); i++) {
+      repl_binds.emplace_back(args[i]);
+    }
+  }else if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
       *err = "argument must be 'yes' or 'no'";

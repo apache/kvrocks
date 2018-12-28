@@ -102,6 +102,9 @@ class ReplicationThread {
   static CBState IncrementBatchLoop_cb(bufferevent *bev, void *ctx);
   static CBState FullSync_write_cb(bufferevent *bev, void *ctx);
   static CBState FullSync_read_cb(bufferevent *bev, void *ctx);
+
+  // Synchronized-Blocking ops
+  Status SendAuth(int sock_fd);
   Status FetchFile(int sock_fd, std::string path, uint32_t crc);
   Status ParallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 

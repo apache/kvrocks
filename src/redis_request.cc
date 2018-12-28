@@ -40,6 +40,12 @@ void Connection::Reply(const std::string &msg) {
   Redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
+void Connection::SendFile(int fd) {
+  // NOTE: we don't need to close the fd, the libevent will do that
+  auto output = bufferevent_get_output(bev_);
+  evbuffer_add_file(output, fd, 0, -1);
+}
+
 int Connection::GetFD() { return bufferevent_getfd(bev_); }
 
 evbuffer *Connection::Input() { return bufferevent_get_input(bev_); }
@@ -126,59 +132,50 @@ void Request::ExecuteCommands(Connection *conn) {
   }
 
   Config *config = svr_->GetConfig();
-  std::unique_ptr<Commander> cmd;
   std::string reply;
   for (auto &cmd_tokens : commands_) {
-    if (conn->GetNamespace().empty()
-        && Util::ToLower(cmd_tokens.front()) != "auth") {
-      conn->Reply(Redis::Error("NOAUTH Authentication required."));
-      continue;
-    }
-    auto s = LookupCommand(cmd_tokens.front(), &cmd);
+    //if (conn->GetNamespace().empty()
+    //    && Util::ToLower(cmd_tokens.front()) != "auth") {
+    //  conn->Reply(Redis::Error("NOAUTH Authentication required."));
+    //  continue;
+    //}
+    auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_, conn->IsRepl());
     if (!s.IsOK()) {
       // FIXME: change the err string
       conn->Reply(Redis::Error("unknown command"));
       continue;
     }
-    int arity = cmd->GetArity();
+    int arity = conn->current_cmd_->GetArity();
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity)
         || (arity < 0 && tokens < -arity)) {
       conn->Reply(Redis::Error("wrong number of arguments"));
       continue;
     }
-    cmd->SetArgs(cmd_tokens);
-    s = cmd->Parse(cmd_tokens);
+    conn->current_cmd_->SetArgs(cmd_tokens);
+    s = conn->current_cmd_->Parse(cmd_tokens);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error(s.Msg()));
       continue;
     }
-    if (config->slave_readonly && svr_->IsSlave() && cmd->IsWrite()) {
+    if (config->slave_readonly && svr_->IsSlave() && conn->current_cmd_->IsWrite()) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
 
     svr_->stats_.IncrCalls();
-    if (!cmd->IsSidecar()) {
-      auto start = std::chrono::high_resolution_clock::now();
-      s = cmd->Execute(svr_, conn, &reply);
-      auto end = std::chrono::high_resolution_clock::now();
-      long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-      svr_->SlowlogPushEntryIfNeeded(cmd->Args(), static_cast<uint64_t>(duration));
-      if (!s.IsOK()) {
-        conn->Reply(Redis::Error(s.Msg()));
-        LOG(ERROR) << "Failed to execute redis command: " << cmd->Name()
-                   << ", err: " << s.Msg();
-        continue;
-      }
-      if (!reply.empty()) conn->Reply(reply);
-    } else {
-      auto t = new SidecarCommandThread(std::move(cmd), svr_, conn);
-      t->Start();
-      // TODO: track this thread in Worker class; delete the req and sidecar obj
-      // when done.
-      return;  // NOTE: we break out the pipeline, even some commands left
+    auto start = std::chrono::high_resolution_clock::now();
+    s = conn->current_cmd_->Execute(svr_, conn, &reply);
+    auto end = std::chrono::high_resolution_clock::now();
+    long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
+    if (!s.IsOK()) {
+      conn->Reply(Redis::Error(s.Msg()));
+      LOG(ERROR) << "Failed to execute redis command: " << conn->current_cmd_->Name()
+                 << ", err: " << s.Msg();
+      continue;
     }
+    if (!reply.empty()) conn->Reply(reply);
   }
   commands_.clear();
 }

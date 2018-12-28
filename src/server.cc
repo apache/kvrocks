@@ -15,6 +15,10 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  for (int i = 0; i < config->repl_workers; i++) {
+    auto repl_worker = new Worker(this, config, true);
+    worker_threads_.emplace_back(new WorkerThread(repl_worker));
+  }
   task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
 }

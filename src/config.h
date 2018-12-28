@@ -11,7 +11,9 @@
 struct Config{
  public:
   int port = 6666;
+  int repl_port = 6668;
   int workers = 4;
+  int repl_workers = 1;
   int timeout = 0 ;
   int loglevel = 0;
   int backlog = 1024;
@@ -22,6 +24,7 @@ struct Config{
   bool slave_readonly = true;
 
   std::vector<std::string> binds{"127.0.0.1"};
+  std::vector<std::string> repl_binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";
   std::string db_dir = "/tmp/ev";
   std::string db_name = "changeme.name";

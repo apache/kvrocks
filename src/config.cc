@@ -104,7 +104,13 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 2 && args[0] == "workers") {
     workers = std::stoi(args[1]);
     if (workers < 1 || workers > 1024) {
-      *err = "workers should 1024";
+      *err = "too many worker threads";
+      return false;
+    }
+  } else if (size == 2 && args[0] == "repl-workers" ){
+    repl_workers = std::stoi(args[1]);
+    if (workers < 1 || workers > 1024) {
+      *err = "too many replication worker threads";
       return false;
     }
   } else if (size >= 2 && args[0] == "bind") {

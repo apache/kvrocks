@@ -41,6 +41,7 @@ void Connection::Reply(const std::string &msg) {
 }
 
 void Connection::SendFile(int fd) {
+  // NOTE: we don't need to close the fd, the libevent will do that
   auto output = bufferevent_get_output(bev_);
   evbuffer_add_file(output, fd, 0, -1);
 }

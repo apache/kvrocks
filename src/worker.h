@@ -32,7 +32,7 @@ class Worker {
   void Run(std::thread::id tid);
   void RemoveConnection(int fd);
   Status AddConnection(Redis::Connection *c);
-  bool IsRepl() {
+  bool IsRepl() { // Whether if worker is replication worker
     return repl_;
   }
 

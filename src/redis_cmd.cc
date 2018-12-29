@@ -163,7 +163,7 @@ class CommandConfig : public Commander {
 
 class CommandGet : public Commander {
  public:
-  explicit CommandGet() : Commander("getValue", 2, false) {}
+  explicit CommandGet() : Commander("get", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     RedisString string_db(svr->storage_, conn->GetNamespace());
@@ -176,18 +176,73 @@ class CommandGet : public Commander {
   }
 };
 
+class CommandMGet : public Commander {
+ public:
+  explicit CommandMGet() : Commander("mget", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> keys;
+    for (size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    std::vector<std::string> values;
+    // always return OK
+    string_db.MGet(keys, &values);
+    *output = Redis::MultiBulkString(values);
+    return Status::OK();
+  }
+};
+
 class CommandSet : public Commander {
  public:
   explicit CommandSet() : Commander("set", 3, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisString string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Set(args_[1], args_[2]);
-    if (s.ok()) {
-      *output = Redis::SimpleString("OK");
-      return Status::OK();
-    } else {
+    if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandMSet : public Commander {
+ public:
+  explicit CommandMSet() : Commander("mset", -3, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 1) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    std::vector<StringPair> kvs;
+    for(size_t i = 1; i < args_.size(); i+=2) {
+      kvs.emplace_back(StringPair{args_[i], args_[i+1]});
+    }
+    rocksdb::Status s = string_db.MSet(kvs);
+    if (s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandSetNX : public Commander {
+ public:
+  explicit CommandSetNX() : Commander("setnx", 3, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.SetNX(args_[1], args_[2], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
   }
 };
 
@@ -1758,7 +1813,6 @@ class CommandFetchFile : public Commander {
       return Status(Status::DBBackupFileErr);
     }
 
-    auto evb = conn->Output();
     conn->Reply(std::to_string(file_size) + CRLF);
     conn->SendFile(fd);
 
@@ -1849,9 +1903,21 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGet);
      }},
+    {"mget",
+          []() -> std::unique_ptr<Commander> {
+            return std::unique_ptr<Commander>(new CommandMGet);
+     }},
     {"set",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSet);
+     }},
+    {"setnx",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSetNX);
+     }},
+    {"mset",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandMSet);
      }},
     {"incrby",
      []() -> std::unique_ptr<Commander> {

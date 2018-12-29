@@ -28,7 +28,7 @@ std::string MultiLen(int64_t len) {
 }
 
 std::string MultiBulkString(std::vector<std::string> list) {
-  for (unsigned i = 0; i < list.size(); i++) {
+  for (size_t i = 0; i < list.size(); i++) {
     if (list[i].empty()) {
       list[i] = NilString();
     }  else {

@@ -10,11 +10,19 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
   if (!base_) throw std::exception();
   if (repl_) {
     for (const auto &host : config->repl_binds) {
-      listen(host, config->repl_port, config->backlog);
+      Status s = listen(host, config->repl_port, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "Failed to listen the replication port "<< config->repl_port << ", err: " << s.Msg();
+        exit(1);
+      }
     }
   } else {
     for (const auto &host : config->binds) {
-      listen(host, config->port, config->backlog);
+      Status s = listen(host, config->port, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "Failed to listen port " << config->port << ", err: " << s.Msg();
+        exit(1);
+      }
     }
   }
 }
@@ -85,7 +93,6 @@ Status Worker::listen(const std::string &host, int port, int backlog) {
   auto lev = evconnlistener_new(base_, newConnection, this,
                                 LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
-  LOG(INFO) << "Listening on: " << evconnlistener_get_fd(lev);
   return Status::OK();
 }
 

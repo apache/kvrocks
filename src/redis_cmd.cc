@@ -1586,7 +1586,7 @@ class CommandPSync : public Commander {
     std::string peer_addr;
     uint32_t port;
     int sock_fd = conn->GetFD();
-    if (get_peer_addr(sock_fd, &peer_addr, &port) < 0) {
+    if (GetPeerAddr(sock_fd, &peer_addr, &port) < 0) {
       peer_addr = "unknown";
     }
     slave_info_pos_ = svr->AddSlave(peer_addr, port);

@@ -74,13 +74,13 @@ class ReplicationThread {
 
     void Start();
     void Stop();
-    static void evCallback(bufferevent *bev, void *ctx);
-    static void conn_event_cb(bufferevent *bev, short events,
-                              void *state_machine_ptr);
-    static void set_read_cb(bufferevent *bev, bufferevent_data_cb cb,
+    static void EvCallback(bufferevent *bev, void *ctx);
+    static void ConnEventCB(bufferevent *bev, short events,
                             void *state_machine_ptr);
-    static void set_write_cb(bufferevent *bev, bufferevent_data_cb cb,
-                             void *state_machine_ptr);
+    static void SetReadCB(bufferevent *bev, bufferevent_data_cb cb,
+                          void *state_machine_ptr);
+    static void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb,
+                           void *state_machine_ptr);
 
    private:
     bufferevent *bev_ = nullptr;
@@ -92,21 +92,23 @@ class ReplicationThread {
   using CBState = CallbacksStateMachine::State;
   CallbacksStateMachine psync_steps_;
   CallbacksStateMachine fullsync_steps_;
-  void Run();
-  static CBState Auth_write_cb(bufferevent *bev, void *ctx);
-  static CBState Auth_read_cb(bufferevent *bev, void *ctx);
-  static CBState CheckDBName_write_cb(bufferevent *bev, void *ctx);
-  static CBState CheckDBName_read_cb(bufferevent *bev, void *ctx);
-  static CBState TryPsync_write_cb(bufferevent *bev, void *ctx);
-  static CBState TryPsync_read_cb(bufferevent *bev, void *ctx);
-  static CBState IncrementBatchLoop_cb(bufferevent *bev, void *ctx);
-  static CBState FullSync_write_cb(bufferevent *bev, void *ctx);
-  static CBState FullSync_read_cb(bufferevent *bev, void *ctx);
+
+  void run();
+
+  static CBState authWriteCB(bufferevent *bev, void *ctx);
+  static CBState authReadCB(bufferevent *bev, void *ctx);
+  static CBState checkDBNameWriteCB(bufferevent *bev, void *ctx);
+  static CBState checkDBNameReadCB(bufferevent *bev, void *ctx);
+  static CBState tryPSyncWriteCB(bufferevent *bev, void *ctx);
+  static CBState tryPSyncReadCB(bufferevent *bev, void *ctx);
+  static CBState incrementBatchLoopCB(bufferevent *bev, void *ctx);
+  static CBState fullSyncWriteCB(bufferevent *bev, void *ctx);
+  static CBState fullSyncReadCB(bufferevent *bev, void *ctx);
 
   // Synchronized-Blocking ops
-  Status SendAuth(int sock_fd);
-  Status FetchFile(int sock_fd, std::string path, uint32_t crc);
-  Status ParallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
+  Status sendAuth(int sock_fd);
+  Status fetchFile(int sock_fd, std::string path, uint32_t crc);
+  Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 
   static void Timer_cb(int, short, void *ctx);
 };

@@ -58,11 +58,11 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   return updateValue(key, raw_value_bytes, value_bytes);
 }
 
-std::vector<rocksdb::Status> RedisString::MGet(std::vector<Slice> keys, std::vector<std::string> *values) {
+std::vector<rocksdb::Status> RedisString::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
   std::string ns_key;
   std::string value;
   std::vector<rocksdb::Status> statuses;
-  for (unsigned i = 0; i < keys.size(); i++) {
+  for (size_t i = 0; i < keys.size(); i++) {
     AppendNamepacePrefix(keys[i], &ns_key);
     statuses.emplace_back(getValue(ns_key, nullptr, &value));
     values->emplace_back(value);
@@ -159,7 +159,7 @@ rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) 
   return updateValue(key, raw_value_bytes, std::to_string(value));
 }
 
-rocksdb::Status RedisString::MSet(std::vector<StringPair> pairs, int ttl) {
+rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl) {
   uint32_t expire = 0;
   if (ttl > 0) {
     int64_t now;
@@ -183,16 +183,20 @@ rocksdb::Status RedisString::MSet(std::vector<StringPair> pairs, int ttl) {
 
 rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
   *ret = 0;
+
   std::string ns_key, value;
   for (StringPair pair : pairs) {
     AppendNamepacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);
     rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
-    if (!s.IsNotFound()) return rocksdb::Status::OK();
+    if (s.ok()) {
+      Metadata metadata(kRedisNone);
+      metadata.Decode(value);
+      if (!metadata.Expired()) return rocksdb::Status::OK();
+    }
     std::string bytes;
     Metadata(kRedisString).Encode(&bytes);
     bytes.append(pair.value.ToString());
-
     rocksdb::WriteBatch batch;
     batch.Put(metadata_cf_handle_, ns_key, bytes);
     s = storage_->Write(rocksdb::WriteOptions(), &batch);

@@ -50,4 +50,6 @@ void TaskRunner::run() {
       lock.lock();
     }
   }
+  lock.unlock();
+  // CAUTION: drop the rest of tasks, don't use task runner if the task can't be drop
 }

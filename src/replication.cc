@@ -295,12 +295,14 @@ ReplicationThread::CBState ReplicationThread::IncrementBatchLoop_cb(
         self->incr_state_ = Incr_batch_data;
       case Incr_batch_data:
         // Read bulk data (batch data)
-        auto delta = (self->incr_bulk_len_ + 2) - evbuffer_get_length(input);
-        if (delta <= 0) {  // We got enough data
+        if (self->incr_bulk_len_+2 <= evbuffer_get_length(input)) {  // We got enough data
           bulk_data = reinterpret_cast<char *>(
               evbuffer_pullup(input, self->incr_bulk_len_ + 2));
-          self->storage_->WriteBatch(
+          auto s = self->storage_->WriteBatch(
               std::string(bulk_data, self->incr_bulk_len_));
+          if (!s.IsOK()) {
+            LOG(ERROR) << "Failed to write batch to local, err: " << s.Msg();
+          }
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
         } else {

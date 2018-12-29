@@ -331,7 +331,10 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 
 Status Storage::WriteBatch(std::string &&raw_batch) {
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));
-  db_->Write(rocksdb::WriteOptions(), &bat);
+  auto s = db_->Write(rocksdb::WriteOptions(), &bat);
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
   TimestampLogHandler handler;
   bat.Iterate(&handler);
   return Status::OK();

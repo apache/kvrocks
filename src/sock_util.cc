@@ -20,7 +20,7 @@
 # define POLLNVAL    0x0020    /* Invalid request: fd not open */
 #endif
 
-sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
+sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr(host.c_str());
@@ -28,7 +28,7 @@ sockaddr_in new_sockaddr_inet(const std::string &host, uint32_t port) {
   return sin;
 }
 
-int sock_connect(std::string host, uint32_t port, int* fd) {
+int SockConnect(std::string host, uint32_t port, int *fd) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr(host.c_str());
@@ -45,7 +45,7 @@ int sock_connect(std::string host, uint32_t port, int* fd) {
   return 0;
 }
 
-int sock_send(int fd, const std::string &data) {
+int SockSend(int fd, const std::string &data) {
   auto rv = send(fd, data.c_str(), data.length(), 0);
   if (rv < 0) {
     LOG(ERROR) << "[Socket] Failed to send: "
@@ -55,7 +55,7 @@ int sock_send(int fd, const std::string &data) {
   return 0;
 }
 
-int get_peer_addr(int fd, std::string *addr, uint32_t *port) {
+int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
   sockaddr_storage sa{};
   socklen_t sa_len = sizeof(sa);
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {

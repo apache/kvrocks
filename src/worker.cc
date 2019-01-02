@@ -4,6 +4,7 @@
 
 #include "redis_request.h"
 #include "server.h"
+#include "sock_util.h"
 
 Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) {
   base_ = event_base_new();
@@ -59,12 +60,17 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   event_base *base = evconnlistener_get_base(listener);
   bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
   auto conn = new Redis::Connection(bev, worker);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, nullptr,
+  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);
   timeval tmo = {30, 0};  // TODO: timeout configs
   bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
+  std::string host;
+  uint32_t port;
+  if (GetPeerAddr(fd, &host, &port)==0) {
+    conn->SetAddr(host+":"+std::to_string(port));
+  }
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error(status.Msg());
     write(fd, err_msg.data(), err_msg.size());
@@ -111,6 +117,7 @@ void Worker::Stop() {
 }
 
 Status Worker::AddConnection(Redis::Connection *c) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(c->GetFD());
   if (iter != conns_.end()) {
     // TODO: Connection exists
@@ -119,16 +126,64 @@ Status Worker::AddConnection(Redis::Connection *c) {
   Status status = svr_->IncrClients();
   if (!status.IsOK()) return status;
   conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
+  uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
+  c->SetID(id);
   return Status::OK();
 }
 
 void Worker::RemoveConnection(int fd) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
     // unscribe all channels if exists
     iter->second->UnSubscribeAll();
     conns_.erase(fd);
     svr_->DecrClients();
+  }
+}
+
+std::string Worker::GetClientsStr() {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  std::string clients;
+  for (const auto iter : conns_) {
+    int fd = iter.first;
+    Redis::Connection *c = iter.second;
+    std::ostringstream s;
+    s << "id=" << c->GetID()
+      << " addr=" << c->GetAddr()
+      << " fd=" << fd
+      << " name=" << c->GetName()
+      << " age=" << c->GetAge()
+      << " idle=" << c->GetIdle()
+      << " flags="
+      << " namespace=" << c->GetNamespace()
+      << " qbuf=" << evbuffer_get_length(c->Input())
+      << " obuf=" << evbuffer_get_length(c->Output())
+      << " cmd=" << c->GetLastCmd()
+      << "\n";
+    clients.append(s.str());
+  }
+  return clients;
+}
+
+void Worker::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
+  std::list<Redis::Connection*> clients;
+  conns_mu_.lock();
+  for (const auto iter : conns_) {
+    Redis::Connection* c = iter.second;
+    if (addr != "" && c->GetAddr() != addr) continue;
+    if (id != 0 && c->GetID() != id) continue;
+    if (skipme && conn == c) continue;
+    clients.emplace_back(c);
+  }
+  conns_mu_.unlock();
+  for (const auto iter : clients) {
+    if (iter == conn) {
+      iter->AddFlag(Redis::Connection::kCloseAfterReply);
+    } else {
+      delete iter;
+    }
+    (*killed) ++;
   }
 }
 
@@ -148,4 +203,12 @@ void WorkerThread::Stop() {
 
 void WorkerThread::Join() {
   if (t_.joinable()) t_.join();
+}
+
+std::string WorkerThread::GetClientsStr() {
+  return worker_->GetClientsStr();
+}
+
+void WorkerThread::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
+  worker_->KillClient(killed, addr, id, skipme, conn);
 }

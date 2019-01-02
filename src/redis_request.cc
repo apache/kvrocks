@@ -14,8 +14,16 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   DLOG(INFO) << "on read: " << bufferevent_getfd(bev);
   auto conn = static_cast<Connection *>(ctx);
 
+  conn->SetLastInteraction();
   conn->req_.Tokenize(conn->Input());
   conn->req_.ExecuteCommands(conn);
+}
+
+void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
+  auto conn = static_cast<Connection *>(ctx);
+  if (conn->ExistFlag(kCloseAfterReply)) {
+    delete conn;
+  }
 }
 
 void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
@@ -45,6 +53,26 @@ void Connection::SendFile(int fd) {
   auto output = bufferevent_get_output(bev_);
   evbuffer_add_file(output, fd, 0, -1);
 }
+
+uint64_t Connection::GetAge() {
+  auto now = std::chrono::system_clock::now();
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-create_time_).count());
+};
+
+void Connection::SetLastInteraction() {
+  last_interaction_ = std::chrono::system_clock::now();
+};
+
+uint64_t Connection::GetIdle() {
+  auto now = std::chrono::system_clock::now();
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-last_interaction_).count());
+};
+
+void Connection::AddFlag(Flag flag) { flags_ |= flag; };
+
+void Connection::DelFlag(Flag flag) { flags_ &= ~flag; };
+
+bool Connection::ExistFlag(Flag flag) { return (flags_ & flag) > 0; };
 
 int Connection::GetFD() { return bufferevent_getfd(bev_); }
 
@@ -134,6 +162,7 @@ void Request::ExecuteCommands(Connection *conn) {
   Config *config = svr_->GetConfig();
   std::string reply;
   for (auto &cmd_tokens : commands_) {
+    if (conn->ExistFlag(Redis::Connection::kCloseAfterReply)) break;
     //if (conn->GetNamespace().empty()
     //    && Util::ToLower(cmd_tokens.front()) != "auth") {
     //  conn->Reply(Redis::Error("NOAUTH Authentication required."));
@@ -162,6 +191,7 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
+    conn->SetLastCmd(conn->current_cmd_->Name());
 
     svr_->stats_.IncrCalls();
     auto start = std::chrono::high_resolution_clock::now();

@@ -148,6 +148,10 @@ void Server::clientsCron() {
   if (config_->timeout <= 0) return;
 }
 
+std::atomic<uint64_t> *Server::GetClientID() {
+  return &client_id_;
+};
+
 void Server::cron() {
   static uint64_t counter = 0;
   if (counter != 0 && counter % 10000) {
@@ -442,4 +446,18 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint
     slowlog_.entry_list.pop_back();
   }
   slowlog_.mu.unlock();
+}
+
+std::string Server::GetClientsStr() {
+  std::string clients;
+  for (const auto worker : worker_threads_) {
+    clients.append(worker->GetClientsStr());
+  }
+  return clients;
+}
+
+void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
+  for (const auto worker : worker_threads_) {
+    worker->KillClient(killed, addr, id, skipme, conn);
+  }
 }

@@ -67,7 +67,7 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
     inet_ntop(AF_INET, reinterpret_cast<void*>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
     addr->clear();
     addr->append(buf);
-    *port = sa4->sin_port;
+    *port = ntohs(sa4->sin_port);
     return 0;
   }
   return -2; // only support AF_INET currently

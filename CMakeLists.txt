@@ -7,6 +7,7 @@ project(kvrocks
 # External Dependences
 include(ExternalProject)
 
+set(default_build_type "Release")
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)

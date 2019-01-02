@@ -39,6 +39,5 @@ if (NOT __SNAPPY_INCLUDED)
   set(snappy_FOUND TRUE)
   set(snappy_INCLUDE_DIRS ${snappy_INSTALL}/include)
   set(snappy_LIBRARIES ${snappy_INSTALL}/${CMAKE_INSTALL_LIBDIR}/libsnappy.a)
-  set(snappy_LIBRARY_DIRS ${snappy_INSTALL}/${CMAKE_INSTALL_LIBDIR})
 endif()
 

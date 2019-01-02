@@ -40,5 +40,4 @@ if (NOT __GFLAGS_INCLUDED) # guard against multiple includes
     set(gflags_FOUND TRUE)
     set(gflags_INCLUDE_DIRS ${gflags_INSTALL}/include)
     set(gflags_LIBRARIES ${gflags_INSTALL}/lib/libgflags.a ${CMAKE_THREAD_LIBS_INIT})
-    set(gflags_LIBRARY_DIRS ${gflags_INSTALL}/lib)
 endif()

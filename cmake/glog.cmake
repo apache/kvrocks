@@ -41,6 +41,5 @@ if (NOT __GLOG_INCLUDED)
     set(glog_FOUND TRUE)
     set(glog_INCLUDE_DIRS ${glog_INSTALL}/include)
     set(glog_LIBRARIES ${glog_INSTALL}/lib/libglog.a)
-    set(glog_LIBRARY_DIRS ${glog_INSTALL}/lib)
 endif()
 

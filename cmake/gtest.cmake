@@ -32,5 +32,4 @@ if (NOT __GTEST_INCLUDED) # guard against multiple includes
     set(gtest_FOUND TRUE)
     set(gtest_INCLUDE_DIRS ${gtest_INSTALL}/include)
     set(gtest_LIBRARIES ${gtest_INSTALL}/lib/libgtest.a ${CMAKE_THREAD_LIBS_INIT})
-    set(gtest_LIBRARY_DIRS ${gtest_INSTALL}/lib)
 endif()

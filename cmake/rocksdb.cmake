@@ -43,6 +43,5 @@ if (NOT __ROCKSDB_INCLUDED)
   set(rocksdb_FOUND TRUE)
   set(rocksdb_INCLUDE_DIRS ${rocksdb_INSTALL}/include)
   set(rocksdb_LIBRARIES ${rocksdb_INSTALL}/${CMAKE_INSTALL_LIBDIR}/librocksdb.a)
-  set(rocksdb_LIBRARY_DIRS ${rocksdb_INSTALL}/${CMAKE_INSTALL_LIBDIR})
 endif()
 

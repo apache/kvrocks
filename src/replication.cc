@@ -380,6 +380,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       self->psync_steps_.Start();
       return CBState::QUIT;
   }
+  // should never reach here
+  return CBState::QUIT;
 }
 
 Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files) {

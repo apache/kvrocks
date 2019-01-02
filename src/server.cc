@@ -161,23 +161,29 @@ void Server::GetRocksDBInfo(std::string &info) {
   std::ostringstream string_stream;
   rocksdb::DB *db = storage_->GetDB();
 
-  uint64_t estimate_keys, memtable_sizes, num_snapshots, num_running_flushes;
+  uint64_t metadata_estimate_keys, subkey_estimate_keys, score_estimate_keys;
+  uint64_t memtable_sizes, num_snapshots, num_running_flushes;
   uint64_t num_immutable_tables, memtable_flush_pending, compaction_pending;
   uint64_t num_running_compaction, num_live_versions, num_superversion, num_backgroud_errors;
-  db->GetAggregatedIntProperty("rocksdb.estimate-num-keys", &estimate_keys);
-  db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
+
+  db->GetIntProperty(storage_->GetCFHandle("default"), "rocksdb.estimate-num-keys", &subkey_estimate_keys);
+  db->GetIntProperty(storage_->GetCFHandle("zset_score"), "rocksdb.estimate-num-keys", &score_estimate_keys);
+  db->GetIntProperty(storage_->GetCFHandle("metadata"), "rocksdb.estimate-num-keys", &metadata_estimate_keys);
   db->GetAggregatedIntProperty("rocksdb.num-snapshots", &num_snapshots);
-  db->GetAggregatedIntProperty("rocksdb.num-immutable-mem-table", &num_immutable_tables);
+  db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
   db->GetAggregatedIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
+  db->GetAggregatedIntProperty("rocksdb.num-immutable-mem-table", &num_immutable_tables);
   db->GetAggregatedIntProperty("rocksdb.mem-table-flush-pending", &memtable_flush_pending);
-  db->GetAggregatedIntProperty("rocksdb.compaction-pending", &compaction_pending);
   db->GetAggregatedIntProperty("rocksdb.num-running-compactions", &num_running_compaction);
-  db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
   db->GetAggregatedIntProperty("rocksdb.current-super-version-number", &num_superversion);
   db->GetAggregatedIntProperty("rocksdb.background-errors", &num_backgroud_errors);
+  db->GetAggregatedIntProperty("rocksdb.compaction-pending", &compaction_pending);
+  db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
-  string_stream << "estimate_keys:" << estimate_keys << "\r\n";
+  string_stream << "estimate_keys:" << metadata_estimate_keys << "\r\n";
+  string_stream << "estimate_keys[subkey]:" << subkey_estimate_keys << "\r\n";
+  string_stream << "estimate_keys[score]:" << score_estimate_keys << "\r\n";
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "snapshots:" << num_snapshots << "\r\n";
   string_stream << "num_immutable_tables:" << num_immutable_tables << "\r\n";
@@ -257,7 +263,7 @@ void Server::GetReplicationInfo(std::string &info) {
     string_stream << "role: master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
-    for (auto slave_info: slaves_info_) {
+    for (const auto &slave_info: slaves_info_) {
       string_stream << "slave_" << std::to_string(idx) << ":";
       string_stream << "addr=" << slave_info->addr
                     << ",port=" << slave_info->port

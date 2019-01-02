@@ -33,6 +33,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DFAIL_ON_WARNINGS=OFF
                  -DWITH_TESTS=OFF
                  -DWITH_SNAPPY=ON
+                 -DWITH_TOOLS=OFF
       LOG_DOWNLOAD 1
       LOG_CONFIGURE 1
       LOG_INSTALL 1

@@ -67,6 +67,7 @@ class Server {
 
   Status IncrClients();
   void DecrClients();
+  std::atomic<uint64_t> *GetClientID();
   void GetInfo(std::string ns, std::string section, std::string &info);
   void GetStatsInfo(std::string &info);
   void GetServerInfo(std::string &info);
@@ -85,6 +86,9 @@ class Server {
   void CreateSlowlogReply(std::string *output, uint32_t count);
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
+  std::string GetClientsStr();
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+
   Stats stats_;
   Engine::Storage *storage_;
 
@@ -96,6 +100,7 @@ class Server {
 
   std::atomic<int> connected_clients_{0};
   std::atomic<uint64_t> total_clients_{0};
+  std::atomic<uint64_t> client_id_{1};
 
   Config *config_;
   std::vector<WorkerThread *> worker_threads_;

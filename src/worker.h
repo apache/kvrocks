@@ -36,6 +36,9 @@ class Worker {
     return repl_;
   }
 
+  std::string GetClientsStr();
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+
   Server *svr_;
  private:
   Status listen(const std::string &host, int port, int backlog);
@@ -46,6 +49,8 @@ class Worker {
   std::thread::id tid_;
   std::vector<evconnlistener*> listen_events_;
   std::map<int, Redis::Connection*> conns_;
+  std::mutex conns_mu_;
+
   bool repl_;
 };
 
@@ -58,6 +63,10 @@ class WorkerThread {
   void Start();
   void Stop();
   void Join();
+
+  std::string GetClientsStr();
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+
 
  private:
   std::thread t_;

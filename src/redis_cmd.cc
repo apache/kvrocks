@@ -1769,6 +1769,103 @@ class CommandSlowlog : public Commander {
   uint32_t count_ = 10;
 };
 
+class CommandClient : public Commander {
+ public:
+  explicit CommandClient() : Commander("client", -2, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    //subcommand: getname id kill list setname
+    if ((subcommand_ == "id" || subcommand_ == "getname" ||  subcommand_ == "list") && args.size() == 2) {
+      return Status::OK();
+    }
+    if ((subcommand_ == "setname") && args.size() == 3) {
+      name_ = args[2];
+      return Status::OK();
+    }
+    if ((subcommand_ == "kill")) {
+      if (args.size() == 2) {
+        return Status(Status::RedisParseErr,"syntax error");
+      }
+      if (args.size() == 3 ) {
+        addr_ = args[2];
+        new_format_ = false;
+        return Status::OK();
+      }
+
+      uint i = 2;
+      new_format_ = true;
+      while(i < args.size()) {
+        bool moreargs = i < args.size();
+        if (args[i] == "addr" && moreargs) {
+          addr_ = args[i+1];
+        } else if (args[i] == "id" && moreargs) {
+          try {
+            id_ = std::stoll(args[i+1]);
+          } catch (std::exception &e) {
+            return Status(Status::RedisParseErr, "value is not an integer or out of range");
+          }
+        } else if (args[i] == "skipme" && moreargs) {
+          if (args[i+1] == "yes") {
+            skipme_ = true;
+          } else if (args[i+1] == "no") {
+            skipme_ = false;
+          } else {
+            return Status(Status::RedisParseErr,"syntax error");
+          }
+        } else {
+          return Status(Status::RedisParseErr,"syntax error");
+        }
+        i += 2;
+      }
+      return Status::OK();
+    }
+    return Status(Status::RedisInvalidCmd,"Syntax error, try CLIENT (LIST | KILL ip:port | GETNAME | SETNAME connection-name");
+
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (subcommand_ == "list") {
+      std::string o;
+      *output = Redis::BulkString(srv->GetClientsStr());
+      return Status::OK();
+    } else if (subcommand_ == "setname") {
+      conn->SetName(name_);
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    } else if (subcommand_ == "getname") {
+      std::string name = conn->GetName();
+      *output = name== ""? Redis::NilString(): Redis::BulkString(name);
+      return Status::OK();
+    } else if (subcommand_ == "id") {
+      *output = Redis::Integer(conn->GetID());
+      return Status::OK();
+    } else if (subcommand_ == "kill") {
+      int64_t killed = 0;
+      srv->KillClient(&killed, addr_, id_, skipme_, conn);
+      if (new_format_) {
+        *output = Redis::Integer(killed);
+      } else {
+        if (killed == 0)
+          *output = Redis::Error("No such client");
+        else
+          *output = Redis::SimpleString("OK");
+      }
+      return Status::OK();
+    }
+
+    return Status(Status::RedisInvalidCmd,"Syntax error, try CLIENT (LIST | KILL ip:port | GETNAME | SETNAME connection-name");
+  }
+
+ private:
+  std::string subcommand_;
+  std::string name_;
+  std::string addr_ = "";
+  bool skipme_ = false;
+  uint64_t id_ = 0;
+  bool new_format_;
+};
+
 class CommandFetchMeta : public Commander {
  public:
   explicit CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -1879,6 +1976,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSlowlog);
      }},
+    {"client",
+     []()->std::unique_ptr<Commander> {
+        return std::unique_ptr<Commander>(new CommandClient);
+    }},
     // key command
     {"ttl",
      []() -> std::unique_ptr<Commander> {

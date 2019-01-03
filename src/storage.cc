@@ -367,20 +367,18 @@ rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
 rocksdb::DB *Storage::GetDB() { return db_; }
 
 // TODO: if meta_id == 0, return the latest metafile.
-int Storage::BackupManager::OpenLatestMeta(Storage *storage,
-                                           rocksdb::BackupID *meta_id,
-                                           uint64_t *file_size) {
+Status Storage::BackupManager::OpenLatestMeta(Storage *storage,
+                                              int *fd,
+                                              rocksdb::BackupID *meta_id,
+                                              uint64_t *file_size) {
   Status status = storage->CreateBackup();
-  if (!status.IsOK()) {
-    LOG(ERROR) << "Failed to create new backup, err:" << status.Msg();
-    return -1;
-  }
+  if (!status.IsOK())  return status;
   std::vector<rocksdb::BackupInfo> backup_infos;
   storage->backup_->GetBackupInfo(&backup_infos);
   auto latest_backup = backup_infos.back();
-  if (!storage->backup_->VerifyBackup(latest_backup.backup_id).ok()) {
-    LOG(ERROR) << "Backup verification failed";
-    return -1;
+  rocksdb::Status r_status = storage->backup_->VerifyBackup(latest_backup.backup_id);
+  if(!r_status.ok()) {
+    return Status(Status::NotOK, r_status.ToString());
   }
   *meta_id = latest_backup.backup_id;
   std::string meta_file =
@@ -389,11 +387,11 @@ int Storage::BackupManager::OpenLatestMeta(Storage *storage,
   storage->backup_env_->GetFileSize(meta_file, file_size);
   // NOTE: here we use the system's open instead of using rocksdb::Env to open
   // a sequential file, because we want to use sendfile syscall.
-  auto rv = open(meta_file.c_str(), O_RDONLY);
-  if (rv < 0) {
-    LOG(ERROR) << "Failed to open file: " << strerror(errno);
+  *fd = open(meta_file.c_str(), O_RDONLY);
+  if (*fd < 0) {
+    return Status(Status::NotOK, strerror(errno));
   }
-  return rv;
+  return Status::OK();
 }
 
 int Storage::BackupManager::OpenDataFile(Storage *storage, std::string rel_path,

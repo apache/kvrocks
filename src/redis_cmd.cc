@@ -1780,10 +1780,12 @@ class CommandFetchMeta : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint64_t file_size;
     rocksdb::BackupID meta_id;
-    auto fd = Engine::Storage::BackupManager::OpenLatestMeta(
-        svr->storage_, &meta_id, &file_size);
-    if (fd < 0) {
-      return Status(Status::DBBackupFileErr);
+    int fd;
+    auto s = Engine::Storage::BackupManager::OpenLatestMeta(
+        svr->storage_, &fd, &meta_id, &file_size);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to open latest meta, err: " << s.Msg();
+      return Status(Status::DBBackupFileErr, "can't create db backup");
     }
     // Send the meta ID
     conn->Reply(std::to_string(meta_id) + CRLF);

@@ -47,8 +47,10 @@ class Storage {
   class BackupManager {
    public:
     // Master side
-    static int OpenLatestMeta(Storage *storage, rocksdb::BackupID *meta_id,
-                              uint64_t *file_size);
+    static Status OpenLatestMeta(Storage *storage,
+                                 int *fd,
+                                 rocksdb::BackupID *meta_id,
+                                 uint64_t *file_size);
     static int OpenDataFile(Storage *storage, std::string rel_path,
                             uint64_t *file_size);
 

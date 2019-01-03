@@ -170,7 +170,7 @@ void Request::ExecuteCommands(Connection *conn) {
     long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
     if (!s.IsOK()) {
-      conn->Reply(Redis::Error(s.Msg()));
+      conn->Reply(Redis::Error("ERR " + s.Msg()));
       LOG(ERROR) << "Failed to execute redis command: " << conn->current_cmd_->Name()
                  << ", err: " << s.Msg();
       continue;

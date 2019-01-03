@@ -330,6 +330,10 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
     case Fetch_meta_id:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
+      if (line[0] == '-') {
+        LOG(ERROR) << "[replication] Failed to fetch meta id: " << line;
+        return CBState::QUIT;
+      }
       self->fullsync_meta_id_ = static_cast<rocksdb::BackupID>(
           line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
       free(line);
@@ -342,8 +346,12 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
     case Fetch_meta_size:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
-      self->fullsync_filesize_ =
-          line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
+      if (line[0] == '-') {
+        LOG(ERROR) << "[replication] Failed to fetch meta size: " << line;
+        self->stop_flag_ = true;
+        return CBState::QUIT;
+      }
+      self->fullsync_filesize_ = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
       free(line);
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";

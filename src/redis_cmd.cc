@@ -2202,6 +2202,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRange);
      }},
+    {"zrevrange",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRevRange);
+     }},
     {"zrangebyscore",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRangeByScore);

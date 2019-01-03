@@ -56,8 +56,8 @@ ReplicationThread::CallbacksStateMachine::CallbacksStateMachine(
     ReplicationThread::CallbacksStateMachine::CallbackList &&handlers)
     : repl_(repl), handlers_(std::move(handlers)) {
   if (!repl_->auth_.empty()) {
-    handlers_.emplace_front(CallbacksStateMachine::READ, authReadCB);
-    handlers_.emplace_front(CallbacksStateMachine::WRITE, authWriteCB);
+    handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", authReadCB);
+    handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
 }
 
@@ -66,12 +66,12 @@ void ReplicationThread::CallbacksStateMachine::EvCallback(bufferevent *bev,
   auto self = static_cast<CallbacksStateMachine *>(ctx);
 LOOP_LABEL:
   assert(self->handler_idx_ <= self->handlers_.size());
-  auto st = self->handlers_[self->handler_idx_].second(bev, self->repl_);
-  DLOG(INFO) << "[replication] Execute handler[" << self->handler_idx_ << "]";
+  auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
+  DLOG(INFO) << "[replication] Execute handler[" << self->getHandlerName(self->handler_idx_) << "]";
   switch (st) {
     case NEXT:
       ++self->handler_idx_;
-      if (self->handlers_[self->handler_idx_].first == WRITE) {
+      if (self->getHandlerEventType(self->handler_idx_) == WRITE) {
         SetWriteCB(bev, EvCallback, ctx);
       } else {
         SetReadCB(bev, EvCallback, ctx);
@@ -103,7 +103,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     LOG(ERROR) << "[replication] Failed to start";
   }
   handler_idx_ = 0;
-  if (handlers_.front().first == WRITE) {
+  if (getHandlerEventType(0) == WRITE) {
     SetWriteCB(bev, EvCallback, this);
   } else {
     SetReadCB(bev, EvCallback, this);
@@ -127,15 +127,15 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
       repl_state_(kReplConnecting),
       psync_steps_(this,
                    CallbacksStateMachine::CallbackList{
-                       {CallbacksStateMachine::WRITE, checkDBNameWriteCB},
-                       {CallbacksStateMachine::READ, checkDBNameReadCB},
-                       {CallbacksStateMachine::WRITE, tryPSyncWriteCB},
-                       {CallbacksStateMachine::READ, tryPSyncReadCB},
-                       {CallbacksStateMachine::READ, incrementBatchLoopCB}}),
+                       {CallbacksStateMachine::WRITE, "dbname write", checkDBNameWriteCB},
+                       {CallbacksStateMachine::READ, "dbname read", checkDBNameReadCB},
+                       {CallbacksStateMachine::WRITE, "psync write", tryPSyncWriteCB},
+                       {CallbacksStateMachine::READ, "psync read", tryPSyncReadCB},
+                       {CallbacksStateMachine::READ, "batch loop", incrementBatchLoopCB}}),
       fullsync_steps_(this,
                       CallbacksStateMachine::CallbackList{
-                          {CallbacksStateMachine::WRITE, fullSyncWriteCB},
-                          {CallbacksStateMachine::READ, fullSyncReadCB}}) {
+                          {CallbacksStateMachine::WRITE, "fullsync write",fullSyncWriteCB},
+                          {CallbacksStateMachine::READ, "fullsync read", fullSyncReadCB}}) {
   seq_ = storage_->LatestSeq();
 }
 

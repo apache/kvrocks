@@ -8,6 +8,7 @@
 
 enum ReplState {
   kReplConnecting = 1,
+  kReplSendAuth,
   kReplCheckDBName,
   kReplSendPSync,
   kReplFetchMeta,
@@ -69,7 +70,7 @@ class ReplicationThread {
       WRITE,
     };
     using CallbackList = std::deque<
-        std::pair<EventType, std::function<State(bufferevent *, void *)>>>;
+        std::tuple<EventType, std::string, std::function<State(bufferevent *, void *)>>>;
     CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers);
 
     void Start();
@@ -87,6 +88,16 @@ class ReplicationThread {
     ReplicationThread *repl_;
     CallbackList handlers_;
     CallbackList::size_type handler_idx_ = 0;
+
+    EventType getHandlerEventType(CallbackList::size_type idx) {
+      return std::get<0>(handlers_[idx]);
+    }
+    std::string getHandlerName(CallbackList::size_type idx) {
+      return std::get<1>(handlers_[idx]);
+    }
+    std::function<State(bufferevent *, void *)> getHandlerFunc(CallbackList::size_type idx) {
+      return std::get<2>(handlers_[idx]);
+    }
   };
 
   using CBState = CallbacksStateMachine::State;

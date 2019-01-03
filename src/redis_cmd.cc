@@ -1597,7 +1597,7 @@ class CommandPSync : public Commander {
     StreamingBatch(bev, this);
     bufferevent_setcb(bev, nullptr, StreamingBatch, EventCB, this);
     timer_ = event_new(bufferevent_get_base(bev), -1, EV_PERSIST, TimerCB, bev);
-    timeval tm = {0, 50000};  // 50ms
+    timeval tm = {0, 5000};  // 5ms
     evtimer_add(timer_, &tm);
     return Status::OK();
   }

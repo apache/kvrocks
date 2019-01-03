@@ -1523,7 +1523,7 @@ class CommandSlaveOf : public Commander {
       }
       port_ = static_cast<uint32_t>(p);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "port should be number");
     }
     return Commander::Parse(args);
   }

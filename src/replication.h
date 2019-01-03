@@ -8,6 +8,7 @@
 
 enum ReplState {
   kReplConnecting = 1,
+  kReplSendAuth,
   kReplCheckDBName,
   kReplSendPSync,
   kReplFetchMeta,

@@ -192,6 +192,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
   const auto auth_len_str = std::to_string(self->auth_.length());
   send_string(bev, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
                        self->auth_ + CRLF);
+  self->repl_state_ = kReplSendAuth;
   return CBState::NEXT;
 }
 
@@ -204,7 +205,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
   if (!line) return CBState::AGAIN;
   if (strncmp(line, "+OK", 3) != 0) {
     // Auth failed
-    LOG(ERROR) << "[replication] Auth failed";
+    LOG(ERROR) << "[replication] Auth failed: " << line;
     return CBState::QUIT;
   }
   return CBState::NEXT;
@@ -234,7 +235,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
     return CBState::NEXT;
   }
   free(line);
-  LOG(ERROR) << "[replication] db-name mismatched";
+  LOG(ERROR) << "[replication] db-name mismatched: " << line;
   return CBState::QUIT;
 }
 
@@ -370,7 +371,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
-        LOG(ERROR) << "[replication] Failed to fetch files";
+        return CBState::QUIT;
       }
 
       // Restore DB from backup
@@ -388,7 +389,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       self->psync_steps_.Start();
       return CBState::QUIT;
   }
-  // should never reach here
+
+  LOG(ERROR) << "Should not arrive here";
   return CBState::QUIT;
 }
 
@@ -402,6 +404,9 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
         std::launch::async, [this, &files, tid, concurrency]() -> bool {
+          if (this->stop_flag_) {
+            return false;
+          }
           int sock_fd;
           if (SockConnect(this->host_, this->port_, &sock_fd) < 0) {
             LOG(ERROR) << "[replication] Failed to connect";
@@ -415,12 +420,13 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
                f_idx += concurrency) {
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
-            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
             // Don't fetch existing files
             if (Engine::Storage::BackupManager::FileExists(this->storage_,
                                                            f_name)) {
+              LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
               continue;
             }
+            LOG(INFO) << "[fetch] " << f_name << " " << f_crc;
             auto s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               return false;
@@ -483,7 +489,6 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
 
   // Read file size line
   while (true) {
-    // TODO: test stop_flag_
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
       LOG(ERROR) << "[replication] Failed to read size line";
       return Status(Status::NotOK);

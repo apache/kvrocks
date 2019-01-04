@@ -101,6 +101,8 @@ target_sources(kvrocks PRIVATE
         src/stats.h
         src/server.cc
         src/server.h
+        src/cron.cc
+        src/cron.h
         src/event_listener.h
         src/event_listener.cc)
 

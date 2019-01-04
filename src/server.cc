@@ -150,7 +150,7 @@ void Server::clientsCron() {
 
 std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
-};
+}
 
 void Server::cron() {
   static uint64_t counter = 0;

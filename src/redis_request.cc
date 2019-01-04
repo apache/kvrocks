@@ -57,22 +57,22 @@ void Connection::SendFile(int fd) {
 uint64_t Connection::GetAge() {
   auto now = std::chrono::system_clock::now();
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-create_time_).count());
-};
+}
 
 void Connection::SetLastInteraction() {
   last_interaction_ = std::chrono::system_clock::now();
-};
+}
 
 uint64_t Connection::GetIdle() {
   auto now = std::chrono::system_clock::now();
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-last_interaction_).count());
-};
+}
 
-void Connection::AddFlag(Flag flag) { flags_ |= flag; };
+void Connection::AddFlag(Flag flag) { flags_ |= flag; }
 
-void Connection::DelFlag(Flag flag) { flags_ &= ~flag; };
+void Connection::DelFlag(Flag flag) { flags_ &= ~flag; }
 
-bool Connection::ExistFlag(Flag flag) { return (flags_ & flag) > 0; };
+bool Connection::ExistFlag(Flag flag) { return (flags_ & flag) > 0; }
 
 int Connection::GetFD() { return bufferevent_getfd(bev_); }
 

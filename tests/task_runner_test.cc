@@ -29,14 +29,14 @@ TEST(TaskRunner, PublishToStopQueue) {
 }
 
 TEST(TaskRunner, Run) {
-  std::atomic_int32_t counter = {0};
+  std::atomic<int> counter = {0};
   TaskRunner tr(3, 1024);
   tr.Start();
 
   Status s;
   Task t;
   for(int i = 0; i < 100; i++) {
-    t.callback = [](void *arg){auto ptr = (std::atomic_int32_t*)arg; ptr->fetch_add(1);};
+    t.callback = [](void *arg){auto ptr = (std::atomic<int>*)arg; ptr->fetch_add(1);};
     t.arg = (void*) &counter;
     s = tr.Publish(t);
     ASSERT_TRUE(s.IsOK());

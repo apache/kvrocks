@@ -29,12 +29,13 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
 }
 
 Worker::~Worker() {
-  std::vector<int> fds;
+  std::list<Redis::Connection*> conns;
   for (const auto iter : conns_) {
-    fds.emplace_back(iter.first);
+    conns.emplace_back(iter.second);
   }
-  for (const auto iter : fds) {
-    RemoveConnection(iter);
+
+  for (auto iter : conns) {
+    delete iter;
   }
   event_base_free(base_);
 }

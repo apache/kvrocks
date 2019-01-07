@@ -152,13 +152,32 @@ std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
 
+Status Server::compactCron() {
+  Status s = AsyncCompactDB();
+  if (!s.IsOK()) return s;
+  LOG(INFO) << "Commpact was triggered by cron with executed success.";
+  return Status::OK();
+}
+
 void Server::cron() {
   static uint64_t counter = 0;
-  if (counter != 0 && counter % 10000) {
-    clientsCron();
+  std::time_t t;
+  std::tm *now;
+  for (;;) {
+    if (counter != 0 && counter % 10000 == 0) {
+      clientsCron();
+    }
+    //check every 30s
+    if (config_->compact_cron != nullptr && counter != 0 && counter % 30000 == 0) {
+      t = std::time(0);
+      now = std::localtime(&t);
+      if (config_->compact_cron->IsTimeMatch(now)) {
+        compactCron();
+      }
+    }
+    counter++;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  counter++;
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
 void Server::GetRocksDBInfo(std::string &info) {

@@ -134,4 +134,5 @@ class Server {
 
   void cron();
   void clientsCron();
+  Status compactCron();
 };

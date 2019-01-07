@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "status.h"
+#include "cron.h"
 
 struct Config{
  public:
@@ -32,6 +33,7 @@ struct Config{
   std::string master_auth;
   std::string require_passwd;
   std::string master_host;
+  Cron *compact_cron;
   int master_port = 0;
   std::map<std::string, std::string> tokens;
 

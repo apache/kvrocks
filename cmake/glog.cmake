@@ -33,6 +33,7 @@ if (NOT __GLOG_INCLUDED)
                    -DINSTALL_HEADERS=ON
                    -DCMAKE_C_FLAGS=${GLOG_C_FLAGS}
                    -DCMAKE_CXX_FLAGS=${GLOG_CXX_FLAGS}
+                   -DCMAKE_PREFIX_PATH=${gflags_INSTALL}
         LOG_DOWNLOAD 1
         LOG_CONFIGURE 1
         LOG_INSTALL 1

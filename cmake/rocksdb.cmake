@@ -30,6 +30,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DINSTALL_HEADERS=ON
                  -DCMAKE_C_FLAGS=${ROCKSDB_C_FLAGS}
                  -DCMAKE_CXX_FLAGS=${ROCKSDB_CXX_FLAGS}
+                 -DCMAKE_PREFIX_PATH=${snappy_INSTALL}:${gflags_INSTALL}
                  -DFAIL_ON_WARNINGS=OFF
                  -DWITH_TESTS=OFF
                  -DWITH_SNAPPY=ON

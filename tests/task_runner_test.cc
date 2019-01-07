@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <atomic>
 #include "task_runner.h"
 
 TEST(TaskRunner, PublishOverflow) {

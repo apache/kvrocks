@@ -1,11 +1,16 @@
 #include "cron.h"
 
-Cron::Cron(std::string minute, std::string hour, std::string mday, std::string month, std::string wday) {
-  verifyAndSet(minute, schedule_time.minute, 0, 59);
-  verifyAndSet(hour, schedule_time.hour, 0, 23);
-  verifyAndSet(mday, schedule_time.mday, 1, 31);
-  verifyAndSet(month, schedule_time.month, 1, 12, true);
-  verifyAndSet(wday, schedule_time.wday, 0, 6);
+Cron::Cron(std::string *err,
+           std::string minute,
+           std::string hour,
+           std::string mday,
+           std::string month,
+           std::string wday) {
+  verifyAndSet(err, minute, schedule_time.minute, 0, 59);
+  verifyAndSet(err, hour, schedule_time.hour, 0, 23);
+  verifyAndSet(err, mday, schedule_time.mday, 1, 31);
+  verifyAndSet(err, month, schedule_time.month, 1, 12, true);
+  verifyAndSet(err, wday, schedule_time.wday, 0, 6);
 }
 
 int Cron::IsTimeMatch(struct tm *tm) {
@@ -19,25 +24,29 @@ int Cron::IsTimeMatch(struct tm *tm) {
   return 0;
 }
 
-void Cron::verifyAndSet(const std::string &token, int &field, const int lower_bound,
-                          const int upper_bound, const bool adjust) {
+bool Cron::verifyAndSet(std::string *err, const std::string &token, int &field, const int lower_bound,
+                        const int upper_bound, const bool adjust) {
   if (token == "*") {
     field = -1;
   } else {
     try {
       field = std::stoi(token);
     } catch (const std::invalid_argument &e) {
-      throw std::invalid_argument("malformed cron string (`" + token + "` not an integer or *): ");
+      *err = "malformed cron string (`" + token + "` not an integer or *): ";
+      return false;
     } catch (const std::out_of_range &e) {
-      throw std::invalid_argument("malformed cron string (`" + token + "` not convertable to int): ");
+      *err = "malformed cron string (`" + token + "` not convertable to int): ";
+      return false;
     }
     if (field < lower_bound || field > upper_bound) {
-      throw std::invalid_argument(
-          "malformed cron string (`" + token + "` must be <= " + std::to_string(upper_bound) + " and >= "
-              + std::to_string(lower_bound));
+      *err = "malformed cron string (`" + token + "` must be <= " + std::to_string(upper_bound) + " and >= "
+          + std::to_string(lower_bound);
+      return false;
     }
     if (adjust) {
       field--;
     }
   }
+
+  return true;
 }

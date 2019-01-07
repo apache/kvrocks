@@ -174,10 +174,9 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       }
     }
   } else if (size == 6 && args[0] == "compact-cron") {
-    try {
-      compact_cron = new Cron(args[1], args[2], args[3], args[4], args[5]);
-    } catch (std::invalid_argument &e) {
-      *err = "compact-cron time expression format error";
+    compact_cron = new Cron(err, args[1], args[2], args[3], args[4], args[5]);
+    if (*err != "") {
+      *err = "compact-cron time expression format error : " + *err;
       return false;
     }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {

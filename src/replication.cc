@@ -127,15 +127,30 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
       repl_state_(kReplConnecting),
       psync_steps_(this,
                    CallbacksStateMachine::CallbackList{
-                       {CallbacksStateMachine::WRITE, "dbname write", checkDBNameWriteCB},
-                       {CallbacksStateMachine::READ, "dbname read", checkDBNameReadCB},
-                       {CallbacksStateMachine::WRITE, "psync write", tryPSyncWriteCB},
-                       {CallbacksStateMachine::READ, "psync read", tryPSyncReadCB},
-                       {CallbacksStateMachine::READ, "batch loop", incrementBatchLoopCB}}),
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::WRITE, "dbname write",checkDBNameWriteCB
+                       },
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::READ, "dbname read", checkDBNameReadCB
+                       },
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::WRITE, "psync write", tryPSyncWriteCB
+                       },
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::READ, "psync read", tryPSyncReadCB
+                       },
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::READ, "batch loop", incrementBatchLoopCB
+                       }
+                   }),
       fullsync_steps_(this,
                       CallbacksStateMachine::CallbackList{
-                          {CallbacksStateMachine::WRITE, "fullsync write",fullSyncWriteCB},
-                          {CallbacksStateMachine::READ, "fullsync read", fullSyncReadCB}}) {
+                          CallbacksStateMachine::CallbackType{
+                              CallbacksStateMachine::WRITE, "fullsync write",fullSyncWriteCB
+                          },
+                          CallbacksStateMachine::CallbackType{
+                              CallbacksStateMachine::READ, "fullsync read", fullSyncReadCB}
+                      }) {
   seq_ = storage_->LatestSeq();
 }
 

@@ -69,8 +69,8 @@ class ReplicationThread {
       READ,
       WRITE,
     };
-    using CallbackList = std::deque<
-        std::tuple<EventType, std::string, std::function<State(bufferevent *, void *)>>>;
+    using CallbackType = std::tuple<EventType, std::string, std::function<State(bufferevent *, void *)>>;
+    using CallbackList = std::deque<CallbackType>;
     CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers);
 
     void Start();

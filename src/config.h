@@ -57,7 +57,7 @@ struct Config{
   Status SetNamepsace(std::string &ns, std::string token);
   Status AddNamespace(std::string &ns, std::string token);
   Config() = default;
-  ~Config() = default;
+  ~Config() { delete compact_cron; };
 
  private:
   std::string path_;

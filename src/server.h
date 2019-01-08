@@ -77,6 +77,7 @@ class Server {
   void GetMemoryInfo(std::string &info);
 
   Status AsyncCompactDB();
+  Status AsyncBgsaveDB();
   Status AsyncScanDBSize(std::string &ns);
   uint64_t GetLastKeyNum(std::string &ns);
   time_t GetLastScanTime(std::string &ns);
@@ -110,6 +111,7 @@ class Server {
 
   std::mutex db_mutex_;
   bool db_compacting_ = false;
+  bool db_bgsave_ = false;
   std::map<std::string, DBScanInfo> db_scan_infos_;
   // TODO: locked before modify
   std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
@@ -135,4 +137,5 @@ class Server {
   void cron();
   void clientsCron();
   Status compactCron();
+  Status bgsaveCron();
 };

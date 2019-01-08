@@ -159,6 +159,13 @@ Status Server::compactCron() {
   return Status::OK();
 }
 
+Status Server::bgsaveCron() {
+  Status s = AsyncBgsaveDB();
+  if (!s.IsOK()) return s;
+  LOG(INFO) << "bgsave was triggered by cron with executed success.";
+  return Status::OK();
+}
+
 void Server::cron() {
   static uint64_t counter = 0;
   std::time_t t;
@@ -168,11 +175,20 @@ void Server::cron() {
       clientsCron();
     }
     //check every 30s
-    if (config_->compact_cron != nullptr && counter != 0 && counter % 30000 == 0) {
-      t = std::time(0);
-      now = std::localtime(&t);
-      if (config_->compact_cron->IsTimeMatch(now)) {
-        compactCron();
+    if (counter != 0 && counter % 30000 == 0) {
+      if (config_->compact_cron != nullptr) {
+        t = std::time(0);
+        now = std::localtime(&t);
+        if (config_->compact_cron->IsTimeMatch(now)) {
+          compactCron();
+        }
+      }
+      if (config_->bgsave_cron != nullptr) {
+        t = std::time(0);
+        now = std::localtime(&t);
+        if (config_->bgsave_cron->IsTimeMatch(now)) {
+          bgsaveCron();
+        }
       }
     }
     counter++;
@@ -386,6 +402,27 @@ Status Server::AsyncCompactDB() {
     svr->storage_->Compact(nullptr, nullptr);
     svr->db_mutex_.lock();
     svr->db_compacting_ = false;
+    svr->db_mutex_.unlock();
+  };
+  return task_runner_->Publish(task);
+}
+
+Status Server::AsyncBgsaveDB() {
+  db_mutex_.lock();
+  if (db_bgsave_) {
+    db_mutex_.unlock();
+    return Status(Status::NotOK, "bgsave the db now");
+  }
+  db_bgsave_ = true;
+  db_mutex_.unlock();
+
+  Task task;
+  task.arg = this;
+  task.callback = [](void *arg) {
+    auto svr = static_cast<Server*>(arg);
+    svr->storage_->CreateBackup();
+    svr->db_mutex_.lock();
+    svr->db_bgsave_ = false;
     svr->db_mutex_.unlock();
   };
   return task_runner_->Publish(task);

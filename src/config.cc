@@ -180,6 +180,13 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       *err = "compact-cron time expression format error : " + s.Msg();
       return false;
     }
+  } else if (size == 6 && args[0] == "bgsave-cron") {
+    bgsave_cron = new Cron();
+    Status s = bgsave_cron->SetParams(args[1], args[2], args[3], args[4], args[5]);
+    if (!s.IsOK()) {
+      *err = "bgsave-cron time expression format error : " + s.Msg();
+      return false;
+    }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {

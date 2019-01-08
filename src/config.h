@@ -34,6 +34,7 @@ struct Config{
   std::string require_passwd;
   std::string master_host;
   Cron *compact_cron = nullptr;
+  Cron *bgsave_cron;
   int master_port = 0;
   std::map<std::string, std::string> tokens;
 

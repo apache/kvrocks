@@ -1,0 +1,42 @@
+image: centos7-cmake3.13
+
+stages:
+    - build
+    - test
+    - pkg
+    - release
+
+build:
+    stage: build
+    only:
+        - master
+        - tags
+    tags:
+        - dev
+    script:
+        - rm -rf /cache/unittest
+        - git submodule init && git submodule update
+        - mkdir build/
+        - cd build && cmake .. && make -j4 && cd ..
+        - mkdir -p _build/bin && cp build/kvrocks _build/bin
+        - mkdir -p _build/conf && cp kvrocks.conf _build/conf
+        - cp build/unittest /cache # reuse unittest in test stage
+    artifacts:
+        name: "kvrocks-${CI_PIPELINE_ID}-build"
+        paths:
+            - _build/
+        expire_in: "3 days"
+        
+unittest:
+    stage: test
+    only:
+        - master
+        - tags
+    tags:
+        - dev
+        
+    script:
+        - /cache/unittest
+    
+    dependencies:
+        - build

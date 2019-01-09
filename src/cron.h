@@ -6,6 +6,8 @@
 
 class Cron {
  public:
+  const std::string PARAM_ALL = "*";
+  const int PARAM_ALL_INT = -1;
   struct {
     int minute;
     int hour;
@@ -25,7 +27,9 @@ class Cron {
       const std::string &mday,
       const std::string &month,
       const std::string &wday);
+  std::string ToString();
 
  private:
   Status verifyAndConvertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
+  std::string convertScheduleTimeParamToConfParam(const int &param);
 };

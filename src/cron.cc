@@ -23,11 +23,11 @@ Status Cron::SetParams(const std::string &minute,
 }
 
 int Cron::IsTimeMatch(struct tm *tm) {
-  if ((schedule_time.minute == -1 || tm->tm_min == schedule_time.minute) &&
-      (schedule_time.hour == -1 || tm->tm_hour == schedule_time.hour) &&
-      (schedule_time.mday == -1 || tm->tm_mday == schedule_time.mday) &&
-      (schedule_time.month == -1 || (tm->tm_mon + 1) == schedule_time.month) &&
-      (schedule_time.wday == -1 || tm->tm_wday == schedule_time.wday)) {
+  if ((schedule_time.minute == PARAM_ALL_INT || tm->tm_min == schedule_time.minute) &&
+      (schedule_time.hour == PARAM_ALL_INT || tm->tm_hour == schedule_time.hour) &&
+      (schedule_time.mday == PARAM_ALL_INT || tm->tm_mday == schedule_time.mday) &&
+      (schedule_time.month == PARAM_ALL_INT || (tm->tm_mon + 1) == schedule_time.month) &&
+      (schedule_time.wday == PARAM_ALL_INT || tm->tm_wday == schedule_time.wday)) {
     return 1;
   }
   return 0;

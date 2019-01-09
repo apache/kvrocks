@@ -174,8 +174,8 @@ void Server::cron() {
     if (counter != 0 && counter % 10000 == 0) {
       clientsCron();
     }
-    //check every 30s
-    if (counter != 0 && counter % 30000 == 0) {
+    //check every 1 minute
+    if (counter != 0 && counter % 60000 == 0) {
       if (config_->compact_cron != nullptr) {
         t = std::time(0);
         now = std::localtime(&t);

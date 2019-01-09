@@ -9,6 +9,7 @@
 #include "config.h"
 #include "string_util.h"
 #include "status.h"
+#include "cron.h"
 
 static const std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
 static const std::string default_namespace = "__namespace";
@@ -180,6 +181,13 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       *err = "compact-cron time expression format error : " + s.Msg();
       return false;
     }
+  } else if (size == 6 && args[0] == "bgsave-cron") {
+    bgsave_cron = new Cron();
+    Status s = bgsave_cron->SetParams(args[1], args[2], args[3], args[4], args[5]);
+    if (!s.IsOK()) {
+      *err = "bgsave-cron time expression format error : " + s.Msg();
+      return false;
+    }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
@@ -338,6 +346,22 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back("binds");
     values->emplace_back(binds_str);
   }
+  if (is_all || key == "compact-cron") {
+    values->emplace_back("compact-cron");
+    if (compact_cron == nullptr) {
+      values->emplace_back("");
+    } else {
+      values->emplace_back(compact_cron->ToString());
+    }
+  }
+  if (is_all || key == "bgsave-cron") {
+    values->emplace_back("bgsave-cron");
+    if (bgsave_cron == nullptr) {
+      values->emplace_back("");
+    } else {
+      values->emplace_back(bgsave_cron->ToString());
+    }
+  }
   if (is_rocksdb_all || key == "rocksdb.max_open_files") {
     values->emplace_back("rocksdb.max_open_files");
     values->emplace_back(std::to_string(rocksdb_options.max_open_files));
@@ -407,6 +431,36 @@ Status Config::Set(std::string &key, std::string &value) {
       }
     }
     return Status(Status::NotOK, "loglevel should be info,warning,error,fatal");
+  }
+  if (key == "compact-cron") {
+    std::vector<std::string> args;
+    Util::Split(value, " ", &args);
+    if (args.empty() || args.size() != 5) {
+      return Status(Status::NotOK, "time expression format error,should include 5 field");
+    }
+    if (compact_cron == nullptr) {
+      compact_cron = new Cron();
+    }
+    Status s = compact_cron->SetParams(args[0], args[1], args[2], args[3], args[4]);
+    if (!s.IsOK()) {
+      return Status(Status::NotOK, "time expression format error : " + s.Msg());
+    }
+    return Status::OK();
+  }
+  if (key == "bgsave-cron") {
+    std::vector<std::string> args;
+    Util::Split(value, " ", &args);
+    if (args.empty() || args.size() != 5) {
+      return Status(Status::NotOK, "time expression format error,should include 5 field");
+    }
+    if (bgsave_cron == nullptr) {
+      bgsave_cron = new Cron();
+    }
+    Status s = bgsave_cron->SetParams(args[0], args[1], args[2], args[3], args[4]);
+    if (!s.IsOK()) {
+      return Status(Status::NotOK, "time expression format error : " + s.Msg());
+    }
+    return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }

@@ -120,6 +120,7 @@ add_executable(unittest
         src/stats.cc
         src/event_listener.cc
         src/task_runner.cc
+        src/cron.cc
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc
@@ -132,6 +133,7 @@ add_executable(unittest
         tests/string_util_test.cc
         tests/rwlock_test.cc
         tests/stats_test.cc
+        tests/cron_test.cc
         tests/task_runner_test.cc)
 
 add_dependencies(unittest gflags glog rocksdb gtest)

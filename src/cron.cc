@@ -29,16 +29,31 @@ int Cron::IsTimeMatch(struct tm *tm) {
   return 0;
 }
 
+std::string Cron::ToString() {
+  return convertScheduleTimeParamToConfParam(schedule_time.minute) + " " +
+      convertScheduleTimeParamToConfParam(schedule_time.hour) + " " +
+      convertScheduleTimeParamToConfParam(schedule_time.mday) + " " +
+      convertScheduleTimeParamToConfParam(schedule_time.month) + " " +
+      convertScheduleTimeParamToConfParam(schedule_time.wday);
+}
+
+std::string Cron::convertScheduleTimeParamToConfParam(const int &param) {
+  if (param == PARAM_ALL_INT) {
+    return PARAM_ALL;
+  }
+  return std::to_string(param);
+}
+
 Status Cron::verifyAndConvertParam(const std::string &param, int lower_bound, int upper_bound, int *value) {
-  if (param == "*") {
-    *value = -1;
+  if (param == PARAM_ALL) {
+    *value = PARAM_ALL_INT;
     return Status::OK();
   }
 
   try {
     *value = std::stoi(param);
   } catch (const std::invalid_argument &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not an integer or *");
+    return Status(Status::NotOK, "malformed token(`" + param + "`) not an integer or " + PARAM_ALL);
   } catch (const std::out_of_range &e) {
     return Status(Status::NotOK, "malformed token(`" + param + "`) not convertable to int");
   }

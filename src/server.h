@@ -94,6 +94,7 @@ class Server {
   Engine::Storage *storage_;
 
  private:
+  bool stop_ = false;
   bool is_loading_ = false;
   time_t start_time_ = 0;
   std::string master_host_;

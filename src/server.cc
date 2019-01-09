@@ -46,6 +46,7 @@ Status Server::Start() {
 }
 
 void Server::Stop() {
+  stop_ = true;
   if (replication_thread_) replication_thread_->Stop();
   for (const auto worker : worker_threads_) {
     worker->Stop();
@@ -59,7 +60,6 @@ void Server::Join() {
   for (const auto worker : worker_threads_) {
     worker->Join();
   }
-  if (cron_thread_.joinable()) cron_thread_.join();
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
@@ -170,7 +170,7 @@ void Server::cron() {
   static uint64_t counter = 0;
   std::time_t t;
   std::tm *now;
-  for (;;) {
+  while (!stop_) {
     if (counter != 0 && counter % 10000 == 0) {
       clientsCron();
     }

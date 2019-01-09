@@ -56,7 +56,7 @@ struct Config{
   void GetNamespace(std::string &ns, std::string *token);
   Status DelNamespace(std::string &ns);
   Status SetNamepsace(std::string &ns, std::string token);
-  Status AddNamespace(std::string &ns, std::string token);
+  Status AddNamespace(const std::string &ns, const std::string &token);
   Config() = default;
   ~Config() {
     delete compact_cron;

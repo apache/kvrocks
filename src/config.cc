@@ -1,6 +1,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
+#include <glog/logging.h>
+
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -413,6 +415,7 @@ Status Config::Set(std::string &key, std::string &value) {
     tokens.erase(require_passwd);
     require_passwd = value;
     tokens[require_passwd] = default_namespace;
+    LOG(WARNING) << "Updated requirepass,  new requirepass: " << value;
     return Status::OK();
   }
   if (key == "slave-read-only") {
@@ -540,13 +543,14 @@ Status Config::SetNamepsace(std::string &ns, std::string token) {
     if (iter->second == ns) {
       tokens.erase(iter);
       tokens[token] = ns;
+      LOG(WARNING) << "Updated namespace: " << ns << ", new token: " << token;
       return Status::OK();
     }
   }
   return Status(Status::NotOK, "namespace was not found");
 }
 
-Status Config::AddNamespace(std::string &ns, std::string token) {
+Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (ns.size() > 255) {
     return Status(Status::NotOK, "namespace size exceed limit " + std::to_string(INT8_MAX));
   }
@@ -559,6 +563,7 @@ Status Config::AddNamespace(std::string &ns, std::string token) {
     }
   }
   tokens[token] = ns;
+  LOG(WARNING) << "Create new namespace: " << ns << ", token: " << token;
   return Status::OK();
 }
 
@@ -569,6 +574,7 @@ Status Config::DelNamespace(std::string &ns) {
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
       tokens.erase(iter);
+      LOG(WARNING) << "Deleted namespace: " << ns << ", token: " << iter->first;
       return Status::OK();
     }
   }

@@ -438,7 +438,12 @@ Status Config::Set(std::string &key, std::string &value) {
   if (key == "compact-cron") {
     std::vector<std::string> args;
     Util::Split(value, " ", &args);
-    if (args.empty() || args.size() != 5) {
+    if (args.empty()) {
+      delete compact_cron;
+      compact_cron = nullptr;
+      return Status::OK();
+    }
+    if (args.size() != 5) {
       return Status(Status::NotOK, "time expression format error,should include 5 field");
     }
     if (compact_cron == nullptr) {
@@ -453,7 +458,12 @@ Status Config::Set(std::string &key, std::string &value) {
   if (key == "bgsave-cron") {
     std::vector<std::string> args;
     Util::Split(value, " ", &args);
-    if (args.empty() || args.size() != 5) {
+    if (args.empty()) {
+      delete bgsave_cron;
+      bgsave_cron = nullptr;
+      return Status::OK();
+    }
+    if (args.size() != 5) {
       return Status(Status::NotOK, "time expression format error,should include 5 field");
     }
     if (bgsave_cron == nullptr) {

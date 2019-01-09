@@ -143,7 +143,7 @@ class CommandConfig : public Commander {
       }
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success.";
-    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "getValue") {
+    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);

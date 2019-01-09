@@ -33,8 +33,8 @@ struct Config{
   std::string master_auth;
   std::string require_passwd;
   std::string master_host;
-  Cron *compact_cron = nullptr;
-  Cron *bgsave_cron = nullptr;
+  Cron compact_cron;
+  Cron bgsave_cron;
   int master_port = 0;
   std::map<std::string, std::string> tokens;
 
@@ -58,10 +58,7 @@ struct Config{
   Status SetNamepsace(std::string &ns, std::string token);
   Status AddNamespace(const std::string &ns, const std::string &token);
   Config() = default;
-  ~Config() {
-    delete compact_cron;
-    delete bgsave_cron;
-  };
+  ~Config() = default;
 
  private:
   std::string path_;

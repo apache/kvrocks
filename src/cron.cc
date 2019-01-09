@@ -15,14 +15,18 @@ Status Cron::SetParams(const std::string &minute,
   if (!s.IsOK()) return s;
   s = verifyAndConvertParam(month, 1, 12, &schedule_time.month);
   if (!s.IsOK()) return s;
-  return verifyAndConvertParam(wday, 0, 6, &schedule_time.wday);
+  s = verifyAndConvertParam(wday, 0, 6, &schedule_time.wday);
+  if (s.IsOK()) {
+    isEnabledStatus = true;
+  }
+  return s;
 }
 
 int Cron::IsTimeMatch(struct tm *tm) {
   if ((schedule_time.minute == -1 || tm->tm_min == schedule_time.minute) &&
       (schedule_time.hour == -1 || tm->tm_hour == schedule_time.hour) &&
       (schedule_time.mday == -1 || tm->tm_mday == schedule_time.mday) &&
-      (schedule_time.month == -1 || (tm->tm_mon+1) == schedule_time.month) &&
+      (schedule_time.month == -1 || (tm->tm_mon + 1) == schedule_time.month) &&
       (schedule_time.wday == -1 || tm->tm_wday == schedule_time.wday)) {
     return 1;
   }
@@ -35,6 +39,15 @@ std::string Cron::ToString() {
       convertScheduleTimeParamToConfParam(schedule_time.mday) + " " +
       convertScheduleTimeParamToConfParam(schedule_time.month) + " " +
       convertScheduleTimeParamToConfParam(schedule_time.wday);
+}
+
+Status Cron::Disable() {
+  isEnabledStatus = false;
+  return Status::OK();
+}
+
+bool Cron::IsEnabled() {
+  return isEnabledStatus;
 }
 
 std::string Cron::convertScheduleTimeParamToConfParam(const int &param) {

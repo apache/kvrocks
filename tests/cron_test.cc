@@ -16,12 +16,12 @@ class CronTest : public testing::Test {
 };
 
 TEST_F(CronTest, IsTimeMatch) {
-  std::time_t t = 1546282800; // 2019.1.1 03:00
+  std::time_t t = std::time(0);
   std::tm *now = std::localtime(&t);
+  now->tm_hour = 3;
   int got = cron->IsTimeMatch(now);
   ASSERT_EQ(1, got);
-  t = 1546286400; //2019.1.1 04:00
-  now = std::localtime(&t);
+  now->tm_hour = 4;
   got = cron->IsTimeMatch(now);
   ASSERT_EQ(0, got);
 }

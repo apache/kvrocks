@@ -13,8 +13,8 @@
 #include "status.h"
 #include "cron.h"
 
-static const std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
-static const std::string default_namespace = "__namespace";
+static const std::vector<std::string> loglevels {"info", "warning", "error", "fatal"};
+static const char *default_namespace = "__namespace";
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;

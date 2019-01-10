@@ -45,6 +45,7 @@ static Options *parseCommandLineOptions(int argc, char **argv) {
 
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging("ev");
+  gflags::SetUsageMessage("kvrocks");
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);

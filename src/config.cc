@@ -176,14 +176,14 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
         return false;
       }
     }
-  } else if ((size - 1) % 5 == 0 && args[0] == "compact-cron") {
+  } else if (size >=2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
     if (!s.IsOK()) {
       *err = "compact-cron time expression format error : " + s.Msg();
       return false;
     }
-  } else if ((size - 1) % 5 == 0 && args[0] == "bgsave-cron") {
+  } else if (size >=2 && args[0] == "bgsave-cron") {
     args.erase(args.begin());
     Status s = bgsave_cron.SetScheduleTime(args);
     if (!s.IsOK()) {

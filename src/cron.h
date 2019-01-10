@@ -35,7 +35,7 @@ class Cron {
       const std::string &mday,
       const std::string &month,
       const std::string &wday,
-      schedule_time &t);
+      schedule_time *st);
   Status verifyAndConvertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
   std::string convertScheduleTimeParamToConfParam(const int &param);
 };

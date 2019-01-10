@@ -1521,7 +1521,8 @@ class CommandSlaveOf : public Commander {
       if (p > UINT32_MAX) {
         throw std::overflow_error("port out of range");
       }
-      port_ = static_cast<uint32_t>(p);
+      // we use port + 1 as repl port, so incr the slaveof port here
+      port_ = static_cast<uint32_t>(p)+1;
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, "port should be number");
     }
@@ -2253,6 +2254,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandCompact);
      }},
+    {"slaveof",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlaveOf);
+     }},
 };
 
 // Replication related commands, which are received by workers listening on
@@ -2261,10 +2266,6 @@ std::map<std::string, CommanderFactory> repl_command_table = {
     {"auth",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandAuth);
-     }},
-    {"slaveof",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlaveOf);
      }},
     {"psync",
      []() -> std::unique_ptr<Commander> {

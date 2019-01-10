@@ -177,13 +177,13 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       }
     }
   } else if (size == 6 && args[0] == "compact-cron") {
-    Status s = compact_cron.SetParams(args[1], args[2], args[3], args[4], args[5]);
+    Status s = compact_cron.AppendScheduleTime(args[1], args[2], args[3], args[4], args[5]);
     if (!s.IsOK()) {
       *err = "compact-cron time expression format error : " + s.Msg();
       return false;
     }
   } else if (size == 6 && args[0] == "bgsave-cron") {
-    Status s = bgsave_cron.SetParams(args[1], args[2], args[3], args[4], args[5]);
+    Status s = bgsave_cron.AppendScheduleTime(args[1], args[2], args[3], args[4], args[5]);
     if (!s.IsOK()) {
       *err = "bgsave-cron time expression format error : " + s.Msg();
       return false;
@@ -443,7 +443,7 @@ Status Config::Set(std::string &key, std::string &value) {
     if (args.size() != 5) {
       return Status(Status::NotOK, "time expression format error,should include 5 field");
     }
-    Status s = compact_cron.SetParams(args[0], args[1], args[2], args[3], args[4]);
+    Status s = compact_cron.AppendScheduleTime(args[0], args[1], args[2], args[3], args[4]);
     if (!s.IsOK()) {
       return Status(Status::NotOK, "time expression format error : " + s.Msg());
     }
@@ -459,7 +459,7 @@ Status Config::Set(std::string &key, std::string &value) {
     if (args.size() != 5) {
       return Status(Status::NotOK, "time expression format error,should include 5 field");
     }
-    Status s = bgsave_cron.SetParams(args[0], args[1], args[2], args[3], args[4]);
+    Status s = bgsave_cron.AppendScheduleTime(args[0], args[1], args[2], args[3], args[4]);
     if (!s.IsOK()) {
       return Status(Status::NotOK, "time expression format error : " + s.Msg());
     }

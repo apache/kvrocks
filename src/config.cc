@@ -44,58 +44,51 @@ int Config::yesnotoi(std::string input) {
   return -1;
 }
 
-bool Config::parseRocksdbOption(std::string key, std::string value, std::string *err) {
+Status Config::parseRocksdbOption(std::string key, std::string value) {
   int32_t n;
   try {
     n = std::stoi(value);
   } catch (std::exception &e) {
-    *err = e.what();
-    return false;
+    return Status(Status::NotOK, e.what());
   }
   if (key == "max_open_files" ) {
     rocksdb_options.max_open_files = n;
   } else if (!strncasecmp(key.data(), "write_buffer_size" , strlen("write_buffer_size"))) {
     if (n < 16 || n > 4096) {
-      *err = "write_buffer_size should be between 16MB and 4GB";
-      return false;
+      return Status(Status::NotOK, "write_buffer_size should be between 16MB and 4GB");
     }
     rocksdb_options.write_buffer_size = static_cast<size_t>(n) * 1048576;
   }  else if (key == "max_write_buffer_number" ) {
     if (n < 1 || n > 64) {
-      *err = "max_write_buffer_number should be between 1 and 64";
-      return false;
+      return Status(Status::NotOK, "max_write_buffer_number should be between 1 and 64");
     }
     rocksdb_options.max_write_buffer_number = n;
   }  else if (key == "max_background_compactions" ) {
     if (n < 1 || n > 16) {
-      *err = "max_background_compactions should be between 1 and 16";
-      return false;
+      return Status(Status::NotOK, "max_background_compactions should be between 1 and 16");
     }
     rocksdb_options.max_background_compactions = n;
   }  else if (key == "max_background_flushes" ) {
     if (n < 1 || n > 16) {
-      *err = "max_background_flushes should be between 1 and 16";
-      return false;
+      return Status(Status::NotOK, "max_background_flushes should be between 1 and 16");
     }
     rocksdb_options.max_background_flushes = n;
   }  else if (key == "max_sub_compactions" ) {
     if (n < 1 || n > 8) {
-      *err = "max_sub_compactions should be between 1 and 8";
-      return false;
+      return Status(Status::NotOK, "max_sub_compactions should be between 1 and 8");
     }
     rocksdb_options.max_sub_compactions = static_cast<uint32_t>(n);
   } else {
-    *err = "Bad directive or wrong number of arguments";
-    return false;
+    return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
-  return true;
+  return Status::OK();
 }
 
-bool Config::parseConfigFromString(std::string input, std::string *err) {
+Status Config::parseConfigFromString(std::string input) {
   std::vector<std::string> args;
   Util::Split(input, " \t\r\n", &args);
   // omit empty line and comment
-  if (args.empty() || args[0].front() == '#') return true;
+  if (args.empty() || args[0].front() == '#') return Status::OK();
 
   size_t size = args.size();
   if (size == 2 && args[0] == "port") {
@@ -106,14 +99,12 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 2 && args[0] == "workers") {
     workers = std::stoi(args[1]);
     if (workers < 1 || workers > 1024) {
-      *err = "too many worker threads";
-      return false;
+      return Status(Status::NotOK, "too many worker threads");
     }
   } else if (size == 2 && args[0] == "repl-workers" ){
     repl_workers = std::stoi(args[1]);
     if (workers < 1 || workers > 1024) {
-      *err = "too many replication worker threads";
-      return false;
+      return Status(Status::NotOK, "too many replication worker threads");
     }
   } else if (size >= 2 && args[0] == "bind") {
     binds.clear();
@@ -128,15 +119,13 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   }else if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
-      *err = "argument must be 'yes' or 'no'";
-      return false;
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     daemonize = (i == 1);
   } else if (size == 2 && args[0] == "slave-read-only") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
-      *err = "argument must be 'yes' or 'no'";
-      return false;
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     slave_readonly = (i == 1);
   } else if (size == 2 && args[0] == "tcp-backlog") {
@@ -172,31 +161,27 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
       // we use port + 1 as repl port, so incr the slaveof port here
       master_port = std::stoi(args[2]) + 1;
       if (master_port <= 0 || master_port >= 65535) {
-        *err = "master port range should be between 0 and 65535";
-        return false;
+        return Status(Status::NotOK, "master port range should be between 0 and 65535");
       }
     }
   } else if (size >=2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
     if (!s.IsOK()) {
-      *err = "compact-cron time expression format error : " + s.Msg();
-      return false;
+      return Status(Status::NotOK, "compact-cron time expression format error : "+s.Msg());
     }
   } else if (size >=2 && args[0] == "bgsave-cron") {
     args.erase(args.begin());
     Status s = bgsave_cron.SetScheduleTime(args);
     if (!s.IsOK()) {
-      *err = "bgsave-cron time expression format error : " + s.Msg();
-      return false;
+      return Status(Status::NotOK, "bgsave-cron time expression format error : " + s.Msg());
     }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
-    return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1], err);
+    return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size()-10);
     if(ns.size() > INT8_MAX) {
-      *err = std::string("namespace size exceed limit ")+std::to_string(INT8_MAX);
-      return false;
+      return Status(Status::NotOK, std::string("namespace size exceed limit ")+std::to_string(INT8_MAX));
     }
     tokens[args[1]] = ns;
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-log-slower-than")) {
@@ -204,18 +189,16 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
     slowlog_max_len = std::stoi(args[1]);
   } else {
-    *err = "Bad directive or wrong number of arguments";
-    return false;
+    return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
-  return true;
+  return Status::OK();
 }
 
-bool Config::Load(std::string path, std::string *err) {
+Status Config::Load(std::string path) {
   path_ = std::move(path);
   std::ifstream file(path_);
   if (!file.is_open()) {
-    *err = strerror(errno);
-    return false;
+    return Status(Status::NotOK, strerror(errno));
   }
 
   std::string line, parse_err;
@@ -223,21 +206,20 @@ bool Config::Load(std::string path, std::string *err) {
   while (!file.eof()) {
     std::getline(file, line);
     line = Util::ToLower(line);
-    if (!parseConfigFromString(line, &parse_err)) {
-      *err = std::string("failed to parse config at line: #L")
-          + std::to_string(line_num) + ", err:" + parse_err;
+    Status s = parseConfigFromString(line);
+    if (!s.IsOK()) {
       file.close();
-      return false;
+      return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
     }
     line_num++;
   }
   if (requirepass.empty()) {
-    *err = "requirepass cannot be empty";
-    return false;
+    file.close();
+    return Status(Status::NotOK, "requirepass cannot be empty");
   }
   tokens[requirepass] = default_namespace;
   file.close();
-  return true;
+  return Status::OK();
 }
 
 bool Config::rewriteConfigValue(std::vector<std::string> &args) {

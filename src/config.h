@@ -50,7 +50,7 @@ struct Config{
 
  public:
   Status Rewrite();
-  bool Load(std::string path, std::string *err);
+  Status Load(std::string path);
   void Get(std::string &key, std::vector<std::string> *values);
   Status Set(std::string &key, std::string &value);
   void GetNamespace(std::string &ns, std::string *token);
@@ -64,7 +64,7 @@ struct Config{
   std::string path_;
   int yesnotoi(std::string input);
   void incrOpenFilesLimit(rlim_t maxfiles);
-  bool parseRocksdbOption(std::string key, std::string value, std::string *err);
-  bool parseConfigFromString(std::string input, std::string *err);
+  Status parseRocksdbOption(std::string key, std::string value);
+  Status parseConfigFromString(std::string input);
   bool rewriteConfigValue(std::vector<std::string> &args);
 };

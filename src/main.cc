@@ -57,18 +57,19 @@ int main(int argc, char* argv[]) {
   std::string config_file_path = std::move(opts->conf_file);
   delete opts;
 
-  std::string err;
   Config config;
-  if (!config.Load(config_file_path, &err)) {
-    LOG(ERROR) << "Failed to load config, err: " << err;
+  Status s = config.Load(config_file_path);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "Failed to load config, err: " << s.Msg();
     exit(1);
   }
+
   FLAGS_logtostderr = true;
   FLAGS_minloglevel = config.loglevel;
 
   LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   Engine::Storage storage(&config);
-  auto s = storage.Open();
+  s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "failed to open: " << s.Msg();
     exit(1);

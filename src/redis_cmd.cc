@@ -51,7 +51,7 @@ class CommandNamespace : public Commander {
       return Status::OK();
     }
     Config *config = svr->GetConfig();
-    if (args_.size() == 3 && args_[1] == "getValue") {
+    if (args_.size() == 3 && args_[1] == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
         auto tokens = config->tokens;

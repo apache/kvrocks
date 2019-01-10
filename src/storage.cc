@@ -1,7 +1,6 @@
 #include <event2/buffer.h>
 #include <fcntl.h>
 #include <glog/logging.h>
-#include <rocksdb/compaction_filter.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/table.h>
 #include <iostream>
@@ -10,6 +9,7 @@
 #include "storage.h"
 #include "redis_metadata.h"
 #include "event_listener.h"
+#include "compact_filter.h"
 
 namespace Engine {
 
@@ -17,136 +17,13 @@ const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 using rocksdb::Slice;
 
-class MetadataFilter : public rocksdb::CompactionFilter {
- public:
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override {
-    std::string ns, real_key, bytes = value.ToString();
-    Metadata metadata(kRedisNone);
-    rocksdb::Status s = metadata.Decode(bytes);
-    ExtractNamespaceKey(key, &ns, &real_key);
-    if (!s.ok()) {
-      LOG(WARNING) << "[Compacting metadata key] Failed to decode,"
-                   << "namespace: " << ns
-                   << "key: " << real_key
-                   << ", err: " << s.ToString();
-      return false;
-    }
-    DLOG(INFO) << "[Compacting metadata key]"
-               << " namespace: " << ns
-               << ", key: " << real_key
-               << ", result: " << (metadata.Expired() ? "deleted":"reserved");
-    return metadata.Expired();
-  }
-  const char *Name() const override { return "MetadataFilter"; }
-};
-
-class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
- public:
-  MetadataFilterFactory() = default;
-  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
-    return std::unique_ptr<rocksdb::CompactionFilter>(new MetadataFilter());
-  }
-  const char *Name() const override { return "MetadataFilterFactory"; }
-};
-
-class SubKeyFilter : public rocksdb::CompactionFilter {
- public:
-  SubKeyFilter(rocksdb::DB **db,
-               std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles)
-      : cached_key_(""),
-        cached_metadata_(""),
-        db_(db),
-        cf_handles_(cf_handles) {}
-
-  bool IsKeyExpired(InternalKey &ikey) const {
-    std::string metadata_key;
-
-    ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
-    if (cached_key_.empty() || metadata_key != cached_key_) {
-      std::string bytes;
-      rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
-                                      metadata_key, &bytes);
-      cached_key_ = metadata_key;
-      if (s.ok()) {
-        cached_metadata_ = bytes;
-      } else if (s.IsNotFound()) {
-        // metadata was deleted(perhaps compaction or manual)
-        // clear the metadata
-        cached_metadata_.clear();
-        return true;
-      } else {
-        // failed to getValue metadata, clear the cached key and reserve
-        cached_key_.clear();
-        cached_metadata_.clear();
-        return false;
-      }
-    }
-    // the metadata was not found
-    if (cached_metadata_.empty()) return true;
-    // the metadata is cached
-    Metadata metadata(kRedisNone);
-    rocksdb::Status s = metadata.Decode(cached_metadata_);
-    if (!s.ok()) {
-      cached_key_.clear();
-      return false;
-    }
-    if (metadata.Expired() || ikey.GetVersion() < metadata.version) {
-      cached_metadata_.clear();
-      return true;
-    }
-    return false;
-  }
-
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override {
-    InternalKey ikey(key);
-    bool result = IsKeyExpired(ikey);
-    DLOG(INFO) << "[Compacting subkey]"
-               << " namespace: " << ikey.GetNamespace().ToString()
-               << ", metadata key: "<< ikey.GetKey().ToString()
-               << ", subkey: "<< ikey.GetSubKey().ToString()
-               << ", verison: " << ikey.GetVersion()
-               << ", result: " << (result ? "deleted":"reserved");
-    return result;
-  }
-  const char *Name() const override { return "SubkeyFilter"; }
-
- protected:
-  mutable Slice cached_key_;
-  mutable std::string cached_metadata_;
-  rocksdb::DB **db_;
-  std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
-};
-
-class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
- public:
-  explicit SubKeyFilterFactory(
-      rocksdb::DB **db,
-      std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles) {
-    db_ = db;
-    cf_handles_ = cf_handles;
-  }
-  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
-    return std::unique_ptr<rocksdb::CompactionFilter>(
-        new SubKeyFilter(db_, cf_handles_));
-  }
-  const char *Name() const override { return "SubKeyFilterFactory"; }
-
- private:
-  rocksdb::DB **db_;
-  std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
-};
-
-Engine::Storage::~Storage() {
+Storage::~Storage() {
   for (auto handle : cf_handles_) delete handle;
   db_->Close();
   delete db_;
 }
 
-void Engine::Storage::InitOptions(rocksdb::Options *options) {
+void Storage::InitOptions(rocksdb::Options *options) {
   options->create_if_missing = true;
   // options.IncreaseParallelism(2);
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
@@ -167,7 +44,7 @@ void Engine::Storage::InitOptions(rocksdb::Options *options) {
   options->listeners.emplace_back(new CompactionEventListener());
 }
 
-Status Engine::Storage::CreateColumnFamiles(rocksdb::Options &options) {
+Status Storage::CreateColumnFamiles(rocksdb::Options &options) {
   rocksdb::DB *tmp_db;
   rocksdb::ColumnFamilyOptions cf_options(options);
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
@@ -188,7 +65,7 @@ Status Engine::Storage::CreateColumnFamiles(rocksdb::Options &options) {
   return Status::OK();
 }
 
-Status Engine::Storage::Open() {
+Status Storage::Open() {
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamiles(options);

@@ -59,6 +59,8 @@ target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
 target_link_libraries(kvrocks ${EXTERNAL_LIBS})
 target_sources(kvrocks PRIVATE
+        src/compact_filter.cc
+        src/compact_filter.h
         src/worker.cc
         src/worker.h
         src/main.cc
@@ -121,6 +123,7 @@ add_executable(unittest
         src/event_listener.cc
         src/task_runner.cc
         src/cron.cc
+        src/compact_filter.cc
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc

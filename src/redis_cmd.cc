@@ -138,9 +138,8 @@ class CommandConfig : public Commander {
     std::string err;
     Config *config = svr->GetConfig();
     if (args_.size() == 2 && Util::ToLower(args_[1]) == "rewrite") {
-      if (!config->Rewrite(&err)) {
-        return Status(Status::RedisExecErr, err);
-      }
+      Status s = config->Rewrite();
+      if (!s.IsOK()) return Status(Status::RedisExecErr, s.Msg());
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success.";
     } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
@@ -154,8 +153,7 @@ class CommandConfig : public Commander {
       }
       *output = Redis::SimpleString("OK");
     } else {
-      *output =
-          Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
+      *output = Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
     }
     return Status::OK();
   }

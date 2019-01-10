@@ -366,7 +366,7 @@ Status Config::Set(std::string &key, std::string &value) {
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }
 
-bool Config::Rewrite(std::string *err) {
+Status Config::Rewrite() {
   std::string tmp_path = path_+".tmp";
   std::ostringstream string_stream;
 
@@ -375,8 +375,7 @@ bool Config::Rewrite(std::string *err) {
   std::ofstream output_file(tmp_path, std::ios::out);
   if (!input_file.is_open() || !output_file.is_open()) {
     if (input_file.is_open()) input_file.close();
-    *err = strerror(errno);
-    return false;
+    return Status(Status::NotOK, strerror(errno));
   }
 
   std::string line, new_line, buffer;
@@ -401,7 +400,6 @@ bool Config::Rewrite(std::string *err) {
       buffer.append("\n");
     }
   }
-
   string_stream.str(std::string());
   string_stream.clear();
   for (auto iter = tokens.begin(); iter != tokens.end(); ++iter) {
@@ -415,10 +413,9 @@ bool Config::Rewrite(std::string *err) {
   input_file.close();
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
-    *err = "failed to swap the config file, err: "+ std::string(strerror(errno));
-    return false;
+    return Status(Status::NotOK, std::string("unable to rename, err: ")+strerror(errno));
   }
-  return true;
+  return Status::OK();
 }
 
 void Config::GetNamespace(std::string &ns, std::string *token) {

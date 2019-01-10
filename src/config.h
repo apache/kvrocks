@@ -49,7 +49,7 @@ struct Config{
   } rocksdb_options;
 
  public:
-  bool Rewrite(std::string *err);
+  Status Rewrite();
   bool Load(std::string path, std::string *err);
   void Get(std::string &key, std::vector<std::string> *values);
   Status Set(std::string &key, std::string &value);

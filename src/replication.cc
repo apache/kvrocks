@@ -263,6 +263,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
                        CRLF + seq_str + CRLF;
   send_string(bev, cmd_str);
   self->repl_state_ = kReplSendPSync;
+  LOG(INFO) << "[replication] Try to use psync, from seq: " << self->seq_;
   return CBState::NEXT;
 }
 
@@ -279,9 +280,11 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
+    LOG(INFO) << "[replication] Failed to use psync, swith to fullsync";
     return CBState::QUIT;
   } else {
     // PSYNC is OK, use IncrementBatchLoop
+    LOG(INFO) << "[replication] PSync is ok, start increment batch loop";
     return CBState::NEXT;
   }
 }
@@ -300,8 +303,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
         // Read bulk length
         line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return CBState::AGAIN;
-        self->incr_bulk_len_ =
-            line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        self->incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         if (self->incr_bulk_len_ == 0) {
           LOG(ERROR) << "[replication] Invalid increment data size";
@@ -312,10 +314,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (self->incr_bulk_len_+2 <= evbuffer_get_length(input)) {  // We got enough data
-          bulk_data = reinterpret_cast<char *>(
-              evbuffer_pullup(input, self->incr_bulk_len_ + 2));
-          auto s = self->storage_->WriteBatch(
-              std::string(bulk_data, self->incr_bulk_len_));
+          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
+          auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           if (!s.IsOK()) {
             LOG(ERROR) << "Failed to write batch to local, err: " << s.Msg();
           }
@@ -359,6 +359,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         return CBState::QUIT;
       }
       self->fullsync_state_ = kFetchMetaSize;
+      LOG(INFO) << "[replication] Success to fetch meta id: " << self->fullsync_meta_id_;
     case kFetchMetaSize:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
@@ -375,6 +376,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         return CBState::QUIT;
       }
       self->fullsync_state_ = kFetchMetaContent;
+      LOG(INFO) << "[replication] Success to fetch meta size: " << self->fullsync_filesize_;
     case kFetchMetaContent:
       if (evbuffer_get_length(input) < self->fullsync_filesize_) {
         return CBState::AGAIN;
@@ -384,6 +386,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = kFetchMetaID;
 
+      LOG(INFO) << "[replication] Success to fetch meta file, paralle fetching files";
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
         return CBState::QUIT;
@@ -424,11 +427,10 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           }
           int sock_fd;
           if (SockConnect(this->host_, this->port_, &sock_fd) < 0) {
-            LOG(ERROR) << "[replication] Failed to connect";
+            LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << strerror(errno);
             return false;
           }
           if (!this->sendAuth(sock_fd).IsOK()) {
-            LOG(ERROR) << "[replication] Failed to auth";
             return false;
           }
           for (auto f_idx = tid; f_idx < files.size();
@@ -441,9 +443,10 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
               LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
               continue;
             }
-            LOG(INFO) << "[fetch] " << f_name << " " << f_crc;
+            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
             auto s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
+              LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
               return false;
             }
           }
@@ -505,13 +508,12 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   // Read file size line
   while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-      LOG(ERROR) << "[replication] Failed to read size line";
-      return Status(Status::NotOK);
+      return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
-      LOG(ERROR) << "[replication] Failed to send _fetch_file cmd: " << line;
+      return Status(Status::NotOK, std::string("_fetch_file got err: ")+line);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
@@ -520,8 +522,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   // Write to tmp file
   auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
   if (!tmp_file) {
-    LOG(ERROR) << "[replication] Failed to create tmp file";
-    return Status(Status::NotOK);
+    return Status(Status::NotOK, "unable to create tmp file");
   }
 
   size_t seen_bytes = 0;
@@ -532,21 +533,19 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       auto data_len = evbuffer_remove(evbuf, data, 1024);
       if (data_len == 0) continue;
       if (data_len < 0) {
-        LOG(ERROR) << "[replication] Failed to read data";
+        return Status(Status::NotOK, "read sst file data error");
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       seen_bytes += data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-        LOG(ERROR) << "[replication] Failed to read data file";
-        return Status(Status::NotOK);
+        return Status(Status::NotOK, std::string("read sst file data, err: ")+strerror(errno));
       }
     }
   }
   if (crc != tmp_crc) {
-    LOG(ERROR) << "[replication] CRC mismatch";
-    return Status(Status::NotOK);
+    return Status(Status::NotOK, "CRC mismatch");
   }
   // File is OK, rename to formal name
   return Engine::Storage::BackupManager::SwapTmpFile(storage_, path);

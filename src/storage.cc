@@ -287,10 +287,10 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
-    LOG(ERROR) << "[storage_] Failed to restore: " << s.ToString();
+    LOG(ERROR) << "[Storage] Failed to restore: " << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
   }
-  LOG(INFO) << "[storage_] Restore from backup";
+  LOG(INFO) << "[Storage] Restore from backup";
 
   // Reopen DB
   auto s2 = Open();
@@ -510,8 +510,7 @@ Status Storage::BackupManager::SwapTmpFile(Storage *storage,
   std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
   std::string orig_path = storage->config_->backup_dir + "/" + rel_path;
   if (!storage->backup_env_->RenameFile(tmp_path, orig_path).ok()) {
-    LOG(ERROR) << "Failed to rename: " << tmp_path;
-    return Status(Status::NotOK);
+    return Status(Status::NotOK, "unable to rename: "+tmp_path);
   }
   return Status::OK();
 }

@@ -154,9 +154,9 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 2 && args[0] == "db-name") {
     db_name = args[1];
   } else if (size == 2 && args[0] == "masterauth") {
-    master_auth = args[1];
+    masterauth = args[1];
   } else if (size == 2 && args[0] == "requirepass") {
-    require_passwd = args[1];
+    requirepass = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
     pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
@@ -231,11 +231,11 @@ bool Config::Load(std::string path, std::string *err) {
     }
     line_num++;
   }
-  if (require_passwd.empty()) {
+  if (requirepass.empty()) {
     *err = "requirepass cannot be empty";
     return false;
   }
-  tokens[require_passwd] = default_namespace;
+  tokens[requirepass] = default_namespace;
   file.close();
   return true;
 }
@@ -254,13 +254,13 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
       return true;
     }
   } else if (size == 2 && args[0] == "masterauth") {
-    if (master_auth!= args[1]) {
-      args[1] = master_auth;
+    if (masterauth!= args[1]) {
+      args[1] = masterauth;
       return true;
     }
   } else if (size == 2 && args[0] == "requirepass") {
-    if (require_passwd != args[1]) {
-      args[1] = require_passwd;
+    if (requirepass != args[1]) {
+      args[1] = requirepass;
       return true;
     }
   } else if (size == 2 && args[0] == "slave-read-only") {
@@ -277,113 +277,52 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
 void Config::Get(std::string &key, std::vector<std::string> *values) {
   key = Util::ToLower(key);
   values->clear();
-  bool is_all = key == "*", is_rocksdb_all = key == "rocksdb.*";
-  if (is_all || key == "port") {
-    values->emplace_back("port");
-    values->emplace_back(std::to_string(port));
+  bool is_all = key == "*";
+  bool is_rocksdb_all = (key == "rocksdb.*" || is_all);
+
+#define PUSH_IF_MATCH(force, k1, k2, value) do { \
+  if ((force) || (k1) == (k2)) { \
+    values->emplace_back((k2)); \
+    values->emplace_back((value)); \
+  } \
+} while(0);
+
+  std::string master_str;
+  if (!master_host.empty()) {
+    master_str = master_host+" "+ std::to_string(master_port);
   }
-  if (is_all || key == "workers") {
-    values->emplace_back("workers");
-    values->emplace_back(std::to_string(workers));
+  std::string binds_str;
+  for (const auto &bind : binds) {
+    binds_str.append(bind);
+    binds_str.append(",");
   }
-  if (is_all || key == "timeout") {
-    values->emplace_back("timeout");
-    values->emplace_back(std::to_string(timeout));
-  }
-  if (is_all || key == "loglevel"){
-    values->emplace_back("loglevel");
-    values->emplace_back(loglevels[loglevel]);
-  }
-  if (is_all || key == "tcp-backlog") {
-    values->emplace_back("tcp-backlog");
-    values->emplace_back(std::to_string(backlog));
-  }
-  if (is_all || key == "maxclients") {
-    values->emplace_back("maxclients");
-    values->emplace_back(std::to_string(maxclients));
-  }
-  if (is_all || key == "daemonize") {
-    values->emplace_back("daemonize");
-    values->emplace_back(daemonize ? "yes" : "no");
-  }
-  if (is_all || key == "slave-read-only") {
-    values->emplace_back("slave-read-only");
-    values->emplace_back(slave_readonly? "yes" : "no");
-  }
-  if (is_all || key == "pidfile") {
-    values->emplace_back("pidfile");
-    values->emplace_back(pidfile);
-  }
-  if (is_all || key == "db-name") {
-    values->emplace_back("db-name");
-    values->emplace_back(db_name);
-  }
-  if (is_all || key == "dir") {
-    values->emplace_back("dir");
-    values->emplace_back(db_dir);
-  }
-  if (is_all || key == "masterauth") {
-    values->emplace_back("masterauth");
-    values->emplace_back(master_auth);
-  }
-  if (is_all || key == "requirepass") {
-    values->emplace_back("requirepass");
-    values->emplace_back(require_passwd);
-  }
-  if (is_all || key == "slaveof") {
-    values->emplace_back("slaveof");
-    if (master_host.empty()) {
-      values->emplace_back("");
-    } else {
-      values->emplace_back(master_host+" "+ std::to_string(master_port));
-    }
-  }
-  if (is_all || key == "binds") {
-    std::string binds_str;
-    for (const auto &bind : binds) {
-      binds_str.append(bind);
-      binds_str.append(",");
-    }
-    binds_str = binds_str.substr(0, binds_str.size()-1);
-    values->emplace_back("binds");
-    values->emplace_back(binds_str);
-  }
-  if (is_all || key == "compact-cron") {
-    values->emplace_back("compact-cron");
-    values->emplace_back(compact_cron.ToString());
-  }
-  if (is_all || key == "bgsave-cron") {
-    values->emplace_back("bgsave-cron");
-    values->emplace_back(bgsave_cron.ToString());
-  }
-  if (is_rocksdb_all || key == "rocksdb.max_open_files") {
-    values->emplace_back("rocksdb.max_open_files");
-    values->emplace_back(std::to_string(rocksdb_options.max_open_files));
-  }
-  if (is_rocksdb_all || key == "rocksdb.write_buffer_size") {
-    values->emplace_back("rocksdb.write_buffer_size");
-    values->emplace_back(std::to_string(rocksdb_options.write_buffer_size));
-  }
-  if (is_rocksdb_all || key == "rocksdb.block_cache_size") {
-    values->emplace_back("rocksdb.block_cache_size");
-    values->emplace_back(std::to_string(rocksdb_options.block_cache_size));
-  }
-  if (is_rocksdb_all || key == "rocksdb.max_write_buffer_number") {
-    values->emplace_back("rocksdb.max_write_buffer_number");
-    values->emplace_back(std::to_string(rocksdb_options.max_write_buffer_number));
-  }
-  if (is_rocksdb_all || key == "rocksdb.max_background_compactions") {
-    values->emplace_back("rocksdb.max_background_compactions");
-    values->emplace_back(std::to_string(rocksdb_options.max_background_compactions));
-  }
-  if (is_rocksdb_all || key == "rocksdb.max_background_flushes") {
-    values->emplace_back("rocksdb.max_background_flushes");
-    values->emplace_back(std::to_string(rocksdb_options.max_background_flushes));
-  }
-  if (is_rocksdb_all || key == "rocksdb.max_sub_compactions") {
-    values->emplace_back("rocksdb.max_sub_compactions");
-    values->emplace_back(std::to_string(rocksdb_options.max_sub_compactions));
-  }
+  binds_str = binds_str.substr(0, binds_str.size()-1);
+
+  PUSH_IF_MATCH(is_all, key, "port", std::to_string(port));
+  PUSH_IF_MATCH(is_all, key, "workers", std::to_string(workers));
+  PUSH_IF_MATCH(is_all, key, "timeout", std::to_string(timeout));
+  PUSH_IF_MATCH(is_all, key, "loglevel", loglevels[loglevel]);
+  PUSH_IF_MATCH(is_all, key, "tcp-backlog", std::to_string(backlog));
+  PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
+  PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
+  PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
+  PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
+  PUSH_IF_MATCH(is_all, key, "db-name", db_name);
+  PUSH_IF_MATCH(is_all, key, "dir", db_dir);
+  PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
+  PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
+  PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
+  PUSH_IF_MATCH(is_all, key, "binds", binds_str);
+  PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
+  PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
+
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.block_cache_size", std::to_string(rocksdb_options.block_cache_size));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 }
 
 Status Config::Set(std::string &key, std::string &value) {
@@ -397,16 +336,16 @@ Status Config::Set(std::string &key, std::string &value) {
     return Status::OK();
   }
   if (key == "masterauth") {
-    master_auth = value;
+    masterauth = value;
     return Status::OK();
   }
   if (key == "requirepass") {
     if (value.empty()) {
       return Status(Status::NotOK, "requirepass cannot be empty");
     }
-    tokens.erase(require_passwd);
-    require_passwd = value;
-    tokens[require_passwd] = default_namespace;
+    tokens.erase(requirepass);
+    requirepass = value;
+    tokens[requirepass] = default_namespace;
     LOG(WARNING) << "Updated requirepass,  new requirepass: " << value;
     return Status::OK();
   }
@@ -480,7 +419,7 @@ bool Config::Rewrite(std::string *err) {
   string_stream.str(std::string());
   string_stream.clear();
   for (auto iter = tokens.begin(); iter != tokens.end(); ++iter) {
-    if (iter->first != require_passwd) {
+    if (iter->first != requirepass) {
       string_stream << "namespace." << iter->second << " " << iter->first << "\n";
     }
   }

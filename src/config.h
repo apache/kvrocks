@@ -30,8 +30,8 @@ struct Config{
   std::string db_dir = "/tmp/ev";
   std::string db_name = "changeme.name";
   std::string backup_dir = "/tmp/ev_bak";
-  std::string master_auth;
-  std::string require_passwd;
+  std::string masterauth;
+  std::string requirepass;
   std::string master_host;
   Cron compact_cron;
   Cron bgsave_cron;

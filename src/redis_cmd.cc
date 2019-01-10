@@ -31,7 +31,7 @@ class CommandAuth : public Commander {
       *output = Redis::Error("ERR invalid password");
     } else {
       conn->SetNamespace(iter->second);
-      if (args_[1] == config->require_passwd) {
+      if (args_[1] == config->requirepass) {
         conn->BecomeAdmin();
       } else {
         conn->BecomeUser();

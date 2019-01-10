@@ -18,15 +18,9 @@ class Cron {
   explicit Cron() = default;
   ~Cron() = default;
 
+  Status SetScheduleTime(const std::vector<std::string> &args);
   int IsTimeMatch(struct tm *tm);
-  Status AppendScheduleTime(
-      const std::string &minute,
-      const std::string &hour,
-      const std::string &mday,
-      const std::string &month,
-      const std::string &wday);
   std::string ToString();
-  Status Disable();
   bool IsEnabled();
 
  private:
@@ -35,6 +29,13 @@ class Cron {
   std::vector<schedule_time> schedule_times;
 
  private:
+  Status convertConfToScheduleTime(
+      const std::string &minute,
+      const std::string &hour,
+      const std::string &mday,
+      const std::string &month,
+      const std::string &wday,
+      schedule_time &t);
   Status verifyAndConvertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
   std::string convertScheduleTimeParamToConfParam(const int &param);
 };

@@ -49,7 +49,7 @@ void PutFixed64(std::string *dst, uint64_t value) {
 }
 
 void PutDouble(std::string *dst, double value) {
-  uint64_t *ptr = (uint64_t*) &value;
+  auto ptr = reinterpret_cast<uint64_t*>(&value);
   if ((*ptr >> 63) == 1) {
     // signed bit would be zero
     *ptr ^= 0xffffffffffffffff;
@@ -96,11 +96,8 @@ bool GetDouble(rocksdb::Slice *input, double *value) {
   return true;
 }
 
-// Lower-level versions of Get... that read directly from a character buffer
-// without any bounds checking.
-
 uint8_t DecodeFixed8(const char *ptr) {
-  return (static_cast<uint8_t>(ptr[0])) & 0xff;
+  return (static_cast<uint8_t>(ptr[0]) & 0xff);
 }
 
 uint32_t DecodeFixed32(const char *ptr) {

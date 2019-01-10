@@ -5,8 +5,7 @@
 
 LockManager::LockManager(int hash_power): hash_power_(hash_power){
   hash_mask_ = (1U<<hash_power) - 1;
-  unsigned size = Size();
-  for (unsigned i = 0; i < size; i++) {
+  for (unsigned i = 0; i < Size(); i++) {
     mutex_pool_.emplace_back(new std::mutex());
   }
 }
@@ -17,12 +16,12 @@ LockManager::~LockManager() {
   }
 }
 
-unsigned LockManager::Size() {
-  return (1U << hash_power_);
-}
-
 unsigned LockManager::hash(const rocksdb::Slice &key) {
   return static_cast<unsigned>(std::hash<std::string>{}(key.ToString()) & hash_mask_);
+}
+
+unsigned LockManager::Size() {
+  return (1U << hash_power_);
 }
 
 void LockManager::Lock(const rocksdb::Slice &key) {

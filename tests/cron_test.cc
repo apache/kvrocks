@@ -5,7 +5,8 @@ class CronTest : public testing::Test {
  protected:
   explicit CronTest() {
     cron = new Cron();
-    cron->SetParams("*", "3", "*", "*", "*");
+    std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
+    cron->SetScheduleTime(schedule);
   }
   ~CronTest() {
     delete cron;

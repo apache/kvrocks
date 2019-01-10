@@ -176,17 +176,17 @@ void Server::cron() {
     }
     //check every 1 minute
     if (counter != 0 && counter % 60000 == 0) {
-      if (config_->compact_cron != nullptr) {
+      if (config_->compact_cron.IsEnabled()) {
         t = std::time(0);
         now = std::localtime(&t);
-        if (config_->compact_cron->IsTimeMatch(now)) {
+        if (config_->compact_cron.IsTimeMatch(now)) {
           compactCron();
         }
       }
-      if (config_->bgsave_cron != nullptr) {
+      if (config_->bgsave_cron.IsEnabled()) {
         t = std::time(0);
         now = std::localtime(&t);
-        if (config_->bgsave_cron->IsTimeMatch(now)) {
+        if (config_->bgsave_cron.IsTimeMatch(now)) {
           bgsaveCron();
         }
       }

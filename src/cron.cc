@@ -1,40 +1,83 @@
 #include "cron.h"
 #include <stdexcept>
 
-Status Cron::SetParams(const std::string &minute,
-                       const std::string &hour,
-                       const std::string &mday,
-                       const std::string &month,
-                       const std::string &wday) {
-  Status s;
-  s = verifyAndConvertParam(minute, 0, 59, &schedule_time.minute);
-  if (!s.IsOK()) return s;
-  s = verifyAndConvertParam(hour, 0, 23, &schedule_time.hour);
-  if (!s.IsOK()) return s;
-  s = verifyAndConvertParam(mday, 1, 31, &schedule_time.mday);
-  if (!s.IsOK()) return s;
-  s = verifyAndConvertParam(month, 1, 12, &schedule_time.month);
-  if (!s.IsOK()) return s;
-  return verifyAndConvertParam(wday, 0, 6, &schedule_time.wday);
+Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
+  if (args.empty()) {
+    schedule_times.clear();
+    return Status::OK();
+  }
+  if (args.size() % 5 != 0) {
+    return Status(Status::NotOK, "time expression format error,should only contain 5x fields");
+  }
+
+  std::vector<schedule_time> new_schedule_times;
+  schedule_time st;
+  for (size_t i = 0; i < args.size(); i += 5) {
+    Status s = convertConfToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4], &st);
+    if (!s.IsOK()) {
+      return Status(Status::NotOK, "time expression format error : " + s.Msg());
+    }
+    new_schedule_times.push_back(st);
+  }
+
+  schedule_times.clear();
+  for (unsigned long i = 0; i < new_schedule_times.size(); i++) {
+    schedule_times.push_back(new_schedule_times[i]);
+  }
+
+  return Status::OK();
 }
 
 int Cron::IsTimeMatch(struct tm *tm) {
-  if ((schedule_time.minute == -1 || tm->tm_min == schedule_time.minute) &&
-      (schedule_time.hour == -1 || tm->tm_hour == schedule_time.hour) &&
-      (schedule_time.mday == -1 || tm->tm_mday == schedule_time.mday) &&
-      (schedule_time.month == -1 || (tm->tm_mon+1) == schedule_time.month) &&
-      (schedule_time.wday == -1 || tm->tm_wday == schedule_time.wday)) {
-    return 1;
+  for (const auto &st : schedule_times) {
+    if ((st.minute == PARAM_ALL_INT || tm->tm_min == st.minute) &&
+        (st.hour == PARAM_ALL_INT || tm->tm_hour == st.hour) &&
+        (st.mday == PARAM_ALL_INT || tm->tm_mday == st.mday) &&
+        (st.month == PARAM_ALL_INT || (tm->tm_mon + 1) == st.month) &&
+        (st.wday == PARAM_ALL_INT || tm->tm_wday == st.wday)) {
+      return 1;
+    }
   }
+
   return 0;
 }
 
+bool Cron::IsEnabled() {
+  return !schedule_times.empty();
+}
+
 std::string Cron::ToString() {
-  return convertScheduleTimeParamToConfParam(schedule_time.minute) + " " +
-      convertScheduleTimeParamToConfParam(schedule_time.hour) + " " +
-      convertScheduleTimeParamToConfParam(schedule_time.mday) + " " +
-      convertScheduleTimeParamToConfParam(schedule_time.month) + " " +
-      convertScheduleTimeParamToConfParam(schedule_time.wday);
+  std::string schedule_times_string = "";
+  for (const auto &st : schedule_times) {
+    if (schedule_times_string != "") {
+      schedule_times_string += " ";
+    }
+    schedule_times_string += convertScheduleTimeParamToConfParam(st.minute) + " " +
+        convertScheduleTimeParamToConfParam(st.hour) + " " +
+        convertScheduleTimeParamToConfParam(st.mday) + " " +
+        convertScheduleTimeParamToConfParam(st.month) + " " +
+        convertScheduleTimeParamToConfParam(st.wday);
+  }
+  return schedule_times_string;
+}
+
+Status Cron::convertConfToScheduleTime(const std::string &minute,
+                                       const std::string &hour,
+                                       const std::string &mday,
+                                       const std::string &month,
+                                       const std::string &wday,
+                                       schedule_time *st) {
+  Status s;
+  s = verifyAndConvertParam(minute, 0, 59, &st->minute);
+  if (!s.IsOK()) return s;
+  s = verifyAndConvertParam(hour, 0, 23, &st->hour);
+  if (!s.IsOK()) return s;
+  s = verifyAndConvertParam(mday, 1, 31, &st->mday);
+  if (!s.IsOK()) return s;
+  s = verifyAndConvertParam(month, 1, 12, &st->month);
+  if (!s.IsOK()) return s;
+  s = verifyAndConvertParam(wday, 0, 6, &st->wday);
+  return s;
 }
 
 std::string Cron::convertScheduleTimeParamToConfParam(const int &param) {
@@ -62,3 +105,4 @@ Status Cron::verifyAndConvertParam(const std::string &param, int lower_bound, in
   }
   return Status::OK();
 }
+

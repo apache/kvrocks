@@ -43,10 +43,10 @@ class ReplicationThread {
 
   // Internal states managed by FullSync procedure
   enum FullSyncState {
-    Fetch_meta_id,
-    Fetch_meta_size,
-    Fetch_meta_content,
-  } fullsync_state_ = Fetch_meta_id;
+    kFetchMetaID,
+    kFetchMetaSize,
+    kFetchMetaContent,
+  } fullsync_state_ = kFetchMetaID;
   rocksdb::BackupID fullsync_meta_id_ = 0;
   size_t fullsync_filesize_ = 0;
 
@@ -121,5 +121,5 @@ class ReplicationThread {
   Status fetchFile(int sock_fd, std::string path, uint32_t crc);
   Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 
-  static void Timer_cb(int, short, void *ctx);
+  static void EventTimerCB(int, short, void *ctx);
 };

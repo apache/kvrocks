@@ -193,7 +193,7 @@ void ReplicationThread::run() {
   }
   psync_steps_.Start();
 
-  auto timer = event_new(base_, -1, EV_PERSIST, Timer_cb, this);
+  auto timer = event_new(base_, -1, EV_PERSIST, EventTimerCB, this);
   timeval tmo{1, 0};  // 1 sec
   evtimer_add(timer, &tmo);
 
@@ -343,7 +343,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
   auto self = static_cast<ReplicationThread *>(ctx);
   auto input = bufferevent_get_input(bev);
   switch (self->fullsync_state_) {
-    case Fetch_meta_id:
+    case kFetchMetaID:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
@@ -358,8 +358,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         self->stop_flag_ = true;
         return CBState::QUIT;
       }
-      self->fullsync_state_ = Fetch_meta_size;
-    case Fetch_meta_size:
+      self->fullsync_state_ = kFetchMetaSize;
+    case kFetchMetaSize:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
@@ -374,15 +374,15 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         self->stop_flag_ = true;
         return CBState::QUIT;
       }
-      self->fullsync_state_ = Fetch_meta_content;
-    case Fetch_meta_content:
+      self->fullsync_state_ = kFetchMetaContent;
+    case kFetchMetaContent:
       if (evbuffer_get_length(input) < self->fullsync_filesize_) {
         return CBState::AGAIN;
       }
       auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(
           self->storage_, self->fullsync_meta_id_, input);
       assert(evbuffer_get_length(input) == 0);
-      self->fullsync_state_ = Fetch_meta_id;
+      self->fullsync_state_ = kFetchMetaID;
 
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
@@ -553,7 +553,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
 }
 
 // Check if stop_flag_ is set, when do, tear down replication
-void ReplicationThread::Timer_cb(int, short, void *ctx) {
+void ReplicationThread::EventTimerCB(int, short, void *ctx) {
   // DLOG(INFO) << "[replication] timer";
   auto self = static_cast<ReplicationThread *>(ctx);
   if (self->stop_flag_) {

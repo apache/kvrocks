@@ -13,8 +13,8 @@
 #include "status.h"
 #include "cron.h"
 
-static const std::vector<std::string> loglevels = {"info", "warning", "error", "fatal"};
-static const std::string default_namespace = "__namespace";
+static const std::vector<std::string> loglevels {"info", "warning", "error", "fatal"};
+static const char *default_namespace = "__namespace";
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;
@@ -100,8 +100,7 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   size_t size = args.size();
   if (size == 2 && args[0] == "port") {
     port = std::stoi(args[1]);
-  } else if (size == 2 && args[0] == "repl-port") {
-    repl_port = std::stoi(args[1]);
+    repl_port = port + 1;
   } else if (size == 2 && args[0] == "timeout") {
     timeout = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "workers") {
@@ -170,7 +169,8 @@ bool Config::parseConfigFromString(std::string input, std::string *err) {
   } else if (size == 3 && args[0] == "slaveof") {
     if (args[1] != "no" && args[2] != "one") {
       master_host = args[1];
-      master_port = std::stoi(args[2]);
+      // we use port + 1 as repl port, so incr the slaveof port here
+      master_port = std::stoi(args[2]) + 1;
       if (master_port <= 0 || master_port >= 65535) {
         *err = "master port range should be between 0 and 65535";
         return false;

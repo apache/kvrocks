@@ -18,8 +18,8 @@ std::string& Trim(std::string &in, std::string chars) {
 }
 
 void Split(std::string in, std::string delim, std::vector<std::string> *out) {
-  if (in.empty() || !out) return;
   out->clear();
+  if (in.empty() || !out) return;
   std::string::size_type pos = 0;
   std::string elem;
   do {

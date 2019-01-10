@@ -241,36 +241,23 @@ bool Config::Load(std::string path, std::string *err) {
 }
 
 bool Config::rewriteConfigValue(std::vector<std::string> &args) {
-  size_t size = args.size();
+#define REWRITE_IF_MATCH(argc, k1, k2, value) do { \
+  if((argc) == 2 && (k1) == (k2)) { \
+    if (args[1] != (value)) {       \
+      args[1] = (value);            \
+      return true;                  \
+    }                               \
+    return false;                   \
+  }                                 \
+} while(0);
 
-  if (size == 2 && args[0] == "timeout") {
-    if (std::to_string(timeout) != args[1]) {
-      args[1] = std::to_string(timeout);
-      return true;
-    }
-  } else if (size == 2 && args[0] == "maxclients") {
-    if (std::to_string(maxclients) != args[1]) {
-      args[1] = std::to_string(maxclients);
-      return true;
-    }
-  } else if (size == 2 && args[0] == "masterauth") {
-    if (masterauth!= args[1]) {
-      args[1] = masterauth;
-      return true;
-    }
-  } else if (size == 2 && args[0] == "requirepass") {
-    if (requirepass != args[1]) {
-      args[1] = requirepass;
-      return true;
-    }
-  } else if (size == 2 && args[0] == "slave-read-only") {
-    args[1] = slave_readonly? "yes":"no";
-    return true;
-  } else if (size == 2 && args[0] == "loglevel") {
-    if (args[1] != loglevels[loglevel]) {
-      args[1] = loglevels[loglevel];
-    }
-  }
+  size_t size = args.size();
+  REWRITE_IF_MATCH(size, args[0], "masterauth", masterauth);
+  REWRITE_IF_MATCH(size, args[0], "requirepass", requirepass);
+  REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
+  REWRITE_IF_MATCH(size, args[0], "maxclients", std::to_string(maxclients));
+  REWRITE_IF_MATCH(size, args[0], "timeout", std::to_string(timeout));
+  REWRITE_IF_MATCH(size, args[0], "loglevel", loglevels[loglevel]);
   return false;
 }
 
@@ -397,8 +384,7 @@ bool Config::Rewrite(std::string *err) {
   while (!input_file.eof()) {
     std::getline(input_file, line);
     Util::Split(line, " \t\r\n", &args);
-    if (args.empty() || args[0].front() == '#'
-        || !rewriteConfigValue(args)) {
+    if (args.empty() || args[0].front() == '#' || !rewriteConfigValue(args)) {
       if (!strncasecmp(args[0].data(), "namespace.", 10)) {
         // skip the namespace, append at the end
         continue;

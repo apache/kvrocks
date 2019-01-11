@@ -43,8 +43,19 @@ static Options *parseCommandLineOptions(int argc, char **argv) {
   return opts;
 }
 
+static void initGoogleLog(const Config *config) {
+  google::InitGoogleLogging("kvrocks");
+  FLAGS_minloglevel = config->loglevel;
+  FLAGS_max_log_size = 100;
+  FLAGS_logbufsecs = 0;
+  std::string log_filename = config->dir+"/kvrocks";
+  google::SetLogDestination(google::INFO, log_filename.c_str());
+  google::SetLogDestination(google::WARNING, log_filename.c_str());
+  google::SetLogDestination(google::ERROR, log_filename.c_str());
+  google::SetLogFilenameExtension(".LOG.");
+}
+
 int main(int argc, char* argv[]) {
-  google::InitGoogleLogging("ev");
   gflags::SetUsageMessage("kvrocks");
   evthread_use_pthreads();
 
@@ -52,6 +63,7 @@ int main(int argc, char* argv[]) {
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
+  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts->show_usage) usage(argv[0]);
   std::string config_file_path = std::move(opts->conf_file);
@@ -63,11 +75,7 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "Failed to load config, err: " << s.Msg();
     exit(1);
   }
-
-  FLAGS_logtostderr = true;
-  FLAGS_minloglevel = config.loglevel;
-
-  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
+  initGoogleLog(&config);
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {

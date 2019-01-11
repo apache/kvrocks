@@ -61,6 +61,18 @@ std::string Cron::ToString() {
   return schedule_times_string;
 }
 
+std::vector<std::string> Cron::ToConfParamVector() {
+  std::vector<std::string> sts;
+  for (const auto &st : schedule_times_) {
+    sts.push_back(paramToString(st.minute));
+    sts.push_back(paramToString(st.hour));
+    sts.push_back(paramToString(st.mday));
+    sts.push_back(paramToString(st.month));
+    sts.push_back(paramToString(st.wday));
+  }
+  return sts;
+}
+
 Status Cron::convertToScheduleTime(const std::string &minute,
                                    const std::string &hour,
                                    const std::string &mday,

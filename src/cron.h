@@ -21,6 +21,7 @@ class Cron {
   Status SetScheduleTime(const std::vector<std::string> &args);
   int IsTimeMatch(struct tm *tm);
   std::string ToString();
+  std::vector<std::string> ToConfParamVector();
   bool IsEnabled();
 
  private:

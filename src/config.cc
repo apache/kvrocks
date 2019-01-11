@@ -237,7 +237,31 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
   REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
   REWRITE_IF_MATCH(size, args[0], "timeout", std::to_string(timeout));
   REWRITE_IF_MATCH(size, args[0], "loglevel", loglevels[loglevel]);
+
+  if (size >= 2 && args[0] == "compact-cron") {
+    std::vector<std::string> new_args = compact_cron.ToConfParamVector();
+    return rewriteCronConfigValue(new_args, args);
+  }
+  if (size >= 2 && args[0] == "bgsave-cron") {
+    std::vector<std::string> new_args = bgsave_cron.ToConfParamVector();
+    return rewriteCronConfigValue(new_args, args);
+  }
   return false;
+}
+
+bool Config::rewriteCronConfigValue(const std::vector<std::string> &new_args, std::vector<std::string> &args) {
+  size_t args_size = args.size();
+  size_t new_args_size = new_args.size();
+  if (new_args_size == args_size - 1 &&
+      std::equal(new_args.begin(), new_args.end(), args.begin() + 1)
+      ) {
+    return false;
+  }
+  args.erase(args.begin() + 1, args.end());
+  for (unsigned long i = 0; i < new_args.size(); i++) {
+    args.push_back(new_args[i]);
+  }
+  return true;
 }
 
 void Config::Get(std::string &key, std::vector<std::string> *values) {

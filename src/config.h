@@ -68,4 +68,5 @@ struct Config{
   Status parseRocksdbOption(std::string key, std::string value);
   Status parseConfigFromString(std::string input);
   bool rewriteConfigValue(std::vector<std::string> &args);
+  bool rewriteCronConfigValue(const std::vector<std::string> &new_args,std::vector<std::string> &args);
 };

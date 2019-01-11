@@ -131,12 +131,9 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "dir") {
-    db_dir = args[1];
-    if (db_dir.back() != '/') {
-      backup_dir = db_dir + "/backup";
-    } else {
-      backup_dir = db_dir + "backup";
-    }
+    dir = args[1];
+    db_dir = dir + "/db";
+    backup_dir = dir + "/backup";
   } else if (size == 2 && args[0] == "maxclients") {
     maxclients = std::stoi(args[1]);
     if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
@@ -277,7 +274,9 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
   PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
-  PUSH_IF_MATCH(is_all, key, "dir", db_dir);
+  PUSH_IF_MATCH(is_all, key, "dir", dir);
+  PUSH_IF_MATCH(is_all, key, "db-dir", db_dir);
+  PUSH_IF_MATCH(is_all, key, "backup-dir", backup_dir);
   PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
   PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
   PUSH_IF_MATCH(is_all, key, "slaveof", master_str);

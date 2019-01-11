@@ -27,9 +27,10 @@ struct Config{
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};
   std::string pidfile = "/var/log/kvrocks.pid";
-  std::string db_dir = "/tmp/ev";
+  std::string dir = "/tmp/ev";
+  std::string db_dir = dir+"/db";
+  std::string backup_dir = dir+"/backup";
   std::string db_name = "changeme.name";
-  std::string backup_dir = "/tmp/ev_bak";
   std::string masterauth;
   std::string requirepass;
   std::string master_host;

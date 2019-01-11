@@ -2,6 +2,7 @@
 #include <event2/thread.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <sys/stat.h>
 #include <csignal>
 
 #include "worker.h"
@@ -44,7 +45,6 @@ static Options *parseCommandLineOptions(int argc, char **argv) {
 }
 
 static void initGoogleLog(const Config *config) {
-  google::InitGoogleLogging("kvrocks");
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
@@ -55,7 +55,28 @@ static void initGoogleLog(const Config *config) {
   google::SetLogFilenameExtension(".LOG.");
 }
 
+static void daemonize() {
+  pid_t pid;
+
+  pid = fork();
+  if (pid < 0) {
+    LOG(ERROR) << "Failed to fork the process, err: " << strerror(errno);
+    exit(1);
+  }
+  if (pid > 0) exit(EXIT_SUCCESS); // parent process
+  // change the file mode
+  umask(0);
+  if (setsid() < 0) {
+    LOG(ERROR) << "Failed to setsid, err: %s" << strerror(errno);
+    exit(1);
+  }
+  close(STDIN_FILENO);
+  close(STDOUT_FILENO);
+  close(STDERR_FILENO);
+}
+
 int main(int argc, char* argv[]) {
+  google::InitGoogleLogging("kvrocks");
   gflags::SetUsageMessage("kvrocks");
   evthread_use_pthreads();
 
@@ -63,7 +84,7 @@ int main(int argc, char* argv[]) {
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
-  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
+  std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts->show_usage) usage(argv[0]);
   std::string config_file_path = std::move(opts->conf_file);
@@ -72,16 +93,18 @@ int main(int argc, char* argv[]) {
   Config config;
   Status s = config.Load(config_file_path);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to load config, err: " << s.Msg();
+    std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
     exit(1);
   }
-  initGoogleLog(&config);
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "failed to open: " << s.Msg();
     exit(1);
   }
+  initGoogleLog(&config);
+  if (config.daemonize) daemonize();
+
   Server svr(&storage, &config);
   hup_handler = [&svr]() {
     LOG(INFO) << "bye bye";

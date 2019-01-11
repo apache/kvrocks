@@ -24,18 +24,17 @@ class Cron {
   bool IsEnabled();
 
  private:
-  const std::string PARAM_ALL = "*";
-  const int PARAM_ALL_INT = -1;
-  std::vector<schedule_time> schedule_times;
+  const std::string PARAM_WILDCARD = "*";
+  const int PARAM_WILDCARD_INT = -1;
+  std::vector<schedule_time> schedule_times_;
 
- private:
-  Status convertConfToScheduleTime(
+  Status convertToScheduleTime(
       const std::string &minute,
       const std::string &hour,
       const std::string &mday,
       const std::string &month,
       const std::string &wday,
       schedule_time *st);
-  Status verifyAndConvertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
-  std::string convertScheduleTimeParamToConfParam(const int &param);
+  Status convertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
+  std::string paramToString(const int &param);
 };

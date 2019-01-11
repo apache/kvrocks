@@ -89,6 +89,7 @@ class Server {
 
   std::string GetClientsStr();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void KickoutIdleClients();
 
   Stats stats_;
   Engine::Storage *storage_;

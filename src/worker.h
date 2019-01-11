@@ -31,6 +31,7 @@ class Worker {
   void Stop();
   void Run(std::thread::id tid);
   void RemoveConnection(int fd);
+  void RemoveConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
   bool IsRepl() { // Whether if worker is replication worker
     return repl_;
@@ -38,17 +39,20 @@ class Worker {
 
   std::string GetClientsStr();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void KickoutIdleClients(int timeout);
 
   Server *svr_;
  private:
   Status listen(const std::string &host, int port, int backlog);
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
+  void removeConnection(std::map<int, Redis::Connection*>::iterator iter);
 
   event_base *base_;
   std::thread::id tid_;
   std::vector<evconnlistener*> listen_events_;
   std::map<int, Redis::Connection*> conns_;
+  int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
   std::mutex conns_mu_;
 
   bool repl_;
@@ -66,6 +70,7 @@ class WorkerThread {
 
   std::string GetClientsStr();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void KickoutIdleClients(int timeout);
 
 
  private:

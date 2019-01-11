@@ -146,6 +146,7 @@ void Server::DecrClients() {
 
 void Server::clientsCron() {
   if (config_->timeout <= 0) return;
+  KickoutIdleClients();
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {
@@ -521,5 +522,11 @@ std::string Server::GetClientsStr() {
 void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
   for (const auto worker : worker_threads_) {
     worker->KillClient(killed, addr, id, skipme, conn);
+  }
+}
+
+void Server::KickoutIdleClients() {
+  for (const auto worker : worker_threads_) {
+    worker->KickoutIdleClients(config_->timeout);
   }
 }

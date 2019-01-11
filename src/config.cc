@@ -233,8 +233,8 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
   size_t size = args.size();
   REWRITE_IF_MATCH(size, args[0], "masterauth", masterauth);
   REWRITE_IF_MATCH(size, args[0], "requirepass", requirepass);
-  REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
   REWRITE_IF_MATCH(size, args[0], "maxclients", std::to_string(maxclients));
+  REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
   REWRITE_IF_MATCH(size, args[0], "timeout", std::to_string(timeout));
   REWRITE_IF_MATCH(size, args[0], "loglevel", loglevels[loglevel]);
   return false;
@@ -264,31 +264,31 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
   }
   binds_str = binds_str.substr(0, binds_str.size()-1);
 
-  PUSH_IF_MATCH(is_all, key, "port", std::to_string(port));
-  PUSH_IF_MATCH(is_all, key, "workers", std::to_string(workers));
-  PUSH_IF_MATCH(is_all, key, "timeout", std::to_string(timeout));
-  PUSH_IF_MATCH(is_all, key, "loglevel", loglevels[loglevel]);
-  PUSH_IF_MATCH(is_all, key, "tcp-backlog", std::to_string(backlog));
-  PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
-  PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
-  PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
-  PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
-  PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "dir", dir);
   PUSH_IF_MATCH(is_all, key, "db-dir", db_dir);
   PUSH_IF_MATCH(is_all, key, "backup-dir", backup_dir);
-  PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
-  PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
-  PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
-  PUSH_IF_MATCH(is_all, key, "binds", binds_str);
+  PUSH_IF_MATCH(is_all, key, "port", std::to_string(port));
+  PUSH_IF_MATCH(is_all, key, "workers", std::to_string(workers));
+  PUSH_IF_MATCH(is_all, key, "timeout", std::to_string(timeout));
+  PUSH_IF_MATCH(is_all, key, "tcp-backlog", std::to_string(backlog));
+  PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
+  PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
+  PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
   PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
+  PUSH_IF_MATCH(is_all, key, "loglevel", loglevels[loglevel]);
+  PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
+  PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
+  PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
+  PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
+  PUSH_IF_MATCH(is_all, key, "db-name", db_name);
+  PUSH_IF_MATCH(is_all, key, "binds", binds_str);
 
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.block_cache_size", std::to_string(rocksdb_options.block_cache_size));
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 }

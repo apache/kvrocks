@@ -1,6 +1,7 @@
 #include <glog/logging.h>
 #include <cctype>
 #include <utility>
+#include <algorithm>
 
 #include "redis_request.h"
 #include "server.h"
@@ -35,7 +36,7 @@ Worker::~Worker() {
   }
 
   for (auto iter : conns) {
-    delete iter;
+    RemoveConnection(iter->GetFD());
   }
   event_base_free(base_);
 }
@@ -75,7 +76,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error(status.Msg());
     write(fd, err_msg.data(), err_msg.size());
-    delete conn;
+    worker->RemoveConnection(conn->GetFD());
   }
 }
 
@@ -132,15 +133,26 @@ Status Worker::AddConnection(Redis::Connection *c) {
   return Status::OK();
 }
 
+void Worker::removeConnection(std::map<int, Redis::Connection *>::iterator iter) {
+  // unscribe all channels if exists
+  iter->second->UnSubscribeAll();
+  conns_.erase(iter);
+  svr_->DecrClients();
+  delete iter->second;
+}
+
 void Worker::RemoveConnection(int fd) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end()) {
-    // unscribe all channels if exists
-    iter->second->UnSubscribeAll();
-    conns_.erase(fd);
-    svr_->DecrClients();
-  }
+  if (iter != conns_.end())
+    removeConnection(iter);
+}
+
+void Worker::RemoveConnectionByID(int fd, uint64_t id) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  auto iter = conns_.find(fd);
+  if (iter != conns_.end() && iter->second->GetID() == id)
+    removeConnection(iter);
 }
 
 std::string Worker::GetClientsStr() {
@@ -168,23 +180,49 @@ std::string Worker::GetClientsStr() {
 }
 
 void Worker::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
-  std::list<Redis::Connection*> clients;
+  std::list<std::pair<int, uint64_t>> clients;
   conns_mu_.lock();
   for (const auto iter : conns_) {
     Redis::Connection* c = iter.second;
     if (addr != "" && c->GetAddr() != addr) continue;
     if (id != 0 && c->GetID() != id) continue;
     if (skipme && conn == c) continue;
-    clients.emplace_back(c);
+    clients.emplace_back(std::make_pair(c->GetFD(), c->GetID()));
   }
   conns_mu_.unlock();
   for (const auto iter : clients) {
-    if (iter == conn) {
-      iter->AddFlag(Redis::Connection::kCloseAfterReply);
+    if (iter.first == conn->GetFD() && iter.second == conn->GetID()) {
+      conn->AddFlag(Redis::Connection::kCloseAfterReply);
     } else {
-      delete iter;
+      RemoveConnectionByID(iter.first, iter.second);
     }
     (*killed) ++;
+  }
+}
+
+void Worker::KickoutIdleClients(int timeout) {
+  conns_mu_.lock();
+
+  std::list<std::pair<int, uint64_t>> clients;
+  if (conns_.empty()) {
+    conns_mu_.unlock();
+    return;
+  }
+  int iterations = std::min(static_cast<int>(conns_.size()), 50);
+  auto iter = conns_.upper_bound(last_iter_conn_fd);
+  while (iterations--) {
+    if (iter == conns_.end()) iter = conns_.begin();
+    if (static_cast<int>(iter->second->GetIdle()) >= timeout) {
+      clients.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+    }
+    iter++;
+  }
+  iter--;
+  last_iter_conn_fd = iter->first;
+  conns_mu_.unlock();
+
+  for (const auto client : clients) {
+    RemoveConnectionByID(client.first, client.second);
   }
 }
 
@@ -212,4 +250,8 @@ std::string WorkerThread::GetClientsStr() {
 
 void WorkerThread::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
   worker_->KillClient(killed, addr, id, skipme, conn);
+}
+
+void WorkerThread::KickoutIdleClients(int timeout) {
+  worker_->KickoutIdleClients(timeout);
 }

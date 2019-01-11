@@ -51,7 +51,6 @@ class Connection {
   }
   ~Connection() {
     if (bev_) {
-      owner_->RemoveConnection(bufferevent_getfd(bev_));
       bufferevent_free(bev_);
     }
   }

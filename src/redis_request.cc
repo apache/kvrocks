@@ -22,7 +22,7 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
 void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (conn->ExistFlag(kCloseAfterReply)) {
-    delete conn;
+    conn->owner_->RemoveConnection(conn->GetFD());
   }
 }
 
@@ -34,7 +34,7 @@ void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
   }
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
     DLOG(INFO) << "deleted: fd=" << conn->GetFD();
-    delete conn;
+    conn->owner_->RemoveConnection(conn->GetFD());
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {

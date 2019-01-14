@@ -329,6 +329,19 @@ void Server::GetStatsInfo(std::string &info) {
   info = string_stream.str();
 }
 
+void Server::GetCommandsStatsInfo(std::string &info) {
+  std::ostringstream string_stream;
+  string_stream << "# Commandstats\r\n";
+
+  for (const auto &element : stats_.commands_stats) {
+    string_stream << "cmdstat_" << element.first << ":calls=" << element.second.calls
+                  << ",usec=" << element.second.latency << ",usec_per_call="
+                  << ((element.second.calls == 0) ? 0 : ((float) element.second.latency / element.second.calls))
+                  << "\r\n";
+  }
+  info = string_stream.str();
+}
+
 void Server::GetInfo(std::string ns, std::string section, std::string &info) {
   info.clear();
   std::ostringstream string_stream;
@@ -374,6 +387,9 @@ void Server::GetInfo(std::string ns, std::string section, std::string &info) {
                   << (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000 << "\r\n";
   }
   if (all || section == "commandstats") {
+    std::string commands_stats_info;
+    GetCommandsStatsInfo(commands_stats_info);
+    string_stream << commands_stats_info;
   }
   if (all || section == "keyspace") {
     string_stream << "# Keyspace\r\n";

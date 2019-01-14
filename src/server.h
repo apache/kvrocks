@@ -70,6 +70,7 @@ class Server {
   std::atomic<uint64_t> *GetClientID();
   void GetInfo(std::string ns, std::string section, std::string &info);
   void GetStatsInfo(std::string &info);
+  void GetCommandsStatsInfo(std::string &info);
   void GetServerInfo(std::string &info);
   void GetRocksDBInfo(std::string &info);
   void GetReplicationInfo(std::string &info);

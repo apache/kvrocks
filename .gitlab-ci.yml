@@ -17,7 +17,7 @@ build:
         - rm -rf /cache/unittest
         - git submodule init && git submodule update
         - mkdir build/
-        - cd build && cmake -DCMAE_BUILD_TYPE=Release .. && make -j4 && cd ..
+        - cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j4 && cd ..
         - mkdir -p _build/bin && cp build/kvrocks _build/bin
         - mkdir -p _build/conf && cp kvrocks.conf _build/conf
         - cp build/unittest /cache # reuse unittest in test stage

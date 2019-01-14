@@ -1576,7 +1576,7 @@ class CommandPSync : public Commander {
     if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
       *output = "sequence out of range";
-      return Status(Status::RedisExecErr);
+      return Status(Status::RedisExecErr, *output);
     } else {
       svr->stats_.IncrPSyncOKCounter();
       conn->Reply(Redis::SimpleString("OK"));

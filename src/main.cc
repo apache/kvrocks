@@ -48,11 +48,7 @@ static void initGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  std::string log_filename = config->dir+"/kvrocks";
-  google::SetLogDestination(google::INFO, log_filename.c_str());
-  google::SetLogDestination(google::WARNING, log_filename.c_str());
-  google::SetLogDestination(google::ERROR, log_filename.c_str());
-  google::SetLogFilenameExtension(".LOG.");
+  FLAGS_log_dir = config->dir;
 }
 
 static void daemonize() {

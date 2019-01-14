@@ -107,6 +107,7 @@ Status Storage::Open() {
   return Status::OK();
 }
 
+#ifndef NDEBUG
 class DebuggingLogger : public rocksdb::Logger {
  public:
   explicit DebuggingLogger(
@@ -122,6 +123,7 @@ class DebuggingLogger : public rocksdb::Logger {
     fprintf(stderr, "\n");
   }
 };
+#endif
 
 Status Storage::CreateBackup() {
   // TODO: assert role to be master. slaves never create backup, they sync
@@ -191,16 +193,6 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
   return db_->GetLatestSequenceNumber();
 }
 
-// Get the timestamp data in the WriteBatch.
-// we can use this info to indicate the progress of syncing.
-class TimestampLogHandler : public rocksdb::WriteBatch::Handler {
- public:
-  TimestampLogHandler() : rocksdb::WriteBatch::Handler() {}
-  void LogData(const Slice& blob) override {
-    LOG(INFO) << "[batch] Log data: " << blob.ToString();
-  }
-};
-
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   // TODO: hook write op here.
   return db_->Write(options, updates);
@@ -212,8 +204,6 @@ Status Storage::WriteBatch(std::string &&raw_batch) {
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }
-  TimestampLogHandler handler;
-  bat.Iterate(&handler);
   return Status::OK();
 }
 

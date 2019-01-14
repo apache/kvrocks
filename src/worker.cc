@@ -136,9 +136,9 @@ Status Worker::AddConnection(Redis::Connection *c) {
 void Worker::removeConnection(std::map<int, Redis::Connection *>::iterator iter) {
   // unscribe all channels if exists
   iter->second->UnSubscribeAll();
+  delete iter->second;
   conns_.erase(iter);
   svr_->DecrClients();
-  delete iter->second;
 }
 
 void Worker::RemoveConnection(int fd) {

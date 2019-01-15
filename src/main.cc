@@ -92,13 +92,14 @@ int main(int argc, char* argv[]) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
     exit(1);
   }
+  initGoogleLog(&config);
+
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "failed to open: " << s.Msg();
     exit(1);
   }
-  initGoogleLog(&config);
   if (config.daemonize) daemonize();
 
   Server svr(&storage, &config);

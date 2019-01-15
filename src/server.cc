@@ -428,7 +428,7 @@ Status Server::AsyncBgsaveDB() {
   db_mutex_.lock();
   if (db_bgsave_) {
     db_mutex_.unlock();
-    return Status(Status::NotOK, "bgsave the db now");
+    return Status(Status::NotOK, "bgsave in-progress");
   }
   db_bgsave_ = true;
   db_mutex_.unlock();

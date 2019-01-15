@@ -386,7 +386,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = kFetchMetaID;
 
-      LOG(INFO) << "[replication] Success to fetch meta file, paralle fetching files";
+      LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
         return CBState::QUIT;

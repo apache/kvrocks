@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
-    LOG(ERROR) << "failed to open: " << s.Msg();
+    LOG(ERROR) << "Failed to open: " << s.Msg();
     exit(1);
   }
   if (config.daemonize) daemonize();

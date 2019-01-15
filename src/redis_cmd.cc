@@ -221,7 +221,7 @@ class CommandMSet : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i+1]});
     }
     rocksdb::Status s = string_db.MSet(kvs);
-    if (s.ok()) {
+    if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::SimpleString("OK");

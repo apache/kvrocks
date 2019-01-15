@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <functional>
 
 #include "status.h"
 

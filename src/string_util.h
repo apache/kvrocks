@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <vector>
 
 namespace Util {
 std::string ToLower(std::string in);

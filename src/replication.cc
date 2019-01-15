@@ -69,7 +69,7 @@ LOOP_LABEL:
   auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
   DLOG(INFO) << "[replication] Execute handler[" << self->getHandlerName(self->handler_idx_) << "]";
   switch (st) {
-    case NEXT:
+    case CBState::NEXT:
       ++self->handler_idx_;
       if (self->getHandlerEventType(self->handler_idx_) == WRITE) {
         SetWriteCB(bev, EvCallback, ctx);
@@ -79,13 +79,18 @@ LOOP_LABEL:
       // invoke the read handler (of next step) directly, as the bev might
       // have the data already.
       goto LOOP_LABEL;
-    case AGAIN:
+    case CBState::AGAIN:
       break;
-    case QUIT:
+    case CBState::QUIT: // state that can not be retry, or all steps are executed.
       bufferevent_free(bev);
       self->bev_ = nullptr;
       self->repl_->repl_state_ = kReplError;
       break;
+    case CBState::RESTART: // state that can be retried some time later
+      self->Stop();
+      LOG(INFO) << "[replication] Retry in 10 seconds";
+      std::this_thread::sleep_for(std::chrono::seconds(10));
+      self->Start();
   }
 }
 
@@ -286,7 +291,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
-    LOG(INFO) << "[replication] Failed to use psync, swith to fullsync";
+    LOG(INFO) << "[replication] Failed to use psync, switch to fullsync";
     return CBState::QUIT;
   } else {
     // PSYNC is OK, use IncrementBatchLoop
@@ -313,8 +318,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
         free(line);
         if (self->incr_bulk_len_ == 0) {
           LOG(ERROR) << "[replication] Invalid increment data size";
-          self->stop_flag_ = true;
-          return CBState::QUIT;
+          return CBState::RESTART;
         }
         self->incr_state_ = Incr_batch_data;
       case Incr_batch_data:
@@ -323,7 +327,9 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
           auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           if (!s.IsOK()) {
-            LOG(ERROR) << "Failed to write batch to local, err: " << s.Msg();
+            LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
+            self->stop_flag_ = true; // This is a very critical error, data might be corrupted
+            return CBState::QUIT;
           }
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
@@ -354,15 +360,14 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
         LOG(ERROR) << "[replication] Failed to fetch meta id: " << line;
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
       self->fullsync_meta_id_ = static_cast<rocksdb::BackupID>(
           line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
       free(line);
       if (self->fullsync_meta_id_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta id received";
-        self->stop_flag_ = true;
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
       self->fullsync_state_ = kFetchMetaSize;
       LOG(INFO) << "[replication] Success to fetch meta id: " << self->fullsync_meta_id_;
@@ -371,15 +376,13 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
         LOG(ERROR) << "[replication] Failed to fetch meta size: " << line;
-        self->stop_flag_ = true;
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
       self->fullsync_filesize_ = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
       free(line);
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";
-        self->stop_flag_ = true;
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
       self->fullsync_state_ = kFetchMetaContent;
       LOG(INFO) << "[replication] Success to fetch meta size: " << self->fullsync_filesize_;
@@ -395,7 +398,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
 
       // Restore DB from backup
@@ -403,8 +406,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       if (!self->storage_->RestoreFromBackup(&self->seq_).IsOK()) {
         LOG(ERROR) << "[replication] Failed to restore backup";
         self->post_fullsync_cb_();
-        self->stop_flag_ = true;
-        return CBState::QUIT;
+        return CBState::RESTART;
       }
       self->post_fullsync_cb_();
       ++self->seq_;
@@ -415,6 +417,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
   }
 
   LOG(ERROR) << "Should not arrive here";
+  assert(false);
   return CBState::QUIT;
 }
 

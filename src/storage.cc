@@ -379,4 +379,12 @@ bool Storage::BackupManager::FileExists(Storage *storage, std::string rel_path) 
   return s.ok();
 }
 
+Status Storage::BackupManager::PurgeBackup(Storage *storage) {
+  auto s = storage->backup_env_->DeleteDir(storage->config_->backup_dir);
+  if (!s.ok()) {
+    return Status(Status::NotOK);
+  }
+  return Status::OK();
+}
+
 }  // namespace Engine

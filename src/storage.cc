@@ -71,32 +71,24 @@ Status Storage::Open() {
   CreateColumnFamiles(options);
   rocksdb::BlockBasedTableOptions table_opts;
   table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  table_opts.block_cache = rocksdb::NewLRUCache(1<<30);
 
   rocksdb::ColumnFamilyOptions metadata_opts(options);
-  metadata_opts.table_factory.reset(
-      rocksdb::NewBlockBasedTableFactory(table_opts));
-  metadata_opts.compaction_filter_factory =
-      std::make_shared<MetadataFilterFactory>();
-
+  metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_opts));
+  metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
   rocksdb::ColumnFamilyOptions subkey_opts(options);
-  subkey_opts.table_factory.reset(
-      rocksdb::NewBlockBasedTableFactory(table_opts));
-  subkey_opts.compaction_filter_factory =
-      std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);
+  subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_opts));
+  subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be
   // mismatched
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(
-      rocksdb::kDefaultColumnFamilyName, subkey_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(
-      kMetadataColumnFamilyName, metadata_opts));
-  column_families.emplace_back(
-      rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
 
   auto start = std::chrono::high_resolution_clock::now();
-  rocksdb::Status s =
-      rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
+  auto s = rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
   auto end = std::chrono::high_resolution_clock::now();
   long long duration = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
   if (!s.ok()) {

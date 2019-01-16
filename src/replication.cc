@@ -168,6 +168,7 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   // Remove the backup_dir, so we can start replication in a clean state
   if (!Engine::Storage::BackupManager::PurgeBackup(storage_).IsOK()) {
     LOG(ERROR) << "[replication] Failed to purge existed backup dir";
+    return;
   }
 
   try {

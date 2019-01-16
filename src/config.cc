@@ -131,9 +131,15 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "dir") {
+    Status s = Util::IsDir(args[1].c_str());
+    if (!s.IsOK()) return s;
+
     dir = args[1];
     db_dir = dir + "/db";
   } else if (size == 2 && args[0] == "backup-dir") {
+    Status s = Util::IsDir(args[1].c_str());
+    if (!s.IsOK()) return s;
+
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
     maxclients = std::stoi(args[1]);
@@ -329,8 +335,11 @@ Status Config::Set(std::string &key, std::string &value) {
     return Status::OK();
   }
   if (key == "backup-dir") {
-    backup_dir = value;
-    return Status::OK();
+    Status s = Util::IsDir(value.c_str());
+    if (s.IsOK()) {
+      backup_dir = value;
+    }
+    return s;
   }
   if (key == "maxclients") {
     timeout = std::stoi(value);

@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <event2/util.h>
@@ -130,4 +131,16 @@ void BytesToHuman(char *s, unsigned long long n) {
     sprintf(s,"%lluB",n);
   }
 }
+
+Status IsDir(const char *dir) {
+  struct stat st;
+  if (stat(dir, &st) != 0) {
+    return Status(Status::NotOK, strerror(errno));
+  }
+  if (st.st_mode & S_IFDIR) {
+    return Status::OK();
+  }
+  return Status(Status::NotOK, "the file type was not diretory");
+}
+
 }

@@ -148,7 +148,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
       Status s = config->Set(args_[2], args_[3]);
       if (!s.IsOK()) {
-        return Status(Status::NotOK, s.Msg() + ":" + args_[2]);
+        return Status(Status::NotOK, s.Msg() + ", key: " + args_[2]);
       }
       *output = Redis::SimpleString("OK");
     } else {

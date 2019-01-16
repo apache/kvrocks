@@ -12,7 +12,7 @@
 struct Config{
  public:
   int port = 6666;
-  int repl_port = 6668;
+  int repl_port = port + 1;
   int workers = 4;
   int repl_workers = 1;
   int timeout = 0 ;

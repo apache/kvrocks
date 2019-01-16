@@ -170,15 +170,14 @@ void Request::ExecuteCommands(Connection *conn) {
     }
     auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_, conn->IsRepl());
     if (!s.IsOK()) {
-      // FIXME: change the err string
-      conn->Reply(Redis::Error("unknown command"));
+      conn->Reply(Redis::Error("ERR unknown command"));
       continue;
     }
     int arity = conn->current_cmd_->GetArity();
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity)
         || (arity < 0 && tokens < -arity)) {
-      conn->Reply(Redis::Error("wrong number of arguments"));
+      conn->Reply(Redis::Error("ERR wrong number of arguments"));
       continue;
     }
     conn->current_cmd_->SetArgs(cmd_tokens);

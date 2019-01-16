@@ -68,7 +68,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   Status status = worker->AddConnection(conn);
   std::string host;
   uint32_t port;
-  if (GetPeerAddr(fd, &host, &port)==0) {
+  if (Util::GetPeerAddr(fd, &host, &port)==0) {
     conn->SetAddr(host+":"+std::to_string(port));
   }
   if (!status.IsOK()) {

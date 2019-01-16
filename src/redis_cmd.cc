@@ -17,7 +17,6 @@
 #include "replication.h"
 #include "sock_util.h"
 #include "storage.h"
-#include "string_util.h"
 #include "worker.h"
 
 namespace Redis {
@@ -1585,7 +1584,7 @@ class CommandPSync : public Commander {
     std::string peer_addr;
     uint32_t port;
     int sock_fd = conn->GetFD();
-    if (GetPeerAddr(sock_fd, &peer_addr, &port) < 0) {
+    if (Util::GetPeerAddr(sock_fd, &peer_addr, &port) < 0) {
       peer_addr = "unknown";
     }
     slave_info_pos_ = svr->AddSlave(peer_addr, port);
@@ -1664,7 +1663,7 @@ class CommandPSync : public Commander {
 
       std::string addr;
       uint32_t port;
-      GetPeerAddr(slave_fd, &addr, &port);
+      Util::GetPeerAddr(slave_fd, &addr, &port);
       if (events & BEV_EVENT_EOF) {
         LOG(WARNING) << "Disconnect the slave[" << addr << ":" << port << "], "
                      << "while the connection was closed";

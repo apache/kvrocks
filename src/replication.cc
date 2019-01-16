@@ -99,7 +99,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   if (handlers_.empty()) {
     return;
   }
-  auto sockaddr_inet = NewSockaddrInet(repl_->host_, repl_->port_);
+  auto sockaddr_inet = Util::NewSockaddrInet(repl_->host_, repl_->port_);
   auto bev = bufferevent_socket_new(repl_->base_, -1, BEV_OPT_CLOSE_ON_FREE);
   if (bufferevent_socket_connect(bev,
                                  reinterpret_cast<sockaddr *>(&sockaddr_inet),
@@ -436,7 +436,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             return false;
           }
           int sock_fd;
-          if (SockConnect(this->host_, this->port_, &sock_fd) < 0) {
+          if (Util::SockConnect(this->host_, this->port_, &sock_fd) < 0) {
             LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << strerror(errno);
             return false;
           }
@@ -483,7 +483,7 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   // Send auth when needed
   if (!auth_.empty()) {
     const auto auth_len_str = std::to_string(auth_.length());
-    SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
+    Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
         CRLF + auth_ + CRLF);
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
@@ -511,7 +511,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
 
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
-  if (SockSend(sock_fd, cmd_str) < 0) {
+  if (Util::SockSend(sock_fd, cmd_str) < 0) {
     return Status(Status::NotOK);
   }
 

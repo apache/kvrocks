@@ -158,6 +158,12 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
                               std::function<void()> &&post_fullsync_cb) {
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
+
+  // Remove the backup_dir, so we can start replication in a clean state
+  if (!Engine::Storage::BackupManager::PurgeBackup(storage_).IsOK()) {
+    LOG(ERROR) << "[replication] Failed to purge existed backup dir";
+  }
+
   try {
     t_ = std::thread([this]() {
       this->run();
@@ -386,7 +392,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = kFetchMetaID;
 
-      LOG(INFO) << "[replication] Success to fetch meta file, paralle fetching files";
+      LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
         return CBState::QUIT;

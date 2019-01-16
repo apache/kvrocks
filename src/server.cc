@@ -161,6 +161,9 @@ Status Server::compactCron() {
 }
 
 Status Server::bgsaveCron() {
+  if (this->IsSlave()) {
+    return Status::OK(); // Don't let slave do any bgsave
+  }
   Status s = AsyncBgsaveDB();
   if (!s.IsOK()) return s;
   LOG(INFO) << "bgsave was triggered by cron with executed success.";
@@ -428,7 +431,7 @@ Status Server::AsyncBgsaveDB() {
   db_mutex_.lock();
   if (db_bgsave_) {
     db_mutex_.unlock();
-    return Status(Status::NotOK, "bgsave the db now");
+    return Status(Status::NotOK, "bgsave in-progress");
   }
   db_bgsave_ = true;
   db_mutex_.unlock();

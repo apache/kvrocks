@@ -60,10 +60,11 @@ class ReplicationThread {
   // The state machine to manage the asynchronous steps used in replication
   class CallbacksStateMachine {
    public:
-    enum State {
+    enum class State {
       NEXT,
       AGAIN,
       QUIT,
+      RESTART,
     };
     enum EventType {
       READ,

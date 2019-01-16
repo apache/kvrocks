@@ -2,7 +2,7 @@
 #include "worker.h"
 #include "redis_request.h"
 #include "version.h"
-#include "string_util.h"
+#include "util.h"
 
 #include <sys/utsname.h>
 #include <sys/resource.h>

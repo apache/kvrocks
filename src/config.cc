@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "config.h"
-#include "string_util.h"
+#include "util.h"
 #include "status.h"
 #include "cron.h"
 
@@ -131,9 +131,16 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "dir") {
+    Status s = Util::IsDir(args[1].c_str());
+    if (!s.IsOK()) return s;
+
     dir = args[1];
     db_dir = dir + "/db";
-    backup_dir = dir + "/backup";
+  } else if (size == 2 && args[0] == "backup-dir") {
+    Status s = Util::IsDir(args[1].c_str());
+    if (!s.IsOK()) return s;
+
+    backup_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
     maxclients = std::stoi(args[1]);
     if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
@@ -210,6 +217,9 @@ Status Config::Load(std::string path) {
     }
     line_num++;
   }
+  if (backup_dir.empty()) { // backup-dir was not assigned in config file
+    backup_dir = dir+"/backup";
+  }
   if (requirepass.empty()) {
     file.close();
     return Status(Status::NotOK, "requirepass cannot be empty");
@@ -236,6 +246,7 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
   REWRITE_IF_MATCH(size, args[0], "maxclients", std::to_string(maxclients));
   REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
   REWRITE_IF_MATCH(size, args[0], "timeout", std::to_string(timeout));
+  REWRITE_IF_MATCH(size, args[0], "backup-dir", backup_dir);
   REWRITE_IF_MATCH(size, args[0], "loglevel", loglevels[loglevel]);
 
   if (size >= 2 && args[0] == "compact-cron") {
@@ -322,6 +333,13 @@ Status Config::Set(std::string &key, std::string &value) {
   if (key == "timeout") {
     timeout = std::stoi(value);
     return Status::OK();
+  }
+  if (key == "backup-dir") {
+    Status s = Util::IsDir(value.c_str());
+    if (s.IsOK()) {
+      backup_dir = value;
+    }
+    return s;
   }
   if (key == "maxclients") {
     timeout = std::stoi(value);

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <chrono>
 
-#include "string_util.h"
+#include "util.h"
 #include "redis_cmd.h"
 #include "redis_reply.h"
 #include "redis_request.h"

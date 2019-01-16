@@ -76,16 +76,17 @@ class Connection {
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
-  std::string GetNamespace() { return ns_; };
-  void SetNamespace(std::string ns) { ns_ = ns; };
+  std::string GetNamespace() { return ns_; }
+  void SetNamespace(std::string ns) { ns_ = ns; }
   void SetID(uint64_t id) { id_ = id; }
-  uint64_t GetID() { return id_; };
-  void SetLastCmd(std::string cmd) { last_cmd_ = cmd; };
-  std::string GetLastCmd() { return last_cmd_; };
-  void SetName(std::string name) { name_ = name; };
+  uint64_t GetID() { return id_; }
+  void SetLastCmd(std::string cmd) { last_cmd_ = cmd; }
+  std::string GetLastCmd() { return last_cmd_; }
+  void SetName(std::string name) { name_ = name; }
   std::string GetName() { return name_; };
-  void SetAddr(std::string addr) { addr_ = addr; };
-  std::string GetAddr() { return addr_; };
+  void SetAddr(std::string addr) { addr_ = addr; }
+  std::string GetAddr() { return addr_; }
+  Worker *Owner() { return owner_; }
 
   int GetFD();
   evbuffer *Input();

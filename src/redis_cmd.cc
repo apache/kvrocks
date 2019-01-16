@@ -1656,15 +1656,22 @@ class CommandPSync : public Commander {
 
   static void EventCB(bufferevent *bev, short events, void *ctx) {
     auto self = static_cast<CommandPSync *>(ctx);
-    if (events & BEV_EVENT_ERROR) {
-      LOG(ERROR) << "bev error: "
-                 << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    }
     if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      DLOG(INFO) << "deleted: fd=" << self->conn_->GetFD();
+      int slave_fd = self->conn_->GetFD();
       self->svr_->RemoveSlave(self->slave_info_pos_);
       event_free(self->timer_);
-      delete self->conn_;
+      self->conn_->Owner()->RemoveConnection(slave_fd);
+
+      std::string addr;
+      uint32_t port;
+      GetPeerAddr(slave_fd, &addr, &port);
+      if (events & BEV_EVENT_EOF) {
+        LOG(WARNING) << "Disconnect the slave[" << addr << ":" << port << "], "
+                     << "while slave closed the connection";
+      } else {
+        LOG(ERROR) << "Disconnect the slave[" << addr << ":" << port << "], "
+                   << " while encounter err: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+      }
       return;
     }
     if (events & BEV_EVENT_TIMEOUT) {

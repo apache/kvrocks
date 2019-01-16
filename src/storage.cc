@@ -4,6 +4,7 @@
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/table.h>
 #include <iostream>
+#include <sys/stat.h>
 
 #include "config.h"
 #include "storage.h"
@@ -378,12 +379,43 @@ bool Storage::BackupManager::FileExists(Storage *storage, std::string rel_path) 
   return s.ok();
 }
 
-Status Storage::BackupManager::PurgeBackup(Storage *storage) {
-  auto s = storage->backup_env_->DeleteDir(storage->config_->backup_dir);
-  if (!s.ok()) {
-    return Status(Status::NotOK);
+bool isDir(const char* name) {
+  struct stat st{};
+  if (stat(name, &st) != 0) {
+    return false;
   }
-  return Status::OK();
+  return (st.st_mode & S_IFDIR) != 0;
+}
+
+Status RmdirRecursively(rocksdb::Env *env, const std::string &dir) {
+  std::vector<std::string> children;
+  env->GetChildren(dir, &children);
+  rocksdb::Status s;
+  for (const auto &c : children) {
+    if (c == "." || c == "..") continue;
+    auto abs_path = dir + "/" + c;
+    if (isDir(abs_path.c_str())) {
+      if (!RmdirRecursively(env, abs_path).IsOK()) {
+        return Status(Status::NotOK);
+      }
+    } else {
+      s = env->DeleteFile(abs_path);
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to delete file: " << s.ToString();
+        return Status(Status::NotOK);
+      }
+    }
+  }
+  s = env->DeleteDir(dir);
+  if (s.ok()) {
+    return Status::OK();
+  }
+  LOG(ERROR) << "Failed to delete dir: " << s.ToString();
+  return Status(Status::NotOK);
+}
+
+Status Storage::BackupManager::PurgeBackup(Storage *storage) {
+  return RmdirRecursively(storage->backup_env_, storage->config_->backup_dir);
 }
 
 }  // namespace Engine

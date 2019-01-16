@@ -72,7 +72,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
     conn->SetAddr(host+":"+std::to_string(port));
   }
   if (!status.IsOK()) {
-    std::string err_msg = Redis::Error(status.Msg());
+    std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     worker->RemoveConnection(conn->GetFD());
   }

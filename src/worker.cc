@@ -64,8 +64,6 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);
-  timeval tmo = {30, 0};  // TODO: timeout configs
-  bufferevent_set_timeouts(bev, &tmo, &tmo);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
   std::string host;

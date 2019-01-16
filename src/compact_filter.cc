@@ -39,7 +39,7 @@ bool SubKeyFilter::IsKeyExpired(InternalKey &ikey) const {
                                     metadata_key, &bytes);
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {
-      cached_metadata_ = bytes;
+      cached_metadata_ = std::move(bytes);
     } else if (s.IsNotFound()) {
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata

@@ -104,8 +104,10 @@ int main(int argc, char* argv[]) {
 
   Server svr(&storage, &config);
   hup_handler = [&svr]() {
-    LOG(INFO) << "bye bye";
-    svr.Stop();
+    if (!svr.IsStopped()) {
+      LOG(INFO) << "bye bye";
+      svr.Stop();
+    }
   };
   svr.Start();
   svr.Join();

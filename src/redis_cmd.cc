@@ -1667,7 +1667,7 @@ class CommandPSync : public Commander {
       GetPeerAddr(slave_fd, &addr, &port);
       if (events & BEV_EVENT_EOF) {
         LOG(WARNING) << "Disconnect the slave[" << addr << ":" << port << "], "
-                     << "while slave closed the connection";
+                     << "while the connection was closed";
       } else {
         LOG(ERROR) << "Disconnect the slave[" << addr << ":" << port << "], "
                    << " while encounter err: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());

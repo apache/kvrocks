@@ -37,7 +37,7 @@ bool SubKeyFilter::IsKeyExpired(InternalKey &ikey) const {
     std::string bytes;
     rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
                                     metadata_key, &bytes);
-    cached_key_ = metadata_key;
+    cached_key_ = std::move(metadata_key);
     if (s.ok()) {
       cached_metadata_ = bytes;
     } else if (s.IsNotFound()) {

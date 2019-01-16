@@ -36,7 +36,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
               std::string *new_value, bool *modified) const override;
 
  protected:
-  mutable Slice cached_key_;
+  mutable std::string cached_key_;
   mutable std::string cached_metadata_;
   rocksdb::DB **db_;
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;

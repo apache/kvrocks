@@ -36,6 +36,7 @@ class Server {
   Status Start();
   void Stop();
   void Join();
+  bool IsStopped() { return stop_; }
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();

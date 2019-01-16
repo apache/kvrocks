@@ -11,7 +11,7 @@
 #include "redis_reply.h"
 #include "replication.h"
 #include "rocksdb_crc32c.h"
-#include "sock_util.h"
+#include "util.h"
 #include "status.h"
 
 void send_string(bufferevent *bev, const std::string &data) {

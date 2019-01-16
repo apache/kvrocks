@@ -5,7 +5,7 @@
 
 #include "redis_request.h"
 #include "server.h"
-#include "sock_util.h"
+#include "util.h"
 
 Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) {
   base_ = event_base_new();

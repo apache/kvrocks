@@ -15,7 +15,7 @@
 #include "redis_string.h"
 #include "redis_zset.h"
 #include "replication.h"
-#include "sock_util.h"
+#include "util.h"
 #include "storage.h"
 #include "worker.h"
 

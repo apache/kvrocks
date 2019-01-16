@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "config.h"
-#include "sock_util.h"
+#include "util.h"
 #include "status.h"
 #include "cron.h"
 

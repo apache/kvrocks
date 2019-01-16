@@ -9,7 +9,7 @@
 #include <errno.h>
 #include <string>
 
-#include "sock_util.h"
+#include "util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */

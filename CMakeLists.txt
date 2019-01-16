@@ -68,8 +68,8 @@ target_sources(kvrocks PRIVATE
         src/redis_request.h
         src/redis_cmd.cc
         src/redis_cmd.h
-        src/string_util.cc
-        src/string_util.h
+        src/util.cc
+        src/util.h
         src/storage.cc
         src/storage.h
         src/status.h
@@ -93,8 +93,6 @@ target_sources(kvrocks PRIVATE
         src/redis_set.cc
         src/redis_zset.cc
         src/redis_zset.h
-        src/sock_util.h
-        src/sock_util.cc
         src/lock_manager.cc
         src/rocksdb_crc32c.h
         src/config.cc
@@ -116,7 +114,7 @@ add_executable(unittest
         src/redis_list.cc
         src/redis_set.cc
         src/redis_zset.cc
-        src/string_util.cc
+        src/util.cc
         src/storage.cc
         src/lock_manager.cc
         src/stats.cc

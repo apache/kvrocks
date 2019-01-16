@@ -68,6 +68,7 @@ LOOP_LABEL:
   assert(self->handler_idx_ <= self->handlers_.size());
   auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
   DLOG(INFO) << "[replication] Execute handler[" << self->getHandlerName(self->handler_idx_) << "]";
+  time(&self->repl_->last_io_time_);
   switch (st) {
     case CBState::NEXT:
       ++self->handler_idx_;

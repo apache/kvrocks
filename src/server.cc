@@ -288,9 +288,11 @@ void Server::GetMemoryInfo(std::string &info) {
 }
 
 void Server::GetReplicationInfo(std::string &info) {
+  time_t now;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
   if (IsSlave()) {
+    time(&now);
     string_stream << "role: slave\r\n";
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
@@ -298,11 +300,9 @@ void Server::GetReplicationInfo(std::string &info) {
     string_stream << "master_link_status:" << (state == kReplConnected? "up":"down") << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state==kReplFetchMeta||state==kReplFetchSST) << "\r\n";
-    // TODO: last io time, 主从同步目前修改可能比较多，后面再加
-    string_stream << "master_last_io_seconds_ago:" << 0 << "\r\n";
+    string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
     string_stream << "slave_repl_offset:" << replication_thread_->Offset() << "\r\n";
   } else {
-    // TODO: slave priority/readonly
     string_stream << "role: master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();

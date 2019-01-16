@@ -186,7 +186,6 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
 }
 
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
-  // TODO: hook write op here.
   return db_->Write(options, updates);
 }
 

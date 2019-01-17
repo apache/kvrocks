@@ -2,6 +2,7 @@
 #include <string.h>
 #include <strings.h>
 #include <glog/logging.h>
+#include <rocksdb/env.h>
 
 #include <fstream>
 #include <iostream>
@@ -131,15 +132,9 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "dir") {
-    Status s = Util::IsDir(args[1].c_str());
-    if (!s.IsOK()) return s;
-
     dir = args[1];
     db_dir = dir + "/db";
   } else if (size == 2 && args[0] == "backup-dir") {
-    Status s = Util::IsDir(args[1].c_str());
-    if (!s.IsOK()) return s;
-
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
     maxclients = std::stoi(args[1]);
@@ -220,6 +215,11 @@ Status Config::Load(std::string path) {
   if (backup_dir.empty()) { // backup-dir was not assigned in config file
     backup_dir = dir+"/backup";
   }
+  auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
+  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  s = rocksdb::Env::Default()->CreateDirIfMissing(backup_dir);
+  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+
   if (requirepass.empty()) {
     file.close();
     return Status(Status::NotOK, "requirepass cannot be empty");
@@ -335,11 +335,10 @@ Status Config::Set(std::string &key, std::string &value) {
     return Status::OK();
   }
   if (key == "backup-dir") {
-    Status s = Util::IsDir(value.c_str());
-    if (s.IsOK()) {
-      backup_dir = value;
-    }
-    return s;
+    auto s = rocksdb::Env::Default()->CreateDirIfMissing(value);
+    if (!s.ok()) return Status(Status::NotOK, s.ToString());
+    backup_dir = value;
+    return Status::OK();
   }
   if (key == "maxclients") {
     timeout = std::stoi(value);

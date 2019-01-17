@@ -262,8 +262,8 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
     free(line);
     return CBState::NEXT;
   }
+  LOG(ERROR) << "[replication] db-name mismatched, remote db name: " << line;
   free(line);
-  LOG(ERROR) << "[replication] db-name mismatched: " << line;
   return CBState::QUIT;
 }
 

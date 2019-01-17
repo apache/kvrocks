@@ -179,6 +179,7 @@ Status Storage::GetWALIter(
     std::unique_ptr<rocksdb::TransactionLogIterator> *iter) {
   auto s = db_->GetUpdatesSince(seq, iter);
   if (!s.ok()) return Status(Status::DBGetWALErr, s.ToString());
+  if (!(*iter)->Valid()) return Status(Status::DBGetWALErr, "iterator not valid");
   return Status::OK();
 }
 

@@ -1871,6 +1871,18 @@ class CommandClient : public Commander {
   bool new_format_;
 };
 
+class CommandShutdown : public Commander {
+ public:
+  explicit CommandShutdown() : Commander("shutdown", -1, false) {}
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (!srv->IsStopped()) {
+      LOG(INFO) << "bye bye";
+      srv->Stop();
+    }
+    return Status::OK();
+  }
+};
+
 class CommandFetchMeta : public Commander {
  public:
   explicit CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -1985,6 +1997,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []()->std::unique_ptr<Commander> {
         return std::unique_ptr<Commander>(new CommandClient);
     }},
+    {"shutdown",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandShutdown);
+     }},
     // key command
     {"ttl",
      []() -> std::unique_ptr<Commander> {

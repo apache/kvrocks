@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <map>
-#include "string_util.h"
+#include "util.h"
 
 TEST(StringUtil, ToLower) {
   std::map<std::string, std::string> cases {

@@ -93,6 +93,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   initGoogleLog(&config);
+  if (config.daemonize) daemonize();
 
   Engine::Storage storage(&config);
   s = storage.Open();
@@ -100,7 +101,6 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
     exit(1);
   }
-  if (config.daemonize) daemonize();
 
   Server svr(&storage, &config);
   hup_handler = [&svr]() {

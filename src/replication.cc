@@ -234,8 +234,10 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
   if (strncmp(line, "+OK", 3) != 0) {
     // Auth failed
     LOG(ERROR) << "[replication] Auth failed: " << line;
+    free(line);
     return CBState::QUIT;
   }
+  free(line);
   return CBState::NEXT;
 }
 
@@ -293,10 +295,12 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
-    LOG(INFO) << "[replication] Failed to use psync, switch to fullsync";
+    LOG(INFO) << "[replication] Failed to psync, switch to fullsync";
+    free(line);
     return CBState::QUIT;
   } else {
     // PSYNC is OK, use IncrementBatchLoop
+    free(line);
     LOG(INFO) << "[replication] PSync is ok, start increment batch loop";
     return CBState::NEXT;
   }
@@ -496,9 +500,11 @@ Status ReplicationThread::sendAuth(int sock_fd) {
       line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line, "+OK", 3) != 0) {
+        free(line);
         LOG(ERROR) << "[replication] Auth failed";
         return Status(Status::NotOK);
       }
+      free(line);
       break;
     }
   }
@@ -526,6 +532,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
+      free(line);
       return Status(Status::NotOK, std::string("_fetch_file got err: ")+line);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;

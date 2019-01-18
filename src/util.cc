@@ -133,7 +133,7 @@ void BytesToHuman(char *s, unsigned long long n) {
   }
 }
 
-bool IsPortListened(int port) {
+bool IsPortInUse(int port) {
   int fd;
   Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
   if (fd > 0) close(fd);

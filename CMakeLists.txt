@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(kvrocks
-        VERSION 0.0.0
+        VERSION 0.1.0
         DESCRIPTION "Redis on rocksdb"
         LANGUAGES CXX)
 

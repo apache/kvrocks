@@ -35,11 +35,12 @@ static void usage(const char* program) {
 static Options *parseCommandLineOptions(int argc, char **argv) {
   int ch;
   auto opts = new Options();
-  while((ch = ::getopt(argc, argv, "c:h")) != -1) {
+  while((ch = ::getopt(argc, argv, "c:hv")) != -1) {
     switch (ch) {
       case 'c': opts->conf_file = optarg; break;
       case 'h': opts->show_usage = true; break;
-      default: break;
+      case 'v': exit(0);
+      default: usage(argv[0]);
     }
   }
   return opts;

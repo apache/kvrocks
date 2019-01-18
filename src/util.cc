@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "util.h"
+#include "status.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -32,7 +33,7 @@ sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   return sin;
 }
 
-int SockConnect(std::string host, uint32_t port, int *fd) {
+Status SockConnect(std::string host, uint32_t port, int *fd) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr(host.c_str());
@@ -40,13 +41,11 @@ int SockConnect(std::string host, uint32_t port, int *fd) {
   *fd = socket(AF_INET, SOCK_STREAM, 0);
   auto rv = connect(*fd, (sockaddr *) &sin, sizeof(sin));
   if (rv < 0) {
-    LOG(ERROR) << "[Socket] Failed to connect: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    return rv;
+    return Status(Status::NotOK, strerror(errno));
   }
   setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
   setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
-  return 0;
+  return Status::OK();
 }
 
 int SockSend(int fd, const std::string &data) {
@@ -132,5 +131,12 @@ void BytesToHuman(char *s, unsigned long long n) {
     /* Let's hope we never need this */
     sprintf(s,"%lluB",n);
   }
+}
+
+bool IsPortListened(int port) {
+  int fd;
+  Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
+  if (fd > 0) close(fd);
+  return s.IsOK();
 }
 }

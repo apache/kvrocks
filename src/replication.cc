@@ -443,8 +443,9 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             return false;
           }
           int sock_fd;
-          if (Util::SockConnect(this->host_, this->port_, &sock_fd) < 0) {
-            LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << strerror(errno);
+          Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
+          if (!s.IsOK()) {
+            LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << s.Msg();
             return false;
           }
           if (!this->sendAuth(sock_fd).IsOK()) {

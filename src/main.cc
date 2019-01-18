@@ -10,6 +10,7 @@
 #include "version.h"
 #include "config.h"
 #include "server.h"
+#include "util.h"
 
 const char *kDefaultConfPath = "../kvrocks.conf";
 
@@ -93,8 +94,17 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   initGoogleLog(&config);
-  if (config.daemonize) daemonize();
 
+  // Tricky: We don't expect that different instances running on the same port,
+  // but the server use REUSE_PORT to support the multi listeners. So we connect
+  // the listen port to check if the port has already listened or not.
+  if (Util::IsPortListened(config.port)) {
+    std::cout << "Failed to start the server, the specified port["
+              << config.port << "] is already in use" << std::endl;
+    exit(1);
+  }
+
+  if (config.daemonize) daemonize();
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {

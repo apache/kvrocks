@@ -11,9 +11,10 @@
 namespace Util {
 // sock util
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-int SockConnect(std::string host, uint32_t port, int *fd);
+Status SockConnect(std::string host, uint32_t port, int *fd);
 int SockSend(int fd, const std::string &data);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
+bool IsPortListened(int port);
 
 // string util
 std::string ToLower(std::string in);

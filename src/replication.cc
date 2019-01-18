@@ -213,6 +213,7 @@ void ReplicationThread::run() {
 
   event_base_dispatch(base_);
   event_base_free(base_);
+  event_free(timer);
 }
 
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,

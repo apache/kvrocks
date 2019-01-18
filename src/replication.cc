@@ -173,6 +173,7 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
 
   try {
     t_ = std::thread([this]() {
+      Util::ThreadSetName("master-repl");
       this->run();
       assert(stop_flag_);
     });

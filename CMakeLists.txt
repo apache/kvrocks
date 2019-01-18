@@ -57,7 +57,7 @@ endif()
 add_dependencies(kvrocks libevent gflags glog rocksdb gtest)
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
-target_link_libraries(kvrocks ${EXTERNAL_LIBS})
+target_link_libraries(kvrocks ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks PRIVATE
         src/compact_filter.cc
         src/compact_filter.h

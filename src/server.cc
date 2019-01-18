@@ -41,7 +41,10 @@ Status Server::Start() {
   }
   task_runner_->Start();
   // setup server cron thread
-  cron_thread_ = std::thread([this]() { this->cron(); });
+  cron_thread_ = std::thread([this]() {
+    Util::ThreadSetName("server-cron");
+    this->cron();
+  });
   return Status::OK();
 }
 

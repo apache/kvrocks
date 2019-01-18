@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include <string>
 #include <algorithm>
@@ -138,5 +139,13 @@ bool IsPortInUse(int port) {
   Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
   if (fd > 0) close(fd);
   return s.IsOK();
+}
+
+void ThreadSetName(const char *name) {
+#ifdef __APPLE__
+  pthread_setname_np(name);
+#else
+  pthread_setname_np(pthread_self(), name);
+#endif
 }
 }

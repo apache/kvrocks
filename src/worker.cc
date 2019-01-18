@@ -226,7 +226,14 @@ void Worker::KickoutIdleClients(int timeout) {
 
 void WorkerThread::Start() {
   try {
-    t_ = std::thread([this]() { this->worker_->Run(t_.get_id()); });
+    t_ = std::thread([this]() {
+      if(this->worker_->IsRepl()) {
+        Util::ThreadSetName("repl-worker");
+      } else {
+        Util::ThreadSetName("worker");
+      }
+      this->worker_->Run(t_.get_id());
+    });
   } catch (const std::system_error &e) {
     LOG(ERROR) << "Failed to start worker thread, err: " << e.what();
     return;

@@ -1,4 +1,6 @@
 #include "task_runner.h"
+#include "util.h"
+
 #include <thread>
 
 Status TaskRunner::Publish(Task task) {
@@ -20,7 +22,10 @@ Status TaskRunner::Publish(Task task) {
 void TaskRunner::Start() {
   // TODO: catch exception
   for(int i = 0; i < n_thread_; i++) {
-    threads_.emplace_back(std::thread([this]() { this->run(); }));
+    threads_.emplace_back(std::thread([this]() {
+      Util::ThreadSetName("task-runner");
+      this->run();
+    }));
   }
 }
 

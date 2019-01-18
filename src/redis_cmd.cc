@@ -1875,6 +1875,10 @@ class CommandShutdown : public Commander {
  public:
   explicit CommandShutdown() : Commander("shutdown", -1, false) {}
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use namespace command");
+      return Status::OK();
+    }
     if (!srv->IsStopped()) {
       LOG(INFO) << "bye bye";
       srv->Stop();

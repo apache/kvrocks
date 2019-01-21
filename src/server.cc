@@ -410,59 +410,59 @@ void Server::GetInfo(std::string ns, std::string section, std::string &info) {
 }
 
 Status Server::AsyncCompactDB() {
-  db_mutex_.lock();
+  db_mu_.lock();
   if (db_compacting_) {
-    db_mutex_.unlock();
+    db_mu_.unlock();
     return Status(Status::NotOK, "compacting the db now");
   }
   db_compacting_ = true;
-  db_mutex_.unlock();
+  db_mu_.unlock();
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
     svr->storage_->Compact(nullptr, nullptr);
-    svr->db_mutex_.lock();
+    svr->db_mu_.lock();
     svr->db_compacting_ = false;
-    svr->db_mutex_.unlock();
+    svr->db_mu_.unlock();
   };
   return task_runner_->Publish(task);
 }
 
 Status Server::AsyncBgsaveDB() {
-  db_mutex_.lock();
+  db_mu_.lock();
   if (db_bgsave_) {
-    db_mutex_.unlock();
+    db_mu_.unlock();
     return Status(Status::NotOK, "bgsave in-progress");
   }
   db_bgsave_ = true;
-  db_mutex_.unlock();
+  db_mu_.unlock();
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
     svr->storage_->CreateBackup();
-    svr->db_mutex_.lock();
+    svr->db_mu_.lock();
     svr->db_bgsave_ = false;
-    svr->db_mutex_.unlock();
+    svr->db_mu_.unlock();
   };
   return task_runner_->Publish(task);
 }
 
 Status Server::AsyncScanDBSize(std::string &ns) {
-  db_mutex_.lock();
+  db_mu_.lock();
   auto iter = db_scan_infos_.find(ns);
   if(iter == db_scan_infos_.end()) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
   if (db_scan_infos_[ns].is_scanning) {
-    db_mutex_.unlock();
+    db_mu_.unlock();
     return Status(Status::NotOK, "scanning the db now");
   }
   db_scan_infos_[ns].is_scanning = true;
-  db_mutex_.unlock();
+  db_mu_.unlock();
 
   Task task;
   task.arg = this;
@@ -471,10 +471,10 @@ Status Server::AsyncScanDBSize(std::string &ns) {
     RedisDB db(svr->storage_, ns);
     uint64_t key_num = db.GetKeyNum();
 
-    svr->db_mutex_.lock();
+    svr->db_mu_.lock();
     svr->db_scan_infos_[ns].n_key = key_num;
     svr->db_scan_infos_[ns].is_scanning = false;
-    svr->db_mutex_.unlock();
+    svr->db_mu_.unlock();
   };
   return task_runner_->Publish(task);
 }
@@ -551,4 +551,19 @@ void Server::KickoutIdleClients() {
   for (const auto worker : worker_threads_) {
     worker->KickoutIdleClients(config_->timeout);
   }
+}
+
+Server::SlaveInfoPos Server::AddSlave(const std::string &addr, uint32_t port) {
+  std::lock_guard<std::mutex> guard(slaves_info_mu_);
+  slaves_info_.push_back(std::shared_ptr<SlaveInfo>(new SlaveInfo(addr, port)));
+  return --(slaves_info_.end());
+}
+
+void Server::RemoveSlave(Server::SlaveInfoPos &pos) {
+  std::lock_guard<std::mutex> guard(slaves_info_mu_);
+  slaves_info_.erase(pos);
+}
+
+void Server::UpdateSlaveStats(Server::SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
+  (*pos)->seq = seq;
 }

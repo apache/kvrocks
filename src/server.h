@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "replication.h"
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
+#include "replication.h"
 #include "redis_metadata.h"
 
 namespace Redis {
@@ -29,54 +29,53 @@ struct SlowlogEntry {
   time_t time;
 };
 
+struct SlowLog {
+  std::list<SlowlogEntry> entry_list;
+  uint64_t id = 0;
+  std::mutex mu;
+};
+
+// Used by master role, tracking slaves' info
+struct SlaveInfo {
+  std::string addr;
+  uint32_t port;
+  rocksdb::SequenceNumber seq = 0;
+  SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
   ~Server();
+
   Status Start();
   void Stop();
   void Join();
   bool IsStopped() { return stop_; }
+  bool IsLoading() { return is_loading_; }
+  Config *GetConfig() { return config_; }
+
+  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
-  bool IsLoading() { return is_loading_; }
+  bool IsSlave() { return !master_host_.empty(); }
+  void RemoveSlave(SlaveInfoPos &pos);
+  SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
+  void UpdateSlaveStats(SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
+
   int PublishMessage(std::string &channel, std::string &msg);
   void SubscribeChannel(std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
-  Config *GetConfig() { return config_; }
-  bool IsSlave() { return !master_host_.empty(); }
 
- private:
-  struct SlaveInfo;
-
- public:
-  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
-  SlaveInfoPos AddSlave(const std::string &addr, uint32_t port) {
-    std::lock_guard<std::mutex> guard(slaves_info_mu_);
-    slaves_info_.push_back(
-        std::shared_ptr<SlaveInfo>(new SlaveInfo(addr, port)));
-    return --(slaves_info_.end());
-  }
-  void RemoveSlave(SlaveInfoPos &pos) {
-    std::lock_guard<std::mutex> guard(slaves_info_mu_);
-    slaves_info_.erase(pos);
-  }
-  void UpdateSlaveStats(SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
-    (*pos)->seq = seq;
-  }
-
-  Status IncrClients();
-  void DecrClients();
-  std::atomic<uint64_t> *GetClientID();
-  void GetInfo(std::string ns, std::string section, std::string &info);
   void GetStatsInfo(std::string &info);
-  void GetCommandsStatsInfo(std::string &info);
   void GetServerInfo(std::string &info);
-  void GetRocksDBInfo(std::string &info);
-  void GetReplicationInfo(std::string &info);
-  void GetClientsInfo(std::string &info);
   void GetMemoryInfo(std::string &info);
+  void GetRocksDBInfo(std::string &info);
+  void GetClientsInfo(std::string &info);
+  void GetReplicationInfo(std::string &info);
+  void GetCommandsStatsInfo(std::string &info);
+  void GetInfo(std::string ns, std::string section, std::string &info);
 
   Status AsyncCompactDB();
   Status AsyncBgsaveDB();
@@ -89,57 +88,50 @@ class Server {
   void CreateSlowlogReply(std::string *output, uint32_t count);
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
+  void DecrClients();
+  Status IncrClients();
   std::string GetClientsStr();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  std::atomic<uint64_t> *GetClientID();
   void KickoutIdleClients();
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
 
   Stats stats_;
   Engine::Storage *storage_;
 
  private:
+  void cron();
+  void clientsCron();
+  Status compactCron();
+  Status bgsaveCron();
+
   bool stop_ = false;
   bool is_loading_ = false;
   time_t start_time_ = 0;
   std::string master_host_;
   uint32_t master_port_ = 0;
+  Config *config_ = nullptr;
 
+  // client counters
+  std::atomic<uint64_t> client_id_{1};
   std::atomic<int> connected_clients_{0};
   std::atomic<uint64_t> total_clients_{0};
-  std::atomic<uint64_t> client_id_{1};
 
-  Config *config_;
-  std::vector<WorkerThread *> worker_threads_;
-  std::unique_ptr<ReplicationThread> replication_thread_;
-  std::thread cron_thread_;
-  TaskRunner *task_runner_;
-
-  std::mutex db_mutex_;
-  bool db_compacting_ = false;
-  bool db_bgsave_ = false;
-  std::map<std::string, DBScanInfo> db_scan_infos_;
-  // TODO: locked before modify
-  std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
-
-  // Used by master role, tracking slaves' info
-  struct SlaveInfo {
-    std::string addr;
-    uint32_t port;
-    rocksdb::SequenceNumber seq = 0;
-
-    SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
-  };
+  // slave
   std::mutex slaves_info_mu_;
   std::list<std::shared_ptr<SlaveInfo>> slaves_info_;
   using slaves_info_iter_ = std::list<std::shared_ptr<SlaveInfo>>::iterator;
 
-  struct SlowLog {
-    std::list<SlowlogEntry> entry_list;
-    uint64_t id = 0;
-    std::mutex mu;
-  } slowlog_;
+  std::mutex db_mu_;
+  bool db_compacting_ = false;
+  bool db_bgsave_ = false;
+  std::map<std::string, DBScanInfo> db_scan_infos_;
 
-  void cron();
-  void clientsCron();
-  Status compactCron();
-  Status bgsaveCron();
+  SlowLog slowlog_;
+  std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
+
+  // threads
+  std::thread cron_thread_;
+  TaskRunner *task_runner_;
+  std::vector<WorkerThread *> worker_threads_;
+  std::unique_ptr<ReplicationThread> replication_thread_;
 };

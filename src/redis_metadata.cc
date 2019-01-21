@@ -230,7 +230,7 @@ rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metada
 
 rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   std::string value;
@@ -259,7 +259,7 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
 
 rocksdb::Status RedisDB::Del(Slice key) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   std::string value;
@@ -278,7 +278,7 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   rocksdb::Status s;
   std::string ns_key, value;
   for (const auto &key : keys) {
-    AppendNamepacePrefix(key, &ns_key);
+    AppendNamespacePrefix(key, &ns_key);
     s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
     if (s.ok()) *ret += 1;
   }
@@ -287,7 +287,7 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
 
 rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   *ttl = -2; // ttl is -2 when the key does not exist or expired
   LatestSnapShot ss(db_);
@@ -310,7 +310,7 @@ uint64_t RedisDB::GetKeyNum(std::string prefix) {
 uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
   uint64_t  cnt = 0;
   std::string ns_prefix, ns, real_key, value;
-  AppendNamepacePrefix(prefix, &ns_prefix);
+  AppendNamespacePrefix(prefix, &ns_prefix);
   prefix = ns_prefix;
 
   LatestSnapShot ss(db_);
@@ -339,7 +339,7 @@ uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
 
 rocksdb::Status RedisDB::FlushAll() {
   std::string prefix;
-  AppendNamepacePrefix("", &prefix);
+  AppendNamespacePrefix("", &prefix);
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -356,7 +356,7 @@ rocksdb::Status RedisDB::FlushAll() {
 
 rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   *type = kRedisNone;
@@ -373,6 +373,6 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   return rocksdb::Status::OK();
 }
 
-void RedisDB::AppendNamepacePrefix(const Slice &key, std::string *output) {
+void RedisDB::AppendNamespacePrefix(const Slice &key, std::string *output) {
   ComposeNamespaceKey(namespace_, key, output);
 }

@@ -9,7 +9,7 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -68,7 +68,7 @@ rocksdb::Status RedisZSet::Card(Slice key, int *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -96,7 +96,7 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
   mscores->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -145,7 +145,7 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
   mscores->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
@@ -208,7 +208,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
   if(mscores) mscores->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   if (spec.removed) LockGuard guard(storage_->GetLockManager(), key);
@@ -265,7 +265,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
 
 rocksdb::Status RedisZSet::Score(Slice key, Slice member, double *score) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -286,7 +286,7 @@ rocksdb::Status RedisZSet::Score(Slice key, Slice member, double *score) {
 rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -336,7 +336,7 @@ rocksdb::Status RedisZSet::Rank(Slice key, Slice member, bool reversed, int *ret
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ZSetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);

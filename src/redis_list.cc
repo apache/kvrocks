@@ -9,7 +9,7 @@ rocksdb::Status RedisList::Size(Slice key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -28,7 +28,7 @@ rocksdb::Status RedisList::PushX(Slice key, std::vector<Slice> elems, bool left,
 
 rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   ListMetadata metadata;
@@ -63,7 +63,7 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   elem->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -99,7 +99,7 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
   elem->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -127,7 +127,7 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   elems->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   ListMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -165,7 +165,7 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
 
 rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -205,7 +205,7 @@ rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
 // Caution: trim the big list may block the server
 rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);

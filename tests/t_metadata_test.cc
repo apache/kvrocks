@@ -71,7 +71,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   EXPECT_TRUE(s.ok() && fvs.size()==ret);
   HashMetadata metadata;
   std::string ns_key;
-  redis->AppendNamepacePrefix(key_, &ns_key);
+  redis->AppendNamespacePrefix(key_, &ns_key);
   redis->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis->Del(key_);

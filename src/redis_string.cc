@@ -46,7 +46,7 @@ rocksdb::Status RedisString::updateValue(Slice key, Slice raw_value, Slice new_v
 
 rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -63,7 +63,7 @@ std::vector<rocksdb::Status> RedisString::MGet(const std::vector<Slice> &keys, s
   std::string value;
   std::vector<rocksdb::Status> statuses;
   for (size_t i = 0; i < keys.size(); i++) {
-    AppendNamepacePrefix(keys[i], &ns_key);
+    AppendNamespacePrefix(keys[i], &ns_key);
     statuses.emplace_back(getValue(ns_key, nullptr, &value));
     values->emplace_back(value);
   }
@@ -79,7 +79,7 @@ rocksdb::Status RedisString::Get(Slice key, std::string *value) {
 }
 rocksdb::Status RedisString::GetSet(Slice key, Slice new_value, std::string *old_value) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -109,7 +109,7 @@ rocksdb::Status RedisString::SetNX(Slice key, Slice value, int *ret) {
 
 rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *ret) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -135,7 +135,7 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
 
 rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -175,7 +175,7 @@ rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl)
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.ToString());
-    AppendNamepacePrefix(pair.key, &ns_key);
+    AppendNamespacePrefix(pair.key, &ns_key);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
   return storage_->Write(rocksdb::WriteOptions(), &batch);
@@ -186,7 +186,7 @@ rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
 
   std::string ns_key, value;
   for (StringPair pair : pairs) {
-    AppendNamepacePrefix(pair.key, &ns_key);
+    AppendNamespacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);
     rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
     if (s.ok()) {

@@ -13,7 +13,7 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -45,7 +45,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -74,7 +74,7 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
 rocksdb::Status RedisSet::Card(Slice key, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -87,7 +87,7 @@ rocksdb::Status RedisSet::Members(Slice key, std::vector<std::string> *members) 
   members->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -114,7 +114,7 @@ rocksdb::Status RedisSet::IsMember(Slice key, Slice member, int *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   SetMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -139,7 +139,7 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   if (count <= 0) return rocksdb::Status::OK();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   if (pop) LockGuard guard(storage_->GetLockManager(), key);

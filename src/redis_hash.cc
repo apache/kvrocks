@@ -10,7 +10,7 @@ rocksdb::Status RedisHash::Size(Slice key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -21,7 +21,7 @@ rocksdb::Status RedisHash::Size(Slice key, uint32_t *ret) {
 
 rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -39,7 +39,7 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, l
   long long old_value = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -84,7 +84,7 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
   float old_value = 0;
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -128,7 +128,7 @@ rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vect
   values->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);
@@ -165,7 +165,7 @@ rocksdb::Status RedisHash::SetNX(Slice key, Slice field, Slice value, int *ret) 
 rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   HashMetadata metadata;
@@ -196,7 +196,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
 rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, bool nx, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
 
   LockGuard guard(storage_->GetLockManager(), key);
@@ -232,7 +232,7 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   field_values->clear();
 
   std::string ns_key;
-  AppendNamepacePrefix(key, &ns_key);
+  AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(key, &metadata);

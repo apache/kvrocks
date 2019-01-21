@@ -101,7 +101,7 @@ public:
   rocksdb::Status FlushAll();
   uint64_t GetKeyNum(std::string prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
-  void AppendNamepacePrefix(const Slice &key, std::string *output);
+  void AppendNamespacePrefix(const Slice &key, std::string *output);
 
 protected:
   Engine::Storage *storage_;

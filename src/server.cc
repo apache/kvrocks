@@ -400,6 +400,7 @@ void Server::GetInfo(std::string ns, std::string section, std::string &info) {
   if (all || section == "keyspace") {
     string_stream << "# Keyspace\r\n";
     string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
+    string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
   }
   if (all || section == "rocksdb") {
     std::string rocksdb_info;

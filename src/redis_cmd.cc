@@ -1588,7 +1588,12 @@ class CommandPSync : public Commander {
       peer_addr = "unknown";
     }
     slave_info_pos_ = svr->AddSlave(peer_addr, port);
-    svr->UpdateSlaveStats(slave_info_pos_, seq_ - 1);
+    if (seq_ == 0) {
+      svr->UpdateSlaveStats(slave_info_pos_, seq_);
+    } else {
+      // the seq_ is the client's next seq, so it current seq should be seq_ - 1
+      svr->UpdateSlaveStats(slave_info_pos_, seq_ - 1);
+    }
 
     state_ = State::GetWALIter;
     auto bev = conn->GetBufferEvent();

@@ -1728,7 +1728,7 @@ class CommandPSync : public Commander {
 
   inline static bool DoesWALHaveNewData(rocksdb::SequenceNumber seq,
                                         Engine::Storage *storage) {
-    return seq <= storage->GetDB()->GetLatestSequenceNumber();
+    return seq <= storage->LatestSeq();
   }
 };
 

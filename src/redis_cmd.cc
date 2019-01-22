@@ -1554,7 +1554,7 @@ class CommandPSync : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     try {
       auto s = std::stoull(args[1]);
-      seq_ = static_cast<rocksdb::SequenceNumber>(s);
+      next_seq_ = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr);
     }
@@ -1572,7 +1572,7 @@ class CommandPSync : public Commander {
     svr_ = svr;
     conn_ = conn;
 
-    if (!checkWALBoundary(svr->storage_, seq_).IsOK()) {
+    if (!checkWALBoundary(svr->storage_, next_seq_).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
       *output = "sequence out of range";
       return Status(Status::RedisExecErr, *output);
@@ -1588,11 +1588,11 @@ class CommandPSync : public Commander {
       peer_addr = "unknown";
     }
     slave_info_pos_ = svr->AddSlave(peer_addr, port);
-    if (seq_ == 0) {
-      svr->UpdateSlaveStats(slave_info_pos_, seq_);
+    if (next_seq_ == 0) {
+      svr->UpdateSlaveStats(slave_info_pos_, next_seq_);
     } else {
       // the seq_ is the client's next seq, so it current seq should be seq_ - 1
-      svr->UpdateSlaveStats(slave_info_pos_, seq_ - 1);
+      svr->UpdateSlaveStats(slave_info_pos_, next_seq_ - 1);
     }
 
     state_ = State::GetWALIter;
@@ -1611,7 +1611,7 @@ class CommandPSync : public Commander {
     while (true) {
       switch (self->state_) {
         case State::GetWALIter:
-          if (!self->svr_->storage_->GetWALIter(self->seq_, &self->iter_)
+          if (!self->svr_->storage_->GetWALIter(self->next_seq_, &self->iter_)
                    .IsOK()) {
             return;  // Try again next time, the timer will notify me.
           }
@@ -1629,9 +1629,9 @@ class CommandPSync : public Commander {
               std::string bulk_str =
                   "$" + std::to_string(data.length()) + CRLF + data + CRLF;
               evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
-              self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->seq_);
-              self->seq_ = batch.sequence + batch.writeBatchPtr->Count();
-              if (!DoesWALHaveNewData(self->seq_, self->svr_->storage_)) {
+              self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->next_seq_);
+              self->next_seq_ = batch.sequence + batch.writeBatchPtr->Count();
+              if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
                 self->state_ = State::WaitWAL;
                 return;
               }
@@ -1648,7 +1648,7 @@ class CommandPSync : public Commander {
           self->state_ = State::GetWALIter;
           break;
         case State::WaitWAL:
-          if (!DoesWALHaveNewData(self->seq_, self->svr_->storage_)) {
+          if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
             return;  // Try again next time, the timer will notify me.
           }
           self->iter_->Next();
@@ -1691,7 +1691,7 @@ class CommandPSync : public Commander {
   }
 
  private:
-  rocksdb::SequenceNumber seq_;
+  rocksdb::SequenceNumber next_seq_;
   Server *svr_;
   Connection *conn_;
   event *timer_;

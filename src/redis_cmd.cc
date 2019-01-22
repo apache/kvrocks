@@ -1626,7 +1626,7 @@ class CommandPSync : public Commander {
               evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
               self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->seq_);
               self->seq_ = batch.sequence + 1;
-              if (!IsWALHasData(self->seq_, self->svr_->storage_)) {
+              if (!DoesWALHaveNewData(self->seq_, self->svr_->storage_)) {
                 self->state_ = State::WaitWAL;
                 return;
               }
@@ -1643,7 +1643,7 @@ class CommandPSync : public Commander {
           self->state_ = State::GetWALIter;
           break;
         case State::WaitWAL:
-          if (!IsWALHasData(self->seq_, self->svr_->storage_)) {
+          if (!DoesWALHaveNewData(self->seq_, self->svr_->storage_)) {
             return;  // Try again next time, the timer will notify me.
           }
           self->iter_->Next();
@@ -1721,8 +1721,8 @@ class CommandPSync : public Commander {
     return Status::OK();
   }
 
-  inline static bool IsWALHasData(rocksdb::SequenceNumber seq,
-                                  Engine::Storage *storage) {
+  inline static bool DoesWALHaveNewData(rocksdb::SequenceNumber seq,
+                                        Engine::Storage *storage) {
     return seq <= storage->GetDB()->GetLatestSequenceNumber();
   }
 };

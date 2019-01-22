@@ -337,6 +337,49 @@ uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
   return cnt;
 }
 
+uint64_t RedisDB::Scan(const std::string &cursor,
+                       const uint64_t &limit,
+                       const std::string &prefix,
+                       std::vector<std::string> *keys) {
+  uint64_t cnt = 0;
+  std::string ns_prefix, ns_cursor, ns, real_key, value;
+  AppendNamespacePrefix(prefix, &ns_prefix);
+  AppendNamespacePrefix(cursor, &ns_cursor);
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  if (!cursor.empty()) {
+    iter->Seek(ns_cursor);
+    if (iter->Valid()) {
+      iter->Next();
+    }
+  } else if (ns_prefix.empty()) {
+    iter->SeekToFirst();
+  } else {
+    iter->Seek(ns_prefix);
+  }
+
+  for (; iter->Valid() && cnt < limit; iter->Next()) {
+    if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
+      break;
+    }
+    Metadata metadata(kRedisNone);
+    value = iter->value().ToString();
+    metadata.Decode(value);
+    if (metadata.Expired()) continue;
+    if (keys) {
+      ExtractNamespaceKey(iter->key(), &ns, &real_key);
+      keys->emplace_back(real_key);
+    }
+    cnt++;
+  }
+  delete iter;
+  return cnt;
+}
+
 rocksdb::Status RedisDB::FlushAll() {
   std::string prefix;
   AppendNamespacePrefix("", &prefix);

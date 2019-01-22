@@ -1887,6 +1887,77 @@ class CommandShutdown : public Commander {
   }
 };
 
+class CommandScan : public Commander {
+ public:
+  explicit CommandScan() : Commander("scan", -2, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2 || args.size() % 2 != 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    cursor = args[1];
+    if (cursor == "0") {
+      cursor = "";
+    }
+    if (args.size() >= 4) {
+      Status s = parseMatchAndCountParam(Util::ToLower(args[2]), args_[3]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 6) {
+      Status s = parseMatchAndCountParam(Util::ToLower(args[4]), args_[5]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisDB redis_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> keys;
+    redis_db.Scan(cursor, limit, prefix, &keys);
+
+    std::vector<std::string> list;
+    if (!keys.empty()) {
+      list.emplace_back(Redis::BulkString(keys.back()));
+    } else {
+      list.emplace_back(Redis::BulkString("0"));
+    }
+
+    list.emplace_back(Redis::MultiBulkString(keys));
+
+    *output = Redis::Array(list);
+    return Status::OK();
+  }
+
+ private:
+  Status parseMatchAndCountParam(const std::string &type, const std::string &value) {
+    if (type == "match") {
+      prefix = value;
+      if (prefix == "*") {
+        prefix = std::string();
+      } else {
+        if (prefix[prefix.size() - 1] != '*') {
+          return Status(Status::RedisParseErr, "ERR only keys prefix match was supported");
+        }
+        prefix = prefix.substr(0, prefix.size() - 1);
+      }
+    } else if (type == "count") {
+      try {
+        limit = std::stoi(value);
+      } catch (const std::exception &e) {
+        return Status(Status::RedisParseErr, "ERR count param should be type int");
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string cursor;
+  std::string prefix;
+  int limit = 20;
+};
+
 class CommandFetchMeta : public Commander {
  public:
   explicit CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -2004,6 +2075,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"shutdown",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandShutdown);
+     }},
+    {"scan",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandScan);
      }},
     // key command
     {"ttl",

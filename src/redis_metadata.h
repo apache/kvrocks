@@ -101,6 +101,10 @@ public:
   rocksdb::Status FlushAll();
   uint64_t GetKeyNum(std::string prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
+  uint64_t Scan(const std::string &cursor,
+                const uint64_t &limit,
+                const std::string &prefix,
+                std::vector<std::string> *keys);
   void AppendNamespacePrefix(const Slice &key, std::string *output);
 
 protected:

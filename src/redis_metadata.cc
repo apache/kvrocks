@@ -341,6 +341,9 @@ uint64_t RedisDB::Scan(const std::string &cursor,
                        const uint64_t &limit,
                        const std::string &prefix,
                        std::vector<std::string> *keys) {
+  if (keys == nullptr) {
+    return 0;
+  }
   uint64_t cnt = 0;
   std::string ns_prefix, ns_cursor, ns, real_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
@@ -370,10 +373,8 @@ uint64_t RedisDB::Scan(const std::string &cursor,
     value = iter->value().ToString();
     metadata.Decode(value);
     if (metadata.Expired()) continue;
-    if (keys) {
-      ExtractNamespaceKey(iter->key(), &ns, &real_key);
-      keys->emplace_back(real_key);
-    }
+    ExtractNamespaceKey(iter->key(), &ns, &real_key);
+    keys->emplace_back(real_key);
     cnt++;
   }
   delete iter;

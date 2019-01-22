@@ -1933,15 +1933,12 @@ class CommandScan : public Commander {
  private:
   Status parseMatchAndCountParam(const std::string &type, const std::string &value) {
     if (type == "match") {
-      prefix = value;
-      if (prefix == "*") {
-        prefix = std::string();
-      } else {
-        if (prefix[prefix.size() - 1] != '*') {
-          return Status(Status::RedisParseErr, "ERR only keys prefix match was supported");
-        }
+      prefix = std::move(value);
+      if (!prefix.empty() && prefix[prefix.size() - 1] == '*') {
         prefix = prefix.substr(0, prefix.size() - 1);
+        return Status::OK();
       }
+      return Status(Status::RedisParseErr, "only keys prefix match was supported");
     } else if (type == "count") {
       try {
         limit = std::stoi(value);

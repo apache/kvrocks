@@ -10,6 +10,18 @@
 
 namespace Redis {
 
+Connection::Connection(bufferevent *bev, Worker *owner)
+    : bev_(bev), req_(owner->svr_), owner_(owner) {
+  time_t now;
+  time(&now);
+  create_time_ = now;
+  last_interaction_ = now;
+}
+
+Connection::~Connection() {
+  if (bev_) { bufferevent_free(bev_); }
+}
+
 void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   DLOG(INFO) << "on read: " << bufferevent_getfd(bev);
   auto conn = static_cast<Connection *>(ctx);
@@ -21,7 +33,7 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
 
 void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
-  if (conn->ExistFlag(kCloseAfterReply)) {
+  if (conn->IsFlagEnabled(kCloseAfterReply)) {
     conn->owner_->RemoveConnection(conn->GetFD());
   }
 }
@@ -64,23 +76,19 @@ void Connection::SetLastInteraction() {
   time(&last_interaction_);
 }
 
-uint64_t Connection::GetIdle() {
+uint64_t Connection::GetIdleTime() {
   time_t now;
   time(&now);
   return static_cast<uint64_t>(now-last_interaction_);
 }
 
-void Connection::AddFlag(Flag flag) { flags_ |= flag; }
+void Connection::SetFlag(Flag flag) {
+  flags_ |= flag;
+}
 
-void Connection::DelFlag(Flag flag) { flags_ &= ~flag; }
-
-bool Connection::ExistFlag(Flag flag) { return (flags_ & flag) > 0; }
-
-int Connection::GetFD() { return bufferevent_getfd(bev_); }
-
-evbuffer *Connection::Input() { return bufferevent_get_input(bev_); }
-
-evbuffer *Connection::Output() { return bufferevent_get_output(bev_); }
+bool Connection::IsFlagEnabled(Flag flag) {
+  return (flags_ & flag) > 0;
+}
 
 void Connection::SubscribeChannel(std::string &channel) {
   for (const auto &chan : subscribe_channels_) {
@@ -164,7 +172,7 @@ void Request::ExecuteCommands(Connection *conn) {
   Config *config = svr_->GetConfig();
   std::string reply;
   for (auto &cmd_tokens : commands_) {
-    if (conn->ExistFlag(Redis::Connection::kCloseAfterReply)) break;
+    if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
     if (conn->GetNamespace().empty()
         && Util::ToLower(cmd_tokens.front()) != "auth") {
       conn->Reply(Redis::Error("NOAUTH Authentication required."));

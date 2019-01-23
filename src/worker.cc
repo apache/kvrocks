@@ -166,7 +166,7 @@ std::string Worker::GetClientsStr() {
       << " fd=" << fd
       << " name=" << c->GetName()
       << " age=" << c->GetAge()
-      << " idle=" << c->GetIdle()
+      << " idle=" << c->GetIdleTime()
       << " flags="
       << " namespace=" << c->GetNamespace()
       << " qbuf=" << evbuffer_get_length(c->Input())
@@ -193,7 +193,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
 
   for (const auto iter : to_be_killed_conns) {
     if (iter.first == self->GetFD() && iter.second == self->GetID()) {
-      self->AddFlag(Redis::Connection::kCloseAfterReply);
+      self->SetFlag(Redis::Connection::kCloseAfterReply);
     } else {
       RemoveConnectionByID(iter.first, iter.second);
     }
@@ -212,7 +212,7 @@ void Worker::KickoutIdleClients(int timeout) {
   auto iter = conns_.upper_bound(last_iter_conn_fd);
   while (iterations--) {
     if (iter == conns_.end()) iter = conns_.begin();
-    if (static_cast<int>(iter->second->GetIdle()) >= timeout) {
+    if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
       to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
     }
     iter++;

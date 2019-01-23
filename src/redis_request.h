@@ -45,17 +45,9 @@ class Connection {
   enum Flag {
     kCloseAfterReply = 1<<6,
   };
-  explicit Connection(bufferevent *bev, Worker *owner)
-      : bev_(bev), req_(owner->svr_), owner_(owner) {
-    time(&create_time_);
-    last_interaction_ = create_time_;
-  }
 
-  ~Connection() {
-    if (bev_) {
-      bufferevent_free(bev_);
-    }
-  }
+  explicit Connection(bufferevent *bev, Worker *owner);
+  ~Connection();
 
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnWrite(struct bufferevent *bev, void *ctx);
@@ -69,34 +61,33 @@ class Connection {
   int SubscriptionsCount();
 
   uint64_t GetAge();
+  uint64_t GetIdleTime();
   void SetLastInteraction();
-  uint64_t GetIdle();
-  void AddFlag(Flag flag);
-  void DelFlag(Flag flag);
-  bool ExistFlag(Flag flag);
+  void SetFlag(Flag flag);
+  bool IsFlagEnabled(Flag flag);
+  bool IsRepl() { return this->owner_->IsRepl();}
+
+  uint64_t GetID() { return id_; }
+  void SetID(uint64_t id) { id_ = id; }
+  std::string GetName() { return name_; };
+  void SetName(std::string name) { name_ = std::move(name); }
+  std::string GetAddr() { return addr_; }
+  void SetAddr(std::string addr) { addr_ = std::move(addr); }
+  std::string GetLastCmd() { return last_cmd_; }
+  void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
 
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
   std::string GetNamespace() { return ns_; }
-  void SetNamespace(std::string ns) { ns_ = ns; }
-  void SetID(uint64_t id) { id_ = id; }
-  uint64_t GetID() { return id_; }
-  void SetLastCmd(std::string cmd) { last_cmd_ = cmd; }
-  std::string GetLastCmd() { return last_cmd_; }
-  void SetName(std::string name) { name_ = name; }
-  std::string GetName() { return name_; };
-  void SetAddr(std::string addr) { addr_ = addr; }
-  std::string GetAddr() { return addr_; }
-  Worker *Owner() { return owner_; }
+  void SetNamespace(std::string ns) { ns_ = std::move(ns); }
 
-  int GetFD();
-  evbuffer *Input();
-  evbuffer *Output();
+  Worker *Owner() { return owner_; }
+  int GetFD() { return bufferevent_getfd(bev_); }
+  evbuffer *Input() { return bufferevent_get_input(bev_); }
+  evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
-  bool IsRepl() {
-    return this->owner_->IsRepl();
-  }
+
   std::unique_ptr<Commander> current_cmd_;
 
  private:

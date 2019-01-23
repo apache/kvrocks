@@ -48,6 +48,6 @@ void Stats::IncrCalls(const std::string &command_name) {
   commands_stats[command_name].calls.fetch_add(1, std::memory_order_relaxed);
 }
 
-void Stats::AddLatency(uint64_t latency, const std::string &command_name) {
+void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
   commands_stats[command_name].latency.fetch_add(latency, std::memory_order_relaxed);
 }

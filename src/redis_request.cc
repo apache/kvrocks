@@ -56,7 +56,7 @@ void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->svr_->stats_.AddOutbondBytes(msg.size());
+  owner_->svr_->stats_.IncrOutbondBytes(msg.size());
   Redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
@@ -128,7 +128,7 @@ void Request::Tokenize(evbuffer *input) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        svr_->stats_.AddInbondBytes(len);
+        svr_->stats_.IncrInbondBytes(len);
         multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
         free(line);
         state_ = BulkLen;
@@ -136,7 +136,7 @@ void Request::Tokenize(evbuffer *input) {
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return;
-        svr_->stats_.AddInbondBytes(len);
+        svr_->stats_.IncrInbondBytes(len);
         bulk_len_ = std::strtoull(line + 1, nullptr, 10);
         free(line);
         state_ = BulkData;
@@ -147,7 +147,7 @@ void Request::Tokenize(evbuffer *input) {
             reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        svr_->stats_.AddInbondBytes(bulk_len_ + 2);
+        svr_->stats_.IncrInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
         if (multi_bulk_len_ <= 0) {
           state_ = ArrayLen;
@@ -208,7 +208,7 @@ void Request::ExecuteCommands(Connection *conn) {
     auto end = std::chrono::high_resolution_clock::now();
     long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
-    svr_->stats_.AddLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
+    svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR " + s.Msg()));
       LOG(ERROR) << "Failed to execute redis command: " << conn->current_cmd_->Name()

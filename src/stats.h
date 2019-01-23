@@ -23,9 +23,9 @@ class Stats {
 
  public:
   void IncrCalls(const std::string &command_name);
-  void AddLatency(uint64_t latency, const std::string &command_name);
-  void AddInbondBytes(uint64_t bytes) { in_bytes.fetch_add(bytes, std::memory_order_relaxed); }
-  void AddOutbondBytes(uint64_t bytes) { out_bytes.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrLatency(uint64_t latency, const std::string &command_name);
+  void IncrInbondBytes(uint64_t bytes) { in_bytes.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrOutbondBytes(uint64_t bytes) { out_bytes.fetch_add(bytes, std::memory_order_relaxed); }
   void IncrFullSyncCounter() { fullsync_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }

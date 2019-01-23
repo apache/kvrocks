@@ -287,34 +287,32 @@ uint64_t RedisHash::Scan(Slice key,
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options);
-  //prefix_key is this hash key's prefix
-  //field_prefix_key is this hash key's prefix add field prefix
-  std::string prefix_key, field_prefix_key;
-  InternalKey(key, "", metadata.version).Encode(&prefix_key);
+
+  std::string match_prefix_key;
   if (!field_prefix.empty()) {
-    InternalKey(key, field_prefix, metadata.version).Encode(&field_prefix_key);
-  }
-  if (!cursor.empty()) {
-    std::string start_key;
-    InternalKey(key, cursor, metadata.version).Encode(&start_key);
-    iter->Seek(start_key);
-    if (iter->Valid()) {
-      iter->Next();
-    }
-  } else if (!field_prefix.empty()) {
-    iter->Seek(field_prefix_key);
+    InternalKey(key, field_prefix, metadata.version).Encode(&match_prefix_key);
   } else {
-    iter->Seek(prefix_key);
+    InternalKey(key, "", metadata.version).Encode(&match_prefix_key);
   }
-  for (; iter->Valid() && cnt < limit; iter->Next()) {
-    if ((!iter->key().starts_with(prefix_key)) ||
-        (!field_prefix_key.empty() && !iter->key().starts_with(field_prefix_key))
-        ) {
+
+  std::string start_key;
+  if (!cursor.empty()) {
+    InternalKey(key, cursor, metadata.version).Encode(&start_key);
+  } else {
+    start_key = match_prefix_key;
+  }
+
+  for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
+    if (!cursor.empty() && iter->key() == start_key) {
+      //if cursor is not empty, then we need to skip start_key
+      //because we already return that key in the last scan
+      continue;
+    }
+    if (!iter->key().starts_with(match_prefix_key)) {
       break;
     }
     InternalKey ikey(iter->key());
     fields->emplace_back(ikey.GetSubKey().ToString());
-
     cnt++;
   }
 

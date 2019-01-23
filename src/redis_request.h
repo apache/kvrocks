@@ -45,10 +45,12 @@ class Connection {
   enum Flag {
     kCloseAfterReply = 1<<6,
   };
-  explicit Connection(bufferevent *bev, Worker *owner) : bev_(bev), req_(owner->svr_), owner_(owner) {
-    create_time_ = std::chrono::system_clock::now();
+  explicit Connection(bufferevent *bev, Worker *owner)
+      : bev_(bev), req_(owner->svr_), owner_(owner) {
+    time(&create_time_);
     last_interaction_ = create_time_;
   }
+
   ~Connection() {
     if (bev_) {
       bufferevent_free(bev_);
@@ -98,19 +100,20 @@ class Connection {
   std::unique_ptr<Commander> current_cmd_;
 
  private:
-  bool is_admin_;
+  uint64_t id_ = 0;
+  int flags_ = 0;
   std::string ns_;
+  std::string name_;
+  std::string addr_;
+  bool is_admin_= false;
+  std::string last_cmd_;
+  time_t create_time_;
+  time_t last_interaction_;
+
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
   std::vector<std::string> subscribe_channels_;
-  uint64_t id_;
-  std::string last_cmd_;
-  std::string name_ = "";
-  std::string addr_ = "";
-  std::chrono::time_point<std::chrono::system_clock> create_time_;
-  std::chrono::time_point<std::chrono::system_clock> last_interaction_;
-  int flags_ = 0;
 };
 
 }  // namespace Redis

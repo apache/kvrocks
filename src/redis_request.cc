@@ -55,17 +55,19 @@ void Connection::SendFile(int fd) {
 }
 
 uint64_t Connection::GetAge() {
-  auto now = std::chrono::system_clock::now();
-  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-create_time_).count());
+  time_t now;
+  time(&now);
+  return static_cast<uint64_t>(now-create_time_);
 }
 
 void Connection::SetLastInteraction() {
-  last_interaction_ = std::chrono::system_clock::now();
+  time(&last_interaction_);
 }
 
 uint64_t Connection::GetIdle() {
-  auto now = std::chrono::system_clock::now();
-  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now-last_interaction_).count());
+  time_t now;
+  time(&now);
+  return static_cast<uint64_t>(now-last_interaction_);
 }
 
 void Connection::AddFlag(Flag flag) { flags_ |= flag; }

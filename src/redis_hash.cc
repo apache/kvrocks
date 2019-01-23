@@ -264,3 +264,60 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   delete iter;
   return rocksdb::Status::OK();
 }
+
+uint64_t RedisHash::Scan(Slice key,
+                         const std::string &cursor,
+                         const uint64_t &limit,
+                         const std::string &field_prefix,
+                         std::vector<std::string> *fields) {
+  uint64_t cnt = 0;
+  if (fields == nullptr) {
+    return cnt;
+  }
+
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+  HashMetadata metadata;
+  rocksdb::Status s = GetMetadata(key, &metadata);
+  if (!s.ok()) return cnt;
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
+  //prefix_key is this hash key's prefix
+  //field_prefix_key is this hash key's prefix add field prefix
+  std::string prefix_key, field_prefix_key;
+  InternalKey(key, "", metadata.version).Encode(&prefix_key);
+  if (!field_prefix.empty()) {
+    InternalKey(key, field_prefix, metadata.version).Encode(&field_prefix_key);
+  }
+  if (!cursor.empty()) {
+    std::string start_key;
+    InternalKey(key, cursor, metadata.version).Encode(&start_key);
+    iter->Seek(start_key);
+    if (iter->Valid()) {
+      iter->Next();
+    }
+  } else if (!field_prefix.empty()) {
+    iter->Seek(field_prefix_key);
+  } else {
+    iter->Seek(prefix_key);
+  }
+  for (; iter->Valid() && cnt < limit; iter->Next()) {
+    if ((!iter->key().starts_with(prefix_key)) ||
+        (!field_prefix_key.empty() && !iter->key().starts_with(field_prefix_key))
+        ) {
+      break;
+    }
+    InternalKey ikey(iter->key());
+    fields->emplace_back(ikey.GetSubKey().ToString());
+
+    cnt++;
+  }
+
+  delete iter;
+  return cnt;
+}

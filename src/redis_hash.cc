@@ -264,3 +264,58 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   delete iter;
   return rocksdb::Status::OK();
 }
+
+uint64_t RedisHash::Scan(Slice key,
+                         const std::string &cursor,
+                         const uint64_t &limit,
+                         const std::string &field_prefix,
+                         std::vector<std::string> *fields) {
+  uint64_t cnt = 0;
+  if (fields == nullptr) {
+    return cnt;
+  }
+
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+  HashMetadata metadata;
+  rocksdb::Status s = GetMetadata(key, &metadata);
+  if (!s.ok()) return cnt;
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
+
+  std::string match_prefix_key;
+  if (!field_prefix.empty()) {
+    InternalKey(key, field_prefix, metadata.version).Encode(&match_prefix_key);
+  } else {
+    InternalKey(key, "", metadata.version).Encode(&match_prefix_key);
+  }
+
+  std::string start_key;
+  if (!cursor.empty()) {
+    InternalKey(key, cursor, metadata.version).Encode(&start_key);
+  } else {
+    start_key = match_prefix_key;
+  }
+
+  for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
+    if (!cursor.empty() && iter->key() == start_key) {
+      //if cursor is not empty, then we need to skip start_key
+      //because we already return that key in the last scan
+      continue;
+    }
+    if (!iter->key().starts_with(match_prefix_key)) {
+      break;
+    }
+    InternalKey ikey(iter->key());
+    fields->emplace_back(ikey.GetSubKey().ToString());
+    cnt++;
+  }
+
+  delete iter;
+  return cnt;
+}

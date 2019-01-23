@@ -341,10 +341,10 @@ uint64_t RedisDB::Scan(const std::string &cursor,
                        const uint64_t &limit,
                        const std::string &prefix,
                        std::vector<std::string> *keys) {
-  if (keys == nullptr) {
-    return 0;
-  }
   uint64_t cnt = 0;
+  if (keys == nullptr) {
+    return cnt;
+  }
   std::string ns_prefix, ns_cursor, ns, real_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
   AppendNamespacePrefix(cursor, &ns_cursor);

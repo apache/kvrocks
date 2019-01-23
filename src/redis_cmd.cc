@@ -1892,51 +1892,10 @@ class CommandShutdown : public Commander {
   }
 };
 
-class CommandScan : public Commander {
+class CommandScanBase : public Commander {
  public:
-  explicit CommandScan() : Commander("scan", -2, false) {}
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 2 || args.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, "wrong number of arguments");
-    }
-    cursor = args[1];
-    if (cursor == "0") {
-      cursor = "";
-    }
-    if (args.size() >= 4) {
-      Status s = parseMatchAndCountParam(Util::ToLower(args[2]), args_[3]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    if (args.size() >= 6) {
-      Status s = parseMatchAndCountParam(Util::ToLower(args[4]), args_[5]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    return Commander::Parse(args);
-  }
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisDB redis_db(svr->storage_, conn->GetNamespace());
-    std::vector<std::string> keys;
-    redis_db.Scan(cursor, limit, prefix, &keys);
-
-    std::vector<std::string> list;
-    if (!keys.empty()) {
-      list.emplace_back(Redis::BulkString(keys.back()));
-    } else {
-      list.emplace_back(Redis::BulkString("0"));
-    }
-
-    list.emplace_back(Redis::MultiBulkString(keys));
-
-    *output = Redis::Array(list);
-    return Status::OK();
-  }
-
- private:
-  Status parseMatchAndCountParam(const std::string &type, const std::string &value) {
+  explicit CommandScanBase(std::string name, int arity, bool is_write = false) : Commander(name, arity, is_write) {}
+  Status ParseMatchAndCountParam(const std::string &type, const std::string &value) {
     if (type == "match") {
       prefix = std::move(value);
       if (!prefix.empty() && prefix[prefix.size() - 1] == '*') {
@@ -1954,10 +1913,99 @@ class CommandScan : public Commander {
     return Status::OK();
   }
 
- private:
+  void ParseCursor(const std::string &param) {
+    cursor = param;
+    if (cursor == "0") {
+      cursor = std::string();
+    }
+  }
+
+  std::string GenerateOutput(const std::vector<std::string> &keys) {
+    std::vector<std::string> list;
+    if (!keys.empty()) {
+      list.emplace_back(Redis::BulkString(keys.back()));
+    } else {
+      list.emplace_back(Redis::BulkString("0"));
+    }
+
+    list.emplace_back(Redis::MultiBulkString(keys));
+
+    return Redis::Array(list);
+  }
+
+ protected:
   std::string cursor;
   std::string prefix;
   int limit = 20;
+};
+
+class CommandScan : public CommandScanBase {
+ public:
+  explicit CommandScan() : CommandScanBase("scan", -2, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+
+    ParseCursor(args[1]);
+    if (args.size() >= 4) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[2]), args_[3]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 6) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[4]), args_[5]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisDB redis_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> keys;
+    redis_db.Scan(cursor, limit, prefix, &keys);
+
+    *output = GenerateOutput(keys);
+    return Status::OK();
+  }
+};
+
+class CommandHScan : public CommandScanBase {
+ public:
+  explicit CommandHScan() : CommandScanBase("hscan", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 == 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    key = args[1];
+    ParseCursor(args[2]);
+    if (args.size() >= 5) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 7) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> fields;
+    hash_db.Scan(key, cursor, limit, prefix, &fields);
+
+    *output = GenerateOutput(fields);
+    return Status::OK();
+  }
+
+ private:
+  std::string key;
 };
 
 class CommandFetchMeta : public Commander {
@@ -2192,6 +2240,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"hgetall",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandHGetAll);
+     }},
+    {"hscan",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandHScan);
      }},
     // list command
     {"lpush",

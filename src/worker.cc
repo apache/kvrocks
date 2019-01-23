@@ -177,20 +177,22 @@ std::string Worker::GetClientsStr() {
   return clients;
 }
 
-void Worker::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
-  std::list<std::pair<int, uint64_t>> clients;
+void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed) {
+  std::list<std::pair<int, uint64_t>> to_be_killed_conns;
+
   conns_mu_.lock();
   for (const auto iter : conns_) {
-    Redis::Connection* c = iter.second;
-    if (addr != "" && c->GetAddr() != addr) continue;
-    if (id != 0 && c->GetID() != id) continue;
-    if (skipme && conn == c) continue;
-    clients.emplace_back(std::make_pair(c->GetFD(), c->GetID()));
+    Redis::Connection* conn = iter.second;
+    if (addr.empty() && conn->GetAddr() != addr) continue;
+    if (id != 0 && conn->GetID() != id) continue;
+    if (skipme && self == conn) continue;
+    to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
   }
   conns_mu_.unlock();
-  for (const auto iter : clients) {
-    if (iter.first == conn->GetFD() && iter.second == conn->GetID()) {
-      conn->AddFlag(Redis::Connection::kCloseAfterReply);
+
+  for (const auto iter : to_be_killed_conns) {
+    if (iter.first == self->GetFD() && iter.second == self->GetID()) {
+      self->AddFlag(Redis::Connection::kCloseAfterReply);
     } else {
       RemoveConnectionByID(iter.first, iter.second);
     }
@@ -200,8 +202,7 @@ void Worker::KillClient(int64_t *killed, std::string addr, uint64_t id, bool ski
 
 void Worker::KickoutIdleClients(int timeout) {
   conns_mu_.lock();
-
-  std::list<std::pair<int, uint64_t>> clients;
+  std::list<std::pair<int, uint64_t>> to_be_killed_conns;
   if (conns_.empty()) {
     conns_mu_.unlock();
     return;
@@ -211,7 +212,7 @@ void Worker::KickoutIdleClients(int timeout) {
   while (iterations--) {
     if (iter == conns_.end()) iter = conns_.begin();
     if (static_cast<int>(iter->second->GetIdle()) >= timeout) {
-      clients.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+      to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
     }
     iter++;
   }
@@ -219,8 +220,8 @@ void Worker::KickoutIdleClients(int timeout) {
   last_iter_conn_fd = iter->first;
   conns_mu_.unlock();
 
-  for (const auto client : clients) {
-    RemoveConnectionByID(client.first, client.second);
+  for (const auto conn : to_be_killed_conns) {
+    RemoveConnectionByID(conn.first, conn.second);
   }
 }
 
@@ -254,7 +255,7 @@ std::string WorkerThread::GetClientsStr() {
 }
 
 void WorkerThread::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
-  worker_->KillClient(killed, addr, id, skipme, conn);
+  worker_->KillClient(conn, id, addr, skipme, killed);
 }
 
 void WorkerThread::KickoutIdleClients(int timeout) {

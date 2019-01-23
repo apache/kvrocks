@@ -38,7 +38,7 @@ class Worker {
   }
 
   std::string GetClientsStr();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed);
   void KickoutIdleClients(int timeout);
 
   Server *svr_;

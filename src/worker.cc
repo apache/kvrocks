@@ -104,7 +104,9 @@ Status Worker::listen(const std::string &host, int port, int backlog) {
 
 void Worker::Run(std::thread::id tid) {
   tid_ = tid;
-  if (event_base_dispatch(base_) != 0) LOG(ERROR) << "failed to run server";
+  if (event_base_dispatch(base_) != 0) {
+    LOG(ERROR) << "Failed to run server, err: " << strerror(errno);
+  }
 }
 
 void Worker::Stop() {
@@ -120,7 +122,6 @@ Status Worker::AddConnection(Redis::Connection *c) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(c->GetFD());
   if (iter != conns_.end()) {
-    // TODO: Connection exists
     return Status(Status::NotOK, "connection was exists");
   }
   Status status = svr_->IncrClients();

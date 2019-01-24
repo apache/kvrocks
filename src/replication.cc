@@ -66,8 +66,8 @@ void ReplicationThread::CallbacksStateMachine::EvCallback(bufferevent *bev,
   auto self = static_cast<CallbacksStateMachine *>(ctx);
 LOOP_LABEL:
   assert(self->handler_idx_ <= self->handlers_.size());
-  auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
   DLOG(INFO) << "[replication] Execute handler[" << self->getHandlerName(self->handler_idx_) << "]";
+  auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
   time(&self->repl_->last_io_time_);
   switch (st) {
     case CBState::NEXT:
@@ -181,7 +181,7 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
     LOG(ERROR) << "[replication] Failed to create thread: " << e.what();
     return;
   }
-  LOG(INFO) << "[replication] Start";
+  LOG(INFO) << "[replication] Start replicate the data from master";
 }
 
 void ReplicationThread::Stop() {
@@ -222,6 +222,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
   const auto auth_len_str = std::to_string(self->auth_.length());
   send_string(bev, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
                        self->auth_ + CRLF);
+  LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   self->repl_state_ = kReplSendAuth;
   return CBState::NEXT;
 }
@@ -240,6 +241,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
     return CBState::QUIT;
   }
   free(line);
+  LOG(INFO) << "[replication] Auth response was received, continue...";
   return CBState::NEXT;
 }
 
@@ -248,6 +250,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(
   send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplCheckDBName;
+  LOG(INFO) << "[replication] Check db name request was sent, waiting for response";
   return CBState::NEXT;
 }
 
@@ -264,6 +267,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
   if (line_len == db_name.size() && !strncmp(line, db_name.data(), line_len)) {
     // DB name match, we should continue to next step: TryPsync
     free(line);
+    LOG(INFO) << "[replication] DB name is valid, continue...";
     return CBState::NEXT;
   }
   LOG(ERROR) << "[replication] db-name mismatched, remote db name: " << line;
@@ -353,6 +357,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(
   send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplFetchMeta;
+  LOG(INFO) << "[replication] Start syncing data with fullsync";
   return CBState::NEXT;
 }
 
@@ -408,8 +413,10 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
       if (!self->parallelFetchFile(meta.files).IsOK()) {
+        LOG(ERROR) << "[replication] Failed to parallel fetch files";
         return CBState::RESTART;
       }
+      LOG(INFO) << "[replication] Succeeded fetching files in parallel, restoring the backup";
 
       // Restore DB from backup
       self->pre_fullsync_cb_();
@@ -418,6 +425,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         self->post_fullsync_cb_();
         return CBState::RESTART;
       }
+      LOG(INFO) << "[replication] Succeeded restoring the backup, fullsync was finish";
       self->post_fullsync_cb_();
       ++self->seq_;
 

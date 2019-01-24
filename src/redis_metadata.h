@@ -135,7 +135,7 @@ class RedisDBSubKeyScanner : public RedisDB {
                 Slice key,
                 const std::string &cursor,
                 const uint64_t &limit,
-                const std::string &field_prefix,
+                const std::string &subkey_prefix,
                 std::vector<std::string> *keys);
 };
 

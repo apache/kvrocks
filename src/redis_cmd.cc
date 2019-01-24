@@ -1939,6 +1939,36 @@ class CommandScanBase : public Commander {
   int limit = 20;
 };
 
+class CommandSubkeyScanBase : public CommandScanBase {
+ public:
+  explicit CommandSubkeyScanBase(std::string name, int arity, bool is_write = false) : CommandScanBase(name,
+                                                                                                       arity,
+                                                                                                       is_write) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 == 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    key = args[1];
+    ParseCursor(args[2]);
+    if (args.size() >= 5) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 7) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+ protected:
+  std::string key;
+};
+
 class CommandScan : public CommandScanBase {
  public:
   explicit CommandScan() : CommandScanBase("scan", -2, false) {}
@@ -1972,29 +2002,9 @@ class CommandScan : public CommandScanBase {
   }
 };
 
-class CommandHScan : public CommandScanBase {
+class CommandHScan : public CommandSubkeyScanBase {
  public:
-  explicit CommandHScan() : CommandScanBase("hscan", -3, false) {}
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 == 0) {
-      return Status(Status::RedisParseErr, "wrong number of arguments");
-    }
-    key = args[1];
-    ParseCursor(args[2]);
-    if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    return Commander::Parse(args);
-  }
+  explicit CommandHScan() : CommandSubkeyScanBase("hscan", -3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
@@ -2003,34 +2013,11 @@ class CommandHScan : public CommandScanBase {
     *output = GenerateOutput(fields);
     return Status::OK();
   }
-
- private:
-  std::string key;
 };
 
-class CommandSScan : public CommandScanBase {
+class CommandSScan : public CommandSubkeyScanBase {
  public:
-  explicit CommandSScan() : CommandScanBase("sscan", -3, false) {}
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 == 0) {
-      return Status(Status::RedisParseErr, "wrong number of arguments");
-    }
-    key = args[1];
-    ParseCursor(args[2]);
-    if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    return Commander::Parse(args);
-  }
+  explicit CommandSScan() : CommandSubkeyScanBase("sscan", -3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
@@ -2039,9 +2026,19 @@ class CommandSScan : public CommandScanBase {
     *output = GenerateOutput(members);
     return Status::OK();
   }
+};
 
- private:
-  std::string key;
+class CommandZScan : public CommandSubkeyScanBase {
+ public:
+  explicit CommandZScan() : CommandSubkeyScanBase("zscan", -3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisZSet zset_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> members;
+    zset_db.Scan(key, cursor, limit, prefix, &members);
+
+    *output = GenerateOutput(members);
+    return Status::OK();
+  }
 };
 
 class CommandFetchMeta : public Commander {
@@ -2427,6 +2424,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zscore",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZScore);
+     }},
+    {"zscan",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZScan);
      }},
     // pub/sub command
     {"publish",

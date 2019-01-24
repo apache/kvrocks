@@ -188,5 +188,5 @@ uint64_t RedisSet::Scan(Slice key,
                         const std::string &member_prefix,
                         std::vector<std::string> *members) {
 
-  return RedisDBSubKeyScanner::Scan(kRedisSet, key, cursor, limit, member_prefix, members);
+  return RedisSubKeyScanner::Scan(kRedisSet, key, cursor, limit, member_prefix, members);
 }

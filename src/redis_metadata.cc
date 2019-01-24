@@ -421,7 +421,7 @@ void RedisDB::AppendNamespacePrefix(const Slice &key, std::string *output) {
   ComposeNamespaceKey(namespace_, key, output);
 }
 
-uint64_t RedisDBSubKeyScanner::Scan(RedisType type,
+uint64_t RedisSubKeyScanner::Scan(RedisType type,
                                     Slice key,
                                     const std::string &cursor,
                                     const uint64_t &limit,

@@ -271,5 +271,5 @@ uint64_t RedisHash::Scan(Slice key,
                          const std::string &field_prefix,
                          std::vector<std::string> *fields) {
 
-  return RedisDBSubKeyScanner::Scan(kRedisHash, key, cursor, limit, field_prefix, fields);
+  return RedisSubKeyScanner::Scan(kRedisHash, key, cursor, limit, field_prefix, fields);
 }

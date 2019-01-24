@@ -128,9 +128,9 @@ protected:
   };
 };
 
-class RedisDBSubKeyScanner : public RedisDB {
+class RedisSubKeyScanner : public RedisDB {
  public:
-  explicit RedisDBSubKeyScanner(Engine::Storage *storage, std::string ns) : RedisDB(storage, ns) {}
+  explicit RedisSubKeyScanner(Engine::Storage *storage, std::string ns) : RedisDB(storage, ns) {}
   uint64_t Scan(RedisType type,
                 Slice key,
                 const std::string &cursor,

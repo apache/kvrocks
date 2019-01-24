@@ -2,9 +2,9 @@
 
 #include "redis_metadata.h"
 
-class RedisSet : public RedisDBSubKeyScanner {
+class RedisSet : public RedisSubKeyScanner {
 public:
-  explicit RedisSet(Engine::Storage *storage, std::string ns) : RedisDBSubKeyScanner(storage, std::move(ns)) {}
+  explicit RedisSet(Engine::Storage *storage, std::string ns) : RedisSubKeyScanner(storage, std::move(ns)) {}
   rocksdb::Status Add(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status Remove(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status Card(Slice key, int *ret);

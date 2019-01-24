@@ -27,10 +27,10 @@ typedef struct {
 #define ZSET_REVERSED (1<<3)
 #define ZSET_REMOVED 1<<4
 
-class RedisZSet : public RedisDBSubKeyScanner {
+class RedisZSet : public RedisSubKeyScanner {
  public:
   explicit RedisZSet(Engine::Storage *storage, std::string ns) :
-      RedisDBSubKeyScanner(storage, std::move(ns)),
+      RedisSubKeyScanner(storage, std::move(ns)),
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> &mscores, int *ret);
   rocksdb::Status Card(Slice key, int *ret);

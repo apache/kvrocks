@@ -12,9 +12,9 @@ typedef struct FieldValue {
   std::string value;
 } FieldValue;
 
-class RedisHash : public RedisDBSubKeyScanner {
+class RedisHash : public RedisSubKeyScanner {
 public:
-  RedisHash(Engine::Storage *storage, std::string ns) : RedisDBSubKeyScanner(storage, std::move(ns)) {}
+  RedisHash(Engine::Storage *storage, std::string ns) : RedisSubKeyScanner(storage, std::move(ns)) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status IncrBy(Slice key, Slice field, long long increment, long long *ret);
   rocksdb::Status IncrByFloat(Slice key, Slice field, float increment, float *ret);

@@ -429,8 +429,7 @@ uint64_t RedisDBSubKeyScanner::Scan(RedisType type,
                                     std::vector<std::string> *keys) {
   uint64_t cnt = 0;
   if (keys == nullptr ||
-      type == kRedisString ||
-      type == kRedisZSet
+      type == kRedisString
       ) {
     return cnt;
   }
@@ -451,14 +450,14 @@ uint64_t RedisDBSubKeyScanner::Scan(RedisType type,
 
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
-    InternalKey(ns_key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
+    InternalKey(key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
   } else {
-    InternalKey(ns_key, "", metadata.version).Encode(&match_prefix_key);
+    InternalKey(key, "", metadata.version).Encode(&match_prefix_key);
   }
 
   std::string start_key;
   if (!cursor.empty()) {
-    InternalKey(ns_key, cursor, metadata.version).Encode(&start_key);
+    InternalKey(key, cursor, metadata.version).Encode(&start_key);
   } else {
     start_key = match_prefix_key;
   }

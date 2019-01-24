@@ -27,11 +27,11 @@ typedef struct {
 #define ZSET_REVERSED (1<<3)
 #define ZSET_REMOVED 1<<4
 
-class RedisZSet : public RedisDB {
-public:
-  explicit RedisZSet(Engine::Storage *storage, std::string ns):
-           RedisDB(storage, std::move(ns)),
-           score_cf_handle_(storage->GetCFHandle("zset_score")) {}
+class RedisZSet : public RedisDBSubKeyScanner {
+ public:
+  explicit RedisZSet(Engine::Storage *storage, std::string ns) :
+      RedisDBSubKeyScanner(storage, std::move(ns)),
+      score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> &mscores, int *ret);
   rocksdb::Status Card(Slice key, int *ret);
   rocksdb::Status Count(Slice key, ZRangeSpec spec, int *ret);
@@ -45,6 +45,11 @@ public:
   rocksdb::Status Pop(Slice key, int count, bool min, std::vector<MemberScore> *mscores);
   rocksdb::Status Score(Slice key, Slice member, double *score);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
+  uint64_t Scan(Slice key,
+                const std::string &cursor,
+                const uint64_t &limit,
+                const std::string &member_prefix,
+                std::vector<std::string> *members);
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
   rocksdb::Status GetMetadata(Slice key, ZSetMetadata *metadata);

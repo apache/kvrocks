@@ -128,6 +128,17 @@ protected:
   };
 };
 
+class RedisDBSubKeyScanner : public RedisDB {
+ public:
+  explicit RedisDBSubKeyScanner(Engine::Storage *storage, std::string ns) : RedisDB(storage, ns) {}
+  uint64_t Scan(RedisType type,
+                Slice key,
+                const std::string &cursor,
+                const uint64_t &limit,
+                const std::string &field_prefix,
+                std::vector<std::string> *keys);
+};
+
 class LockGuard {
  public:
   explicit LockGuard(LockManager *lock_mgr, Slice key):

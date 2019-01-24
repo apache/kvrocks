@@ -420,3 +420,63 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
 void RedisDB::AppendNamespacePrefix(const Slice &key, std::string *output) {
   ComposeNamespaceKey(namespace_, key, output);
 }
+
+uint64_t RedisDBSubKeyScanner::Scan(RedisType type,
+                                    Slice key,
+                                    const std::string &cursor,
+                                    const uint64_t &limit,
+                                    const std::string &subkey_prefix,
+                                    std::vector<std::string> *keys) {
+  uint64_t cnt = 0;
+  if (keys == nullptr ||
+      type == kRedisString ||
+      type == kRedisZSet
+      ) {
+    return cnt;
+  }
+
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+
+  Metadata metadata(type);
+  rocksdb::Status s = GetMetadata(type, key, &metadata);
+  if (!s.ok()) return cnt;
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options);
+
+  std::string match_prefix_key;
+  if (!subkey_prefix.empty()) {
+    InternalKey(ns_key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
+  } else {
+    InternalKey(ns_key, "", metadata.version).Encode(&match_prefix_key);
+  }
+
+  std::string start_key;
+  if (!cursor.empty()) {
+    InternalKey(ns_key, cursor, metadata.version).Encode(&start_key);
+  } else {
+    start_key = match_prefix_key;
+  }
+
+  for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
+    if (!cursor.empty() && iter->key() == start_key) {
+      //if cursor is not empty, then we need to skip start_key
+      //because we already return that key in the last scan
+      continue;
+    }
+    if (!iter->key().starts_with(match_prefix_key)) {
+      break;
+    }
+    InternalKey ikey(iter->key());
+    keys->emplace_back(ikey.GetSubKey().ToString());
+    cnt++;
+  }
+
+  delete iter;
+  return cnt;
+}

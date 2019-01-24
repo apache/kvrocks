@@ -2008,6 +2008,42 @@ class CommandHScan : public CommandScanBase {
   std::string key;
 };
 
+class CommandSScan : public CommandScanBase {
+ public:
+  explicit CommandSScan() : CommandScanBase("sscan", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 == 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    key = args[1];
+    ParseCursor(args[2]);
+    if (args.size() >= 5) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 7) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> members;
+    set_db.Scan(key, cursor, limit, prefix, &members);
+
+    *output = GenerateOutput(members);
+    return Status::OK();
+  }
+
+ private:
+  std::string key;
+};
+
 class CommandFetchMeta : public Commander {
  public:
   explicit CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -2326,6 +2362,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"smove",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSMove);
+     }},
+    {"sscan",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSScan);
      }},
     // zset command
     {"zadd",

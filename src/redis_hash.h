@@ -12,9 +12,9 @@ typedef struct FieldValue {
   std::string value;
 } FieldValue;
 
-class RedisHash : public RedisDB {
+class RedisHash : public RedisDBSubKeyScanner {
 public:
-  RedisHash(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
+  RedisHash(Engine::Storage *storage, std::string ns) : RedisDBSubKeyScanner(storage, std::move(ns)) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status IncrBy(Slice key, Slice field, long long increment, long long *ret);
   rocksdb::Status IncrByFloat(Slice key, Slice field, float increment, float *ret);
@@ -28,7 +28,7 @@ public:
   uint64_t Scan(Slice key,
                 const std::string &cursor,
                 const uint64_t &limit,
-                const std::string &prefix,
+                const std::string &field_prefix,
                 std::vector<std::string> *fields);
 private:
   rocksdb::Status GetMetadata(Slice key, HashMetadata *metadata);

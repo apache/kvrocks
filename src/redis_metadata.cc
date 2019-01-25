@@ -1,5 +1,6 @@
 #include "redis_metadata.h"
 #include <time.h>
+#include <vector>
 
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
@@ -19,7 +20,7 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
   uint8_t namespace_size;
   GetFixed8(&ns_key, &namespace_size);
   namespace_ = Slice(ns_key.data(), namespace_size);
-  ns_key.remove_prefix(namespace_size); // +4 remove the key size
+  ns_key.remove_prefix(namespace_size);
   key_ = ns_key;
   sub_key_ = sub_key;
   version_ = version;
@@ -27,10 +28,10 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
 }
 
 InternalKey::~InternalKey() {
-  if (buf_ != nullptr && buf_!=prealloc_) delete []buf_;
+  if (buf_ != nullptr && buf_ != prealloc_) delete []buf_;
 }
 
-Slice InternalKey::GetNamespace() const{
+Slice InternalKey::GetNamespace() const {
   return namespace_;
 }
 
@@ -98,14 +99,14 @@ Metadata::Metadata(RedisType type) {
   version = generateVersion();
 }
 
-rocksdb::Status Metadata::Decode(std::string &bytes) {
+rocksdb::Status Metadata::Decode(const std::string &bytes) {
   // flags(1byte) + expire (4byte)
   if (bytes.size() < 5) {
     return rocksdb::Status::InvalidArgument("the metadata was too short");
   }
   Slice input(bytes);
   GetFixed8(&input, &flags);
-  GetFixed32(&input, (uint32_t *) &expire);
+  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
     if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
     GetFixed64(&input, &version);
@@ -156,7 +157,7 @@ bool Metadata::Expired() const {
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   // version is nanosecond
-  if (Type() != kRedisString && version >= static_cast<uint64_t>(now * 1000000000)) { // creating the key metadata
+  if (Type() != kRedisString && version >= static_cast<uint64_t>(now * 1000000000)) {
     return false;
   }
   if (expire > 0 && expire < now) {
@@ -165,7 +166,7 @@ bool Metadata::Expired() const {
   return Type() != kRedisString && size == 0;
 }
 
-ListMetadata::ListMetadata() : Metadata(kRedisList){
+ListMetadata::ListMetadata() : Metadata(kRedisList) {
   head = UINT64_MAX/2;
   tail = head;
 }
@@ -176,10 +177,10 @@ void ListMetadata::Encode(std::string *dst) {
   PutFixed64(dst, tail);
 }
 
-rocksdb::Status ListMetadata::Decode(std::string &bytes) {
+rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
   Slice input(bytes);
   GetFixed8(&input, &flags);
-  GetFixed32(&input, (uint32_t *) &expire);
+  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
     if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
     GetFixed64(&input, &version);
@@ -289,7 +290,7 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
-  *ttl = -2; // ttl is -2 when the key does not exist or expired
+  *ttl = -2;  // ttl is -2 when the key does not exist or expired
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -464,8 +465,8 @@ uint64_t RedisSubKeyScanner::Scan(RedisType type,
 
   for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
     if (!cursor.empty() && iter->key() == start_key) {
-      //if cursor is not empty, then we need to skip start_key
-      //because we already return that key in the last scan
+      // if cursor is not empty, then we need to skip start_key
+      // because we already return that key in the last scan
       continue;
     }
     if (!iter->key().starts_with(match_prefix_key)) {

@@ -2,8 +2,10 @@
 
 #include <rocksdb/env.h>
 #include <rocksdb/status.h>
-#include <string>
 #include <rocksdb/db.h>
+#include <string>
+#include <vector>
+
 #include "redis_encoding.h"
 #include "storage.h"
 
@@ -22,7 +24,7 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key);
 
 class InternalKey {
-public:
+ public:
   explicit InternalKey(Slice ns_key, Slice sub_key, uint64_t version);
   explicit InternalKey(Slice input);
   ~InternalKey();
@@ -33,8 +35,7 @@ public:
   uint64_t GetVersion() const;
   void Encode(std::string *out);
   bool operator==(const InternalKey &that) const;
-
-private:
+ private:
   Slice namespace_;
   Slice key_;
   Slice sub_key_;
@@ -44,53 +45,53 @@ private:
 };
 
 class Metadata {
-public:
+ public:
   uint8_t flags;
   int expire;
   uint64_t version;
   uint32_t size;
 
-public:
+ public:
   explicit Metadata(RedisType type);
 
   RedisType Type() const;
   virtual int32_t TTL() const;
   virtual bool Expired() const;
   virtual void Encode(std::string *dst);
-  virtual rocksdb::Status Decode(std::string &bytes);
+  virtual rocksdb::Status Decode(const std::string &bytes);
   bool operator==(const Metadata &that) const;
 
-private:
+ private:
   uint64_t generateVersion();
 };
 
 class HashMetadata : public Metadata {
-public:
-  explicit HashMetadata():Metadata(kRedisHash){}
+ public:
+  HashMetadata():Metadata(kRedisHash){}
 };
 
 class SetMetadata : public Metadata {
-public:
- explicit SetMetadata(): Metadata(kRedisSet) {}
+ public:
+  SetMetadata(): Metadata(kRedisSet) {}
 };
 
 class ZSetMetadata : public Metadata {
-public:
-  explicit ZSetMetadata(): Metadata(kRedisZSet){}
+ public:
+  ZSetMetadata(): Metadata(kRedisZSet){}
 };
 
 class ListMetadata : public Metadata {
-public:
+ public:
   uint64_t head;
   uint64_t tail;
-  explicit ListMetadata();
-public:
+  ListMetadata();
+ public:
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(std::string &bytes) override;
+  rocksdb::Status Decode(const std::string &bytes) override;
 };
 
 class RedisDB {
-public:
+ public:
   explicit RedisDB(Engine::Storage *storage, std::string ns);
   rocksdb::Status GetMetadata(RedisType type, Slice key, Metadata *metadata);
   rocksdb::Status Expire(Slice key, int timestamp);
@@ -107,7 +108,7 @@ public:
                 std::vector<std::string> *keys);
   void AppendNamespacePrefix(const Slice &key, std::string *output);
 
-protected:
+ protected:
   Engine::Storage *storage_;
   rocksdb::DB *db_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
@@ -145,7 +146,7 @@ class LockGuard {
       lock_mgr_(lock_mgr),
       key_(key) {
       lock_mgr->Lock(key_);
-  };
+  }
   ~LockGuard() {
     lock_mgr_->UnLock(key_);
   }

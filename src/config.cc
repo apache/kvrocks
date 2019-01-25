@@ -25,10 +25,10 @@ void Config::incrOpenFilesLimit(rlim_t maxfiles) {
     return;
   }
   old_limit = limit.rlim_cur;
-  while(best_limit > old_limit) {
+  while (best_limit > old_limit) {
     limit.rlim_cur = best_limit;
     limit.rlim_max = best_limit;
-    if (setrlimit(RLIMIT_NOFILE,&limit) != -1) break;
+    if (setrlimit(RLIMIT_NOFILE, &limit) != -1) break;
     /* We failed to set file limit to 'bestlimit'. Try with a
      * smaller limit decrementing by a few FDs per iteration. */
     if (best_limit < decr_step) break;
@@ -52,29 +52,29 @@ Status Config::parseRocksdbOption(std::string key, std::string value) {
   } catch (std::exception &e) {
     return Status(Status::NotOK, e.what());
   }
-  if (key == "max_open_files" ) {
+  if (key == "max_open_files") {
     rocksdb_options.max_open_files = n;
   } else if (!strncasecmp(key.data(), "write_buffer_size" , strlen("write_buffer_size"))) {
     if (n < 16 || n > 4096) {
       return Status(Status::NotOK, "write_buffer_size should be between 16MB and 4GB");
     }
     rocksdb_options.write_buffer_size = static_cast<size_t>(n) * 1048576;
-  }  else if (key == "max_write_buffer_number" ) {
+  }  else if (key == "max_write_buffer_number") {
     if (n < 1 || n > 64) {
       return Status(Status::NotOK, "max_write_buffer_number should be between 1 and 64");
     }
     rocksdb_options.max_write_buffer_number = n;
-  }  else if (key == "max_background_compactions" ) {
+  }  else if (key == "max_background_compactions") {
     if (n < 1 || n > 16) {
       return Status(Status::NotOK, "max_background_compactions should be between 1 and 16");
     }
     rocksdb_options.max_background_compactions = n;
-  }  else if (key == "max_background_flushes" ) {
+  }  else if (key == "max_background_flushes") {
     if (n < 1 || n > 16) {
       return Status(Status::NotOK, "max_background_flushes should be between 1 and 16");
     }
     rocksdb_options.max_background_flushes = n;
-  }  else if (key == "max_sub_compactions" ) {
+  }  else if (key == "max_sub_compactions") {
     if (n < 1 || n > 8) {
       return Status(Status::NotOK, "max_sub_compactions should be between 1 and 8");
     }
@@ -102,7 +102,7 @@ Status Config::parseConfigFromString(std::string input) {
     if (workers < 1 || workers > 1024) {
       return Status(Status::NotOK, "too many worker threads");
     }
-  } else if (size == 2 && args[0] == "repl-workers" ){
+  } else if (size == 2 && args[0] == "repl-workers") {
     repl_workers = std::stoi(args[1]);
     if (workers < 1 || workers > 1024) {
       return Status(Status::NotOK, "too many replication worker threads");
@@ -117,7 +117,7 @@ Status Config::parseConfigFromString(std::string input) {
     for (unsigned i = 1; i < args.size(); i++) {
       repl_binds.emplace_back(args[i]);
     }
-  }else if (size == 2 && args[0] == "daemonize") {
+  } else if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
@@ -179,7 +179,7 @@ Status Config::parseConfigFromString(std::string input) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size()-10);
-    if(ns.size() > INT8_MAX) {
+    if (ns.size() > INT8_MAX) {
       return Status(Status::NotOK, std::string("namespace size exceed limit ")+std::to_string(INT8_MAX));
     }
     tokens[args[1]] = ns;
@@ -212,7 +212,7 @@ Status Config::Load(std::string path) {
     }
     line_num++;
   }
-  if (backup_dir.empty()) { // backup-dir was not assigned in config file
+  if (backup_dir.empty()) {  // backup-dir was not assigned in config file
     backup_dir = dir+"/backup";
   }
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
@@ -231,14 +231,14 @@ Status Config::Load(std::string path) {
 
 bool Config::rewriteConfigValue(std::vector<std::string> &args) {
 #define REWRITE_IF_MATCH(argc, k1, k2, value) do { \
-  if((argc) == 2 && (k1) == (k2)) { \
+  if ((argc) == 2 && (k1) == (k2)) { \
     if (args[1] != (value)) {       \
       args[1] = (value);            \
       return true;                  \
     }                               \
     return false;                   \
   }                                 \
-} while(0);
+} while (0);
 
   size_t size = args.size();
   REWRITE_IF_MATCH(size, args[0], "masterauth", masterauth);
@@ -251,31 +251,31 @@ bool Config::rewriteConfigValue(std::vector<std::string> &args) {
 
   if (size >= 2 && args[0] == "compact-cron") {
     std::vector<std::string> new_args = compact_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, args);
+    return rewriteCronConfigValue(new_args, &args);
   }
   if (size >= 2 && args[0] == "bgsave-cron") {
     std::vector<std::string> new_args = bgsave_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, args);
+    return rewriteCronConfigValue(new_args, &args);
   }
   return false;
 }
 
-bool Config::rewriteCronConfigValue(const std::vector<std::string> &new_args, std::vector<std::string> &args) {
-  size_t args_size = args.size();
+bool Config::rewriteCronConfigValue(const std::vector<std::string> &new_args, std::vector<std::string> *args) {
+  size_t args_size = args->size();
   size_t new_args_size = new_args.size();
   if (new_args_size == args_size - 1 &&
-      std::equal(new_args.begin(), new_args.end(), args.begin() + 1)
+      std::equal(new_args.begin(), new_args.end(), args->begin() + 1)
       ) {
     return false;
   }
-  args.erase(args.begin() + 1, args.end());
-  for (unsigned long i = 0; i < new_args.size(); i++) {
-    args.push_back(new_args[i]);
+  args->erase(args->begin() + 1, args->end());
+  for (size_t i = 0; i < new_args.size(); i++) {
+    args->push_back(new_args[i]);
   }
   return true;
 }
 
-void Config::Get(std::string &key, std::vector<std::string> *values) {
+void Config::Get(std::string key, std::vector<std::string> *values) {
   key = Util::ToLower(key);
   values->clear();
   bool is_all = key == "*";
@@ -286,7 +286,7 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
     values->emplace_back((k2)); \
     values->emplace_back((value)); \
   } \
-} while(0);
+} while (0);
 
   std::string master_str;
   if (!master_host.empty()) {
@@ -319,16 +319,23 @@ void Config::Get(std::string &key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
 
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.block_cache_size", std::to_string(rocksdb_options.block_cache_size));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
-  PUSH_IF_MATCH(is_rocksdb_all, key, "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.block_cache_size", std::to_string(rocksdb_options.block_cache_size));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 }
 
-Status Config::Set(std::string &key, std::string &value) {
+Status Config::Set(std::string key, const std::string &value) {
   key = Util::ToLower(key);
   if (key == "timeout") {
     timeout = std::stoi(value);
@@ -440,7 +447,7 @@ Status Config::Rewrite() {
   return Status::OK();
 }
 
-void Config::GetNamespace(std::string &ns, std::string *token) {
+void Config::GetNamespace(const std::string &ns, std::string *token) {
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
       *token = iter->first;
@@ -448,7 +455,7 @@ void Config::GetNamespace(std::string &ns, std::string *token) {
   }
 }
 
-Status Config::SetNamepsace(std::string &ns, std::string token) {
+Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
   if (ns == default_namespace) {
     return Status(Status::NotOK, "can't set the default namespace");
   }
@@ -483,7 +490,7 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   return Status::OK();
 }
 
-Status Config::DelNamespace(std::string &ns) {
+Status Config::DelNamespace(const std::string &ns) {
   if (ns == default_namespace) {
     return Status(Status::NotOK, "can't del the default namespace");
   }

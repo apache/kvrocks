@@ -401,7 +401,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << commands_stats_info;
   }
   if (all || section == "keyspace") {
+    time_t last_scan_time = GetLastScanTime(ns);
     string_stream << "# Keyspace\r\n";
+    string_stream << "# Last scan db time: " << std::asctime(localtime(&last_scan_time));
     string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
     string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
   }
@@ -477,6 +479,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
     svr->db_mu_.lock();
     svr->db_scan_infos_[ns].n_key = key_num;
+    time(&svr->db_scan_infos_[ns].last_scan_time);
     svr->db_scan_infos_[ns].is_scanning = false;
     svr->db_mu_.unlock();
   };

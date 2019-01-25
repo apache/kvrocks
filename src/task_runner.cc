@@ -1,7 +1,7 @@
 #include "task_runner.h"
-#include "util.h"
 
 #include <thread>
+#include "util.h"
 
 Status TaskRunner::Publish(Task task) {
   mu_.lock();
@@ -20,8 +20,7 @@ Status TaskRunner::Publish(Task task) {
 }
 
 void TaskRunner::Start() {
-  // TODO: catch exception
-  for(int i = 0; i < n_thread_; i++) {
+  for (int i = 0; i < n_thread_; i++) {
     threads_.emplace_back(std::thread([this]() {
       Util::ThreadSetName("task-runner");
       this->run();
@@ -45,13 +44,13 @@ void TaskRunner::Join() {
 void TaskRunner::run() {
   Task task;
   std::unique_lock<std::mutex> lock(mu_);
-  while(!stop_) {
+  while (!stop_) {
     cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty();});
     while (!stop_ && !task_queue_.empty()) {
       task = task_queue_.front();
       task_queue_.pop_front();
       lock.unlock();
-      if(task.callback) task.callback(task.arg);
+      if (task.callback) task.callback(task.arg);
       lock.lock();
     }
   }

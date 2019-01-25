@@ -18,7 +18,7 @@ struct Task {
 class TaskRunner {
  public:
   explicit TaskRunner(int n_thread = 2, uint32_t max_queue_size = 10240)
-  :max_queue_size_(max_queue_size), n_thread_(n_thread){}
+  :max_queue_size_(max_queue_size), n_thread_(n_thread) {}
   ~TaskRunner() = default;
   Status Publish(Task task);
   size_t QueueSize() { return task_queue_.size(); }

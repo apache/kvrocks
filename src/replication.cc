@@ -20,7 +20,7 @@ void send_string(bufferevent *bev, const std::string &data) {
 }
 
 void ReplicationThread::CallbacksStateMachine::ConnEventCB(
-    bufferevent *bev, short events, void *state_machine_ptr) {
+    bufferevent *bev, int16_t events, void *state_machine_ptr) {
   if (events & BEV_EVENT_CONNECTED) {
     // call write_cb when connected
     bufferevent_data_cb write_cb;
@@ -82,12 +82,12 @@ LOOP_LABEL:
       goto LOOP_LABEL;
     case CBState::AGAIN:
       break;
-    case CBState::QUIT: // state that can not be retry, or all steps are executed.
+    case CBState::QUIT:  // state that can not be retry, or all steps are executed.
       bufferevent_free(bev);
       self->bev_ = nullptr;
       self->repl_->repl_state_ = kReplError;
       break;
-    case CBState::RESTART: // state that can be retried some time later
+    case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
@@ -134,7 +134,7 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
       psync_steps_(this,
                    CallbacksStateMachine::CallbackList{
                        CallbacksStateMachine::CallbackType{
-                           CallbacksStateMachine::WRITE, "dbname write",checkDBNameWriteCB
+                           CallbacksStateMachine::WRITE, "dbname write", checkDBNameWriteCB
                        },
                        CallbacksStateMachine::CallbackType{
                            CallbacksStateMachine::READ, "dbname read", checkDBNameReadCB
@@ -152,7 +152,7 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
       fullsync_steps_(this,
                       CallbacksStateMachine::CallbackList{
                           CallbacksStateMachine::CallbackType{
-                              CallbacksStateMachine::WRITE, "fullsync write",fullSyncWriteCB
+                              CallbacksStateMachine::WRITE, "fullsync write", fullSyncWriteCB
                           },
                           CallbacksStateMachine::CallbackType{
                               CallbacksStateMachine::READ, "fullsync read", fullSyncReadCB}
@@ -340,7 +340,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           if (!s.IsOK()) {
             LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
-            self->stop_flag_ = true; // This is a very critical error, data might be corrupted
+            self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
             return CBState::QUIT;
           }
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
@@ -583,7 +583,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
 }
 
 // Check if stop_flag_ is set, when do, tear down replication
-void ReplicationThread::EventTimerCB(int, short, void *ctx) {
+void ReplicationThread::EventTimerCB(int, int16_t, void *ctx) {
   // DLOG(INFO) << "[replication] timer";
   auto self = static_cast<ReplicationThread *>(ctx);
   if (self->stop_flag_) {

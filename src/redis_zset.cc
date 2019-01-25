@@ -7,7 +7,7 @@ rocksdb::Status RedisZSet::GetMetadata(Slice key, ZSetMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisZSet, key, metadata);
 }
 
-rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, const std::vector<MemberScore> &mscores, int *ret) {
+rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore> &mscores, int *ret) {
   *ret = 0;
 
   std::string ns_key;

@@ -2,6 +2,11 @@
 
 #include <event2/bufferevent.h>
 #include <thread>
+#include <vector>
+#include <utility>
+#include <tuple>
+#include <string>
+#include <deque>
 
 #include "status.h"
 #include "storage.h"
@@ -79,7 +84,7 @@ class ReplicationThread {
     void Start();
     void Stop();
     static void EvCallback(bufferevent *bev, void *ctx);
-    static void ConnEventCB(bufferevent *bev, short events,
+    static void ConnEventCB(bufferevent *bev, int16_t events,
                             void *state_machine_ptr);
     static void SetReadCB(bufferevent *bev, bufferevent_data_cb cb,
                           void *state_machine_ptr);
@@ -124,5 +129,5 @@ class ReplicationThread {
   Status fetchFile(int sock_fd, std::string path, uint32_t crc);
   Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 
-  static void EventTimerCB(int, short, void *ctx);
+  static void EventTimerCB(int, int16_t, void *ctx);
 };

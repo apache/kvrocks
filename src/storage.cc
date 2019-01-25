@@ -188,10 +188,6 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
   return cf_handles_[0];
 }
 
-std::vector<rocksdb::ColumnFamilyHandle *> * Storage::GetCFHandles() {
-  return &cf_handles_;
-}
-
 rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;

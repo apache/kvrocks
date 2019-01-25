@@ -40,7 +40,6 @@ class Storage {
     return config_->db_name;
   }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
-  std::vector<rocksdb::ColumnFamilyHandle*>* GetCFHandles();
   LockManager *GetLockManager() { return &lock_mgr_; }
 
   Storage(const Storage &) = delete;

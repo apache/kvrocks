@@ -291,7 +291,7 @@ class CommandIncrBy : public Commander {
   }
 
  private:
-  int64_t increment_;
+  int64_t increment_ = 0;
 };
 
 class CommandDecrBy : public Commander {
@@ -317,7 +317,7 @@ class CommandDecrBy : public Commander {
   }
 
  private:
-  int64_t increment_;
+  int64_t increment_ = 0;
 };
 
 class CommandDel : public Commander {
@@ -415,7 +415,7 @@ class CommandExpire : public Commander {
   }
 
  private:
-  int seconds_;
+  int seconds_ = 0;
 };
 
 class CommandHGet : public Commander {
@@ -553,7 +553,7 @@ class CommandHIncrBy : public Commander {
   }
 
  private:
-  int64_t increment_;
+  int64_t increment_ = 0;
 };
 
 class CommandHMGet : public Commander {
@@ -769,7 +769,7 @@ class CommandLRange : public Commander {
   }
 
  private:
-  int start_, stop_;
+  int start_ = 0, stop_ = 0;
 };
 
 class CommandLLen : public Commander {
@@ -811,7 +811,7 @@ class CommandLIndex : public Commander {
   }
 
  private:
-  int index_;
+  int index_ = 0;
 };
 
 class CommandLSet : public Commander {
@@ -836,7 +836,7 @@ class CommandLSet : public Commander {
   }
 
  private:
-  int index_;
+  int index_ = 0;
 };
 
 class CommandLTrim : public Commander {
@@ -863,7 +863,7 @@ class CommandLTrim : public Commander {
   }
 
  private:
-  int start_, stop_;
+  int start_ = 0, stop_ = 0;
 };
 
 class CommandLPushRPop : public Commander {
@@ -1140,7 +1140,7 @@ class CommandZIncrBy : public Commander {
   }
 
  private:
-  double incr_;
+  double incr_ = 0.0;
 };
 
 class CommandZPop : public Commander {
@@ -1227,8 +1227,8 @@ class CommandZRange : public Commander {
   }
 
  private:
-  int start_;
-  int stop_;
+  int start_ = 0;
+  int stop_ = 0;
   bool reversed_;
   bool with_scores_ = false;
 };
@@ -1284,7 +1284,7 @@ class CommandZRangeByScore : public Commander {
 
  private:
   ZRangeSpec spec_;
-  bool with_scores_;
+  bool with_scores_ = false;
 };
 
 class CommandZRank : public Commander {
@@ -1357,8 +1357,8 @@ class CommandZRemRangeByRank : public Commander {
   }
 
  private:
-  int start_;
-  int stop_;
+  int start_ = 0;
+  int stop_ = 0;
 };
 
 class CommandZRemRangeByScore : public Commander {
@@ -1541,7 +1541,7 @@ class CommandSlaveOf : public Commander {
 
  private:
   std::string host_;
-  uint32_t port_;
+  uint32_t port_ = 0;
 };
 
 class CommandPSync : public Commander {
@@ -1689,16 +1689,16 @@ class CommandPSync : public Commander {
 
  private:
   rocksdb::SequenceNumber next_seq_;
-  Server *svr_;
-  Connection *conn_;
-  event *timer_;
+  Server *svr_ = nullptr;
+  Connection *conn_ = nullptr;
+  event *timer_ = nullptr;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_;
   enum class State {
     GetWALIter,
     SendBatch,
     WaitWAL,
   };
-  State state_;
+  State state_ = GetWALIter;
   Server::SlaveInfoPos slave_info_pos_;
 
   // Return OK if the seq is in the range of the current WAL
@@ -1868,7 +1868,7 @@ class CommandClient : public Commander {
   std::string addr_ = "";
   bool skipme_ = false;
   uint64_t id_ = 0;
-  bool new_format_;
+  bool new_format_ = true;
 };
 
 class CommandShutdown : public Commander {

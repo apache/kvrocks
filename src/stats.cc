@@ -13,12 +13,13 @@ int64_t Stats::GetMemoryRSS() {
   return static_cast<int64_t>(t_info.resident_size);
 }
 #else
+#include <fcntl.h>
+
 #include <string>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 
-long Stats::GetMemoryRSS() {
+int64_t Stats::GetMemoryRSS() {
   int fd, count;
   char buf[4096], filename[256];
   snprintf(filename, sizeof(filename), "/proc/%d/stat", getpid());
@@ -31,7 +32,7 @@ long Stats::GetMemoryRSS() {
 
   char *start = buf;
   count = 23; /* RSS is the 24th field in /proc/<pid>/stat */
-  while(start && count--) {
+  while (start && count--) {
     start = strchr(start, ' ');
     if (start) start++;
   }

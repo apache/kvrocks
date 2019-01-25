@@ -1,9 +1,9 @@
 #pragma once
 
+#include <unistd.h>
 #include <map>
 #include <atomic>
 #include <string>
-#include <unistd.h>
 
 struct command_stat {
   std::atomic<uint64_t> calls;

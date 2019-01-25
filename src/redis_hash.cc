@@ -215,8 +215,10 @@ rocksdb::Status RedisHash::MSet(Slice key, const std::vector<FieldValue> &field_
       std::string fieldValue;
       s = db_->Get(rocksdb::ReadOptions(), sub_key, &fieldValue);
       if (!s.ok() && !s.IsNotFound()) return s;
-      if (s.ok() && ((fieldValue == fv.value) || nx)) continue;
-      exists = true;
+      if (s.ok()) {
+        if (((fieldValue == fv.value) || nx)) continue;
+        exists = true;
+      }
     }
     if (!exists) added++;
     batch.Put(sub_key, fv.value);

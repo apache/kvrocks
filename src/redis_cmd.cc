@@ -172,6 +172,21 @@ class CommandGet : public Commander {
   }
 };
 
+class CommandGetSet : public Commander {
+ public:
+  CommandGetSet() : Commander("getset", 3, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    std::string old_value;
+    rocksdb::Status s = string_db.GetSet(args_[1], args_[2], &old_value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::BulkString(old_value);
+    return Status::OK();
+  }
+};
+
 class CommandMGet : public Commander {
  public:
   CommandMGet() : Commander("mget", -2, false) {}
@@ -1698,7 +1713,7 @@ class CommandPSync : public Commander {
     SendBatch,
     WaitWAL,
   };
-  State state_ = GetWALIter;
+  State state_ = State::GetWALIter;
   Server::SlaveInfoPos slave_info_pos_;
 
   // Return OK if the seq is in the range of the current WAL
@@ -2177,6 +2192,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"get",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGet);
+     }},
+    {"getset",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGetSet);
      }},
     {"mget",
           []() -> std::unique_ptr<Commander> {

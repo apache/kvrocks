@@ -35,7 +35,7 @@ static void usage(const char* program) {
 static Options *parseCommandLineOptions(int argc, char **argv) {
   int ch;
   auto opts = new Options();
-  while((ch = ::getopt(argc, argv, "c:hv")) != -1) {
+  while ((ch = ::getopt(argc, argv, "c:hv")) != -1) {
     switch (ch) {
       case 'c': opts->conf_file = optarg; break;
       case 'h': opts->show_usage = true; break;
@@ -61,7 +61,7 @@ static void daemonize() {
     LOG(ERROR) << "Failed to fork the process, err: " << strerror(errno);
     exit(1);
   }
-  if (pid > 0) exit(EXIT_SUCCESS); // parent process
+  if (pid > 0) exit(EXIT_SUCCESS);  // parent process
   // change the file mode
   umask(0);
   if (setsid() < 0) {

@@ -107,7 +107,7 @@ rocksdb::Status RedisString::SetNX(Slice key, Slice value, int *ret) {
   return MSetNX(pairs, ret);
 }
 
-rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *ret) {
+rocksdb::Status RedisString::SetRange(Slice key, int offset, Slice value, int *ret) {
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);

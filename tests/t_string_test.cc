@@ -143,16 +143,16 @@ TEST_F(RedisStringTest, SetEX) {
 TEST_F(RedisStringTest, SetRange) {
   int ret;
   string->Set(key_, "hello,world");
-  string->SetRange(key_, "redis", 6, &ret);
+  string->SetRange(key_, 6, "redis", &ret);
   EXPECT_EQ(11, ret);
   std::string value;
   string->Get(key_, &value);
   EXPECT_EQ("hello,redis", value);
-  string->SetRange(key_, "redis-1", 6, &ret);
+  string->SetRange(key_, 6, "redis-1", &ret);
   EXPECT_EQ(13, ret);
   string->Get(key_, &value);
   EXPECT_EQ("hello,redis-1", value);
-  string->SetRange(key_, "1", 15, &ret);
+  string->SetRange(key_, 15, "1", &ret);
   EXPECT_EQ(16, ret);
   string->Get(key_, &value);
   EXPECT_EQ(16, value.size());

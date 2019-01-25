@@ -20,6 +20,9 @@
 #include "worker.h"
 
 namespace Redis {
+
+const char *kValueNotInterger = "value is not an integer or out of range";
+
 class CommandAuth : public Commander {
  public:
   CommandAuth() : Commander("auth", 2, false) {}
@@ -187,6 +190,32 @@ class CommandGetSet : public Commander {
   }
 };
 
+class CommandSetRange: public Commander {
+ public:
+  CommandSetRange() : Commander("setrange", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      offset_ = std::stoi(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.SetRange(args_[1], offset_, args_[3], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int offset_ = 0;
+};
+
 class CommandMGet : public Commander {
  public:
   CommandMGet() : Commander("mget", -2, false) {}
@@ -290,8 +319,7 @@ class CommandIncrBy : public Commander {
     try {
       increment_ = std::stoll(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -316,8 +344,7 @@ class CommandDecrBy : public Commander {
     try {
       increment_ = std::stoll(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -412,8 +439,7 @@ class CommandExpire : public Commander {
       }
       seconds_ += now;
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -551,8 +577,7 @@ class CommandHIncrBy : public Commander {
     try {
       increment_ = std::stoll(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -767,8 +792,7 @@ class CommandLRange : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -809,8 +833,7 @@ class CommandLIndex : public Commander {
     try {
       index_ = std::stoi(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -836,8 +859,7 @@ class CommandLSet : public Commander {
     try {
       index_ = std::stoi(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -862,8 +884,7 @@ class CommandLTrim : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -988,8 +1009,7 @@ class CommandSPop : public Commander {
         count_ = std::stoi(args[2]);
       }
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -1017,8 +1037,7 @@ class CommandSRandMember : public Commander {
         count_ = std::stoi(args[2]);
       }
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr,
-                    "value is not an integer or out of range");
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -1824,7 +1843,7 @@ class CommandClient : public Commander {
           try {
             id_ = std::stoll(args[i+1]);
           } catch (std::exception &e) {
-            return Status(Status::RedisParseErr, "value is not an integer or out of range");
+            return Status(Status::RedisParseErr, kValueNotInterger);
           }
         } else if (args[i] == "skipme" && moreargs) {
           if (args[i+1] == "yes") {
@@ -2196,6 +2215,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"getset",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGetSet);
+     }},
+    {"setrange",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSetRange);
      }},
     {"mget",
           []() -> std::unique_ptr<Commander> {

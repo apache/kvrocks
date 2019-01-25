@@ -19,7 +19,7 @@ class RedisString :public RedisDB {
   rocksdb::Status Set(Slice key, Slice value);
   rocksdb::Status SetEX(Slice key, Slice value, int ttl);
   rocksdb::Status SetNX(Slice key, Slice value, int *ret);
-  rocksdb::Status SetRange(Slice key, Slice value, int offset, int *ret);
+  rocksdb::Status SetRange(Slice key, int offset, Slice value, int *ret);
   rocksdb::Status IncrBy(Slice key, int64_t increment, int64_t *ret);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, int ttl = 0);

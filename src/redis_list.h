@@ -1,23 +1,26 @@
 #pragma once
 
+#include <stdint.h>
+#include <vector>
+#include <string>
+
 #include "redis_metadata.h"
 #include "redis_encoding.h"
-#include <stdint.h>
 
 class RedisList :public RedisDB {
-public:
+ public:
   explicit RedisList(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
-  rocksdb::Status Push(Slice key, std::vector<Slice> elems, bool left, int *ret);
-  rocksdb::Status PushX(Slice key, std::vector<Slice> elems, bool left, int *ret);
+  rocksdb::Status Trim(Slice key, int start, int stop);
+  rocksdb::Status Set(Slice key, int index, Slice elem);
   rocksdb::Status Pop(Slice key, std::string *elem, bool left);
   rocksdb::Status Index(Slice key, int index, std::string *elem);
-  rocksdb::Status Range(Slice key, int start, int stop, std::vector<std::string> *elems);
-  rocksdb::Status Set(Slice key, int index, Slice elem);
-  rocksdb::Status Trim(Slice key, int start, int stop);
   rocksdb::Status RPopLPush(Slice src, Slice dst, std::string *elem);
+  rocksdb::Status Push(Slice key, std::vector<Slice> elems, bool left, int *ret);
+  rocksdb::Status PushX(Slice key, std::vector<Slice> elems, bool left, int *ret);
+  rocksdb::Status Range(Slice key, int start, int stop, std::vector<std::string> *elems);
 
-private:
+ private:
   rocksdb::Status GetMetadata(Slice key, ListMetadata *metadata);
   rocksdb::Status push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret);
 };

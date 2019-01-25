@@ -1,5 +1,4 @@
 #include "redis_list.h"
-#include <vector>
 
 rocksdb::Status RedisList::GetMetadata(Slice key, ListMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisList, key, metadata);
@@ -220,7 +219,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   if (start < 0 || start > stop) {
     return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
   }
-  // TODO: copy the alive elems when it's much less then the list size
+
   std::string buf;
   rocksdb::WriteBatch batch;
   uint64_t left_index = metadata.head + start;

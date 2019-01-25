@@ -106,7 +106,7 @@ void Split(std::string in, std::string delim, std::vector<std::string> *out) {
   } while (pos != std::string::npos);
 }
 
-void BytesToHuman(char *s, int size, uint64_t n) {
+void BytesToHuman(char *s, size_t size, uint64_t n) {
   double d;
 
   if (n < 1024) {

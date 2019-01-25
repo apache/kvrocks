@@ -35,12 +35,12 @@ class ReplicationThread {
 
  private:
   std::thread t_;
-  event_base *base_;
+  event_base *base_ = nullptr;
   bool stop_flag_ = false;
   std::string host_;
   uint32_t port_;
   std::string auth_;
-  Engine::Storage *storage_;
+  Engine::Storage *storage_ = nullptr;
   rocksdb::SequenceNumber seq_ = 0;
   ReplState repl_state_;
   time_t last_io_time_ = 0;

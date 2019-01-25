@@ -497,8 +497,8 @@ Status Config::DelNamespace(const std::string &ns) {
   }
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
-      tokens.erase(iter);
       LOG(WARNING) << "Deleted namespace: " << ns << ", token: " << iter->first;
+      tokens.erase(iter);
       return Status::OK();
     }
   }

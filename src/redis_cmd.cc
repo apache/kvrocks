@@ -1865,7 +1865,6 @@ class CommandClient : public Commander {
 
  private:
   std::string subcommand_;
-  std::string name_;
   std::string addr_ = "";
   bool skipme_ = false;
   uint64_t id_ = 0;
@@ -1890,7 +1889,7 @@ class CommandShutdown : public Commander {
 
 class CommandScanBase : public Commander {
  public:
-  explicit CommandScanBase(std::string name, int arity, bool is_write = false)
+  explicit CommandScanBase(const std::string &name, int arity, bool is_write = false)
       : Commander(name, arity, is_write) {}
   Status ParseMatchAndCountParam(const std::string &type, const std::string &value) {
     if (type == "match") {
@@ -1938,7 +1937,7 @@ class CommandScanBase : public Commander {
 
 class CommandSubkeyScanBase : public CommandScanBase {
  public:
-  explicit CommandSubkeyScanBase(std::string name, int arity, bool is_write = false)
+  explicit CommandSubkeyScanBase(const std::string &name, int arity, bool is_write = false)
       : CommandScanBase(name, arity, is_write) {}
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 == 0) {

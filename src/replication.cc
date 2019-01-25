@@ -527,7 +527,6 @@ Status ReplicationThread::sendAuth(int sock_fd) {
 
 Status ReplicationThread::fetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
-  char *line;
   size_t line_len, file_size;
 
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
@@ -543,7 +542,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
     }
-    line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
       free(line);

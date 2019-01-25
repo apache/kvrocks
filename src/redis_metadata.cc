@@ -14,6 +14,7 @@ InternalKey::InternalKey(Slice input) {
   GetFixed64(&input, &version_);
   sub_key_ = Slice(input.data(), input.size());
   buf_ = nullptr;
+  memset(prealloc_, '\0', sizeof(prealloc_));
 }
 
 InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
@@ -25,6 +26,7 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version) {
   sub_key_ = sub_key;
   version_ = version;
   buf_ = nullptr;
+  memset(prealloc_, '\0', sizeof(prealloc_));
 }
 
 InternalKey::~InternalKey() {
@@ -304,7 +306,7 @@ rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
   return rocksdb::Status::OK();
 }
 
-uint64_t RedisDB::GetKeyNum(std::string prefix) {
+uint64_t RedisDB::GetKeyNum(const std::string &prefix) {
   return Keys(prefix, nullptr);
 }
 

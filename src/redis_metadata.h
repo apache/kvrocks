@@ -35,6 +35,7 @@ class InternalKey {
   uint64_t GetVersion() const;
   void Encode(std::string *out);
   bool operator==(const InternalKey &that) const;
+
  private:
   Slice namespace_;
   Slice key_;
@@ -100,7 +101,7 @@ class RedisDB {
   rocksdb::Status TTL(Slice key, int *ttl);
   rocksdb::Status Type(Slice key, RedisType *type);
   rocksdb::Status FlushAll();
-  uint64_t GetKeyNum(std::string prefix = "");
+  uint64_t GetKeyNum(const std::string &prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
   uint64_t Scan(const std::string &cursor,
                 const uint64_t &limit,
@@ -131,7 +132,8 @@ class RedisDB {
 
 class RedisSubKeyScanner : public RedisDB {
  public:
-  explicit RedisSubKeyScanner(Engine::Storage *storage, std::string ns) : RedisDB(storage, ns) {}
+  explicit RedisSubKeyScanner(Engine::Storage *storage, const std::string &ns)
+      : RedisDB(storage, ns) {}
   uint64_t Scan(RedisType type,
                 Slice key,
                 const std::string &cursor,

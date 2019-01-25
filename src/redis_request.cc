@@ -104,13 +104,14 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
     if (*iter == channel) {
       subscribe_channels_.erase(iter);
       owner_->svr_->UnSubscribeChannel(channel, this);
+      return;
     }
   }
 }
 
 void Connection::UnSubscribeAll() {
   if (subscribe_channels_.empty()) return;
-  for (auto chan : subscribe_channels_) {
+  for (const auto &chan : subscribe_channels_) {
     owner_->svr_->UnSubscribeChannel(chan, this);
   }
   subscribe_channels_.clear();
@@ -149,7 +150,7 @@ void Request::Tokenize(evbuffer *input) {
         evbuffer_drain(input, bulk_len_ + 2);
         svr_->stats_.IncrInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
-        if (multi_bulk_len_ <= 0) {
+        if (multi_bulk_len_ == 0) {
           state_ = ArrayLen;
           commands_.push_back(std::move(tokens_));
           tokens_.clear();

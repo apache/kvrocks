@@ -403,7 +403,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "keyspace") {
     time_t last_scan_time = GetLastScanTime(ns);
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::asctime(localtime(&last_scan_time));
+    string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
     string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
     string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
   }

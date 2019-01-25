@@ -1,5 +1,6 @@
 #include "redis_string.h"
 #include <string>
+#include <limits>
 
 rocksdb::Status RedisString::getValue(Slice key, std::string *raw_value, std::string *value) {
   if (value) value->clear();

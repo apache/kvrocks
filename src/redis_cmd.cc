@@ -134,7 +134,6 @@ class CommandConfig : public Commander {
       return Status::OK();
     }
 
-    std::string err;
     Config *config = svr->GetConfig();
     if (args_.size() == 2 && Util::ToLower(args_[1]) == "rewrite") {
       Status s = config->Rewrite();
@@ -1047,9 +1046,8 @@ class CommandZAdd : public Commander {
     }
 
     try {
-      double score;
       for (unsigned i = 2; i < args.size(); i += 2) {
-        score = std::stod(args[i]);
+        double score = std::stod(args[i]);
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
@@ -1834,7 +1832,6 @@ class CommandClient : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "list") {
-      std::string o;
       *output = Redis::BulkString(srv->GetClientsStr());
       return Status::OK();
     } else if (subcommand_ == "setname") {

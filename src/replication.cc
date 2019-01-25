@@ -494,30 +494,32 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
 }
 
 Status ReplicationThread::sendAuth(int sock_fd) {
-  char *line;
   size_t line_len;
-  evbuffer *evbuf = evbuffer_new();
 
   // Send auth when needed
   if (!auth_.empty()) {
+    evbuffer *evbuf = evbuffer_new();
     const auto auth_len_str = std::to_string(auth_.length());
     Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
         CRLF + auth_ + CRLF);
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
         LOG(ERROR) << "[replication] Failed to auth resp";
+        evbuffer_free(evbuf);
         return Status(Status::NotOK);
       }
-      line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line, "+OK", 3) != 0) {
-        free(line);
         LOG(ERROR) << "[replication] Auth failed";
+        free(line);
+        evbuffer_free(evbuf);
         return Status(Status::NotOK);
       }
       free(line);
       break;
     }
+    evbuffer_free(evbuf);
   }
   return Status::OK();
 }
@@ -527,7 +529,6 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
   char *line;
   size_t line_len, file_size;
-  evbuffer *evbuf = evbuffer_new();
 
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
@@ -535,21 +536,25 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
     return Status(Status::NotOK);
   }
 
+  evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+      evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
     }
     line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
       free(line);
+      evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("_fetch_file got err: ")+line);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
     break;
   }
+
   // Write to tmp file
   auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
   if (!tmp_file) {
@@ -564,6 +569,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       auto data_len = evbuffer_remove(evbuf, data, 1024);
       if (data_len == 0) continue;
       if (data_len < 0) {
+        evbuffer_free(evbuf);
         return Status(Status::NotOK, "read sst file data error");
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
@@ -571,13 +577,16 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       seen_bytes += data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+        evbuffer_free(evbuf);
         return Status(Status::NotOK, std::string("read sst file data, err: ")+strerror(errno));
       }
     }
   }
   if (crc != tmp_crc) {
+    evbuffer_free(evbuf);
     return Status(Status::NotOK, "CRC mismatch");
   }
+  evbuffer_free(evbuf);
   // File is OK, rename to formal name
   return Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
 }

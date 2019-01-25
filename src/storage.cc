@@ -101,24 +101,6 @@ Status Storage::Open() {
   return Status::OK();
 }
 
-#ifndef NDEBUG
-class DebuggingLogger : public rocksdb::Logger {
- public:
-  explicit DebuggingLogger(
-      const rocksdb::InfoLogLevel log_level = rocksdb::InfoLogLevel::INFO_LEVEL)
-      : Logger(log_level) {}
-
-  // Brings overloaded Logv()s into scope so they're not hidden when we override
-  // a subset of them.
-  using Logger::Logv;
-
-  void Logv(const char *format, va_list ap) override {
-    vfprintf(stderr, format, ap);
-    fprintf(stderr, "\n");
-  }
-};
-#endif
-
 Status Storage::CreateBackup() {
   LOG(INFO) << "Start to create new backup";
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
@@ -147,9 +129,6 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
   // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
-#ifndef NDEBUG
-  bk_option.info_log = new DebuggingLogger;
-#endif
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
 

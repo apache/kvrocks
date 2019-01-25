@@ -472,7 +472,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
               continue;
             }
             DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
-            auto s = this->fetchFile(sock_fd, f_name, f_crc);
+            s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
               return false;

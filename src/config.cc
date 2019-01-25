@@ -200,7 +200,7 @@ Status Config::Load(std::string path) {
     return Status(Status::NotOK, strerror(errno));
   }
 
-  std::string line, parse_err;
+  std::string line;
   int line_num = 1;
   while (!file.eof()) {
     std::getline(file, line);
@@ -408,7 +408,7 @@ Status Config::Rewrite() {
     return Status(Status::NotOK, strerror(errno));
   }
 
-  std::string line, new_line, buffer;
+  std::string line, buffer;
   std::vector<std::string> args;
   while (!input_file.eof()) {
     std::getline(input_file, line);

@@ -18,7 +18,6 @@ rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  std::vector<Slice> new_members;
   std::string value;
   rocksdb::WriteBatch batch;
   std::string sub_key;

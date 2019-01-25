@@ -120,5 +120,5 @@ double DecodeDouble(const char *ptr) {
   } else {
     decoded &= 0x7fffffffffffffff;
   }
-  return *((double *)&decoded);
+  return *(reinterpret_cast<double *>(&decoded));
 }

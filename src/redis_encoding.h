@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 #include <rocksdb/slice.h>
+#include <string>
 
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value);
 bool GetFixed32(rocksdb::Slice *input, uint32_t *value);

@@ -3,15 +3,15 @@
 #include <thread>
 #include <string>
 
-LockManager::LockManager(int hash_power): hash_power_(hash_power){
-  hash_mask_ = (1U<<hash_power) - 1;
+LockManager::LockManager(int hash_power): hash_power_(hash_power) {
+  hash_mask_ = (1U << hash_power) - 1;
   for (unsigned i = 0; i < Size(); i++) {
     mutex_pool_.emplace_back(new std::mutex());
   }
 }
 
 LockManager::~LockManager() {
-  for(auto mu : mutex_pool_) {
+  for (const auto &mu : mutex_pool_) {
     delete mu;
   }
 }

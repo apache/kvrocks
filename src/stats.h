@@ -29,5 +29,5 @@ class Stats {
   void IncrFullSyncCounter() { fullsync_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
-  static long GetMemoryRSS();
+  static int64_t GetMemoryRSS();
 };

@@ -3,13 +3,14 @@
 #if defined(__APPLE__)
 #include <mach/task.h>
 #include <mach/mach_init.h>
-long Stats::GetMemoryRSS() {
+
+int64_t Stats::GetMemoryRSS() {
   task_t task = MACH_PORT_NULL;
   struct task_basic_info t_info;
   mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
   if (task_for_pid(current_task(), getpid(), &task) != KERN_SUCCESS) return 0;
   task_info(task, TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
-  return t_info.resident_size;
+  return static_cast<int64_t>(t_info.resident_size);
 }
 #else
 #include <string>
@@ -39,7 +40,7 @@ long Stats::GetMemoryRSS() {
   if (!stop) return 0;
   *stop = '\0';
   int rss = std::stoi(start);
-  return rss * sysconf(_SC_PAGESIZE);
+  return static_cast<int64_t>(rss * sysconf(_SC_PAGESIZE));
 }
 #endif
 

@@ -1421,7 +1421,7 @@ class CommandInfo : public Commander {
       section = Util::ToLower(args_[1]);
     }
     std::string info;
-    svr->GetInfo(conn->GetNamespace(), section, info);
+    svr->GetInfo(conn->GetNamespace(), section, &info);
     *output = Redis::BulkString(info);
     return Status::OK();
   }

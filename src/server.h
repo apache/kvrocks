@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <list>
 #include <string>
 #include <vector>
@@ -60,28 +61,28 @@ class Server {
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
   bool IsSlave() { return !master_host_.empty(); }
-  void RemoveSlave(SlaveInfoPos &pos);
+  void RemoveSlave(const SlaveInfoPos &pos);
   SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
-  void UpdateSlaveStats(SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
+  void UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
 
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
 
-  void GetStatsInfo(std::string &info);
-  void GetServerInfo(std::string &info);
-  void GetMemoryInfo(std::string &info);
-  void GetRocksDBInfo(std::string &info);
-  void GetClientsInfo(std::string &info);
-  void GetReplicationInfo(std::string &info);
-  void GetCommandsStatsInfo(std::string &info);
-  void GetInfo(std::string ns, std::string section, std::string &info);
+  void GetStatsInfo(std::string *info);
+  void GetServerInfo(std::string *info);
+  void GetMemoryInfo(std::string *info);
+  void GetRocksDBInfo(std::string *info);
+  void GetClientsInfo(std::string *info);
+  void GetReplicationInfo(std::string *info);
+  void GetCommandsStatsInfo(std::string *info);
+  void GetInfo(const std::string &ns, const std::string &section, std::string *info);
 
   Status AsyncCompactDB();
   Status AsyncBgsaveDB();
-  Status AsyncScanDBSize(std::string &ns);
-  uint64_t GetLastKeyNum(std::string &ns);
-  time_t GetLastScanTime(std::string &ns);
+  Status AsyncScanDBSize(const std::string &ns);
+  uint64_t GetLastKeyNum(const std::string &ns);
+  time_t GetLastScanTime(const std::string &ns);
 
   void SlowlogReset();
   uint32_t SlowlogLen();

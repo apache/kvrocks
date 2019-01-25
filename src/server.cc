@@ -1,16 +1,17 @@
 #include "server.h"
-#include "worker.h"
-#include "redis_request.h"
-#include "version.h"
-#include "util.h"
 
 #include <sys/utsname.h>
 #include <sys/resource.h>
 #include <glog/logging.h>
+#include <utility>
+
+#include "util.h"
+#include "worker.h"
+#include "version.h"
+#include "redis_request.h"
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
-
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
@@ -24,7 +25,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
 }
 
 Server::~Server() {
-  for(const auto &worker_thread : worker_threads_) {
+  for (const auto &worker_thread : worker_threads_) {
     delete worker_thread;
   }
   delete task_runner_;
@@ -56,7 +57,7 @@ void Server::Stop() {
   }
   task_runner_->Stop();
   task_runner_->Join();
-  if(cron_thread_.joinable()) cron_thread_.join();
+  if (cron_thread_.joinable()) cron_thread_.join();
 }
 
 void Server::Join() {
@@ -66,7 +67,7 @@ void Server::Join() {
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
-  // TODO: need mutex to avoid racing, so to make sure only one replication thread is running
+  // TODO(@ruoshan): need mutex to avoid racing, so to make sure only one replication thread is running
   if (!master_host_.empty()) {
     LOG(INFO) << "Master already configured";
     return Status(Status::RedisReplicationConflict, "replication in progress");
@@ -125,7 +126,7 @@ void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *c
   if (iter == pubsub_channels_.end()) {
     return;
   }
-  for (const auto c: iter->second) {
+  for (const auto &c : iter->second) {
     if (conn == c) {
       iter->second.remove(c);
       break;
@@ -165,7 +166,7 @@ Status Server::compactCron() {
 
 Status Server::bgsaveCron() {
   if (this->IsSlave()) {
-    return Status::OK(); // Don't let slave do any bgsave
+    return Status::OK();  // Don't let slave do any bgsave
   }
   Status s = AsyncBgsaveDB();
   if (!s.IsOK()) return s;
@@ -181,7 +182,7 @@ void Server::cron() {
     if (counter != 0 && counter % 10000 == 0) {
       clientsCron();
     }
-    //check every 1 minute
+    // check every 1 minute
     if (counter != 0 && counter % 60000 == 0) {
       if (config_->compact_cron.IsEnabled()) {
         t = std::time(0);
@@ -203,7 +204,7 @@ void Server::cron() {
   }
 }
 
-void Server::GetRocksDBInfo(std::string &info) {
+void Server::GetRocksDBInfo(std::string *info) {
   std::ostringstream string_stream;
   rocksdb::DB *db = storage_->GetDB();
 
@@ -240,10 +241,10 @@ void Server::GetRocksDBInfo(std::string &info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_superversion:" << num_superversion << "\r\n";
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetServerInfo(std::string &info) {
+void Server::GetServerInfo(std::string *info) {
   time_t now;
   std::ostringstream string_stream;
   static int call_uname = 1;
@@ -263,34 +264,33 @@ void Server::GetServerInfo(std::string &info) {
 #else
   string_stream << "gcc_version:0,0,0\r\n";
 #endif
-  string_stream << "arch_bits:" << sizeof(long)*8 << "\r\n";
+  string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
   string_stream << "uptime_in_seconds:" << now-start_time_ << "\r\n";
   string_stream << "uptime_in_days:" << (now-start_time_)/86400 << "\r\n";
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetClientsInfo(std::string &info) {
+void Server::GetClientsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Clients\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
-  // TODO: blocked clients
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetMemoryInfo(std::string &info) {
+void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
   char buf[16];
-  long rss = Stats::GetMemoryRSS();
-  Util::BytesToHuman(buf, static_cast<unsigned long long>(rss));
+  int64_t rss = Stats::GetMemoryRSS();
+  Util::BytesToHuman(buf, static_cast<uint64_t>(rss));
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss <<"\r\n";
   string_stream << "used_memory_human:" << buf <<"\r\n";
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetReplicationInfo(std::string &info) {
+void Server::GetReplicationInfo(std::string *info) {
   time_t now;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
@@ -301,15 +301,15 @@ void Server::GetReplicationInfo(std::string &info) {
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
     string_stream << "master_link_status:" << (state == kReplConnected? "up":"down") << "\r\n";
-    string_stream << "master_sync_unrecoverable_error:" << (state == kReplError? "yes" : "no") << "\r\n";
-    string_stream << "master_sync_in_progress:" << (state==kReplFetchMeta||state==kReplFetchSST) << "\r\n";
+    string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
+    string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
     string_stream << "slave_repl_offset:" << replication_thread_->Offset() << "\r\n";
   } else {
     string_stream << "role: master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
-    for (const auto &slave_info: slaves_info_) {
+    for (const auto &slave_info : slaves_info_) {
       string_stream << "slave_" << std::to_string(idx) << ":";
       string_stream << "addr=" << slave_info->addr
                     << ",port=" << slave_info->port
@@ -318,10 +318,10 @@ void Server::GetReplicationInfo(std::string &info) {
       ++idx;
     }
   }
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetStatsInfo(std::string &info) {
+void Server::GetStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Stats\r\n";
   string_stream << "total_connections_received:" << total_clients_ <<"\r\n";
@@ -332,55 +332,56 @@ void Server::GetStatsInfo(std::string &info) {
   string_stream << "sync_partial_ok:" << stats_.psync_ok_counter <<"\r\n";
   string_stream << "sync_partial_err:" << stats_.psync_err_counter <<"\r\n";
   string_stream << "pubsub_channels:" << pubsub_channels_.size() <<"\r\n";
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetCommandsStatsInfo(std::string &info) {
+void Server::GetCommandsStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Commandstats\r\n";
 
-  for (const auto &element : stats_.commands_stats) {
-    string_stream << "cmdstat_" << element.first << ":calls=" << element.second.calls
-                  << ",usec=" << element.second.latency << ",usec_per_call="
-                  << ((element.second.calls == 0) ? 0 : ((float) element.second.latency / element.second.calls))
+  for (const auto &cmd_stat : stats_.commands_stats) {
+    auto calls = cmd_stat.second.calls.load();
+    auto latency = cmd_stat.second.latency.load();
+    string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls
+                  << ",usec=" << latency << ",usec_per_call="
+                  << ((calls == 0) ? 0 : static_cast<float>(latency/calls))
                   << "\r\n";
   }
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
-void Server::GetInfo(std::string ns, std::string section, std::string &info) {
-  info.clear();
+void Server::GetInfo(const std::string &ns, const std::string &section, std::string *info) {
+  info->clear();
   std::ostringstream string_stream;
   bool all = section == "all";
 
   if (all || section == "server") {
     std::string server_info;
-    GetServerInfo(server_info);
+    GetServerInfo(&server_info);
     string_stream << server_info;
   }
   if (all || section == "clients") {
     std::string clients_info;
-    GetClientsInfo(clients_info);
+    GetClientsInfo(&clients_info);
     string_stream << clients_info;
   }
   if (all || section == "memory") {
     std::string memory_info;
-    GetMemoryInfo(memory_info);
+    GetMemoryInfo(&memory_info);
     string_stream << memory_info;
   }
   if (all || section == "persistence") {
     string_stream << "# Persistence\r\n";
     string_stream << "loading:" << is_loading_ <<"\r\n";
-    // TODO: db size
   }
   if (all || section == "stats") {
     std::string stats_info;
-    GetStatsInfo(stats_info);
+    GetStatsInfo(&stats_info);
     string_stream << stats_info;
   }
   if (all || section == "replication") {
     std::string replication_info;
-    GetReplicationInfo(replication_info);
+    GetReplicationInfo(&replication_info);
     string_stream << replication_info;
   }
   if (all || section == "cpu") {
@@ -388,13 +389,15 @@ void Server::GetInfo(std::string ns, std::string section, std::string &info) {
     getrusage(RUSAGE_SELF, &self_ru);
     string_stream << "# CPU\r\n";
     string_stream << "used_cpu_sys:"
-                  << (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000 << "\r\n";
+                  << static_cast<float>(self_ru.ru_stime.tv_sec)+static_cast<float>(self_ru.ru_stime.tv_usec/1000000)
+                  << "\r\n";
     string_stream << "used_cpu_user:"
-                  << (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000 << "\r\n";
+                  << static_cast<float>(self_ru.ru_utime.tv_sec)+static_cast<float>(self_ru.ru_utime.tv_usec/1000000)
+                  << "\r\n";
   }
   if (all || section == "commandstats") {
     std::string commands_stats_info;
-    GetCommandsStatsInfo(commands_stats_info);
+    GetCommandsStatsInfo(&commands_stats_info);
     string_stream << commands_stats_info;
   }
   if (all || section == "keyspace") {
@@ -404,10 +407,10 @@ void Server::GetInfo(std::string ns, std::string section, std::string &info) {
   }
   if (all || section == "rocksdb") {
     std::string rocksdb_info;
-    GetRocksDBInfo(rocksdb_info);
+    GetRocksDBInfo(&rocksdb_info);
     string_stream << rocksdb_info;
   }
-  info = string_stream.str();
+  *info = string_stream.str();
 }
 
 Status Server::AsyncCompactDB() {
@@ -452,10 +455,10 @@ Status Server::AsyncBgsaveDB() {
   return task_runner_->Publish(task);
 }
 
-Status Server::AsyncScanDBSize(std::string &ns) {
+Status Server::AsyncScanDBSize(const std::string &ns) {
   db_mu_.lock();
   auto iter = db_scan_infos_.find(ns);
-  if(iter == db_scan_infos_.end()) {
+  if (iter == db_scan_infos_.end()) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
   if (db_scan_infos_[ns].is_scanning) {
@@ -480,17 +483,17 @@ Status Server::AsyncScanDBSize(std::string &ns) {
   return task_runner_->Publish(task);
 }
 
-uint64_t Server::GetLastKeyNum(std::string &ns) {
+uint64_t Server::GetLastKeyNum(const std::string &ns) {
   auto iter = db_scan_infos_.find(ns);
-  if(iter != db_scan_infos_.end()) {
+  if (iter != db_scan_infos_.end()) {
     return iter->second.n_key;
   }
   return 0;
 }
 
-time_t Server::GetLastScanTime(std::string &ns) {
+time_t Server::GetLastScanTime(const std::string &ns) {
   auto iter = db_scan_infos_.find(ns);
-  if(iter != db_scan_infos_.end()) {
+  if (iter != db_scan_infos_.end()) {
     return iter->second.last_scan_time;
   }
   return 0;
@@ -560,11 +563,11 @@ Server::SlaveInfoPos Server::AddSlave(const std::string &addr, uint32_t port) {
   return --(slaves_info_.end());
 }
 
-void Server::RemoveSlave(Server::SlaveInfoPos &pos) {
+void Server::RemoveSlave(const SlaveInfoPos &pos) {
   std::lock_guard<std::mutex> guard(slaves_info_mu_);
   slaves_info_.erase(pos);
 }
 
-void Server::UpdateSlaveStats(Server::SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
+void Server::UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
   (*pos)->seq = seq;
 }

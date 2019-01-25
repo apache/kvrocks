@@ -413,7 +413,7 @@ Status Config::Rewrite() {
   while (!input_file.eof()) {
     std::getline(input_file, line);
     Util::Split(line, " \t\r\n", &args);
-    if (args.empty() || args[0].front() == '#' || !rewriteConfigValue(args)) {
+    if (args.empty() || args[0].front() == '#' || !rewriteConfigValue(&args)) {
       if (!strncasecmp(args[0].data(), "namespace.", 10)) {
         // skip the namespace, append at the end
         continue;

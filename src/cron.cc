@@ -21,7 +21,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   }
 
   schedule_times_.clear();
-  for (unsigned long i = 0; i < new_schedule_times.size(); i++) {
+  for (size_t i = 0; i < new_schedule_times.size(); i++) {
     schedule_times_.push_back(new_schedule_times[i]);
   }
 

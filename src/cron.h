@@ -2,8 +2,9 @@
 
 #include <ctime>
 #include <iostream>
-#include "status.h"
 #include <vector>
+#include <string>
+#include "status.h"
 
 struct schedule_time {
   int minute;
@@ -15,7 +16,7 @@ struct schedule_time {
 
 class Cron {
  public:
-  explicit Cron() = default;
+  Cron() = default;
   ~Cron() = default;
 
   Status SetScheduleTime(const std::vector<std::string> &args);

@@ -201,6 +201,7 @@ class CommandSetRange: public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisString string_db(svr->storage_, conn->GetNamespace());
@@ -245,6 +246,29 @@ class CommandSet : public Commander {
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
+};
+
+class CommandSetEX : public Commander {
+ public:
+  CommandSetEX() : Commander("setex", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      ttl_ = std::stoi(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.SetEX(args_[1], args_[3], ttl_);
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  int ttl_;
 };
 
 class CommandMSet : public Commander {
@@ -2227,6 +2251,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"set",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSet);
+     }},
+    {"setex",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSetEX);
      }},
     {"setnx",
      []() -> std::unique_ptr<Commander> {

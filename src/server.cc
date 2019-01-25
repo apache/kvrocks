@@ -283,7 +283,7 @@ void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
   char buf[16];
   int64_t rss = Stats::GetMemoryRSS();
-  Util::BytesToHuman(buf, static_cast<uint64_t>(rss));
+  Util::BytesToHuman(buf, 16, static_cast<uint64_t>(rss));
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss <<"\r\n";
   string_stream << "used_memory_human:" << buf <<"\r\n";

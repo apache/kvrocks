@@ -25,7 +25,7 @@
 # define POLLNVAL    0x0020    /* Invalid request: fd not open */
 #endif
 
-namespace Util{
+namespace Util {
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
@@ -40,7 +40,7 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
   sin.sin_addr.s_addr = inet_addr(host.c_str());
   sin.sin_port = htons(port);
   *fd = socket(AF_INET, SOCK_STREAM, 0);
-  auto rv = connect(*fd, (sockaddr *) &sin, sizeof(sin));
+  auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
   if (rv < 0) {
     return Status(Status::NotOK, strerror(errno));
   }
@@ -74,7 +74,7 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
     *port = ntohs(sa4->sin_port);
     return 0;
   }
-  return -2; // only support AF_INET currently
+  return -2;  // only support AF_INET currently
 }
 
 std::string ToLower(std::string in) {
@@ -83,52 +83,52 @@ std::string ToLower(std::string in) {
   return in;
 }
 
-std::string& Trim(std::string &in, std::string chars) {
-  if (in.empty()) return in;
-  // left trim
-  in.erase(0, in.find_first_not_of(chars));
-  // right trim
-  in.erase(in.find_last_not_of(chars)+1);
-  return in;
+void Trim(const std::string &in, const std::string &chars, std::string *out) {
+  out->clear();
+  if (in.empty()) return;
+  out->assign(in);
+  out->erase(0, out->find_first_not_of(chars));
+  out->erase(out->find_last_not_of(chars)+1);
 }
 
 void Split(std::string in, std::string delim, std::vector<std::string> *out) {
-  out->clear();
   if (in.empty() || !out) return;
+  out->clear();
+
   std::string::size_type pos = 0;
-  std::string elem;
+  std::string elem, trimed_elem;
   do {
     pos = in.find_first_of(delim);
     elem = in.substr(0, pos);
-    elem = Trim(elem, delim);
-    if (!elem.empty()) out->push_back(elem);
+    Trim(elem, delim, &trimed_elem);
+    if (!trimed_elem.empty()) out->push_back(trimed_elem);
     in = in.substr(pos+1);
-  } while(pos != std::string::npos);
+  } while (pos != std::string::npos);
 }
 
-void BytesToHuman(char *s, uint64_t n) {
+void BytesToHuman(char *s, int size, uint64_t n) {
   double d;
 
   if (n < 1024) {
-    sprintf(s,"%lluB",n);
+    snprintf(s, size, "%lluB", n);
     return;
   } else if (n < (1024*1024)) {
     d = static_cast<double>(n)/(1024);
-    sprintf(s,"%.2fK",d);
+    snprintf(s, size, "%.2fK", d);
   } else if (n < (1024LL*1024*1024)) {
     d = static_cast<double>(n)/(1024*1024);
-    sprintf(s,"%.2fM",d);
+    snprintf(s, size, "%.2fM", d);
   } else if (n < (1024LL*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024);
-    sprintf(s,"%.2fG",d);
+    snprintf(s, size, "%.2fG", d);
   } else if (n < (1024LL*1024*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024*1024);
-    sprintf(s,"%.2fT",d);
+    snprintf(s, size, "%.2fT", d);
   } else if (n < (1024LL*1024*1024*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024*1024*1024);
-    sprintf(s,"%.2fP",d);
+    snprintf(s, size, "%.2fP", d);
   } else {
-    sprintf(s,"%lluB",n);
+    snprintf(s, size, "%lluB", n);
   }
 }
 
@@ -146,4 +146,4 @@ void ThreadSetName(const char *name) {
   pthread_setname_np(pthread_self(), name);
 #endif
 }
-}
+}  // namespace Util

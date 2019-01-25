@@ -25,8 +25,9 @@ TEST(StringUtil, Trim) {
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
-    input = Util::Trim(input, " \t\n");
-    ASSERT_EQ(input, iter->second);
+    std::string output;
+    Util::Trim(input, " \t\n", &output);
+    ASSERT_EQ(output, iter->second);
   }
 }
 

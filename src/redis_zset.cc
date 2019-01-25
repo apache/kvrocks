@@ -1,11 +1,13 @@
-#include <math.h>
 #include "redis_zset.h"
+
+#include <math.h>
+#include <limits>
 
 rocksdb::Status RedisZSet::GetMetadata(Slice key, ZSetMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisZSet, key, metadata);
 }
 
-rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore> &mscores, int *ret) {
+rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, const std::vector<MemberScore> &mscores, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -205,7 +207,7 @@ rocksdb::Status RedisZSet::Range(Slice key, int start, int stop, uint8_t flags, 
 
 rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size) {
   if (size) *size = 0;
-  if(mscores) mscores->clear();
+  if (mscores) mscores->clear();
 
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
@@ -238,7 +240,7 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
     double score;
     GetDouble(&score_key, &score);
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    if (spec.minex && score <= spec.min) continue; // the min score was exclusive
+    if (spec.minex && score <= spec.min) continue;  // the min score was exclusive
     if ((spec.maxex && score >= spec.max) || score > spec.max) break;
     if (spec.removed) {
       std::string sub_key;
@@ -328,7 +330,7 @@ rocksdb::Status RedisZSet::RemoveRangeByRank(Slice key, int start, int stop, int
   uint8_t flags = ZSET_REMOVED;
   std::vector<MemberScore> mscores;
   rocksdb::Status s = Range(key, start, stop, flags, &mscores);
-  *ret = int(mscores.size());
+  *ret = static_cast<int>(mscores.size());
   return s;
 }
 

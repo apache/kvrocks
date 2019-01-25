@@ -1,5 +1,9 @@
 #pragma once
 
+#include <string>
+#include <vector>
+#include <limits>
+
 #include "redis_metadata.h"
 
 typedef struct ZRangeSpec {
@@ -32,7 +36,7 @@ class RedisZSet : public RedisSubKeyScanner {
   explicit RedisZSet(Engine::Storage *storage, std::string ns) :
       RedisSubKeyScanner(storage, std::move(ns)),
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
-  rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> &mscores, int *ret);
+  rocksdb::Status Add(Slice key, uint8_t flags, const std::vector<MemberScore> &mscores, int *ret);
   rocksdb::Status Card(Slice key, int *ret);
   rocksdb::Status Count(Slice key, ZRangeSpec spec, int *ret);
   rocksdb::Status IncrBy(Slice key, Slice member, double increment, double *score);
@@ -50,6 +54,7 @@ class RedisZSet : public RedisSubKeyScanner {
                 const uint64_t &limit,
                 const std::string &member_prefix,
                 std::vector<std::string> *members);
+
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
   rocksdb::Status GetMetadata(Slice key, ZSetMetadata *metadata);

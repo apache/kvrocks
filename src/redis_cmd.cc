@@ -508,9 +508,8 @@ class CommandHSet : public Commander {
     if (s.ok()) {
       *output = Redis::Integer(ret);
       return Status::OK();
-    } else {
-      return Status(Status::RedisExecErr, s.ToString());
     }
+    return Status(Status::RedisExecErr, s.ToString());
   }
 };
 
@@ -618,6 +617,32 @@ class CommandHIncrBy : public Commander {
 
  private:
   int64_t increment_ = 0;
+};
+
+class CommandHIncrByFloat : public Commander {
+ public:
+  CommandHIncrByFloat() : Commander("hincrbyfloat", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stof(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    float ret;
+    RedisHash hash_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::BulkString(std::to_string(ret));
+    return Status::OK();
+  }
+
+ private:
+  float increment_ = 0;
 };
 
 class CommandHMGet : public Commander {
@@ -2288,6 +2313,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"hincrby",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandHIncrBy);
+     }},
+    {"hincrbyfloat",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandHIncrByFloat);
      }},
     {"hset",
      []() -> std::unique_ptr<Commander> {

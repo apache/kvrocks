@@ -1,4 +1,4 @@
-image: centos7-cmake3.13
+image: centos7-for-kvrocks
 
 stages:
     - build
@@ -15,6 +15,7 @@ build:
         - dev
     script:
         - rm -rf /cache/unittest
+        - cpplint --linelength=120 --filter=-build/include_subdir,-legal/copyright,-build/c++11 src/*.h src/*.cc
         - git submodule init && git submodule update
         - mkdir build/
         - cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j4 && cd ..

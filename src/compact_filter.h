@@ -1,7 +1,8 @@
 #pragma once
 
 #include <rocksdb/compaction_filter.h>
-
+#include <vector>
+#include <string>
 #include "redis_metadata.h"
 
 namespace Engine {
@@ -31,7 +32,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
         cf_handles_(cf_handles) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
-  bool IsKeyExpired(InternalKey &ikey) const;
+  bool IsKeyExpired(const InternalKey &ikey) const;
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override;
 
@@ -40,7 +41,6 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
   mutable std::string cached_metadata_;
   rocksdb::DB **db_;
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
-
 };
 
 class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
@@ -63,4 +63,4 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   rocksdb::DB **db_;
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
 };
-} // namespace Engine
+}  // namespace Engine

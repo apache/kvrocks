@@ -1,6 +1,6 @@
 #include "compact_filter.h"
-
 #include <glog/logging.h>
+#include <string>
 
 
 namespace Engine {
@@ -29,7 +29,7 @@ bool MetadataFilter::Filter(int level,
   return metadata.Expired();
 }
 
-bool SubKeyFilter::IsKeyExpired(InternalKey &ikey) const {
+bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
   std::string metadata_key;
 
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
@@ -83,4 +83,4 @@ bool SubKeyFilter::Filter(int level,
              << ", result: " << (result ? "deleted" : "reserved");
   return result;
 }
-} // namespace Engine
+}  // namespace Engine

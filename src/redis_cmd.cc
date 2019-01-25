@@ -1182,12 +1182,12 @@ class CommandZPop : public Commander {
 
 class CommandZPopMin : public CommandZPop {
  public:
-  explicit CommandZPopMin() : CommandZPop(true) { name_ = "zpopmin"; };
+  explicit CommandZPopMin() : CommandZPop(true) { name_ = "zpopmin"; }
 };
 
 class CommandZPopMax : public CommandZPop {
  public:
-  explicit CommandZPopMax() : CommandZPop(false) { name_ = "zpopmax"; };
+  explicit CommandZPopMax() : CommandZPop(false) { name_ = "zpopmax"; }
 };
 
 class CommandZRange : public Commander {

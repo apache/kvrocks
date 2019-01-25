@@ -30,19 +30,19 @@ InternalKey::~InternalKey() {
   if (buf_ != nullptr && buf_!=prealloc_) delete []buf_;
 }
 
-Slice InternalKey::GetNamespace() {
+Slice InternalKey::GetNamespace() const{
   return namespace_;
 }
 
-Slice InternalKey::GetKey() {
+Slice InternalKey::GetKey() const {
   return key_;
 }
 
-Slice InternalKey::GetSubKey() {
+Slice InternalKey::GetSubKey() const {
   return sub_key_;
 }
 
-uint64_t InternalKey::GetVersion() {
+uint64_t InternalKey::GetVersion() const {
   return version_;
 }
 
@@ -84,7 +84,7 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key) {
   *key = ns_key.ToString();
 }
 
-void ComposeNamespaceKey(const Slice ns, const Slice key, std::string *ns_key) {
+void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key) {
   ns_key->clear();
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
   ns_key->append(ns.ToString());

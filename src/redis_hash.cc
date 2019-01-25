@@ -1,6 +1,7 @@
 #include "redis_hash.h"
-#include <iostream>
 #include <rocksdb/status.h>
+#include <limits>
+#include <iostream>
 
 rocksdb::Status RedisHash::GetMetadata(Slice key, HashMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisHash, key, metadata);
@@ -36,7 +37,7 @@ rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
 
 rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, int64_t increment, int64_t *ret) {
   bool exists = false;
-  long long old_value = 0;
+  int64_t old_value = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
@@ -124,7 +125,7 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::MGet(Slice key, std::vector<Slice> &fields, std::vector<std::string> *values) {
+rocksdb::Status RedisHash::MGet(Slice key, const std::vector<Slice> &fields, std::vector<std::string> *values) {
   values->clear();
 
   std::string ns_key;
@@ -162,7 +163,7 @@ rocksdb::Status RedisHash::SetNX(Slice key, Slice field, Slice value, int *ret) 
   return MSet(key, fvs, false, ret);
 }
 
-rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields, int *ret) {
+rocksdb::Status RedisHash::Delete(Slice key, const std::vector<Slice> &fields, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
@@ -193,7 +194,7 @@ rocksdb::Status RedisHash::Delete(Slice key, std::vector<rocksdb::Slice> &fields
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::MSet(Slice key, std::vector<FieldValue> &field_values, bool nx, int *ret) {
+rocksdb::Status RedisHash::MSet(Slice key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
@@ -249,10 +250,10 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
     FieldValue fv;
-    if (type == 1) { // only keys
+    if (type == 1) {  // only keys
       InternalKey ikey(iter->key());
       fv.field = ikey.GetSubKey().ToString();
-    } else if (type == 2){ // only values
+    } else if (type == 2) {  // only values
       fv.value = iter->value().ToString();
     } else {
       InternalKey ikey(iter->key());
@@ -270,6 +271,5 @@ uint64_t RedisHash::Scan(Slice key,
                          const uint64_t &limit,
                          const std::string &field_prefix,
                          std::vector<std::string> *fields) {
-
   return RedisSubKeyScanner::Scan(kRedisHash, key, cursor, limit, field_prefix, fields);
 }

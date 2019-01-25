@@ -2,6 +2,7 @@
 
 #include <event2/buffer.h>
 #include <list>
+#include <vector>
 #include <string>
 
 #include "redis_cmd.h"
@@ -51,12 +52,12 @@ class Connection {
 
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnWrite(struct bufferevent *bev, void *ctx);
-  static void OnEvent(bufferevent *bev, short events, void *ctx);
+  static void OnEvent(bufferevent *bev, int16_t events, void *ctx);
   void Reply(const std::string &msg);
   void SendFile(int fd);
 
-  void SubscribeChannel(std::string &channel);
-  void UnSubscribeChannel(std::string &channel);
+  void SubscribeChannel(const std::string &channel);
+  void UnSubscribeChannel(const std::string &channel);
   void UnSubscribeAll();
   int SubscriptionsCount();
 
@@ -69,7 +70,7 @@ class Connection {
 
   uint64_t GetID() { return id_; }
   void SetID(uint64_t id) { id_ = id; }
-  std::string GetName() { return name_; };
+  std::string GetName() { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
   std::string GetAddr() { return addr_; }
   void SetAddr(std::string addr) { addr_ = std::move(addr); }
@@ -96,7 +97,7 @@ class Connection {
   std::string ns_;
   std::string name_;
   std::string addr_;
-  bool is_admin_= false;
+  bool is_admin_ = false;
   std::string last_cmd_;
   time_t create_time_;
   time_t last_interaction_;

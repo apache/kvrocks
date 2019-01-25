@@ -38,7 +38,7 @@ void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
   }
 }
 
-void Connection::OnEvent(bufferevent *bev, short events, void *ctx) {
+void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
     LOG(ERROR) << "bev error: "
@@ -90,7 +90,7 @@ bool Connection::IsFlagEnabled(Flag flag) {
   return (flags_ & flag) > 0;
 }
 
-void Connection::SubscribeChannel(std::string &channel) {
+void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {
     if (channel == chan) return;
   }
@@ -98,7 +98,7 @@ void Connection::SubscribeChannel(std::string &channel) {
   owner_->svr_->SubscribeChannel(channel, this);
 }
 
-void Connection::UnSubscribeChannel(std::string &channel) {
+void Connection::UnSubscribeChannel(const std::string &channel) {
   auto iter = subscribe_channels_.begin();
   for (; iter != subscribe_channels_.end(); iter++) {
     if (*iter == channel) {
@@ -206,7 +206,7 @@ void Request::ExecuteCommands(Connection *conn) {
     auto start = std::chrono::high_resolution_clock::now();
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
     auto end = std::chrono::high_resolution_clock::now();
-    long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
     if (!s.IsOK()) {

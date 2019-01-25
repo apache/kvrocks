@@ -64,9 +64,9 @@ class Server {
   SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
   void UpdateSlaveStats(SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
 
-  int PublishMessage(std::string &channel, std::string &msg);
-  void SubscribeChannel(std::string &channel, Redis::Connection *conn);
-  void UnSubscribeChannel(std::string &channel, Redis::Connection *conn);
+  int PublishMessage(const std::string &channel, const std::string &msg);
+  void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
+  void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
 
   void GetStatsInfo(std::string &info);
   void GetServerInfo(std::string &info);

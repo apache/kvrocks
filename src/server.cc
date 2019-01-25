@@ -90,7 +90,7 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
-int Server::PublishMessage(std::string &channel, std::string &msg) {
+int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   int cnt = 0;
 
   auto iter = pubsub_channels_.find(channel);
@@ -109,7 +109,7 @@ int Server::PublishMessage(std::string &channel, std::string &msg) {
   return cnt;
 }
 
-void Server::SubscribeChannel(std::string &channel, Redis::Connection *conn) {
+void Server::SubscribeChannel(const std::string &channel, Redis::Connection *conn) {
   auto iter = pubsub_channels_.find(channel);
   if (iter == pubsub_channels_.end()) {
     std::list<Redis::Connection*> conns;
@@ -120,7 +120,7 @@ void Server::SubscribeChannel(std::string &channel, Redis::Connection *conn) {
   }
 }
 
-void Server::UnSubscribeChannel(std::string &channel, Redis::Connection *conn) {
+void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *conn) {
   auto iter = pubsub_channels_.find(channel);
   if (iter == pubsub_channels_.end()) {
     return;

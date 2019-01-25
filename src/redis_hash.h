@@ -16,7 +16,7 @@ class RedisHash : public RedisSubKeyScanner {
 public:
   RedisHash(Engine::Storage *storage, std::string ns) : RedisSubKeyScanner(storage, std::move(ns)) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
-  rocksdb::Status IncrBy(Slice key, Slice field, long long increment, long long *ret);
+  rocksdb::Status IncrBy(Slice key, Slice field, int64_t increment, int64_t *ret);
   rocksdb::Status IncrByFloat(Slice key, Slice field, float increment, float *ret);
   rocksdb::Status Get(Slice key, Slice field, std::string *value);
   rocksdb::Status MGet(Slice key, std::vector<Slice> &fields, std::vector<std::string> *values);

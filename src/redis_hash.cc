@@ -34,7 +34,7 @@ rocksdb::Status RedisHash::Get(Slice key, Slice field, std::string *value) {
   return db_->Get(read_options, sub_key, value);
 }
 
-rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, long long increment, long long *ret) {
+rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, int64_t increment, int64_t *ret) {
   bool exists = false;
   long long old_value = 0;
 

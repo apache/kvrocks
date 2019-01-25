@@ -5,9 +5,11 @@
 #include <glog/logging.h>
 #include <rocksdb/types.h>
 #include <rocksdb/utilities/backupable_db.h>
+
 #include <list>
 #include <map>
 #include <string>
+#include <vector>
 #include <thread>
 
 #include "redis_reply.h"
@@ -23,15 +25,15 @@ class Commander {
       : name_(std::move(name)), arity_(arity), is_write_(is_write) {}
   std::string Name() { return name_; }
   int GetArity() { return arity_; }
-  bool IsWrite() { return is_write_; };
+  bool IsWrite() { return is_write_; }
 
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   const std::vector<std::string>* Args() {
     return &args_;
-  };
+  }
   virtual Status Parse(const std::vector<std::string> &args) {
     return Status::OK();
-  };
+  }
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
   }

@@ -29,14 +29,14 @@ TEST_F(RedisZSetTest, Add) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (int i = 0; i < fields_.size(); i++) {
     double got;
     rocksdb::Status s = zset->Score(key_, fields_[i], &got);
     EXPECT_EQ(scores_[i], got);
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(ret, 0);
   zset->Del(key_);
 }
@@ -47,7 +47,7 @@ TEST_F(RedisZSetTest, IncrBy) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (int i = 0; i < fields_.size(); i++) {
     double increment = 12.3, score;
@@ -63,7 +63,7 @@ TEST_F(RedisZSetTest, Remove) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->Remove(key_, fields_, &ret);
   EXPECT_EQ(fields_.size(), ret);
@@ -82,7 +82,7 @@ TEST_F(RedisZSetTest, Range) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
   int count = mscores.size()-1;
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->Range(key_, 0, -2, 0, &mscores);
   EXPECT_EQ(mscores.size(), count);
@@ -100,7 +100,7 @@ TEST_F(RedisZSetTest, RevRange) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
   int count = mscores.size()-1;
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->Range(key_, 0, -2, ZSET_REVERSED, &mscores);
   EXPECT_EQ(mscores.size(), count);
@@ -117,7 +117,7 @@ TEST_F(RedisZSetTest, PopMin) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->Pop(key_, mscores.size()-1, true, &mscores);
   for (int i = 0; i < mscores.size(); i++) {
@@ -136,7 +136,7 @@ TEST_F(RedisZSetTest, PopMax) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->Pop(key_, mscores.size()-1, false, &mscores);
   for (int i = 0; i < mscores.size(); i++) {
@@ -153,7 +153,7 @@ TEST_F(RedisZSetTest, RangeByScore) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
   // test case: inclusive the min and max score
@@ -201,7 +201,7 @@ TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
   ZRangeSpec spec;
@@ -222,7 +222,7 @@ TEST_F(RedisZSetTest, RemRangeByScore) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   ZRangeSpec spec;
   spec.min = scores_[0];
@@ -241,7 +241,7 @@ TEST_F(RedisZSetTest, RemoveRangeByRank) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->RemoveRangeByRank(key_, 0, fields_.size() - 2, &ret);
   EXPECT_EQ(fields_.size()-1, ret);
@@ -255,7 +255,7 @@ TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   zset->RemoveRangeByRank(key_, 0, fields_.size() - 2, &ret);
   EXPECT_EQ(fields_.size()-1, ret);
@@ -269,7 +269,7 @@ TEST_F(RedisZSetTest, Rank) {
   for (int i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  zset->Add(key_, 0, mscores, &ret);
+  zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
   for (int i = 0; i < fields_.size(); i++) {

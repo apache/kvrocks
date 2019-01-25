@@ -1061,7 +1061,7 @@ class CommandZAdd : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], 0, member_scores_, &ret);
+    rocksdb::Status s = zset_db.Add(args_[1], 0, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }

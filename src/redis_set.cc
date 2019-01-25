@@ -1,8 +1,5 @@
-//
-// Created by hulk on 2018/10/9.
-//
-
 #include "redis_set.h"
+
 #include <iostream>
 
 rocksdb::Status RedisSet::GetMetadata(Slice key, SetMetadata*metadata) {
@@ -187,6 +184,5 @@ uint64_t RedisSet::Scan(Slice key,
                         const uint64_t &limit,
                         const std::string &member_prefix,
                         std::vector<std::string> *members) {
-
   return RedisSubKeyScanner::Scan(kRedisSet, key, cursor, limit, member_prefix, members);
 }

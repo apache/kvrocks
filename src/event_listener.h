@@ -5,7 +5,7 @@
 
 class CompactionEventListener : public rocksdb::EventListener {
  public:
-  explicit CompactionEventListener() = default;
+  CompactionEventListener() = default;
   ~CompactionEventListener() override = default;
-  void OnCompactionCompleted(rocksdb::DB* db,const rocksdb::CompactionJobInfo& ci) override;
+  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override;
 };

@@ -1,4 +1,7 @@
+#include "worker.h"
+
 #include <glog/logging.h>
+#include <list>
 #include <cctype>
 #include <utility>
 #include <algorithm>
@@ -54,7 +57,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                << worker->tid_;
   }
   int enable = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&enable, sizeof(enable)) < 0) {
+  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<void*>(&enable), sizeof(enable)) < 0) {
     LOG(ERROR) << "Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);
     evutil_closesocket(fd);
     return;
@@ -68,7 +71,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   Status status = worker->AddConnection(conn);
   std::string host;
   uint32_t port;
-  if (Util::GetPeerAddr(fd, &host, &port)==0) {
+  if (Util::GetPeerAddr(fd, &host, &port) == 0) {
     conn->SetAddr(host+":"+std::to_string(port));
   }
   if (!status.IsOK()) {
@@ -111,7 +114,7 @@ void Worker::Run(std::thread::id tid) {
 
 void Worker::Stop() {
   event_base_loopbreak(base_);
-  for (const auto &lev: listen_events_) {
+  for (const auto &lev : listen_events_) {
     evutil_socket_t fd = evconnlistener_get_fd(lev);
     if (fd > 0) close(fd);
     evconnlistener_free(lev);
@@ -197,7 +200,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
     } else {
       RemoveConnectionByID(iter.first, iter.second);
     }
-    (*killed) ++;
+    (*killed)++;
   }
 }
 
@@ -229,7 +232,7 @@ void Worker::KickoutIdleClients(int timeout) {
 void WorkerThread::Start() {
   try {
     t_ = std::thread([this]() {
-      if(this->worker_->IsRepl()) {
+      if (this->worker_->IsRepl()) {
         Util::ThreadSetName("repl-worker");
       } else {
         Util::ThreadSetName("worker");

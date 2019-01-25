@@ -9,6 +9,8 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <string>
+#include <vector>
 
 #include "storage.h"
 #include "replication.h"
@@ -33,15 +35,14 @@ class Worker {
   void RemoveConnection(int fd);
   void RemoveConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
-  bool IsRepl() { // Whether if worker is replication worker
-    return repl_;
-  }
+  bool IsRepl() { return repl_; }
 
   std::string GetClientsStr();
   void KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed);
   void KickoutIdleClients(int timeout);
 
   Server *svr_;
+
  private:
   Status listen(const std::string &host, int port, int backlog);
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,

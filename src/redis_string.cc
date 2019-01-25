@@ -54,7 +54,7 @@ rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
   rocksdb::Status s = getValue(key, &raw_value_bytes, &value_bytes);
   if (!s.ok() && !s.IsNotFound()) return s;
   value_bytes.append(value.ToString());
-  *ret = int(value_bytes.size());
+  *ret = static_cast<int>(value_bytes.size());
   return updateValue(key, raw_value_bytes, value_bytes);
 }
 
@@ -118,18 +118,18 @@ rocksdb::Status RedisString::SetRange(Slice key, Slice value, int offset, int *r
   if (!s.ok() && !s.IsNotFound()) return s;
   if (offset > static_cast<int>(value_bytes.size())) {
     // padding the value with zero byte while offset is longer than value size
-    int paddings = offset-int(value_bytes.size());
+    int paddings = offset- static_cast<int>(value_bytes.size());
     value_bytes.append(paddings, '\0');
   }
   if (offset+value.size() >= value_bytes.size()) {
     value_bytes = value_bytes.substr(0, offset);
     value_bytes.append(value.ToString());
   } else {
-    for(unsigned i = 0; i < value.size(); i++) {
+    for (size_t i = 0; i < value.size(); i++) {
       value_bytes[i] = value[i];
     }
   }
-  *ret = int(value_bytes.size());
+  *ret = static_cast<int>(value_bytes.size());
   return updateValue(key, raw_value_bytes, value_bytes);
 }
 
@@ -181,7 +181,7 @@ rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl)
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisString::MSetNX(std::vector<StringPair> pairs, int *ret) {
+rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int *ret) {
   *ret = 0;
 
   std::string ns_key, value;

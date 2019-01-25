@@ -86,7 +86,7 @@ TEST_F(RedisHashTest, HGetAll) {
 }
 
 TEST_F(RedisHashTest, HIncr) {
-  long long value;
+  int64_t value;
   Slice field("hash-incrby-invalid-field");
   for (int i = 0; i < 32; i++) {
     rocksdb::Status s = hash->IncrBy(key_, field, 1, &value);
@@ -101,7 +101,7 @@ TEST_F(RedisHashTest, HIncr) {
 
 TEST_F(RedisHashTest, HIncrInvalid) {
   int ret;
-  long long value;
+  int64_t value;
   Slice field("hash-incrby-invalid-field");
   rocksdb::Status s = hash->IncrBy(key_, field, 1, &value);
   EXPECT_TRUE(s.ok() && value == 1);

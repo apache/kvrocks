@@ -1,10 +1,12 @@
 #pragma once
 
-#include <event2/bufferevent.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/utilities/backupable_db.h>
+#include <event2/bufferevent.h>
 #include <utility>
+#include <string>
+#include <vector>
 
 #include "status.h"
 #include "lock_manager.h"
@@ -22,7 +24,7 @@ class Storage {
 
   void InitOptions(rocksdb::Options *options);
   Status Open();
-  Status CreateColumnFamiles(rocksdb::Options &options);
+  Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();
   Status RestoreFromBackup(rocksdb::SequenceNumber *seq);

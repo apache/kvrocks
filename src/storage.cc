@@ -1,13 +1,14 @@
-#include <event2/buffer.h>
+#include "storage.h"
+
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <event2/buffer.h>
 #include <glog/logging.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/table.h>
 #include <iostream>
-#include <sys/stat.h>
 
 #include "config.h"
-#include "storage.h"
 #include "redis_metadata.h"
 #include "event_listener.h"
 #include "compact_filter.h"
@@ -45,7 +46,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->listeners.emplace_back(new CompactionEventListener());
 }
 
-Status Storage::CreateColumnFamiles(rocksdb::Options &options) {
+Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
   rocksdb::DB *tmp_db;
   rocksdb::ColumnFamilyOptions cf_options(options);
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
@@ -91,7 +92,7 @@ Status Storage::Open() {
   auto start = std::chrono::high_resolution_clock::now();
   auto s = rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
   auto end = std::chrono::high_resolution_clock::now();
-  long long duration = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+  int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
   if (!s.ok()) {
     LOG(INFO) << "Failed to load the data from disk: " << duration << " ms";
     return Status(Status::DBOpenErr, s.ToString());
@@ -111,7 +112,7 @@ class DebuggingLogger : public rocksdb::Logger {
   // a subset of them.
   using Logger::Logv;
 
-  virtual void Logv(const char *format, va_list ap) override {
+  void Logv(const char *format, va_list ap) override {
     vfprintf(stderr, format, ap);
     fprintf(stderr, "\n");
   }
@@ -119,7 +120,6 @@ class DebuggingLogger : public rocksdb::Logger {
 #endif
 
 Status Storage::CreateBackup() {
-  // TODO: assert role to be master. slaves never create backup, they sync
   LOG(INFO) << "Start to create new backup";
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
   if (!backup_) {
@@ -144,7 +144,7 @@ Status Storage::DestroyBackup() {
 }
 
 Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
-  // TODO: assert role to be slave
+  // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
 #ifndef NDEBUG
@@ -226,7 +226,6 @@ rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
 
 rocksdb::DB *Storage::GetDB() { return db_; }
 
-// TODO: if meta_id == 0, return the latest metafile.
 Status Storage::BackupManager::OpenLatestMeta(Storage *storage,
                                               int *fd,
                                               rocksdb::BackupID *meta_id,
@@ -237,7 +236,7 @@ Status Storage::BackupManager::OpenLatestMeta(Storage *storage,
   storage->backup_->GetBackupInfo(&backup_infos);
   auto latest_backup = backup_infos.back();
   rocksdb::Status r_status = storage->backup_->VerifyBackup(latest_backup.backup_id);
-  if(!r_status.ok()) {
+  if (!r_status.ok()) {
     return Status(Status::NotOK, r_status.ToString());
   }
   *meta_id = latest_backup.backup_id;
@@ -313,11 +312,9 @@ Storage::BackupManager::MetaInfo Storage::BackupManager::ParseMetaAndSave(
     }
     DLOG(INFO) << "[meta] file info: " << line;
     auto cptr = line;
-    while (*(cptr++) != ' ')
-      ;
+    while (*(cptr++) != ' ') {}
     auto filename = std::string(line, cptr - line - 1);
-    while (*(cptr++) != ' ')
-      ;
+    while (*(cptr++) != ' ') {}
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
     free(line);
@@ -339,7 +336,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
     }
   }
   if (env->CreateDirIfMissing(dir).ok()) return Status::OK();
-  return Status::NotOK;
+  return Status(Status::NotOK);
 }
 
 std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
@@ -356,8 +353,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
     return nullptr;
   }
   std::unique_ptr<rocksdb::WritableFile> wf;
-  s = storage->backup_env_->NewWritableFile(tmp_path, &wf,
-                                            rocksdb::EnvOptions());
+  s = storage->backup_env_->NewWritableFile(tmp_path, &wf, rocksdb::EnvOptions());
   if (!s.ok()) {
     LOG(ERROR) << "Failed to create data file: " << s.ToString();
     return nullptr;

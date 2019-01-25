@@ -179,7 +179,7 @@ Status Storage::WriteBatch(std::string &&raw_batch) {
   return Status::OK();
 }
 
-rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(std::string name) {
+rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
   if (name == kMetadataColumnFamilyName) {
     return cf_handles_[1];
   } else if (name == kZSetScoreColumnFamilyName) {
@@ -232,7 +232,7 @@ Status Storage::BackupManager::OpenLatestMeta(Storage *storage,
   return Status::OK();
 }
 
-int Storage::BackupManager::OpenDataFile(Storage *storage, std::string rel_path,
+int Storage::BackupManager::OpenDataFile(Storage *storage, const std::string &rel_path,
                                          uint64_t *file_size) {
   std::string abs_path = storage->config_->backup_dir + "/" + rel_path;
   auto s = storage->backup_env_->FileExists(abs_path);
@@ -319,7 +319,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
 }
 
 std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
-    Storage *storage, std::string rel_path) {
+    Storage *storage, const std::string &rel_path) {
   std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
   auto s = storage->backup_env_->FileExists(tmp_path);
   if (s.ok()) {
@@ -341,7 +341,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
 }
 
 Status Storage::BackupManager::SwapTmpFile(Storage *storage,
-                                           std::string rel_path) {
+                                           const std::string &rel_path) {
   std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
   std::string orig_path = storage->config_->backup_dir + "/" + rel_path;
   if (!storage->backup_env_->RenameFile(tmp_path, orig_path).ok()) {
@@ -350,7 +350,7 @@ Status Storage::BackupManager::SwapTmpFile(Storage *storage,
   return Status::OK();
 }
 
-bool Storage::BackupManager::FileExists(Storage *storage, std::string rel_path) {
+bool Storage::BackupManager::FileExists(Storage *storage, const std::string &rel_path) {
   auto s = storage->backup_env_->FileExists(storage->config_->backup_dir + "/" + rel_path);
   return s.ok();
 }

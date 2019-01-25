@@ -79,7 +79,7 @@ rocksdb::Status RedisZSet::Card(Slice key, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisZSet::Count(Slice key, ZRangeSpec spec, int *ret) {
+rocksdb::Status RedisZSet::Count(Slice key, const ZRangeSpec &spec, int *ret) {
   *ret = 0;
   return RangeByScore(key, spec, nullptr, ret);
 }

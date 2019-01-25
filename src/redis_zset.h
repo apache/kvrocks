@@ -38,7 +38,7 @@ class RedisZSet : public RedisSubKeyScanner {
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(Slice key, int *ret);
-  rocksdb::Status Count(Slice key, ZRangeSpec spec, int *ret);
+  rocksdb::Status Count(Slice key, const ZRangeSpec &spec, int *ret);
   rocksdb::Status IncrBy(Slice key, Slice member, double increment, double *score);
   rocksdb::Status Range(Slice key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
   rocksdb::Status RangeByScore(Slice key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);

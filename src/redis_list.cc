@@ -17,11 +17,11 @@ rocksdb::Status RedisList::Size(Slice key, uint32_t *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Push(Slice key, std::vector<Slice> elems, bool left, int *ret) {
+rocksdb::Status RedisList::Push(Slice key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(key, elems, true, left, ret);
 }
 
-rocksdb::Status RedisList::PushX(Slice key, std::vector<Slice> elems, bool left, int *ret) {
+rocksdb::Status RedisList::PushX(Slice key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(key, elems, false, left, ret);
 }
 

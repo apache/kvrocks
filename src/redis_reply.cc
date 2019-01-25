@@ -6,13 +6,13 @@ void Reply(evbuffer *output, const std::string &data) {
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-std::string SimpleString(std::string data) { return "+" + data + CRLF; }
+std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(std::string err) { return "-" + err + CRLF; }
+std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
 std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
-std::string BulkString(std::string data) {
+std::string BulkString(const std::string &data) {
   if (!data.empty()) {
     return "$" + std::to_string(data.length()) + CRLF + data + CRLF;
   }

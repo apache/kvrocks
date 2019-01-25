@@ -39,7 +39,7 @@ class Storage {
   const std::string GetName() {
     return config_->db_name;
   }
-  rocksdb::ColumnFamilyHandle *GetCFHandle(std::string name);
+  rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle*>* GetCFHandles();
   LockManager *GetLockManager() { return &lock_mgr_; }
 
@@ -53,7 +53,7 @@ class Storage {
                                  int *fd,
                                  rocksdb::BackupID *meta_id,
                                  uint64_t *file_size);
-    static int OpenDataFile(Storage *storage, std::string rel_path,
+    static int OpenDataFile(Storage *storage, const std::string &rel_path,
                             uint64_t *file_size);
 
     // Slave side
@@ -68,9 +68,9 @@ class Storage {
                                      rocksdb::BackupID meta_id,
                                      evbuffer *evbuf);
     static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
-        Storage *storage, std::string rel_path);
-    static Status SwapTmpFile(Storage *storage, std::string rel_path);
-    static bool FileExists(Storage *storage, std::string rel_path);
+        Storage *storage, const std::string &rel_path);
+    static Status SwapTmpFile(Storage *storage, const std::string &rel_path);
+    static bool FileExists(Storage *storage, const std::string &rel_path);
     static Status PurgeBackup(Storage *storage);
   };
 

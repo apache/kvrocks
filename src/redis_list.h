@@ -16,8 +16,8 @@ class RedisList :public RedisDB {
   rocksdb::Status Pop(Slice key, std::string *elem, bool left);
   rocksdb::Status Index(Slice key, int index, std::string *elem);
   rocksdb::Status RPopLPush(Slice src, Slice dst, std::string *elem);
-  rocksdb::Status Push(Slice key, std::vector<Slice> elems, bool left, int *ret);
-  rocksdb::Status PushX(Slice key, std::vector<Slice> elems, bool left, int *ret);
+  rocksdb::Status Push(Slice key, const std::vector<Slice> &elems, bool left, int *ret);
+  rocksdb::Status PushX(Slice key, const std::vector<Slice> &elems, bool left, int *ret);
   rocksdb::Status Range(Slice key, int start, int stop, std::vector<std::string> *elems);
 
  private:

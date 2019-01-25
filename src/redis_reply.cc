@@ -46,4 +46,4 @@ std::string Array(std::vector<std::string> list) {
   return buf;
 }
 
-} // namespace Redis
+}  // namespace Redis

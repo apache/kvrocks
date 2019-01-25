@@ -361,6 +361,31 @@ class CommandIncrBy : public Commander {
   int64_t increment_ = 0;
 };
 
+class CommandIncrByFloat : public Commander {
+ public:
+  CommandIncrByFloat() : Commander("incrbyfloat", 3, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stof(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    float ret;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.IncrByFloat(args_[1], increment_, &ret);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::BulkString(std::to_string(ret));
+    return Status::OK();
+  }
+
+ private:
+  float increment_ = 0;
+};
+
 class CommandDecrBy : public Commander {
  public:
   CommandDecrBy() : Commander("decrby", 3, true) {}
@@ -2292,6 +2317,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"incrby",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandIncrBy);
+     }},
+    {"incrbyfloat",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandIncrByFloat);
      }},
     {"incr",
      []() -> std::unique_ptr<Commander> {

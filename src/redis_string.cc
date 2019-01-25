@@ -147,11 +147,39 @@ rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) 
     try {
       value = std::stoll(value_bytes);
     } catch(std::exception &e) {
-      return rocksdb::Status::InvalidArgument("string old_value is not an integer");
+      return rocksdb::Status::InvalidArgument("value is not an integer");
     }
   }
   if ((increment < 0 && value < 0 && increment < (LLONG_MIN-value))
       || (increment > 0 && value > 0 && increment > (LLONG_MAX-value))) {
+    return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
+  }
+  value += increment;
+  *ret = value;
+  return updateValue(key, raw_value_bytes, std::to_string(value));
+}
+
+rocksdb::Status RedisString::IncrByFloat(Slice key, float increment, float *ret) {
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), key);
+  std::string raw_value_bytes, value_bytes;
+  rocksdb::Status s = getValue(key, &raw_value_bytes, &value_bytes);
+  if (!s.ok() && !s.IsNotFound()) return s;
+  float value = 0;
+  if (!value_bytes.empty()) {
+    try {
+      value = std::stof(value_bytes);
+    } catch(std::exception &e) {
+      return rocksdb::Status::InvalidArgument("value is not an integer");
+    }
+  }
+  auto float_min = std::numeric_limits<float>::min();
+  auto float_max = std::numeric_limits<float>::max();
+  if ((increment < 0 && value < 0 && increment < (float_min-value))
+      || (increment > 0 && value > 0 && increment > (float_max-value))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
   value += increment;

@@ -229,33 +229,34 @@ Status Config::Load(std::string path) {
   return Status::OK();
 }
 
-bool Config::rewriteConfigValue(std::vector<std::string> &args) {
+bool Config::rewriteConfigValue(std::vector<std::string> *args) {
 #define REWRITE_IF_MATCH(argc, k1, k2, value) do { \
   if ((argc) == 2 && (k1) == (k2)) { \
-    if (args[1] != (value)) {       \
-      args[1] = (value);            \
+    if (args->at(1) != (value)) {   \
+      args->assign(1, (value));     \
       return true;                  \
     }                               \
     return false;                   \
   }                                 \
 } while (0);
 
-  size_t size = args.size();
-  REWRITE_IF_MATCH(size, args[0], "masterauth", masterauth);
-  REWRITE_IF_MATCH(size, args[0], "requirepass", requirepass);
-  REWRITE_IF_MATCH(size, args[0], "maxclients", std::to_string(maxclients));
-  REWRITE_IF_MATCH(size, args[0], "slave-read-only", (slave_readonly? "yes":"no"));
-  REWRITE_IF_MATCH(size, args[0], "timeout", std::to_string(timeout));
-  REWRITE_IF_MATCH(size, args[0], "backup-dir", backup_dir);
-  REWRITE_IF_MATCH(size, args[0], "loglevel", loglevels[loglevel]);
+  size_t size = args->size();
+  std::string key = args->front();
+  REWRITE_IF_MATCH(size, key, "masterauth", masterauth);
+  REWRITE_IF_MATCH(size, key, "requirepass", requirepass);
+  REWRITE_IF_MATCH(size, key, "maxclients", std::to_string(maxclients));
+  REWRITE_IF_MATCH(size, key, "slave-read-only", (slave_readonly? "yes":"no"));
+  REWRITE_IF_MATCH(size, key, "timeout", std::to_string(timeout));
+  REWRITE_IF_MATCH(size, key, "backup-dir", backup_dir);
+  REWRITE_IF_MATCH(size, key, "loglevel", loglevels[loglevel]);
 
-  if (size >= 2 && args[0] == "compact-cron") {
+  if (size >= 2 && key == "compact-cron") {
     std::vector<std::string> new_args = compact_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, &args);
+    return rewriteCronConfigValue(new_args, args);
   }
-  if (size >= 2 && args[0] == "bgsave-cron") {
+  if (size >= 2 && key == "bgsave-cron") {
     std::vector<std::string> new_args = bgsave_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, &args);
+    return rewriteCronConfigValue(new_args, args);
   }
   return false;
 }

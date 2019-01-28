@@ -1734,7 +1734,7 @@ class CommandPSync : public Commander {
               std::string bulk_str =
                   "$" + std::to_string(data.length()) + CRLF + data + CRLF;
               evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
-              self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->next_seq_);
+              self->svr_->UpdateSlaveStats(self->slave_info_pos_, batch.sequence);
               self->next_seq_ = batch.sequence + batch.writeBatchPtr->Count();
               if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
                 self->state_ = State::WaitWAL;

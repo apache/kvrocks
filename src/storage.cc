@@ -359,7 +359,22 @@ bool isDir(const char* name) {
   return (st.st_mode & S_IFDIR) != 0;
 }
 
+bool PathExists(const char* name) {
+  struct stat st{};
+  if (stat(name, &st) != 0) {
+    if (errno == ENOENT) {
+      return false;
+    }
+    // Other types of error are treated as the path exists (might be a bad idea)
+  }
+  return true;
+}
+
 Status RmdirRecursively(rocksdb::Env *env, const std::string &dir) {
+  if (!PathExists(dir.c_str())) {
+    return Status::OK();
+  }
+
   std::vector<std::string> children;
   env->GetChildren(dir, &children);
   rocksdb::Status s;

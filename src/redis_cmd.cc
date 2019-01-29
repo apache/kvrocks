@@ -117,7 +117,7 @@ class CommandFlushAll : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisDB redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.FlushAll();
-    LOG(WARN) << "DB keys in namespce: " << conn->GetNamespace()
+    LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace()
               << " was flused, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = Redis::SimpleString("OK");

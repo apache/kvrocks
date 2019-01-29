@@ -98,6 +98,57 @@ TEST_F(RedisSetTest, TakeWithPop) {
   set->Del(key_);
 }
 
+TEST_F(RedisSetTest, Diff) {
+  int ret;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set->Add(k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set->Add(k2, {"c"}, &ret);
+  EXPECT_EQ(ret, 1);
+  set->Add(k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  std::vector<std::string> members;
+  set->Diff({k1, k2, k3}, &members);
+  EXPECT_EQ(2, members.size());
+  set->Del(k1);
+  set->Del(k2);
+  set->Del(k3);
+}
+
+TEST_F(RedisSetTest, Union) {
+  int ret;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set->Add(k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set->Add(k2, {"c"}, &ret);
+  EXPECT_EQ(ret, 1);
+  set->Add(k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  std::vector<std::string> members;
+  set->Union({k1, k2, k3}, &members);
+  EXPECT_EQ(5, members.size());
+  set->Del(k1);
+  set->Del(k2);
+  set->Del(k3);
+}
+
+TEST_F(RedisSetTest, Inter) {
+  int ret;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set->Add(k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set->Add(k2, {"c"}, &ret);
+  EXPECT_EQ(ret, 1);
+  set->Add(k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  std::vector<std::string> members;
+  set->Inter({k1, k2, k3}, &members);
+  EXPECT_EQ(1, members.size());
+  set->Del(k1);
+  set->Del(k2);
+  set->Del(k3);
+}
+
 TEST_F(RedisSetTest, TakeWithoutPop) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);

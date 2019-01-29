@@ -281,6 +281,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
+  ++self->seq_; // psync from next sequence
   const auto seq_str = std::to_string(self->seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
@@ -430,7 +431,6 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       }
       LOG(INFO) << "[replication] Succeeded restoring the backup, fullsync was finish";
       self->post_fullsync_cb_();
-      ++self->seq_;
 
       // Switch to psync state machine again
       self->psync_steps_.Start();

@@ -1158,7 +1158,7 @@ class CommandSDiff : public Commander {
   CommandSDiff() : Commander("sdiff", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
-    for(size_t i = 1; i < args_.size(); i++) {
+    for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
     std::vector<std::string> members;
@@ -1177,7 +1177,7 @@ class CommandSUnion : public Commander {
   CommandSUnion() : Commander("sunion", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
-    for(size_t i = 1; i < args_.size(); i++) {
+    for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
     std::vector<std::string> members;
@@ -1196,7 +1196,7 @@ class CommandSInter : public Commander {
   CommandSInter() : Commander("sinter", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
-    for(size_t i = 1; i < args_.size(); i++) {
+    for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
     std::vector<std::string> members;

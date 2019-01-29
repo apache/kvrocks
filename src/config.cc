@@ -467,7 +467,6 @@ Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
     if (iter->second == ns) {
       tokens.erase(iter);
       tokens[token] = ns;
-      LOG(WARNING) << "Updated namespace: " << ns << ", new token: " << token;
       return Status::OK();
     }
   }
@@ -487,7 +486,6 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
     }
   }
   tokens[token] = ns;
-  LOG(WARNING) << "Create new namespace: " << ns << ", token: " << token;
   return Status::OK();
 }
 
@@ -497,7 +495,6 @@ Status Config::DelNamespace(const std::string &ns) {
   }
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
     if (iter->second == ns) {
-      LOG(WARNING) << "Deleted namespace: " << ns << ", token: " << iter->first;
       tokens.erase(iter);
       return Status::OK();
     }

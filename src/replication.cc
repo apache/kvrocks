@@ -281,7 +281,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  ++self->seq_; // psync from next sequence
+  ++self->seq_; //  psync from next sequence
   const auto seq_str = std::to_string(self->seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +

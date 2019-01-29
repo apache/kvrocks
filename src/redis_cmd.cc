@@ -70,12 +70,18 @@ class CommandNamespace : public Commander {
     } else if (args_.size() == 4 && args_[1] == "set") {
       Status s = config->SetNamepsace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
+      LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3]
+      << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else if (args_.size() == 4 && args_[1] == "add") {
       Status s = config->AddNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
+      LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3]
+                   << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else if (args_.size() == 3 && args_[1] == "del") {
       Status s = config->DelNamespace(args_[2]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
+      LOG(WARNING) << "Deleted namespace: " << args_[2]
+                   << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else {
       *output = Redis::Error(
           "NAMESPACE subcommand must be one of GET, SET, DEL, ADD");
@@ -1677,9 +1683,12 @@ class CommandPSync : public Commander {
     svr_ = svr;
     conn_ = conn;
 
+    LOG(INFO) << "Slave " << conn->GetAddr() << " asks for synchronization"
+              << " with next sequence: " << next_seq_
+              << ", and local sequence: " << svr_->storage_->LatestSeq();
     if (!checkWALBoundary(svr->storage_, next_seq_).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
-      *output = "sequence out of range";
+      *output = "sequence out of range, please use fullsync";
       return Status(Status::RedisExecErr, *output);
     } else {
       svr->stats_.IncrPSyncOKCounter();
@@ -1700,6 +1709,7 @@ class CommandPSync : public Commander {
       svr->UpdateSlaveStats(slave_info_pos_, next_seq_ - 1);
     }
 
+    LOG(INFO) << "Slave " << conn->GetAddr() << " was added, starting the streaming batch";
     state_ = State::GetWALIter;
     auto bev = conn->GetBufferEvent();
     StreamingBatch(bev, this);

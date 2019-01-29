@@ -1153,6 +1153,63 @@ class CommandSMove : public Commander {
   }
 };
 
+class CommandSDiff : public Commander {
+ public:
+  CommandSDiff() : Commander("sdiff", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for(size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    std::vector<std::string> members;
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.Diff(keys, &members);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::MultiBulkString(members);
+    return Status::OK();
+  }
+};
+
+class CommandSUnion : public Commander {
+ public:
+  CommandSUnion() : Commander("sunion", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for(size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    std::vector<std::string> members;
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.Union(keys, &members);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::MultiBulkString(members);
+    return Status::OK();
+  }
+};
+
+class CommandSInter : public Commander {
+ public:
+  CommandSInter() : Commander("sinter", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for(size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    std::vector<std::string> members;
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.Inter(keys, &members);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::MultiBulkString(members);
+    return Status::OK();
+  }
+};
+
 class CommandZAdd : public Commander {
  public:
   CommandZAdd() : Commander("zadd", -4, true) {}
@@ -2488,6 +2545,18 @@ std::map<std::string, CommanderFactory> command_table = {
     {"smove",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSMove);
+     }},
+    {"sdiff",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSDiff);
+     }},
+    {"sunion",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSUnion);
+     }},
+    {"sinter",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSInter);
      }},
     {"sscan",
      []() -> std::unique_ptr<Commander> {

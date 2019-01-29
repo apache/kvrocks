@@ -1,5 +1,6 @@
 #include "redis_set.h"
 
+#include <map>
 #include <iostream>
 
 rocksdb::Status RedisSet::GetMetadata(Slice key, SetMetadata*metadata) {
@@ -184,4 +185,95 @@ uint64_t RedisSet::Scan(Slice key,
                         const std::string &member_prefix,
                         std::vector<std::string> *members) {
   return RedisSubKeyScanner::Scan(kRedisSet, key, cursor, limit, member_prefix, members);
+}
+
+/*
+ * Returns the members of the set resulting from the difference between
+ * the first set and all the successive sets. For example:
+ * key1 = {a,b,c,d}
+ * key2 = {c}
+ * key3 = {a,c,e}
+ * DIFF key1 key2 key3 = {b,d}
+ */
+rocksdb::Status RedisSet::Diff(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+  members->clear();
+  std::vector<std::string> source_members;
+  auto s = Members(keys[0], &source_members);
+  if (!s.ok()) return s;
+
+  std::map<std::string, bool> exclude_members;
+  std::vector<std::string> target_members;
+  for (size_t i = 1; i < keys.size(); i++) {
+    s = Members(keys[i], &target_members);
+    if (!s.ok()) return s;
+    for (const auto &member : target_members) {
+      exclude_members[member] = true;
+    }
+  }
+  for (const auto &member : source_members) {
+    if (exclude_members.find(member) == exclude_members.end()) {
+      members->push_back(member);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+/*
+ * Returns the members of the set resulting from the union of all the given sets.
+ * For example:
+ * key1 = {a,b,c,d}
+ * key2 = {c}
+ * key3 = {a,c,e}
+ * UNION key1 key2 key3 = {a,b,c,d,e}
+ */
+rocksdb::Status RedisSet::Union(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+  members->clear();
+
+  std::map<std::string, bool> union_members;
+  std::vector<std::string> target_members;
+  for (size_t i = 0; i < keys.size(); i++) {
+    auto s = Members(keys[i], &target_members);
+    if (!s.ok()) return s;
+    for (const auto &member : target_members) {
+      union_members[member] = true;
+    }
+  }
+  for (const auto &iter : union_members) {
+    members->emplace_back(iter.first);
+  }
+  return rocksdb::Status::OK();
+}
+
+/*
+ * Returns the members of the set resulting from the intersection of all the given sets.
+ * For example:
+ * key1 = {a,b,c,d}
+ * key2 = {c}
+ * key3 = {a,c,e}
+ * INTER key1 key2 key3 = {c}
+ */
+rocksdb::Status RedisSet::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+  members->clear();
+
+  std::map<std::string, size_t> member_counters;
+  std::vector<std::string> target_members;
+  auto s = Members(keys[0], &target_members);
+  if (!s.ok() || target_members.empty()) return s;
+  for (const auto &member : target_members) {
+    member_counters[member] = 1;
+  }
+  for (size_t i = 1; i < keys.size(); i++) {
+    auto s = Members(keys[i], &target_members);
+    if (!s.ok() || target_members.empty()) return s;
+    for (const auto &member : target_members) {
+      if (member_counters.find(member) == member_counters.end()) continue;
+      member_counters[member]++;
+    }
+  }
+  for (const auto iter : member_counters) {
+    if (iter.second == keys.size()) {  // all the sets contain this member
+      members->emplace_back(iter.first);
+    }
+  }
+  return rocksdb::Status::OK();
 }

@@ -27,7 +27,7 @@ class Storage {
   Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();
-  Status RestoreFromBackup(rocksdb::SequenceNumber *seq);
+  Status RestoreFromBackup();
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status WriteBatch(std::string &&raw_batch);

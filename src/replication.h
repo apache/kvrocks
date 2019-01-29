@@ -30,7 +30,6 @@ class ReplicationThread {
              std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_; }
-  rocksdb::SequenceNumber Offset() { return seq_; }
   time_t LastIOTime() { return last_io_time_; }
 
  private:
@@ -41,7 +40,6 @@ class ReplicationThread {
   uint32_t port_;
   std::string auth_;
   Engine::Storage *storage_ = nullptr;
-  rocksdb::SequenceNumber seq_ = 0;
   ReplState repl_state_;
   time_t last_io_time_ = 0;
 

@@ -157,7 +157,6 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                           CallbacksStateMachine::CallbackType{
                               CallbacksStateMachine::READ, "fullsync read", fullSyncReadCB}
                       }) {
-  seq_ = storage_->LatestSeq();
 }
 
 void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
@@ -281,14 +280,14 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  ++self->seq_;  // psync from next sequence
-  const auto seq_str = std::to_string(self->seq_);
+  auto next_seq = self->storage_->LatestSeq() + 1;
+  const auto seq_str = std::to_string(next_seq);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
                        CRLF + seq_str + CRLF;
   send_string(bev, cmd_str);
   self->repl_state_ = kReplSendPSync;
-  LOG(INFO) << "[replication] Try to use psync, from seq: " << self->seq_;
+  LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   return CBState::NEXT;
 }
 
@@ -424,7 +423,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 
       // Restore DB from backup
       self->pre_fullsync_cb_();
-      if (!self->storage_->RestoreFromBackup(&self->seq_).IsOK()) {
+      if (!self->storage_->RestoreFromBackup().IsOK()) {
         LOG(ERROR) << "[replication] Failed to restore backup";
         self->post_fullsync_cb_();
         return CBState::RESTART;

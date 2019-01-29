@@ -125,7 +125,7 @@ Status Storage::DestroyBackup() {
   return Status();
 }
 
-Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
+Status Storage::RestoreFromBackup() {
   // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
@@ -149,7 +149,6 @@ Status Storage::RestoreFromBackup(rocksdb::SequenceNumber *seq) {
     LOG(ERROR) << "Failed to reopen db: " << s2.Msg();
     return Status(Status::DBOpenErr);
   }
-  *seq = LatestSeq();
   return Status::OK();
 }
 

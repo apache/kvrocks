@@ -117,6 +117,8 @@ class CommandFlushAll : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisDB redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.FlushAll();
+    LOG(WARN) << "DB keys in namespce: " << conn->GetNamespace()
+              << " was flused, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
@@ -148,7 +150,7 @@ class CommandConfig : public Commander {
       Status s = config->Rewrite();
       if (!s.IsOK()) return Status(Status::RedisExecErr, s.Msg());
       *output = Redis::SimpleString("OK");
-      LOG(INFO) << "# CONFIG REWRITE executed with success.";
+      LOG(INFO) << "# CONFIG REWRITE executed with success";
     } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);

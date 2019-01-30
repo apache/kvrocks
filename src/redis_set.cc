@@ -7,6 +7,27 @@ rocksdb::Status RedisSet::GetMetadata(Slice key, SetMetadata*metadata) {
   return RedisDB::GetMetadata(kRedisSet, key, metadata);
 }
 
+// Make sure members are uniq before use Overwrite
+rocksdb::Status RedisSet::Overwrite(Slice key, const std::vector<Slice> &members) {
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  key = Slice(ns_key);
+  LockGuard guard(storage_->GetLockManager(), key);
+
+  SetMetadata metadata;
+  rocksdb::WriteBatch batch;
+  std::string sub_key;
+  for (const auto &member : members) {
+    InternalKey(key, member, metadata.version).Encode(&sub_key);
+    batch.Put(sub_key, Slice());
+  }
+  metadata.size = members.size();
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, key, bytes);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
 rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
   *ret = 0;
 
@@ -276,4 +297,31 @@ rocksdb::Status RedisSet::Inter(const std::vector<Slice> &keys, std::vector<std:
     }
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status RedisSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+  *ret = 0;
+  std::vector<std::string> members;
+  auto s = Diff(keys, &members);
+  if (!s.ok()) return s;
+  *ret = static_cast<int>(members.size());
+  return Overwrite(dst, keys);
+}
+
+rocksdb::Status RedisSet::UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+  *ret = 0;
+  std::vector<std::string> members;
+  auto s = Union(keys, &members);
+  if (!s.ok()) return s;
+  *ret = static_cast<int>(members.size());
+  return Overwrite(dst, keys);
+}
+
+rocksdb::Status RedisSet::InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+  *ret = 0;
+  std::vector<std::string> members;
+  auto s = Inter(keys, &members);
+  if (!s.ok()) return s;
+  *ret = static_cast<int>(members.size());
+  return Overwrite(dst, keys);
 }

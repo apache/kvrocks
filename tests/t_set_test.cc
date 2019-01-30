@@ -149,6 +149,17 @@ TEST_F(RedisSetTest, Inter) {
   set->Del(k3);
 }
 
+TEST_F(RedisSetTest, Overwrite) {
+  int ret;
+  rocksdb::Status s = set->Add(key_, fields_, &ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  set->Overwrite(key_, {"a"});
+  int count;
+  set->Card(key_, &count);
+  EXPECT_EQ(count, 1);
+  set->Del(key_);
+}
+
 TEST_F(RedisSetTest, TakeWithoutPop) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);

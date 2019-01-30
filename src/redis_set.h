@@ -20,6 +20,10 @@ class RedisSet : public RedisSubKeyScanner {
   rocksdb::Status Diff(const std::vector<Slice> &keys, std::vector<std::string> *members);
   rocksdb::Status Union(const std::vector<Slice> &keys, std::vector<std::string> *members);
   rocksdb::Status Inter(const std::vector<Slice> &keys, std::vector<std::string> *members);
+  rocksdb::Status Overwrite(Slice key, const std::vector<Slice> &members);
+  rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
+  rocksdb::Status UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
+  rocksdb::Status InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   uint64_t Scan(Slice key,
                 const std::string &cursor,
                 const uint64_t &limit,

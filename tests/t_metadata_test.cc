@@ -75,7 +75,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   redis->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis->Del(key_);
-  EXPECT_TRUE(s.ok()) ;
+  EXPECT_TRUE(s.ok());
 }
 
 TEST_F(RedisTypeTest, Expire) {

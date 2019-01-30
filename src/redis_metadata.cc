@@ -93,6 +93,7 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key)
   ns_key->append(ns.ToString());
   ns_key->append(key.ToString());
 }
+
 Metadata::Metadata(RedisType type) {
   flags = (uint8_t)0x0f & type;
   expire = -1;
@@ -127,9 +128,14 @@ void Metadata::Encode(std::string *dst) {
 }
 
 uint64_t Metadata::generateVersion() {
-  struct timespec now{0, 0};
-  clock_gettime(CLOCK_REALTIME, &now);
-  return int64_t(now.tv_sec) * 1000000000 + uint64_t(now.tv_nsec);
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
+  version += static_cast<uint64_t>(now.tv_usec);
+  // 52 bit for microseconds and 11 bit for counter
+  static int64_t counter;
+  counter = (counter+1)%2048;
+  return (version << 11)+counter;
 }
 
 bool Metadata::operator==(const Metadata &that) const {
@@ -158,8 +164,8 @@ int32_t Metadata::TTL() const {
 bool Metadata::Expired() const {
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  // version is nanosecond
-  if (Type() != kRedisString && version >= static_cast<uint64_t>(now * 1000000000)) {
+  // version first 11 bit is counter, and later 52bit was the micro seconds
+  if (Type() != kRedisString && (version>>11) >= static_cast<uint64_t>(now*1000000)) {
     return false;
   }
   if (expire > 0 && expire < now) {

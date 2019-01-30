@@ -1,6 +1,7 @@
 #include "redis_metadata.h"
 #include <time.h>
 #include <vector>
+#include <cstdlib>
 
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
@@ -133,9 +134,12 @@ uint64_t Metadata::generateVersion() {
   uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
   version += static_cast<uint64_t>(now.tv_usec);
   // 52 bit for microseconds and 11 bit for counter
-  static int64_t counter;
-  counter = (counter+1)%2048;
-  return (version << 11)+counter;
+  const int counter_bits = 11;
+  // use random position for initial counter to avoid conflicts,
+  // while the slave was promoted as master, and the system clock was backoff
+  static int64_t counter = std::rand() % (1 << counter_bits);
+  counter = (counter+1) % (1 << counter_bits);
+  return (version << counter_bits)+counter;
 }
 
 bool Metadata::operator==(const Metadata &that) const {

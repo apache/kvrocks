@@ -28,7 +28,7 @@ rocksdb::Status RedisSet::Overwrite(Slice key, const std::vector<std::string> &m
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisSet::Add(Slice key, std::vector<Slice> members, int *ret) {
+rocksdb::Status RedisSet::Add(Slice key, const std::vector<Slice> &members, int *ret) {
   *ret = 0;
 
   std::string ns_key;

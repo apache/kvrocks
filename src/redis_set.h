@@ -12,7 +12,7 @@ class RedisSet : public RedisSubKeyScanner {
 
   rocksdb::Status Card(Slice key, int *ret);
   rocksdb::Status IsMember(Slice key, Slice member, int *ret);
-  rocksdb::Status Add(Slice key, std::vector<Slice> members, int *ret);
+  rocksdb::Status Add(Slice key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status Remove(Slice key, std::vector<Slice> members, int *ret);
   rocksdb::Status Members(Slice key, std::vector<std::string> *members);
   rocksdb::Status Move(Slice src, Slice dst, Slice member, int *ret);
@@ -29,6 +29,7 @@ class RedisSet : public RedisSubKeyScanner {
                 const uint64_t &limit,
                 const std::string &member_prefix,
                 std::vector<std::string> *members);
+
  private:
   rocksdb::Status GetMetadata(Slice key, SetMetadata *metadata);
 };

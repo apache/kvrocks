@@ -1210,6 +1210,63 @@ class CommandSInter : public Commander {
   }
 };
 
+class CommandSDiffStore: public Commander {
+ public:
+  CommandSDiffStore() : Commander("sdiffstore", -3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret = 0;
+    std::vector<Slice> keys;
+    for (size_t i = 2; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.DiffStore(args_[1], keys, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandSUnionStore: public Commander {
+ public:
+  CommandSUnionStore() : Commander("sunionstore", -3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret = 0;
+    std::vector<Slice> keys;
+    for (size_t i = 2; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.UnionStore(args_[1], keys, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandSInterStore: public Commander {
+ public:
+  CommandSInterStore() : Commander("sinterstore", -3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret = 0;
+    std::vector<Slice> keys;
+    for (size_t i = 2; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+    RedisSet set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.InterStore(args_[1], keys, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
 class CommandZAdd : public Commander {
  public:
   CommandZAdd() : Commander("zadd", -4, true) {}
@@ -2557,6 +2614,18 @@ std::map<std::string, CommanderFactory> command_table = {
     {"sinter",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSInter);
+     }},
+    {"sdiffstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSDiffStore);
+     }},
+    {"sunionstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSUnionStore);
+     }},
+    {"sinterstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSInterStore);
      }},
     {"sscan",
      []() -> std::unique_ptr<Commander> {

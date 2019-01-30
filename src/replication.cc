@@ -29,11 +29,11 @@ void ReplicationThread::CallbacksStateMachine::ConnEventCB(
     return;
   }
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
-    LOG(ERROR) << "[replication] connection error/eof, reconnect";
+    LOG(ERROR) << "[replication] connection error/eof, reconnect the master";
     // Wait a bit and reconnect
     auto state_m = static_cast<CallbacksStateMachine *>(state_machine_ptr);
     state_m->repl_->repl_state_ = kReplConnecting;
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     state_m->Stop();
     state_m->Start();
   }
@@ -106,7 +106,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
                                  sizeof(sockaddr_inet)) != 0) {
     // NOTE: Connection error will not appear here, network err will be reported
     // in ConnEventCB. the error here is something fatal.
-    LOG(ERROR) << "[replication] Failed to start";
+    LOG(ERROR) << "[replication] Failed to start state machine, err: " << strerror(errno);
   }
   handler_idx_ = 0;
   if (getHandlerEventType(0) == WRITE) {
@@ -165,6 +165,7 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
   // Remove the backup_dir, so we can start replication in a clean state
+  LOG(INFO) << "[replication] Purge backup dir before start replication";
   if (!Engine::Storage::BackupManager::PurgeBackup(storage_).IsOK()) {
     LOG(ERROR) << "[replication] Failed to purge existed backup dir";
     stop_flag_ = true;

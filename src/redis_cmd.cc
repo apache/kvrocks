@@ -1666,7 +1666,23 @@ class CommandCompact : public Commander {
     Status s = svr->AsyncCompactDB();
     if (!s.IsOK()) return s;
     *output = Redis::SimpleString("OK");
-    LOG(INFO) << "Commpact was triggered by manual with executed success.";
+    LOG(INFO) << "Commpact was triggered by manual with executed success";
+    return Status::OK();
+  }
+};
+
+class CommandBGSave: public Commander {
+ public:
+  CommandBGSave() : Commander("bgsave", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can do bgsave command");
+      return Status::OK();
+    }
+    Status s = svr->AsyncBgsaveDB();
+    if (!s.IsOK()) return s;
+    *output = Redis::SimpleString("OK");
+    LOG(INFO) << "BGSave was triggered by manual with executed success";
     return Status::OK();
   }
 };
@@ -2714,6 +2730,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"compact",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandCompact);
+     }},
+    {"bgsave",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandBGSave);
      }},
     {"slaveof",
      []() -> std::unique_ptr<Commander> {

@@ -154,9 +154,10 @@ Status Storage::RestoreFromBackup() {
 rocksdb::Status Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
-  if (backup_infos.size() < num_backups_to_keep) {
+  if (backup_infos.size() <= num_backups_to_keep) {
     LOG(INFO) << "[Storage] Current backup num: " << backup_infos.size()
-              << " is smaller than num backups to keep: " << num_backups_to_keep;
+              << ", num backups to keep: " << num_backups_to_keep
+              << ", no backup needs to purge";
     return rocksdb::Status::OK();
   }
   uint32_t num_backups_to_purge = backup_infos.size()-num_backups_to_keep;
@@ -164,7 +165,7 @@ rocksdb::Status Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
   for (uint32_t i = 0; i < num_backups_to_purge; i++) {
     LOG(INFO) << "[Storage] The old backup(id: "
               << backup_infos[i].backup_id << ") would be purged, "
-              << " which created at: " << backup_infos[i].timestamp
+              << " created at: " << backup_infos[i].timestamp
               << ", size: " << backup_infos[i].size
               << ", num files: " << backup_infos[i].number_files;
   }

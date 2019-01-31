@@ -42,7 +42,7 @@ void Config::array2String(const std::vector<std::string> &array,
   output->clear();
   for (size_t i = 0; i < array.size(); i++) {
     output->append(array[i]);
-    if (i != array.size()-1) output->append(array[i]);
+    if (i != array.size()-1) output->append(delim);
   }
 }
 

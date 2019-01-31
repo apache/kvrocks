@@ -34,18 +34,17 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   return Status::OK();
 }
 
-int Cron::IsTimeMatch(struct tm *tm) {
+bool Cron::IsTimeMatch(struct tm *tm) {
   for (const auto &st : schedulers_) {
     if ((st.minute == -1 || tm->tm_min == st.minute) &&
         (st.hour == -1 || tm->tm_hour == st.hour) &&
         (st.mday == -1 || tm->tm_mday == st.mday) &&
         (st.month == -1 || (tm->tm_mon + 1) == st.month) &&
         (st.wday == -1 || tm->tm_wday == st.wday)) {
-      return 1;
+      return true;
     }
   }
-
-  return 0;
+  return false;
 }
 
 bool Cron::IsEnabled() {
@@ -54,8 +53,9 @@ bool Cron::IsEnabled() {
 
 std::string Cron::ToString() {
   std::string ret;
-  for (const auto &sched : schedulers_) {
-    ret += sched.ToString() + " ";
+  for(size_t i = 0; i < schedulers_.size(); i++) {
+    ret += schedulers_[i].ToString();
+    if (i != schedulers_.size()-1) ret += " ";
   }
   return ret;
 }

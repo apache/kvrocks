@@ -20,11 +20,9 @@ TEST_F(CronTest, IsTimeMatch) {
   std::time_t t = std::time(0);
   std::tm *now = std::localtime(&t);
   now->tm_hour = 3;
-  int got = cron->IsTimeMatch(now);
-  ASSERT_EQ(1, got);
+  ASSERT_TRUE(cron->IsTimeMatch(now));
   now->tm_hour = 4;
-  got = cron->IsTimeMatch(now);
-  ASSERT_EQ(0, got);
+  ASSERT_FALSE(cron->IsTimeMatch(now));
 }
 
 TEST_F(CronTest, ToString) {

@@ -35,9 +35,9 @@ struct Config{
   std::string masterauth;
   std::string requirepass;
   std::string master_host;
+  int master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
-  int master_port = 0;
   std::map<std::string, std::string> tokens;
 
   struct {
@@ -47,7 +47,6 @@ struct Config{
     int max_background_compactions = 2;
     int max_background_flushes = 2;
     uint32_t max_sub_compactions = 1;
-    uint64_t block_cache_size = 1048576;  // unit is MB
   } rocksdb_options;
 
  public:
@@ -56,9 +55,9 @@ struct Config{
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(std::string key, const std::string &value);
   void GetNamespace(const std::string &ns, std::string *token);
-  Status DelNamespace(const std::string &ns);
-  Status SetNamepsace(const std::string &ns, const std::string &token);
   Status AddNamespace(const std::string &ns, const std::string &token);
+  Status SetNamepsace(const std::string &ns, const std::string &token);
+  Status DelNamespace(const std::string &ns);
   Config() = default;
   ~Config() = default;
 
@@ -66,8 +65,7 @@ struct Config{
   std::string path_;
   int yesnotoi(std::string input);
   void incrOpenFilesLimit(rlim_t maxfiles);
-  Status parseRocksdbOption(std::string key, std::string value);
   Status parseConfigFromString(std::string input);
-  bool rewriteConfigValue(std::vector<std::string> *args);
-  bool rewriteCronConfigValue(const std::vector<std::string> &new_args, std::vector<std::string> *args);
+  Status parseRocksdbOption(std::string key, std::string value);
+  void array2String(const std::vector<std::string> &array, const std::string &delim, std::string *output);
 };

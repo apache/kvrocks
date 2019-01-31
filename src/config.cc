@@ -14,8 +14,9 @@
 #include "status.h"
 #include "cron.h"
 
-static const std::vector<std::string> loglevels {"info", "warning", "error", "fatal"};
-static const char *default_namespace = "__namespace";
+static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
+static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
+static const char *kDefaultNamespace = "__namespace";
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;
@@ -33,6 +34,15 @@ void Config::incrOpenFilesLimit(rlim_t maxfiles) {
      * smaller limit decrementing by a few FDs per iteration. */
     if (best_limit < decr_step) break;
     best_limit -= decr_step;
+  }
+}
+
+void Config::array2String(const std::vector<std::string> &array,
+                          const std::string &delim, std::string *output) {
+  output->clear();
+  for (size_t i = 0; i < array.size(); i++) {
+    output->append(array[i]);
+    if (i != array.size()-1) output->append(array[i]);
   }
 }
 
@@ -150,8 +160,8 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "pidfile") {
     pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
-    for (size_t i = 0; i < loglevels.size(); i++) {
-      if (Util::ToLower(args[1]) == loglevels[i]) {
+    for (size_t i = 0; i < kNumLogLevel; i++) {
+      if (Util::ToLower(args[1]) == kLogLevels[i]) {
         loglevel = static_cast<int>(i);
         break;
       }
@@ -226,57 +236,9 @@ Status Config::Load(std::string path) {
     file.close();
     return Status(Status::NotOK, "requirepass cannot be empty");
   }
-  tokens[requirepass] = default_namespace;
+  tokens[requirepass] = kDefaultNamespace;
   file.close();
   return Status::OK();
-}
-
-bool Config::rewriteConfigValue(std::vector<std::string> *args) {
-#define REWRITE_IF_MATCH(argc, k1, k2, value) do { \
-  if ((argc) == 2 && (k1) == (k2)) { \
-    if (args->at(1) != (value)) {   \
-      args->assign(1, (value));     \
-      return true;                  \
-    }                               \
-    return false;                   \
-  }                                 \
-} while (0);
-
-  size_t size = args->size();
-  std::string key = args->front();
-  REWRITE_IF_MATCH(size, key, "masterauth", masterauth);
-  REWRITE_IF_MATCH(size, key, "requirepass", requirepass);
-  REWRITE_IF_MATCH(size, key, "maxclients", std::to_string(maxclients));
-  REWRITE_IF_MATCH(size, key, "slave-read-only", (slave_readonly? "yes":"no"));
-  REWRITE_IF_MATCH(size, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
-  REWRITE_IF_MATCH(size, key, "timeout", std::to_string(timeout));
-  REWRITE_IF_MATCH(size, key, "backup-dir", backup_dir);
-  REWRITE_IF_MATCH(size, key, "loglevel", loglevels[loglevel]);
-
-  if (size >= 2 && key == "compact-cron") {
-    std::vector<std::string> new_args = compact_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, args);
-  }
-  if (size >= 2 && key == "bgsave-cron") {
-    std::vector<std::string> new_args = bgsave_cron.ToConfParamVector();
-    return rewriteCronConfigValue(new_args, args);
-  }
-  return false;
-}
-
-bool Config::rewriteCronConfigValue(const std::vector<std::string> &new_args, std::vector<std::string> *args) {
-  size_t args_size = args->size();
-  size_t new_args_size = new_args.size();
-  if (new_args_size == args_size - 1 &&
-      std::equal(new_args.begin(), new_args.end(), args->begin() + 1)
-      ) {
-    return false;
-  }
-  args->erase(args->begin() + 1, args->end());
-  for (size_t i = 0; i < new_args.size(); i++) {
-    args->push_back(new_args[i]);
-  }
-  return true;
 }
 
 void Config::Get(std::string key, std::vector<std::string> *values) {
@@ -316,7 +278,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
   PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
-  PUSH_IF_MATCH(is_all, key, "loglevel", loglevels[loglevel]);
+  PUSH_IF_MATCH(is_all, key, "loglevel", kLogLevels[loglevel]);
   PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
   PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
   PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
@@ -327,9 +289,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
   PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.block_cache_size", std::to_string(rocksdb_options.block_cache_size));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size));
+      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/1048576));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
   PUSH_IF_MATCH(is_rocksdb_all, key,
@@ -370,7 +330,7 @@ Status Config::Set(std::string key, const std::string &value) {
     }
     tokens.erase(requirepass);
     requirepass = value;
-    tokens[requirepass] = default_namespace;
+    tokens[requirepass] = kDefaultNamespace;
     LOG(WARNING) << "Updated requirepass,  new requirepass: " << value;
     return Status::OK();
   }
@@ -383,8 +343,8 @@ Status Config::Set(std::string key, const std::string &value) {
     return Status::OK();
   }
   if (key == "loglevel") {
-    for (size_t i = 0; i < loglevels.size(); i++) {
-      if (Util::ToLower(value) == loglevels[i]) {
+    for (size_t i = 0; i < kNumLogLevel; i++) {
+      if (Util::ToLower(value) == kLogLevels[i]) {
         loglevel = static_cast<int>(i);
         break;
       }
@@ -406,49 +366,56 @@ Status Config::Set(std::string key, const std::string &value) {
 
 Status Config::Rewrite() {
   std::string tmp_path = path_+".tmp";
-  std::ostringstream string_stream;
-
   remove(tmp_path.data());
-  std::ifstream input_file(path_, std::ios::in);
   std::ofstream output_file(tmp_path, std::ios::out);
-  if (!input_file.is_open() || !output_file.is_open()) {
-    if (input_file.is_open()) input_file.close();
-    return Status(Status::NotOK, strerror(errno));
-  }
 
-  std::string line, buffer;
-  std::vector<std::string> args;
-  while (!input_file.eof()) {
-    std::getline(input_file, line);
-    Util::Split(line, " \t\r\n", &args);
-    if (args.empty() || args[0].front() == '#' || !rewriteConfigValue(&args)) {
-      if (!strncasecmp(args[0].data(), "namespace.", 10)) {
-        // skip the namespace, append at the end
-        continue;
-      }
-      buffer.append(line);
-      buffer.append("\n");
-    } else {
-      string_stream.str(std::string());
-      string_stream.clear();
-      for (const auto &arg : args) {
-        string_stream << arg << " ";
-      }
-      buffer.append(string_stream.str());
-      buffer.append("\n");
-    }
-  }
-  string_stream.str(std::string());
-  string_stream.clear();
-  for (auto iter = tokens.begin(); iter != tokens.end(); ++iter) {
-    if (iter->first != requirepass) {
-      string_stream << "namespace." << iter->second << " " << iter->first << "\n";
-    }
-  }
-  buffer.append(string_stream.str());
+  std::ostringstream string_stream;
+#define WRITE_TO_CONF_FILE(key, value) do { \
+  string_stream << (key) << " " << (value) <<  "\n"; \
+} while (0)
+  std::string binds_str, repl_binds_str;
+  array2String(binds, ",", &binds_str);
+  array2String(repl_binds, ",", &repl_binds_str);
 
-  output_file.write(buffer.data(), buffer.size());
-  input_file.close();
+  string_stream << "################################ GERNERAL #####################################\n";
+  WRITE_TO_CONF_FILE("bind", binds_str);
+  WRITE_TO_CONF_FILE("port", std::to_string(port));
+  WRITE_TO_CONF_FILE("repl-bind", repl_binds_str);
+  WRITE_TO_CONF_FILE("timeout", std::to_string(timeout));
+  WRITE_TO_CONF_FILE("workers", std::to_string(workers));
+  WRITE_TO_CONF_FILE("maxclients", std::to_string(maxclients));
+  WRITE_TO_CONF_FILE("repl-workers", std::to_string(repl_workers));
+  WRITE_TO_CONF_FILE("loglevel", kLogLevels[loglevel]);
+  WRITE_TO_CONF_FILE("daemonize", (daemonize?"yes":"no"));
+  WRITE_TO_CONF_FILE("requirepass", requirepass);
+  WRITE_TO_CONF_FILE("db-name", db_name);
+  WRITE_TO_CONF_FILE("dir", dir);
+  WRITE_TO_CONF_FILE("backup-dir", backup_dir);
+  WRITE_TO_CONF_FILE("tcp-backlog", std::to_string(backlog));
+  WRITE_TO_CONF_FILE("slave-read-only", (slave_readonly? "yes":"no"));
+  WRITE_TO_CONF_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
+  WRITE_TO_CONF_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
+  WRITE_TO_CONF_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
+  if (!masterauth.empty()) WRITE_TO_CONF_FILE("masterauth", masterauth);
+  if (!master_host.empty())  WRITE_TO_CONF_FILE("slaveof", master_host+" "+std::to_string(master_port));
+  if (compact_cron.IsEnabled()) WRITE_TO_CONF_FILE("compact-cron", compact_cron.ToString());
+  if (bgsave_cron.IsEnabled()) WRITE_TO_CONF_FILE("bgave-cron", bgsave_cron.ToString());
+
+  string_stream << "\n################################ ROCKSDB #####################################\n";
+  WRITE_TO_CONF_FILE("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  WRITE_TO_CONF_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/1048576));
+  WRITE_TO_CONF_FILE("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  WRITE_TO_CONF_FILE("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  WRITE_TO_CONF_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
+  WRITE_TO_CONF_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+
+  string_stream << "\n################################ Namespace #####################################\n";
+  std::string ns_prefix = "namespace.";
+  for (const auto &iter : tokens) {
+    if (iter.second == kDefaultNamespace) continue;
+    WRITE_TO_CONF_FILE(ns_prefix+iter.second, iter.first);
+  }
+  output_file.write(string_stream.str().c_str(), string_stream.str().size());
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
     return Status(Status::NotOK, std::string("unable to rename, err: ")+strerror(errno));
@@ -465,7 +432,7 @@ void Config::GetNamespace(const std::string &ns, std::string *token) {
 }
 
 Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
-  if (ns == default_namespace) {
+  if (ns == kDefaultNamespace) {
     return Status(Status::NotOK, "can't set the default namespace");
   }
   if (tokens.find(token) != tokens.end()) {
@@ -498,7 +465,7 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
 }
 
 Status Config::DelNamespace(const std::string &ns) {
-  if (ns == default_namespace) {
+  if (ns == kDefaultNamespace) {
     return Status(Status::NotOK, "can't del the default namespace");
   }
   for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {

@@ -6,12 +6,14 @@
 #include <string>
 #include "status.h"
 
-struct schedule_time {
+struct Scheduler {
   int minute;
   int hour;
   int mday;
   int month;
   int wday;
+
+  std::string ToString() const;
 };
 
 class Cron {
@@ -22,13 +24,10 @@ class Cron {
   Status SetScheduleTime(const std::vector<std::string> &args);
   int IsTimeMatch(struct tm *tm);
   std::string ToString();
-  std::vector<std::string> ToConfParamVector();
   bool IsEnabled();
 
  private:
-  const std::string PARAM_WILDCARD = "*";
-  const int PARAM_WILDCARD_INT = -1;
-  std::vector<schedule_time> schedule_times_;
+  std::vector<Scheduler> schedulers_;
 
   Status convertToScheduleTime(
       const std::string &minute,
@@ -36,7 +35,6 @@ class Cron {
       const std::string &mday,
       const std::string &month,
       const std::string &wday,
-      schedule_time *st);
+      Scheduler *st);
   Status convertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
-  std::string paramToString(const int &param);
 };

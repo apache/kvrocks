@@ -53,7 +53,7 @@ bool Cron::IsEnabled() {
 
 std::string Cron::ToString() {
   std::string ret;
-  for(size_t i = 0; i < schedulers_.size(); i++) {
+  for (size_t i = 0; i < schedulers_.size(); i++) {
     ret += schedulers_[i].ToString();
     if (i != schedulers_.size()-1) ret += " ";
   }

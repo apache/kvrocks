@@ -143,6 +143,8 @@ Status Config::parseConfigFromString(std::string input) {
     db_name = args[1];
   } else if (size == 2 && args[0] == "masterauth") {
     masterauth = args[1];
+  } else if (size == 2 && args[0] == "max-backup-to-keep") {
+    max_backup_to_keep = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size == 2 && args[0] == "requirepass") {
     requirepass = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
@@ -246,6 +248,7 @@ bool Config::rewriteConfigValue(std::vector<std::string> *args) {
   REWRITE_IF_MATCH(size, key, "requirepass", requirepass);
   REWRITE_IF_MATCH(size, key, "maxclients", std::to_string(maxclients));
   REWRITE_IF_MATCH(size, key, "slave-read-only", (slave_readonly? "yes":"no"));
+  REWRITE_IF_MATCH(size, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
   REWRITE_IF_MATCH(size, key, "timeout", std::to_string(timeout));
   REWRITE_IF_MATCH(size, key, "backup-dir", backup_dir);
   REWRITE_IF_MATCH(size, key, "loglevel", loglevels[loglevel]);
@@ -310,6 +313,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
   PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
   PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
+  PUSH_IF_MATCH(is_all, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
   PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "loglevel", loglevels[loglevel]);
@@ -350,6 +354,10 @@ Status Config::Set(std::string key, const std::string &value) {
   }
   if (key == "maxclients") {
     timeout = std::stoi(value);
+    return Status::OK();
+  }
+  if (key == "max-backup-to-keep") {
+    max_backup_to_keep = static_cast<uint32_t>(std::stoi(value));
     return Status::OK();
   }
   if (key == "masterauth") {

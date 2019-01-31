@@ -170,7 +170,7 @@ Status Server::bgsaveCron() {
   }
   Status s = AsyncBgsaveDB();
   if (!s.IsOK()) return s;
-  LOG(INFO) << "bgsave was triggered by cron with executed success.";
+  LOG(INFO) << "Bgsave was triggered by cron with executed success.";
   return Status::OK();
 }
 
@@ -181,6 +181,10 @@ void Server::cron() {
   while (!stop_) {
     if (counter != 0 && counter % 10000 == 0) {
       clientsCron();
+    }
+    if (counter != 0 && counter % 60000 == 0) {
+      auto s = storage_->PurgeOldBackups(config_->max_backup_to_keep);
+      LOG(INFO) << "Purge old backups, result: " << s.ToString();
     }
     // check every 1 minute
     if (counter != 0 && counter % 60000 == 0) {

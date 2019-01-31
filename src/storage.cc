@@ -98,17 +98,16 @@ Status Storage::Open() {
     return Status(Status::DBOpenErr, s.ToString());
   }
   LOG(INFO) << "Success to load the data from disk: " << duration << " ms";
+
+  // open backup engine
+  rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
+  s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
+  if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   return Status::OK();
 }
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "Start to create new backup";
-  rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
-  if (!backup_) {
-    auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
-    if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
-  }
-
   auto tm = std::time(nullptr);
   auto s = backup_->CreateNewBackupWithMetadata(
       db_, std::asctime(std::localtime(&tm)));
@@ -150,6 +149,26 @@ Status Storage::RestoreFromBackup() {
     return Status(Status::DBOpenErr);
   }
   return Status::OK();
+}
+
+rocksdb::Status Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
+  std::vector<rocksdb::BackupInfo> backup_infos;
+  backup_->GetBackupInfo(&backup_infos);
+  if (backup_infos.size() < num_backups_to_keep) {
+    LOG(INFO) << "[Storage] Current backup num: " << backup_infos.size()
+              << " is smaller than num backups to keep: " << num_backups_to_keep;
+    return rocksdb::Status::OK();
+  }
+  uint32_t num_backups_to_purge = backup_infos.size()-num_backups_to_keep;
+  LOG(INFO) << "[Storage] Going to purge " << num_backups_to_purge << " old backups";
+  for (uint32_t i = 0; i < num_backups_to_purge; i++) {
+    LOG(INFO) << "[Storage] The old backup(id: "
+              << backup_infos[i].backup_id << ") would be purged, "
+              << " which created at: " << backup_infos[i].timestamp
+              << ", size: " << backup_infos[i].size
+              << ", num files: " << backup_infos[i].number_files;
+  }
+  return backup_->PurgeOldBackups(num_backups_to_keep);
 }
 
 Status Storage::GetWALIter(

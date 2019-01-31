@@ -36,11 +36,10 @@ class Storage {
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
-  const std::string GetName() {
-    return config_->db_name;
-  }
+  const std::string GetName() {return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   LockManager *GetLockManager() { return &lock_mgr_; }
+  rocksdb::Status PurgeOldBackups(uint32_t num_backups_to_keep);
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

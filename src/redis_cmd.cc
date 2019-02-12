@@ -136,6 +136,15 @@ class CommandPing : public Commander {
   }
 };
 
+class CommandSelect: public Commander {
+ public:
+  CommandSelect() : Commander("select", 2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 class CommandConfig : public Commander {
  public:
   CommandConfig() : Commander("config", -2, false) {}
@@ -2361,6 +2370,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"ping",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandPing);
+     }},
+    {"select",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSelect);
      }},
     {"info",
      []() -> std::unique_ptr<Commander> {

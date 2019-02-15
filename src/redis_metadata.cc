@@ -130,16 +130,17 @@ void Metadata::Encode(std::string *dst) {
 
 uint64_t Metadata::generateVersion() {
   struct timeval now;
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, nullptr);
   uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
   version += static_cast<uint64_t>(now.tv_usec);
   // 52 bit for microseconds and 11 bit for counter
   const int counter_bits = 11;
   // use random position for initial counter to avoid conflicts,
-  // while the slave was promoted as master, and the system clock was backoff
-  static int64_t counter = std::rand() % (1 << counter_bits);
-  counter = (counter+1) % (1 << counter_bits);
-  return (version << counter_bits)+counter;
+  // when the slave was promoted as master and the system clock may backoff
+  srand(static_cast<unsigned>(now.tv_sec));
+  static std::atomic<uint64_t> version_counter_ {static_cast<uint64_t>(std::rand())};
+  uint64_t counter = version_counter_.fetch_add(1);
+  return (version << counter_bits) + (counter%(1 << counter_bits));
 }
 
 bool Metadata::operator==(const Metadata &that) const {

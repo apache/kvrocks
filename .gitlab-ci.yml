@@ -58,7 +58,7 @@ rpm:
         expire_in: "1 week"
     dependencies:
         - build
-        - test
+        - unittest
 
 release:
     stage: release

@@ -1,5 +1,5 @@
-# image: centos7-for-kvrocks
-image: centos6-for-kvrocks
+image: centos7-for-kvrocks
+# image: centos6-for-kvrocks
 stages:
     - build
     - test

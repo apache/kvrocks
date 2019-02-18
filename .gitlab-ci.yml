@@ -41,3 +41,37 @@ unittest:
     
     dependencies:
         - build
+        
+rpm:
+    stage: pkg
+    image: packager
+    only:
+        - tags
+    tags:
+        - dev
+    script:
+        - bash package.sh
+    artifacts:
+        name: "pika-${CI_PIPELINE_ID}-rpm"
+        paths:
+            - "*.rpm"
+        expire_in: "1 week"
+    dependencies:
+        - build
+        - test
+
+release:
+    stage: release
+    image: rsync
+    only:
+        - tags
+
+    tags:
+        - dev
+    script:
+        - mkdir _sync && cp -v *.rpm _sync
+        - cd _sync && rsync -avz . 172.16.28.10::rpmRepo/
+    when: manual
+    dependencies:
+        - rpm
+

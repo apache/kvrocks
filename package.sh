@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 NAME="kvrocks"
-VERSION=`_build/bin/kvrocks -v|awk'{printf $2;}'`
+VERSION=`_build/bin/kvrocks -v|awk '{printf $2;}'`
 STAGE=${STAGE:-release}
 fpm -f -s dir -t rpm --prefix '/www/kvrocks'  -n ${NAME} --epoch 7 \
     --config-files /www/kvrocks/conf/kvrocks.conf \

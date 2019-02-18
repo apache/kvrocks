@@ -52,7 +52,7 @@ rpm:
     script:
         - bash package.sh
     artifacts:
-        name: "pika-${CI_PIPELINE_ID}-rpm"
+        name: "kvrocks-${CI_PIPELINE_ID}-rpm"
         paths:
             - "*.rpm"
         expire_in: "1 week"

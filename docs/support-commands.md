@@ -131,15 +131,24 @@
 | type      | √                |                      |
 | scan      | √                |                      |
 
+## Bit Commands
+
+| Command  | Supported OR Not | Desc |
+| -------- | ---------------- | ---- |
+| getbit   | √                |      |
+| setbit   | √                |      |
+| exists   | √                |      |
+| expire   | √                |      |
+| bitfield | X                |      |
+| bitop    | X                |      |
+
+**NOTE : String and Bitmap is different type in kvrocks, so you can't do bit with string, vice versa.**
+
+
+
 ## Pub/Sub Commands
 
 **Not Supported(ongoning)**
-
-
-
-## Bit Commands
-
-**Not Supported**
 
 ## GEO Commands
 

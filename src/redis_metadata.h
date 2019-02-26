@@ -15,7 +15,8 @@ enum RedisType {
   kRedisHash,
   kRedisList,
   kRedisSet,
-  kRedisZSet
+  kRedisZSet,
+  kRedisBitmap
 };
 
 using rocksdb::Slice;
@@ -79,6 +80,11 @@ class SetMetadata : public Metadata {
 class ZSetMetadata : public Metadata {
  public:
   ZSetMetadata(): Metadata(kRedisZSet){}
+};
+
+class BitmapMetadata : public Metadata {
+ public:
+  BitmapMetadata(): Metadata(kRedisBitmap){}
 };
 
 class ListMetadata : public Metadata {

@@ -93,6 +93,8 @@ target_sources(kvrocks PRIVATE
         src/redis_set.cc
         src/redis_zset.cc
         src/redis_zset.h
+        src/redis_bitmap.cc
+        src/redis_bitmap.h
         src/lock_manager.cc
         src/rocksdb_crc32c.h
         src/config.cc
@@ -107,6 +109,8 @@ target_sources(kvrocks PRIVATE
         src/event_listener.cc)
 
 add_executable(unittest
+        src/redis_bitmap.cc
+        src/redis_bitmap.h
         src/redis_metadata.cc
         src/redis_encoding.cc
         src/redis_string.cc
@@ -135,7 +139,7 @@ add_executable(unittest
         tests/rwlock_test.cc
         tests/stats_test.cc
         tests/cron_test.cc
-        tests/task_runner_test.cc)
+        tests/task_runner_test.cc tests/t_bitmap_test.cc)
 
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)

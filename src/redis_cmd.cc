@@ -9,6 +9,7 @@
 
 #include "redis_cmd.h"
 #include "redis_hash.h"
+#include "redis_bitmap.h"
 #include "redis_list.h"
 #include "redis_request.h"
 #include "redis_set.h"
@@ -441,6 +442,121 @@ class CommandDel : public Commander {
     *output = Redis::Integer(cnt);
     return Status::OK();
   }
+};
+
+class CommandGetBit : public Commander {
+ public:
+  CommandGetBit() : Commander("getbit", 3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      offset_ = std::stoul(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    bool bit;
+    RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = bitmap_db.GetBit(args_[1], offset_, &bit);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(bit? 1 : 0);
+    return Status::OK();
+  }
+ private:
+  uint32_t offset_;
+};
+
+class CommandSetBit : public Commander {
+ public:
+  CommandSetBit() : Commander("setbit", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      offset_ = std::stoul(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    if (args[3] == "0") {
+      bit_ = false;
+    } else if (args[3] == "1") {
+      bit_ = true;
+    } else {
+      return Status(Status::RedisParseErr, "bit should be 0 or 1");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    bool old_bit;
+    RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(old_bit? 1 : 0);
+    return Status::OK();
+  }
+
+ private:
+  uint32_t offset_;
+  bool bit_;
+};
+
+class CommandBitCount : public Commander {
+ public:
+  CommandBitCount() : Commander("bitcount", -2, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      if (args.size() >= 3) start = std::stoi(args[2]);
+      if (args.size() >= 4) stop = std::stoi(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    uint32_t cnt;
+    RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = bitmap_db.BitCount(args_[1], start, stop, &cnt);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(cnt);
+    return Status::OK();
+  }
+ private:
+  int start = 0, stop = -1;
+};
+
+class CommandBitPos: public Commander {
+ public:
+  CommandBitPos() : Commander("bitcount", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      if (args.size() >= 4) start = std::stoi(args[3]);
+      if (args.size() >= 5) stop = std::stoi(args[4]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    if (args[2] == "0") {
+      bit_ = false;
+    } else if (args[2] == "1") {
+      bit_ = true;
+    } else {
+      return Status(Status::RedisParseErr, "bit should be 0 or 1");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int pos;
+    RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start, stop, &pos);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(pos);
+    return Status::OK();
+  }
+
+ private:
+  int start = 0, stop = -1;
+  bool bit_;
 };
 
 class CommandType : public Commander {
@@ -2488,6 +2604,23 @@ std::map<std::string, CommanderFactory> command_table = {
     {"decr",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandDecr);
+     }},
+    // bit command
+    {"getbit",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGetBit);
+     }},
+     {"setbit",
+      []() -> std::unique_ptr<Commander> {
+        return std::unique_ptr<Commander>(new CommandSetBit);
+     }},
+    {"bitcount",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandBitCount);
+     }},
+    {"bitpos",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandBitPos);
      }},
     // hash command
     {"hget",

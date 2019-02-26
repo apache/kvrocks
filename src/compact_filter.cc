@@ -61,7 +61,9 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
     cached_key_.clear();
     return false;
   }
-  if (metadata.Expired() || ikey.GetVersion() < metadata.version) {
+  if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
+      || metadata.Expired()
+      || ikey.GetVersion() < metadata.version) {
     cached_metadata_.clear();
     return true;
   }

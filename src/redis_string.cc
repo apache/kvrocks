@@ -195,7 +195,9 @@ rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl)
     rocksdb::Env::Default()->GetCurrentTime(&now);
     expire = uint32_t(now) + ttl;
   }
-  // NOTE: set anyway, lock is unneccessary
+
+  // Data race, key string maybe overwrite by other key while didn't lock the key here,
+  // to improve the set performance
   std::string ns_key;
   rocksdb::WriteBatch batch;
   for (StringPair pair : pairs) {

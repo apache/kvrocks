@@ -505,8 +505,8 @@ class CommandBitCount : public Commander {
   CommandBitCount() : Commander("bitcount", -2, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      if (args.size() >= 3) start = std::stoi(args[2]);
-      if (args.size() >= 4) stop = std::stoi(args[3]);
+      if (args.size() >= 3) start_ = std::stoi(args[2]);
+      if (args.size() >= 4) stop_ = std::stoi(args[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, kValueNotInterger);
     }
@@ -516,13 +516,13 @@ class CommandBitCount : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t cnt;
     RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.BitCount(args_[1], start, stop, &cnt);
+    rocksdb::Status s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(cnt);
     return Status::OK();
   }
  private:
-  int start = 0, stop = -1;
+  int start_ = 0, stop_ = -1;
 };
 
 class CommandBitPos: public Commander {
@@ -530,8 +530,8 @@ class CommandBitPos: public Commander {
   CommandBitPos() : Commander("bitcount", -3, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      if (args.size() >= 4) start = std::stoi(args[3]);
-      if (args.size() >= 5) stop = std::stoi(args[4]);
+      if (args.size() >= 4) start_ = std::stoi(args[3]);
+      if (args.size() >= 5) stop_ = std::stoi(args[4]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, kValueNotInterger);
     }
@@ -548,14 +548,14 @@ class CommandBitPos: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int pos;
     RedisBitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start, stop, &pos);
+    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, &pos);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(pos);
     return Status::OK();
   }
 
  private:
-  int start = 0, stop = -1;
+  int start_ = 0, stop_ = -1;
   bool bit_;
 };
 

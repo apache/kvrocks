@@ -1076,6 +1076,7 @@ class CommandLSet : public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+    *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 

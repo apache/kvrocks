@@ -1073,7 +1073,7 @@ class CommandLSet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisList list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Set(args_[1], index_, args_[3]);
-    if (!s.ok() && !s.IsNotFound()) {
+    if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::SimpleString("OK");

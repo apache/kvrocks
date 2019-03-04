@@ -128,7 +128,9 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
     mscores->emplace_back(MemberScore{score_key.ToString(), score});
-    batch.Delete(score_key);
+    std::string default_cf_key;
+    InternalKey(key, score_key, metadata.version).Encode(&default_cf_key);
+    batch.Delete(default_cf_key);
     batch.Delete(score_cf_handle_, iter->key());
     if (mscores->size() >= static_cast<unsigned>(count)) break;
   }

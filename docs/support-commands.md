@@ -137,8 +137,8 @@
 | -------- | ---------------- | ---- |
 | getbit   | √                |      |
 | setbit   | √                |      |
-| exists   | √                |      |
-| expire   | √                |      |
+| bitcount | √                |      |
+| bitpos   | √                |      |
 | bitfield | X                |      |
 | bitop    | X                |      |
 

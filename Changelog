@@ -3,3 +3,7 @@
 
 * Version 0.1.2 (@2019-01-18)
 	- supports bits command
+
+* Version 0.1.2(@2019-03-05)
+	- fix some redis commands bug
+	- supports bitmap

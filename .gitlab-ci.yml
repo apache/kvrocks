@@ -8,9 +8,6 @@ stages:
 
 build:
     stage: build
-    only:
-        - master
-        - tags
     tags:
         - dev
     script:

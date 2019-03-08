@@ -211,7 +211,7 @@ void ReplicationThread::run() {
   psync_steps_.Start();
 
   auto timer = event_new(base_, -1, EV_PERSIST, EventTimerCB, this);
-  timeval tmo{1, 0};  // 1 sec
+  timeval tmo{0, 100000};  // 100 ms
   evtimer_add(timer, &tmo);
 
   event_base_dispatch(base_);

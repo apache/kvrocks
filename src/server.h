@@ -108,6 +108,7 @@ class Server {
   bool stop_ = false;
   bool is_loading_ = false;
   time_t start_time_ = 0;
+  std::mutex slaveof_mu_;
   std::string master_host_;
   uint32_t master_port_ = 0;
   Config *config_ = nullptr;

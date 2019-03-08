@@ -67,10 +67,15 @@ void Server::Join() {
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
-  // TODO(@ruoshan): need mutex to avoid racing, so to make sure only one replication thread is running
+  slaveof_mu_.lock();
+  if (!master_host_.empty() && master_host_ == host && master_port_ == port) {
+    slaveof_mu_.unlock();
+    return Status::OK();
+  }
+
   if (!master_host_.empty()) {
-    LOG(INFO) << "Master already configured";
-    return Status(Status::RedisReplicationConflict, "replication in progress");
+    if (replication_thread_) replication_thread_->Stop();
+    replication_thread_ = nullptr;
   }
   master_host_ = std::move(host);
   master_port_ = port;
@@ -78,16 +83,19 @@ Status Server::AddMaster(std::string host, uint32_t port) {
       new ReplicationThread(master_host_, master_port_, storage_, config_->masterauth));
   replication_thread_->Start([this]() { this->is_loading_ = true; },
                              [this]() { this->is_loading_ = false; });
+  slaveof_mu_.unlock();
   return Status::OK();
 }
 
 Status Server::RemoveMaster() {
+  slaveof_mu_.lock();
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }
+  slaveof_mu_.unlock();
   return Status::OK();
 }
 

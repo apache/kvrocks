@@ -1,9 +1,9 @@
 if (NOT __LIBEVENT_INCLUDED)
     set(__LIBEVENT_INCLUDED TRUE)
     # build directory
-    set(libevent_PREFIX ${CMAKE_BINARY_DIR}/external/libevent-prefix)
+    set(libevent_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/libevent-prefix)
     # install directory
-    set(libevent_INSTALL ${CMAKE_BINARY_DIR}/external/libevent-install)
+    set(libevent_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/libevent-install)
 
     if (UNIX)
         set(LIBEVENT_EXTRA_COMPILER_FLAGS "-fPIC")

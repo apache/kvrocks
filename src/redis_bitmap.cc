@@ -45,7 +45,7 @@ rocksdb::Status RedisBitmap::GetBit(Slice key, uint32_t offset, bool *bit) {
   s = db_->Get(read_options, sub_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t byte_index = (offset/8) % kBitmapSegmentBytes;
-  if ((byte_index < value.size() && (value[byte_index] & (1<<(offset%8))))) {
+  if ((byte_index < value.size() && (value[byte_index] & (1 << (offset%8))))) {
     *bit = true;
   }
   return rocksdb::Status::OK();

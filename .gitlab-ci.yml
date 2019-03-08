@@ -27,9 +27,6 @@ build:
         
 unittest:
     stage: test
-    only:
-        - master
-        - tags
     tags:
         - dev
         

@@ -45,7 +45,7 @@ rocksdb::Status RedisBitmap::GetBit(Slice key, uint32_t offset, bool *bit) {
   s = db_->Get(read_options, sub_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t byte_index = (offset/8) % kBitmapSegmentBytes;
-  if ((byte_index < value.size() && (value[byte_index]>>(offset%8)))) {
+  if ((byte_index < value.size() && (value[byte_index] & (1<<(offset%8))))) {
     *bit = true;
   }
   return rocksdb::Status::OK();
@@ -111,8 +111,8 @@ rocksdb::Status RedisBitmap::BitCount(Slice key, int start, int stop, uint32_t *
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (start < 0) start += metadata.size;
-  if (stop < 0) stop += metadata.size;
+  if (start < 0) start += metadata.size + 1;
+  if (stop < 0) stop += metadata.size + 1;
   if (stop > static_cast<int>(metadata.size)) stop = metadata.size;
   if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
 
@@ -149,8 +149,8 @@ rocksdb::Status RedisBitmap::BitPos(Slice key, bool bit, int start, int stop, in
     *pos = bit ? -1 : 0;
     return rocksdb::Status::OK();
   }
-  if (start < 0) start += metadata.size;
-  if (stop < 0) stop += metadata.size;
+  if (start < 0) start += metadata.size + 1;
+  if (stop < 0) stop += metadata.size + 1;
   if (start < 0 || stop < 0 || start > stop) {
     *pos = -1;
     return rocksdb::Status::OK();

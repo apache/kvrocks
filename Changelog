@@ -10,3 +10,7 @@
 
 * Version 0.1.4(@2019-03-06)
 	- supports pid file to store the pid
+
+* Version 0.1.5(@2019-03-08)
+	- speedup the gitlab ci build
+	- fix return error bit value in getbit

@@ -8,10 +8,6 @@ stages:
 
 build:
     stage: build
-    only:
-        - master
-        - tags
-        - merge_requests
     tags:
         - dev
     script:
@@ -31,10 +27,6 @@ build:
         
 unittest:
     stage: test
-    only:
-        - master
-        - tags
-        - merge_requests
     tags:
         - dev
         

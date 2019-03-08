@@ -1,9 +1,9 @@
 if (NOT __ROCKSDB_INCLUDED)
   set(__ROCKSDB_INCLUDED TRUE)
   # build directory
-  set(rocksdb_PREFIX ${CMAKE_BINARY_DIR}/external/rocksdb-prefix)
+  set(rocksdb_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-prefix)
   # install directory
-  set(rocksdb_INSTALL ${CMAKE_BINARY_DIR}/external/rocksdb-install)
+  set(rocksdb_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-install)
 
   if (UNIX)
       set(ROCKSDB_EXTRA_COMPILER_FLAGS "-fPIC")

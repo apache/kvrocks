@@ -5,9 +5,9 @@ if (NOT __GFLAGS_INCLUDED) # guard against multiple includes
     find_package(Threads)
 
     # build directory
-    set(gflags_PREFIX ${CMAKE_BINARY_DIR}/external/gflags-prefix)
+    set(gflags_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/gflags-prefix)
     # install directory
-    set(gflags_INSTALL ${CMAKE_BINARY_DIR}/external/gflags-install)
+    set(gflags_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/gflags-install)
 
     if (UNIX)
         set(GFLAGS_EXTRA_COMPILER_FLAGS "-fPIC")

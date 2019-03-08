@@ -1,9 +1,9 @@
 if (NOT __SNAPPY_INCLUDED)
   set(__SNAPPY_INCLUDED TRUE)
   # build directory
-  set(snappy_PREFIX ${CMAKE_BINARY_DIR}/external/snappy-prefix)
+  set(snappy_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/snappy-prefix)
   # install directory
-  set(snappy_INSTALL ${CMAKE_BINARY_DIR}/external/snappy-install)
+  set(snappy_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/snappy-install)
 
   if (UNIX)
       set(SNAPPY_EXTRA_COMPILER_FLAGS "-fPIC")

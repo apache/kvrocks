@@ -8,6 +8,9 @@ project(kvrocks
 include(ExternalProject)
 
 set(default_build_type "Release")
+if (NOT CMAKE_BUILD_DIRECTORY)
+    set(CMAKE_BUILD_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)

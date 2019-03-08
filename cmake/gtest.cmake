@@ -5,9 +5,9 @@ if (NOT __GTEST_INCLUDED) # guard against multiple includes
     find_package(Threads)
 
     # build directory
-    set(gtest_PREFIX ${CMAKE_BINARY_DIR}/external/gtest-prefix)
+    set(gtest_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/gtest-prefix)
     # install directory
-    set(gtest_INSTALL ${CMAKE_BINARY_DIR}/external/gtest-install)
+    set(gtest_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/gtest-install)
 
     if (UNIX)
         set(GTEST_EXTRA_COMPILER_FLAGS "-fPIC")

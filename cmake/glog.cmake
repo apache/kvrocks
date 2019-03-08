@@ -4,9 +4,9 @@ include("cmake/gflags.cmake")
 if (NOT __GLOG_INCLUDED)
     set(__GLOG_INCLUDED TRUE)
     # build directory
-    set(glog_PREFIX ${CMAKE_BINARY_DIR}/external/glog-prefix)
+    set(glog_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/glog-prefix)
     # install directory
-    set(glog_INSTALL ${CMAKE_BINARY_DIR}/external/glog-install)
+    set(glog_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/glog-install)
 
     if (UNIX)
         set(GLOG_EXTRA_COMPILER_FLAGS "-fPIC")

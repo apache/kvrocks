@@ -183,8 +183,7 @@ void Server::cron() {
       clientsCron();
     }
     if (counter != 0 && counter % 60000 == 0) {
-      auto s = storage_->PurgeOldBackups(config_->max_backup_to_keep);
-      LOG(INFO) << "Purge old backups, result: " << s.ToString();
+      storage_->PurgeOldBackups(config_->max_backup_to_keep);
     }
     // check every 1 minute
     if (counter != 0 && counter % 60000 == 0) {

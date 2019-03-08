@@ -151,14 +151,14 @@ Status Storage::RestoreFromBackup() {
   return Status::OK();
 }
 
-rocksdb::Status Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
+void Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
   if (backup_infos.size() <= num_backups_to_keep) {
-    LOG(INFO) << "[Storage] Current backup num: " << backup_infos.size()
+    DLOG(INFO) << "[Storage] Current backup num: " << backup_infos.size()
               << ", num backups to keep: " << num_backups_to_keep
               << ", no backup needs to purge";
-    return rocksdb::Status::OK();
+    return;
   }
   uint32_t num_backups_to_purge = backup_infos.size()-num_backups_to_keep;
   LOG(INFO) << "[Storage] Going to purge " << num_backups_to_purge << " old backups";
@@ -169,7 +169,8 @@ rocksdb::Status Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
               << ", size: " << backup_infos[i].size
               << ", num files: " << backup_infos[i].number_files;
   }
-  return backup_->PurgeOldBackups(num_backups_to_keep);
+  auto s = backup_->PurgeOldBackups(num_backups_to_keep);
+  LOG(INFO) << "Purge old backups, result: " << s.ToString();
 }
 
 Status Storage::GetWALIter(

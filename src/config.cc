@@ -397,7 +397,7 @@ Status Config::Rewrite() {
   WRITE_TO_CONF_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   WRITE_TO_CONF_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
   if (!masterauth.empty()) WRITE_TO_CONF_FILE("masterauth", masterauth);
-  if (!master_host.empty())  WRITE_TO_CONF_FILE("slaveof", master_host+" "+std::to_string(master_port));
+  if (!master_host.empty())  WRITE_TO_CONF_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
   if (compact_cron.IsEnabled()) WRITE_TO_CONF_FILE("compact-cron", compact_cron.ToString());
   if (bgsave_cron.IsEnabled()) WRITE_TO_CONF_FILE("bgave-cron", bgsave_cron.ToString());
 

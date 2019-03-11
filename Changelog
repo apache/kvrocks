@@ -14,3 +14,4 @@
 * Version 0.1.5(@2019-03-08)
 	- speedup the gitlab ci build
 	- fix return error bit value in getbit
+	- fix config rewrite wrong master port

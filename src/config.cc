@@ -228,9 +228,15 @@ Status Config::Load(std::string path) {
     backup_dir = dir+"/backup";
   }
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
-  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  if (!s.ok()) {
+    file.close();
+    return Status(Status::NotOK, s.ToString());
+  }
   s = rocksdb::Env::Default()->CreateDirIfMissing(backup_dir);
-  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  if (!s.ok()) {
+    file.close();
+    return Status(Status::NotOK, s.ToString());
+  }
 
   if (requirepass.empty()) {
     file.close();

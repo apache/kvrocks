@@ -16,6 +16,8 @@ rocksdb::Status RedisSet::Overwrite(Slice key, const std::vector<std::string> &m
 
   SetMetadata metadata;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisSet);
+  batch.PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&sub_key);
@@ -42,6 +44,8 @@ rocksdb::Status RedisSet::Add(Slice key, const std::vector<Slice> &members, int 
 
   std::string value;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisSet);
+  batch.PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&sub_key);
@@ -73,6 +77,8 @@ rocksdb::Status RedisSet::Remove(Slice key, std::vector<Slice> members, int *ret
 
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisSet);
+  batch.PutLogData(log_data.Encode());
   for (const auto &member : members) {
     InternalKey(key, member, metadata.version).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
@@ -166,6 +172,8 @@ rocksdb::Status RedisSet::Take(Slice key, std::vector<std::string> *members, int
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisSet);
+  batch.PutLogData(log_data.Encode());
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();

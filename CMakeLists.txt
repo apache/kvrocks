@@ -111,6 +111,73 @@ target_sources(kvrocks PRIVATE
         src/event_listener.h
         src/event_listener.cc)
 
+# kvrocks2redis sync tool
+add_executable(kvrocks2redis)
+target_compile_features(kvrocks2redis PRIVATE cxx_std_11)
+target_compile_options(kvrocks2redis PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
+option(ENABLE_ASAN "enable ASAN santinizer" OFF)
+if(ENBALE_ASAN)
+    target_compile_options(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+    target_link_libraries(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+endif()
+add_dependencies(kvrocks2redis libevent gflags glog rocksdb gtest)
+target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
+target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
+target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS} -pthread)
+target_sources(kvrocks2redis PRIVATE
+        src/compact_filter.cc
+        src/compact_filter.h
+        src/util.cc
+        src/util.h
+        src/storage.cc
+        src/storage.h
+        src/status.h
+        src/redis_reply.h
+        src/redis_reply.cc
+        src/task_runner.cc
+        src/task_runner.h
+        src/redis_encoding.h
+        src/redis_encoding.cc
+        src/redis_metadata.h
+        src/redis_metadata.cc
+        src/redis_string.h
+        src/redis_string.cc
+        src/redis_hash.h
+        src/redis_hash.cc
+        src/redis_list.h
+        src/redis_list.cc
+        src/redis_set.h
+        src/redis_set.cc
+        src/redis_zset.cc
+        src/redis_zset.h
+        src/redis_bitmap.cc
+        src/redis_bitmap.h
+        src/replication.cc
+        src/replication.h
+        src/lock_manager.cc
+        src/rocksdb_crc32c.h
+        src/config.cc
+        src/config.h
+        src/stats.cc
+        src/stats.h
+        src/cron.cc
+        src/cron.h
+        src/event_listener.h
+        src/event_listener.cc
+        tools/kvrocks2redis/config.cc
+        tools/kvrocks2redis/config.h
+        tools/kvrocks2redis/main.cc
+        tools/kvrocks2redis/sync.cc
+        tools/kvrocks2redis/sync.h
+        tools/kvrocks2redis/util.cc
+        tools/kvrocks2redis/util.h
+        tools/kvrocks2redis/redis_writer.cc
+        tools/kvrocks2redis/redis_writer.h
+        tools/kvrocks2redis/writer.cc
+        tools/kvrocks2redis/writer.h
+        tools/kvrocks2redis/parser.cc
+        tools/kvrocks2redis/parser.h)
+
 add_executable(unittest
         src/redis_bitmap.cc
         src/redis_bitmap.h

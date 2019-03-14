@@ -5,6 +5,7 @@
 #include <rocksdb/db.h>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "redis_encoding.h"
 #include "storage.h"
@@ -17,6 +18,16 @@ enum RedisType {
   kRedisSet,
   kRedisZSet,
   kRedisBitmap
+};
+
+enum RedisCommand {
+  kRedisCmdLSet,
+  kRedisCmdLTrim,
+  kRedisCmdLPop,
+  kRedisCmdRPop,
+  kRedisCmdLPush,
+  kRedisCmdRPush,
+  kRedisCmdExpire,
 };
 
 using rocksdb::Slice;
@@ -161,4 +172,21 @@ class LockGuard {
  private:
   LockManager *lock_mgr_ = nullptr;
   Slice key_;
+};
+
+class WriteBatchLogData {
+ public:
+  WriteBatchLogData() = default;
+  explicit WriteBatchLogData(RedisType type) : type_(type) {}
+  explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) :
+      type_(type), args_(std::move(args)) {}
+
+  RedisType GetRedisType();
+  std::vector<std::string> *GetArguments();
+  std::string Encode();
+  Status Decode(const rocksdb::Slice &blob);
+
+ private:
+  RedisType type_ = kRedisNone;
+  std::vector<std::string> args_;
 };

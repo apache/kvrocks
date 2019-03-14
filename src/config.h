@@ -9,6 +9,8 @@
 #include "status.h"
 #include "cron.h"
 
+static const char *kDefaultNamespace = "__namespace";
+
 struct Config{
  public:
   int port = 6666;

@@ -12,6 +12,12 @@
 #include "lock_manager.h"
 #include "config.h"
 
+enum ColumnFamilyID{
+  kColumnFamilyIDDefault,
+  kColumnFamilyIDMetadata,
+  kColumnFamilyIDZSetScore,
+};
+
 namespace Engine {
 
 class Storage {
@@ -23,7 +29,9 @@ class Storage {
   ~Storage();
 
   void InitOptions(rocksdb::Options *options);
+  Status Open(bool read_only);
   Status Open();
+  Status OpenForReadOnly();
   Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();

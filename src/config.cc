@@ -16,7 +16,6 @@
 
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
-static const char *kDefaultNamespace = "__namespace";
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;

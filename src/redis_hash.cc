@@ -70,6 +70,8 @@ rocksdb::Status RedisHash::IncrBy(Slice key, Slice field, int64_t increment, int
 
   *ret = old_value + increment;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisHash);
+  batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, std::to_string(*ret));
   if (!exists) {
     metadata.size += 1;
@@ -115,6 +117,8 @@ rocksdb::Status RedisHash::IncrByFloat(Slice key, Slice field, float increment, 
 
   *ret = old_value + increment;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisHash);
+  batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, std::to_string(*ret));
   if (!exists) {
     metadata.size += 1;
@@ -171,6 +175,8 @@ rocksdb::Status RedisHash::Delete(Slice key, const std::vector<Slice> &fields, i
 
   HashMetadata metadata;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisHash);
+  batch.PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -208,6 +214,8 @@ rocksdb::Status RedisHash::MSet(Slice key, const std::vector<FieldValue> &field_
   int added = 0;
   bool exists = false;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisHash);
+  batch.PutLogData(log_data.Encode());
   for (const auto &fv : field_values) {
     std::string sub_key;
     InternalKey(key, fv.field, metadata.version).Encode(&sub_key);

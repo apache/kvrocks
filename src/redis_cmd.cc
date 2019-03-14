@@ -1407,7 +1407,7 @@ class CommandZAdd : public Commander {
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "ERR value is not a valid float");
     }
     return Commander::Parse(args);
   }

@@ -8,6 +8,11 @@
 
 namespace Kvrocks2redis {
 
+struct redis_server {
+  std::string host;
+  uint32_t port;
+  std::string auth;
+};
 struct Config {
  public:
   int workers = 4;
@@ -18,13 +23,14 @@ struct Config {
   std::string dir = "/tmp/ev";
   std::string db_dir = dir + "/db";
   std::string aof_file_name = "appendonly.aof";
+  std::string next_offset_file_name = "last_next_offset.txt";
   std::string next_seq_file_path = dir + "/last_next_seq.txt";
+
   std::string db_name = "changeme.name";
-  std::string requirepass;
   std::string kvrocks_auth;
   std::string kvrocks_host;
   int kvrocks_port = 0;
-  std::map<std::string, std::string> tokens;
+  std::map<std::string, redis_server> tokens;
 
   struct {
     int max_open_files = 4096;
@@ -34,7 +40,6 @@ struct Config {
   Status Load(std::string path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(std::string key, const std::string &value);
-  void GetNamespace(const std::string &ns, std::string *token);
   Config() = default;
   ~Config() = default;
 

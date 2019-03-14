@@ -167,6 +167,7 @@ void Sync::EventTimerCB(int, int16_t, void *ctx) {
     LOG(INFO) << "[kvrocks2redis] Stop ev loop";
     event_base_loopbreak(self->base_);
     self->psync_steps_.Stop();
+    self->writer_->Stop();
     // stop parseAllLocalStorage ?
   }
 }
@@ -174,9 +175,9 @@ void Sync::EventTimerCB(int, int16_t, void *ctx) {
 void Sync::parseKVFromLocalStorage() {
   LOG(INFO) << "[kvrocks2redis] Start parsing kv from the local storage";
   for (const auto &iter : config_->tokens) {
-    auto s = writer_->FlushAll(iter.second);
+    auto s = writer_->FlushAll(iter.first);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[kvrocks2redis] Failed to flush all in namespace: " << iter.second
+      LOG(ERROR) << "[kvrocks2redis] Failed to flush all in namespace: " << iter.first
                  << ", encounter error: " << s.Msg();
       return;
     }
@@ -203,13 +204,12 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
     return Status(Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno));
   }
 
-  uint64_t next_seq = 0;
+  *seq = 0;
   char buf[21];
   if (read(next_seq_fd_, buf, sizeof(buf)) > 0) {
-    next_seq = std::stoi(buf);
+    *seq = static_cast<rocksdb::SequenceNumber>(std::stoi(buf));
   }
 
-  *seq = static_cast<rocksdb::SequenceNumber>(next_seq);
   return Status::OK();
 }
 

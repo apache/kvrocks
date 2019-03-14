@@ -126,7 +126,6 @@ int main(int argc, char *argv[]) {
   if (config.daemonize) daemonize();
 
   Config kvrocks_config;
-  kvrocks_config.requirepass = config.requirepass;
   kvrocks_config.db_name = config.db_name;
   kvrocks_config.db_dir = config.db_dir;
   kvrocks_config.rocksdb_options.max_open_files = config.rocksdb_options.max_open_files;

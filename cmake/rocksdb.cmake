@@ -35,6 +35,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DWITH_TESTS=OFF
                  -DWITH_SNAPPY=ON
                  -DWITH_TOOLS=OFF
+                 -DUSE_RTTI=ON
       LOG_DOWNLOAD 1
       LOG_CONFIGURE 1
       LOG_INSTALL 1

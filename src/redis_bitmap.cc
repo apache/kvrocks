@@ -1,7 +1,5 @@
 #include "redis_bitmap.h"
-
-const uint32_t kBitmapSegmentBits = 1024 * 8;
-const uint32_t kBitmapSegmentBytes = 1024;
+#include <vector>
 
 uint32_t kNum2Bits[256] = {
     0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
@@ -91,6 +89,8 @@ rocksdb::Status RedisBitmap::SetBit(Slice key, uint32_t offset, bool new_bit, bo
   }
 
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisBitmap, {std::to_string(offset)});
+  batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, value);
   if (metadata.size != bitmap_size) {
     metadata.size = bitmap_size;
@@ -103,7 +103,6 @@ rocksdb::Status RedisBitmap::SetBit(Slice key, uint32_t offset, bool new_bit, bo
 
 rocksdb::Status RedisBitmap::BitCount(Slice key, int start, int stop, uint32_t *cnt) {
   *cnt = 0;
-
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
@@ -199,4 +198,13 @@ rocksdb::Status RedisBitmap::BitPos(Slice key, bool bit, int start, int stop, in
   // bit was not found
   *pos = bit ? -1 : static_cast<int>(metadata.size * 8);
   return rocksdb::Status::OK();
+}
+
+bool RedisBitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {
+  bool bit = false;
+  uint32_t byte_index = (offset/8) % kBitmapSegmentBytes;
+  if ((byte_index < value.size() && (value[byte_index] & (1 << (offset%8))))) {
+    bit = true;
+  }
+  return bit;
 }

@@ -21,6 +21,8 @@ rocksdb::Status RedisZSet::Add(Slice key, uint8_t flags, std::vector<MemberScore
 
   int added = 0;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
   std::string member_key;
   for (size_t i = 0; i < mscores->size(); i++) {
     InternalKey(key, (*mscores)[i].member, metadata.version).Encode(&member_key);
@@ -116,6 +118,8 @@ rocksdb::Status RedisZSet::Pop(Slice key, int count, bool min, std::vector<Membe
   InternalKey(key, "", metadata.version).Encode(&prefix_key);
 
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
@@ -234,6 +238,8 @@ rocksdb::Status RedisZSet::RangeByScore(Slice key, ZRangeSpec spec, std::vector<
   int pos = 0;
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
@@ -299,6 +305,8 @@ rocksdb::Status RedisZSet::Remove(Slice key, std::vector<Slice> members, int *re
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
   int removed = 0;
   std::string member_key, score_key;
   for (const auto &member : members) {

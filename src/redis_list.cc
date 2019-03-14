@@ -32,6 +32,9 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
 
   ListMetadata metadata;
   rocksdb::WriteBatch batch;
+  RedisCommand cmd = left ? kRedisCmdLPush : kRedisCmdRPush;
+  WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
+  batch.PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
@@ -81,6 +84,9 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
     return s;
   }
   rocksdb::WriteBatch batch;
+  RedisCommand cmd = left ? kRedisCmdLPop : kRedisCmdRPop;
+  WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
+  batch.PutLogData(log_data.Encode());
   batch.Delete(sub_key);
   if (metadata.size == 1) {
     batch.Delete(metadata_cf_handle_, key);
@@ -186,6 +192,9 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
   if (value == elem) return rocksdb::Status::OK();
 
   rocksdb::WriteBatch batch;
+  WriteBatchLogData
+      log_data(kRedisList, {std::to_string(kRedisCmdLSet), std::to_string(index)});
+  batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, elem);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
@@ -222,6 +231,10 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
 
   std::string buf;
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisList,
+                             std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),
+                                                      std::to_string(stop)});
+  batch.PutLogData(log_data.Encode());
   uint64_t left_index = metadata.head + start;
   for (uint64_t i = metadata.head; i < left_index; i++) {
     PutFixed64(&buf, i);

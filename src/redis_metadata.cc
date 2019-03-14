@@ -3,6 +3,8 @@
 #include <vector>
 #include <cstdlib>
 
+#include "util.h"
+
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
   uint8_t namespace_size;
@@ -265,6 +267,8 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   // +1 to skip the flags
   EncodeFixed32(buf+1, (uint32_t)timestamp);
   rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
+  batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, key, Slice(buf, value.size()));
   s = storage_->Write(rocksdb::WriteOptions(), &batch);
   delete []buf;
@@ -492,4 +496,30 @@ uint64_t RedisSubKeyScanner::Scan(RedisType type,
 
   delete iter;
   return cnt;
+}
+
+RedisType WriteBatchLogData::GetRedisType() {
+  return type_;
+}
+
+std::vector<std::string> *WriteBatchLogData::GetArguments() {
+  return &args_;
+}
+
+std::string WriteBatchLogData::Encode() {
+  std::string ret = std::to_string(type_);
+  for (size_t i = 0; i < args_.size(); i++) {
+    ret += " " + args_[i];
+  }
+  return ret;
+}
+
+Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
+  std::string log_data = blob.ToString();
+  std::vector<std::string> args;
+  Util::Split(log_data, " ", &args);
+  type_ = static_cast<RedisType >(std::stoi(args[0]));
+  args_ = std::vector<std::string>(args.begin() + 1, args.end());
+
+  return Status::OK();
 }

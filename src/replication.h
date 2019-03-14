@@ -32,35 +32,8 @@ class ReplicationThread {
   ReplState State() { return repl_state_; }
   time_t LastIOTime() { return last_io_time_; }
 
- private:
-  std::thread t_;
+ protected:
   event_base *base_ = nullptr;
-  bool stop_flag_ = false;
-  std::string host_;
-  uint32_t port_;
-  std::string auth_;
-  Engine::Storage *storage_ = nullptr;
-  ReplState repl_state_;
-  time_t last_io_time_ = 0;
-
-  std::function<void()> pre_fullsync_cb_;
-  std::function<void()> post_fullsync_cb_;
-
-  // Internal states managed by FullSync procedure
-  enum FullSyncState {
-    kFetchMetaID,
-    kFetchMetaSize,
-    kFetchMetaContent,
-  } fullsync_state_ = kFetchMetaID;
-  rocksdb::BackupID fullsync_meta_id_ = 0;
-  size_t fullsync_filesize_ = 0;
-
-  // Internal states managed by IncrementBatchLoop procedure
-  enum IncrementBatchLoopState {
-    Incr_batch_size,
-    Incr_batch_data,
-  } incr_state_ = Incr_batch_size;
-  size_t incr_bulk_len_ = 0;
 
   // The state machine to manage the asynchronous steps used in replication
   class CallbacksStateMachine {
@@ -105,6 +78,36 @@ class ReplicationThread {
       return std::get<2>(handlers_[idx]);
     }
   };
+
+ private:
+  std::thread t_;
+  bool stop_flag_ = false;
+  std::string host_;
+  uint32_t port_;
+  std::string auth_;
+  Engine::Storage *storage_ = nullptr;
+  ReplState repl_state_;
+  time_t last_io_time_ = 0;
+
+  std::function<void()> pre_fullsync_cb_;
+  std::function<void()> post_fullsync_cb_;
+
+  // Internal states managed by FullSync procedure
+  enum FullSyncState {
+    kFetchMetaID,
+    kFetchMetaSize,
+    kFetchMetaContent,
+  } fullsync_state_ = kFetchMetaID;
+  rocksdb::BackupID fullsync_meta_id_ = 0;
+  size_t fullsync_filesize_ = 0;
+
+  // Internal states managed by IncrementBatchLoop procedure
+  enum IncrementBatchLoopState {
+    Incr_batch_size,
+    Incr_batch_data,
+  } incr_state_ = Incr_batch_size;
+
+  size_t incr_bulk_len_ = 0;
 
   using CBState = CallbacksStateMachine::State;
   CallbacksStateMachine psync_steps_;

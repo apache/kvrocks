@@ -3,78 +3,86 @@ from assert_helper import *
 from conn import *
 
 def test_get_and_set():
+    key = "test_get_and_set"
     conn = get_redis_conn()
-    ret = conn.set("foo", "bar")
+    ret = conn.set(key, "bar")
     assert(ret == True)
-    value = conn.get("foo")
+    value = conn.get(key)
     assert(value == "bar")
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
 
 def test_delete():
+    key = "test_delete"
     conn = get_redis_conn()
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 0)
-    ret = conn.set("foo", "bar")
-    ret = conn.delete("foo")
+    ret = conn.set(key, "bar")
+    ret = conn.delete(key)
     assert(ret == 1)
 
 def test_getset():
+    key = "test_getset"
     conn = get_redis_conn()
-    ret = conn.getset("foo", "bar")
+    ret = conn.getset(key, "bar")
     assert(ret == None)
-    ret = conn.getset("foo", "new_bar")
+    ret = conn.getset(key, "new_bar")
     assert(ret == "bar")
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
 
 def test_setex():
+    key = "test_setex"
     conn = get_redis_conn()
-    ret = conn.setex("foo", "bar", 1024)
+    ret = conn.setex(key, "bar", 1024)
     assert(ret == True)
-    ret = conn.ttl("foo")
+    ret = conn.ttl(key)
     assert(ret >= 1023 and ret <= 1025)
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
     assert_raise(redis.RedisError, conn.setex, "foo", "bar", "invalid")
 
 def test_setnx():
+    key = "test_setnx"
     conn = get_redis_conn()
-    ret = conn.setnx("foo", "bar")
+    ret = conn.setnx(key, "bar")
     assert(ret == 1)
-    ret = conn.setnx("foo", "bar")
+    ret = conn.setnx(key, "bar")
     assert(ret == 0)
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
 
 def test_setrange():
+    key = "test_setrange"
     conn = get_redis_conn()
-    ret = conn.set("foo", "hello world")
+    ret = conn.set(key, "hello world")
     assert(ret == 1)
-    ret = conn.setrange("foo", 6, "redis")
+    ret = conn.setrange(key, 6, "redis")
     assert(ret == 11) 
-    ret = conn.get("foo")
+    ret = conn.get(key)
     assert(ret == "hello redis")
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
-    ret = conn.setrange("foo", 6, "redis")
+    ret = conn.setrange(key, 6, "redis")
     assert(ret == 11) 
-    ret = conn.get("foo")
+    ret = conn.get(key)
     assert(ret == ("\0"*6+"redis"))
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
 
 def test_incrby():
+    key = "test_incrby"
     conn = get_redis_conn()
-    ret = conn.incrby("foo", 100)
+    ret = conn.incrby(key, 100)
     assert(ret == 100) 
-    ret = conn.incrby("foo", -100)
+    ret = conn.incrby(key, -100)
     assert(ret == 0) 
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
     # TODO: not number of overflow case
 
 def test_mset_and_mget():
+    key = "test_mset_and_mget"
     conn = get_redis_conn()
     kvs = {'kkk-%s' % i :'vvv-%s' % i for i in range(10)}
     ret = conn.mset(**kvs)
@@ -88,11 +96,12 @@ def test_mset_and_mget():
         assert(ret == True)
 
 def test_incr_by_float():
+    key = "test_incr_by_float"
     conn = get_redis_conn()
-    ret = conn.incrbyfloat("foo", 1.11)
+    ret = conn.incrbyfloat(key, 1.11)
     assert(ret == 1.11) 
-    ret = conn.incrbyfloat("foo", -1.11)
+    ret = conn.incrbyfloat(key, -1.11)
     assert(ret == 0) 
-    ret = conn.delete("foo")
+    ret = conn.delete(key)
     assert(ret == 1)
 

@@ -258,9 +258,6 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
-  if (metadata.Type() != kRedisString && metadata.size == 0) {
-    return rocksdb::Status::NotFound("no elements");
-  }
 
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());
@@ -284,6 +281,11 @@ rocksdb::Status RedisDB::Del(Slice key) {
   LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
   if (!s.ok()) return s;
+  Metadata metadata(kRedisNone);
+  metadata.Decode(value);
+  if (metadata.Expired()) {
+    return rocksdb::Status::NotFound("the key was expired");
+  }
   return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
 }
 

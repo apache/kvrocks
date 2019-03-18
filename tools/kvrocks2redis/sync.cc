@@ -89,7 +89,7 @@ Sync::CBState Sync::tryPSyncWriteCB(
       CRLF + seq_str + CRLF;
   send_string_to_event(bev, cmd_str);
   self->sync_state_ = kReplSendPSync;
-  LOG(INFO) << "[kvrockcs2redis] Try to use psync, next seq: " << self->next_seq_;
+  LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << self->next_seq_;
   return CBState::NEXT;
 }
 
@@ -103,6 +103,13 @@ Sync::CBState Sync::tryPSyncReadCB(bufferevent *bev,
   if (!line) return CBState::AGAIN;
 
   if (strncmp(line, "+OK", 3) != 0) {
+    if (self->next_seq_ > 0) {
+      // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
+      // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
+      LOG(ERROR) << "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : ";
+      self->stop_flag_ = true;
+      return CBState::QUIT;
+    }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
     self->parseKVFromLocalStorage();

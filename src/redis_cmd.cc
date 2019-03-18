@@ -663,11 +663,11 @@ class CommandHSet : public Commander {
     int ret;
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.Set(args_[1], args_[2], args_[3], &ret);
-    if (s.ok()) {
-      *output = Redis::Integer(ret);
-      return Status::OK();
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
     }
-    return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(ret);
+    return Status::OK();
   }
 };
 
@@ -678,12 +678,11 @@ class CommandHSetNX : public Commander {
     int ret;
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
-    if (s.ok()) {
-      *output = Redis::Integer(ret);
-      return Status::OK();
-    } else {
+    if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+    *output = Redis::Integer(ret);
+    return Status::OK();
   }
 };
 

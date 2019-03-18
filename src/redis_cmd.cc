@@ -950,12 +950,12 @@ class CommandRPush : public CommandPush {
 
 class CommandLPushX : public CommandPush {
  public:
-  CommandLPushX() : CommandPush(true, true) { name_ = "lpushx"; }
+  CommandLPushX() : CommandPush(false, true) { name_ = "lpushx"; }
 };
 
 class CommandRPushX : public CommandPush {
  public:
-  CommandRPushX() : CommandPush(true, false) { name_ = "rpushx"; }
+  CommandRPushX() : CommandPush(false, false) { name_ = "rpushx"; }
 };
 
 class CommandPop : public Commander {

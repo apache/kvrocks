@@ -26,6 +26,7 @@ rocksdb::Status RedisList::PushX(Slice key, const std::vector<Slice> &elems, boo
 }
 
 rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
+  *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
@@ -37,8 +38,8 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   batch.PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
-    return s;
+  if (!s.ok() && !create_if_missing && s.IsNotFound()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   for (const auto &elem : elems) {

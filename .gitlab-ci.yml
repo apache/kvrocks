@@ -19,6 +19,7 @@ build:
         - mkdir -p _build/bin && cp build/kvrocks _build/bin
         - mkdir -p _build/conf && cp kvrocks.conf _build/conf
         - cp build/unittest /cache # reuse unittest in test stage
+        - cp build/kvrocks /cache # reuse kvrocks in test stage
     artifacts:
         name: "kvrocks-${CI_PIPELINE_ID}-build"
         paths:
@@ -35,7 +36,20 @@ unittest:
     
     dependencies:
         - build
-        
+
+function-test:
+    stage: test
+    tags:
+        - dev
+
+    script:
+        - pip install nose && pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
+        - /cache/kvrocks -c ./kvrocks.conf &
+        - cd tests && nosetests -v
+
+    dependencies:
+        - build
+
 rpm:
     stage: pkg
     image: packager
@@ -53,6 +67,7 @@ rpm:
     dependencies:
         - build
         - unittest
+        - function-test
 
 release:
     stage: release

@@ -208,6 +208,46 @@ class CommandGetSet : public Commander {
   }
 };
 
+class CommandGetRange: public Commander {
+ public:
+  CommandGetRange() : Commander("getrange", 4, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      start_ = std::stoi(args[2]);
+      stop_ = std::stoi(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string value;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.Get(args_[1], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+      return Status::OK();
+    }
+    if (start_ < 0) start_ = static_cast<int>(value.size()) + start_;
+    if (stop_ < 0) stop_ = static_cast<int>(value.size()) + stop_;
+    if (start_ < 0) start_ = 0;
+    if (stop_ > static_cast<int>(value.size())) stop_ = static_cast<int>(value.size());
+    if (start_ > stop_) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(value.substr(start_, stop_+1));
+    }
+    return Status::OK();
+  }
+
+ private:
+  int start_, stop_;
+};
+
 class CommandSetRange: public Commander {
  public:
   CommandSetRange() : Commander("setrange", 4, true) {}
@@ -2560,6 +2600,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"getset",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGetSet);
+     }},
+    {"getrange",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGetRange);
      }},
     {"setrange",
      []() -> std::unique_ptr<Commander> {

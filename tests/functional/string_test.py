@@ -12,6 +12,30 @@ def test_get_and_set():
     ret = conn.delete(key)
     assert(ret == 1)
 
+def test_append():
+    key = "test_append"
+    conn = get_redis_conn()
+    ret = conn.append(key, "Hello")
+    assert(ret == 5)
+    ret = conn.append(key, " World")
+    assert(ret == 11)
+    ret = conn.get(key)
+    assert(ret == "Hello World")
+    ret = conn.delete(key)
+    assert(ret == 1)
+
+def test_strlen():
+    key = "test_strlen"
+    conn = get_redis_conn()
+    ret = conn.set(key, "Hello World")
+    assert(ret)
+    ret = conn.strlen(key)
+    assert(ret == 11)
+    ret = conn.strlen("noexistskey")
+    assert(ret == 0)
+    ret = conn.delete(key)
+    assert(ret == 1)
+
 def test_delete():
     key = "test_delete"
     conn = get_redis_conn()

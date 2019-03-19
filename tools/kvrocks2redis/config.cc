@@ -69,8 +69,6 @@ Status Config::parseConfigFromString(std::string input) {
     db_name = args[1];
   } else if (size == 2 && args[0] == "kvrocksauth") {
     kvrocks_auth = args[1];
-  } else if (size == 2 && args[0] == "requirepass") {
-    requirepass = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
     pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
@@ -91,12 +89,16 @@ Status Config::parseConfigFromString(std::string input) {
     }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
-  } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
+  } else if (size >= 3 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size() - 10);
     if (ns.size() > INT8_MAX) {
       return Status(Status::NotOK, std::string("namespace size exceed limit ") + std::to_string(INT8_MAX));
     }
-    tokens[args[1]] = ns;
+    tokens[ns].host = args[1];
+    tokens[ns].port = std::stoi(args[2]);
+    if (size == 4) {
+      tokens[ns].auth = args[3];
+    }
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -126,21 +128,8 @@ Status Config::Load(std::string path) {
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
 
-  if (requirepass.empty()) {
-    file.close();
-    return Status(Status::NotOK, "requirepass cannot be empty");
-  }
-  tokens[requirepass] = kDefaultNamespace;
   file.close();
   return Status::OK();
-}
-
-void Config::GetNamespace(const std::string &ns, std::string *token) {
-  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-    if (iter->second == ns) {
-      *token = iter->first;
-    }
-  }
 }
 
 }  // namespace Kvrocks2redis

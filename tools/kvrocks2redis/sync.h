@@ -1,6 +1,7 @@
 #pragma once
 
 #include <event2/bufferevent.h>
+#include <unistd.h>
 #include <fstream>
 
 #include "../../src/status.h"
@@ -14,6 +15,9 @@
 class Sync : public ReplicationThread {
  public:
   explicit Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
+  ~Sync() {
+    if (next_seq_fd_) close(next_seq_fd_);
+  }
   void Start();
   void Stop();
   bool IsStopped() { return stop_flag_; }

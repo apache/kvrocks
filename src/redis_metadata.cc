@@ -298,7 +298,11 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   for (const auto &key : keys) {
     AppendNamespacePrefix(key, &ns_key);
     s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-    if (s.ok()) *ret += 1;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone);
+      metadata.Decode(value);
+      if (!metadata.Expired()) *ret += 1;
+    }
   }
   return rocksdb::Status::OK();
 }

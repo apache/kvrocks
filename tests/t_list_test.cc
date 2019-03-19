@@ -41,7 +41,7 @@ TEST_F(RedisListTest, Pushx) {
   int ret;
   Slice pushx_key("test-pushx-key");
   rocksdb::Status s = list->PushX(pushx_key, fields_, true, &ret);
-  EXPECT_TRUE(s.IsNotFound());
+  EXPECT_TRUE(s.ok());
   list->Push(pushx_key, fields_, true, &ret);
   EXPECT_EQ(fields_.size(), ret);
   s = list->PushX(pushx_key, fields_, true, &ret);

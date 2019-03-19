@@ -26,6 +26,7 @@ rocksdb::Status RedisList::PushX(Slice key, const std::vector<Slice> &elems, boo
 }
 
 rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
+  *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
@@ -37,8 +38,8 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   batch.PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), key);
   rocksdb::Status s = GetMetadata(key, &metadata);
-  if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
-    return s;
+  if (!s.ok() && !create_if_missing && s.IsNotFound()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   for (const auto &elem : elems) {
@@ -138,9 +139,10 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = metadata.size + stop;
-  if (start < 0 || stop < 0 || start >= stop) return rocksdb::Status::OK();
+  if (start < 0) start = static_cast<int>(metadata.size) + start;
+  if (stop < 0) stop = static_cast<int>(metadata.size) + stop;
+  if (start > static_cast<int>(metadata.size) || stop < 0 || start > stop) return rocksdb::Status::OK();
+  if (start < 0) start = 0;
 
   std::string buf;
   PutFixed64(&buf, metadata.head + start);
@@ -225,9 +227,10 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
-  if (start < 0 || start > stop) {
+  if (start > stop) {
     return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
   }
+  if (start < 0) start = 0;
 
   std::string buf;
   rocksdb::WriteBatch batch;

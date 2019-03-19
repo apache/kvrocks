@@ -258,6 +258,10 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
+  if (metadata.Type() != kRedisString && metadata.size == 0) {
+    return rocksdb::Status::NotFound("no elements");
+  }
+  if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());
@@ -300,7 +304,11 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   for (const auto &key : keys) {
     AppendNamespacePrefix(key, &ns_key);
     s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-    if (s.ok()) *ret += 1;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone);
+      metadata.Decode(value);
+      if (!metadata.Expired()) *ret += 1;
+    }
   }
   return rocksdb::Status::OK();
 }

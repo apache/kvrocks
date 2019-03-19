@@ -48,6 +48,7 @@ rocksdb::Status RedisString::updateValue(Slice key, Slice raw_value, Slice new_v
 }
 
 rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
+  *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
@@ -150,7 +151,7 @@ rocksdb::Status RedisString::IncrBy(Slice key, int64_t increment, int64_t *ret) 
     try {
       value = std::stoll(value_bytes);
     } catch(std::exception &e) {
-      return rocksdb::Status::InvalidArgument("value is not an integer");
+      return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
     }
   }
   if ((increment < 0 && value < 0 && increment < (LLONG_MIN-value))

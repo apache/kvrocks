@@ -15,3 +15,8 @@
 	- speedup the gitlab ci build
 	- fix return error bit value in getbit
 	- fix config rewrite wrong master port
+
+* Version 0.1.6(@2019-03-18)
+	- supports append/getrange/expireat/pexpire/pexpireat/pttl commands
+	- fix trivials logical bugs in redis commands
+	- add functional test in CI

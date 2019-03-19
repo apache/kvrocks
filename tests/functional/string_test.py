@@ -52,6 +52,23 @@ def test_setnx():
     ret = conn.delete(key)
     assert(ret == 1)
 
+def test_getrange():
+    key = "test_getrange"
+    value = "This is a string"
+    conn = get_redis_conn()
+    ret = conn.set(key, value)
+    assert(ret)
+    ret = conn.getrange(key, 0, 3)
+    assert(ret == value[0:4])
+    ret = conn.getrange(key, -3, -1)
+    assert(value[-3:] == ret)
+    ret = conn.getrange(key, 0, -1)
+    assert(value == ret)
+    ret = conn.getrange(key, 10, 100)
+    assert(value[10:] == ret)
+    ret = conn.delete(key)
+    assert(ret == 1)
+
 def test_setrange():
     key = "test_setrange"
     conn = get_redis_conn()

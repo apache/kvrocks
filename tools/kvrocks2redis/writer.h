@@ -15,11 +15,12 @@ class Writer {
   ~Writer();
   virtual Status Write(const std::string &ns, const std::vector<std::string> &aofs);
   virtual Status FlushAll(const std::string &ns);
+  virtual void Stop() {};
   Status OpenAofFile(const std::string &ns, bool truncate);
-  Status GetAofFileStream(const std::string &ns, bool truncate = false);
+  Status GetAofFd(const std::string &ns, bool truncate = false);
   std::string GetAofFilePath(const std::string &ns);
 
  protected:
   Kvrocks2redis::Config *config_ = nullptr;
-  std::map<std::string, std::ofstream> aof_file_streams_;
+  std::map<std::string, int> aof_fds_;
 };

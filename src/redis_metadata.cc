@@ -261,6 +261,7 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
+  if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());

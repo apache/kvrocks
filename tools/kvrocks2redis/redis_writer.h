@@ -19,6 +19,7 @@ class RedisWriter : public Writer {
  private:
   std::thread t_;
   bool stop_flag_ = false;
+  size_t next_offset_string_size_ = 256;
   std::map<std::string, int> next_offset_fds_;
   std::map<std::string, std::istream::off_type> next_offsets_;
   std::map<std::string, int> redis_fds_;

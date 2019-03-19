@@ -60,6 +60,8 @@ void RedisWriter::Stop() {
   if (stop_flag_) return;
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
+
+  t_.join();
   // handled by sync func
   LOG(INFO) << "[kvrocks2redis] redis_writer Stopped";
 }
@@ -91,7 +93,10 @@ void RedisWriter::sync() {
 
       while (true) {
         auto getted_line_leng = pread(aof_fds_[iter.first], buffer, chunk_size, next_offsets_[iter.first]);
-        if (!getted_line_leng) {
+        if (getted_line_leng <= 0) {
+          if (getted_line_leng < 0 ){
+            LOG(ERROR) << "ERR read aof file : " << strerror(errno);
+          }
           break;
         }
 
@@ -119,7 +124,7 @@ Status RedisWriter::getRedisConn(const std::string &ns,
   if (iter == redis_fds_.end()) {
     auto s = Util::SockConnect(host, port, &redis_fds_[ns]);
     if (!s.IsOK()) {
-      return Status(Status::NotOK, std::string("Failed to open next offset file :") + s.Msg());
+      return Status(Status::NotOK, std::string("Failed to connect to redis :") + s.Msg());
     }
 
     if (!auth.empty()) {
@@ -154,11 +159,14 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
     if (strncmp(line, "+OK", 3) != 0) {
       // Auth failed
       free(line);
+      evbuffer_free(evbuf);
       return Status(Status::NotOK, "[kvrocks2redis] Auth failed: " + std::string(line, line_len));;
     }
     free(line);
     break;
   }
+
+  evbuffer_free(evbuf);
 
   return Status::OK();
 }
@@ -175,7 +183,8 @@ Status RedisWriter::readNextOffsetFromFile(const std::string &ns, std::istream::
   }
 
   *offset = 0;
-  char buf[256];
+  char buf[next_offset_string_size_+1];
+  memset(buf, '\0', sizeof(buf));
   if (read(next_offset_fds_[ns], buf, sizeof(buf)) > 0) {
     *offset = std::stoll(buf);
   }
@@ -186,10 +195,11 @@ Status RedisWriter::readNextOffsetFromFile(const std::string &ns, std::istream::
 Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::off_type offset) {
   std::string offset_string = std::to_string(offset);
   // append to 256 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = 256 - offset_string.size();
+  int append_byte = next_offset_string_size_ - offset_string.size();
   while (append_byte-- > 0) {
     offset_string += " ";
   }
+  offset_string += '\0';
   pwrite(next_offset_fds_[ns], offset_string.data(), offset_string.size(), 0);
   return Status::OK();
 }

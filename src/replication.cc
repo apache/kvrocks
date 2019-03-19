@@ -215,8 +215,8 @@ void ReplicationThread::run() {
   evtimer_add(timer, &tmo);
 
   event_base_dispatch(base_);
-  event_base_free(base_);
   event_free(timer);
+  event_base_free(base_);
 }
 
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
@@ -560,6 +560,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   // Write to tmp file
   auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
   if (!tmp_file) {
+    evbuffer_free(evbuf);
     return Status(Status::NotOK, "unable to create tmp file");
   }
 

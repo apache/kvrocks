@@ -139,9 +139,10 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   rocksdb::Status s = GetMetadata(key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = metadata.size + stop;
-  if (start < 0 || stop < 0 || start >= stop) return rocksdb::Status::OK();
+  if (start < 0) start = static_cast<int>(metadata.size) + start;
+  if (stop < 0) stop = static_cast<int>(metadata.size) + stop;
+  if (start > static_cast<int>(metadata.size) || stop < 0 || start > stop) return rocksdb::Status::OK();
+  if (start < 0) start = 0;
 
   std::string buf;
   PutFixed64(&buf, metadata.head + start);

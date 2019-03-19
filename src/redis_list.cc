@@ -227,9 +227,10 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
-  if (start < 0 || start > stop) {
+  if (start > stop) {
     return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
   }
+  if (start < 0) start = 0;
 
   std::string buf;
   rocksdb::WriteBatch batch;

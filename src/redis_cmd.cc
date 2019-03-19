@@ -1109,9 +1109,9 @@ class CommandLTrim : public Commander {
   int start_ = 0, stop_ = 0;
 };
 
-class CommandLPushRPop : public Commander {
+class CommandRPopLPUSH : public Commander {
  public:
-  CommandLPushRPop() : Commander("lpushrpop", 3, true) {}
+  CommandRPopLPUSH() : Commander("rpoplpush", 3, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisList list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
@@ -2728,9 +2728,9 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandLSet);
      }},
-    {"lpushrpop",
+    {"rpoplpush",
      []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLPushRPop);
+       return std::unique_ptr<Commander>(new CommandRPopLPUSH);
      }},
     // set command
     {"sadd",

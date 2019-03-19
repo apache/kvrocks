@@ -193,6 +193,25 @@ class CommandGet : public Commander {
   }
 };
 
+class CommandStrlen: public Commander {
+ public:
+  CommandStrlen() : Commander("strlen", 2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string value;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.Get(args_[1], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      *output = Redis::Integer(0);
+    } else {
+      *output = Redis::Integer(value.size());
+    }
+    return Status::OK();
+  }
+};
+
 class CommandGetSet : public Commander {
  public:
   CommandGetSet() : Commander("getset", 3, true) {}
@@ -288,6 +307,21 @@ class CommandMGet : public Commander {
     // always return OK
     string_db.MGet(keys, &values);
     *output = Redis::MultiBulkString(values);
+    return Status::OK();
+  }
+};
+
+class CommandAppend: public Commander {
+ public:
+  CommandAppend() : Commander("append", 3, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    RedisString string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.Append(args_[1], args_[2], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
     return Status::OK();
   }
 };
@@ -2597,6 +2631,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGet);
      }},
+    {"strlen",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandStrlen);
+     }},
     {"getset",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandGetSet);
@@ -2612,6 +2650,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"mget",
           []() -> std::unique_ptr<Commander> {
             return std::unique_ptr<Commander>(new CommandMGet);
+     }},
+    {"append",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandAppend);
      }},
     {"set",
      []() -> std::unique_ptr<Commander> {

@@ -48,6 +48,7 @@ rocksdb::Status RedisString::updateValue(Slice key, Slice raw_value, Slice new_v
 }
 
 rocksdb::Status RedisString::Append(Slice key, Slice value, int *ret) {
+  *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);

@@ -28,21 +28,6 @@ int Config::yesnotoi(std::string input) {
   return -1;
 }
 
-Status Config::parseRocksdbOption(std::string key, std::string value) {
-  int32_t n;
-  try {
-    n = std::stoi(value);
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, e.what());
-  }
-  if (key == "max_open_files") {
-    rocksdb_options.max_open_files = n;
-  } else {
-    return Status(Status::NotOK, "Bad directive or wrong number of arguments");
-  }
-  return Status::OK();
-}
-
 Status Config::parseConfigFromString(std::string input) {
   std::vector<std::string> args;
   Util::Split(input, " \t\r\n", &args);
@@ -50,12 +35,7 @@ Status Config::parseConfigFromString(std::string input) {
   if (args.empty() || args[0].front() == '#') return Status::OK();
 
   size_t size = args.size();
-  if (size == 2 && args[0] == "workers") {
-    workers = std::stoi(args[1]);
-    if (workers < 1 || workers > 1024) {
-      return Status(Status::NotOK, "too many worker threads");
-    }
-  } else if (size == 2 && args[0] == "daemonize") {
+  if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
@@ -65,12 +45,6 @@ Status Config::parseConfigFromString(std::string input) {
     dir = args[1];
     db_dir = dir + "/db";
     next_seq_file_path = dir + "/last_next_seq.txt";
-  } else if (size == 2 && args[0] == "db-name") {
-    db_name = args[1];
-  } else if (size == 2 && args[0] == "kvrocksauth") {
-    kvrocks_auth = args[1];
-  } else if (size == 2 && args[0] == "pidfile") {
-    pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (Util::ToLower(args[1]) == kLogLevels[i]) {
@@ -78,17 +52,16 @@ Status Config::parseConfigFromString(std::string input) {
         break;
       }
     }
-  } else if (size == 3 && args[0] == "kvrocks") {
-    if (args[1] != "no" && args[2] != "one") {
-      kvrocks_host = args[1];
-      // we use port + 1 as repl port, so incr the kvrocks port here
-      kvrocks_port = std::stoi(args[2]) + 1;
-      if (kvrocks_port <= 0 || kvrocks_port >= 65535) {
-        return Status(Status::NotOK, "kvrocks port range should be between 0 and 65535");
-      }
+  } else if (size >= 3 && args[0] == "kvrocks") {
+    kvrocks_host = args[1];
+    // we use port + 1 as repl port, so incr the kvrocks port here
+    kvrocks_port = std::stoi(args[2]) + 1;
+    if (kvrocks_port <= 0 || kvrocks_port >= 65535) {
+      return Status(Status::NotOK, "kvrocks port range should be between 0 and 65535");
     }
-  } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
-    return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
+    if (size == 4) {
+      kvrocks_auth = args[3];
+    }
   } else if (size >= 3 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size() - 10);
     if (ns.size() > INT8_MAX) {

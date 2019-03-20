@@ -29,7 +29,6 @@ class Sync : public ReplicationThread {
   Parser *parser_ = nullptr;
   Kvrocks2redis::Config *config_ = nullptr;
   ReplState sync_state_;
-  size_t next_seq_string_size_ = 21;
   int next_seq_fd_;
   rocksdb::SequenceNumber next_seq_ = static_cast<rocksdb::SequenceNumber>(0);
 

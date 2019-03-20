@@ -429,9 +429,9 @@ Status Config::Rewrite() {
 }
 
 void Config::GetNamespace(const std::string &ns, std::string *token) {
-  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-    if (iter->second == ns) {
-      *token = iter->first;
+  for (const auto &iter : tokens) {
+    if (iter.second == ns) {
+      *token = iter.first;
     }
   }
 }
@@ -443,9 +443,9 @@ Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
-  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-    if (iter->second == ns) {
-      tokens.erase(iter);
+  for (const auto &iter : tokens) {
+    if (iter.second == ns) {
+      tokens.erase(iter.first);
       tokens[token] = ns;
       return Status::OK();
     }
@@ -460,8 +460,8 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
-  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-    if (iter->second == ns) {
+  for (const auto &iter : tokens) {
+    if (iter.second == ns) {
       return Status(Status::NotOK, "namespace has already exists");
     }
   }
@@ -473,9 +473,9 @@ Status Config::DelNamespace(const std::string &ns) {
   if (ns == kDefaultNamespace) {
     return Status(Status::NotOK, "can't del the default namespace");
   }
-  for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-    if (iter->second == ns) {
-      tokens.erase(iter);
+  for (const auto &iter : tokens) {
+    if (iter.second == ns) {
+      tokens.erase(iter.first);
       return Status::OK();
     }
   }

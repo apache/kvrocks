@@ -2119,6 +2119,7 @@ class CommandSlaveOf : public Commander {
 class CommandPSync : public Commander {
  public:
   CommandPSync() : Commander("psync", 2, false) {}
+  ~CommandPSync() { if (timer_) event_free(timer_); }
 
   Status Parse(const std::vector<std::string> &args) override {
     try {
@@ -2202,8 +2203,8 @@ class CommandPSync : public Commander {
               std::string bulk_str =
                   "$" + std::to_string(data.length()) + CRLF + data + CRLF;
               evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
-              self->svr_->UpdateSlaveStats(self->slave_info_pos_, batch.sequence);
               self->next_seq_ = batch.sequence + batch.writeBatchPtr->Count();
+              self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->next_seq_-1);
               if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
                 self->state_ = State::WaitWAL;
                 return;
@@ -2237,6 +2238,7 @@ class CommandPSync : public Commander {
       int slave_fd = self->conn_->GetFD();
       self->svr_->RemoveSlave(self->slave_info_pos_);
       event_free(self->timer_);
+      self->timer_ = nullptr;
       self->conn_->Owner()->RemoveConnection(slave_fd);
 
       std::string addr;

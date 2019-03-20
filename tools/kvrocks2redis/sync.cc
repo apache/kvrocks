@@ -67,8 +67,8 @@ void Sync::Start() {
   evtimer_add(timer, &tmo);
 
   event_base_dispatch(base_);
-  event_base_free(base_);
   event_free(timer);
+  event_base_free(base_);
 }
 
 void Sync::Stop() {
@@ -116,7 +116,8 @@ Sync::CBState Sync::tryPSyncReadCB(bufferevent *bev,
     LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage";
     LOG(INFO) << line;
     free(line);
-    return CBState::QUIT;
+    // Restart psync state machine
+    return CBState::RESTART;
   } else {
     // PSYNC is OK, use IncrementBatchLoop
     free(line);
@@ -196,8 +197,6 @@ void Sync::parseKVFromLocalStorage() {
     return;
   }
   updateNextSeq(storage_->LatestSeq() + 1);
-  // Switch to psync state machine again
-  psync_steps_.Start();
 }
 
 Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
@@ -212,7 +211,8 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
   }
 
   *seq = 0;
-  char buf[21];
+  char buf[next_seq_string_size_+1];
+  memset(buf, '\0', sizeof(buf));
   if (read(next_seq_fd_, buf, sizeof(buf)) > 0) {
     *seq = static_cast<rocksdb::SequenceNumber>(std::stoi(buf));
   }
@@ -223,10 +223,11 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
 Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
   std::string seq_string = std::to_string(seq);
   // append to 21 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = 21 - seq_string.size();
+  int append_byte = next_seq_string_size_ - seq_string.size();
   while (append_byte-- > 0) {
     seq_string += " ";
   }
+  seq_string += '\0';
   pwrite(next_seq_fd_, seq_string.data(), seq_string.size(), 0);
   return Status::OK();
 }

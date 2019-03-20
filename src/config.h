@@ -29,7 +29,6 @@ struct Config{
 
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};
-  std::string pidfile = "/var/log/kvrocks.pid";
   std::string dir = "/tmp/ev";
   std::string db_dir = dir+"/db";
   std::string backup_dir;

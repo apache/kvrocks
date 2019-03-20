@@ -20,3 +20,6 @@
 	- supports append/getrange/expireat/pexpire/pexpireat/pttl commands
 	- fix trivials logical bugs in redis commands
 	- add functional test in CI
+
+* Version 0.1.7(@2019-03-19)
+	- fix memory leak which detected by valgrind

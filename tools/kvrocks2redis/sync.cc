@@ -211,7 +211,8 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
   }
 
   *seq = 0;
-  char buf[next_seq_string_size_+1];
+  // 21 + 1 byte, extra one byte for the ending \0
+  char buf[22];
   memset(buf, '\0', sizeof(buf));
   if (read(next_seq_fd_, buf, sizeof(buf)) > 0) {
     *seq = static_cast<rocksdb::SequenceNumber>(std::stoi(buf));
@@ -223,7 +224,7 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
 Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
   std::string seq_string = std::to_string(seq);
   // append to 21 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = next_seq_string_size_ - seq_string.size();
+  int append_byte = 21 - seq_string.size();
   while (append_byte-- > 0) {
     seq_string += " ";
   }

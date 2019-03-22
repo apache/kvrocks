@@ -44,8 +44,9 @@ function-test:
 
     script:
         - pip install nose && pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
-        - /cache/kvrocks -c ./kvrocks.conf &
-        - cd tests && nosetests -v
+        - sh tests/scripts/start_master.sh
+        - sh tests/scripts/start_slave.sh
+        - cd tests/functional && nosetests -v
 
     dependencies:
         - build

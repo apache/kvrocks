@@ -1191,6 +1191,33 @@ class CommandRPop : public CommandPop {
   CommandRPop() : CommandPop(false) { name_ = "rpop"; }
 };
 
+class CommandLRem : public Commander {
+ public:
+  CommandLRem() : Commander("lrem", 4, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      count_ = std::stoi(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    RedisList list_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = list_db.Rem(args_[1], count_, args_[3], &ret);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int count_ = 0;
+};
+
 class CommandLRange : public Commander {
  public:
   CommandLRange() : Commander("lrange", 4, false) {}
@@ -2942,6 +2969,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"rpop",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandRPop);
+     }},
+    {"lrem",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandLRem);
      }},
     {"lrange",
      []() -> std::unique_ptr<Commander> {

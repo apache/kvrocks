@@ -59,5 +59,5 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
  private:
   std::map<std::string, std::vector<std::string>> aof_strings_;
   WriteBatchLogData log_data_;
-  bool ltrimFirstSeen_ = true;
+  bool firstSeen_ = true;
 };

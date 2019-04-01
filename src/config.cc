@@ -100,6 +100,7 @@ Status Config::parseConfigFromString(std::string input) {
   // omit empty line and comment
   if (args.empty() || args[0].front() == '#') return Status::OK();
 
+  args[0] = Util::ToLower(args[0]);
   size_t size = args.size();
   if (size == 2 && args[0] == "port") {
     port = std::stoi(args[1]);
@@ -213,7 +214,6 @@ Status Config::Load(std::string path) {
   int line_num = 1;
   while (!file.eof()) {
     std::getline(file, line);
-    line = Util::ToLower(line);
     Status s = parseConfigFromString(line);
     if (!s.IsOK()) {
       file.close();

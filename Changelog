@@ -26,3 +26,8 @@
 
 * Version 0.1.8(@2019-03-19)
 	- remove the pidfile option in config
+
+* Version 0.1.9(@2019-04-01)
+	- add replication test in CI
+	- fix parameter should not be converted to lower case when loading from config file
+

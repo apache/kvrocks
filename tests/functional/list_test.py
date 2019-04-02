@@ -143,6 +143,25 @@ def test_ltrim():
     ret = conn.lrange(key, 0, -1)
     assert(ret == [])
 
+def test_lrem():
+    key = "test_lrem"
+    conn = get_redis_conn()
+    elems = ["one", "two", "three"]
+    ret = conn.rpush(key, *elems)
+    assert(ret == len(elems))
+    ret = conn.execute_command("LREM", key, "0", elems[0])
+    assert (ret == 1)
+    ret = conn.lrange(key, 0, -1)
+    assert(ret == elems[1:])
+    ret = conn.execute_command("LREM", key, "0", elems[1])
+    assert (ret == 1)
+    ret = conn.lrange(key, 0, -1)
+    assert(ret == [elems[2]])
+    ret = conn.execute_command("LREM", key, "0", elems[2])
+    assert (ret == 1)
+    ret = conn.lrange(key, 0, -1)
+    assert(ret == [])
+
 
 def test_rpoplpush():
     key = "test_rpoplpush"

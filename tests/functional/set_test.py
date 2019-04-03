@@ -30,10 +30,6 @@ def test_spop():
     ret = conn.spop(key)
     assert(ret[0] == 'a')
 
-    ret = conn.delete(key)
-    assert (ret == 1)
-
-
 def test_smove():
     conn = get_redis_conn()
     key = "test_smove"

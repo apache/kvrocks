@@ -61,10 +61,6 @@ def test_psync_zset():
     ret = conn_slave.zscore(key, 'a')
     assert(None == ret)
 
-    ret = conn.delete(key)
-    assert(ret == 1)
-
-
 def test_psync_list():
     key = "test_psync_list"
     conn = get_redis_conn()
@@ -126,9 +122,6 @@ def test_psync_set():
     ret = conn_slave.sismember(key, 'a')
     assert(ret == 0)
 
-    ret = conn.delete(key)
-    assert(ret == 1)
-
 
 def test_psync_hash():
     key = "test_psync_hash"
@@ -144,10 +137,6 @@ def test_psync_hash():
     time.sleep(0.01)
     ret = conn_slave.hget(key, 'a')
     assert(None == ret)
-
-    ret = conn.delete(key)
-    assert(ret == 1)
-
 
 def test_psync_bitmap():
     key = "test_psync_bitmap"

@@ -10,10 +10,8 @@ protected:
   explicit TestBase() {
     Config config;
     config.db_dir = "testsdb";
-    config.backup_dir = "testsdb_bak";
+    config.backup_dir = "testsdb/backup";
     storage_ = new Engine::Storage(&config);
-    rocksdb::Options opts;
-    opts.create_if_missing = true;
     Status s = storage_->Open();
     assert(s.IsOK());
   }

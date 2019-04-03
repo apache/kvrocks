@@ -9,7 +9,7 @@
 #include "status.h"
 #include "cron.h"
 
-static const char *kDefaultNamespace = "__namespace";
+extern const char *kDefaultNamespace;
 
 struct Config{
  public:

@@ -12,7 +12,7 @@ typedef struct {
 
 class RedisString :public RedisDB {
  public:
-  explicit RedisString(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
+  explicit RedisString(Engine::Storage *storage, const std::string &ns) : RedisDB(storage, ns) {}
   rocksdb::Status Append(Slice key, Slice value, int *ret);
   rocksdb::Status Get(Slice key, std::string *value);
   rocksdb::Status GetSet(Slice key, Slice new_value, std::string *old_value);

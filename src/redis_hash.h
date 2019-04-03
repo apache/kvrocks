@@ -14,7 +14,7 @@ typedef struct FieldValue {
 
 class RedisHash : public RedisSubKeyScanner {
  public:
-  RedisHash(Engine::Storage *storage, std::string ns) : RedisSubKeyScanner(storage, std::move(ns)) {}
+  RedisHash(Engine::Storage *storage, const std::string &ns) : RedisSubKeyScanner(storage, ns) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status Get(Slice key, Slice field, std::string *value);
   rocksdb::Status Set(Slice key, Slice field, Slice value, int *ret);

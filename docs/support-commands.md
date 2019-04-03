@@ -42,25 +42,25 @@
 
 ## List Commands
 
-| Command    | Supported OR Not | Desc |
-| ---------- | ---------------- | ---- |
-| blpop      | X                |      |
-| brpop      | X                |      |
-| brpoplpush | X                |      |
-| lindex     | √                |      |
-| linsert    | X                |      |
-| llen       | √                |      |
-| lpop       | √                |      |
-| lpush      | √                |      |
-| lpushx     | √                |      |
-| lrange     | √                |      |
-| lrem       | √                |      |
-| lset       | √                |      |
-| ltrim      | √                |      |
-| rpop       | √                |      |
-| rpoplpush  | √                |      |
-| rpush      | √                |      |
-| rpushx     | √                |      |
+| Command    | Supported OR Not | Desc                                                         |
+| ---------- | ---------------- | ------------------------------------------------------------ |
+| blpop      | X                |                                                              |
+| brpop      | X                |                                                              |
+| brpoplpush | X                |                                                              |
+| lindex     | √                |                                                              |
+| linsert    | X                |                                                              |
+| llen       | √                |                                                              |
+| lpop       | √                |                                                              |
+| lpush      | √                |                                                              |
+| lpushx     | √                |                                                              |
+| lrange     | √                |                                                              |
+| lrem       | √                | Caution: lrem is O(N) operation, don't use it when list was extreme long |
+| lset       | √                |                                                              |
+| ltrim      | √                | Caution: ltrim is O(N) operation, don't use it when list was extreme long |
+| rpop       | √                |                                                              |
+| rpoplpush  | √                |                                                              |
+| rpush      | √                |                                                              |
+| rpushx     | √                |                                                              |
 
 
 

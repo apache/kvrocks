@@ -14,6 +14,7 @@
 #include "status.h"
 #include "cron.h"
 
+const char *kDefaultNamespace = "__namespace";
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
 

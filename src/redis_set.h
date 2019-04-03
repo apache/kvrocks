@@ -7,8 +7,8 @@
 
 class RedisSet : public RedisSubKeyScanner {
  public:
-  explicit RedisSet(Engine::Storage *storage, std::string ns)
-      : RedisSubKeyScanner(storage, std::move(ns)) {}
+  explicit RedisSet(Engine::Storage *storage, const std::string &ns)
+      : RedisSubKeyScanner(storage, ns) {}
 
   rocksdb::Status Card(Slice key, int *ret);
   rocksdb::Status IsMember(Slice key, Slice member, int *ret);

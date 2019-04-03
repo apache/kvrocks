@@ -33,8 +33,8 @@ typedef struct {
 
 class RedisZSet : public RedisSubKeyScanner {
  public:
-  explicit RedisZSet(Engine::Storage *storage, std::string ns) :
-      RedisSubKeyScanner(storage, std::move(ns)),
+  explicit RedisZSet(Engine::Storage *storage, const std::string &ns) :
+      RedisSubKeyScanner(storage, ns),
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(Slice key, int *ret);

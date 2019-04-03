@@ -9,7 +9,7 @@ const uint32_t kBitmapSegmentBytes = 1024;
 
 class RedisBitmap : public RedisDB {
  public:
-  RedisBitmap(Engine::Storage *storage, std::string ns): RedisDB(storage, std::move(ns)) {}
+  RedisBitmap(Engine::Storage *storage, const std::string &ns): RedisDB(storage, ns) {}
   rocksdb::Status GetBit(Slice key, uint32_t offset, bool *bit);
   rocksdb::Status SetBit(Slice key, uint32_t offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(Slice key, int start, int stop, uint32_t *cnt);

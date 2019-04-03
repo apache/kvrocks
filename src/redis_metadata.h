@@ -112,7 +112,7 @@ class ListMetadata : public Metadata {
 
 class RedisDB {
  public:
-  explicit RedisDB(Engine::Storage *storage, std::string ns);
+  explicit RedisDB(Engine::Storage *storage, const std::string &ns);
   rocksdb::Status GetMetadata(RedisType type, Slice key, Metadata *metadata);
   rocksdb::Status Expire(Slice key, int timestamp);
   rocksdb::Status Del(Slice key);

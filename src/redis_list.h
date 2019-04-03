@@ -9,7 +9,7 @@
 
 class RedisList :public RedisDB {
  public:
-  explicit RedisList(Engine::Storage *storage, std::string ns) : RedisDB(storage, std::move(ns)) {}
+  explicit RedisList(Engine::Storage *storage, const std::string &ns) : RedisDB(storage, ns) {}
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status Trim(Slice key, int start, int stop);
   rocksdb::Status Set(Slice key, int index, Slice elem);

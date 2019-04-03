@@ -135,19 +135,12 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
   if (!s.ok()) return s;
 
   uint64_t index = count >= 0 ? metadata.head : metadata.tail - 1;
-  bool reversed = count < 0;
-  std::string buf;
+  std::string buf, start_key, prefix;
   PutFixed64(&buf, index);
-  std::string start_key, prefix;
   InternalKey(key, buf, metadata.version).Encode(&start_key);
   InternalKey(key, "", metadata.version).Encode(&prefix);
-
-  rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLRem), std::to_string(count), elem.ToString()});
-  batch.PutLogData(log_data.Encode());
-
+  bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
-
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
@@ -159,19 +152,19 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     if (iter->value() == elem) {
       InternalKey ikey(iter->key());
       Slice sub_key = ikey.GetSubKey();
-      uint64_t index;
       GetFixed64(&sub_key, &index);
-
       to_delete_indexes.emplace_back(index);
-
       if (static_cast<int>(to_delete_indexes.size()) == abs(count)) break;
     }
   }
-
   if (to_delete_indexes.empty()) {
     delete iter;
     return rocksdb::Status::NotFound();
   }
+
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLRem), std::to_string(count), elem.ToString()});
+  batch.PutLogData(log_data.Encode());
 
   if (to_delete_indexes.size() == metadata.size) {
     batch.Delete(metadata_cf_handle_, key);
@@ -182,7 +175,6 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     uint64_t left_part_len = max_to_delete_index - metadata.head;
     uint64_t right_part_len = metadata.tail - 1 - min_to_delete_index;
     reversed = left_part_len <= right_part_len;
-
     buf.clear();
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
     InternalKey(key, buf, metadata.version).Encode(&start_key);
@@ -203,13 +195,11 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
       InternalKey(key, buf, metadata.version).Encode(&to_delete_key);
       batch.Delete(to_delete_key);
     }
-
     if (reversed) {
       metadata.head += to_delete_indexes.size();
     } else {
       metadata.tail -= to_delete_indexes.size();
     }
-
     metadata.size -= to_delete_indexes.size();
     std::string bytes;
     metadata.Encode(&bytes);
@@ -217,8 +207,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
   }
 
   delete iter;
-
-  *ret = to_delete_indexes.size();
+  *ret = static_cast<int>(to_delete_indexes.size());
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 

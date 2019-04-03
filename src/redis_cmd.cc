@@ -1218,6 +1218,34 @@ class CommandLRem : public Commander {
   int count_ = 0;
 };
 
+class CommandLInsert : public Commander {
+ public:
+  CommandLInsert() : Commander("linsert", 5, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if ((Util::ToLower(args[2]) == "before")) {
+      before_ = true;
+    } else if ((Util::ToLower(args[2]) == "after")) {
+      before_ = false;
+    } else {
+      return Status(Status::RedisParseErr, "syntax error");
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    RedisList list_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  bool before_ = false;
+};
+
 class CommandLRange : public Commander {
  public:
   CommandLRange() : Commander("lrange", 4, false) {}
@@ -2973,6 +3001,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"lrem",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandLRem);
+     }},
+    {"linsert",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandLInsert);
      }},
     {"lrange",
      []() -> std::unique_ptr<Commander> {

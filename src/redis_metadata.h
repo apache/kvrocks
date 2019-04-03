@@ -22,9 +22,11 @@ enum RedisType {
 
 enum RedisCommand {
   kRedisCmdLSet,
+  kRedisCmdLInsert,
   kRedisCmdLTrim,
   kRedisCmdLPop,
   kRedisCmdRPop,
+  kRedisCmdLRem,
   kRedisCmdLPush,
   kRedisCmdRPush,
   kRedisCmdExpire,

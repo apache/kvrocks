@@ -146,21 +146,26 @@ def test_ltrim():
 def test_lrem():
     key = "test_lrem"
     conn = get_redis_conn()
-    elems = ["one", "two", "three"]
+    ret = conn.delete(key)
+    elems = ["E1", "E2", "E3", "hello", "E4", "E5", "hello", "E6"]
+    elems_without_hello =  ["E1", "E2", "E3", "E4", "E5", "E6"]
     ret = conn.rpush(key, *elems)
     assert(ret == len(elems))
-    ret = conn.execute_command("LREM", key, "0", elems[0])
+    ret = conn.execute_command("LREM", key, 0, "hello")
+    assert (ret == 2)
+    ret = conn.lrange(key, 0, -1)
+    assert(ret == elems_without_hello)
+    ret = conn.execute_command("LREM", key, 1, elems_without_hello[0])
     assert (ret == 1)
     ret = conn.lrange(key, 0, -1)
-    assert(ret == elems[1:])
-    ret = conn.execute_command("LREM", key, "0", elems[1])
+    assert(ret == elems_without_hello[1:])
+    ret = conn.execute_command("LREM", key, -1, elems_without_hello[5])
     assert (ret == 1)
     ret = conn.lrange(key, 0, -1)
-    assert(ret == [elems[2]])
-    ret = conn.execute_command("LREM", key, "0", elems[2])
-    assert (ret == 1)
-    ret = conn.lrange(key, 0, -1)
-    assert(ret == [])
+    assert(ret == elems_without_hello[1:5])
+
+    ret = conn.delete(key)
+    assert(ret == 1)
 
 
 def test_rpoplpush():

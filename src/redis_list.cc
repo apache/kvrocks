@@ -103,6 +103,25 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
+/*
+ * LRem would remove which value is equal to elem, and count limit the remove number and direction
+ * Caution: The LRem timing complexity is O(N), don't use it on a long list
+ * The simplified description of LRem Algothrim follows those steps:
+ * 1. find out all the index of elems to delete
+ * 2. determine to move the remain elems from the left or right by the length of moving elems
+ * 3. move the remain elems with overlay
+ * 4. trim and delete
+ * For example: lrem list hello 0
+ * when the list was like this:
+ * | E1 | E2 | E3 | hello | E4 | E5 | hello | E6 |
+ * the index of elems to delete is [3, 6], left part size is 6 and right part size is 4,
+ * so move elems from right to left:
+ * => | E1 | E2 | E3 | E4 | E4 | E5 | hello | E6 |
+ * => | E1 | E2 | E3 | E4 | E5 | E5 | hello | E6 |
+ * => | E1 | E2 | E3 | E4 | E5 | E6 | hello | E6 |
+ * then trim the list from tail with num of elems to delete, here is 2.
+ * and list would become: | E1 | E2 | E3 | E4 | E5 | E6 |
+ */
 rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret) {
   *ret = 0;
 
@@ -127,7 +146,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLRem), std::to_string(count), elem.ToString()});
   batch.PutLogData(log_data.Encode());
 
-  std::vector<uint64_t> target_index;
+  std::vector<uint64_t> to_delete_indexes;
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -143,42 +162,42 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
       uint64_t index;
       GetFixed64(&sub_key, &index);
 
-      target_index.emplace_back(index);
+      to_delete_indexes.emplace_back(index);
 
-      if (static_cast<int>(target_index.size()) == abs(count)) break;
+      if (static_cast<int>(to_delete_indexes.size()) == abs(count)) break;
     }
   }
 
-  if (target_index.size() == 0) {
+  if (to_delete_indexes.empty()) {
     delete iter;
     return rocksdb::Status::NotFound();
   }
 
-  if (target_index.size() == metadata.size) {
+  if (to_delete_indexes.size() == metadata.size) {
     batch.Delete(metadata_cf_handle_, key);
   } else {
     std::string to_update_key, to_delete_key;
-    uint64_t target_list_left_index = !reversed ? target_index[0] : target_index[target_index.size() - 1];
-    uint64_t target_list_right_index = !reversed ? target_index[target_index.size() - 1] : target_index[0];
-    uint64_t left_part_len = target_list_right_index - metadata.head;
-    uint64_t right_part_len = metadata.tail - 1 - target_list_left_index;
+    uint64_t min_to_delete_index = !reversed ? to_delete_indexes[0] : to_delete_indexes[to_delete_indexes.size() - 1];
+    uint64_t max_to_delete_index = !reversed ? to_delete_indexes[to_delete_indexes.size() - 1] : to_delete_indexes[0];
+    uint64_t left_part_len = max_to_delete_index - metadata.head;
+    uint64_t right_part_len = metadata.tail - 1 - min_to_delete_index;
     reversed = left_part_len <= right_part_len;
 
     buf.clear();
-    PutFixed64(&buf, reversed ? target_list_right_index : target_list_left_index);
+    PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
     InternalKey(key, buf, metadata.version).Encode(&start_key);
     for (iter->Seek(start_key);
          iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
       if (iter->value() != elem) {
         buf.clear();
-        PutFixed64(&buf, reversed ? target_list_right_index-- : target_list_left_index++);
+        PutFixed64(&buf, reversed ? max_to_delete_index-- : min_to_delete_index++);
         InternalKey(key, buf, metadata.version).Encode(&to_update_key);
         batch.Put(to_update_key, iter->value());
       }
     }
 
-    for (uint64_t idx = 0; idx < target_index.size(); ++idx) {
+    for (uint64_t idx = 0; idx < to_delete_indexes.size(); ++idx) {
       buf.clear();
       PutFixed64(&buf, reversed ? (metadata.head + idx) : (metadata.tail - 1 - idx));
       InternalKey(key, buf, metadata.version).Encode(&to_delete_key);
@@ -186,12 +205,12 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     }
 
     if (reversed) {
-      metadata.head += target_index.size();
+      metadata.head += to_delete_indexes.size();
     } else {
-      metadata.tail -= target_index.size();
+      metadata.tail -= to_delete_indexes.size();
     }
 
-    metadata.size -= target_index.size();
+    metadata.size -= to_delete_indexes.size();
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, key, bytes);
@@ -199,7 +218,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
 
   delete iter;
 
-  *ret = target_index.size();
+  *ret = to_delete_indexes.size();
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 

@@ -72,11 +72,9 @@ def test_hdel():
     conn = get_redis_conn()
     kvs = {'kkk-%s' % i :'vvv-%s' % i for i in range(10)}
     keys = kvs.keys()
-    ret = conn.hmset(key, kvs)
+    conn.hmset(key, kvs)
     ret = conn.hdel(key, *keys)
     assert(ret == len(kvs))
-    ret = conn.delete(key)
-    assert(ret == 1)
 
 def test_hexists():
     key = "test_hexists"

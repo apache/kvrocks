@@ -155,9 +155,6 @@ def test_zremrangebyrank():
     ret = conn.zremrangebyrank(key, 0, 1)
     assert (ret == 2)
 
-    ret = conn.delete(key)
-    assert (ret == 1)
-
 
 def test_zremrangebyscore():
     conn = get_redis_conn()
@@ -166,10 +163,6 @@ def test_zremrangebyscore():
     assert (ret == 2)
     ret = conn.zremrangebyscore(key, 0, 3)
     assert (ret == 2)
-
-    ret = conn.delete(key)
-    assert (ret == 1)
-
 
 def test_zscan():
     conn = get_redis_conn()

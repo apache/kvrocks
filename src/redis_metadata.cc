@@ -170,12 +170,14 @@ int32_t Metadata::TTL() const {
 
 bool Metadata::Expired() const {
   int64_t now;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  struct timeval now_tv;
+  gettimeofday(&now_tv, nullptr);
+  now = now_tv.tv_sec * 1000000 + now_tv.tv_usec;
   // version first 11 bit is counter, and later 52bit was the micro seconds
-  if (Type() != kRedisString && (version>>11) >= static_cast<uint64_t>(now*1000000)) {
+  if (Type() != kRedisString && (version>>11) >= static_cast<uint64_t>(now)) {
     return false;
   }
-  if (expire > 0 && expire < now) {
+  if (expire > 0 && expire < now_tv.tv_sec) {
     return true;
   }
   return Type() != kRedisString && size == 0;

@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -106,29 +107,28 @@ void Split(std::string in, std::string delim, std::vector<std::string> *out) {
   } while (pos != std::string::npos);
 }
 
-void BytesToHuman(char *s, size_t size, uint64_t n) {
+void BytesToHuman(char *buf, size_t size, uint64_t n) {
   double d;
 
   if (n < 1024) {
-    snprintf(s, size, "%lluB", n);
-    return;
+    snprintf(buf, size, "%" PRIu64 "B", n);
   } else if (n < (1024*1024)) {
     d = static_cast<double>(n)/(1024);
-    snprintf(s, size, "%.2fK", d);
+    snprintf(buf, size, "%.2fK", d);
   } else if (n < (1024LL*1024*1024)) {
     d = static_cast<double>(n)/(1024*1024);
-    snprintf(s, size, "%.2fM", d);
+    snprintf(buf, size, "%.2fM", d);
   } else if (n < (1024LL*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024);
-    snprintf(s, size, "%.2fG", d);
+    snprintf(buf, size, "%.2fG", d);
   } else if (n < (1024LL*1024*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024*1024);
-    snprintf(s, size, "%.2fT", d);
+    snprintf(buf, size, "%.2fT", d);
   } else if (n < (1024LL*1024*1024*1024*1024*1024)) {
     d = static_cast<double>(n)/(1024LL*1024*1024*1024*1024);
-    snprintf(s, size, "%.2fP", d);
+    snprintf(buf, size, "%.2fP", d);
   } else {
-    snprintf(s, size, "%lluB", n);
+    snprintf(buf, size, "%" PRIu64 "B", n);
   }
 }
 

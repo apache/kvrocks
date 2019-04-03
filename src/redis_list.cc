@@ -225,7 +225,7 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
 
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisList,
-                             {std::to_string(kRedisCmdLInsert), std::to_string(before ? 1 : 0), pivot.ToString(),
+                             {std::to_string(kRedisCmdLInsert), before ? "1" : "0", pivot.ToString(),
                               elem.ToString()});
   batch.PutLogData(log_data.Encode());
   std::string buf, start_key, prefix, to_update_key;

@@ -194,14 +194,26 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           return rocksdb::Status::OK();
         }
         RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
-        if (cmd == kRedisCmdLSet) {
-          if (args->size() < 2) {
-            LOG(ERROR) << "Fail to parse write_batch in putcf cmd lset : args error ,should contain lset index";
-            return rocksdb::Status::OK();
-          }
-          command_args = {"LSET", user_key, (*args)[1], value.ToString()};
-        } else {
-          command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
+        switch (cmd) {
+          case kRedisCmdLSet:
+            if (args->size() < 2) {
+              LOG(ERROR) << "Fail to parse write_batch in putcf cmd lset : args error ,should contain lset index";
+              return rocksdb::Status::OK();
+            }
+            command_args = {"LSET", user_key, (*args)[1], value.ToString()};
+            break;
+          case kRedisCmdLInsert:
+            if (firstSeen_) {
+              if (args->size() < 4) {
+                LOG(ERROR)
+                    << "Fail to parse write_batch in putcf cmd linsert : args error ,should contain before pivot value ";
+                return rocksdb::Status::OK();
+              }
+              command_args = {"LINSERT", user_key, (*args)[1] == "1" ? "before" : "after", (*args)[2], (*args)[3]};
+              firstSeen_ = false;
+            }
+            break;
+          default:command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
         }
         break;
       }

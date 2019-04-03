@@ -124,6 +124,11 @@ int main(int argc, char *argv[]) {
   initGoogleLog(&config);
 
   if (config.daemonize) daemonize();
+  s = createPidFile(opts.pid_file);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
+    exit(1);
+  }
 
   Config kvrocks_config;
   kvrocks_config.db_dir = config.db_dir;

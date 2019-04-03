@@ -47,8 +47,8 @@
 | blpop      | X                |                                                              |
 | brpop      | X                |                                                              |
 | brpoplpush | X                |                                                              |
-| lindex     | √                |                                                              |
-| linsert    | X                |                                                              |
+| lindex     | √                | Caution: linsert is O(N) operation, don't use it when list was extreme long |
+| linsert    | √                |                                                              |
 | llen       | √                |                                                              |
 | lpop       | √                |                                                              |
 | lpush      | √                |                                                              |

@@ -146,7 +146,6 @@ def test_ltrim():
 def test_lrem():
     key = "test_lrem"
     conn = get_redis_conn()
-    ret = conn.delete(key)
     elems = ["E1", "E2", "E3", "hello", "E4", "E5", "hello", "E6"]
     elems_without_hello =  ["E1", "E2", "E3", "E4", "E5", "E6"]
     ret = conn.rpush(key, *elems)
@@ -167,6 +166,26 @@ def test_lrem():
     ret = conn.delete(key)
     assert(ret == 1)
 
+def test_linsert():
+    key = "test_linsert"
+    conn = get_redis_conn()
+    ret = conn.delete(key)
+    elems = ["E1", "E2", "E3", "E3"]
+    ret = conn.rpush(key, *elems)
+    assert(ret == len(elems))
+
+    ret = conn.linsert(key, "after", "E3", "E4")
+    assert (ret == 5)
+    ret = conn.lrange(key, 0, -1)
+    assert(ret == ["E1", "E2", "E3", "E4", "E3"])
+    ret = conn.linsert(key, "before", "E3", "E5")
+    assert (ret == 6)
+    ret = conn.lrange(key, 0, -1)
+    print ret
+    assert(ret == ["E1", "E2", "E5", "E3", "E4", "E3"])
+
+    ret = conn.delete(key)
+    assert(ret == 1)
 
 def test_rpoplpush():
     key = "test_rpoplpush"

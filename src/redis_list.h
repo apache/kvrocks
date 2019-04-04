@@ -13,7 +13,7 @@ class RedisList :public RedisDB {
   rocksdb::Status Size(Slice key, uint32_t *ret);
   rocksdb::Status Trim(Slice key, int start, int stop);
   rocksdb::Status Set(Slice key, int index, Slice elem);
-  rocksdb::Status Insert(Slice key, Slice pivot, Slice elem, bool before);
+  rocksdb::Status Insert(Slice key, Slice pivot, Slice elem, bool before, int *ret);
   rocksdb::Status Pop(Slice key, std::string *elem, bool left);
   rocksdb::Status Rem(Slice key, int count, const Slice &elem, int *ret);
   rocksdb::Status Index(Slice key, int index, std::string *elem);

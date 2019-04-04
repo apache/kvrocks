@@ -213,7 +213,6 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
 
 rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool before, int *ret) {
   *ret = 0;
-
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);
   key = Slice(ns_key);
@@ -243,7 +242,6 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
       break;
     }
   }
-
   if (pivot_index == (metadata.head - 1)) {
     delete iter;
     return rocksdb::Status::NotFound();
@@ -251,16 +249,17 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
 
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisList,
-                             {std::to_string(kRedisCmdLInsert), before ? "1" : "0", pivot.ToString(),
+                             {std::to_string(kRedisCmdLInsert),
+                              before ? "1" : "0",
+                              pivot.ToString(),
                               elem.ToString()});
   batch.PutLogData(log_data.Encode());
+
   std::string to_update_key;
   uint64_t left_part_len = pivot_index - metadata.head + (before ? 0 : 1);
   uint64_t right_part_len = metadata.tail - 1 - pivot_index + (before ? 1 : 0);
   bool reversed = left_part_len <= right_part_len;
-  if ((reversed && !before) ||
-      (!reversed && before)
-      ) {
+  if ((reversed && !before) || (!reversed && before)) {
     new_elem_index = pivot_index;
   } else {
     new_elem_index = reversed ? --pivot_index : ++pivot_index;
@@ -274,7 +273,6 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
     InternalKey(key, buf, metadata.version).Encode(&to_update_key);
     batch.Put(to_update_key, iter->value());
   }
-
   buf.clear();
   PutFixed64(&buf, new_elem_index);
   InternalKey(key, buf, metadata.version).Encode(&to_update_key);

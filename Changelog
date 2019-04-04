@@ -31,3 +31,8 @@
 	- add replication test in CI
 	- fix parameter should not be converted to lower case when loading from config file
 
+* Version 0.1.10(@2019-04-04)
+    - supports linsert/lrem commands
+	- add compact/pipeline test in CI
+	- fix unexpected expired behavior
+	- fix warning

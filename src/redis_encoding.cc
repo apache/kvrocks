@@ -212,5 +212,7 @@ double DecodeDouble(const char *ptr) {
   } else {
     decoded &= 0x7fffffffffffffff;
   }
-  return *(reinterpret_cast<double *>(&decoded));
+  double value;
+  memcpy(&value, &decoded, sizeof(value));
+  return value;
 }

@@ -41,6 +41,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->target_file_size_base = 256 * 1048576;
   options->max_manifest_file_size = 64 * 1024 * 1024;
   options->max_log_file_size = 512 * 1024 * 1024;
+  options->keep_log_file_num = 24;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
   options->listeners.emplace_back(new CompactionEventListener());

@@ -2171,6 +2171,16 @@ class CommandSlaveOf : public Commander {
   uint32_t port_ = 0;
 };
 
+class CommandStats: public Commander {
+ public:
+  CommandStats() : Commander("stats", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string stats_json = svr->GetRocksDBStatsJson();
+    *output = Redis::BulkString(stats_json);
+    return Status::OK();
+  }
+};
+
 class CommandPSync : public Commander {
  public:
   CommandPSync() : Commander("psync", 2, false) {}
@@ -3182,6 +3192,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"slaveof",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSlaveOf);
+     }},
+    {"stats",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandStats);
      }},
 };
 

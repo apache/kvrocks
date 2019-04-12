@@ -79,14 +79,14 @@ Status Storage::Open(bool read_only) {
 
   rocksdb::BlockBasedTableOptions metadata_table_opts;
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  metadata_table_opts.block_cache = rocksdb::NewLRUCache(1<<30);
+  metadata_table_opts.block_cache = rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size);
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  subkey_table_opts.block_cache = rocksdb::NewLRUCache(1<<30);
+  subkey_table_opts.block_cache = rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size);
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);

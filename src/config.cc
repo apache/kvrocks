@@ -69,7 +69,7 @@ Status Config::parseRocksdbOption(std::string key, std::string value) {
     if (n < 16 || n > 4096) {
       return Status(Status::NotOK, "write_buffer_size should be between 16MB and 4GB");
     }
-    rocksdb_options.write_buffer_size = static_cast<size_t>(n) * 1048576;
+    rocksdb_options.write_buffer_size = static_cast<size_t>(n) * MiB;
   }  else if (key == "max_write_buffer_number") {
     if (n < 1 || n > 64) {
       return Status(Status::NotOK, "max_write_buffer_number should be between 1 and 64");
@@ -90,6 +90,10 @@ Status Config::parseRocksdbOption(std::string key, std::string value) {
       return Status(Status::NotOK, "max_sub_compactions should be between 1 and 8");
     }
     rocksdb_options.max_sub_compactions = static_cast<uint32_t>(n);
+  } else if (key == "metadata_block_cache_size") {
+    rocksdb_options.metadata_block_cache_size = n * MiB;
+  } else if (key == "subkey_block_cache_size") {
+    rocksdb_options.subkey_block_cache_size = n * MiB;
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -296,11 +300,15 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
   PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/1048576));
+      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+                "rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+                "rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   PUSH_IF_MATCH(is_rocksdb_all, key,
@@ -429,9 +437,11 @@ Status Config::Rewrite() {
 
   string_stream << "\n################################ ROCKSDB #####################################\n";
   WRITE_TO_CONF_FILE("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
-  WRITE_TO_CONF_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/1048576));
+  WRITE_TO_CONF_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
   WRITE_TO_CONF_FILE("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
   WRITE_TO_CONF_FILE("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  WRITE_TO_CONF_FILE("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
+  WRITE_TO_CONF_FILE("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
   WRITE_TO_CONF_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   WRITE_TO_CONF_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 

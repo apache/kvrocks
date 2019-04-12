@@ -166,7 +166,7 @@ class CommandConfig : public Commander {
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);
     } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
-      Status s = config->Set(args_[2], args_[3]);
+      Status s = config->Set(args_[2], args_[3], svr->storage_);
       if (!s.IsOK()) {
         return Status(Status::NotOK, s.Msg() + ", key: " + args_[2]);
       }

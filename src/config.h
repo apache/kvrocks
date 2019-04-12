@@ -9,6 +9,11 @@
 #include "status.h"
 #include "cron.h"
 
+// forward declaration
+namespace Engine {
+class Storage;
+}
+
 extern const char *kDefaultNamespace;
 
 struct Config{
@@ -26,6 +31,7 @@ struct Config{
   unsigned int slowlog_max_len = 0;
   bool daemonize = false;
   bool slave_readonly = true;
+  uint32_t max_db_size = 0;  // unit is GB
 
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};
@@ -54,7 +60,7 @@ struct Config{
   Status Rewrite();
   Status Load(std::string path);
   void Get(std::string key, std::vector<std::string> *values);
-  Status Set(std::string key, const std::string &value);
+  Status Set(std::string key, const std::string &value, Engine::Storage *storage);
   void GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);
   Status SetNamepsace(const std::string &ns, const std::string &token);

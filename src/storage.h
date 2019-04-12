@@ -48,6 +48,9 @@ class Storage {
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep);
+  uint64_t GetTotalSize();
+  Status SetReachSpaceLimit(bool reach_space_limit);
+  bool IsReachSpaceLimit();
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -84,9 +87,11 @@ class Storage {
   rocksdb::DB *db_ = nullptr;
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *backup_env_;
+  std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
+  bool reach_space_limit_ = false;
 };
 
 }  // namespace Engine

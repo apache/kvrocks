@@ -96,14 +96,12 @@ rocksdb::Status RedisString::GetSet(Slice key, Slice new_value, std::string *old
 
 rocksdb::Status RedisString::Set(Slice key, Slice value) {
   std::vector<StringPair> pairs{StringPair{key, value}};
-  MSet(pairs, 0);
-  return rocksdb::Status::OK();
+  return MSet(pairs, 0);
 }
 
 rocksdb::Status RedisString::SetEX(Slice key, Slice value, int ttl) {
   std::vector<StringPair> pairs{StringPair{key, value}};
-  MSet(pairs, ttl);
-  return rocksdb::Status::OK();
+  return MSet(pairs, ttl);
 }
 
 rocksdb::Status RedisString::SetNX(Slice key, Slice value, int *ret) {

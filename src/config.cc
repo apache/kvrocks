@@ -316,7 +316,7 @@ Status Config::Set(std::string key, const std::string &value) {
     return Status::OK();
   }
   if (key == "maxclients") {
-    timeout = std::stoi(value);
+    maxclients = std::stoi(value);
     return Status::OK();
   }
   if (key == "max-backup-to-keep") {

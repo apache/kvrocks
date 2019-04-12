@@ -425,6 +425,34 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   *info = string_stream.str();
 }
 
+std::string Server::GetRocksDBStatsJson() {
+  char buf[256];
+  std::string output;
+
+  output.reserve(8*1024);
+  output.append("{");
+  auto stats = storage_->GetDB()->GetDBOptions().statistics;
+  for (const auto &iter : rocksdb::TickersNameMap) {
+    snprintf(buf, sizeof(buf), "\"%s\":%" PRIu64 ",",
+             iter.second.c_str(), stats->getTickerCount(iter.first));
+    output.append(buf);
+  }
+  for (const auto &iter : rocksdb::HistogramsNameMap) {
+    rocksdb::HistogramData hist_data;
+    stats->histogramData(iter.first, &hist_data);
+    /* P50 P95 P99 P100 COUNT SUM */
+    snprintf(buf, sizeof(buf), "\"%s\":[%f,%f,%f,%f,%" PRIu64 ",%" PRIu64 "],",
+             iter.second.c_str(),
+             hist_data.median, hist_data.percentile95, hist_data.percentile99,
+             hist_data.max, hist_data.count, hist_data.sum);
+    output.append(buf);
+  }
+  output.pop_back();
+  output.append("}");
+  output.shrink_to_fit();
+  return output;
+}
+
 Status Server::AsyncCompactDB() {
   db_mu_.lock();
   if (db_compacting_) {

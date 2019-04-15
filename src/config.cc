@@ -13,6 +13,7 @@
 #include "util.h"
 #include "status.h"
 #include "cron.h"
+#include "storage.h"
 
 const char *kDefaultNamespace = "__namespace";
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
@@ -174,6 +175,8 @@ Status Config::parseConfigFromString(std::string input) {
         return Status(Status::NotOK, "master port range should be between 0 and 65535");
       }
     }
+  } else if (size == 2 && args[0] == "max_db_size") {
+    max_db_size = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size >=2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
@@ -288,6 +291,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
+  PUSH_IF_MATCH(is_all, key, "max_db_size", std::to_string(max_db_size));
 
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
@@ -303,7 +307,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
       "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 }
 
-Status Config::Set(std::string key, const std::string &value) {
+Status Config::Set(std::string key, const std::string &value, Engine::Storage *storage) {
   key = Util::ToLower(key);
   if (key == "timeout") {
     timeout = std::stoi(value);
@@ -316,7 +320,7 @@ Status Config::Set(std::string key, const std::string &value) {
     return Status::OK();
   }
   if (key == "maxclients") {
-    timeout = std::stoi(value);
+    maxclients = std::stoi(value);
     return Status::OK();
   }
   if (key == "max-backup-to-keep") {
@@ -364,6 +368,24 @@ Status Config::Set(std::string key, const std::string &value) {
     Util::Split(value, " ", &args);
     return bgsave_cron.SetScheduleTime(args);
   }
+  if (key == "max_db_size") {
+    try {
+      int32_t i = std::stoi(value);
+      if (i < 0) {
+        return Status(Status::RedisParseErr, "value should be >= 0");
+      }
+      max_db_size = static_cast<uint32_t>(i);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
+    }
+    if (storage->IsReachSpaceLimit()) {
+      return Status(Status::RedisExecErr,
+                    "max_db_size (in GB) should larger than current db size: "
+                        + std::to_string(storage->GetTotalSize()) + " byte ");
+    }
+    storage->SetReachSpaceLimit(false);
+    return Status::OK();
+  }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }
 
@@ -399,6 +421,7 @@ Status Config::Rewrite() {
   WRITE_TO_CONF_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
   WRITE_TO_CONF_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   WRITE_TO_CONF_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
+  WRITE_TO_CONF_FILE("max_db_size", std::to_string(max_db_size));
   if (!masterauth.empty()) WRITE_TO_CONF_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_CONF_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
   if (compact_cron.IsEnabled()) WRITE_TO_CONF_FILE("compact-cron", compact_cron.ToString());

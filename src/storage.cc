@@ -6,6 +6,7 @@
 #include <glog/logging.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/table.h>
+#include <rocksdb/sst_file_manager.h>
 #include <iostream>
 
 #include "config.h"
@@ -44,7 +45,10 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->keep_log_file_num = 24;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
-  options->listeners.emplace_back(new CompactionEventListener());
+  options->listeners.emplace_back(new KvrocksEventListener(this));
+
+  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
+  options->sst_file_manager = sst_file_manager_;
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
@@ -205,10 +209,16 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
 }
 
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+  if (reach_space_limit_) {
+    return rocksdb::Status::SpaceLimit();
+  }
   return db_->Write(options, updates);
 }
 
 Status Storage::WriteBatch(std::string &&raw_batch) {
+  if (reach_space_limit_) {
+    return Status(Status::NotOK, "reach space limit");
+  }
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));
   auto s = db_->Write(rocksdb::WriteOptions(), &bat);
   if (!s.ok()) {
@@ -235,6 +245,29 @@ rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
+}
+
+uint64_t Storage::GetTotalSize() {
+  return sst_file_manager_->GetTotalSize();
+}
+
+Status Storage::SetReachSpaceLimit(bool reach_space_limit) {
+  if (reach_space_limit_ != reach_space_limit) {
+    reach_space_limit_ = reach_space_limit;
+    if (reach_space_limit) {
+      LOG(ERROR) << "[IO ERROR] reach space limit " << config_->max_db_size << " GB";
+    } else {
+      LOG(INFO) << "[RECOVERY FROM IO ERROR] set kvrocks to read-write mode ";
+    }
+  }
+  return Status::OK();
+}
+
+bool Storage::IsReachSpaceLimit() {
+  if (config_->max_db_size == 0) {
+    return false;
+  }
+  return GetTotalSize() >= config_->max_db_size * 1024 * 1024 * 1024;
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }

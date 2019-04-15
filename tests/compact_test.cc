@@ -53,7 +53,7 @@ TEST(Compact, Filter) {
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores =  {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, 0, &member_scores, &ret);
-  hash->Expire(expired_zset_key, 1); // expired
+  zset->Expire(expired_zset_key, 1); // expired
   usleep(10000);
 
   status = storage_->Compact(nullptr, nullptr);

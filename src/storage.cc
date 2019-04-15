@@ -209,14 +209,14 @@ rocksdb::SequenceNumber Storage::LatestSeq() {
 }
 
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
-  if (reach_space_limit_) {
+  if (reach_db_size_limit_) {
     return rocksdb::Status::SpaceLimit();
   }
   return db_->Write(options, updates);
 }
 
 Status Storage::WriteBatch(std::string &&raw_batch) {
-  if (reach_space_limit_) {
+  if (reach_db_size_limit_) {
     return Status(Status::NotOK, "reach space limit");
   }
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));
@@ -251,23 +251,24 @@ uint64_t Storage::GetTotalSize() {
   return sst_file_manager_->GetTotalSize();
 }
 
-Status Storage::SetReachSpaceLimit(bool reach_space_limit) {
-  if (reach_space_limit_ != reach_space_limit) {
-    reach_space_limit_ = reach_space_limit;
-    if (reach_space_limit) {
-      LOG(ERROR) << "[IO ERROR] reach space limit " << config_->max_db_size << " GB";
-    } else {
-      LOG(INFO) << "[RECOVERY FROM IO ERROR] set kvrocks to read-write mode ";
-    }
+Status Storage::CheckDBSizeLimit() {
+  bool reach_db_size_limit;
+  if (config_->max_db_size == 0) {
+    reach_db_size_limit = false;
+  } else {
+    reach_db_size_limit = GetTotalSize() >= config_->max_db_size * 1024 * 1024 * 1024;
+  }
+  if (reach_db_size_limit_ == reach_db_size_limit) {
+    return Status::OK();
+  }
+  reach_db_size_limit_ = reach_db_size_limit;
+  if (reach_db_size_limit_) {
+    LOG(WARNING) << "[STORAGE] ENABLE db_size limit " << config_->max_db_size << " GB"
+                 << "set kvrocks to read-only mode";
+  } else {
+    LOG(WARNING) << "[STORAGE] DISABLE db_size limit, set kvrocks to read-write mode ";
   }
   return Status::OK();
-}
-
-bool Storage::IsReachSpaceLimit() {
-  if (config_->max_db_size == 0) {
-    return false;
-  }
-  return GetTotalSize() >= config_->max_db_size * 1024 * 1024 * 1024;
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }

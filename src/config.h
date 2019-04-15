@@ -16,6 +16,10 @@ class Storage;
 
 extern const char *kDefaultNamespace;
 
+const uint32_t KiB = 1024;
+const uint32_t MiB = 1024 * KiB;
+const uint32_t GiB = 1024 * MiB;
+
 struct Config{
  public:
   int port = 6666;
@@ -48,8 +52,10 @@ struct Config{
   std::map<std::string, std::string> tokens;
 
   struct {
+    size_t metadata_block_cache_size = 1 * GiB;
+    size_t subkey_block_cache_size = 1 * GiB;
     int max_open_files = 4096;
-    size_t write_buffer_size = 256 * 1048576;  // unit is MB
+    size_t write_buffer_size = 256 * MiB;
     int max_write_buffer_number = 2;
     int max_background_compactions = 2;
     int max_background_flushes = 2;

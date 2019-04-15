@@ -10,17 +10,11 @@ void KvrocksEventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb:
             << ", is_maunal:" << ci.stats.is_manual_compaction
             << ", elapsed(micro): " << ci.stats.elapsed_micros;
 
-  if (storage_->IsReachSpaceLimit()) {
-    storage_->SetReachSpaceLimit(true);
-  } else {
-    storage_->SetReachSpaceLimit(false);
-  }
+  storage_->CheckDbSizeLimit();
 }
 
 void KvrocksEventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) {
-  if (storage_->IsReachSpaceLimit()) {
-    storage_->SetReachSpaceLimit(true);
-  }
+  storage_->CheckDbSizeLimit();
 }
 
 void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {

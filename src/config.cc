@@ -386,12 +386,7 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
-    if (storage->IsReachSpaceLimit()) {
-      return Status(Status::RedisExecErr,
-                    "max_db_size (in GB) should larger than current db size: "
-                        + std::to_string(storage->GetTotalSize()) + " byte ");
-    }
-    storage->SetReachSpaceLimit(false);
+    storage->CheckDbSizeLimit();
     return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");

@@ -8,20 +8,22 @@
 class TestBase : public testing::Test {
 protected:
   explicit TestBase() {
-    Config config;
-    config.db_dir = "testsdb";
-    config.backup_dir = "testsdb/backup";
-    storage_ = new Engine::Storage(&config);
+    config_ = new Config();
+    config_->db_dir = "testsdb";
+    config_->backup_dir = "testsdb/backup";
+    storage_ = new Engine::Storage(config_);
     Status s = storage_->Open();
     assert(s.IsOK());
   }
   ~TestBase() override {
     rmdir("testsdb");
     delete storage_;
+    delete config_;
   }
 
 protected:
   Engine::Storage *storage_;
+  Config *config_ = nullptr;
   Slice key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;

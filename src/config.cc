@@ -403,7 +403,7 @@ Status Config::Rewrite() {
   std::ofstream output_file(tmp_path, std::ios::out);
 
   std::ostringstream string_stream;
-#define WRITE_TO_CONF_FILE(key, value) do { \
+#define WRITE_TO_FILE(key, value) do { \
   string_stream << (key) << " " << (value) <<  "\n"; \
 } while (0)
   std::string binds_str, repl_binds_str;
@@ -411,45 +411,45 @@ Status Config::Rewrite() {
   array2String(repl_binds, ",", &repl_binds_str);
 
   string_stream << "################################ GERNERAL #####################################\n";
-  WRITE_TO_CONF_FILE("bind", binds_str);
-  WRITE_TO_CONF_FILE("port", std::to_string(port));
-  WRITE_TO_CONF_FILE("repl-bind", repl_binds_str);
-  WRITE_TO_CONF_FILE("timeout", std::to_string(timeout));
-  WRITE_TO_CONF_FILE("workers", std::to_string(workers));
-  WRITE_TO_CONF_FILE("maxclients", std::to_string(maxclients));
-  WRITE_TO_CONF_FILE("repl-workers", std::to_string(repl_workers));
-  WRITE_TO_CONF_FILE("loglevel", kLogLevels[loglevel]);
-  WRITE_TO_CONF_FILE("daemonize", (daemonize?"yes":"no"));
-  WRITE_TO_CONF_FILE("requirepass", requirepass);
-  WRITE_TO_CONF_FILE("db-name", db_name);
-  WRITE_TO_CONF_FILE("dir", dir);
-  WRITE_TO_CONF_FILE("backup-dir", backup_dir);
-  WRITE_TO_CONF_FILE("tcp-backlog", std::to_string(backlog));
-  WRITE_TO_CONF_FILE("slave-read-only", (slave_readonly? "yes":"no"));
-  WRITE_TO_CONF_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
-  WRITE_TO_CONF_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
-  WRITE_TO_CONF_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
-  WRITE_TO_CONF_FILE("max_db_size", std::to_string(max_db_size));
-  if (!masterauth.empty()) WRITE_TO_CONF_FILE("masterauth", masterauth);
-  if (!master_host.empty())  WRITE_TO_CONF_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
-  if (compact_cron.IsEnabled()) WRITE_TO_CONF_FILE("compact-cron", compact_cron.ToString());
-  if (bgsave_cron.IsEnabled()) WRITE_TO_CONF_FILE("bgave-cron", bgsave_cron.ToString());
+  WRITE_TO_FILE("bind", binds_str);
+  WRITE_TO_FILE("port", std::to_string(port));
+  WRITE_TO_FILE("repl-bind", repl_binds_str);
+  WRITE_TO_FILE("timeout", std::to_string(timeout));
+  WRITE_TO_FILE("workers", std::to_string(workers));
+  WRITE_TO_FILE("maxclients", std::to_string(maxclients));
+  WRITE_TO_FILE("repl-workers", std::to_string(repl_workers));
+  WRITE_TO_FILE("loglevel", kLogLevels[loglevel]);
+  WRITE_TO_FILE("daemonize", (daemonize?"yes":"no"));
+  WRITE_TO_FILE("requirepass", requirepass);
+  WRITE_TO_FILE("db-name", db_name);
+  WRITE_TO_FILE("dir", dir);
+  WRITE_TO_FILE("backup-dir", backup_dir);
+  WRITE_TO_FILE("tcp-backlog", std::to_string(backlog));
+  WRITE_TO_FILE("slave-read-only", (slave_readonly? "yes":"no"));
+  WRITE_TO_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
+  WRITE_TO_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
+  WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
+  WRITE_TO_FILE("max_db_size", std::to_string(max_db_size));
+  if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
+  if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
+  if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());
+  if (bgsave_cron.IsEnabled()) WRITE_TO_FILE("bgave-cron", bgsave_cron.ToString());
 
   string_stream << "\n################################ ROCKSDB #####################################\n";
-  WRITE_TO_CONF_FILE("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
-  WRITE_TO_CONF_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
-  WRITE_TO_CONF_FILE("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
-  WRITE_TO_CONF_FILE("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
-  WRITE_TO_CONF_FILE("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
-  WRITE_TO_CONF_FILE("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
-  WRITE_TO_CONF_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
-  WRITE_TO_CONF_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  WRITE_TO_FILE("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  WRITE_TO_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
+  WRITE_TO_FILE("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  WRITE_TO_FILE("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  WRITE_TO_FILE("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
+  WRITE_TO_FILE("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
+  WRITE_TO_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
+  WRITE_TO_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
 
   string_stream << "\n################################ Namespace #####################################\n";
   std::string ns_prefix = "namespace.";
   for (const auto &iter : tokens) {
     if (iter.second == kDefaultNamespace) continue;
-    WRITE_TO_CONF_FILE(ns_prefix+iter.second, iter.first);
+    WRITE_TO_FILE(ns_prefix+iter.second, iter.first);
   }
   output_file.write(string_stream.str().c_str(), string_stream.str().size());
   output_file.close();

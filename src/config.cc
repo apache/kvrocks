@@ -386,7 +386,7 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
-    storage->CheckDbSizeLimit();
+    storage->CheckDBSizeLimit();
     return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");

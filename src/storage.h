@@ -49,7 +49,7 @@ class Storage {
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep);
   uint64_t GetTotalSize();
-  Status CheckDbSizeLimit();
+  Status CheckDBSizeLimit();
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -90,7 +90,7 @@ class Storage {
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
-  bool db_size_limit_ = false;
+  bool reach_db_size_limit_ = false;
 };
 
 }  // namespace Engine

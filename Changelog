@@ -36,3 +36,8 @@
 	- add compact/pipeline test in CI
 	- fix unexpected expired behavior
 	- fix warning
+
+* Version 0.1.11(@2019-04-15)
+	- supports limit the size of db
+	- supoorts configure the metadata/subkey block cache size 
+	- fix config set maxclients would reset the timeout with maxclients 

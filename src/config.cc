@@ -179,7 +179,7 @@ Status Config::parseConfigFromString(std::string input) {
         return Status(Status::NotOK, "master port range should be between 0 and 65535");
       }
     }
-  } else if (size == 2 && args[0] == "max_db_size") {
+  } else if (size == 2 && args[0] == "max-db-size") {
     max_db_size = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size >=2 && args[0] == "compact-cron") {
     args.erase(args.begin());
@@ -295,7 +295,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
-  PUSH_IF_MATCH(is_all, key, "max_db_size", std::to_string(max_db_size));
+  PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
 
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
@@ -376,7 +376,7 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
     Util::Split(value, " ", &args);
     return bgsave_cron.SetScheduleTime(args);
   }
-  if (key == "max_db_size") {
+  if (key == "max-db-size") {
     try {
       int32_t i = std::stoi(value);
       if (i < 0) {
@@ -429,7 +429,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
   WRITE_TO_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
-  WRITE_TO_FILE("max_db_size", std::to_string(max_db_size));
+  WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());

@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <stdlib.h>
 #include <event2/thread.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -29,7 +30,7 @@
 const char *kDefaultConfPath = "../kvrocks.conf";
 const char *kDefaultPidPath = "/var/run/kvrocks.pid";
 
-const char *pidfile_path_ = nullptr;
+char *pidfile_path_ = nullptr;
 std::function<void()> hup_handler;
 
 struct Options {
@@ -210,6 +211,7 @@ int main(int argc, char* argv[]) {
   Status s = config.Load(opts.conf_file);
   if (!s.IsOK()) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
+    free(pidfile_path_);
     exit(1);
   }
   initGoogleLog(&config);
@@ -219,12 +221,14 @@ int main(int argc, char* argv[]) {
   if (Util::IsPortInUse(config.port)) {
     std::cout << "Failed to start the server, the specified port["
               << config.port << "] is already in use" << std::endl;
+    free(pidfile_path_);
     exit(1);
   }
   if (config.daemonize) daemonize();
   s = createPidFile(opts.pid_file);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
+    free(pidfile_path_);
     exit(1);
   }
 
@@ -232,6 +236,7 @@ int main(int argc, char* argv[]) {
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
+    free(pidfile_path_);
     exit(1);
   }
   Server svr(&storage, &config);
@@ -240,11 +245,14 @@ int main(int argc, char* argv[]) {
       LOG(INFO) << "Bye Bye";
       svr.Stop();
       removePidFile(opts.pid_file);
-      google::ShutdownGoogleLogging();
-      google::ShutDownCommandLineFlags();
     }
   };
   svr.Start();
   svr.Join();
+
+  free(pidfile_path_);
+  google::ShutdownGoogleLogging();
+  google::ShutDownCommandLineFlags();
+  libevent_global_shutdown();
   return 0;
 }

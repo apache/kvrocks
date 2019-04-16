@@ -240,6 +240,8 @@ int main(int argc, char* argv[]) {
       LOG(INFO) << "Bye Bye";
       svr.Stop();
       removePidFile(opts.pid_file);
+      google::ShutdownGoogleLogging();
+      google::ShutDownCommandLineFlags();
     }
   };
   svr.Start();

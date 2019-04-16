@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sys/resource.h>
+#include <rocksdb/options.h>
 
 #include <string>
 #include <map>
@@ -60,6 +61,7 @@ struct Config{
     int max_background_compactions = 2;
     int max_background_flushes = 2;
     uint32_t max_sub_compactions = 1;
+    rocksdb::CompressionType compression = rocksdb::kSnappyCompression;  // default: snappy
   } rocksdb_options;
 
  public:
@@ -80,5 +82,6 @@ struct Config{
   void incrOpenFilesLimit(rlim_t maxfiles);
   Status parseConfigFromString(std::string input);
   Status parseRocksdbOption(std::string key, std::string value);
+  Status parseRocksdbIntOption(std::string key, std::string value);
   void array2String(const std::vector<std::string> &array, const std::string &delim, std::string *output);
 };

@@ -18,6 +18,8 @@
 const char *kDefaultNamespace = "__namespace";
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
+static const char *kCompressionType[] = {"no", "snappy"};
+static const size_t kNumCompressionType = sizeof(kCompressionType) / sizeof(kCompressionType[0]);
 
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;
@@ -57,6 +59,20 @@ int Config::yesnotoi(std::string input) {
 }
 
 Status Config::parseRocksdbOption(std::string key, std::string value) {
+  if (key == "compression") {
+    for (size_t i = 0; i < kNumCompressionType; i++) {
+      if (Util::ToLower(value) == kCompressionType[i]) {
+        rocksdb_options.compression = static_cast<rocksdb::CompressionType >(i);
+        break;
+      }
+    }
+  } else {
+    return parseRocksdbIntOption(key, value);
+  }
+  return Status::OK();
+}
+
+Status Config::parseRocksdbIntOption(std::string key, std::string value) {
   int32_t n;
   try {
     n = std::stoi(value);
@@ -313,6 +329,8 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
       "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+                "rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
 Status Config::Set(std::string key, const std::string &value, Engine::Storage *storage) {
@@ -439,6 +457,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
   WRITE_TO_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   WRITE_TO_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  WRITE_TO_FILE("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 
   string_stream << "\n################################ Namespace #####################################\n";
   std::string ns_prefix = "namespace.";

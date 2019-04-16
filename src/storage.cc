@@ -39,6 +39,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->max_background_compactions = config_->rocksdb_options.max_background_compactions;
   options->max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
   options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
+  options->compression = config_->rocksdb_options.compression;
   options->target_file_size_base = 256 * 1048576;
   options->max_manifest_file_size = 64 * 1024 * 1024;
   options->max_log_file_size = 512 * 1024 * 1024;

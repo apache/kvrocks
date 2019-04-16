@@ -417,9 +417,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
     string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size: " << storage_->GetTotalSize() << "\r\n";
-    string_stream << "max_db_size: " << config_->max_db_size * 1024 * 1024 * 1024 << "\r\n";
+    string_stream << "max_db_size: " << config_->max_db_size * GiB << "\r\n";
     double used_percent = config_->max_db_size ?
-                          storage_->GetTotalSize() * 100 / (config_->max_db_size * 1024 * 1024 * 1024) : 0;
+                          storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
   }
   if (all || section == "rocksdb") {

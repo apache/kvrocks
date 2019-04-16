@@ -257,7 +257,7 @@ Status Storage::CheckDBSizeLimit() {
   if (config_->max_db_size == 0) {
     reach_db_size_limit = false;
   } else {
-    reach_db_size_limit = GetTotalSize() >= config_->max_db_size * 1024 * 1024 * 1024;
+    reach_db_size_limit = GetTotalSize() >= config_->max_db_size * GiB;
   }
   if (reach_db_size_limit_ == reach_db_size_limit) {
     return Status::OK();

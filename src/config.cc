@@ -312,6 +312,8 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
+  PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
+  PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
 
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
@@ -393,6 +395,14 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
     std::vector<std::string> args;
     Util::Split(value, " ", &args);
     return bgsave_cron.SetScheduleTime(args);
+  }
+  if (key == "slowlog-log-slower-than") {
+    slowlog_log_slower_than = std::stoll(value);
+    return Status::OK();
+  }
+  if (key == "slowlog-max-len") {
+    slowlog_max_len = std::stoi(value);
+    return Status::OK();
   }
   if (key == "max-db-size") {
     try {

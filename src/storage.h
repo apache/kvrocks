@@ -1,5 +1,6 @@
 #pragma once
 
+#include <inttypes.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/utilities/backupable_db.h>
@@ -7,6 +8,7 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <atomic>
 
 #include "status.h"
 #include "lock_manager.h"
@@ -96,8 +98,8 @@ class Storage {
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
   bool reach_db_size_limit_ = false;
-  std::atomic_uint64_t flush_count_{0};
-  std::atomic_uint64_t compaction_count_{0};
+  std::atomic<uint64_t> flush_count_{0};
+  std::atomic<uint64_t> compaction_count_{0};
 };
 
 }  // namespace Engine

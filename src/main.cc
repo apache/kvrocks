@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   if (config.daemonize) daemonize();
-  s = createPidFile(opts.pid_file);
+  s = createPidFile(pidfile_path_);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     free(pidfile_path_);
@@ -236,20 +236,21 @@ int main(int argc, char* argv[]) {
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
+    removePidFile(pidfile_path_);
     free(pidfile_path_);
     exit(1);
   }
   Server svr(&storage, &config);
-  hup_handler = [&svr, &opts]() {
+  hup_handler = [&svr] {
     if (!svr.IsStopped()) {
       LOG(INFO) << "Bye Bye";
       svr.Stop();
-      removePidFile(opts.pid_file);
     }
   };
   svr.Start();
   svr.Join();
 
+  removePidFile(pidfile_path_);
   free(pidfile_path_);
   google::ShutdownGoogleLogging();
   google::ShutDownCommandLineFlags();

@@ -21,6 +21,7 @@ const char *kMetadataColumnFamilyName = "metadata";
 using rocksdb::Slice;
 
 Storage::~Storage() {
+  DestroyBackup();
   for (auto handle : cf_handles_) delete handle;
   db_->Close();
   delete db_;
@@ -141,8 +142,6 @@ Status Storage::CreateBackup() {
 
 Status Storage::DestroyBackup() {
   backup_->StopBackup();
-  auto env = rocksdb::Env::Default();
-  env->DeleteDir(config_->backup_dir);
   delete backup_;
   return Status();
 }

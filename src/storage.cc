@@ -22,7 +22,8 @@ using rocksdb::Slice;
 
 Storage::~Storage() {
   DestroyBackup();
-  for (auto handle : cf_handles_) delete handle;
+  db_->SyncWAL();
+  for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   db_->Close();
   delete db_;
 }
@@ -66,7 +67,8 @@ Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
       delete tmp_db;
       return Status(Status::DBOpenErr, s.ToString());
     }
-    for (auto handle : cf_handles) delete handle;
+    for (auto handle : cf_handles) tmp_db->DestroyColumnFamilyHandle(handle);
+    tmp_db->Close();
     delete tmp_db;
   }
   // Open db would be failed if the column families have already exists,

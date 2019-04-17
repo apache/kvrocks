@@ -28,10 +28,10 @@ class Storage {
        lock_mgr_(16) {}
   ~Storage();
 
-  void InitOptions(rocksdb::Options *options);
   Status Open(bool read_only);
   Status Open();
   Status OpenForReadOnly();
+  void InitOptions(rocksdb::Options *options);
   Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();
@@ -50,6 +50,11 @@ class Storage {
   void PurgeOldBackups(uint32_t num_backups_to_keep);
   uint64_t GetTotalSize();
   Status CheckDBSizeLimit();
+
+  uint64_t GetFlushCount() { return flush_count_; }
+  void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
+  uint64_t GetCompactionCount() { return compaction_count_; }
+  void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -91,6 +96,8 @@ class Storage {
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
   bool reach_db_size_limit_ = false;
+  std::atomic_uint64_t flush_count_{0};
+  std::atomic_uint64_t compaction_count_{0};
 };
 
 }  // namespace Engine

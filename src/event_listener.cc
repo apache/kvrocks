@@ -2,7 +2,7 @@
 #include <string>
 
 void KvrocksEventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  LOG(INFO) << "[Compaction Compeleted] column family: " << ci.cf_name
+  LOG(INFO) << "[Compaction Completed] column family: " << ci.cf_name
             << ", reason: " << std::to_string(static_cast<int>(ci.compaction_reason))
             << ", compression: " << std::to_string(static_cast<char>(ci.compression))
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
@@ -11,13 +11,14 @@ void KvrocksEventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb:
             << ", output bytes:" << ci.stats.total_output_bytes
             << ", is_maunal:" << ci.stats.is_manual_compaction
             << ", elapsed(micro): " << ci.stats.elapsed_micros;
-
+  storage_->IncrCompactionCount(1);
   storage_->CheckDBSizeLimit();
 }
 
 void KvrocksEventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) {
+  storage_->IncrFlushCount(1);
   storage_->CheckDBSizeLimit();
-  LOG(INFO) << "[Flush Compeleted] column family: " << ci.cf_name
+  LOG(INFO) << "[Flush Completed] column family: " << ci.cf_name
             << ", file: " << ci.file_path
             << ", reason: " << std::to_string(static_cast<int>(ci.flush_reason))
             << ", is_write_slowdown: " << (ci.triggered_writes_slowdown ? "yes" : "no")
@@ -41,6 +42,6 @@ void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reas
       // Should not arrive here
       break;
   }
-  LOG(ERROR) << "[OnBackgroundError] Reason: " << reason_str
+  LOG(ERROR) << "[Background Error] Reason: " << reason_str
              << ", Status: " << status->ToString();
 }

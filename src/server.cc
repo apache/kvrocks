@@ -168,7 +168,7 @@ std::atomic<uint64_t> *Server::GetClientID() {
 Status Server::compactCron() {
   Status s = AsyncCompactDB();
   if (!s.IsOK()) return s;
-  LOG(INFO) << "Commpact was triggered by cron with executed success.";
+  LOG(INFO) << "Commpact was triggered by cron with executed success";
   return Status::OK();
 }
 
@@ -178,7 +178,7 @@ Status Server::bgsaveCron() {
   }
   Status s = AsyncBgsaveDB();
   if (!s.IsOK()) return s;
-  LOG(INFO) << "Bgsave was triggered by cron with executed success.";
+  LOG(INFO) << "Bgsave was triggered by cron with executed success";
   return Status::OK();
 }
 
@@ -252,6 +252,8 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_superversion:" << num_superversion << "\r\n";
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
+  string_stream << "flush_count:" << storage_->GetFlushCount()<< "\r\n";
+  string_stream << "compaction_count:" << storage_->GetCompactionCount()<< "\r\n";
   *info = string_stream.str();
 }
 

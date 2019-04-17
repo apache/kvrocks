@@ -20,6 +20,8 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 
 Connection::~Connection() {
   if (bev_) { bufferevent_free(bev_); }
+  // unscribe all channels if exists
+  UnSubscribeAll();
 }
 
 void Connection::OnRead(struct bufferevent *bev, void *ctx) {

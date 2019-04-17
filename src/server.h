@@ -19,6 +19,7 @@ class Connection;
 }
 
 class WorkerThread;
+class Worker;
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -47,6 +48,12 @@ struct SlaveInfo {
   SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
 };
 
+struct ConnectionContext {
+  Worker *owner;
+  int fd;
+  ConnectionContext(Worker *w, int fd) : owner(w), fd(fd) {}
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
@@ -71,6 +78,10 @@ class Server {
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
+
+  void AddBlockingKey(const std::string &key, Redis::Connection *conn);
+  void UnBlockingKey(const std::string &key, Redis::Connection *conn);
+  Status PopBlockingConnectionAndEnableWrite(const std::string &key, size_t size);
 
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
@@ -104,6 +115,7 @@ class Server {
 
  private:
   void cron();
+  void delConnectionContext(ConnectionContext *c);
 
   bool stop_ = false;
   bool is_loading_ = false;
@@ -130,6 +142,9 @@ class Server {
 
   SlowLog slowlog_;
   std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
+  std::map<std::string, std::list<ConnectionContext *>> blocking_keys_;
+  std::map<ConnectionContext *, bool> connection_contexts_;
+  std::mutex blocking_keys_mu_;
 
   // threads
   std::thread cron_thread_;

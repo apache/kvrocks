@@ -1130,6 +1130,9 @@ class CommandPush : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+
+    svr->PopBlockingConnectionAndEnableWrite(args_[1], elems.size());
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1189,6 +1192,136 @@ class CommandLPop : public CommandPop {
 class CommandRPop : public CommandPop {
  public:
   CommandRPop() : CommandPop(false) { name_ = "rpop"; }
+};
+
+class CommandBPop : public Commander {
+ public:
+  explicit CommandBPop(bool left) : Commander("bpop", -3, true) { left_ = left; }
+  ~CommandBPop() {
+    if (timer_ != nullptr) {
+      event_free(timer_);
+      timer_ = nullptr;
+    }
+  }
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      timeout_ = std::stoi(args[args.size() - 1]);
+      if (timeout_ < 0) {
+        return Status(Status::RedisParseErr, "timeout should not be negative");
+      }
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "timeout is not an integer or out of range");
+    }
+    keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr_ = svr;
+    conn_ = conn;
+
+    auto bev = conn->GetBufferEvent();
+    auto s = TryPopFromList();
+    if (s.ok() || !s.IsNotFound()) {
+      return Status::OK();  // error has already output in TryPopFromList
+    }
+    for (const auto &key : keys_) {
+      svr_->AddBlockingKey(key, conn_);
+    }
+    bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
+    if (timeout_) {
+      timer_ = evtimer_new(bufferevent_get_base(bev), TimerCB, this);
+      timeval tm = {timeout_, 0};
+      evtimer_add(timer_, &tm);
+    }
+    return Status::OK();
+  }
+
+  rocksdb::Status TryPopFromList() {
+    RedisList list_db(svr_->storage_, conn_->GetNamespace());
+    std::string elem;
+    rocksdb::Status s;
+    for (const auto &key : keys_) {
+      s = list_db.Pop(key, &elem, left_);
+      if (s.ok() || !s.IsNotFound()) {
+        break;
+      }
+    }
+    if (s.ok()) {
+      conn_->Reply(Redis::BulkString(elem));
+    } else if (!s.IsNotFound()) {
+      conn_->Reply(Redis::Error("ERR " + s.ToString()));
+      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->Name()
+                 << ", err: " << s.ToString();
+    }
+    return s;
+  }
+
+  static void WriteCB(bufferevent *bev, void *ctx) {
+    auto self = reinterpret_cast<CommandBPop *>(ctx);
+    auto s = self->TryPopFromList();
+    // if pop fail ,currently we compromised to close bpop request
+    if (s.IsNotFound()) {
+      self->conn_->Reply(Redis::NilString());
+      LOG(ERROR) << "[BPOP] Failed to execute redis command: " << self->conn_->current_cmd_->Name()
+                 << ", err: another concurrent pop request must have stole the data before this bpop request"
+                 << " or bpop is in a pipeline cmd list(cmd before bpop replyed trigger this writecb)";
+    }
+    if (self->timer_ != nullptr) {
+      event_free(self->timer_);
+      self->timer_ = nullptr;
+    }
+    self->unBlockingAll();
+    bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
+                      Redis::Connection::OnEvent, self->conn_);
+    bufferevent_enable(bev, EV_READ);
+    return;
+  }
+
+  static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
+    auto self = static_cast<CommandBPop *>(ctx);
+    if (self->timer_ != nullptr &&
+        (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))) {
+      event_free(self->timer_);
+      self->timer_ = nullptr;
+    }
+    Redis::Connection::OnEvent(bev, events, self->conn_);
+  }
+
+  static void TimerCB(int, int16_t events, void *ctx) {
+    auto self = reinterpret_cast<CommandBPop *>(ctx);
+    self->conn_->Reply(Redis::NilString());
+    event_free(self->timer_);
+    self->timer_ = nullptr;
+    self->unBlockingAll();
+    auto bev = self->conn_->GetBufferEvent();
+    bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
+                      Redis::Connection::OnEvent, self->conn_);
+    bufferevent_enable(bev, EV_READ);
+  }
+
+ private:
+  bool left_;
+  int timeout_;  // second
+  std::vector<std::string> keys_;
+  Server *svr_ = nullptr;
+  Connection *conn_ = nullptr;
+  event *timer_ = nullptr;
+
+  void unBlockingAll() {
+    for (const auto &key : keys_) {
+      svr_->UnBlockingKey(key, conn_);
+    }
+  }
+};
+
+class CommandBLPop : public CommandBPop {
+ public:
+  CommandBLPop() : CommandBPop(true) { name_ = "blpop"; }
+};
+
+class CommandBRPop : public CommandBPop {
+ public:
+  CommandBRPop() : CommandBPop(false) { name_ = "brpop"; }
 };
 
 class CommandLRem : public Commander {
@@ -3026,6 +3159,14 @@ std::map<std::string, CommanderFactory> command_table = {
     {"rpop",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandRPop);
+     }},
+    {"blpop",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandBLPop);
+     }},
+    {"brpop",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandBRPop);
      }},
     {"lrem",
      []() -> std::unique_ptr<Commander> {

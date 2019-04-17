@@ -28,6 +28,9 @@ Server::~Server() {
   for (const auto &worker_thread : worker_threads_) {
     delete worker_thread;
   }
+  for (const auto &iter : connection_contexts_) {
+    delete iter.first;
+  }
   delete task_runner_;
 }
 
@@ -139,6 +142,61 @@ void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *c
       iter->second.remove(c);
       break;
     }
+  }
+}
+
+void Server::AddBlockingKey(const std::string &key, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  auto c = new ConnectionContext(conn->Owner(), conn->GetFD());
+  connection_contexts_[c] = true;
+  if (iter == blocking_keys_.end()) {
+    std::list<ConnectionContext *> conns;
+    conns.emplace_back(c);
+    blocking_keys_.insert(std::pair<std::string, std::list<ConnectionContext *>>(key, conns));
+  } else {
+    iter->second.emplace_back(c);
+  }
+}
+
+void Server::UnBlockingKey(const std::string &key, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  if (iter == blocking_keys_.end()) {
+    return;
+  }
+  for (const auto &c : iter->second) {
+    if (conn->GetFD() == c->fd && conn->Owner() == c->owner) {
+      delConnectionContext(c);
+      iter->second.remove(c);
+      if (iter->second.size() == 0) {
+        blocking_keys_.erase(iter);
+      }
+      break;
+    }
+  }
+}
+
+Status Server::PopBlockingConnectionAndEnableWrite(const std::string &key, size_t size) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  if (iter == blocking_keys_.end() || iter->second.size() == 0) {
+    return Status(Status::NotOK);
+  }
+  while (size-- && iter->second.size() > 0) {
+    auto c = iter->second.front();
+    c->owner->EnableWrite(c->fd);
+    delConnectionContext(c);
+    iter->second.pop_front();
+  }
+  return Status::OK();
+}
+
+void Server::delConnectionContext(ConnectionContext *c) {
+  auto connetion_context_iter = connection_contexts_.find(c);
+  if (connetion_context_iter != connection_contexts_.end()) {
+    delete connetion_context_iter->first;
+    connection_contexts_.erase(connetion_context_iter);
   }
 }
 

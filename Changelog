@@ -41,3 +41,8 @@
 	- supports limit the size of db
 	- supoorts configure the metadata/subkey block cache size 
 	- fix config set maxclients would reset the timeout with maxclients 
+
+* Version 0.1.11(@2019-04-17)
+	- supports configure the compression type
+	- print segment fault coredump stackstrace to log file
+	- fix some memory leak when shutdown

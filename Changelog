@@ -42,7 +42,12 @@
 	- supoorts configure the metadata/subkey block cache size 
 	- fix config set maxclients would reset the timeout with maxclients 
 
-* Version 0.1.11(@2019-04-17)
+* Version 0.1.12(@2019-04-17)
 	- supports configure the compression type
 	- print segment fault coredump stackstrace to log file
 	- fix some memory leak when shutdown
+
+* Version 0.1.13(@2019-04-18)
+	-  supports configure slowlog-log-slower-than and slowlog-max-len through config command
+	- print the flush information in flush event lisntener
+

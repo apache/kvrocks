@@ -2184,7 +2184,12 @@ class CommandStats: public Commander {
 class CommandPSync : public Commander {
  public:
   CommandPSync() : Commander("psync", 2, false) {}
-  ~CommandPSync() { if (timer_) event_free(timer_); }
+  ~CommandPSync() {
+    if (timer_) {
+      event_free(timer_);
+      timer_ = nullptr;
+    }
+  }
 
   Status Parse(const std::vector<std::string> &args) override {
     try {
@@ -2377,8 +2382,10 @@ class CommandPSync : public Commander {
   void Disconnect() {
     int slave_fd = conn_->GetFD();
     svr_->RemoveSlave(slave_info_pos_);
-    event_free(timer_);
-    timer_ = nullptr;
+    if (timer_) {
+      event_free(timer_);
+      timer_ = nullptr;
+    }
     conn_->Owner()->RemoveConnection(slave_fd);
   }
 };

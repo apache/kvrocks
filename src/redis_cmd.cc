@@ -2268,6 +2268,15 @@ class CommandPSync : public Commander {
               std::string bulk_str =
                   "$" + std::to_string(data.length()) + CRLF + data + CRLF;
               evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
+
+              // Make sure the sequence is continuous
+              if (self->next_seq_ != batch.sequence) {
+                // CRITICAL: the WAL log is NOT continuous, we should stop the replication
+                LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
+                self->Disconnect();
+                return;
+              }
+
               self->next_seq_ = batch.sequence + batch.writeBatchPtr->Count();
               self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->next_seq_-1);
               if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
@@ -2300,15 +2309,9 @@ class CommandPSync : public Commander {
   static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
     auto self = static_cast<CommandPSync *>(ctx);
     if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      int slave_fd = self->conn_->GetFD();
-      self->svr_->RemoveSlave(self->slave_info_pos_);
-      event_free(self->timer_);
-      self->timer_ = nullptr;
-      self->conn_->Owner()->RemoveConnection(slave_fd);
-
       std::string addr;
       uint32_t port;
-      Util::GetPeerAddr(slave_fd, &addr, &port);
+      Util::GetPeerAddr(self->conn_->GetFD(), &addr, &port);
       if (events & BEV_EVENT_EOF) {
         LOG(WARNING) << "Disconnect the slave[" << addr << ":" << port << "], "
                      << "while the connection was closed";
@@ -2316,6 +2319,7 @@ class CommandPSync : public Commander {
         LOG(ERROR) << "Disconnect the slave[" << addr << ":" << port << "], "
                    << " while encounter err: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
       }
+      self->Disconnect();
       return;
     }
     if (events & BEV_EVENT_TIMEOUT) {
@@ -2368,6 +2372,14 @@ class CommandPSync : public Commander {
   inline static bool DoesWALHaveNewData(rocksdb::SequenceNumber seq,
                                         Engine::Storage *storage) {
     return seq <= storage->LatestSeq();
+  }
+
+  void Disconnect() {
+    int slave_fd = conn_->GetFD();
+    svr_->RemoveSlave(slave_info_pos_);
+    event_free(timer_);
+    timer_ = nullptr;
+    conn_->Owner()->RemoveConnection(slave_fd);
   }
 };
 

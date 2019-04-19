@@ -2239,7 +2239,7 @@ class CommandPSync : public Commander {
     StreamingBatch(bev, this);
     bufferevent_setcb(bev, nullptr, StreamingBatch, EventCB, this);
     timer_ = event_new(bufferevent_get_base(bev), -1, EV_PERSIST, TimerCB, bev);
-    timeval tm = {0, 5000};  // 5ms
+    timeval tm = {0, 1000};
     evtimer_add(timer_, &tm);
     return Status::OK();
   }
@@ -2326,7 +2326,6 @@ class CommandPSync : public Commander {
 
   static void TimerCB(int, int16_t events, void *ctx) {
     auto bev = reinterpret_cast<bufferevent *>(ctx);
-    bufferevent_enable(bev, EV_WRITE);
     bufferevent_trigger(bev, EV_WRITE, 0);
   }
 

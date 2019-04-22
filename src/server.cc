@@ -168,13 +168,12 @@ std::atomic<uint64_t> *Server::GetClientID() {
 void Server::cron() {
   uint64_t counter = 0;
   while (!stop_) {
-    if (counter != 0 && counter % 10000 == 0) {
+    // check every 10 seconds
+    if (counter != 0 && counter % 100 == 0) {
       clientsCron();
     }
-    if (counter != 0 && counter % 60000 == 0) {
-      storage_->PurgeOldBackups(config_->max_backup_to_keep);
-    }
-    if (counter != 0 && counter % 60000 == 0) {
+    // check every minutes
+    if (counter != 0 && counter % 600 == 0) {
       auto t = std::time(nullptr);
       auto now = std::localtime(&t);
       if (config_->compact_cron.IsEnabled() && config_->compact_cron.IsTimeMatch(now)) {
@@ -186,8 +185,12 @@ void Server::cron() {
         LOG(INFO) << "Schedule to bgsave the db, result: " << s.Msg();
       }
     }
+    // check every minutes
+    if (counter != 0 && counter % 600 == 0) {
+      storage_->PurgeOldBackups(config_->max_backup_to_keep);
+    }
     counter++;
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 

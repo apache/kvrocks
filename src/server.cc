@@ -165,27 +165,8 @@ std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
 
-Status Server::compactCron() {
-  Status s = AsyncCompactDB();
-  if (!s.IsOK()) return s;
-  LOG(INFO) << "Commpact was triggered by cron with executed success";
-  return Status::OK();
-}
-
-Status Server::bgsaveCron() {
-  if (this->IsSlave()) {
-    return Status::OK();  // Don't let slave do any bgsave
-  }
-  Status s = AsyncBgsaveDB();
-  if (!s.IsOK()) return s;
-  LOG(INFO) << "Bgsave was triggered by cron with executed success";
-  return Status::OK();
-}
-
 void Server::cron() {
-  static uint64_t counter = 0;
-  std::time_t t;
-  std::tm *now;
+  uint64_t counter = 0;
   while (!stop_) {
     if (counter != 0 && counter % 10000 == 0) {
       clientsCron();
@@ -193,21 +174,16 @@ void Server::cron() {
     if (counter != 0 && counter % 60000 == 0) {
       storage_->PurgeOldBackups(config_->max_backup_to_keep);
     }
-    // check every 1 minute
     if (counter != 0 && counter % 60000 == 0) {
-      if (config_->compact_cron.IsEnabled()) {
-        t = std::time(0);
-        now = std::localtime(&t);
-        if (config_->compact_cron.IsTimeMatch(now)) {
-          compactCron();
-        }
+      auto t = std::time(nullptr);
+      auto now = std::localtime(&t);
+      if (config_->compact_cron.IsEnabled() && config_->compact_cron.IsTimeMatch(now)) {
+        Status s = AsyncCompactDB();
+        LOG(INFO) << "Schedule to compact the db, result: " << s.Msg();
       }
-      if (config_->bgsave_cron.IsEnabled()) {
-        t = std::time(0);
-        now = std::localtime(&t);
-        if (config_->bgsave_cron.IsTimeMatch(now)) {
-          bgsaveCron();
-        }
+      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(now)) {
+        Status s = AsyncBgsaveDB();
+        LOG(INFO) << "Schedule to bgsave the db, result: " << s.Msg();
       }
     }
     counter++;
@@ -464,7 +440,7 @@ Status Server::AsyncCompactDB() {
   db_mu_.lock();
   if (db_compacting_) {
     db_mu_.unlock();
-    return Status(Status::NotOK, "compacting the db now");
+    return Status(Status::NotOK, "compact in-progress");
   }
   db_compacting_ = true;
   db_mu_.unlock();

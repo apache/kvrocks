@@ -103,8 +103,6 @@ class Server {
  private:
   void cron();
   void clientsCron();
-  Status compactCron();
-  Status bgsaveCron();
 
   bool stop_ = false;
   bool is_loading_ = false;

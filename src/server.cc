@@ -233,6 +233,8 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
   string_stream << "flush_count:" << storage_->GetFlushCount()<< "\r\n";
   string_stream << "compaction_count:" << storage_->GetCompactionCount()<< "\r\n";
+  string_stream << "is_bgsaving:" << (db_bgsave_ ? "yes" : "no") << "\r\n";
+  string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
   *info = string_stream.str();
 }
 

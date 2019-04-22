@@ -35,12 +35,20 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
 }
 
 bool Cron::IsTimeMatch(struct tm *tm) {
+  if (tm->tm_min == last_tm_.tm_min &&
+      tm->tm_hour == last_tm_.tm_hour &&
+      tm->tm_mday == last_tm_.tm_mday &&
+      tm->tm_mon == last_tm_.tm_mon &&
+      tm->tm_wday == last_tm_.tm_wday) {
+    return false;
+  }
   for (const auto &st : schedulers_) {
     if ((st.minute == -1 || tm->tm_min == st.minute) &&
         (st.hour == -1 || tm->tm_hour == st.hour) &&
         (st.mday == -1 || tm->tm_mday == st.mday) &&
         (st.month == -1 || (tm->tm_mon + 1) == st.month) &&
         (st.wday == -1 || tm->tm_wday == st.wday)) {
+      last_tm_ = *tm;
       return true;
     }
   }

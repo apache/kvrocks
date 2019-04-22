@@ -28,6 +28,7 @@ class Cron {
 
  private:
   std::vector<Scheduler> schedulers_;
+  struct tm last_tm_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 
   Status convertToScheduleTime(
       const std::string &minute,

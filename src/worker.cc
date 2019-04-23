@@ -13,21 +13,15 @@
 Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
-  if (repl_) {
-    for (const auto &host : config->repl_binds) {
-      Status s = listen(host, config->repl_port, config->backlog);
-      if (!s.IsOK()) {
-        LOG(ERROR) << "[worker] Failed to listen the replication port "<< config->repl_port << ", err: " << s.Msg();
-        exit(1);
-      }
-    }
-  } else {
-    for (const auto &host : config->binds) {
-      Status s = listen(host, config->port, config->backlog);
-      if (!s.IsOK()) {
-        LOG(ERROR) << "[worker] Failed to listen port " << config->port << ", err: " << s.Msg();
-        exit(1);
-      }
+
+  int port = repl ? config->repl_port : config->port;
+  auto binds = repl ? config->repl_binds : config->binds;
+  for (const auto &bind : binds) {
+    Status s = listen(bind, port, config->backlog);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
+                 << ", encounter error: " << s.Msg();
+      exit(1);
     }
   }
 }

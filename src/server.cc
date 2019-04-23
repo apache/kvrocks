@@ -178,11 +178,11 @@ void Server::cron() {
       auto now = std::localtime(&t);
       if (config_->compact_cron.IsEnabled() && config_->compact_cron.IsTimeMatch(now)) {
         Status s = AsyncCompactDB();
-        LOG(INFO) << "Schedule to compact the db, result: " << s.Msg();
+        LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
       if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(now)) {
         Status s = AsyncBgsaveDB();
-        LOG(INFO) << "Schedule to bgsave the db, result: " << s.Msg();
+        LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
     }
     // check every minutes

@@ -23,7 +23,7 @@ Connection::~Connection() {
 }
 
 void Connection::OnRead(struct bufferevent *bev, void *ctx) {
-  DLOG(INFO) << "on read: " << bufferevent_getfd(bev);
+  DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
   auto conn = static_cast<Connection *>(ctx);
 
   conn->SetLastInteraction();
@@ -41,19 +41,20 @@ void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
 void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
-    LOG(ERROR) << "Connection[" << conn->GetAddr()  << "] encounter error: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
-               << ", would be removed";
+    LOG(ERROR) << "[connection] Going to remove the client: " << conn->GetAddr()
+               << ", while encounter error: "
+               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
     conn->owner_->RemoveConnection(conn->GetFD());
     return;
   }
   if (events & BEV_EVENT_EOF) {
-    DLOG(INFO) << "Connection[" << conn->GetAddr()  << "] was closed by client";
+    DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr()
+               << ", while closed by client";
     conn->owner_->RemoveConnection(conn->GetFD());
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {
-    DLOG(INFO) << "Connection[" << conn->GetAddr()  << "] reached timeout";
+    DLOG(INFO) << "[connection] The client: " << conn->GetAddr()  << "] reached timeout";
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
@@ -215,8 +216,8 @@ void Request::ExecuteCommands(Connection *conn) {
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR " + s.Msg()));
-      LOG(ERROR) << "Failed to execute redis command: " << conn->current_cmd_->Name()
-                 << ", err: " << s.Msg();
+      LOG(ERROR) << "[request] Failed to execute command: " << conn->current_cmd_->Name()
+                 << ", encounter err: " << s.Msg();
       continue;
     }
     if (!reply.empty()) conn->Reply(reply);

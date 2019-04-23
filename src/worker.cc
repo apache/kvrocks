@@ -17,7 +17,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
     for (const auto &host : config->repl_binds) {
       Status s = listen(host, config->repl_port, config->backlog);
       if (!s.IsOK()) {
-        LOG(ERROR) << "Failed to listen the replication port "<< config->repl_port << ", err: " << s.Msg();
+        LOG(ERROR) << "[worker] Failed to listen the replication port "<< config->repl_port << ", err: " << s.Msg();
         exit(1);
       }
     }
@@ -25,7 +25,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
     for (const auto &host : config->binds) {
       Status s = listen(host, config->port, config->backlog);
       if (!s.IsOK()) {
-        LOG(ERROR) << "Failed to listen port " << config->port << ", err: " << s.Msg();
+        LOG(ERROR) << "[worker] Failed to listen port " << config->port << ", err: " << s.Msg();
         exit(1);
       }
     }
@@ -48,17 +48,17 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   if (worker->IsRepl()) {
-    DLOG(INFO) << "new connection: fd=" << fd
+    DLOG(INFO) << "[worker] New connection: fd=" << fd
                << " from port: " << worker->svr_->GetConfig()->repl_port << " thread #"
                << worker->tid_;
   } else {
-    DLOG(INFO) << "new connection: fd=" << fd
+    DLOG(INFO) << "[worker] New connection: fd=" << fd
                << " from port: " << worker->svr_->GetConfig()->port << " thread #"
                << worker->tid_;
   }
   int enable = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<void*>(&enable), sizeof(enable)) < 0) {
-    LOG(ERROR) << "Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);
+    LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);
     evutil_closesocket(fd);
     return;
   }
@@ -108,7 +108,7 @@ Status Worker::listen(const std::string &host, int port, int backlog) {
 void Worker::Run(std::thread::id tid) {
   tid_ = tid;
   if (event_base_dispatch(base_) != 0) {
-    LOG(ERROR) << "Failed to run server, err: " << strerror(errno);
+    LOG(ERROR) << "[worker] Failed to run server, err: " << strerror(errno);
   }
 }
 
@@ -240,10 +240,10 @@ void WorkerThread::Start() {
       this->worker_->Run(t_.get_id());
     });
   } catch (const std::system_error &e) {
-    LOG(ERROR) << "Failed to start worker thread, err: " << e.what();
+    LOG(ERROR) << "[worker] Failed to start worker thread, err: " << e.what();
     return;
   }
-  LOG(INFO) << "Worker thread #" << t_.get_id() << " started";
+  LOG(INFO) << "[worker] Thread #" << t_.get_id() << " started";
 }
 
 void WorkerThread::Stop() {

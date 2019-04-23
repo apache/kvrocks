@@ -16,13 +16,13 @@ bool MetadataFilter::Filter(int level,
   rocksdb::Status s = metadata.Decode(bytes);
   ExtractNamespaceKey(key, &ns, &real_key);
   if (!s.ok()) {
-    LOG(WARNING) << "[Compacting metadata key] Failed to decode,"
+    LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
                  << "namespace: " << ns
                  << "key: " << real_key
                  << ", err: " << s.ToString();
     return false;
   }
-  DLOG(INFO) << "[Compacting metadata key]"
+  DLOG(INFO) << "[compact_filter/metadata] "
              << " namespace: " << ns
              << ", key: " << real_key
              << ", result: " << (metadata.Expired() ? "deleted" : "reserved");
@@ -77,7 +77,7 @@ bool SubKeyFilter::Filter(int level,
                                   bool *modified) const {
   InternalKey ikey(key);
   bool result = IsKeyExpired(ikey);
-  DLOG(INFO) << "[Compacting subkey]"
+  DLOG(INFO) << "[compact_filter/subkey]"
              << " namespace: " << ikey.GetNamespace().ToString()
              << ", metadata key: " << ikey.GetKey().ToString()
              << ", subkey: " << ikey.GetSubKey().ToString()

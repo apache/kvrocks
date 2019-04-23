@@ -111,10 +111,10 @@ Status Storage::Open(bool read_only) {
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
   if (!s.ok()) {
-    LOG(INFO) << "Failed to load the data from disk: " << duration << " ms";
+    LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
     return Status(Status::DBOpenErr, s.ToString());
   }
-  LOG(INFO) << "Success to load the data from disk: " << duration << " ms";
+  LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
   if (!read_only) {
     // open backup engine
     rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
@@ -133,12 +133,12 @@ Status Storage::OpenForReadOnly() {
 }
 
 Status Storage::CreateBackup() {
-  LOG(INFO) << "Start to create new backup";
+  LOG(INFO) << "[storage] Start to create new backup";
   auto tm = std::time(nullptr);
   auto s = backup_->CreateNewBackupWithMetadata(
       db_, std::asctime(std::localtime(&tm)));
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
-  LOG(INFO) << "Success to create new backup";
+  LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
 }
 
@@ -161,15 +161,15 @@ Status Storage::RestoreFromBackup() {
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
-    LOG(ERROR) << "[Storage] Failed to restore: " << s.ToString();
+    LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
   }
-  LOG(INFO) << "[Storage] Restore from backup";
+  LOG(INFO) << "[storage] Restore from backup";
 
   // Reopen DB
   auto s2 = Open();
   if (!s2.IsOK()) {
-    LOG(ERROR) << "Failed to reopen db: " << s2.Msg();
+    LOG(ERROR) << "[storage] Failed to reopen db: " << s2.Msg();
     return Status(Status::DBOpenErr);
   }
   return Status::OK();
@@ -179,22 +179,22 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
   if (backup_infos.size() <= num_backups_to_keep) {
-    DLOG(INFO) << "[Storage] Current backup num: " << backup_infos.size()
+    DLOG(INFO) << "[storage] Current backup num: " << backup_infos.size()
               << ", num backups to keep: " << num_backups_to_keep
               << ", no backup needs to purge";
     return;
   }
   uint32_t num_backups_to_purge = backup_infos.size()-num_backups_to_keep;
-  LOG(INFO) << "[Storage] Going to purge " << num_backups_to_purge << " old backups";
+  LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
   for (uint32_t i = 0; i < num_backups_to_purge; i++) {
-    LOG(INFO) << "[Storage] The old backup(id: "
+    LOG(INFO) << "[storage] The old backup(id: "
               << backup_infos[i].backup_id << ") would be purged, "
               << " created at: " << backup_infos[i].timestamp
               << ", size: " << backup_infos[i].size
               << ", num files: " << backup_infos[i].number_files;
   }
   auto s = backup_->PurgeOldBackups(num_backups_to_keep);
-  LOG(INFO) << "Purge old backups, result: " << s.ToString();
+  LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
 }
 
 Status Storage::GetWALIter(
@@ -265,10 +265,10 @@ Status Storage::CheckDBSizeLimit() {
   }
   reach_db_size_limit_ = reach_db_size_limit;
   if (reach_db_size_limit_) {
-    LOG(WARNING) << "[STORAGE] ENABLE db_size limit " << config_->max_db_size << " GB"
+    LOG(WARNING) << "[storage] ENABLE db_size limit " << config_->max_db_size << " GB"
                  << "set kvrocks to read-only mode";
   } else {
-    LOG(WARNING) << "[STORAGE] DISABLE db_size limit, set kvrocks to read-write mode ";
+    LOG(WARNING) << "[storage] DISABLE db_size limit, set kvrocks to read-write mode ";
   }
   return Status::OK();
 }
@@ -307,13 +307,13 @@ int Storage::BackupManager::OpenDataFile(Storage *storage, const std::string &re
   std::string abs_path = storage->config_->backup_dir + "/" + rel_path;
   auto s = storage->backup_env_->FileExists(abs_path);
   if (!s.ok()) {
-    LOG(ERROR) << "Data file [" << abs_path << "] not found";
+    LOG(ERROR) << "[storage] Data file [" << abs_path << "] not found";
     return -1;
   }
   storage->backup_env_->GetFileSize(abs_path, file_size);
   auto rv = open(abs_path.c_str(), O_RDONLY);
   if (rv < 0) {
-    LOG(ERROR) << "Failed to open file: " << strerror(errno);
+    LOG(ERROR) << "[storage] Failed to open file: " << strerror(errno);
   }
   return rv;
 }
@@ -380,7 +380,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
        pos = dir.find('/', pos + 1)) {
     parent = dir.substr(0, pos);
     if (!env->CreateDirIfMissing(parent).ok()) {
-      LOG(ERROR) << "Failed to create directory recursively";
+      LOG(ERROR) << "[storage] Failed to create directory recursively";
       return Status(Status::NotOK);
     }
   }
@@ -393,7 +393,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
   std::string tmp_path = storage->config_->backup_dir + "/" + rel_path + ".tmp";
   auto s = storage->backup_env_->FileExists(tmp_path);
   if (s.ok()) {
-    LOG(ERROR) << "Data file exists, override";
+    LOG(ERROR) << "[storage] Data file exists, override";
     storage->backup_env_->DeleteFile(tmp_path);
   }
   // Create directory if missing
@@ -404,7 +404,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::BackupManager::NewTmpFile(
   std::unique_ptr<rocksdb::WritableFile> wf;
   s = storage->backup_env_->NewWritableFile(tmp_path, &wf, rocksdb::EnvOptions());
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to create data file: " << s.ToString();
+    LOG(ERROR) << "[storage] Failed to create data file: " << s.ToString();
     return nullptr;
   }
   return wf;
@@ -462,7 +462,7 @@ Status RmdirRecursively(rocksdb::Env *env, const std::string &dir) {
     } else {
       s = env->DeleteFile(abs_path);
       if (!s.ok()) {
-        LOG(ERROR) << "Failed to delete file: " << s.ToString();
+        LOG(ERROR) << "[storage] Failed to delete file: " << s.ToString();
         return Status(Status::NotOK);
       }
     }
@@ -471,7 +471,7 @@ Status RmdirRecursively(rocksdb::Env *env, const std::string &dir) {
   if (s.ok()) {
     return Status::OK();
   }
-  LOG(ERROR) << "Failed to delete dir: " << s.ToString();
+  LOG(ERROR) << "[storage] Failed to delete dir: " << s.ToString();
   return Status(Status::NotOK);
 }
 

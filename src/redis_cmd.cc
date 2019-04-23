@@ -2297,7 +2297,7 @@ class CommandPSync : public Commander {
           }
 
           // if arrived here, means the wal file is rotated, a reopen is needed.
-          LOG(INFO) << "WAL rotate";
+          LOG(INFO) << "WAL was rotated, would reopen the log to get new iterator";
           self->state_ = State::GetWALIter;
           break;
         case State::WaitWAL:

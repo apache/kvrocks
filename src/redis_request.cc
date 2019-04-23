@@ -41,16 +41,19 @@ void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
 void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
-    LOG(ERROR) << "bev error: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    LOG(ERROR) << "Connection[" << conn->GetAddr()  << "] encounter error: "
+               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
+               << ", would be removed";
+    conn->owner_->RemoveConnection(conn->GetFD());
+    return;
   }
-  if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-    DLOG(INFO) << "deleted: fd=" << conn->GetFD();
+  if (events & BEV_EVENT_EOF) {
+    DLOG(INFO) << "Connection[" << conn->GetAddr()  << "] was closed by client";
     conn->owner_->RemoveConnection(conn->GetFD());
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {
-    LOG(INFO) << "timeout, fd=" << conn->GetFD();
+    DLOG(INFO) << "Connection[" << conn->GetAddr()  << "] reached timeout";
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }

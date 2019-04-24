@@ -57,3 +57,6 @@
 
 * Version 0.1.15(@2019-04-25)
 	- use no-omit-frame-pointer when compile
+
+* Version 0.1.16(@2019-04-25)
+	- fix core dump when execute `client kill id=3`

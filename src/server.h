@@ -97,7 +97,6 @@ class Server {
   Status IncrClients();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
-  void KickoutIdleClients();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
 
   Stats stats_;
@@ -105,7 +104,6 @@ class Server {
 
  private:
   void cron();
-  void clientsCron();
 
   bool stop_ = false;
   bool is_loading_ = false;

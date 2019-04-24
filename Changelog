@@ -55,3 +55,5 @@
 	- fix Guard against discrete WAL log sequence in replication
 	- increase the sleep time from 1ms to 100ms
 
+* Version 0.1.15(@2019-04-25)
+	- use no-omit-frame-pointer when compile

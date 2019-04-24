@@ -1,5 +1,8 @@
 #pragma once
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <map>
 #include <list>
 #include <string>

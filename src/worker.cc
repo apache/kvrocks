@@ -188,28 +188,19 @@ std::string Worker::GetClientsStr() {
 }
 
 void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed) {
-  std::list<std::pair<int, uint64_t>> to_be_killed_conns;
-
   conns_mu_.lock();
   for (const auto iter : conns_) {
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
-    if (!addr.empty() && conn->GetAddr() == addr) {
-      to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
-    } else if (id != 0 && conn->GetID() == id) {
-      to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
+    if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
+        conn->SetFlag(Redis::Connection::kCloseAfterReply);
+        auto bev = conn->GetBufferEvent();
+        // enable write event to notify worker wake up ASAP, and remove the connection
+        bufferevent_enable(bev, EV_WRITE);
+        (*killed)++;
     }
   }
   conns_mu_.unlock();
-
-  for (const auto iter : to_be_killed_conns) {
-    if (iter.first == self->GetFD() && iter.second == self->GetID()) {
-      self->SetFlag(Redis::Connection::kCloseAfterReply);
-    } else {
-      RemoveConnectionByID(iter.first, iter.second);
-    }
-    (*killed)++;
-  }
 }
 
 void Worker::KickoutIdleClients(int timeout) {

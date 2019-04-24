@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(kvrocks
-        VERSION 0.1.13
+        VERSION 0.1.15
         DESCRIPTION "Redis on rocksdb"
         LANGUAGES CXX)
 
@@ -51,15 +51,16 @@ configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 # Main target
 add_executable(kvrocks)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
-target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
+target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
 if(ENBALE_ASAN)
-    target_compile_options(kvrocks PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-    target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+    target_compile_options(kvrocks PRIVATE -fsanitize=address)
+    target_link_libraries(kvrocks PRIVATE -fsanitize=address)
 endif()
 add_dependencies(kvrocks libevent gflags glog rocksdb gtest)
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
+target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer)
 target_link_libraries(kvrocks ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks PRIVATE
         src/compact_filter.cc

@@ -2448,7 +2448,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
     if ((subcommand_ == "setname") && args.size() == 3) {
-      name_ = args[2];
+      conn_name_ = args[2];
       return Status::OK();
     }
     if ((subcommand_ == "kill")) {
@@ -2496,7 +2496,7 @@ class CommandClient : public Commander {
       *output = Redis::BulkString(srv->GetClientsStr());
       return Status::OK();
     } else if (subcommand_ == "setname") {
-      conn->SetName(name_);
+      conn->SetName(conn_name_);
       *output = Redis::SimpleString("OK");
       return Status::OK();
     } else if (subcommand_ == "getname") {
@@ -2525,8 +2525,9 @@ class CommandClient : public Commander {
   }
 
  private:
+  std::string addr_;
+  std::string conn_name_;
   std::string subcommand_;
-  std::string addr_ = "";
   bool skipme_ = false;
   uint64_t id_ = 0;
   bool new_format_ = true;

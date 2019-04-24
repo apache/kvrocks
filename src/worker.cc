@@ -181,10 +181,12 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
   conns_mu_.lock();
   for (const auto iter : conns_) {
     Redis::Connection* conn = iter.second;
-    if (addr.empty() && conn->GetAddr() != addr) continue;
-    if (id != 0 && conn->GetID() != id) continue;
     if (skipme && self == conn) continue;
-    to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
+    if (!addr.empty() && conn->GetAddr() == addr) {
+      to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
+    } else if (id != 0 && conn->GetID() == id) {
+      to_be_killed_conns.emplace_back(std::make_pair(conn->GetFD(), conn->GetID()));
+    }
   }
   conns_mu_.unlock();
 

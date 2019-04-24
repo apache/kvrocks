@@ -48,6 +48,12 @@
 	- fix some memory leak when shutdown
 
 * Version 0.1.13(@2019-04-18)
-	-  supports configure slowlog-log-slower-than and slowlog-max-len through config command
+	- supports configure slowlog-log-slower-than and slowlog-max-len through config command
 	- print the flush information in flush event lisntener
 
+* Version 0.1.14(@2019-04-23)
+	- fix Guard against discrete WAL log sequence in replication
+	- increase the sleep time from 1ms to 100ms
+
+* Version 0.1.15(@2019-04-25)
+	- use no-omit-frame-pointer when compile

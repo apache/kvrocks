@@ -156,11 +156,6 @@ void Server::DecrClients() {
   connected_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
-void Server::clientsCron() {
-  if (config_->timeout <= 0) return;
-  KickoutIdleClients();
-}
-
 std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
@@ -168,10 +163,6 @@ std::atomic<uint64_t> *Server::GetClientID() {
 void Server::cron() {
   uint64_t counter = 0;
   while (!stop_) {
-    // check every 10 seconds
-    if (counter != 0 && counter % 100 == 0) {
-      clientsCron();
-    }
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
@@ -577,12 +568,6 @@ std::string Server::GetClientsStr() {
 void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
   for (const auto worker : worker_threads_) {
     worker->KillClient(killed, addr, id, skipme, conn);
-  }
-}
-
-void Server::KickoutIdleClients() {
-  for (const auto worker : worker_threads_) {
-    worker->KickoutIdleClients(config_->timeout);
   }
 }
 

@@ -14,6 +14,10 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
   base_ = event_base_new();
   if (!base_) throw std::exception();
 
+  timer_ = event_new(base_, -1, EV_PERSIST, TimerCB, this);
+  timeval tm = {10, 0};
+  evtimer_add(timer_, &tm);
+
   int port = repl ? config->repl_port : config->port;
   auto binds = repl ? config->repl_binds : config->binds;
   for (const auto &bind : binds) {
@@ -35,7 +39,15 @@ Worker::~Worker() {
   for (auto iter : conns) {
     RemoveConnection(iter->GetFD());
   }
+  event_free(timer_);
   event_base_free(base_);
+}
+
+void Worker::TimerCB(int, int16_t events, void *ctx) {
+  auto worker = static_cast<Worker*>(ctx);
+  auto config = worker->svr_->GetConfig();
+  if (config->timeout == 0) return;
+  worker->KickoutIdleClients(config->timeout);
 }
 
 void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
@@ -256,8 +268,4 @@ std::string WorkerThread::GetClientsStr() {
 
 void WorkerThread::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
   worker_->KillClient(conn, id, addr, skipme, killed);
-}
-
-void WorkerThread::KickoutIdleClients(int timeout) {
-  worker_->KickoutIdleClients(timeout);
 }

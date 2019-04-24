@@ -48,8 +48,10 @@ class Worker {
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
   void removeConnection(std::map<int, Redis::Connection*>::iterator iter);
+  static void TimerCB(int, int16_t events, void *ctx);
 
   event_base *base_;
+  event *timer_;
   std::thread::id tid_;
   std::vector<evconnlistener*> listen_events_;
   std::map<int, Redis::Connection*> conns_;
@@ -71,8 +73,6 @@ class WorkerThread {
 
   std::string GetClientsStr();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
-  void KickoutIdleClients(int timeout);
-
 
  private:
   std::thread t_;

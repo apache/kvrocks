@@ -32,6 +32,7 @@ bool MetadataFilter::Filter(int level,
 bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
   std::string metadata_key;
 
+  if (cf_handles_->size() < 2)  return false;  // DB recovery may trigger compaction, and cf_handlers_ would be empty
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;

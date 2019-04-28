@@ -28,6 +28,9 @@ Server::~Server() {
   for (const auto &worker_thread : worker_threads_) {
     delete worker_thread;
   }
+  for (const auto &iter : conn_ctxs_) {
+    delete iter.first;
+  }
   delete task_runner_;
 }
 
@@ -139,6 +142,61 @@ void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *c
       iter->second.remove(c);
       break;
     }
+  }
+}
+
+void Server::AddBlockingKey(const std::string &key, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  conn_ctxs_[conn_ctx] = true;
+  if (iter == blocking_keys_.end()) {
+    std::list<ConnContext *> conn_ctxs;
+    conn_ctxs.emplace_back(conn_ctx);
+    blocking_keys_.insert(std::pair<std::string, std::list<ConnContext *>>(key, conn_ctxs));
+  } else {
+    iter->second.emplace_back(conn_ctx);
+  }
+}
+
+void Server::UnBlockingKey(const std::string &key, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  if (iter == blocking_keys_.end()) {
+    return;
+  }
+  for (const auto &conn_ctx : iter->second) {
+    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
+      delConnContext(conn_ctx);
+      iter->second.remove(conn_ctx);
+      if (iter->second.empty()) {
+        blocking_keys_.erase(iter);
+      }
+      break;
+    }
+  }
+}
+
+Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocking_keys_.find(key);
+  if (iter == blocking_keys_.end() || iter->second.empty()) {
+    return Status(Status::NotOK);
+  }
+  while (n_conns-- && !iter->second.empty()) {
+    auto conn_ctx = iter->second.front();
+    conn_ctx->owner->EnableWrite(conn_ctx->fd);
+    delConnContext(conn_ctx);
+    iter->second.pop_front();
+  }
+  return Status::OK();
+}
+
+void Server::delConnContext(ConnContext *c) {
+  auto conn_ctx_iter = conn_ctxs_.find(c);
+  if (conn_ctx_iter != conn_ctxs_.end()) {
+    delete conn_ctx_iter->first;
+    conn_ctxs_.erase(conn_ctx_iter);
   }
 }
 

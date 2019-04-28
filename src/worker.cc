@@ -142,8 +142,6 @@ Status Worker::AddConnection(Redis::Connection *c) {
 }
 
 void Worker::removeConnection(std::map<int, Redis::Connection *>::iterator iter) {
-  // unscribe all channels if exists
-  iter->second->UnSubscribeAll();
   delete iter->second;
   conns_.erase(iter);
   svr_->DecrClients();
@@ -161,6 +159,17 @@ void Worker::RemoveConnectionByID(int fd, uint64_t id) {
   auto iter = conns_.find(fd);
   if (iter != conns_.end() && iter->second->GetID() == id)
     removeConnection(iter);
+}
+
+Status Worker::EnableWrite(int fd) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  auto iter = conns_.find(fd);
+  if (iter != conns_.end()) {
+    auto bev = iter->second->GetBufferEvent();
+    bufferevent_enable(bev, EV_WRITE);
+    return Status::OK();
+  }
+  return Status(Status::NotOK);
 }
 
 std::string Worker::GetClientsStr() {

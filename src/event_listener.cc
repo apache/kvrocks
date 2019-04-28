@@ -42,8 +42,8 @@ void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reas
       // Should not arrive here
       break;
   }
-  LOG(ERROR) << "[event_listener/background_error] Reason: " << reason_str
-             << ", Status: " << status->ToString();
+  LOG(ERROR) << "[event_listener/background_error] reason: " << reason_str
+             << ", status: " << status->ToString();
 }
 
 void KvrocksEventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {

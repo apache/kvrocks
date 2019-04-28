@@ -1131,7 +1131,7 @@ class CommandPush : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
 
-    svr->PopBlockingConnectionAndEnableWrite(args_[1], elems.size());
+    svr->WakeupBlockingConns(args_[1], elems.size());
 
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1203,6 +1203,7 @@ class CommandBPop : public Commander {
       timer_ = nullptr;
     }
   }
+
   Status Parse(const std::vector<std::string> &args) override {
     try {
       timeout_ = std::stoi(args[args.size() - 1]);
@@ -1215,6 +1216,7 @@ class CommandBPop : public Commander {
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     svr_ = svr;
     conn_ = conn;
@@ -1274,15 +1276,16 @@ class CommandBPop : public Commander {
     bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                       Redis::Connection::OnEvent, self->conn_);
     bufferevent_enable(bev, EV_READ);
-    return;
   }
 
   static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
     auto self = static_cast<CommandBPop *>(ctx);
-    if (self->timer_ != nullptr &&
-        (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))) {
-      event_free(self->timer_);
-      self->timer_ = nullptr;
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+      if (self->timer_ != nullptr) {
+        event_free(self->timer_);
+        self->timer_ = nullptr;
+      }
+      self->unBlockingAll();
     }
     Redis::Connection::OnEvent(bev, events, self->conn_);
   }

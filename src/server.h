@@ -48,10 +48,10 @@ struct SlaveInfo {
   SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
 };
 
-struct ConnectionContext {
+struct ConnContext {
   Worker *owner;
   int fd;
-  ConnectionContext(Worker *w, int fd) : owner(w), fd(fd) {}
+  ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
 };
 
 class Server {
@@ -81,7 +81,7 @@ class Server {
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
-  Status PopBlockingConnectionAndEnableWrite(const std::string &key, size_t size);
+  Status WakeupBlockingConns(const std::string &key, size_t n_conns);
 
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
@@ -115,7 +115,7 @@ class Server {
 
  private:
   void cron();
-  void delConnectionContext(ConnectionContext *c);
+  void delConnContext(ConnContext *c);
 
   bool stop_ = false;
   bool is_loading_ = false;
@@ -142,8 +142,8 @@ class Server {
 
   SlowLog slowlog_;
   std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
-  std::map<std::string, std::list<ConnectionContext *>> blocking_keys_;
-  std::map<ConnectionContext *, bool> connection_contexts_;
+  std::map<std::string, std::list<ConnContext *>> blocking_keys_;
+  std::map<ConnContext *, bool> conn_ctxs_;
   std::mutex blocking_keys_mu_;
 
   // threads

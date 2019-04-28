@@ -42,6 +42,20 @@ void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reas
       // Should not arrive here
       break;
   }
-  LOG(ERROR) << "[event_listener/background_error] Reason: " << reason_str
-             << ", Status: " << status->ToString();
+  LOG(ERROR) << "[event_listener/background_error] reason: " << reason_str
+             << ", status: " << status->ToString();
+}
+
+void KvrocksEventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {
+  LOG(INFO) << "[event_listener/table_file_deleted] db: " << info.db_name
+            << ", sst file: " << info.file_path
+            << ", status: " << info.status.ToString();
+}
+
+void KvrocksEventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
+  const char *stall_condition_strings[] = {"normal", "delay", "stop"};
+  LOG(WARNING) << "[event_listner/stall_cond_changed] column family: " << info.cf_name
+               << " write stall condition was changed, from "
+               << stall_condition_strings[static_cast<int>(info.condition.prev)]
+               << " to " << stall_condition_strings[static_cast<int>(info.condition.cur)];
 }

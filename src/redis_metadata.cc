@@ -2,6 +2,7 @@
 #include <time.h>
 #include <vector>
 #include <cstdlib>
+#include "stdlib.h"
 
 #include "util.h"
 
@@ -403,6 +404,23 @@ uint64_t RedisDB::Scan(const std::string &cursor,
   }
   delete iter;
   return cnt;
+}
+
+rocksdb::Status RedisDB::RandomKey(const std::string &cursor, std::string *key) {
+  key->clear();
+
+  std::vector<std::string> keys;
+  Scan(cursor, 60, "", &keys);
+  if (keys.empty() && !cursor.empty()) {
+    // if reach the end, restart from begining
+    Scan("", 60, "", &keys);
+  }
+  if (keys.empty()) {
+    return rocksdb::Status::NotFound();
+  }
+  unsigned int seed = time(NULL);
+  *key = keys.at(rand_r(&seed) % keys.size());
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status RedisDB::FlushAll() {

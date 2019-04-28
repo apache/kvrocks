@@ -2834,6 +2834,20 @@ class CommandZScan : public CommandSubkeyScanBase {
   }
 };
 
+class CommandRandomKey : public Commander {
+ public:
+  CommandRandomKey() : Commander("randomkey", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string key;
+    auto cursor = svr->GetLastRandomKeyCursor();
+    RedisDB redis(svr->storage_, conn->GetNamespace());
+    redis.RandomKey(cursor, &key);
+    svr->SetLastRandomKeyCursor(key);
+    *output = Redis::BulkString(key);
+    return Status::OK();
+  }
+};
+
 class CommandFetchMeta : public Commander {
  public:
   CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -2953,6 +2967,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"scan",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandScan);
+     }},
+    {"randomkey",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandRandomKey);
      }},
     // key command
     {"ttl",

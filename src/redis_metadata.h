@@ -126,6 +126,7 @@ class RedisDB {
                 const uint64_t &limit,
                 const std::string &prefix,
                 std::vector<std::string> *keys);
+  rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   void AppendNamespacePrefix(const Slice &key, std::string *output);
 
  protected:

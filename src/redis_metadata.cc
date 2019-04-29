@@ -407,16 +407,21 @@ rocksdb::Status RedisDB::RandomKey(const std::string &cursor, std::string *key) 
   key->clear();
 
   std::vector<std::string> keys;
-  Scan(cursor, 60, "", &keys);
+  auto s = Scan(cursor, 60, "", &keys);
+  if (!s.ok()) {
+    return s;
+  }
   if (keys.empty() && !cursor.empty()) {
     // if reach the end, restart from begining
-    Scan("", 60, "", &keys);
+    auto s = Scan("", 60, "", &keys);
+    if (!s.ok()) {
+      return s;
+    }
   }
-  if (keys.empty()) {
-    return rocksdb::Status::NotFound();
+  if (!keys.empty()) {
+    unsigned int seed = time(NULL);
+    *key = keys.at(rand_r(&seed) % keys.size());
   }
-  unsigned int seed = time(NULL);
-  *key = keys.at(rand_r(&seed) % keys.size());
   return rocksdb::Status::OK();
 }
 

@@ -44,8 +44,8 @@
 
 | Command    | Supported OR Not | Desc                                                         |
 | ---------- | ---------------- | ------------------------------------------------------------ |
-| blpop      | X                |                                                              |
-| brpop      | X                |                                                              |
+| blpop      | √                |                                                              |
+| brpop      | √                |                                                              |
 | brpoplpush | X                |                                                              |
 | lindex     | √                | Caution: linsert is O(N) operation, don't use it when list was extreme long |
 | linsert    | √                |                                                              |
@@ -130,6 +130,7 @@
 | ttl       | √                |                      |
 | type      | √                |                      |
 | scan      | √                |                      |
+| randomkey | √                |                      |
 
 ## Bit Commands
 

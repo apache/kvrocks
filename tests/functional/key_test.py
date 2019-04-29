@@ -158,4 +158,15 @@ def test_randomkey():
         ret = conn.delete(key)
         assert(ret == 1)
 
+def test_scan():
+    key = "test_scan"
+    conn = get_redis_conn()
+    ret = conn.set(key, "bar")
+    assert(ret)
 
+    ret = conn.execute_command("SCAN" + " 0")
+    print ret
+    assert (ret == [key, [key]])
+
+    ret = conn.delete(key)
+    assert (ret == 1)

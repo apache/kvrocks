@@ -49,11 +49,11 @@ class RedisZSet : public RedisSubKeyScanner {
   rocksdb::Status Pop(Slice key, int count, bool min, std::vector<MemberScore> *mscores);
   rocksdb::Status Score(Slice key, Slice member, double *score);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
-  uint64_t Scan(Slice key,
-                const std::string &cursor,
-                const uint64_t &limit,
-                const std::string &member_prefix,
-                std::vector<std::string> *members);
+  rocksdb::Status Scan(Slice key,
+                       const std::string &cursor,
+                       uint64_t limit,
+                       const std::string &member_prefix,
+                       std::vector<std::string> *members);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

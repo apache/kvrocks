@@ -25,11 +25,11 @@ class RedisHash : public RedisSubKeyScanner {
   rocksdb::Status MSet(Slice key, const std::vector<FieldValue> &field_values, bool nx, int *ret);
   rocksdb::Status MGet(Slice key, const std::vector<Slice> &fields, std::vector<std::string> *values);
   rocksdb::Status GetAll(Slice key, std::vector<FieldValue> *field_values, int type = 0);
-  uint64_t Scan(Slice key,
-                const std::string &cursor,
-                const uint64_t &limit,
-                const std::string &field_prefix,
-                std::vector<std::string> *fields);
+  rocksdb::Status Scan(Slice key,
+                       const std::string &cursor,
+                       uint64_t limit,
+                       const std::string &field_prefix,
+                       std::vector<std::string> *fields);
  private:
   rocksdb::Status GetMetadata(Slice key, HashMetadata *metadata);
 };

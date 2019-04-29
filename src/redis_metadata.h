@@ -122,10 +122,10 @@ class RedisDB {
   rocksdb::Status FlushAll();
   uint64_t GetKeyNum(const std::string &prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
-  uint64_t Scan(const std::string &cursor,
-                const uint64_t &limit,
-                const std::string &prefix,
-                std::vector<std::string> *keys);
+  rocksdb::Status Scan(const std::string &cursor,
+                       uint64_t limit,
+                       const std::string &prefix,
+                       std::vector<std::string> *keys);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   void AppendNamespacePrefix(const Slice &key, std::string *output);
 
@@ -154,12 +154,12 @@ class RedisSubKeyScanner : public RedisDB {
  public:
   explicit RedisSubKeyScanner(Engine::Storage *storage, const std::string &ns)
       : RedisDB(storage, ns) {}
-  uint64_t Scan(RedisType type,
-                Slice key,
-                const std::string &cursor,
-                const uint64_t &limit,
-                const std::string &subkey_prefix,
-                std::vector<std::string> *keys);
+  rocksdb::Status Scan(RedisType type,
+                       Slice key,
+                       const std::string &cursor,
+                       uint64_t limit,
+                       const std::string &subkey_prefix,
+                       std::vector<std::string> *keys);
 };
 
 class LockGuard {

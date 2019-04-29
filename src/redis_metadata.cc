@@ -362,14 +362,11 @@ uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
   return cnt;
 }
 
-uint64_t RedisDB::Scan(const std::string &cursor,
-                       const uint64_t &limit,
-                       const std::string &prefix,
-                       std::vector<std::string> *keys) {
+rocksdb::Status RedisDB::Scan(const std::string &cursor,
+                              uint64_t limit,
+                              const std::string &prefix,
+                              std::vector<std::string> *keys) {
   uint64_t cnt = 0;
-  if (keys == nullptr) {
-    return cnt;
-  }
   std::string ns_prefix, ns_cursor, ns, real_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
   AppendNamespacePrefix(cursor, &ns_cursor);
@@ -403,7 +400,7 @@ uint64_t RedisDB::Scan(const std::string &cursor,
     cnt++;
   }
   delete iter;
-  return cnt;
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status RedisDB::RandomKey(const std::string &cursor, std::string *key) {
@@ -463,17 +460,15 @@ void RedisDB::AppendNamespacePrefix(const Slice &key, std::string *output) {
   ComposeNamespaceKey(namespace_, key, output);
 }
 
-uint64_t RedisSubKeyScanner::Scan(RedisType type,
-                                    Slice key,
-                                    const std::string &cursor,
-                                    const uint64_t &limit,
-                                    const std::string &subkey_prefix,
-                                    std::vector<std::string> *keys) {
+rocksdb::Status RedisSubKeyScanner::Scan(RedisType type,
+                                         Slice key,
+                                         const std::string &cursor,
+                                         uint64_t limit,
+                                         const std::string &subkey_prefix,
+                                         std::vector<std::string> *keys) {
   uint64_t cnt = 0;
-  if (keys == nullptr ||
-      type == kRedisString
-      ) {
-    return cnt;
+  if (type == kRedisString) {
+    return rocksdb::Status::InvalidArgument("redis_type string is not allowed");
   }
 
   std::string ns_key;
@@ -482,7 +477,7 @@ uint64_t RedisSubKeyScanner::Scan(RedisType type,
 
   Metadata metadata(type);
   rocksdb::Status s = GetMetadata(type, key, &metadata);
-  if (!s.ok()) return cnt;
+  if (!s.ok()) return s;
 
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -519,7 +514,7 @@ uint64_t RedisSubKeyScanner::Scan(RedisType type,
   }
 
   delete iter;
-  return cnt;
+  return rocksdb::Status::OK();
 }
 
 RedisType WriteBatchLogData::GetRedisType() {

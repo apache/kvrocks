@@ -24,11 +24,11 @@ class RedisSet : public RedisSubKeyScanner {
   rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   rocksdb::Status InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
-  uint64_t Scan(Slice key,
-                const std::string &cursor,
-                const uint64_t &limit,
-                const std::string &member_prefix,
-                std::vector<std::string> *members);
+  rocksdb::Status Scan(Slice key,
+                       const std::string &cursor,
+                       uint64_t limit,
+                       const std::string &member_prefix,
+                       std::vector<std::string> *members);
 
  private:
   rocksdb::Status GetMetadata(Slice key, SetMetadata *metadata);

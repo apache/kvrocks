@@ -427,10 +427,10 @@ Status RedisZSet::ParseRangeSpec(const std::string &min, const std::string &max,
   return Status::OK();
 }
 
-uint64_t RedisZSet::Scan(Slice key,
-                        const std::string &cursor,
-                        const uint64_t &limit,
-                        const std::string &member_prefix,
-                        std::vector<std::string> *members) {
+rocksdb::Status RedisZSet::Scan(Slice key,
+                                const std::string &cursor,
+                                uint64_t limit,
+                                const std::string &member_prefix,
+                                std::vector<std::string> *members) {
   return RedisSubKeyScanner::Scan(kRedisZSet, key, cursor, limit, member_prefix, members);
 }

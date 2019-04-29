@@ -208,11 +208,11 @@ rocksdb::Status RedisSet::Move(Slice src, Slice dst, Slice member, int *ret) {
   return Add(dst, members, ret);
 }
 
-uint64_t RedisSet::Scan(Slice key,
-                        const std::string &cursor,
-                        const uint64_t &limit,
-                        const std::string &member_prefix,
-                        std::vector<std::string> *members) {
+rocksdb::Status RedisSet::Scan(Slice key,
+                               const std::string &cursor,
+                               uint64_t limit,
+                               const std::string &member_prefix,
+                               std::vector<std::string> *members) {
   return RedisSubKeyScanner::Scan(kRedisSet, key, cursor, limit, member_prefix, members);
 }
 

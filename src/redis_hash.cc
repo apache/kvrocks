@@ -278,10 +278,10 @@ rocksdb::Status RedisHash::GetAll(Slice key, std::vector<FieldValue> *field_valu
   return rocksdb::Status::OK();
 }
 
-uint64_t RedisHash::Scan(Slice key,
-                         const std::string &cursor,
-                         const uint64_t &limit,
-                         const std::string &field_prefix,
-                         std::vector<std::string> *fields) {
+rocksdb::Status RedisHash::Scan(Slice key,
+                                const std::string &cursor,
+                                uint64_t limit,
+                                const std::string &field_prefix,
+                                std::vector<std::string> *fields) {
   return RedisSubKeyScanner::Scan(kRedisHash, key, cursor, limit, field_prefix, fields);
 }

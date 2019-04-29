@@ -140,3 +140,22 @@ def test_pttl():
     assert(ret == 1)
     ret = conn.ttl(key)
     assert(ret >= 1 and ret <= 2)
+
+    ret = conn.delete(key)
+    assert(ret == 1)
+
+def test_randomkey():
+    keys = ["test_randomkey", "test_randomkey_1", "test_randomkey_2"]
+    conn = get_redis_conn()
+    for key in keys:
+        ret = conn.set(key, "bar")
+        assert(ret)
+
+    ret = conn.execute_command("RANDOMKEY")
+    assert(ret in keys)
+
+    for key in keys:
+        ret = conn.delete(key)
+        assert(ret == 1)
+
+

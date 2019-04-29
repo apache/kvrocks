@@ -2788,7 +2788,10 @@ class CommandScan : public CommandScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisDB redis_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> keys;
-    redis_db.Scan(cursor, limit, prefix, &keys);
+    auto s = redis_db.Scan(cursor, limit, prefix, &keys);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
 
     *output = GenerateOutput(keys);
     return Status::OK();
@@ -2801,7 +2804,10 @@ class CommandHScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
-    hash_db.Scan(key, cursor, limit, prefix, &fields);
+    auto s = hash_db.Scan(key, cursor, limit, prefix, &fields);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
 
     *output = GenerateOutput(fields);
     return Status::OK();
@@ -2814,7 +2820,10 @@ class CommandSScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisSet set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    set_db.Scan(key, cursor, limit, prefix, &members);
+    auto s = set_db.Scan(key, cursor, limit, prefix, &members);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
 
     *output = GenerateOutput(members);
     return Status::OK();
@@ -2827,7 +2836,10 @@ class CommandZScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    zset_db.Scan(key, cursor, limit, prefix, &members);
+    auto s = zset_db.Scan(key, cursor, limit, prefix, &members);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
 
     *output = GenerateOutput(members);
     return Status::OK();

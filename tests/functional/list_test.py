@@ -1,4 +1,6 @@
 import redis
+import threading
+import time
 from assert_helper import *
 from conn import *
 
@@ -202,3 +204,30 @@ def test_rpoplpush():
     assert(ret == elems[-1:])
     ret = conn.delete(key, new_key)
     assert(ret == 2)
+
+
+def bpop(key):
+    conn = get_redis_conn()
+    ret = conn.execute_command("brpop", key, 1)
+    assert (ret == None)
+    ret = conn.execute_command("brpop", key, 0)
+    assert (ret == 'a')
+
+    ret = conn.execute_command("blpop", key, 0)
+    assert (ret == 'b')
+
+
+def test_bpop():
+    key = "test_bpop"
+    conn = get_redis_conn()
+    ret = conn.delete(key)
+    x = threading.Thread(target=bpop, args=(key,))
+    x.start()
+
+    time.sleep(3)
+    ret = conn.rpush(key, "a")
+    assert(ret == 1)
+    time.sleep(3)
+    ret = conn.lpush(key, "b")
+    assert(ret == 1)
+

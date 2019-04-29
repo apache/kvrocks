@@ -150,3 +150,14 @@ def test_hgetall():
     assert(ret == kvs)
     ret = conn.delete(key)
     assert(ret == 1)
+
+def test_hscan():
+    conn = get_redis_conn()
+    key = "test_hscan"
+    ret = conn.hset(key, 'a', 1.3)
+    assert (ret == 1)
+    ret = conn.execute_command("HSCAN " + key + " 0")
+    assert (ret == ['a', ['a']])
+
+    ret = conn.delete(key)
+    assert (ret == 1)

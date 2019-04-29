@@ -177,6 +177,8 @@ Status Config::parseConfigFromString(std::string input) {
     masterauth = args[1];
   } else if (size == 2 && args[0] == "max-backup-to-keep") {
     max_backup_to_keep = static_cast<uint32_t>(std::stoi(args[1]));
+  } else if (size == 2 && args[0] == "max-backup-keep-hours") {
+    max_backup_keep_hours = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size == 2 && args[0] == "requirepass") {
     requirepass = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
@@ -303,6 +305,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
   PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
   PUSH_IF_MATCH(is_all, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
+  PUSH_IF_MATCH(is_all, key, "max-backup-keep-hours", std::to_string(max_backup_keep_hours));
   PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
   PUSH_IF_MATCH(is_all, key, "loglevel", kLogLevels[loglevel]);
@@ -353,6 +356,10 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
   }
   if (key == "max-backup-to-keep") {
     max_backup_to_keep = static_cast<uint32_t>(std::stoi(value));
+    return Status::OK();
+  }
+  if (key == "max-backup-keep-hours") {
+    max_backup_keep_hours = static_cast<uint32_t>(std::stoi(value));
     return Status::OK();
   }
   if (key == "masterauth") {
@@ -452,6 +459,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
   WRITE_TO_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
+  WRITE_TO_FILE("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
   WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port-1));

@@ -32,6 +32,7 @@ struct Config{
   int backlog = 1024;
   int maxclients = 10240;
   uint32_t max_backup_to_keep = 1;
+  uint32_t max_backup_keep_hours = 0;
   int64_t slowlog_log_slower_than = 200000;  // 200ms
   unsigned int slowlog_max_len = 0;
   bool daemonize = false;

@@ -236,7 +236,7 @@ void Server::cron() {
     }
     // check every minutes
     if (counter != 0 && counter % 600 == 0) {
-      storage_->PurgeOldBackups(config_->max_backup_to_keep);
+      storage_->PurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
     }
     counter++;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

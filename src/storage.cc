@@ -175,26 +175,36 @@ Status Storage::RestoreFromBackup() {
   return Status::OK();
 }
 
-void Storage::PurgeOldBackups(uint32_t num_backups_to_keep) {
+void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
-  if (backup_infos.size() <= num_backups_to_keep) {
-    DLOG(INFO) << "[storage] Current backup num: " << backup_infos.size()
-              << ", num backups to keep: " << num_backups_to_keep
-              << ", no backup needs to purge";
-    return;
+  if (backup_infos.size() > num_backups_to_keep) {
+    uint32_t num_backups_to_purge = static_cast<uint32_t>(backup_infos.size()) - num_backups_to_keep;
+    LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
+    for (uint32_t i = 0; i < num_backups_to_purge; i++) {
+      LOG(INFO) << "[storage] The old backup(id: "
+                << backup_infos[i].backup_id << ") would be purged, "
+                << " created at: " << backup_infos[i].timestamp
+                << ", size: " << backup_infos[i].size
+                << ", num files: " << backup_infos[i].number_files;
+    }
+    auto s = backup_->PurgeOldBackups(num_backups_to_keep);
+    LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
   }
-  uint32_t num_backups_to_purge = backup_infos.size()-num_backups_to_keep;
-  LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
-  for (uint32_t i = 0; i < num_backups_to_purge; i++) {
-    LOG(INFO) << "[storage] The old backup(id: "
-              << backup_infos[i].backup_id << ") would be purged, "
-              << " created at: " << backup_infos[i].timestamp
+
+  if (backup_max_keep_hours == 0) return;
+  backup_infos.clear();
+  backup_->GetBackupInfo(&backup_infos);
+  time_t now = time(nullptr);
+  for (uint32_t i = 0; i < backup_infos.size(); i++) {
+    if (backup_infos[i].timestamp + backup_max_keep_hours*3600 >= now) break;
+    LOG(INFO) << "[storage] The old backup(id:"
+              << backup_infos[i].backup_id << ") would be purged because expired"
+              << ", created at: " << backup_infos[i].timestamp
               << ", size: " << backup_infos[i].size
               << ", num files: " << backup_infos[i].number_files;
+    backup_->DeleteBackup(backup_infos[i].backup_id);
   }
-  auto s = backup_->PurgeOldBackups(num_backups_to_keep);
-  LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
 }
 
 Status Storage::GetWALIter(

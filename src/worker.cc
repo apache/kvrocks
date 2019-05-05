@@ -185,7 +185,7 @@ std::string Worker::GetClientsStr() {
       << " name=" << c->GetName()
       << " age=" << c->GetAge()
       << " idle=" << c->GetIdleTime()
-      << " flags="
+      << " flags=" << c->GetFlags()
       << " namespace=" << c->GetNamespace()
       << " qbuf=" << evbuffer_get_length(c->Input())
       << " obuf=" << evbuffer_get_length(c->Output())

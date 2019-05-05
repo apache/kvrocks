@@ -88,6 +88,15 @@ uint64_t Connection::GetIdleTime() {
   return static_cast<uint64_t>(now-last_interaction_);
 }
 
+std::string Connection::GetFlags() {
+  std::string flags;
+  if (owner_->IsRepl()) flags.append("S");
+  if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
+  if (!subscribe_channels_.empty()) flags.append("P");
+  if (flags.empty()) flags = "N";
+  return flags;
+}
+
 void Connection::SetFlag(Flag flag) {
   flags_ |= flag;
 }

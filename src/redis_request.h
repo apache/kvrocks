@@ -64,6 +64,7 @@ class Connection {
   uint64_t GetAge();
   uint64_t GetIdleTime();
   void SetLastInteraction();
+  std::string GetFlags();
   void SetFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
   bool IsRepl() { return this->owner_->IsRepl();}

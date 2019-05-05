@@ -2387,6 +2387,11 @@ class CommandPSync : public Commander {
 
   static void StreamingBatch(bufferevent *bev, void *ctx) {
     auto self = reinterpret_cast<CommandPSync *>(ctx);
+    // connection was killed by client kill command
+    if (self->conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+      self->Disconnect();
+      return;
+    }
     auto output = bufferevent_get_output(bev);
     while (true) {
       switch (self->state_) {

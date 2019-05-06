@@ -161,7 +161,7 @@ void Worker::RemoveConnectionByID(int fd, uint64_t id) {
     removeConnection(iter);
 }
 
-Status Worker::EnableWrite(int fd) {
+Status Worker::EnableWriteEvent(int fd) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {

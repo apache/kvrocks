@@ -35,7 +35,7 @@ class Worker {
   void RemoveConnection(int fd);
   void RemoveConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
-  Status EnableWrite(int fd);
+  Status EnableWriteEvent(int fd);
   bool IsRepl() { return repl_; }
 
   std::string GetClientsStr();

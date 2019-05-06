@@ -185,7 +185,7 @@ Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   }
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    conn_ctx->owner->EnableWrite(conn_ctx->fd);
+    conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
     delConnContext(conn_ctx);
     iter->second.pop_front();
   }

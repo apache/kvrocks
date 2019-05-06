@@ -36,6 +36,7 @@ class Worker {
   void RemoveConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
   Status EnableWriteEvent(int fd);
+  Status Reply(int fd, const std::string &reply);
   bool IsRepl() { return repl_; }
   void BecomeMonitorConn(Redis::Connection *conn);
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);

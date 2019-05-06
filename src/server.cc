@@ -83,7 +83,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   master_host_ = std::move(host);
   master_port_ = port;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(master_host_, master_port_, storage_, config_->masterauth));
+      new ReplicationThread(master_host_, master_port_, this, config_->masterauth));
   replication_thread_->Start([this]() { this->is_loading_ = true; },
                              [this]() { this->is_loading_ = false; });
   slaveof_mu_.unlock();
@@ -111,6 +111,7 @@ void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
 }
 
 int Server::PublishMessage(const std::string &channel, const std::string &msg) {
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   int cnt = 0;
 
   auto iter = pubsub_channels_.find(channel);
@@ -122,32 +123,42 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   reply.append(Redis::BulkString("message"));
   reply.append(Redis::BulkString(channel));
   reply.append(Redis::BulkString(msg));
-  for (const auto conn : iter->second) {
-    Redis::Reply(conn->Output(), reply);
-    cnt++;
+  for (const auto &conn_ctx : iter->second) {
+    auto s = conn_ctx->owner->Reply(conn_ctx->fd, reply);
+    if (s.IsOK()) {
+      cnt++;
+    }
   }
   return cnt;
 }
 
 void Server::SubscribeChannel(const std::string &channel, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
+  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  conn_ctxs_[conn_ctx] = true;
   auto iter = pubsub_channels_.find(channel);
   if (iter == pubsub_channels_.end()) {
-    std::list<Redis::Connection*> conns;
-    conns.emplace_back(conn);
-    pubsub_channels_.insert(std::pair<std::string, std::list<Redis::Connection*>>(channel, conns));
+    std::list<ConnContext *> conn_ctxs;
+    conn_ctxs.emplace_back(conn_ctx);
+    pubsub_channels_.insert(std::pair<std::string, std::list<ConnContext *>>(channel, conn_ctxs));
   } else {
-    iter->second.emplace_back(conn);
+    iter->second.emplace_back(conn_ctx);
   }
 }
 
 void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   auto iter = pubsub_channels_.find(channel);
   if (iter == pubsub_channels_.end()) {
     return;
   }
-  for (const auto &c : iter->second) {
-    if (conn == c) {
-      iter->second.remove(c);
+  for (const auto &conn_ctx : iter->second) {
+    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
+      delConnContext(conn_ctx);
+      iter->second.remove(conn_ctx);
+      if (iter->second.empty()) {
+        pubsub_channels_.erase(iter);
+      }
       break;
     }
   }

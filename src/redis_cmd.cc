@@ -15,6 +15,7 @@
 #include "redis_set.h"
 #include "redis_string.h"
 #include "redis_zset.h"
+#include "redis_pubsub.h"
 #include "replication.h"
 #include "util.h"
 #include "storage.h"
@@ -2229,6 +2230,12 @@ class CommandPublish : public Commander {
  public:
   CommandPublish() : Commander("publish", 3, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisPubSub pubsub_db(svr->storage_);
+    auto s = pubsub_db.Publish(args_[1], args_[2]);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
     int receivers = svr->PublishMessage(args_[1], args_[2]);
     *output = Redis::Integer(receivers);
     return Status::OK();

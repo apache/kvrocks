@@ -11,6 +11,8 @@
 #include "status.h"
 #include "storage.h"
 
+class Server;
+
 enum ReplState {
   kReplConnecting = 1,
   kReplSendAuth,
@@ -25,7 +27,7 @@ enum ReplState {
 class ReplicationThread {
  public:
   explicit ReplicationThread(std::string host, uint32_t port,
-                             Engine::Storage *storage, std::string auth = "");
+                             Server *srv, std::string auth = "");
   void Start(std::function<void()> &&pre_fullsync_cb,
              std::function<void()> &&post_fullsync_cb);
   void Stop();
@@ -85,6 +87,7 @@ class ReplicationThread {
   std::string host_;
   uint32_t port_;
   std::string auth_;
+  Server *srv_ = nullptr;
   Engine::Storage *storage_ = nullptr;
   ReplState repl_state_;
   time_t last_io_time_ = 0;
@@ -131,4 +134,22 @@ class ReplicationThread {
   Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
 
   static void EventTimerCB(int, int16_t, void *ctx);
+
+  rocksdb::Status ParseWriteBatch(const std::string &batch_string);
+};
+
+/*
+ * An extractor to extract update from raw writebatch
+ */
+class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
+ public:
+  rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
+                        const rocksdb::Slice &value) override;
+
+  rocksdb::Slice GetPublishChannel() { return publish_message_.first; }
+  rocksdb::Slice GetPublishValue() { return publish_message_.second; }
+  bool IsPublish() { return is_publish_; }
+ private:
+  std::pair<std::string, std::string> publish_message_;
+  bool is_publish_ = false;
 };

@@ -18,9 +18,9 @@ void send_string_to_event(bufferevent *bev, const std::string &data) {
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-Sync::Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
-    : ReplicationThread(config->kvrocks_host, config->kvrocks_port, storage, config->kvrocks_auth),
-      storage_(storage),
+Sync::Sync(Server *srv, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
+    : ReplicationThread(config->kvrocks_host, config->kvrocks_port, srv, config->kvrocks_auth),
+      storage_(srv->storage_),
       writer_(writer),
       parser_(parser),
       config_(config),

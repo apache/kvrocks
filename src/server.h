@@ -149,9 +149,10 @@ class Server {
   std::map<std::string, DBScanInfo> db_scan_infos_;
 
   SlowLog slowlog_;
-  std::map<std::string, std::list<Redis::Connection *>> pubsub_channels_;
-  std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::map<ConnContext *, bool> conn_ctxs_;
+  std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
+  std::mutex pubsub_channels_mu_;
+  std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;
 
   // threads

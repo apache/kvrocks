@@ -189,6 +189,16 @@ Status Worker::EnableWriteEvent(int fd) {
   return Status(Status::NotOK);
 }
 
+Status Worker::Reply(int fd, const std::string &reply) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  auto iter = conns_.find(fd);
+  if (iter != conns_.end()) {
+    Redis::Reply(iter->second->Output(), reply);
+    return Status::OK();
+  }
+  return Status(Status::NotOK, "connection doesn't exist");
+}
+
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {
   conns_mu_.lock();
   conns_.erase(conn->GetFD());

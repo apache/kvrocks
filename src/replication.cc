@@ -1,3 +1,5 @@
+#include "replication.h"
+
 #include <arpa/inet.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -9,10 +11,10 @@
 #include <thread>
 
 #include "redis_reply.h"
-#include "replication.h"
 #include "rocksdb_crc32c.h"
 #include "util.h"
 #include "status.h"
+#include "server.h"
 
 void send_string(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);
@@ -125,11 +127,12 @@ void ReplicationThread::CallbacksStateMachine::Stop() {
 }
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
-                                     Engine::Storage *storage, std::string auth)
+                                     Server *srv, std::string auth)
     : host_(std::move(host)),
       port_(port),
       auth_(std::move(auth)),
-      storage_(storage),
+      srv_(srv),
+      storage_(srv->storage_),
       repl_state_(kReplConnecting),
       psync_steps_(this,
                    CallbacksStateMachine::CallbackList{
@@ -347,6 +350,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
             self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
             return CBState::QUIT;
           }
+          self->ParseWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
         } else {
@@ -604,4 +608,30 @@ void ReplicationThread::EventTimerCB(int, int16_t, void *ctx) {
     self->psync_steps_.Stop();
     self->fullsync_steps_.Stop();
   }
+}
+
+rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_string) {
+  rocksdb::WriteBatch write_batch(batch_string);
+  WriteBatchHandler write_batch_handler;
+  rocksdb::Status status;
+
+  status = write_batch.Iterate(&write_batch_handler);
+  if (!status.ok()) return status;
+  if (write_batch_handler.IsPublish()) {
+    srv_->PublishMessage(write_batch_handler.GetPublishChannel().ToString(),
+                         write_batch_handler.GetPublishValue().ToString());
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
+                                         const rocksdb::Slice &value) {
+  if (column_family_id != kColumnFamilyIDPubSub) {
+    return rocksdb::Status::OK();
+  }
+
+  publish_message_ = std::make_pair(key.ToString(), value.ToString());
+  is_publish_ = true;
+  return rocksdb::Status::OK();
 }

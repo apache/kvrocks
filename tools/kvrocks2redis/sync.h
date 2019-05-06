@@ -7,6 +7,7 @@
 #include "../../src/status.h"
 #include "../../src/storage.h"
 #include "../../src/replication.h"
+#include "../../src/server.h"
 
 #include "config.h"
 #include "writer.h"
@@ -14,7 +15,7 @@
 
 class Sync : public ReplicationThread {
  public:
-  explicit Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
+  explicit Sync(Server *srv, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
   ~Sync() {
     if (next_seq_fd_) close(next_seq_fd_);
   }

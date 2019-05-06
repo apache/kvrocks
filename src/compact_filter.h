@@ -63,4 +63,21 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   rocksdb::DB **db_;
   std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
 };
+
+class PubSubFilter : public rocksdb::CompactionFilter {
+ public:
+  const char *Name() const override { return "PubSubFilter"; }
+  bool Filter(int level, const Slice &key, const Slice &value,
+              std::string *new_value, bool *modified) const override { return true; }
+};
+
+class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  PubSubFilterFactory() = default;
+  const char *Name() const override { return "PubSubFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
+  }
+};
 }  // namespace Engine

@@ -60,3 +60,7 @@
 
 * Version 0.1.16(@2019-04-25)
 	- fix core dump when execute `client kill id=3`
+
+* Version 0.1.17(@2019-05-17)
+	- supports brpop/blpop/randomkey command
+	- fix client kill didn't work when the connection was doing the streaming batch

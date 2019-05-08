@@ -108,8 +108,8 @@ class Server {
   void CreateSlowlogReply(std::string *output, uint32_t count);
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
-  void DecrClients();
-  Status IncrClients();
+  int DecrClientNum();
+  int IncrClientNum();
   int IncrMonitorClientNum();
   int DecrMonitorClientNum();
   std::string GetClientsStr();

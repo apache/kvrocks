@@ -133,8 +133,11 @@ Status Worker::AddConnection(Redis::Connection *c) {
   if (iter != conns_.end()) {
     return Status(Status::NotOK, "connection was exists");
   }
-  Status status = svr_->IncrClients();
-  if (!status.IsOK()) return status;
+  int max_clients = svr_->GetConfig()->maxclients;
+  if (svr_->IncrClientNum() >= max_clients) {
+    svr_->DecrClientNum();
+    return Status(Status::NotOK, "max number of clients reached");
+  }
   conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
   uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
   c->SetID(id);
@@ -147,13 +150,13 @@ void Worker::RemoveConnection(int fd) {
   if (iter != conns_.end()) {
     delete iter->second;
     conns_.erase(iter);
-    svr_->DecrClients();
+    svr_->DecrClientNum();
   }
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end()) {
     delete iter->second;
     monitor_conns_.erase(iter);
-    svr_->DecrClients();
+    svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }
 }
@@ -164,13 +167,13 @@ void Worker::RemoveConnectionByID(int fd, uint64_t id) {
   if (iter != conns_.end() && iter->second->GetID() == id) {
     delete iter->second;
     conns_.erase(iter);
-    svr_->DecrClients();
+    svr_->DecrClientNum();
   }
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
     delete iter->second;
     monitor_conns_.erase(iter);
-    svr_->DecrClients();
+    svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }
 }

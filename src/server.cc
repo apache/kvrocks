@@ -208,18 +208,13 @@ void Server::delConnContext(ConnContext *c) {
   }
 }
 
-Status Server::IncrClients() {
-  auto connections = connected_clients_.fetch_add(1, std::memory_order_relaxed);
-  if (config_->maxclients > 0 && connections >= config_->maxclients) {
-    connected_clients_.fetch_sub(1, std::memory_order_relaxed);
-    return Status(Status::NotOK, "max number of clients reached");
-  }
-  total_clients_.fetch_add(1, std::memory_order_relaxed);
-  return Status::OK();
+int Server::IncrClientNum() {
+  total_clients_.fetch_add(1, std::memory_order::memory_order_relaxed);
+  return connected_clients_.fetch_add(1, std::memory_order_relaxed);
 }
 
-void Server::DecrClients() {
-  connected_clients_.fetch_sub(1, std::memory_order_relaxed);
+int Server::DecrClientNum() {
+  return connected_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
 int Server::IncrMonitorClientNum() {

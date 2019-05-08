@@ -98,7 +98,7 @@ std::string Connection::GetFlags() {
   return flags;
 }
 
-void Connection::SetFlag(Flag flag) {
+void Connection::EnableFlag(Flag flag) {
   flags_ |= flag;
 }
 

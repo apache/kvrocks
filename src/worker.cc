@@ -192,7 +192,7 @@ void Worker::BecomeMonitorConn(Redis::Connection *conn) {
   monitor_conns_[conn->GetFD()] = conn;
   conns_mu_.unlock();
   svr_->IncrMonitorClientNum();
-  conn->SetFlag(Redis::Connection::kMonitor);
+  conn->EnableFlag(Redis::Connection::kMonitor);
 }
 
 void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
@@ -244,7 +244,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
     if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
-        conn->SetFlag(Redis::Connection::kCloseAfterReply);
+      conn->EnableFlag(Redis::Connection::kCloseAfterReply);
         auto bev = conn->GetBufferEvent();
         // enable write event to notify worker wake up ASAP, and remove the connection
         bufferevent_enable(bev, EV_WRITE);

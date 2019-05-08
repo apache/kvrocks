@@ -140,10 +140,12 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  Server srv(&storage, &kvrocks_config);
+
   RedisWriter writer(&config);
   Parser parser(&storage, &writer);
 
-  Sync sync(&storage, &writer, &parser, &config);
+  Sync sync(&srv, &writer, &parser, &config);
   hup_handler = [&sync, &opts]() {
     if (!sync.IsStopped()) {
       LOG(INFO) << "Bye Bye";

@@ -18,6 +18,7 @@ enum ColumnFamilyID{
   kColumnFamilyIDDefault,
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,
+  kColumnFamilyIDPubSub,
 };
 
 namespace Engine {

@@ -16,6 +16,7 @@
 
 namespace Engine {
 
+const char *kPubSubColumnFamilyName = "pubsub";
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 using rocksdb::Slice;
@@ -30,6 +31,7 @@ Storage::~Storage() {
 
 void Storage::InitOptions(rocksdb::Options *options) {
   options->create_if_missing = true;
+  options->create_missing_column_families = true;
   // options.IncreaseParallelism(2);
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
@@ -60,7 +62,8 @@ Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
   if (s.ok()) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
-                                         kZSetScoreColumnFamilyName};
+                                         kZSetScoreColumnFamilyName,
+                                         kPubSubColumnFamilyName};
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -95,11 +98,18 @@ Status Storage::Open(bool read_only) {
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);
 
+  rocksdb::BlockBasedTableOptions pubsub_table_opts;
+  pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  rocksdb::ColumnFamilyOptions pubsub_opts(options);
+  pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
+  pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
 
   auto start = std::chrono::high_resolution_clock::now();
   rocksdb::Status s;
@@ -244,6 +254,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[1];
   } else if (name == kZSetScoreColumnFamilyName) {
     return cf_handles_[2];
+  } else if (name == kPubSubColumnFamilyName) {
+    return cf_handles_[3];
   }
   return cf_handles_[0];
 }

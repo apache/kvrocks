@@ -99,6 +99,8 @@ target_sources(kvrocks PRIVATE
         src/redis_zset.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
+        src/redis_pubsub.cc
+        src/redis_pubsub.h
         src/lock_manager.cc
         src/rocksdb_crc32c.h
         src/config.cc
@@ -128,8 +130,14 @@ target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks2redis PRIVATE
         src/compact_filter.cc
         src/compact_filter.h
+        src/worker.cc
+        src/worker.h
         src/util.cc
         src/util.h
+        src/redis_request.cc
+        src/redis_request.h
+        src/redis_cmd.cc
+        src/redis_cmd.h
         src/storage.cc
         src/storage.h
         src/status.h
@@ -153,6 +161,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_zset.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
+        src/redis_pubsub.cc
+        src/redis_pubsub.h
         src/replication.cc
         src/replication.h
         src/lock_manager.cc
@@ -161,6 +171,8 @@ target_sources(kvrocks2redis PRIVATE
         src/config.h
         src/stats.cc
         src/stats.h
+        src/server.cc
+        src/server.h
         src/cron.cc
         src/cron.h
         src/event_listener.h

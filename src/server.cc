@@ -102,6 +102,14 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
+void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
+  if (monitor_clients_ <= 0) return;
+  for (const auto &worker_thread : worker_threads_) {
+    auto worker = worker_thread->GetWorker();
+    worker->FeedMonitorConns(conn, tokens);
+  }
+}
+
 int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   int cnt = 0;
 
@@ -214,6 +222,14 @@ void Server::DecrClients() {
   connected_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
+int Server::IncrMonitorClientNum() {
+  return monitor_clients_.fetch_add(1, std::memory_order_relaxed);
+}
+
+int Server::DecrMonitorClientNum() {
+  return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
+}
+
 std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
@@ -319,6 +335,7 @@ void Server::GetClientsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Clients\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
+  string_stream << "monitor_clients:" << monitor_clients_ << "\r\n";
   *info = string_stream.str();
 }
 

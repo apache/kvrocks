@@ -44,6 +44,7 @@ class Request {
 class Connection {
  public:
   enum Flag {
+    kMonitor         = 1<<5,
     kCloseAfterReply = 1<<6,
   };
 

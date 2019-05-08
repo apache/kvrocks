@@ -74,6 +74,7 @@ class Server {
   void RemoveSlave(const SlaveInfoPos &pos);
   SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
   void UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
+  void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
@@ -109,6 +110,8 @@ class Server {
 
   void DecrClients();
   Status IncrClients();
+  int IncrMonitorClientNum();
+  int DecrMonitorClientNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
@@ -132,6 +135,7 @@ class Server {
   // client counters
   std::atomic<uint64_t> client_id_{1};
   std::atomic<int> connected_clients_{0};
+  std::atomic<int> monitor_clients_{0};
   std::atomic<uint64_t> total_clients_{0};
 
   // slave

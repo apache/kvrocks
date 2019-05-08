@@ -141,24 +141,38 @@ Status Worker::AddConnection(Redis::Connection *c) {
   return Status::OK();
 }
 
-void Worker::removeConnection(std::map<int, Redis::Connection *>::iterator iter) {
-  delete iter->second;
-  conns_.erase(iter);
-  svr_->DecrClients();
-}
-
 void Worker::RemoveConnection(int fd) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end())
-    removeConnection(iter);
+  if (iter != conns_.end()) {
+    delete iter->second;
+    conns_.erase(iter);
+    svr_->DecrClients();
+  }
+  iter = monitor_conns_.find(fd);
+  if (iter != monitor_conns_.end()) {
+    delete iter->second;
+    monitor_conns_.erase(iter);
+    svr_->DecrClients();
+    svr_->DecrMonitorClientNum();
+  }
 }
 
 void Worker::RemoveConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end() && iter->second->GetID() == id)
-    removeConnection(iter);
+  if (iter != conns_.end() && iter->second->GetID() == id) {
+    delete iter->second;
+    conns_.erase(iter);
+    svr_->DecrClients();
+  }
+  iter = monitor_conns_.find(fd);
+  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
+    delete iter->second;
+    monitor_conns_.erase(iter);
+    svr_->DecrClients();
+    svr_->DecrMonitorClientNum();
+  }
 }
 
 Status Worker::EnableWriteEvent(int fd) {
@@ -170,6 +184,34 @@ Status Worker::EnableWriteEvent(int fd) {
     return Status::OK();
   }
   return Status(Status::NotOK);
+}
+
+void Worker::BecomeMonitorConn(Redis::Connection *conn) {
+  conns_mu_.lock();
+  conns_.erase(conn->GetFD());
+  monitor_conns_[conn->GetFD()] = conn;
+  conns_mu_.unlock();
+  svr_->IncrMonitorClientNum();
+  conn->SetFlag(Redis::Connection::kMonitor);
+}
+
+void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  std::string output;
+  output += std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
+  output += " [0 " + conn->GetAddr() + "]";
+  for (const auto &token : tokens) {
+    output += " \"" + token + "\"";
+  }
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  for (const auto &iter : monitor_conns_) {
+    if (conn == iter.second) continue;  // skip the monitor command
+    if (conn->GetNamespace() == iter.second->GetNamespace()
+        || iter.second->GetNamespace() == kDefaultNamespace) {
+      iter.second->Reply(Redis::SimpleString(output));
+    }
+  }
 }
 
 std::string Worker::GetClientsStr() {

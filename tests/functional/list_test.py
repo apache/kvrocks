@@ -220,7 +220,6 @@ def bpop(key):
 def test_bpop():
     key = "test_bpop"
     conn = get_redis_conn()
-    ret = conn.delete(key)
     x = threading.Thread(target=bpop, args=(key,))
     x.start()
 

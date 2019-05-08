@@ -44,6 +44,7 @@ class Request {
 class Connection {
  public:
   enum Flag {
+    kMonitor         = 1<<5,
     kCloseAfterReply = 1<<6,
   };
 
@@ -65,7 +66,7 @@ class Connection {
   uint64_t GetIdleTime();
   void SetLastInteraction();
   std::string GetFlags();
-  void SetFlag(Flag flag);
+  void EnableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
   bool IsRepl() { return this->owner_->IsRepl();}
 

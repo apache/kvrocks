@@ -92,12 +92,13 @@ std::string Connection::GetFlags() {
   std::string flags;
   if (owner_->IsRepl()) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
+  if (IsFlagEnabled(kMonitor)) flags.append("M");
   if (!subscribe_channels_.empty()) flags.append("P");
   if (flags.empty()) flags = "N";
   return flags;
 }
 
-void Connection::SetFlag(Flag flag) {
+void Connection::EnableFlag(Flag flag) {
   flags_ |= flag;
 }
 
@@ -225,6 +226,7 @@ void Request::ExecuteCommands(Connection *conn) {
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
+    svr_->FeedMonitorConns(conn, cmd_tokens);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR " + s.Msg()));
       LOG(ERROR) << "[request] Failed to execute command: " << conn->current_cmd_->Name()

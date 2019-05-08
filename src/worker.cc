@@ -133,35 +133,52 @@ Status Worker::AddConnection(Redis::Connection *c) {
   if (iter != conns_.end()) {
     return Status(Status::NotOK, "connection was exists");
   }
-  Status status = svr_->IncrClients();
-  if (!status.IsOK()) return status;
+  int max_clients = svr_->GetConfig()->maxclients;
+  if (svr_->IncrClientNum() >= max_clients) {
+    svr_->DecrClientNum();
+    return Status(Status::NotOK, "max number of clients reached");
+  }
   conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
   uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
   c->SetID(id);
   return Status::OK();
 }
 
-void Worker::removeConnection(std::map<int, Redis::Connection *>::iterator iter) {
-  delete iter->second;
-  conns_.erase(iter);
-  svr_->DecrClients();
-}
-
 void Worker::RemoveConnection(int fd) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end())
-    removeConnection(iter);
+  if (iter != conns_.end()) {
+    delete iter->second;
+    conns_.erase(iter);
+    svr_->DecrClientNum();
+  }
+  iter = monitor_conns_.find(fd);
+  if (iter != monitor_conns_.end()) {
+    delete iter->second;
+    monitor_conns_.erase(iter);
+    svr_->DecrClientNum();
+    svr_->DecrMonitorClientNum();
+  }
 }
 
 void Worker::RemoveConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end() && iter->second->GetID() == id)
-    removeConnection(iter);
+  if (iter != conns_.end() && iter->second->GetID() == id) {
+    delete iter->second;
+    conns_.erase(iter);
+    svr_->DecrClientNum();
+  }
+  iter = monitor_conns_.find(fd);
+  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
+    delete iter->second;
+    monitor_conns_.erase(iter);
+    svr_->DecrClientNum();
+    svr_->DecrMonitorClientNum();
+  }
 }
 
-Status Worker::EnableWrite(int fd) {
+Status Worker::EnableWriteEvent(int fd) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
@@ -170,6 +187,34 @@ Status Worker::EnableWrite(int fd) {
     return Status::OK();
   }
   return Status(Status::NotOK);
+}
+
+void Worker::BecomeMonitorConn(Redis::Connection *conn) {
+  conns_mu_.lock();
+  conns_.erase(conn->GetFD());
+  monitor_conns_[conn->GetFD()] = conn;
+  conns_mu_.unlock();
+  svr_->IncrMonitorClientNum();
+  conn->EnableFlag(Redis::Connection::kMonitor);
+}
+
+void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  std::string output;
+  output += std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
+  output += " [0 " + conn->GetAddr() + "]";
+  for (const auto &token : tokens) {
+    output += " \"" + token + "\"";
+  }
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  for (const auto &iter : monitor_conns_) {
+    if (conn == iter.second) continue;  // skip the monitor command
+    if (conn->GetNamespace() == iter.second->GetNamespace()
+        || iter.second->GetNamespace() == kDefaultNamespace) {
+      iter.second->Reply(Redis::SimpleString(output));
+    }
+  }
 }
 
 std::string Worker::GetClientsStr() {
@@ -202,7 +247,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
     if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
-        conn->SetFlag(Redis::Connection::kCloseAfterReply);
+      conn->EnableFlag(Redis::Connection::kCloseAfterReply);
         auto bev = conn->GetBufferEvent();
         // enable write event to notify worker wake up ASAP, and remove the connection
         bufferevent_enable(bev, EV_WRITE);

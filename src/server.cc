@@ -102,6 +102,14 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
+void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
+  if (monitor_clients_ <= 0) return;
+  for (const auto &worker_thread : worker_threads_) {
+    auto worker = worker_thread->GetWorker();
+    worker->FeedMonitorConns(conn, tokens);
+  }
+}
+
 int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   int cnt = 0;
 
@@ -185,7 +193,7 @@ Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   }
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    conn_ctx->owner->EnableWrite(conn_ctx->fd);
+    conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
     delConnContext(conn_ctx);
     iter->second.pop_front();
   }
@@ -200,18 +208,21 @@ void Server::delConnContext(ConnContext *c) {
   }
 }
 
-Status Server::IncrClients() {
-  auto connections = connected_clients_.fetch_add(1, std::memory_order_relaxed);
-  if (config_->maxclients > 0 && connections >= config_->maxclients) {
-    connected_clients_.fetch_sub(1, std::memory_order_relaxed);
-    return Status(Status::NotOK, "max number of clients reached");
-  }
-  total_clients_.fetch_add(1, std::memory_order_relaxed);
-  return Status::OK();
+int Server::IncrClientNum() {
+  total_clients_.fetch_add(1, std::memory_order::memory_order_relaxed);
+  return connected_clients_.fetch_add(1, std::memory_order_relaxed);
 }
 
-void Server::DecrClients() {
-  connected_clients_.fetch_sub(1, std::memory_order_relaxed);
+int Server::DecrClientNum() {
+  return connected_clients_.fetch_sub(1, std::memory_order_relaxed);
+}
+
+int Server::IncrMonitorClientNum() {
+  return monitor_clients_.fetch_add(1, std::memory_order_relaxed);
+}
+
+int Server::DecrMonitorClientNum() {
+  return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {
@@ -319,6 +330,7 @@ void Server::GetClientsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Clients\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
+  string_stream << "monitor_clients:" << monitor_clients_ << "\r\n";
   *info = string_stream.str();
 }
 

@@ -2674,6 +2674,16 @@ class CommandClient : public Commander {
   bool new_format_ = true;
 };
 
+class CommandMonitor : public Commander {
+ public:
+  CommandMonitor() : Commander("monitor", 1, false) {}
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    conn->Owner()->BecomeMonitorConn(conn);
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 class CommandShutdown : public Commander {
  public:
   CommandShutdown() : Commander("shutdown", -1, false) {}
@@ -2977,6 +2987,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []()->std::unique_ptr<Commander> {
         return std::unique_ptr<Commander>(new CommandClient);
     }},
+    {"monitor",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandMonitor);
+     }},
     {"shutdown",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandShutdown);

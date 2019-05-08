@@ -35,8 +35,10 @@ class Worker {
   void RemoveConnection(int fd);
   void RemoveConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
-  Status EnableWrite(int fd);
+  Status EnableWriteEvent(int fd);
   bool IsRepl() { return repl_; }
+  void BecomeMonitorConn(Redis::Connection *conn);
+  void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   std::string GetClientsStr();
   void KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed);
@@ -48,16 +50,16 @@ class Worker {
   Status listen(const std::string &host, int port, int backlog);
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
-  void removeConnection(std::map<int, Redis::Connection*>::iterator iter);
   static void TimerCB(int, int16_t events, void *ctx);
 
   event_base *base_;
   event *timer_;
   std::thread::id tid_;
   std::vector<evconnlistener*> listen_events_;
-  std::map<int, Redis::Connection*> conns_;
-  int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
   std::mutex conns_mu_;
+  std::map<int, Redis::Connection*> conns_;
+  std::map<int, Redis::Connection*> monitor_conns_;
+  int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
 
   bool repl_;
 };
@@ -68,6 +70,7 @@ class WorkerThread {
   ~WorkerThread() { delete worker_; }
   WorkerThread(const WorkerThread&) = delete;
   WorkerThread(WorkerThread&&) = delete;
+  Worker *GetWorker() { return worker_; }
   void Start();
   void Stop();
   void Join();

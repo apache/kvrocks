@@ -130,7 +130,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
     }
   }
 
-  for (const auto &iter : pubsub_channels_patterns_) {
+  for (const auto &iter : pubsub_patterns_) {
     if (Util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {
         auto s = conn_ctx->owner->Reply(conn_ctx->fd, reply);
@@ -175,24 +175,44 @@ void Server::UnSubscribeChannel(const std::string &channel, Redis::Connection *c
   }
 }
 
-void Server::PSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn) {
+void Server::GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels) {
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
+  for (const auto &iter : pubsub_channels_) {
+    if (pattern.empty() || Util::StringMatch(pattern, iter.first, 0)) {
+      channels->emplace_back(iter.first);
+    }
+  }
+}
+
+void Server::ListChannelSubscribeNum(std::vector<std::string> channels,
+                                     std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
+  for (const auto &chan : channels) {
+    auto iter = pubsub_channels_.find(chan);
+    if (iter != pubsub_channels_.end()) {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{iter->first, iter->second.size()});
+    }
+  }
+}
+
+void Server::PSubscribeChannel(const std::string &pattern, Redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
-  auto iter = pubsub_channels_patterns_.find(channel_pattern);
-  if (iter == pubsub_channels_patterns_.end()) {
+  auto iter = pubsub_patterns_.find(pattern);
+  if (iter == pubsub_patterns_.end()) {
     std::list<ConnContext *> conn_ctxs;
     conn_ctxs.emplace_back(conn_ctx);
-    pubsub_channels_patterns_.insert(std::pair<std::string, std::list<ConnContext *>>(channel_pattern, conn_ctxs));
+    pubsub_patterns_.insert(std::pair<std::string, std::list<ConnContext *>>(pattern, conn_ctxs));
   } else {
     iter->second.emplace_back(conn_ctx);
   }
 }
 
-void Server::PUnSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn) {
+void Server::PUnSubscribeChannel(const std::string &pattern, Redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
-  auto iter = pubsub_channels_patterns_.find(channel_pattern);
-  if (iter == pubsub_channels_patterns_.end()) {
+  auto iter = pubsub_patterns_.find(pattern);
+  if (iter == pubsub_patterns_.end()) {
     return;
   }
   for (const auto &conn_ctx : iter->second) {
@@ -200,7 +220,7 @@ void Server::PUnSubscribeChannel(const std::string &channel_pattern, Redis::Conn
       delConnContext(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
-        pubsub_channels_patterns_.erase(iter);
+        pubsub_patterns_.erase(iter);
       }
       break;
     }

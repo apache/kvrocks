@@ -2298,6 +2298,61 @@ class CommandPUnSubscribe : public Commander {
   }
 };
 
+class CommandPubSub : public Commander {
+ public:
+  CommandPubSub() : Commander("pubsub", -2, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    if (subcommand_ == "numpat" && args.size() == 2) {
+      return Status::OK();
+    }
+    if ((subcommand_ == "numsub") && args.size() >= 2) {
+      if (args.size() > 2) {
+        channels_ = std::vector<std::string>(args.begin() + 2, args.end());
+      }
+      return Status::OK();
+    }
+    if ((subcommand_ == "channels") && args.size() <= 3) {
+      if (args.size() == 3) {
+        pattern_ = args[2];
+      }
+      return Status::OK();
+    }
+    return Status(Status::RedisInvalidCmd,
+                  "ERR Unknown subcommand or wrong number of arguments");
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (subcommand_ == "numpat") {
+      *output = Redis::Integer(srv->GetPubSubPatternSize());
+      return Status::OK();
+    } else if (subcommand_ == "numsub") {
+      std::vector<ChannelSubscribeNum> channel_subscribe_nums;
+      srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
+      for (const auto chan_subscribe_num : channel_subscribe_nums) {
+        output->append(Redis::BulkString(chan_subscribe_num.channel));
+        output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
+      }
+      return Status::OK();
+    } else if (subcommand_ == "channels") {
+      std::vector<std::string> channels;
+      srv->GetChannelsByPattern(pattern_, &channels);
+      *output = Redis::MultiBulkString(channels);
+      return Status::OK();
+    }
+
+    return Status(Status::RedisInvalidCmd,
+                  "ERR Unknown subcommand or wrong number of arguments");
+  }
+
+ private:
+  std::string pattern_;
+  std::vector<std::string> channels_;
+  std::string subcommand_;
+};
+
 class CommandSlaveOf : public Commander {
  public:
   CommandSlaveOf() : Commander("slaveof", 3, false) {}
@@ -3433,6 +3488,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"punsubscribe",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandPUnSubscribe);
+     }},
+    {"pubsub",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandPubSub);
      }},
 
     // internal management cmd

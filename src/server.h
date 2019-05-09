@@ -54,6 +54,11 @@ struct ConnContext {
   ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
 };
 
+typedef struct {
+  std::string channel;
+  size_t subscribe_num;
+} ChannelSubscribeNum;
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
@@ -79,8 +84,12 @@ class Server {
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
-  void PSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn);
-  void PUnSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn);
+  void GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
+  void ListChannelSubscribeNum(std::vector<std::string> channels,
+                               std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
+  void PSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
+  void PUnSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
+  int GetPubSubPatternSize() { return pubsub_patterns_.size(); }
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
@@ -153,7 +162,7 @@ class Server {
   SlowLog slowlog_;
   std::map<ConnContext *, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
-  std::map<std::string, std::list<ConnContext *>> pubsub_channels_patterns_;
+  std::map<std::string, std::list<ConnContext *>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;

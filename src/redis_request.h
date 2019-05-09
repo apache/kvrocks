@@ -61,8 +61,8 @@ class Connection {
   void UnSubscribeChannel(const std::string &channel);
   void UnSubscribeAll();
   int SubscriptionsCount();
-  void PSubscribeChannel(const std::string &channel_pattern);
-  void PUnSubscribeChannel(const std::string &channel_pattern);
+  void PSubscribeChannel(const std::string &pattern);
+  void PUnSubscribeChannel(const std::string &pattern);
   void PUnSubscribeAll();
   int PSubscriptionsCount();
 

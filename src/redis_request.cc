@@ -138,20 +138,20 @@ int Connection::SubscriptionsCount() {
   return static_cast<int>(subscribe_channels_.size());
 }
 
-void Connection::PSubscribeChannel(const std::string &channel_pattern) {
-  for (const auto &chan_p : subscribe_channels_patterns_) {
-    if (channel_pattern == chan_p) return;
+void Connection::PSubscribeChannel(const std::string &pattern) {
+  for (const auto &p : subscribe_channels_patterns_) {
+    if (pattern == p) return;
   }
-  subscribe_channels_patterns_.emplace_back(channel_pattern);
-  owner_->svr_->PSubscribeChannel(channel_pattern, this);
+  subscribe_channels_patterns_.emplace_back(pattern);
+  owner_->svr_->PSubscribeChannel(pattern, this);
 }
 
-void Connection::PUnSubscribeChannel(const std::string &channel_pattern) {
+void Connection::PUnSubscribeChannel(const std::string &pattern) {
   auto iter = subscribe_channels_.begin();
   for (; iter != subscribe_channels_.end(); iter++) {
-    if (*iter == channel_pattern) {
+    if (*iter == pattern) {
       subscribe_channels_.erase(iter);
-      owner_->svr_->PUnSubscribeChannel(channel_pattern, this);
+      owner_->svr_->PUnSubscribeChannel(pattern, this);
       return;
     }
   }

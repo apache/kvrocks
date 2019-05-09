@@ -79,6 +79,8 @@ class Server {
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
+  void PSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn);
+  void PUnSubscribeChannel(const std::string &channel_pattern, Redis::Connection *conn);
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
@@ -151,6 +153,7 @@ class Server {
   SlowLog slowlog_;
   std::map<ConnContext *, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
+  std::map<std::string, std::list<ConnContext *>> pubsub_channels_patterns_;
   std::mutex pubsub_channels_mu_;
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;

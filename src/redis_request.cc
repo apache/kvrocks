@@ -20,8 +20,9 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 
 Connection::~Connection() {
   if (bev_) { bufferevent_free(bev_); }
-  // unscribe all channels if exists
+  // unscribe all channels and channels_patterns if exists
   UnSubscribeAll();
+  PUnSubscribeAll();
 }
 
 void Connection::OnRead(struct bufferevent *bev, void *ctx) {
@@ -135,6 +136,37 @@ void Connection::UnSubscribeAll() {
 
 int Connection::SubscriptionsCount() {
   return static_cast<int>(subscribe_channels_.size());
+}
+
+void Connection::PSubscribeChannel(const std::string &channel_pattern) {
+  for (const auto &chan_p : subscribe_channels_patterns_) {
+    if (channel_pattern == chan_p) return;
+  }
+  subscribe_channels_patterns_.emplace_back(channel_pattern);
+  owner_->svr_->PSubscribeChannel(channel_pattern, this);
+}
+
+void Connection::PUnSubscribeChannel(const std::string &channel_pattern) {
+  auto iter = subscribe_channels_.begin();
+  for (; iter != subscribe_channels_.end(); iter++) {
+    if (*iter == channel_pattern) {
+      subscribe_channels_.erase(iter);
+      owner_->svr_->PUnSubscribeChannel(channel_pattern, this);
+      return;
+    }
+  }
+}
+
+void Connection::PUnSubscribeAll() {
+  if (subscribe_channels_patterns_.empty()) return;
+  for (const auto &chan_pattern : subscribe_channels_patterns_) {
+    owner_->svr_->PUnSubscribeChannel(chan_pattern, this);
+  }
+  subscribe_channels_patterns_.clear();
+}
+
+int Connection::PSubscriptionsCount() {
+  return static_cast<int>(subscribe_channels_patterns_.size());
 }
 
 void Request::Tokenize(evbuffer *input) {

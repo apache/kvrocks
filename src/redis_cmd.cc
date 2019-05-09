@@ -2270,6 +2270,34 @@ class CommandUnSubscribe : public Commander {
   }
 };
 
+class CommandPSubscribe : public Commander {
+ public:
+  CommandPSubscribe() : Commander("psubcribe", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    for (unsigned i = 1; i < args_.size(); i++) {
+      conn->PSubscribeChannel(args_[i]);
+      output->append(Redis::MultiLen(3));
+      output->append(Redis::BulkString("psubscribe"));
+      output->append(Redis::BulkString(args_[i]));
+      output->append(Redis::Integer(conn->PSubscriptionsCount()));
+    }
+    return Status::OK();
+  }
+};
+
+class CommandPUnSubscribe : public Commander {
+ public:
+  CommandPUnSubscribe() : Commander("punsubcribe", -1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_.size() > 1) {
+      conn->PUnSubscribeChannel(args_[1]);
+    } else {
+      conn->PUnSubscribeAll();
+    }
+    return Status::OK();
+  }
+};
+
 class CommandSlaveOf : public Commander {
  public:
   CommandSlaveOf() : Commander("slaveof", 3, false) {}
@@ -3397,6 +3425,14 @@ std::map<std::string, CommanderFactory> command_table = {
     {"unsubscribe",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandUnSubscribe);
+     }},
+    {"psubscribe",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandPSubscribe);
+     }},
+    {"punsubscribe",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandPUnSubscribe);
      }},
 
     // internal management cmd

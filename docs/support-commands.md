@@ -149,7 +149,14 @@
 
 ## Pub/Sub Commands
 
-**Not Supported(ongoning)**
+| Command      | Supported OR Not | Desc |
+| ------------ | ---------------- | ---- |
+| psubscribe   | √                |      |
+| publish      | √                |      |
+| pubsub       | √                |      |
+| punsubscribe | √                |      |
+| subscribe    | √                |      |
+| unsubscribe  | √                |      |
 
 ## GEO Commands
 

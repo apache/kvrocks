@@ -158,6 +158,18 @@
 | subscribe    | √                |      |
 | unsubscribe  | √                |      |
 
+## Administrator Commands
+
+| Command      | Supported OR Not | Desc |
+| ------------ | ---------------- | ---- |
+| monitor      | √                |      |
+| info         | √                |      |
+| config       | √                |      |
+| dbsize       | √                |      |
+| namespace    | √                |      |
+
+**NOTE : The db size was updated async after execute `dbsize scan` command**
+
 ## GEO Commands
 
 **Not Supported**

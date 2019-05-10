@@ -61,6 +61,10 @@ class Connection {
   void UnSubscribeChannel(const std::string &channel);
   void UnSubscribeAll();
   int SubscriptionsCount();
+  void PSubscribeChannel(const std::string &pattern);
+  void PUnSubscribeChannel(const std::string &pattern);
+  void PUnSubscribeAll();
+  int PSubscriptionsCount();
 
   uint64_t GetAge();
   uint64_t GetIdleTime();
@@ -108,6 +112,7 @@ class Connection {
   Request req_;
   Worker *owner_;
   std::vector<std::string> subscribe_channels_;
+  std::vector<std::string> subscribe_channels_patterns_;
 };
 
 }  // namespace Redis

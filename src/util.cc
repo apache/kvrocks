@@ -106,6 +106,131 @@ void Split(std::string in, std::string delim, std::vector<std::string> *out) {
   } while (pos != std::string::npos);
 }
 
+int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
+  return StringMatchLen(pattern.c_str(), pattern.length(), in.c_str(), in.length(), nocase);
+}
+
+// Glob-style pattern matching.
+int StringMatchLen(const char *pattern, int patternLen,
+                   const char *string, int stringLen, int nocase) {
+  while (patternLen && stringLen) {
+    switch (pattern[0]) {
+      case '*':
+        while (pattern[1] == '*') {
+          pattern++;
+          patternLen--;
+        }
+        if (patternLen == 1)
+          return 1; /* match */
+        while (stringLen) {
+          if (StringMatchLen(pattern + 1, patternLen - 1,
+                             string, stringLen, nocase))
+            return 1; /* match */
+          string++;
+          stringLen--;
+        }
+        return 0; /* no match */
+        break;
+      case '?':
+        if (stringLen == 0)
+          return 0; /* no match */
+        string++;
+        stringLen--;
+        break;
+      case '[': {
+        int not_symbol, match;
+
+        pattern++;
+        patternLen--;
+        not_symbol = pattern[0] == '^';
+        if (not_symbol) {
+          pattern++;
+          patternLen--;
+        }
+        match = 0;
+        while (1) {
+          if (pattern[0] == '\\' && patternLen >= 2) {
+            pattern++;
+            patternLen--;
+            if (pattern[0] == string[0])
+              match = 1;
+          } else if (pattern[0] == ']') {
+            break;
+          } else if (patternLen == 0) {
+            pattern--;
+            patternLen++;
+            break;
+          } else if (pattern[1] == '-' && patternLen >= 3) {
+            int start = pattern[0];
+            int end = pattern[2];
+            int c = string[0];
+            if (start > end) {
+              int t = start;
+              start = end;
+              end = t;
+            }
+            if (nocase) {
+              start = tolower(start);
+              end = tolower(end);
+              c = tolower(c);
+            }
+            pattern += 2;
+            patternLen -= 2;
+            if (c >= start && c <= end)
+              match = 1;
+          } else {
+            if (!nocase) {
+              if (pattern[0] == string[0])
+                match = 1;
+            } else {
+              if (tolower(static_cast<int>(pattern[0])) == tolower(static_cast<int>(string[0])))
+                match = 1;
+            }
+          }
+          pattern++;
+          patternLen--;
+        }
+        if (not_symbol)
+          match = !match;
+        if (!match)
+          return 0; /* no match */
+        string++;
+        stringLen--;
+        break;
+      }
+      case '\\':
+        if (patternLen >= 2) {
+          pattern++;
+          patternLen--;
+        }
+        /* fall through */
+      default:
+        if (!nocase) {
+          if (pattern[0] != string[0])
+            return 0; /* no match */
+        } else {
+          if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0])))
+            return 0; /* no match */
+        }
+        string++;
+        stringLen--;
+        break;
+    }
+    pattern++;
+    patternLen--;
+    if (stringLen == 0) {
+      while (*pattern == '*') {
+        pattern++;
+        patternLen--;
+      }
+      break;
+    }
+  }
+  if (patternLen == 0 && stringLen == 0)
+    return 1;
+  return 0;
+}
+
 void BytesToHuman(char *buf, size_t size, uint64_t n) {
   double d;
 

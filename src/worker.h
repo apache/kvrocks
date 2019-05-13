@@ -76,9 +76,6 @@ class WorkerThread {
   void Stop();
   void Join();
 
-  std::string GetClientsStr();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
-
  private:
   std::thread t_;
   Worker *worker_;

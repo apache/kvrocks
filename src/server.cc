@@ -703,15 +703,18 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint
 
 std::string Server::GetClientsStr() {
   std::string clients;
-  for (const auto worker : worker_threads_) {
-    clients.append(worker->GetClientsStr());
+  for (const auto t : worker_threads_) {
+    clients.append(t->GetWorker()->GetClientsStr());
   }
   return clients;
 }
 
 void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
-  for (const auto worker : worker_threads_) {
-    worker->KillClient(killed, addr, id, skipme, conn);
+  *killed = 0;
+  for (const auto t : worker_threads_) {
+    int64_t killed_in_worker = 0;
+    t->GetWorker()->KillClient(conn, id, addr, skipme, &killed_in_worker);
+    *killed += killed_in_worker;
   }
 }
 

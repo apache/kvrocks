@@ -20,7 +20,7 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 
 Connection::~Connection() {
   if (bev_) { bufferevent_free(bev_); }
-  // unscribe all channels and channels_patterns if exists
+  // unscribe all channels and patterns if exists
   UnSubscribeAll();
   PUnSubscribeAll();
 }
@@ -139,10 +139,10 @@ int Connection::SubscriptionsCount() {
 }
 
 void Connection::PSubscribeChannel(const std::string &pattern) {
-  for (const auto &p : subscribe_channels_patterns_) {
+  for (const auto &p : subcribe_patterns_) {
     if (pattern == p) return;
   }
-  subscribe_channels_patterns_.emplace_back(pattern);
+  subcribe_patterns_.emplace_back(pattern);
   owner_->svr_->PSubscribeChannel(pattern, this);
 }
 
@@ -158,15 +158,15 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
 }
 
 void Connection::PUnSubscribeAll() {
-  if (subscribe_channels_patterns_.empty()) return;
-  for (const auto &chan_pattern : subscribe_channels_patterns_) {
-    owner_->svr_->PUnSubscribeChannel(chan_pattern, this);
+  if (subcribe_patterns_.empty()) return;
+  for (const auto &pattern : subcribe_patterns_) {
+    owner_->svr_->PUnSubscribeChannel(pattern, this);
   }
-  subscribe_channels_patterns_.clear();
+  subcribe_patterns_.clear();
 }
 
 int Connection::PSubscriptionsCount() {
-  return static_cast<int>(subscribe_channels_patterns_.size());
+  return static_cast<int>(subcribe_patterns_.size());
 }
 
 void Request::Tokenize(evbuffer *input) {

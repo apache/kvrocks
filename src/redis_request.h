@@ -112,7 +112,7 @@ class Connection {
   Request req_;
   Worker *owner_;
   std::vector<std::string> subscribe_channels_;
-  std::vector<std::string> subscribe_channels_patterns_;
+  std::vector<std::string> subcribe_patterns_;
 };
 
 }  // namespace Redis

@@ -59,11 +59,11 @@ void Server::Stop() {
     worker->Stop();
   }
   task_runner_->Stop();
-  task_runner_->Join();
-  if (cron_thread_.joinable()) cron_thread_.join();
 }
 
 void Server::Join() {
+  task_runner_->Join();
+  if (cron_thread_.joinable()) cron_thread_.join();
   for (const auto worker : worker_threads_) {
     worker->Join();
   }
@@ -111,15 +111,14 @@ void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
 }
 
 int Server::PublishMessage(const std::string &channel, const std::string &msg) {
-  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   int cnt = 0;
-
   std::string reply;
   reply.append(Redis::MultiLen(3));
   reply.append(Redis::BulkString("message"));
   reply.append(Redis::BulkString(channel));
   reply.append(Redis::BulkString(msg));
 
+  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   auto iter = pubsub_channels_.find(channel);
   if (iter != pubsub_channels_.end()) {
     for (const auto &conn_ctx : iter->second) {
@@ -129,7 +128,6 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
       }
     }
   }
-
   for (const auto &iter : pubsub_patterns_) {
     if (Util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {

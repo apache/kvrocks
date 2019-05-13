@@ -44,6 +44,7 @@ function-test:
 
     script:
         - pip install nose && pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
+        - mkdir /data
         - sh tests/scripts/start_master.sh
         - sh tests/scripts/start_slave.sh
         - cd tests/functional && nosetests -v

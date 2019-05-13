@@ -316,11 +316,3 @@ void WorkerThread::Stop() {
 void WorkerThread::Join() {
   if (t_.joinable()) t_.join();
 }
-
-std::string WorkerThread::GetClientsStr() {
-  return worker_->GetClientsStr();
-}
-
-void WorkerThread::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
-  worker_->KillClient(conn, id, addr, skipme, killed);
-}

@@ -189,6 +189,8 @@ void Server::ListChannelSubscribeNum(std::vector<std::string> channels,
     auto iter = pubsub_channels_.find(chan);
     if (iter != pubsub_channels_.end()) {
       channel_subscribe_nums->emplace_back(ChannelSubscribeNum{iter->first, iter->second.size()});
+    } else {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{chan, 0});
     }
   }
 }

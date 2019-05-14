@@ -49,7 +49,7 @@ string(STRIP ${GIT_SHA} GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target
-add_executable(kvrocks)
+add_executable(kvrocks src/redis_connection.cc src/redis_connection.h)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
 target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
@@ -134,6 +134,8 @@ target_sources(kvrocks2redis PRIVATE
         src/worker.h
         src/util.cc
         src/util.h
+        src/redis_connection.cc
+        src/redis_connection.h
         src/redis_request.cc
         src/redis_request.h
         src/redis_cmd.cc

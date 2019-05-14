@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "redis_request.h"
+#include "redis_connection.h"
 #include "server.h"
 #include "util.h"
 

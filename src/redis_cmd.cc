@@ -12,6 +12,7 @@
 #include "redis_bitmap.h"
 #include "redis_list.h"
 #include "redis_request.h"
+#include "redis_connection.h"
 #include "redis_set.h"
 #include "redis_string.h"
 #include "redis_zset.h"

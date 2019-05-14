@@ -9,6 +9,7 @@
 #include "worker.h"
 #include "version.h"
 #include "redis_request.h"
+#include "redis_connection.h"
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {

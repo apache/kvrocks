@@ -24,15 +24,19 @@ FeedSlaveThread::~FeedSlaveThread() {
 Status FeedSlaveThread::Start() {
   try {
     t_ = std::thread([this]() {
-      Util::ThreadSetName("slave-repl");
+      Util::ThreadSetName("feed-slave-thread");
       sigset_t mask, omask;
       sigaddset(&mask, SIGCHLD);
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
+      // force feed slave thread was scheduled after making the fd blocking,
+      // and write "+OK\r\n" response to psync command
+      usleep(10000);
       this->loop();
     });
   } catch (const std::system_error &e) {
+    conn_ = nullptr;  // prevent connection was freed when failed to start the thread
     return Status(Status::NotOK, e.what());
   }
   return Status::OK();

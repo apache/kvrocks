@@ -17,8 +17,11 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  uint64_t max_replication_bytes =
+      config_->max_replication_mb > 0 ? config_->max_replication_mb * 1024 * 1024 / config_->repl_workers : 0;
   for (int i = 0; i < config->repl_workers; i++) {
     auto repl_worker = new Worker(this, config, true);
+    repl_worker->SetReplicationRateLimit(max_replication_bytes);
     worker_threads_.emplace_back(new WorkerThread(repl_worker));
   }
   task_runner_ = new TaskRunner(2, 1024);
@@ -732,4 +735,14 @@ void Server::RemoveSlave(const SlaveInfoPos &pos) {
 
 void Server::UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
   (*pos)->seq = seq;
+}
+
+void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {
+  uint64_t max_replication_bytes =
+      max_replication_mb > 0 ? max_replication_mb * 1024 * 1024 / config_->repl_workers : 0;
+  for (const auto &t : worker_threads_) {
+    if (t->GetWorker()->IsRepl()) {
+      t->GetWorker()->SetReplicationRateLimit(max_replication_bytes);
+    }
+  }
 }

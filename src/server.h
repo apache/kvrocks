@@ -79,6 +79,7 @@ class Server {
   void RemoveSlave(const SlaveInfoPos &pos);
   SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
   void UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
+  void SetReplicationRateLimit(uint64_t max_replication_mb);
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   int PublishMessage(const std::string &channel, const std::string &msg);

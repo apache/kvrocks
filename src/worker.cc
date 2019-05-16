@@ -42,6 +42,12 @@ Worker::~Worker() {
   }
   event_free(timer_);
   event_base_free(base_);
+  if (rate_limit_group_ != nullptr) {
+    bufferevent_rate_limit_group_free(rate_limit_group_);
+  }
+  if (rate_limit_group_cfg_ != nullptr) {
+    ev_token_bucket_cfg_free(rate_limit_group_cfg_);
+  }
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
@@ -85,6 +91,10 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
     std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     worker->RemoveConnection(conn->GetFD());
+  }
+
+  if (worker->IsRepl() && worker->rate_limit_group_ != nullptr) {
+    bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
 
@@ -198,6 +208,36 @@ Status Worker::Reply(int fd, const std::string &reply) {
     return Status::OK();
   }
   return Status(Status::NotOK, "connection doesn't exist");
+}
+
+int Worker::SetReplicationRateLimit(uint64_t max_replication_bytes) {
+  auto write_limit = EV_RATE_LIMIT_MAX;
+  if (max_replication_bytes > 0) {
+    write_limit = max_replication_bytes;
+  }
+  struct timeval cfg_tick = {1, 0};
+  auto old_cfg = rate_limit_group_cfg_;
+  rate_limit_group_cfg_ = ev_token_bucket_cfg_new(
+      EV_RATE_LIMIT_MAX, EV_RATE_LIMIT_MAX,
+      write_limit, write_limit,
+      &cfg_tick);
+  if (rate_limit_group_cfg_ == nullptr) {
+    LOG(ERROR) << "[server] ev_token_bucket_cfg_new error";
+    rate_limit_group_cfg_ = old_cfg;
+    return -1;
+  }
+
+  if (rate_limit_group_ != nullptr) {
+    bufferevent_rate_limit_group_set_cfg(rate_limit_group_, rate_limit_group_cfg_);
+  } else {
+    rate_limit_group_ = bufferevent_rate_limit_group_new(base_, rate_limit_group_cfg_);
+  }
+
+  if (old_cfg != nullptr) {
+    ev_token_bucket_cfg_free(old_cfg);
+  }
+
+  return 0;
 }
 
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {

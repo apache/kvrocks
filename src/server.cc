@@ -1,7 +1,6 @@
 #include "server.h"
 
 #include <fcntl.h>
-#include <signal.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
 #include <glog/logging.h>
@@ -12,80 +11,6 @@
 #include "version.h"
 #include "redis_request.h"
 #include "redis_connection.h"
-
-FeedSlaveThread::~FeedSlaveThread() {
-  delete conn_;
-}
-
-Status FeedSlaveThread::Start() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("slave-repl");
-      sigset_t mask, omask;
-      sigaddset(&mask, SIGCHLD);
-      sigaddset(&mask, SIGHUP);
-      sigaddset(&mask, SIGPIPE);
-      pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      this->loop();
-    });
-  } catch (const std::system_error &e) {
-    return Status(Status::NotOK, e.what());
-  }
-  return Status::OK();
-}
-
-void FeedSlaveThread::Stop() {
-  stop_ = true;
-  LOG(WARNING) << "Slave thread was terminated, would stop feeding the slave: " << conn_->GetAddr();
-}
-
-void FeedSlaveThread::Join() {
-  if (t_.joinable()) t_.join();
-}
-
-void FeedSlaveThread::checkLivenessIfNeed() {
-  if (++interval % 1000) return;
-  if (write(conn_->GetFD(), "$4\r\nping\r\n", 10) != 10) {
-    LOG(ERROR) << "Error ping slave: " << conn_->GetAddr() << ", would stop the thread";
-    Stop();
-  }
-}
-
-void FeedSlaveThread::loop() {
-  uint32_t yield_milliseconds = 2000;
-  while (!IsStopped()) {
-    if (!iter_ || !iter_->Valid()) {
-      if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
-        usleep(yield_milliseconds);
-        checkLivenessIfNeed();
-        continue;
-      }
-    }
-    // iter_ would be always valid here
-    auto batch = iter_->GetBatch();
-    auto data = batch.writeBatchPtr->Data();
-    // Send data in redis bulk string format
-    std::string bulk_str = "$" + std::to_string(data.length()) + CRLF + data + CRLF;
-    ssize_t nwritten = write(conn_->GetFD(), bulk_str.data(), bulk_str.size());
-    if (nwritten == -1) {
-      LOG(ERROR) << "Write error while sending batch to slave: " << strerror(errno);
-      Stop();
-      return;
-    }
-    if (batch.sequence != next_repl_seq_) {
-      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
-      Stop();
-      return;
-    }
-    next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-    while (!IsStopped() && next_repl_seq_ > srv_->storage_->LatestSeq()) {
-      usleep(yield_milliseconds);
-      checkLivenessIfNeed();
-    }
-    iter_->Next();
-  }
-}
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {

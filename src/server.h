@@ -45,31 +45,6 @@ typedef struct {
   size_t subscribe_num;
 } ChannelSubscribeNum;
 
-class FeedSlaveThread {
- public:
-  explicit FeedSlaveThread(Server *srv, Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
-      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq) {}
-  ~FeedSlaveThread();
-
-  Status Start();
-  void Stop();
-  void Join();
-  bool IsStopped() { return stop_; }
-  Redis::Connection *GetConn() { return conn_; }
-  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_-1; }
-
- private:
-  uint64_t interval = 0;
-  bool stop_ = false;
-  Server *srv_ = nullptr;
-  Redis::Connection *conn_ = nullptr;
-  rocksdb::SequenceNumber next_repl_seq_ = 0;
-  std::thread t_;
-  std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
-
-  void loop();
-  void checkLivenessIfNeed();
-};
 
 class Server {
  public:

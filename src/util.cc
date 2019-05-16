@@ -52,13 +52,7 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
 }
 
 ssize_t SockSend(int fd, const std::string &data) {
-  auto rv = send(fd, data.c_str(), data.length(), 0);
-  if (rv < 0) {
-    LOG(ERROR) << "[Socket] Failed to send: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-    return -1;
-  }
-  return rv;
+  return send(fd, data.c_str(), data.length(), 0);
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {

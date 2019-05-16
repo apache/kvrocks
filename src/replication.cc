@@ -510,8 +510,10 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   if (!auth_.empty()) {
     evbuffer *evbuf = evbuffer_new();
     const auto auth_len_str = std::to_string(auth_.length());
-    Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
+    int rv = Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
         CRLF + auth_ + CRLF);
+    if (rv < 0)
+      return Status(Status::NotOK, std::string("send auth request err: ")+strerror(errno));
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
         evbuffer_free(evbuf);
@@ -540,7 +542,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
   if (Util::SockSend(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK);
+    return Status(Status::NotOK, std::string("send fetch file request err: ")+strerror(errno));
   }
 
   evbuffer *evbuf = evbuffer_new();

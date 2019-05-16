@@ -466,6 +466,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             return false;
           }
           if (!this->sendAuth(sock_fd).IsOK()) {
+            close(sock_fd);
             return false;
           }
           for (auto f_idx = tid; f_idx < files.size();
@@ -481,6 +482,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
+              close(sock_fd);
               LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
               return false;
             }

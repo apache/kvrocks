@@ -42,6 +42,8 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
   *fd = socket(AF_INET, SOCK_STREAM, 0);
   auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
   if (rv < 0) {
+    close(*fd);
+    *fd = -1;
     return Status(Status::NotOK, strerror(errno));
   }
   setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);

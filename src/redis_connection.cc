@@ -1,6 +1,8 @@
 #include "redis_connection.h"
 
 #include <glog/logging.h>
+#include "worker.h"
+#include "server.h"
 
 namespace Redis {
 
@@ -38,6 +40,10 @@ std::string Connection::ToString() {
 
 void Connection::Close() {
   owner_->FreeConnection(this);
+}
+
+void Connection::Detach() {
+  owner_->DetachConnection(this);
 }
 
 void Connection::OnRead(struct bufferevent *bev, void *ctx) {
@@ -127,6 +133,10 @@ void Connection::EnableFlag(Flag flag) {
 
 bool Connection::IsFlagEnabled(Flag flag) {
   return (flags_ & flag) > 0;
+}
+
+bool Connection::IsRepl() {
+  return owner_->IsRepl();
 }
 
 void Connection::SubscribeChannel(const std::string &channel) {

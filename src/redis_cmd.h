@@ -14,9 +14,12 @@
 
 #include "redis_reply.h"
 #include "status.h"
-#include "server.h"
 
+class Server;
 namespace Redis {
+
+class Connection;
+
 class Commander {
  public:
   // @name: cmd name

@@ -6,6 +6,7 @@
 #include "redis_reply.h"
 #include "redis_request.h"
 #include "redis_connection.h"
+#include "server.h"
 
 namespace Redis {
 void Request::Tokenize(evbuffer *input) {

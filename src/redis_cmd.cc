@@ -21,6 +21,7 @@
 #include "util.h"
 #include "storage.h"
 #include "worker.h"
+#include "server.h"
 
 namespace Redis {
 

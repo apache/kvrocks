@@ -4,11 +4,12 @@
 #include <vector>
 #include <string>
 
-#include "worker.h"
+#include "redis_cmd.h"
 #include "redis_request.h"
 
+class Worker;
+
 namespace Redis {
-class Request;
 class Connection {
  public:
   enum Flag {
@@ -21,7 +22,7 @@ class Connection {
   ~Connection();
 
   void Close();
-  void Detach() { owner_->DetachConnection(this); }
+  void Detach();
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnWrite(struct bufferevent *bev, void *ctx);
   static void OnEvent(bufferevent *bev, int16_t events, void *ctx);
@@ -44,7 +45,7 @@ class Connection {
   std::string GetFlags();
   void EnableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
-  bool IsRepl() { return this->owner_->IsRepl(); }
+  bool IsRepl();
 
   uint64_t GetID() { return id_; }
   void SetID(uint64_t id) { id_ = id; }

@@ -13,13 +13,7 @@
 #include "task_runner.h"
 #include "replication.h"
 #include "redis_metadata.h"
-
-namespace Redis {
-class Connection;
-}
-
-class WorkerThread;
-class Worker;
+#include "worker.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;

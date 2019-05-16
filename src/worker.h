@@ -13,18 +13,11 @@
 #include <vector>
 
 #include "storage.h"
-#include "replication.h"
+#include "redis_connection.h"
 
 class Server;
-// forward declare
-namespace Redis {
-class Request;
-class Connection;
-}
 
 class Worker {
-  friend Redis::Request;
-
  public:
   Worker(Server *svr, Config *config, bool repl = false);
   ~Worker();

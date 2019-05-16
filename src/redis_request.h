@@ -4,9 +4,9 @@
 #include <vector>
 #include <string>
 
-#include "redis_cmd.h"
 #include "status.h"
-#include "server.h"
+
+class Server;
 
 namespace Redis {
 

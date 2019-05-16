@@ -27,7 +27,7 @@ void ReplicationThread::CallbacksStateMachine::ConnEventCB(
     // call write_cb when connected
     bufferevent_data_cb write_cb;
     bufferevent_getcb(bev, nullptr, &write_cb, nullptr, nullptr);
-    write_cb(bev, state_machine_ptr);
+    if (write_cb) write_cb(bev, state_machine_ptr);
     return;
   }
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {

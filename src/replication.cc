@@ -515,7 +515,7 @@ Status ReplicationThread::sendAuth(int sock_fd) {
     if (rv < 0)
       return Status(Status::NotOK, std::string("send auth request err: ")+strerror(errno));
     while (true) {
-      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
         return Status(Status::NotOK, std::string("read auth response err: ")+strerror(errno));
       }
@@ -548,7 +548,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
-    if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+    if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
       evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
     }
@@ -586,7 +586,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       seen_bytes += data_len;
     } else {
-      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
         return Status(Status::NotOK, std::string("read sst file data, err: ")+strerror(errno));
       }

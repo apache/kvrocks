@@ -150,7 +150,7 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   evbuffer *evbuf = evbuffer_new();
   // Read auth response
   while (true) {
-    if (evbuffer_read(evbuf, redis_fds_[ns], -1) < 0) {
+    if (evbuffer_read(evbuf, redis_fds_[ns], -1) <= 0) {
       evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
     }

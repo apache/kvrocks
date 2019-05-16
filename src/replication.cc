@@ -467,6 +467,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           }
           if (!this->sendAuth(sock_fd).IsOK()) {
             close(sock_fd);
+            LOG(ERROR) << "[replication] Failed to send auth, while " << s.Msg();
             return false;
           }
           for (auto f_idx = tid; f_idx < files.size();
@@ -513,17 +514,15 @@ Status ReplicationThread::sendAuth(int sock_fd) {
         CRLF + auth_ + CRLF);
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-        LOG(ERROR) << "[replication] Failed to auth resp";
         evbuffer_free(evbuf);
-        return Status(Status::NotOK);
+        return Status(Status::NotOK, std::string("read auth response err: ")+strerror(errno));
       }
       char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line, "+OK", 3) != 0) {
-        LOG(ERROR) << "[replication] Auth failed";
         free(line);
         evbuffer_free(evbuf);
-        return Status(Status::NotOK);
+        return Status(Status::NotOK, "auth got invalid response");
       }
       free(line);
       break;

@@ -27,7 +27,7 @@ void ReplicationThread::CallbacksStateMachine::ConnEventCB(
     // call write_cb when connected
     bufferevent_data_cb write_cb;
     bufferevent_getcb(bev, nullptr, &write_cb, nullptr, nullptr);
-    write_cb(bev, state_machine_ptr);
+    if (write_cb) write_cb(bev, state_machine_ptr);
     return;
   }
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
@@ -466,6 +466,8 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             return false;
           }
           if (!this->sendAuth(sock_fd).IsOK()) {
+            close(sock_fd);
+            LOG(ERROR) << "[replication] Failed to send auth, while " << s.Msg();
             return false;
           }
           for (auto f_idx = tid; f_idx < files.size();
@@ -481,6 +483,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
+              close(sock_fd);
               LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
               return false;
             }
@@ -507,21 +510,21 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   if (!auth_.empty()) {
     evbuffer *evbuf = evbuffer_new();
     const auto auth_len_str = std::to_string(auth_.length());
-    Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
+    int rv = Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
         CRLF + auth_ + CRLF);
+    if (rv < 0)
+      return Status(Status::NotOK, std::string("send auth request err: ")+strerror(errno));
     while (true) {
-      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
-        LOG(ERROR) << "[replication] Failed to auth resp";
+      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
-        return Status(Status::NotOK);
+        return Status(Status::NotOK, std::string("read auth response err: ")+strerror(errno));
       }
       char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line, "+OK", 3) != 0) {
-        LOG(ERROR) << "[replication] Auth failed";
         free(line);
         evbuffer_free(evbuf);
-        return Status(Status::NotOK);
+        return Status(Status::NotOK, "auth got invalid response");
       }
       free(line);
       break;
@@ -539,13 +542,13 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
                        std::to_string(path.length()) + CRLF + path + CRLF;
   if (Util::SockSend(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK);
+    return Status(Status::NotOK, std::string("send fetch file request err: ")+strerror(errno));
   }
 
   evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
-    if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+    if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
       evbuffer_free(evbuf);
       return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
     }
@@ -583,7 +586,7 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       seen_bytes += data_len;
     } else {
-      if (evbuffer_read(evbuf, sock_fd, -1) < 0) {
+      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
         return Status(Status::NotOK, std::string("read sst file data, err: ")+strerror(errno));
       }

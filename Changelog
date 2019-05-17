@@ -1,35 +1,34 @@
-* Version 0.1.0 (@2019-01-18)
-	- init
+* Version 0.1.18(@2019-05-17)
+	- supports pubsub/monitor commands
+	- fix some memory/fd leak
 
-* Version 0.1.2 (@2019-01-18)
-	- supports bits command
+* Version 0.1.17(@2019-05-07)
+	- supports brpop/blpop/randomkey command
+	- fix client kill didn't work when the connection was doing the streaming batch
 
-* Version 0.1.3(@2019-03-05)
-	- fix some redis commands bug
-	- supports bitmap
+* Version 0.1.16(@2019-04-25)
+	- fix core dump when execute `client kill id=3`
 
-* Version 0.1.4(@2019-03-06)
-	- supports pid file to store the pid
+* Version 0.1.15(@2019-04-25)
+	- use no-omit-frame-pointer when compile
 
-* Version 0.1.5(@2019-03-08)
-	- speedup the gitlab ci build
-	- fix return error bit value in getbit
-	- fix config rewrite wrong master port
+* Version 0.1.14(@2019-04-23)
+	- fix Guard against discrete WAL log sequence in replication
+	- increase the sleep time from 1ms to 100ms
 
-* Version 0.1.6(@2019-03-18)
-	- supports append/getrange/expireat/pexpire/pexpireat/pttl commands
-	- fix trivials logical bugs in redis commands
-	- add functional test in CI
+* Version 0.1.13(@2019-04-18)
+	- supports configure slowlog-log-slower-than and slowlog-max-len through config command
+	- print the flush information in flush event lisntener
 
-* Version 0.1.7(@2019-03-19)
-	- fix memory leak which detected by valgrind
+* Version 0.1.12(@2019-04-17)
+	- supports configure the compression type
+	- print segment fault coredump stackstrace to log file
+	- fix some memory leak when shutdown
 
-* Version 0.1.8(@2019-03-19)
-	- remove the pidfile option in config
-
-* Version 0.1.9(@2019-04-01)
-	- add replication test in CI
-	- fix parameter should not be converted to lower case when loading from config file
+* Version 0.1.11(@2019-04-15)
+	- supports limit the size of db
+	- supoorts configure the metadata/subkey block cache size 
+	- fix config set maxclients would reset the timeout with maxclients 
 
 * Version 0.1.10(@2019-04-04)
     - supports linsert/lrem commands
@@ -37,30 +36,36 @@
 	- fix unexpected expired behavior
 	- fix warning
 
-* Version 0.1.11(@2019-04-15)
-	- supports limit the size of db
-	- supoorts configure the metadata/subkey block cache size 
-	- fix config set maxclients would reset the timeout with maxclients 
+* Version 0.1.9(@2019-04-01)
+	- add replication test in CI
+	- fix parameter should not be converted to lower case when loading from config file
 
-* Version 0.1.12(@2019-04-17)
-	- supports configure the compression type
-	- print segment fault coredump stackstrace to log file
-	- fix some memory leak when shutdown
+* Version 0.1.8(@2019-03-19)
+	- remove the pidfile option in config
 
-* Version 0.1.13(@2019-04-18)
-	- supports configure slowlog-log-slower-than and slowlog-max-len through config command
-	- print the flush information in flush event lisntener
+* Version 0.1.7(@2019-03-19)
+	- fix memory leak which detected by valgrind
 
-* Version 0.1.14(@2019-04-23)
-	- fix Guard against discrete WAL log sequence in replication
-	- increase the sleep time from 1ms to 100ms
+* Version 0.1.6(@2019-03-18)
+	- supports append/getrange/expireat/pexpire/pexpireat/pttl commands
+	- fix trivials logical bugs in redis commands
+	- add functional test in CI
 
-* Version 0.1.15(@2019-04-25)
-	- use no-omit-frame-pointer when compile
+* Version 0.1.5(@2019-03-08)
+	- speedup the gitlab ci build
+	- fix return error bit value in getbit
+	- fix config rewrite wrong master port
 
-* Version 0.1.16(@2019-04-25)
-	- fix core dump when execute `client kill id=3`
+* Version 0.1.4(@2019-03-06)
+	- supports pid file to store the pid
 
-* Version 0.1.17(@2019-05-17)
-	- supports brpop/blpop/randomkey command
-	- fix client kill didn't work when the connection was doing the streaming batch
+* Version 0.1.3(@2019-03-05)
+	- fix some redis commands bug
+	- supports bitmap
+
+* Version 0.1.2 (@2019-01-18)
+	- supports bits command
+
+* Version 0.1.0 (@2019-01-18)
+	- init
+

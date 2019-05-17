@@ -340,22 +340,29 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           return CBState::RESTART;
         }
         self->incr_state_ = Incr_batch_data;
+        break;
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (self->incr_bulk_len_+2 <= evbuffer_get_length(input)) {  // We got enough data
           bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
-          auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
-          if (!s.IsOK()) {
-            LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
-            self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
-            return CBState::QUIT;
+          std::string bulk_string = std::string(bulk_data, self->incr_bulk_len_);
+          // master would send the ping heartbeat packet to check whether the slave was alive or not,
+          // don't write ping to db here.
+          if (bulk_string != "ping") {
+            auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+            if (!s.IsOK()) {
+              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
+              self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
+              return CBState::QUIT;
+            }
+            self->ParseWriteBatch(bulk_string);
           }
-          self->ParseWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
         } else {
           return CBState::AGAIN;
         }
+        break;
     }
   }
 }

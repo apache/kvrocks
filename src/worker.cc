@@ -33,12 +33,11 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
 
 Worker::~Worker() {
   std::list<Redis::Connection*> conns;
-  for (const auto iter : conns_) {
+  for (const auto &iter : conns_) {
     conns.emplace_back(iter.second);
   }
-
-  for (auto iter : conns) {
-    RemoveConnection(iter->GetFD());
+  for (const auto &iter : conns) {
+    iter->Close();
   }
   event_free(timer_);
   event_base_free(base_);
@@ -82,15 +81,15 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                     Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
-  std::string host;
+  std::string ip;
   uint32_t port;
-  if (Util::GetPeerAddr(fd, &host, &port) == 0) {
-    conn->SetAddr(host+":"+std::to_string(port));
+  if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
+    conn->SetAddr(ip, port);
   }
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
-    worker->RemoveConnection(conn->GetFD());
+    conn->Close();
   }
 
   if (worker->IsRepl() && worker->rate_limit_group_ != nullptr) {
@@ -155,24 +154,41 @@ Status Worker::AddConnection(Redis::Connection *c) {
   return Status::OK();
 }
 
-void Worker::RemoveConnection(int fd) {
+
+Redis::Connection *Worker::removeConnection(int fd) {
+  Redis::Connection *conn = nullptr;
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
-    delete iter->second;
+    conn = iter->second;
     conns_.erase(iter);
     svr_->DecrClientNum();
   }
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end()) {
-    delete iter->second;
+    conn = iter->second;
     monitor_conns_.erase(iter);
     svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }
+  return conn;
 }
 
-void Worker::RemoveConnectionByID(int fd, uint64_t id) {
+void Worker::DetachConnection(Redis::Connection *conn) {
+  if (!conn) return;
+  removeConnection(conn->GetFD());
+  auto bev = conn->GetBufferEvent();
+  bufferevent_disable(bev, EV_READ|EV_WRITE);
+  bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);
+}
+
+void Worker::FreeConnection(Redis::Connection *conn) {
+  if (!conn) return;
+  removeConnection(conn->GetFD());
+  delete conn;
+}
+
+void Worker::FreeConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end() && iter->second->GetID() == id) {
@@ -270,26 +286,12 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
 
 std::string Worker::GetClientsStr() {
   std::unique_lock<std::mutex> lock(conns_mu_);
-  std::string clients;
+  std::string output;
   for (const auto iter : conns_) {
-    int fd = iter.first;
-    Redis::Connection *c = iter.second;
-    std::ostringstream s;
-    s << "id=" << c->GetID()
-      << " addr=" << c->GetAddr()
-      << " fd=" << fd
-      << " name=" << c->GetName()
-      << " age=" << c->GetAge()
-      << " idle=" << c->GetIdleTime()
-      << " flags=" << c->GetFlags()
-      << " namespace=" << c->GetNamespace()
-      << " qbuf=" << evbuffer_get_length(c->Input())
-      << " obuf=" << evbuffer_get_length(c->Output())
-      << " cmd=" << c->GetLastCmd()
-      << "\n";
-    clients.append(s.str());
+    Redis::Connection *conn = iter.second;
+    output.append(conn->ToString());
   }
-  return clients;
+  return output;
 }
 
 void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed) {
@@ -299,10 +301,12 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
     if (skipme && self == conn) continue;
     if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
+      // enable write event to notify worker wake up ASAP, and remove the connection
+      if (!conn->IsFlagEnabled(Redis::Connection::kSlave)) {  // don't enable any event in slave connection
         auto bev = conn->GetBufferEvent();
-        // enable write event to notify worker wake up ASAP, and remove the connection
         bufferevent_enable(bev, EV_WRITE);
-        (*killed)++;
+      }
+      (*killed)++;
     }
   }
   conns_mu_.unlock();
@@ -329,7 +333,7 @@ void Worker::KickoutIdleClients(int timeout) {
   conns_mu_.unlock();
 
   for (const auto conn : to_be_killed_conns) {
-    RemoveConnectionByID(conn.first, conn.second);
+    FreeConnectionByID(conn.first, conn.second);
   }
 }
 

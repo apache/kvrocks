@@ -32,8 +32,10 @@ class Worker {
   Worker(Worker &&) = delete;
   void Stop();
   void Run(std::thread::id tid);
-  void RemoveConnection(int fd);
-  void RemoveConnectionByID(int fd, uint64_t id);
+
+  void DetachConnection(Redis::Connection *conn);
+  void FreeConnection(Redis::Connection *conn);
+  void FreeConnectionByID(int fd, uint64_t id);
   Status AddConnection(Redis::Connection *c);
   Status EnableWriteEvent(int fd);
   Status Reply(int fd, const std::string &reply);
@@ -53,6 +55,8 @@ class Worker {
   static void newConnection(evconnlistener *listener, evutil_socket_t fd,
                             sockaddr *address, int socklen, void *ctx);
   static void TimerCB(int, int16_t events, void *ctx);
+  Redis::Connection *removeConnection(int fd);
+
 
   event_base *base_;
   event *timer_;

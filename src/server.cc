@@ -1,5 +1,7 @@
 #include "server.h"
 
+#include <fcntl.h>
+#include <signal.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
 #include <glog/logging.h>
@@ -10,6 +12,80 @@
 #include "version.h"
 #include "redis_request.h"
 #include "redis_connection.h"
+
+FeedSlaveThread::~FeedSlaveThread() {
+  delete conn_;
+}
+
+Status FeedSlaveThread::Start() {
+  try {
+    t_ = std::thread([this]() {
+      Util::ThreadSetName("slave-repl");
+      sigset_t mask, omask;
+      sigaddset(&mask, SIGCHLD);
+      sigaddset(&mask, SIGHUP);
+      sigaddset(&mask, SIGPIPE);
+      pthread_sigmask(SIG_BLOCK, &mask, &omask);
+      this->loop();
+    });
+  } catch (const std::system_error &e) {
+    return Status(Status::NotOK, e.what());
+  }
+  return Status::OK();
+}
+
+void FeedSlaveThread::Stop() {
+  stop_ = true;
+  LOG(WARNING) << "Slave thread was terminated, would stop feeding the slave: " << conn_->GetAddr();
+}
+
+void FeedSlaveThread::Join() {
+  if (t_.joinable()) t_.join();
+}
+
+void FeedSlaveThread::checkLivenessIfNeed() {
+  if (++interval % 1000) return;
+  if (write(conn_->GetFD(), "$4\r\nping\r\n", 10) != 10) {
+    LOG(ERROR) << "Error ping slave: " << conn_->GetAddr() << ", would stop the thread";
+    Stop();
+  }
+}
+
+void FeedSlaveThread::loop() {
+  uint32_t yield_milliseconds = 2000;
+  while (!IsStopped()) {
+    if (!iter_ || !iter_->Valid()) {
+      if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
+      if (!srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+        usleep(yield_milliseconds);
+        checkLivenessIfNeed();
+        continue;
+      }
+    }
+    // iter_ would be always valid here
+    auto batch = iter_->GetBatch();
+    auto data = batch.writeBatchPtr->Data();
+    // Send data in redis bulk string format
+    std::string bulk_str = "$" + std::to_string(data.length()) + CRLF + data + CRLF;
+    ssize_t nwritten = write(conn_->GetFD(), bulk_str.data(), bulk_str.size());
+    if (nwritten == -1) {
+      LOG(ERROR) << "Write error while sending batch to slave: " << strerror(errno);
+      Stop();
+      return;
+    }
+    if (batch.sequence != next_repl_seq_) {
+      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
+      Stop();
+      return;
+    }
+    next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
+    while (!IsStopped() && next_repl_seq_ > srv_->storage_->LatestSeq()) {
+      usleep(yield_milliseconds);
+      checkLivenessIfNeed();
+    }
+    iter_->Next();
+  }
+}
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
@@ -62,6 +138,10 @@ void Server::Stop() {
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }
+  slave_threads_mu_.lock();
+  for (const auto slave_thread : slave_threads_) slave_thread->Stop();
+  slave_threads_mu_.unlock();
+  cleanupExitedSlaves();
   task_runner_->Stop();
 }
 
@@ -71,6 +151,7 @@ void Server::Join() {
   for (const auto worker : worker_threads_) {
     worker->Join();
   }
+  cleanupExitedSlaves();
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
@@ -104,6 +185,45 @@ Status Server::RemoveMaster() {
   }
   slaveof_mu_.unlock();
   return Status::OK();
+}
+
+Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
+  auto t = new FeedSlaveThread(this, conn, next_repl_seq);
+  auto s = t->Start();
+  if (!s.IsOK()) {
+    delete t;
+    return s;
+  }
+  int flags;
+  if ((flags = fcntl(conn->GetFD(), F_GETFL)) == -1) {
+    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
+  }
+  flags &= ~O_NONBLOCK;
+  if (fcntl(conn->GetFD(), F_SETFL, flags) == -1) {
+    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
+  }
+
+  slave_threads_mu_.lock();
+  slave_threads_.emplace_back(t);
+  slave_threads_mu_.unlock();
+  return Status::OK();
+}
+
+void Server::cleanupExitedSlaves() {
+  std::list<FeedSlaveThread *> exited_slave_threads;
+  slave_threads_mu_.lock();
+  for (const auto &slave_thread : slave_threads_) {
+    if (slave_thread->IsStopped())
+      exited_slave_threads.emplace_back(slave_thread);
+  }
+  while (!exited_slave_threads.empty()) {
+    auto t = exited_slave_threads.front();
+    exited_slave_threads.pop_front();
+    slave_threads_.remove(t);
+    t->Join();
+    delete t;
+  }
+  slave_threads_mu_.unlock();
 }
 
 void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
@@ -327,6 +447,7 @@ void Server::cron() {
     if (counter != 0 && counter % 600 == 0) {
       storage_->PurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
     }
+    cleanupExitedSlaves();
     counter++;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
@@ -441,14 +562,17 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "role: master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
-    for (const auto &slave_info : slaves_info_) {
+    slave_threads_mu_.lock();
+    for (const auto &slave : slave_threads_) {
+      if (slave->IsStopped()) continue;
       string_stream << "slave_" << std::to_string(idx) << ":";
-      string_stream << "addr=" << slave_info->addr
-                    << ",port=" << slave_info->port
-                    << ",seq=" << slave_info->seq
-                    << ",lag=" << latest_seq - slave_info->seq << "\r\n";
+      string_stream << "addr=" << slave->GetConn()->GetIP()
+                    << ",port=" << slave->GetConn()->GetPort()
+                    << ",seq=" << slave->GetCurrentReplSeq()
+                    << ",lag=" << latest_seq-slave->GetCurrentReplSeq() << "\r\n";
       ++idx;
     }
+    slave_threads_mu_.unlock();
   }
   *info = string_stream.str();
 }
@@ -707,34 +831,33 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint
 
 std::string Server::GetClientsStr() {
   std::string clients;
-  for (const auto t : worker_threads_) {
+  for (const auto &t : worker_threads_) {
     clients.append(t->GetWorker()->GetClientsStr());
   }
+  slave_threads_mu_.lock();
+  for (const auto &st : slave_threads_) {
+    clients.append(st->GetConn()->ToString());
+  }
+  slave_threads_mu_.unlock();
   return clients;
 }
 
 void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
   *killed = 0;
-  for (const auto t : worker_threads_) {
+  for (const auto &t : worker_threads_) {
     int64_t killed_in_worker = 0;
     t->GetWorker()->KillClient(conn, id, addr, skipme, &killed_in_worker);
     *killed += killed_in_worker;
   }
-}
-
-Server::SlaveInfoPos Server::AddSlave(const std::string &addr, uint32_t port) {
-  std::lock_guard<std::mutex> guard(slaves_info_mu_);
-  slaves_info_.push_back(std::shared_ptr<SlaveInfo>(new SlaveInfo(addr, port)));
-  return --(slaves_info_.end());
-}
-
-void Server::RemoveSlave(const SlaveInfoPos &pos) {
-  std::lock_guard<std::mutex> guard(slaves_info_mu_);
-  slaves_info_.erase(pos);
-}
-
-void Server::UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq) {
-  (*pos)->seq = seq;
+  slave_threads_mu_.lock();
+  for (const auto &st : slave_threads_) {
+    if ((!addr.empty() && st->GetConn()->GetAddr() == addr)
+        || (id != 0 && st->GetConn()->GetID() == id)) {
+      st->Stop();
+      (*killed)++;
+    }
+  }
+  slave_threads_mu_.unlock();
 }
 
 void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {

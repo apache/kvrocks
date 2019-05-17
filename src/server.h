@@ -40,14 +40,6 @@ struct SlowLog {
   std::mutex mu;
 };
 
-// Used by master role, tracking slaves' info
-struct SlaveInfo {
-  std::string addr;
-  uint32_t port;
-  rocksdb::SequenceNumber seq = 0;
-  SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
-};
-
 struct ConnContext {
   Worker *owner;
   int fd;
@@ -58,6 +50,32 @@ typedef struct {
   std::string channel;
   size_t subscribe_num;
 } ChannelSubscribeNum;
+
+class FeedSlaveThread {
+ public:
+  explicit FeedSlaveThread(Server *srv, Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
+      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq) {}
+  ~FeedSlaveThread();
+
+  Status Start();
+  void Stop();
+  void Join();
+  bool IsStopped() { return stop_; }
+  Redis::Connection *GetConn() { return conn_; }
+  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_-1; }
+
+ private:
+  uint64_t interval = 0;
+  bool stop_ = false;
+  Server *srv_ = nullptr;
+  Redis::Connection *conn_ = nullptr;
+  rocksdb::SequenceNumber next_repl_seq_ = 0;
+  std::thread t_;
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
+
+  void loop();
+  void checkLivenessIfNeed();
+};
 
 class Server {
  public:
@@ -71,15 +89,11 @@ class Server {
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
 
-  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
-
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
+  Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  void cleanupExitedSlaves();
   bool IsSlave() { return !master_host_.empty(); }
-  void RemoveSlave(const SlaveInfoPos &pos);
-  SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
-  void UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
-  void SetReplicationRateLimit(uint64_t max_replication_mb);
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   int PublishMessage(const std::string &channel, const std::string &msg);
@@ -151,9 +165,8 @@ class Server {
   std::atomic<uint64_t> total_clients_{0};
 
   // slave
-  std::mutex slaves_info_mu_;
-  std::list<std::shared_ptr<SlaveInfo>> slaves_info_;
-  using slaves_info_iter_ = std::list<std::shared_ptr<SlaveInfo>>::iterator;
+  std::mutex slave_threads_mu_;
+  std::list<FeedSlaveThread *> slave_threads_;
 
   std::mutex db_mu_;
   bool db_compacting_ = false;

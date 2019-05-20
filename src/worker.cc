@@ -40,13 +40,13 @@ Worker::~Worker() {
     iter->Close();
   }
   event_free(timer_);
-  event_base_free(base_);
   if (rate_limit_group_ != nullptr) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
   }
   if (rate_limit_group_cfg_ != nullptr) {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
+  event_base_free(base_);
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {

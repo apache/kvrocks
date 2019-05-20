@@ -92,7 +92,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
     conn->Close();
   }
 
-  if (worker->IsRepl() && worker->rate_limit_group_ != nullptr) {
+  if (worker->rate_limit_group_ != nullptr) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
@@ -185,6 +185,9 @@ void Worker::DetachConnection(Redis::Connection *conn) {
 void Worker::FreeConnection(Redis::Connection *conn) {
   if (!conn) return;
   removeConnection(conn->GetFD());
+  if (rate_limit_group_ != nullptr) {
+    bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
+  }
   delete conn;
 }
 
@@ -192,6 +195,9 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end() && iter->second->GetID() == id) {
+    if (rate_limit_group_ != nullptr) {
+      bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
+    }
     delete iter->second;
     conns_.erase(iter);
     svr_->DecrClientNum();

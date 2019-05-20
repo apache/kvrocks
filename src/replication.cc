@@ -171,6 +171,7 @@ LOOP_LABEL:
     case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
       if (self->repl_->stop_flag_) {
+        LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
         break;
       }
       LOG(INFO) << "[replication] Retry in 10 seconds";
@@ -509,16 +510,18 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 
       LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
-      if (!self->parallelFetchFile(meta.files).IsOK()) {
-        LOG(ERROR) << "[replication] Failed to parallel fetch files";
+      auto s = self->parallelFetchFile(meta.files);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[replication] Failed to parallel fetch files while " + s.Msg();
         return CBState::RESTART;
       }
       LOG(INFO) << "[replication] Succeeded fetching files in parallel, restoring the backup";
 
       // Restore DB from backup
       self->pre_fullsync_cb_();
-      if (!self->storage_->RestoreFromBackup().IsOK()) {
-        LOG(ERROR) << "[replication] Failed to restore backup";
+      s = self->storage_->RestoreFromBackup();
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[replication] Failed to restore backup while " + s.Msg();
         self->post_fullsync_cb_();
         return CBState::RESTART;
       }
@@ -541,34 +544,30 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
     // Use 4 threads to download files in parallel
     concurrency = 4;
   }
-  std::vector<std::future<bool>> results;
+  std::vector<std::future<Status>> results;
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
-        std::launch::async, [this, &files, tid, concurrency]() -> bool {
+        std::launch::async, [this, &files, tid, concurrency]() -> Status {
           if (this->stop_flag_) {
-            return false;
+            return Status(Status::NotOK, "replication thread was stopped");
           }
           int sock_fd;
           Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
           if (!s.IsOK()) {
-            LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << s.Msg();
-            return false;
+            return Status(Status::NotOK, "connect the server err: " + s.Msg());
           }
           if (!this->sendAuth(sock_fd).IsOK()) {
             close(sock_fd);
-            LOG(ERROR) << "[replication] Failed to send auth, while " << s.Msg();
-            return false;
+            return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
-          for (auto f_idx = tid; f_idx < files.size();
-               f_idx += concurrency) {
-            if (stop_flag_) {
-              return false;
+          for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
+            if (this->stop_flag_) {
+              return Status(Status::NotOK, "replication thread was stopped");
             }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
-            if (Engine::Storage::BackupManager::FileExists(this->storage_,
-                                                           f_name)) {
+            if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name)) {
               LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
               continue;
             }
@@ -576,21 +575,18 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               close(sock_fd);
-              LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
-              return false;
+              return Status(Status::NotOK, "fetch file err: " + s.Msg());
             }
           }
           close(sock_fd);
-          return true;
+          return Status::OK();
         }));
   }
 
   // Wait til finish
   for (auto &f : results) {
-    if (!f.get()) {
-      LOG(ERROR) << "[replication] Failed to fetch some files";
-      return Status(Status::NotOK);
-    }
+    Status s = f.get();
+    if (!s.IsOK()) return s;
   }
   return Status::OK();
 }

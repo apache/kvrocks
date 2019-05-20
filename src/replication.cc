@@ -170,6 +170,9 @@ LOOP_LABEL:
       break;
     case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
+      if (self->repl_->stop_flag_) {
+        break;
+      }
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
       self->Start();
@@ -558,6 +561,9 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           }
           for (auto f_idx = tid; f_idx < files.size();
                f_idx += concurrency) {
+            if (stop_flag_) {
+              return false;
+            }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files

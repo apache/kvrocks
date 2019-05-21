@@ -26,6 +26,8 @@ Status FeedSlaveThread::Start() {
     t_ = std::thread([this]() {
       Util::ThreadSetName("feed-slave-thread");
       sigset_t mask, omask;
+      sigemptyset(&mask);
+      sigemptyset(&omask);
       sigaddset(&mask, SIGCHLD);
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);

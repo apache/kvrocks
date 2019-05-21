@@ -177,6 +177,9 @@ Redis::Connection *Worker::removeConnection(int fd) {
 void Worker::DetachConnection(Redis::Connection *conn) {
   if (!conn) return;
   removeConnection(conn->GetFD());
+  if (rate_limit_group_ != nullptr) {
+    bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
+  }
   auto bev = conn->GetBufferEvent();
   bufferevent_disable(bev, EV_READ|EV_WRITE);
   bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);

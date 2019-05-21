@@ -558,7 +558,8 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           if (!s.IsOK()) {
             return Status(Status::NotOK, "connect the server err: " + s.Msg());
           }
-          if (!this->sendAuth(sock_fd).IsOK()) {
+          s = this->sendAuth(sock_fd);
+          if (!s.IsOK()) {
             close(sock_fd);
             return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }

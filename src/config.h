@@ -11,9 +11,7 @@
 #include "cron.h"
 
 // forward declaration
-namespace Engine {
-class Storage;
-}
+class Server;
 
 extern const char *kDefaultNamespace;
 
@@ -38,6 +36,7 @@ struct Config{
   bool daemonize = false;
   bool slave_readonly = true;
   uint32_t max_db_size = 0;  // unit is GB
+  uint64_t max_replication_mb = 0;  // unit is MB
 
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};
@@ -69,7 +68,7 @@ struct Config{
   Status Rewrite();
   Status Load(std::string path);
   void Get(std::string key, std::vector<std::string> *values);
-  Status Set(std::string key, const std::string &value, Engine::Storage *storage);
+  Status Set(std::string key, const std::string &value, Server *svr);
   void GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);
   Status SetNamepsace(const std::string &ns, const std::string &token);

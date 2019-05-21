@@ -1,5 +1,6 @@
 #include "replication.h"
 
+#include <signal.h>
 #include <arpa/inet.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -15,6 +16,89 @@
 #include "util.h"
 #include "status.h"
 #include "server.h"
+
+FeedSlaveThread::~FeedSlaveThread() {
+  delete conn_;
+}
+
+Status FeedSlaveThread::Start() {
+  try {
+    t_ = std::thread([this]() {
+      Util::ThreadSetName("feed-slave-thread");
+      sigset_t mask, omask;
+      sigemptyset(&mask);
+      sigemptyset(&omask);
+      sigaddset(&mask, SIGCHLD);
+      sigaddset(&mask, SIGHUP);
+      sigaddset(&mask, SIGPIPE);
+      pthread_sigmask(SIG_BLOCK, &mask, &omask);
+      // force feed slave thread was scheduled after making the fd blocking,
+      // and write "+OK\r\n" response to psync command
+      usleep(10000);
+      this->loop();
+    });
+  } catch (const std::system_error &e) {
+    conn_ = nullptr;  // prevent connection was freed when failed to start the thread
+    return Status(Status::NotOK, e.what());
+  }
+  return Status::OK();
+}
+
+void FeedSlaveThread::Stop() {
+  stop_ = true;
+  LOG(WARNING) << "Slave thread was terminated, would stop feeding the slave: " << conn_->GetAddr();
+}
+
+void FeedSlaveThread::Join() {
+  if (t_.joinable()) t_.join();
+}
+
+void FeedSlaveThread::checkLivenessIfNeed() {
+  if (++interval % 1000) return;
+  const auto ping_command = Redis::BulkString("ping");
+  auto s = Util::SockSend(conn_->GetFD(), ping_command);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "Ping slave[" << conn_->GetAddr() << "] err: " << s.Msg()
+               << ", would stop the thread";
+    Stop();
+  }
+}
+
+void FeedSlaveThread::loop() {
+  uint32_t yield_milliseconds = 2000;
+  while (!IsStopped()) {
+    if (!iter_ || !iter_->Valid()) {
+      if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
+      if (!srv_->storage_->WALHasNewData(next_repl_seq_)
+          || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+        usleep(yield_milliseconds);
+        checkLivenessIfNeed();
+        continue;
+      }
+    }
+    // iter_ would be always valid here
+    auto batch = iter_->GetBatch();
+    auto data = batch.writeBatchPtr->Data();
+    const auto bulk_str = Redis::BulkString(data);
+    auto s = Util::SockSend(conn_->GetFD(), bulk_str);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg();
+      Stop();
+      return;
+    }
+    if (batch.sequence != next_repl_seq_) {
+      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
+      Stop();
+      return;
+    }
+    next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
+    while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
+      usleep(yield_milliseconds);
+      checkLivenessIfNeed();
+    }
+    iter_->Next();
+  }
+}
 
 void send_string(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);
@@ -91,6 +175,10 @@ LOOP_LABEL:
       break;
     case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
+      if (self->repl_->stop_flag_) {
+        LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
+        break;
+      }
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
       self->Start();
@@ -226,8 +314,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
                                                           void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
   const auto auth_len_str = std::to_string(self->auth_.length());
-  send_string(bev, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
-                       self->auth_ + CRLF);
+  send_string(bev, Redis::MultiBulkString({"AUTH", self->auth_}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   self->repl_state_ = kReplSendAuth;
   return CBState::NEXT;
@@ -253,7 +340,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
 
 ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(
     bufferevent *bev, void *ctx) {
-  send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
+  send_string(bev, Redis::MultiBulkString({"_db_name"}));
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplCheckDBName;
   LOG(INFO) << "[replication] Check db name request was sent, waiting for response";
@@ -285,11 +372,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
   auto next_seq = self->storage_->LatestSeq() + 1;
-  const auto seq_str = std::to_string(next_seq);
-  const auto seq_len_str = std::to_string(seq_str.length());
-  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
-                       CRLF + seq_str + CRLF;
-  send_string(bev, cmd_str);
+  send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
   self->repl_state_ = kReplSendPSync;
   LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   return CBState::NEXT;
@@ -340,29 +423,36 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           return CBState::RESTART;
         }
         self->incr_state_ = Incr_batch_data;
+        break;
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (self->incr_bulk_len_+2 <= evbuffer_get_length(input)) {  // We got enough data
           bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
-          auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
-          if (!s.IsOK()) {
-            LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
-            self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
-            return CBState::QUIT;
+          std::string bulk_string = std::string(bulk_data, self->incr_bulk_len_);
+          // master would send the ping heartbeat packet to check whether the slave was alive or not,
+          // don't write ping to db here.
+          if (bulk_string != "ping") {
+            auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+            if (!s.IsOK()) {
+              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
+              self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
+              return CBState::QUIT;
+            }
+            self->ParseWriteBatch(bulk_string);
           }
-          self->ParseWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
         } else {
           return CBState::AGAIN;
         }
+        break;
     }
   }
 }
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(
     bufferevent *bev, void *ctx) {
-  send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
+  send_string(bev, Redis::MultiBulkString({"_fetch_meta"}));
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplFetchMeta;
   LOG(INFO) << "[replication] Start syncing data with fullsync";
@@ -420,16 +510,18 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 
       LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
-      if (!self->parallelFetchFile(meta.files).IsOK()) {
-        LOG(ERROR) << "[replication] Failed to parallel fetch files";
+      auto s = self->parallelFetchFile(meta.files);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[replication] Failed to parallel fetch files while " + s.Msg();
         return CBState::RESTART;
       }
       LOG(INFO) << "[replication] Succeeded fetching files in parallel, restoring the backup";
 
       // Restore DB from backup
       self->pre_fullsync_cb_();
-      if (!self->storage_->RestoreFromBackup().IsOK()) {
-        LOG(ERROR) << "[replication] Failed to restore backup";
+      s = self->storage_->RestoreFromBackup();
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[replication] Failed to restore backup while " + s.Msg();
         self->post_fullsync_cb_();
         return CBState::RESTART;
       }
@@ -452,53 +544,62 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
     // Use 4 threads to download files in parallel
     concurrency = 4;
   }
-  std::vector<std::future<bool>> results;
+  std::atomic<uint32_t> fetch_cnt = {0};
+  std::atomic<uint32_t> skip_cnt = {0};
+  std::vector<std::future<Status>> results;
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
-        std::launch::async, [this, &files, tid, concurrency]() -> bool {
+        std::launch::async, [this, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
-            return false;
+            return Status(Status::NotOK, "replication thread was stopped");
           }
           int sock_fd;
           Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
           if (!s.IsOK()) {
-            LOG(ERROR) << "[replication] Failed to connect the repl port, err: " << s.Msg();
-            return false;
+            return Status(Status::NotOK, "connect the server err: " + s.Msg());
           }
-          if (!this->sendAuth(sock_fd).IsOK()) {
+          s = this->sendAuth(sock_fd);
+          if (!s.IsOK()) {
             close(sock_fd);
-            LOG(ERROR) << "[replication] Failed to send auth, while " << s.Msg();
-            return false;
+            return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
-          for (auto f_idx = tid; f_idx < files.size();
-               f_idx += concurrency) {
+          for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
+            if (this->stop_flag_) {
+              return Status(Status::NotOK, "replication thread was stopped");
+            }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
-            if (Engine::Storage::BackupManager::FileExists(this->storage_,
-                                                           f_name)) {
-              LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
+            if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name)) {
+              skip_cnt.fetch_add(1);
+              uint32_t cur_skip_cnt = skip_cnt.load();
+              uint32_t cur_fetch_cnt = fetch_cnt.load();
+              LOG(INFO) << "[skip] "<< f_name << " " << f_crc
+                        << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                        << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
               continue;
             }
-            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
+            fetch_cnt.fetch_add(1);
+            uint32_t cur_skip_cnt = skip_cnt.load();
+            uint32_t cur_fetch_cnt = fetch_cnt.load();
+            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc
+                       << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                       << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               close(sock_fd);
-              LOG(ERROR) << "[replication] Failed to fetch sst file, err: " << s.Msg();
-              return false;
+              return Status(Status::NotOK, "fetch file err: " + s.Msg());
             }
           }
           close(sock_fd);
-          return true;
+          return Status::OK();
         }));
   }
 
   // Wait til finish
   for (auto &f : results) {
-    if (!f.get()) {
-      LOG(ERROR) << "[replication] Failed to fetch some files";
-      return Status(Status::NotOK);
-    }
+    Status s = f.get();
+    if (!s.IsOK()) return s;
   }
   return Status::OK();
 }
@@ -509,11 +610,9 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   // Send auth when needed
   if (!auth_.empty()) {
     evbuffer *evbuf = evbuffer_new();
-    const auto auth_len_str = std::to_string(auth_.length());
-    int rv = Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
-        CRLF + auth_ + CRLF);
-    if (rv < 0)
-      return Status(Status::NotOK, std::string("send auth request err: ")+strerror(errno));
+    const auto auth_command = Redis::MultiBulkString({"AUTH", auth_});
+    auto s = Util::SockSend(sock_fd, auth_command);
+    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:"+s.Msg());
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
@@ -539,11 +638,9 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
   size_t line_len, file_size;
 
-  const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
-                       std::to_string(path.length()) + CRLF + path + CRLF;
-  if (Util::SockSend(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK, std::string("send fetch file request err: ")+strerror(errno));
-  }
+  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", path});
+  auto s = Util::SockSend(sock_fd, fetch_command);
+  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command err: "+s.Msg());
 
   evbuffer *evbuf = evbuffer_new();
   // Read file size line

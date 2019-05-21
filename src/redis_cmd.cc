@@ -21,6 +21,7 @@
 #include "util.h"
 #include "storage.h"
 #include "worker.h"
+#include "server.h"
 
 namespace Redis {
 
@@ -168,7 +169,7 @@ class CommandConfig : public Commander {
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);
     } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
-      Status s = config->Set(args_[2], args_[3], svr->storage_);
+      Status s = config->Set(args_[2], args_[3], svr);
       if (!s.IsOK()) {
         return Status(Status::NotOK, s.Msg() + ", key: " + args_[2]);
       }
@@ -2411,178 +2412,40 @@ class CommandStats: public Commander {
 class CommandPSync : public Commander {
  public:
   CommandPSync() : Commander("psync", 2, false) {}
-  ~CommandPSync() {
-    if (timer_) {
-      event_free(timer_);
-      timer_ = nullptr;
-    }
-  }
 
   Status Parse(const std::vector<std::string> &args) override {
     try {
       auto s = std::stoull(args[1]);
-      next_seq_ = static_cast<rocksdb::SequenceNumber>(s);
+      next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr);
     }
     return Commander::Parse(args);
   }
 
-  // PSync is a long-polling op, but the Execute method must return to make the
-  // event loop being able to handle new requests. so we change the event
-  // callbacks of this connection:
-  // 1. the writable callback is set to `StreamingBatch`. this cb sends at most
-  //    500 batches, and then yield, wait for next writable event.
-  // 2. also add a new timer event to the ev base, to re-trigger the WRITE event
-  //    when `StreamingBatch` needs to wait for new data in WAL.
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    svr_ = svr;
-    conn_ = conn;
-
     LOG(INFO) << "Slave " << conn->GetAddr() << " asks for synchronization"
-              << " with next sequence: " << next_seq_
-              << ", and local sequence: " << svr_->storage_->LatestSeq();
-    if (!checkWALBoundary(svr->storage_, next_seq_).IsOK()) {
+              << " with next sequence: " << next_repl_seq
+              << ", and local sequence: " << svr->storage_->LatestSeq();
+    if (!checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
       svr->stats_.IncrPSyncErrCounter();
       *output = "sequence out of range, please use fullsync";
       return Status(Status::RedisExecErr, *output);
-    } else {
-      svr->stats_.IncrPSyncOKCounter();
-      conn->Reply(Redis::SimpleString("OK"));
     }
-
-    std::string peer_addr;
-    uint32_t port;
-    int sock_fd = conn->GetFD();
-    if (Util::GetPeerAddr(sock_fd, &peer_addr, &port) < 0) {
-      peer_addr = "unknown";
-    }
-    slave_info_pos_ = svr->AddSlave(peer_addr, port);
-    if (next_seq_ == 0) {
-      svr->UpdateSlaveStats(slave_info_pos_, next_seq_);
-    } else {
-      // the seq_ is the client's next seq, so it current seq should be seq_ - 1
-      svr->UpdateSlaveStats(slave_info_pos_, next_seq_ - 1);
-    }
-
-    LOG(INFO) << "Slave " << conn->GetAddr() << " was added, starting the streaming batch";
-    state_ = State::GetWALIter;
-    auto bev = conn->GetBufferEvent();
-    StreamingBatch(bev, this);
-    bufferevent_setcb(bev, nullptr, StreamingBatch, EventCB, this);
-    timer_ = event_new(bufferevent_get_base(bev), -1, EV_PERSIST, TimerCB, bev);
-    timeval tm = {0, 1000};
-    evtimer_add(timer_, &tm);
+    svr->stats_.IncrPSyncOKCounter();
+    Status s = svr->AddSlave(conn, next_repl_seq);
+    if (!s.IsOK()) return s;
+    LOG(INFO) << "New slave: "  << conn->GetAddr() << " was added, start increment syncing";
+    conn->EnableFlag(Redis::Connection::kSlave);
+    // server would spawn a new thread to sync the batch,
+    // and connection would be took over, so should never trigger any event in worker thread
+    conn->Detach();
+    write(conn->GetFD(), "+OK\r\n", 5);
     return Status::OK();
   }
 
-  static void StreamingBatch(bufferevent *bev, void *ctx) {
-    auto self = reinterpret_cast<CommandPSync *>(ctx);
-    // connection was killed by client kill command
-    if (self->conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
-      self->Disconnect();
-      return;
-    }
-    auto output = bufferevent_get_output(bev);
-    while (true) {
-      switch (self->state_) {
-        case State::GetWALIter:
-          if (!self->svr_->storage_->GetWALIter(self->next_seq_, &self->iter_)
-                   .IsOK()) {
-            return;  // Try again next time, the timer will notify me.
-          }
-          self->state_ = State::SendBatch;
-          break;
-        case State::SendBatch:
-          // Everything is OK, streaming the batch data
-          // Every 500 batches, yield and wait for next WRITE event
-          {
-            int count = 500;
-            while (self->iter_->Valid()) {
-              auto batch = self->iter_->GetBatch();
-              auto data = batch.writeBatchPtr->Data();
-              // Send data in redis bulk string format
-              std::string bulk_str =
-                  "$" + std::to_string(data.length()) + CRLF + data + CRLF;
-              evbuffer_add(output, bulk_str.c_str(), bulk_str.size());
-
-              // Make sure the sequence is continuous
-              if (self->next_seq_ != batch.sequence) {
-                // CRITICAL: the WAL log is NOT continuous, we should stop the replication
-                LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
-                self->Disconnect();
-                return;
-              }
-
-              self->next_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-              self->svr_->UpdateSlaveStats(self->slave_info_pos_, self->next_seq_-1);
-              if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
-                self->state_ = State::WaitWAL;
-                return;
-              }
-              self->iter_->Next();
-              --count;
-              if (count <= 0) {
-                return;  // Send enough batches, yield
-              }
-            }
-          }
-
-          // if arrived here, means the wal file is rotated, a reopen is needed.
-          LOG(INFO) << "WAL was rotated, would reopen the log to get new iterator";
-          self->state_ = State::GetWALIter;
-          break;
-        case State::WaitWAL:
-          if (!DoesWALHaveNewData(self->next_seq_, self->svr_->storage_)) {
-            return;  // Try again next time, the timer will notify me.
-          }
-          self->iter_->Next();
-          self->state_ = State::SendBatch;
-          break;
-      }
-    }
-  }
-
-  static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
-    auto self = static_cast<CommandPSync *>(ctx);
-    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      std::string addr;
-      uint32_t port;
-      Util::GetPeerAddr(self->conn_->GetFD(), &addr, &port);
-      if (events & BEV_EVENT_EOF) {
-        LOG(WARNING) << "Disconnect the slave[" << addr << ":" << port << "], "
-                     << "while the connection was closed";
-      } else {
-        LOG(ERROR) << "Disconnect the slave[" << addr << ":" << port << "], "
-                   << " while encounter err: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-      }
-      self->Disconnect();
-      return;
-    }
-    if (events & BEV_EVENT_TIMEOUT) {
-      LOG(INFO) << "timeout, fd=" << self->conn_->GetFD();
-      bufferevent_enable(bev, EV_WRITE);
-    }
-  }
-
-  static void TimerCB(int, int16_t events, void *ctx) {
-    auto bev = reinterpret_cast<bufferevent *>(ctx);
-    bufferevent_trigger(bev, EV_WRITE, 0);
-  }
-
  private:
-  rocksdb::SequenceNumber next_seq_;
-  Server *svr_ = nullptr;
-  Connection *conn_ = nullptr;
-  event *timer_ = nullptr;
-  std::unique_ptr<rocksdb::TransactionLogIterator> iter_;
-  enum class State {
-    GetWALIter,
-    SendBatch,
-    WaitWAL,
-  };
-  State state_ = State::GetWALIter;
-  Server::SlaveInfoPos slave_info_pos_;
+  rocksdb::SequenceNumber next_repl_seq = 0;
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage,
@@ -2604,21 +2467,6 @@ class CommandPSync : public Commander {
       }
     }
     return Status::OK();
-  }
-
-  inline static bool DoesWALHaveNewData(rocksdb::SequenceNumber seq,
-                                        Engine::Storage *storage) {
-    return seq <= storage->LatestSeq();
-  }
-
-  void Disconnect() {
-    int slave_fd = conn_->GetFD();
-    svr_->RemoveSlave(slave_info_pos_);
-    if (timer_) {
-      event_free(timer_);
-      timer_ = nullptr;
-    }
-    conn_->Owner()->RemoveConnection(slave_fd);
   }
 };
 

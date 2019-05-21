@@ -13,13 +13,7 @@
 #include "task_runner.h"
 #include "replication.h"
 #include "redis_metadata.h"
-
-namespace Redis {
-class Connection;
-}
-
-class WorkerThread;
-class Worker;
+#include "worker.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -40,14 +34,6 @@ struct SlowLog {
   std::mutex mu;
 };
 
-// Used by master role, tracking slaves' info
-struct SlaveInfo {
-  std::string addr;
-  uint32_t port;
-  rocksdb::SequenceNumber seq = 0;
-  SlaveInfo(std::string a, uint32_t p) : addr(std::move(a)), port(p) {}
-};
-
 struct ConnContext {
   Worker *owner;
   int fd;
@@ -58,6 +44,7 @@ typedef struct {
   std::string channel;
   size_t subscribe_num;
 } ChannelSubscribeNum;
+
 
 class Server {
  public:
@@ -71,14 +58,11 @@ class Server {
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
 
-  using SlaveInfoPos = std::list<std::shared_ptr<SlaveInfo>>::iterator;
-
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
+  Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  void cleanupExitedSlaves();
   bool IsSlave() { return !master_host_.empty(); }
-  void RemoveSlave(const SlaveInfoPos &pos);
-  SlaveInfoPos AddSlave(const std::string &addr, uint32_t port);
-  void UpdateSlaveStats(const SlaveInfoPos &pos, rocksdb::SequenceNumber seq);
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   int PublishMessage(const std::string &channel, const std::string &msg);
@@ -126,6 +110,7 @@ class Server {
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void SetReplicationRateLimit(uint64_t max_replication_mb);
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -150,9 +135,8 @@ class Server {
   std::atomic<uint64_t> total_clients_{0};
 
   // slave
-  std::mutex slaves_info_mu_;
-  std::list<std::shared_ptr<SlaveInfo>> slaves_info_;
-  using slaves_info_iter_ = std::list<std::shared_ptr<SlaveInfo>>::iterator;
+  std::mutex slave_threads_mu_;
+  std::list<FeedSlaveThread *> slave_threads_;
 
   std::mutex db_mu_;
   bool db_compacting_ = false;

@@ -4,26 +4,31 @@
 #include <vector>
 #include <string>
 
-#include "worker.h"
+#include "redis_cmd.h"
 #include "redis_request.h"
 
+class Worker;
+
 namespace Redis {
-class Request;
 class Connection {
  public:
   enum Flag {
-    kMonitor = 1 << 5,
+    kSlave           = 1 << 4,
+    kMonitor         = 1 << 5,
     kCloseAfterReply = 1 << 6,
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);
   ~Connection();
 
+  void Close();
+  void Detach();
   static void OnRead(struct bufferevent *bev, void *ctx);
   static void OnWrite(struct bufferevent *bev, void *ctx);
   static void OnEvent(bufferevent *bev, int16_t events, void *ctx);
   void Reply(const std::string &msg);
   void SendFile(int fd);
+  std::string ToString();
 
   void SubscribeChannel(const std::string &channel);
   void UnSubscribeChannel(const std::string &channel);
@@ -40,16 +45,17 @@ class Connection {
   std::string GetFlags();
   void EnableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
-  bool IsRepl() { return this->owner_->IsRepl(); }
+  bool IsRepl();
 
   uint64_t GetID() { return id_; }
   void SetID(uint64_t id) { id_ = id; }
   std::string GetName() { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
   std::string GetAddr() { return addr_; }
-  void SetAddr(std::string addr) { addr_ = std::move(addr); }
-  std::string GetLastCmd() { return last_cmd_; }
+  void SetAddr(std::string ip, int port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
+  std::string GetIP() { return ip_; }
+  int GetPort() { return port_; }
 
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
@@ -70,6 +76,8 @@ class Connection {
   int flags_ = 0;
   std::string ns_;
   std::string name_;
+  std::string ip_;
+  int port_ = 0;
   std::string addr_;
   bool is_admin_ = false;
   std::string last_cmd_;

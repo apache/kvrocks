@@ -13,7 +13,7 @@
 #include "util.h"
 #include "status.h"
 #include "cron.h"
-#include "storage.h"
+#include "server.h"
 
 const char *kDefaultNamespace = "__namespace";
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
@@ -199,7 +199,9 @@ Status Config::parseConfigFromString(std::string input) {
     }
   } else if (size == 2 && args[0] == "max-db-size") {
     max_db_size = static_cast<uint32_t>(std::stoi(args[1]));
-  } else if (size >=2 && args[0] == "compact-cron") {
+  } else if (size == 2 && args[0] == "max-replication-mb") {
+    max_replication_mb = static_cast<uint64_t>(std::stoi(args[1]));
+  } else if (size >= 2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
     if (!s.IsOK()) {
@@ -315,6 +317,10 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
+  PUSH_IF_MATCH(is_all,
+                key,
+                "max-replication-mb",
+                std::to_string(max_replication_mb));
   PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
 
@@ -338,7 +344,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
                 "rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
-Status Config::Set(std::string key, const std::string &value, Engine::Storage *storage) {
+Status Config::Set(std::string key, const std::string &value, Server *svr) {
   key = Util::ToLower(key);
   if (key == "timeout") {
     timeout = std::stoi(value);
@@ -421,7 +427,20 @@ Status Config::Set(std::string key, const std::string &value, Engine::Storage *s
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
-    storage->CheckDBSizeLimit();
+    svr->storage_->CheckDBSizeLimit();
+    return Status::OK();
+  }
+  if (key == "max-replication-mb") {
+    try {
+      int64_t i = std::stoi(value);
+      if (i < 0) {
+        return Status(Status::RedisParseErr, "value should be >= 0");
+      }
+      max_replication_mb = static_cast<uint64_t>(i);
+      svr->SetReplicationRateLimit(max_replication_mb);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
+    }
     return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
@@ -461,6 +480,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
   WRITE_TO_FILE("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
   WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
+  WRITE_TO_FILE("max-replication-mb", std::to_string(max_replication_mb));
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());

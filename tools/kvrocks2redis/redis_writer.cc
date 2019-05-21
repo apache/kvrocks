@@ -100,9 +100,9 @@ void RedisWriter::sync() {
           break;
         }
 
-        auto sended_leng = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
-        if (sended_leng != getted_line_leng) {
-          LOG(ERROR) << "ERR send data to redis : size mismatch";
+        s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
+        if (!s.IsOK()) {
+          LOG(ERROR) << "ERR send data to redis err: " + s.Msg();
         }
 
         updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);

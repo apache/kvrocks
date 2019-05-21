@@ -55,8 +55,11 @@ void FeedSlaveThread::Join() {
 
 void FeedSlaveThread::checkLivenessIfNeed() {
   if (++interval % 1000) return;
-  if (write(conn_->GetFD(), "$4\r\nping\r\n", 10) != 10) {
-    LOG(ERROR) << "Error ping slave: " << conn_->GetAddr() << ", would stop the thread";
+  const auto ping_command = Redis::BulkString("ping");
+  auto s = Util::SockSend(conn_->GetFD(), ping_command);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "Ping slave[" << conn_->GetAddr() << "] err: " << s.Msg()
+               << ", would stop the thread";
     Stop();
   }
 }
@@ -76,11 +79,10 @@ void FeedSlaveThread::loop() {
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
     auto data = batch.writeBatchPtr->Data();
-    // Send data in redis bulk string format
-    std::string bulk_str = "$" + std::to_string(data.length()) + CRLF + data + CRLF;
-    ssize_t nwritten = write(conn_->GetFD(), bulk_str.data(), bulk_str.size());
-    if (nwritten == -1) {
-      LOG(ERROR) << "Write error while sending batch to slave: " << strerror(errno);
+    const auto bulk_str = Redis::BulkString(data);
+    auto s = Util::SockSend(conn_->GetFD(), bulk_str);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg();
       Stop();
       return;
     }
@@ -312,8 +314,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
                                                           void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
   const auto auth_len_str = std::to_string(self->auth_.length());
-  send_string(bev, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
-                       self->auth_ + CRLF);
+  send_string(bev, Redis::MultiBulkString({"AUTH", self->auth_}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   self->repl_state_ = kReplSendAuth;
   return CBState::NEXT;
@@ -339,7 +340,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
 
 ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(
     bufferevent *bev, void *ctx) {
-  send_string(bev, "*1" CRLF "$8" CRLF "_db_name" CRLF);
+  send_string(bev, Redis::MultiBulkString({"_db_name"}));
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplCheckDBName;
   LOG(INFO) << "[replication] Check db name request was sent, waiting for response";
@@ -371,11 +372,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
   auto next_seq = self->storage_->LatestSeq() + 1;
-  const auto seq_str = std::to_string(next_seq);
-  const auto seq_len_str = std::to_string(seq_str.length());
-  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
-                       CRLF + seq_str + CRLF;
-  send_string(bev, cmd_str);
+  send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
   self->repl_state_ = kReplSendPSync;
   LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   return CBState::NEXT;
@@ -455,7 +452,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(
     bufferevent *bev, void *ctx) {
-  send_string(bev, "*1" CRLF "$11" CRLF "_fetch_meta" CRLF);
+  send_string(bev, Redis::MultiBulkString({"_fetch_meta"}));
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplFetchMeta;
   LOG(INFO) << "[replication] Start syncing data with fullsync";
@@ -613,11 +610,9 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   // Send auth when needed
   if (!auth_.empty()) {
     evbuffer *evbuf = evbuffer_new();
-    const auto auth_len_str = std::to_string(auth_.length());
-    int rv = Util::SockSend(sock_fd, "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str +
-        CRLF + auth_ + CRLF);
-    if (rv < 0)
-      return Status(Status::NotOK, std::string("send auth request err: ")+strerror(errno));
+    const auto auth_command = Redis::MultiBulkString({"AUTH", auth_});
+    auto s = Util::SockSend(sock_fd, auth_command);
+    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:"+s.Msg());
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
@@ -643,11 +638,9 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
                                     uint32_t crc) {
   size_t line_len, file_size;
 
-  const auto cmd_str = "*2" CRLF "$11" CRLF "_fetch_file" CRLF "$" +
-                       std::to_string(path.length()) + CRLF + path + CRLF;
-  if (Util::SockSend(sock_fd, cmd_str) < 0) {
-    return Status(Status::NotOK, std::string("send fetch file request err: ")+strerror(errno));
-  }
+  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", path});
+  auto s = Util::SockSend(sock_fd, fetch_command);
+  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command err: "+s.Msg());
 
   evbuffer *evbuf = evbuffer_new();
   // Read file size line

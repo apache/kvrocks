@@ -26,6 +26,8 @@ Status FeedSlaveThread::Start() {
     t_ = std::thread([this]() {
       Util::ThreadSetName("feed-slave-thread");
       sigset_t mask, omask;
+      sigemptyset(&mask);
+      sigemptyset(&omask);
       sigaddset(&mask, SIGCHLD);
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
@@ -64,7 +66,8 @@ void FeedSlaveThread::loop() {
   while (!IsStopped()) {
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+      if (!srv_->storage_->WALHasNewData(next_repl_seq_)
+          || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
         usleep(yield_milliseconds);
         checkLivenessIfNeed();
         continue;
@@ -87,7 +90,7 @@ void FeedSlaveThread::loop() {
       return;
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-    while (!IsStopped() && next_repl_seq_ > srv_->storage_->LatestSeq()) {
+    while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
       usleep(yield_milliseconds);
       checkLivenessIfNeed();
     }
@@ -544,10 +547,12 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
     // Use 4 threads to download files in parallel
     concurrency = 4;
   }
+  std::atomic<uint32_t> fetch_cnt = {0};
+  std::atomic<uint32_t> skip_cnt = {0};
   std::vector<std::future<Status>> results;
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
-        std::launch::async, [this, &files, tid, concurrency]() -> Status {
+        std::launch::async, [this, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
             return Status(Status::NotOK, "replication thread was stopped");
           }
@@ -556,7 +561,8 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           if (!s.IsOK()) {
             return Status(Status::NotOK, "connect the server err: " + s.Msg());
           }
-          if (!this->sendAuth(sock_fd).IsOK()) {
+          s = this->sendAuth(sock_fd);
+          if (!s.IsOK()) {
             close(sock_fd);
             return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
@@ -568,10 +574,20 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
             if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name)) {
-              LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
+              skip_cnt.fetch_add(1);
+              uint32_t cur_skip_cnt = skip_cnt.load();
+              uint32_t cur_fetch_cnt = fetch_cnt.load();
+              LOG(INFO) << "[skip] "<< f_name << " " << f_crc
+                        << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                        << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
               continue;
             }
-            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
+            fetch_cnt.fetch_add(1);
+            uint32_t cur_skip_cnt = skip_cnt.load();
+            uint32_t cur_fetch_cnt = fetch_cnt.load();
+            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc
+                       << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                       << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               close(sock_fd);

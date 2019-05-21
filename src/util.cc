@@ -1,3 +1,4 @@
+#define __STDC_FORMAT_MACROS
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>

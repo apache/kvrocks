@@ -64,7 +64,8 @@ void FeedSlaveThread::loop() {
   while (!IsStopped()) {
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+      if (!srv_->storage_->WALHasNewData(next_repl_seq_)
+          || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
         usleep(yield_milliseconds);
         checkLivenessIfNeed();
         continue;
@@ -87,7 +88,7 @@ void FeedSlaveThread::loop() {
       return;
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-    while (!IsStopped() && next_repl_seq_ > srv_->storage_->LatestSeq()) {
+    while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
       usleep(yield_milliseconds);
       checkLivenessIfNeed();
     }

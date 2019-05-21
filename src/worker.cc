@@ -279,7 +279,7 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
   gettimeofday(&tv, nullptr);
   std::string output;
   output += std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
-  output += " [0 " + conn->GetAddr() + "]";
+  output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
   for (const auto &token : tokens) {
     output += " \"" + token + "\"";
   }

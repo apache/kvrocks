@@ -544,10 +544,12 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
     // Use 4 threads to download files in parallel
     concurrency = 4;
   }
+  std::atomic<uint32_t> fetch_cnt = {0};
+  std::atomic<uint32_t> skip_cnt = {0};
   std::vector<std::future<Status>> results;
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
-        std::launch::async, [this, &files, tid, concurrency]() -> Status {
+        std::launch::async, [this, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
             return Status(Status::NotOK, "replication thread was stopped");
           }
@@ -568,10 +570,20 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
             if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name)) {
-              LOG(INFO) << "[skip] "<< f_name << " " << f_crc;
+              skip_cnt.fetch_add(1);
+              uint32_t cur_skip_cnt = skip_cnt.load();
+              uint32_t cur_fetch_cnt = fetch_cnt.load();
+              LOG(INFO) << "[skip] "<< f_name << " " << f_crc
+                        << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                        << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
               continue;
             }
-            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc;
+            fetch_cnt.fetch_add(1);
+            uint32_t cur_skip_cnt = skip_cnt.load();
+            uint32_t cur_fetch_cnt = fetch_cnt.load();
+            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc
+                       << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                       << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
             s = this->fetchFile(sock_fd, f_name, f_crc);
             if (!s.IsOK()) {
               close(sock_fd);

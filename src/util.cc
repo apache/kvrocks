@@ -51,8 +51,17 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
   return Status::OK();
 }
 
-ssize_t SockSend(int fd, const std::string &data) {
-  return send(fd, data.c_str(), data.length(), 0);
+// NOTE: fd should be blocking here
+Status SockSend(int fd, const std::string &data) {
+  ssize_t n = 0, nwritten;
+  while (n < static_cast<ssize_t>(data.size())) {
+    nwritten = write(fd, data.c_str()+n, data.size()-n);
+    if (nwritten == -1) {
+      return Status(Status::NotOK, strerror(errno));
+    }
+    n += nwritten;
+  }
+  return Status::OK();
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {

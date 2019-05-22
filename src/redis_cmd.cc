@@ -331,16 +331,53 @@ class CommandAppend: public Commander {
 
 class CommandSet : public Commander {
  public:
-  CommandSet() : Commander("set", 3, true) {}
+  CommandSet() : Commander("set", -3, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    for (size_t i = 3; i < args.size(); i++) {
+      std::string opt = Util::ToLower(args[i]);
+      if (opt == "nx" || opt == "xx") {
+        opt == "nx" ? nx_ = true : xx_ = true;
+        continue;
+      }
+      if ((opt == "ex" || opt == "px") && i+1 < args.size()) {
+        if (opt == "ex") {
+          ttl_ = atoi(args[i+1].c_str());
+        } else {
+          ttl_ = atol(args[i+1].c_str())/1000;
+        }
+        i++;
+        continue;
+      }
+      return Status(Status::NotOK, "syntax error");
+    }
+    return Commander::Parse(args);
+  }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
     RedisString string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.Set(args_[1], args_[2]);
+    rocksdb::Status s;
+    if (nx_) {
+      s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
+    } else if (xx_) {
+      s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
+    } else {
+      s = string_db.SetEX(args_[1], args_[2], ttl_);
+    }
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::SimpleString("OK");
+    if ((nx_ || xx_) && !ret) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::SimpleString("OK");
+    }
     return Status::OK();
   }
+
+ private:
+  bool xx_ = false;
+  bool nx_ = false;
+  int ttl_ = 0;
 };
 
 class CommandSetEX : public Commander {
@@ -396,7 +433,7 @@ class CommandSetNX : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     RedisString string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.SetNX(args_[1], args_[2], &ret);
+    rocksdb::Status s = string_db.SetNX(args_[1], args_[2], 0, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }

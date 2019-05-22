@@ -105,7 +105,7 @@ TEST_F(RedisStringTest, GetSet) {
 
 TEST_F(RedisStringTest, MSetNX) {
   int ret;
-  string->MSetNX(pairs_, &ret);
+  string->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
@@ -124,7 +124,7 @@ TEST_F(RedisStringTest, MSetNX) {
           {pairs_[0].key, pairs_[0].value},
           {"d", "4"},
   };
-  string->MSetNX(pairs_, &ret);
+  string->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(0, ret);
 
   for (int i = 0; i < pairs_.size(); i++) {

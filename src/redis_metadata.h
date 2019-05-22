@@ -113,12 +113,12 @@ class ListMetadata : public Metadata {
 class RedisDB {
  public:
   explicit RedisDB(Engine::Storage *storage, const std::string &ns = "");
-  rocksdb::Status GetMetadata(RedisType type, Slice ns_key, Metadata *metadata);
-  rocksdb::Status Expire(Slice user_key, int timestamp);
-  rocksdb::Status Del(Slice user_key);
-  rocksdb::Status Exists(std::vector<Slice> keys, int *ret);
-  rocksdb::Status TTL(Slice user_key, int *ttl);
-  rocksdb::Status Type(Slice user_key, RedisType *type);
+  rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
+  rocksdb::Status Expire(const Slice &user_key, int timestamp);
+  rocksdb::Status Del(const Slice &user_key);
+  rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
+  rocksdb::Status TTL(const Slice &user_key, int *ttl);
+  rocksdb::Status Type(const Slice &user_key, RedisType *type);
   rocksdb::Status FlushAll();
   uint64_t GetKeyNum(const std::string &prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);

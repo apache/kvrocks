@@ -213,7 +213,7 @@ RedisDB::RedisDB(Engine::Storage *storage, const std::string &ns) {
   namespace_ = ns;
 }
 
-rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice ns_key, Metadata *metadata) {
+rocksdb::Status RedisDB::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
   LatestSnapShot ss(db_);
@@ -241,7 +241,7 @@ rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice ns_key, Metadata *met
   return s;
 }
 
-rocksdb::Status RedisDB::Expire(Slice user_key, int timestamp) {
+rocksdb::Status RedisDB::Expire(const Slice &user_key, int timestamp) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -272,7 +272,7 @@ rocksdb::Status RedisDB::Expire(Slice user_key, int timestamp) {
   return s;
 }
 
-rocksdb::Status RedisDB::Del(Slice user_key) {
+rocksdb::Status RedisDB::Del(const Slice &user_key) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -288,7 +288,7 @@ rocksdb::Status RedisDB::Del(Slice user_key) {
   return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
 }
 
-rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
+rocksdb::Status RedisDB::Exists(const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -308,7 +308,7 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisDB::TTL(Slice user_key, int *ttl) {
+rocksdb::Status RedisDB::TTL(const Slice &user_key, int *ttl) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -440,7 +440,7 @@ rocksdb::Status RedisDB::FlushAll() {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisDB::Type(Slice user_key, RedisType *type) {
+rocksdb::Status RedisDB::Type(const Slice &user_key, RedisType *type) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 

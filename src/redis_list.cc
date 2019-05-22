@@ -2,11 +2,11 @@
 
 #include "stdlib.h"
 
-rocksdb::Status RedisList::GetMetadata(Slice ns_key, ListMetadata *metadata) {
+rocksdb::Status RedisList::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisList, ns_key, metadata);
 }
 
-rocksdb::Status RedisList::Size(Slice user_key, uint32_t *ret) {
+rocksdb::Status RedisList::Size(const Slice &user_key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -18,15 +18,19 @@ rocksdb::Status RedisList::Size(Slice user_key, uint32_t *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Push(Slice user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+rocksdb::Status RedisList::Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(user_key, elems, true, left, ret);
 }
 
-rocksdb::Status RedisList::PushX(Slice user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+rocksdb::Status RedisList::PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(user_key, elems, false, left, ret);
 }
 
-rocksdb::Status RedisList::push(Slice user_key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
+rocksdb::Status RedisList::push(const Slice &user_key,
+                                std::vector<Slice> elems,
+                                bool create_if_missing,
+                                bool left,
+                                int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -62,7 +66,7 @@ rocksdb::Status RedisList::push(Slice user_key, std::vector<Slice> elems, bool c
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Pop(Slice user_key, std::string *elem, bool left) {
+rocksdb::Status RedisList::Pop(const Slice &user_key, std::string *elem, bool left) {
   elem->clear();
 
   std::string ns_key;
@@ -119,7 +123,7 @@ rocksdb::Status RedisList::Pop(Slice user_key, std::string *elem, bool left) {
  * then trim the list from tail with num of elems to delete, here is 2.
  * and list would become: | E1 | E2 | E3 | E4 | E5 | E6 |
  */
-rocksdb::Status RedisList::Rem(Slice user_key, int count, const Slice &elem, int *ret) {
+rocksdb::Status RedisList::Rem(const Slice &user_key, int count, const Slice &elem, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -207,7 +211,7 @@ rocksdb::Status RedisList::Rem(Slice user_key, int count, const Slice &elem, int
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Insert(Slice user_key, Slice pivot, Slice elem, bool before, int *ret) {
+rocksdb::Status RedisList::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -288,7 +292,7 @@ rocksdb::Status RedisList::Insert(Slice user_key, Slice pivot, Slice elem, bool 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Index(Slice user_key, int index, std::string *elem) {
+rocksdb::Status RedisList::Index(const Slice &user_key, int index, std::string *elem) {
   elem->clear();
 
   std::string ns_key;
@@ -315,7 +319,7 @@ rocksdb::Status RedisList::Index(Slice user_key, int index, std::string *elem) {
 // If start is larger than the end of the list, an empty list is returned.
 // If stop is larger than the actual end of the list,
 // Redis will treat it like the last element of the list.
-rocksdb::Status RedisList::Range(Slice user_key, int start, int stop, std::vector<std::string> *elems) {
+rocksdb::Status RedisList::Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems) {
   elems->clear();
 
   std::string ns_key;
@@ -355,7 +359,7 @@ rocksdb::Status RedisList::Range(Slice user_key, int start, int stop, std::vecto
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Set(Slice user_key, int index, Slice elem) {
+rocksdb::Status RedisList::Set(const Slice &user_key, int index, Slice elem) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -385,7 +389,7 @@ rocksdb::Status RedisList::Set(Slice user_key, int index, Slice elem) {
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
+rocksdb::Status RedisList::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
   rocksdb::Status s = Pop(src, elem, false);
   if (!s.ok()) return s;
 
@@ -397,7 +401,7 @@ rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
 }
 
 // Caution: trim the big list may block the server
-rocksdb::Status RedisList::Trim(Slice user_key, int start, int stop) {
+rocksdb::Status RedisList::Trim(const Slice &user_key, int start, int stop) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 

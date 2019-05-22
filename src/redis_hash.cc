@@ -3,11 +3,11 @@
 #include <limits>
 #include <iostream>
 
-rocksdb::Status RedisHash::GetMetadata(Slice ns_key, HashMetadata *metadata) {
+rocksdb::Status RedisHash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
   return RedisDB::GetMetadata(kRedisHash, ns_key, metadata);
 }
 
-rocksdb::Status RedisHash::Size(Slice user_key, uint32_t *ret) {
+rocksdb::Status RedisHash::Size(const Slice &user_key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -19,7 +19,7 @@ rocksdb::Status RedisHash::Size(Slice user_key, uint32_t *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisHash::Get(Slice user_key, Slice field, std::string *value) {
+rocksdb::Status RedisHash::Get(const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata;
@@ -33,7 +33,7 @@ rocksdb::Status RedisHash::Get(Slice user_key, Slice field, std::string *value) 
   return db_->Get(read_options, sub_key, value);
 }
 
-rocksdb::Status RedisHash::IncrBy(Slice user_key, Slice field, int64_t increment, int64_t *ret) {
+rocksdb::Status RedisHash::IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *ret) {
   bool exists = false;
   int64_t old_value = 0;
 
@@ -79,7 +79,7 @@ rocksdb::Status RedisHash::IncrBy(Slice user_key, Slice field, int64_t increment
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::IncrByFloat(Slice user_key, Slice field, float increment, float *ret) {
+rocksdb::Status RedisHash::IncrByFloat(const Slice &user_key, const Slice &field, float increment, float *ret) {
   bool exists = false;
   float old_value = 0;
 
@@ -125,7 +125,9 @@ rocksdb::Status RedisHash::IncrByFloat(Slice user_key, Slice field, float increm
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::MGet(Slice user_key, const std::vector<Slice> &fields, std::vector<std::string> *values) {
+rocksdb::Status RedisHash::MGet(const Slice &user_key,
+                                const std::vector<Slice> &fields,
+                                std::vector<std::string> *values) {
   values->clear();
 
   std::string ns_key;
@@ -148,21 +150,21 @@ rocksdb::Status RedisHash::MGet(Slice user_key, const std::vector<Slice> &fields
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisHash::Set(Slice user_key, Slice field, Slice value, int *ret) {
+rocksdb::Status RedisHash::Set(const Slice &user_key, const Slice &field, const Slice &value, int *ret) {
   FieldValue fv = {field.ToString(), value.ToString()};
   std::vector<FieldValue> fvs;
   fvs.push_back(fv);
   return MSet(user_key, fvs, false, ret);
 }
 
-rocksdb::Status RedisHash::SetNX(Slice user_key, Slice field, Slice value, int *ret) {
+rocksdb::Status RedisHash::SetNX(const Slice &user_key, const Slice &field, Slice value, int *ret) {
   FieldValue fv = {field.ToString(), value.ToString()};
   std::vector<FieldValue> fvs;
   fvs.push_back(fv);
   return MSet(user_key, fvs, false, ret);
 }
 
-rocksdb::Status RedisHash::Delete(Slice user_key, const std::vector<Slice> &fields, int *ret) {
+rocksdb::Status RedisHash::Delete(const Slice &user_key, const std::vector<Slice> &fields, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -194,7 +196,7 @@ rocksdb::Status RedisHash::Delete(Slice user_key, const std::vector<Slice> &fiel
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::MSet(Slice user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
+rocksdb::Status RedisHash::MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -234,7 +236,7 @@ rocksdb::Status RedisHash::MSet(Slice user_key, const std::vector<FieldValue> &f
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::GetAll(Slice user_key, std::vector<FieldValue> *field_values, int type) {
+rocksdb::Status RedisHash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, int type) {
   field_values->clear();
 
   std::string ns_key;
@@ -270,7 +272,7 @@ rocksdb::Status RedisHash::GetAll(Slice user_key, std::vector<FieldValue> *field
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisHash::Scan(Slice user_key,
+rocksdb::Status RedisHash::Scan(const Slice &user_key,
                                 const std::string &cursor,
                                 uint64_t limit,
                                 const std::string &field_prefix,

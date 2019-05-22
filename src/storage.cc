@@ -44,10 +44,11 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
   options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
   options->compression = config_->rocksdb_options.compression;
-  options->target_file_size_base = 256 * 1048576;
-  options->max_manifest_file_size = 64 * 1024 * 1024;
-  options->max_log_file_size = 512 * 1024 * 1024;
+  options->target_file_size_base = 256 * MiB;
+  options->max_manifest_file_size = 64 * MiB;
+  options->max_log_file_size = 512 * MiB;
   options->keep_log_file_num = 24;
+  options->compaction_readahead_size = 2 * MiB;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
   options->listeners.emplace_back(new KvrocksEventListener(this));

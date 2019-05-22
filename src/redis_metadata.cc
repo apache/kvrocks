@@ -213,14 +213,14 @@ RedisDB::RedisDB(Engine::Storage *storage, const std::string &ns) {
   namespace_ = ns;
 }
 
-rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metadata) {
+rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice ns_key, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string bytes;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &bytes);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &bytes);
   if (!s.ok()) {
     return rocksdb::Status::NotFound();
   }
@@ -241,15 +241,14 @@ rocksdb::Status RedisDB::GetMetadata(RedisType type, Slice key, Metadata *metada
   return s;
 }
 
-rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
+rocksdb::Status RedisDB::Expire(Slice user_key, int timestamp) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
   std::string value;
   Metadata metadata(kRedisNone);
-  LockGuard guard(storage_->GetLockManager(), key);
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
   metadata.Decode(value);
   if (metadata.Expired()) {
@@ -267,27 +266,26 @@ rocksdb::Status RedisDB::Expire(Slice key, int timestamp) {
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch.PutLogData(log_data.Encode());
-  batch.Put(metadata_cf_handle_, key, Slice(buf, value.size()));
+  batch.Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
   s = storage_->Write(rocksdb::WriteOptions(), &batch);
   delete []buf;
   return s;
 }
 
-rocksdb::Status RedisDB::Del(Slice key) {
+rocksdb::Status RedisDB::Del(Slice user_key) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
   std::string value;
-  LockGuard guard(storage_->GetLockManager(), key);
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, key, &value);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
   Metadata metadata(kRedisNone);
   metadata.Decode(value);
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
-  return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
+  return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
@@ -310,16 +308,16 @@ rocksdb::Status RedisDB::Exists(std::vector<Slice> keys, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisDB::TTL(Slice key, int *ttl) {
+rocksdb::Status RedisDB::TTL(Slice user_key, int *ttl) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
+
   *ttl = -2;  // ttl is -2 when the key does not exist or expired
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &value);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;
 
   Metadata metadata(kRedisNone);
@@ -442,17 +440,16 @@ rocksdb::Status RedisDB::FlushAll() {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
+rocksdb::Status RedisDB::Type(Slice user_key, RedisType *type) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
   *type = kRedisNone;
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, key, &value);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK():s;
 
   Metadata metadata(kRedisNone);
@@ -461,8 +458,8 @@ rocksdb::Status RedisDB::Type(Slice key, RedisType *type) {
   return rocksdb::Status::OK();
 }
 
-void RedisDB::AppendNamespacePrefix(const Slice &key, std::string *output) {
-  ComposeNamespaceKey(namespace_, key, output);
+void RedisDB::AppendNamespacePrefix(const Slice &user_key, std::string *output) {
+  ComposeNamespaceKey(namespace_, user_key, output);
 }
 
 rocksdb::Status RedisSubKeyScanner::Scan(RedisType type,

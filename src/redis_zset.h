@@ -36,20 +36,20 @@ class RedisZSet : public RedisSubKeyScanner {
   explicit RedisZSet(Engine::Storage *storage, const std::string &ns) :
       RedisSubKeyScanner(storage, ns),
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
-  rocksdb::Status Add(Slice key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
-  rocksdb::Status Card(Slice key, int *ret);
-  rocksdb::Status Count(Slice key, const ZRangeSpec &spec, int *ret);
-  rocksdb::Status IncrBy(Slice key, Slice member, double increment, double *score);
-  rocksdb::Status Range(Slice key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
-  rocksdb::Status RangeByScore(Slice key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
-  rocksdb::Status Rank(Slice key, Slice member, bool reversed, int *ret);
-  rocksdb::Status Remove(Slice key, std::vector<Slice> members, int *ret);
-  rocksdb::Status RemoveRangeByScore(Slice key, ZRangeSpec spec, int *ret);
-  rocksdb::Status RemoveRangeByRank(Slice key, int start, int stop, int *ret);
-  rocksdb::Status Pop(Slice key, int count, bool min, std::vector<MemberScore> *mscores);
-  rocksdb::Status Score(Slice key, Slice member, double *score);
+  rocksdb::Status Add(Slice user_key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
+  rocksdb::Status Card(Slice user_key, int *ret);
+  rocksdb::Status Count(Slice user_key, const ZRangeSpec &spec, int *ret);
+  rocksdb::Status IncrBy(Slice user_key, Slice member, double increment, double *score);
+  rocksdb::Status Range(Slice user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
+  rocksdb::Status RangeByScore(Slice user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
+  rocksdb::Status Rank(Slice user_key, Slice member, bool reversed, int *ret);
+  rocksdb::Status Remove(Slice user_key, std::vector<Slice> members, int *ret);
+  rocksdb::Status RemoveRangeByScore(Slice user_key, ZRangeSpec spec, int *ret);
+  rocksdb::Status RemoveRangeByRank(Slice user_key, int start, int stop, int *ret);
+  rocksdb::Status Pop(Slice user_key, int count, bool min, std::vector<MemberScore> *mscores);
+  rocksdb::Status Score(Slice user_key, Slice member, double *score);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
-  rocksdb::Status Scan(Slice key,
+  rocksdb::Status Scan(Slice user_key,
                        const std::string &cursor,
                        uint64_t limit,
                        const std::string &member_prefix,
@@ -57,5 +57,5 @@ class RedisZSet : public RedisSubKeyScanner {
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
-  rocksdb::Status GetMetadata(Slice key, ZSetMetadata *metadata);
+  rocksdb::Status GetMetadata(Slice ns_key, ZSetMetadata *metadata);
 };

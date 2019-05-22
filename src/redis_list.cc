@@ -2,44 +2,42 @@
 
 #include "stdlib.h"
 
-rocksdb::Status RedisList::GetMetadata(Slice key, ListMetadata *metadata) {
-  return RedisDB::GetMetadata(kRedisList, key, metadata);
+rocksdb::Status RedisList::GetMetadata(Slice ns_key, ListMetadata *metadata) {
+  return RedisDB::GetMetadata(kRedisList, ns_key, metadata);
 }
 
-rocksdb::Status RedisList::Size(Slice key, uint32_t *ret) {
+rocksdb::Status RedisList::Size(Slice user_key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Push(Slice key, const std::vector<Slice> &elems, bool left, int *ret) {
-  return push(key, elems, true, left, ret);
+rocksdb::Status RedisList::Push(Slice user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+  return push(user_key, elems, true, left, ret);
 }
 
-rocksdb::Status RedisList::PushX(Slice key, const std::vector<Slice> &elems, bool left, int *ret) {
-  return push(key, elems, false, left, ret);
+rocksdb::Status RedisList::PushX(Slice user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+  return push(user_key, elems, false, left, ret);
 }
 
-rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
+rocksdb::Status RedisList::push(Slice user_key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
   ListMetadata metadata;
   rocksdb::WriteBatch batch;
   RedisCommand cmd = left ? kRedisCmdLPush : kRedisCmdRPush;
   WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
   batch.PutLogData(log_data.Encode());
-  LockGuard guard(storage_->GetLockManager(), key);
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !create_if_missing && s.IsNotFound()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -47,7 +45,7 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   for (const auto &elem : elems) {
     std::string index_buf, sub_key;
     PutFixed64(&index_buf, index);
-    InternalKey(key, index_buf, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, index_buf, metadata.version).Encode(&sub_key);
     batch.Put(sub_key, elem);
     left ? --index : ++index;
   }
@@ -59,28 +57,27 @@ rocksdb::Status RedisList::push(Slice key, std::vector<Slice> elems, bool create
   std::string bytes;
   metadata.size += elems.size();
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, key, bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
   *ret = metadata.size;
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
+rocksdb::Status RedisList::Pop(Slice user_key, std::string *elem, bool left) {
   elem->clear();
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
   uint64_t index = left ? metadata.head : metadata.tail-1;
   std::string buf;
   PutFixed64(&buf, index);
   std::string sub_key;
-  InternalKey(key, buf, metadata.version).Encode(&sub_key);
+  InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
   s = db_->Get(rocksdb::ReadOptions(), sub_key, elem);
   if (!s.ok()) {
     // FIXME: should be always exists??
@@ -92,13 +89,13 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
   batch.PutLogData(log_data.Encode());
   batch.Delete(sub_key);
   if (metadata.size == 1) {
-    batch.Delete(metadata_cf_handle_, key);
+    batch.Delete(metadata_cf_handle_, ns_key);
   } else {
     std::string bytes;
     metadata.size -= 1;
     left ? ++metadata.head : --metadata.tail;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, key, bytes);
+    batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
@@ -122,23 +119,22 @@ rocksdb::Status RedisList::Pop(Slice key, std::string *elem, bool left) {
  * then trim the list from tail with num of elems to delete, here is 2.
  * and list would become: | E1 | E2 | E3 | E4 | E5 | E6 |
  */
-rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret) {
+rocksdb::Status RedisList::Rem(Slice user_key, int count, const Slice &elem, int *ret) {
   *ret = 0;
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
   uint64_t index = count >= 0 ? metadata.head : metadata.tail - 1;
   std::string buf, start_key, prefix;
   PutFixed64(&buf, index);
-  InternalKey(key, buf, metadata.version).Encode(&start_key);
-  InternalKey(key, "", metadata.version).Encode(&prefix);
+  InternalKey(ns_key, buf, metadata.version).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version).Encode(&prefix);
   bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
   rocksdb::ReadOptions read_options;
@@ -167,7 +163,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
   batch.PutLogData(log_data.Encode());
 
   if (to_delete_indexes.size() == metadata.size) {
-    batch.Delete(metadata_cf_handle_, key);
+    batch.Delete(metadata_cf_handle_, ns_key);
   } else {
     std::string to_update_key, to_delete_key;
     uint64_t min_to_delete_index = !reversed ? to_delete_indexes[0] : to_delete_indexes[to_delete_indexes.size() - 1];
@@ -177,14 +173,14 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     reversed = left_part_len <= right_part_len;
     buf.clear();
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
-    InternalKey(key, buf, metadata.version).Encode(&start_key);
+    InternalKey(ns_key, buf, metadata.version).Encode(&start_key);
     for (iter->Seek(start_key);
          iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
       if (iter->value() != elem) {
         buf.clear();
         PutFixed64(&buf, reversed ? max_to_delete_index-- : min_to_delete_index++);
-        InternalKey(key, buf, metadata.version).Encode(&to_update_key);
+        InternalKey(ns_key, buf, metadata.version).Encode(&to_update_key);
         batch.Put(to_update_key, iter->value());
       }
     }
@@ -192,7 +188,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     for (uint64_t idx = 0; idx < to_delete_indexes.size(); ++idx) {
       buf.clear();
       PutFixed64(&buf, reversed ? (metadata.head + idx) : (metadata.tail - 1 - idx));
-      InternalKey(key, buf, metadata.version).Encode(&to_delete_key);
+      InternalKey(ns_key, buf, metadata.version).Encode(&to_delete_key);
       batch.Delete(to_delete_key);
     }
     if (reversed) {
@@ -203,7 +199,7 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
     metadata.size -= to_delete_indexes.size();
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, key, bytes);
+    batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
 
   delete iter;
@@ -211,22 +207,21 @@ rocksdb::Status RedisList::Rem(Slice key, int count, const Slice &elem, int *ret
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool before, int *ret) {
+rocksdb::Status RedisList::Insert(Slice user_key, Slice pivot, Slice elem, bool before, int *ret) {
   *ret = 0;
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::string buf, start_key, prefix;
   uint64_t pivot_index = metadata.head - 1, new_elem_index;
   PutFixed64(&buf, metadata.head);
-  InternalKey(key, buf, metadata.version).Encode(&start_key);
-  InternalKey(key, "", metadata.version).Encode(&prefix);
+  InternalKey(ns_key, buf, metadata.version).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version).Encode(&prefix);
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
@@ -270,12 +265,12 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
       !reversed ? iter->Next() : iter->Prev()) {
     buf.clear();
     PutFixed64(&buf, reversed ? --pivot_index : ++pivot_index);
-    InternalKey(key, buf, metadata.version).Encode(&to_update_key);
+    InternalKey(ns_key, buf, metadata.version).Encode(&to_update_key);
     batch.Put(to_update_key, iter->value());
   }
   buf.clear();
   PutFixed64(&buf, new_elem_index);
-  InternalKey(key, buf, metadata.version).Encode(&to_update_key);
+  InternalKey(ns_key, buf, metadata.version).Encode(&to_update_key);
   batch.Put(to_update_key, elem);
 
   if (reversed) {
@@ -286,21 +281,20 @@ rocksdb::Status RedisList::Insert(Slice key, Slice pivot, Slice elem, bool befor
   metadata.size++;
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, key, bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
 
   delete iter;
   *ret = metadata.size;
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
+rocksdb::Status RedisList::Index(Slice user_key, int index, std::string *elem) {
   elem->clear();
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
   if (index < 0) index += metadata.size;
@@ -312,7 +306,7 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
   std::string buf;
   PutFixed64(&buf, metadata.head + index);
   std::string sub_key;
-  InternalKey(key, buf, metadata.version).Encode(&sub_key);
+  InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
   return db_->Get(read_options, sub_key, elem);
 }
 
@@ -321,14 +315,13 @@ rocksdb::Status RedisList::Index(Slice key, int index, std::string *elem) {
 // If start is larger than the end of the list, an empty list is returned.
 // If stop is larger than the actual end of the list,
 // Redis will treat it like the last element of the list.
-rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std::string> *elems) {
+rocksdb::Status RedisList::Range(Slice user_key, int start, int stop, std::vector<std::string> *elems) {
   elems->clear();
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = static_cast<int>(metadata.size) + start;
@@ -339,8 +332,8 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   std::string buf;
   PutFixed64(&buf, metadata.head + start);
   std::string start_key, prefix;
-  InternalKey(key, buf, metadata.version).Encode(&start_key);
-  InternalKey(key, "", metadata.version).Encode(&prefix);
+  InternalKey(ns_key, buf, metadata.version).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version).Encode(&prefix);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -362,14 +355,13 @@ rocksdb::Status RedisList::Range(Slice key, int start, int stop, std::vector<std
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
+rocksdb::Status RedisList::Set(Slice user_key, int index, Slice elem) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
   if (index < 0) index = metadata.size + index;
   if (index < 0 || index >= static_cast<int>(metadata.size)) {
@@ -378,7 +370,7 @@ rocksdb::Status RedisList::Set(Slice key, int index, Slice elem) {
 
   std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head+index);
-  InternalKey(key, buf, metadata.version).Encode(&sub_key);
+  InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
   s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (!s.ok()) {
     return s;
@@ -405,14 +397,13 @@ rocksdb::Status RedisList::RPopLPush(Slice src, Slice dst, std::string *elem) {
 }
 
 // Caution: trim the big list may block the server
-rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
+rocksdb::Status RedisList::Trim(Slice user_key, int start, int stop) {
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
-  LockGuard guard(storage_->GetLockManager(), key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata;
-  rocksdb::Status s = GetMetadata(key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = metadata.size + start;
@@ -420,7 +411,7 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start > stop) {
-    return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, key);
+    return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
   }
   if (start < 0) start = 0;
 
@@ -434,20 +425,20 @@ rocksdb::Status RedisList::Trim(Slice key, int start, int stop) {
   for (uint64_t i = metadata.head; i < left_index; i++) {
     PutFixed64(&buf, i);
     std::string sub_key;
-    InternalKey(key, buf, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.head++;
   }
   uint64_t right_index = metadata.head+stop+1;
   for (uint64_t i = right_index; i < metadata.tail; i++) {
     std::string sub_key;
-    InternalKey(key, buf, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.tail--;
   }
   metadata.size = uint32_t(stop - start + 1);
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, key, bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }

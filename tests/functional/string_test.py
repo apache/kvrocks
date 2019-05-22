@@ -55,6 +55,30 @@ def test_getset():
     ret = conn.delete(key)
     assert(ret == 1)
 
+def test_set_with_option():
+    key = "test_set_with_option"
+    conn = get_redis_conn()
+    ret = conn.set(key, "bar", nx=True)
+    assert(ret == True)
+    ret = conn.set(key, "bar", nx=True)
+    assert(ret == None)
+    ret = conn.set(key, "bar", xx=True)
+    assert(ret == True)
+    ret = conn.set(key, "bar", px=1024000, xx=True)
+    assert(ret == True)
+    ret = conn.ttl(key)
+    assert(ret >= 1023 and ret <= 1025)
+    ret = conn.set(key, "bar", ex=1024, xx=True)
+    assert(ret == True)
+    ret = conn.ttl(key)
+    assert(ret >= 1023 and ret <= 1025)
+    ret = conn.set(key, "bar", ex=1024)
+    assert(ret == True)
+    ret = conn.ttl(key)
+    assert(ret >= 1023 and ret <= 1025)
+    ret = conn.delete(key)
+    assert(ret == 1)
+
 def test_setex():
     key = "test_setex"
     conn = get_redis_conn()

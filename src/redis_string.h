@@ -18,13 +18,14 @@ class RedisString :public RedisDB {
   rocksdb::Status GetSet(Slice key, Slice new_value, std::string *old_value);
   rocksdb::Status Set(Slice key, Slice value);
   rocksdb::Status SetEX(Slice key, Slice value, int ttl);
-  rocksdb::Status SetNX(Slice key, Slice value, int *ret);
+  rocksdb::Status SetNX(Slice key, Slice value, int ttl, int *ret);
+  rocksdb::Status SetXX(Slice key, Slice value, int ttl, int *ret);
   rocksdb::Status SetRange(Slice key, int offset, Slice value, int *ret);
   rocksdb::Status IncrBy(Slice key, int64_t increment, int64_t *ret);
   rocksdb::Status IncrByFloat(Slice key, float increment, float *ret);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, int ttl = 0);
-  rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, int *ret);
+  rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret);
 
  private:
   rocksdb::Status getValue(Slice key, std::string *raw_value, std::string *value = nullptr);

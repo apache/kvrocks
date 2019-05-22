@@ -103,9 +103,22 @@ TEST_F(RedisStringTest, GetSet) {
   string->Del(key_);
 }
 
+TEST_F(RedisStringTest, MSetXX) {
+  int ret;
+  string->SetXX(key_, "test-value", 3, &ret);
+  EXPECT_EQ(ret, 0);
+  string->Set(key_, "test-value");
+  string->SetXX(key_, "test-value", 3, &ret);
+  EXPECT_EQ(ret, 1);
+  int ttl;
+  string->TTL(key_, &ttl);
+  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  string->Del(key_);
+}
+
 TEST_F(RedisStringTest, MSetNX) {
   int ret;
-  string->MSetNX(pairs_, &ret);
+  string->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
@@ -124,12 +137,21 @@ TEST_F(RedisStringTest, MSetNX) {
           {pairs_[0].key, pairs_[0].value},
           {"d", "4"},
   };
-  string->MSetNX(pairs_, &ret);
+  string->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(0, ret);
 
   for (int i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
   }
+}
+
+TEST_F(RedisStringTest, MSetNXWithTTL) {
+  int ret;
+  string->SetNX(key_, "test-value", 3, &ret);
+  int ttl;
+  string->TTL(key_, &ttl);
+  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  string->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetEX) {

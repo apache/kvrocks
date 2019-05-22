@@ -104,9 +104,39 @@ rocksdb::Status RedisString::SetEX(Slice key, Slice value, int ttl) {
   return MSet(pairs, ttl);
 }
 
-rocksdb::Status RedisString::SetNX(Slice key, Slice value, int *ret) {
+rocksdb::Status RedisString::SetNX(Slice key, Slice value, int ttl, int *ret) {
   std::vector<StringPair> pairs{StringPair{key, value}};
-  return MSetNX(pairs, ret);
+  return MSetNX(pairs, ttl, ret);
+}
+
+rocksdb::Status RedisString::SetXX(Slice key, Slice value, int ttl, int *ret) {
+  *ret = 0;
+  int exists = 0;
+  uint32_t expire = 0;
+  if (ttl > 0) {
+    int64_t now;
+    rocksdb::Env::Default()->GetCurrentTime(&now);
+    expire = uint32_t(now) + ttl;
+  }
+
+  std::string ns_key;
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisString);
+  batch.PutLogData(log_data.Encode());
+
+  AppendNamespacePrefix(key, &ns_key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  Exists({key}, &exists);
+  if (exists != 1) return rocksdb::Status::OK();
+
+  *ret = 1;
+  std::string bytes;
+  Metadata metadata(kRedisString);
+  metadata.expire = expire;
+  metadata.Encode(&bytes);
+  bytes.append(value.ToString());
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status RedisString::SetRange(Slice key, int offset, Slice value, int *ret) {
@@ -215,27 +245,34 @@ rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl)
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int *ret) {
+rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret) {
   *ret = 0;
 
+  uint32_t expire = 0;
+  if (ttl > 0) {
+    int64_t now;
+    rocksdb::Env::Default()->GetCurrentTime(&now);
+    expire = uint32_t(now) + ttl;
+  }
+
+  int exists;
   std::string ns_key, value;
   for (StringPair pair : pairs) {
     AppendNamespacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
-    if (s.ok()) {
-      Metadata metadata(kRedisNone);
-      metadata.Decode(value);
-      if (!metadata.Expired()) return rocksdb::Status::OK();
+    if (Exists({pair.key}, &exists).ok() && exists == 1) {
+      return rocksdb::Status::OK();
     }
     std::string bytes;
-    Metadata(kRedisString).Encode(&bytes);
+    Metadata metadata(kRedisString);
+    metadata.expire = expire;
+    metadata.Encode(&bytes);
     bytes.append(pair.value.ToString());
     rocksdb::WriteBatch batch;
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());
     batch.Put(metadata_cf_handle_, ns_key, bytes);
-    s = storage_->Write(rocksdb::WriteOptions(), &batch);
+    auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
     if (!s.ok()) return s;
   }
   *ret = 1;

@@ -32,7 +32,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
         cf_handles_(cf_handles) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
-  bool IsKeyExpired(const InternalKey &ikey) const;
+  bool IsKeyExpired(const InternalKey &ikey, const Slice &value) const;
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override;
 

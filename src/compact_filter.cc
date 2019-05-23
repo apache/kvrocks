@@ -2,6 +2,7 @@
 #include <glog/logging.h>
 #include <string>
 
+#include "redis_bitmap.h"
 
 namespace Engine {
 using rocksdb::Slice;
@@ -29,7 +30,7 @@ bool MetadataFilter::Filter(int level,
   return metadata.Expired();
 }
 
-bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
+bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) const {
   std::string metadata_key;
 
   if (cf_handles_->size() < 2)  return false;  // DB recovery may trigger compaction, and cf_handlers_ would be empty
@@ -68,6 +69,13 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
     cached_metadata_.clear();
     return true;
   }
+  if (metadata.Type() == kRedisBitmap) {
+    static const char zero_byte_segment[kBitmapSegmentBytes] = {0};
+    if (!memcmp(zero_byte_segment, value.ToString().c_str(), value.size())) {
+      cached_metadata_.clear();
+      return true;
+    }
+  }
   return false;
 }
 
@@ -77,7 +85,7 @@ bool SubKeyFilter::Filter(int level,
                                   std::string *new_value,
                                   bool *modified) const {
   InternalKey ikey(key);
-  bool result = IsKeyExpired(ikey);
+  bool result = IsKeyExpired(ikey, value);
   DLOG(INFO) << "[compact_filter/subkey]"
              << " namespace: " << ikey.GetNamespace().ToString()
              << ", metadata key: " << ikey.GetKey().ToString()

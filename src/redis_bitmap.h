@@ -15,6 +15,7 @@ class RedisBitmap : public RedisDB {
   rocksdb::Status BitCount(const Slice &user_key, int start, int stop, uint32_t *cnt);
   rocksdb::Status BitPos(const Slice &user_key, bool bit, int start, int stop, int *pos);
   static bool GetBitFromValueAndOffset(const std::string &value, const uint32_t offset);
+  static bool IsEmptySegment(const Slice &segment);
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, BitmapMetadata *metadata);
 };

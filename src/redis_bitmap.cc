@@ -85,7 +85,6 @@ rocksdb::Status RedisBitmap::SetBit(const Slice &user_key, uint32_t offset, bool
   } else {
     value[byte_index] &= ~(1 << bit_offset);
   }
-
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(offset)});
   batch.PutLogData(log_data.Encode());
@@ -205,4 +204,10 @@ bool RedisBitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t of
     bit = true;
   }
   return bit;
+}
+
+bool RedisBitmap::IsEmptySegment(const Slice &segment) {
+  static const char zero_byte_segment[kBitmapSegmentBytes] = {0};
+  std::string value = segment.ToString();
+  return !memcmp(zero_byte_segment, value.c_str(), value.size());
 }

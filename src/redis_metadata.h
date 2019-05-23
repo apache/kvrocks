@@ -155,7 +155,7 @@ class RedisSubKeyScanner : public RedisDB {
   explicit RedisSubKeyScanner(Engine::Storage *storage, const std::string &ns)
       : RedisDB(storage, ns) {}
   rocksdb::Status Scan(RedisType type,
-                       Slice key,
+                       const Slice &user_key,
                        const std::string &cursor,
                        uint64_t limit,
                        const std::string &subkey_prefix,

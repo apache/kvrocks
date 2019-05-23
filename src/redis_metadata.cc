@@ -463,7 +463,7 @@ void RedisDB::AppendNamespacePrefix(const Slice &user_key, std::string *output) 
 }
 
 rocksdb::Status RedisSubKeyScanner::Scan(RedisType type,
-                                         Slice key,
+                                         const Slice &user_key,
                                          const std::string &cursor,
                                          uint64_t limit,
                                          const std::string &subkey_prefix,
@@ -474,11 +474,10 @@ rocksdb::Status RedisSubKeyScanner::Scan(RedisType type,
   }
 
   std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-  key = Slice(ns_key);
+  AppendNamespacePrefix(user_key, &ns_key);
 
   Metadata metadata(type);
-  rocksdb::Status s = GetMetadata(type, key, &metadata);
+  rocksdb::Status s = GetMetadata(type, ns_key, &metadata);
   if (!s.ok()) return s;
 
   LatestSnapShot ss(db_);
@@ -489,14 +488,14 @@ rocksdb::Status RedisSubKeyScanner::Scan(RedisType type,
 
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
-    InternalKey(key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
+    InternalKey(ns_key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
   } else {
-    InternalKey(key, "", metadata.version).Encode(&match_prefix_key);
+    InternalKey(ns_key, "", metadata.version).Encode(&match_prefix_key);
   }
 
   std::string start_key;
   if (!cursor.empty()) {
-    InternalKey(key, cursor, metadata.version).Encode(&start_key);
+    InternalKey(ns_key, cursor, metadata.version).Encode(&start_key);
   } else {
     start_key = match_prefix_key;
   }

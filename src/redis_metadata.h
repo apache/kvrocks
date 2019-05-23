@@ -113,12 +113,12 @@ class ListMetadata : public Metadata {
 class RedisDB {
  public:
   explicit RedisDB(Engine::Storage *storage, const std::string &ns = "");
-  rocksdb::Status GetMetadata(RedisType type, Slice key, Metadata *metadata);
-  rocksdb::Status Expire(Slice key, int timestamp);
-  rocksdb::Status Del(Slice key);
-  rocksdb::Status Exists(std::vector<Slice> keys, int *ret);
-  rocksdb::Status TTL(Slice key, int *ttl);
-  rocksdb::Status Type(Slice key, RedisType *type);
+  rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
+  rocksdb::Status Expire(const Slice &user_key, int timestamp);
+  rocksdb::Status Del(const Slice &user_key);
+  rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
+  rocksdb::Status TTL(const Slice &user_key, int *ttl);
+  rocksdb::Status Type(const Slice &user_key, RedisType *type);
   rocksdb::Status FlushAll();
   uint64_t GetKeyNum(const std::string &prefix = "");
   uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
@@ -127,7 +127,7 @@ class RedisDB {
                        const std::string &prefix,
                        std::vector<std::string> *keys);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
-  void AppendNamespacePrefix(const Slice &key, std::string *output);
+  void AppendNamespacePrefix(const Slice &user_key, std::string *output);
 
  protected:
   Engine::Storage *storage_;
@@ -155,7 +155,7 @@ class RedisSubKeyScanner : public RedisDB {
   explicit RedisSubKeyScanner(Engine::Storage *storage, const std::string &ns)
       : RedisDB(storage, ns) {}
   rocksdb::Status Scan(RedisType type,
-                       Slice key,
+                       const Slice &user_key,
                        const std::string &cursor,
                        uint64_t limit,
                        const std::string &subkey_prefix,

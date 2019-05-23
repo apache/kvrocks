@@ -1,3 +1,7 @@
+* Version 0.2.1(@2019-05-22)
+	- fix subkey compact filter may delete the living data
+	- supports setxx command
+
 * Version 0.2.0(@2019-05-21)
 	- supports one replication thread per slave
 	- supports limit speed of fetching file in master

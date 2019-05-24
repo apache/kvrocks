@@ -49,6 +49,8 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       return true;
     } else {
       // failed to getValue metadata, clear the cached key and reserve
+      LOG(ERROR) << "Failed to get the metadata, namespace: " << ikey.GetNamespace().ToString()
+                 << ", key: " << ikey.GetKey().ToString() << ", err: " << s.ToString();
       cached_key_.clear();
       cached_metadata_.clear();
       return false;
@@ -61,6 +63,8 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   rocksdb::Status s = metadata.Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
+    LOG(ERROR) << "Failed to decode the metadata, namespace: " << ikey.GetNamespace().ToString()
+               << ", key: " << ikey.GetKey().ToString() << ", err: " << s.ToString();
     return false;
   }
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command

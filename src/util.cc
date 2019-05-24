@@ -54,9 +54,9 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
 
 // NOTE: fd should be blocking here
 Status SockSend(int fd, const std::string &data) {
-  ssize_t n = 0, nwritten;
+  ssize_t n = 0;
   while (n < static_cast<ssize_t>(data.size())) {
-    nwritten = write(fd, data.c_str()+n, data.size()-n);
+    ssize_t nwritten = write(fd, data.c_str()+n, data.size()-n);
     if (nwritten == -1) {
       return Status(Status::NotOK, strerror(errno));
     }

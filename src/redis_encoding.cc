@@ -129,7 +129,9 @@ void PutFixed64(std::string *dst, uint64_t value) {
 }
 
 void PutDouble(std::string *dst, double value) {
-  auto ptr = reinterpret_cast<uint64_t*>(&value);
+  uint64_t u64;
+  memcpy(&u64, &value, sizeof(value));
+  auto ptr = &u64;
   if ((*ptr >> 63) == 1) {
     // signed bit would be zero
     *ptr ^= 0xffffffffffffffff;

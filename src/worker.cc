@@ -196,19 +196,19 @@ void Worker::FreeConnection(Redis::Connection *conn) {
 
 void Worker::FreeConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
-  auto iter = conns_.find(fd);
-  if (iter != conns_.end() && iter->second->GetID() == id) {
+  auto conn_iter = conns_.find(fd);
+  if (conn_iter != conns_.end() && conn_iter->second->GetID() == id) {
     if (rate_limit_group_ != nullptr) {
-      bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
+      bufferevent_remove_from_rate_limit_group(conn_iter->second->GetBufferEvent());
     }
-    delete iter->second;
-    conns_.erase(iter);
+    delete conn_iter->second;
+    conns_.erase(conn_iter);
     svr_->DecrClientNum();
   }
-  iter = monitor_conns_.find(fd);
-  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
-    delete iter->second;
-    monitor_conns_.erase(iter);
+  auto monitor_conn_iter = monitor_conns_.find(fd);
+  if (monitor_conn_iter != monitor_conns_.end() && monitor_conn_iter->second->GetID() == id) {
+    delete monitor_conn_iter->second;
+    monitor_conns_.erase(monitor_conn_iter);
     svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }

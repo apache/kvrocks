@@ -194,6 +194,24 @@ target_sources(kvrocks2redis PRIVATE
         tools/kvrocks2redis/parser.h)
 
 add_executable(unittest
+        src/server.cc
+        src/server.h
+        src/config.cc
+        src/config.h
+        src/worker.cc
+        src/worker.h
+        src/redis_connection.cc
+        src/redis_connection.h
+        src/redis_pubsub.cc
+        src/redis_pubsub.h
+        src/redis_cmd.cc
+        src/redis_cmd.h
+        src/redis_request.cc
+        src/redis_request.h
+        src/replication.cc
+        src/replication.h
+        src/redis_reply.cc
+        src/redis_reply.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
         src/redis_metadata.cc
@@ -224,10 +242,12 @@ add_executable(unittest
         tests/rwlock_test.cc
         tests/stats_test.cc
         tests/cron_test.cc
+        tests/config_test.cc
         tests/task_runner_test.cc tests/t_bitmap_test.cc tests/compact_test.cc)
 
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)
 target_link_libraries(unittest ${EXTERNAL_LIBS})
+target_include_directories(unittest PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(unittest ${EXTERNAL_INCS})
 target_include_directories(unittest PRIVATE src)

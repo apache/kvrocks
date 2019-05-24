@@ -533,19 +533,19 @@ Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
       return Status::OK();
     }
   }
-  return Status(Status::NotOK, "namespace was not found");
+  return Status(Status::NotOK, "the namespace was not found");
 }
 
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (ns.size() > 255) {
-    return Status(Status::NotOK, "namespace size exceed limit " + std::to_string(INT8_MAX));
+    return Status(Status::NotOK, "the namespace size exceed limit " + std::to_string(INT8_MAX));
   }
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
-      return Status(Status::NotOK, "namespace has already exists");
+      return Status(Status::NotOK, "the namespace has already exists");
     }
   }
   tokens[token] = ns;
@@ -562,5 +562,5 @@ Status Config::DelNamespace(const std::string &ns) {
       return Status::OK();
     }
   }
-  return Status(Status::NotOK, "namespace was not found");
+  return Status(Status::NotOK, "the namespace was not found");
 }

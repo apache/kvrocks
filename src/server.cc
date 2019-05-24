@@ -44,7 +44,6 @@ Status Server::Start() {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port));
     if (!s.IsOK()) return s;
   }
-
   for (const auto worker : worker_threads_) {
     worker->Start();
   }

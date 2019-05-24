@@ -153,7 +153,7 @@ class Server {
 
   // threads
   std::thread cron_thread_;
-  TaskRunner *task_runner_;
+  TaskRunner *task_runner_ = nullptr;
   std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };

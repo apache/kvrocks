@@ -178,10 +178,6 @@ bool GetDouble(rocksdb::Slice *input, double *value) {
   return true;
 }
 
-uint8_t DecodeFixed8(const char *ptr) {
-  return (static_cast<uint8_t>(ptr[0]) & 0xff);
-}
-
 uint32_t DecodeFixed32(const char *ptr) {
   if (BYTE_ORDER == BIG_ENDIAN) {
     uint32_t value;

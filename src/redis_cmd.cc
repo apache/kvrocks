@@ -72,7 +72,7 @@ class CommandNamespace : public Commander {
         *output = Redis::BulkString(token);
       }
     } else if (args_.size() == 4 && args_[1] == "set") {
-      Status s = config->SetNamepsace(args_[2], args_[3]);
+      Status s = config->SetNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3]
       << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
@@ -1096,7 +1096,7 @@ class CommandHKeys : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 1);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1115,7 +1115,7 @@ class CommandHVals : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 2);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }

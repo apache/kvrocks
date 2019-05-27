@@ -12,6 +12,12 @@ typedef struct FieldValue {
   std::string value;
 } FieldValue;
 
+enum class HashFetchType {
+  kAll = 0,
+  kOnlyKey = 1,
+  kOnlyValue = 2
+};
+
 class RedisHash : public RedisSubKeyScanner {
  public:
   RedisHash(Engine::Storage *storage, const std::string &ns) : RedisSubKeyScanner(storage, ns) {}
@@ -24,7 +30,9 @@ class RedisHash : public RedisSubKeyScanner {
   rocksdb::Status IncrByFloat(const Slice &user_key, const Slice &field, float increment, float *ret);
   rocksdb::Status MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values);
-  rocksdb::Status GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, int type = 0);
+  rocksdb::Status GetAll(const Slice &user_key,
+                         std::vector<FieldValue> *field_values,
+                         HashFetchType type = HashFetchType::kAll);
   rocksdb::Status Scan(const Slice &user_key,
                        const std::string &cursor,
                        uint64_t limit,

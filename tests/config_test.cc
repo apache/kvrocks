@@ -30,7 +30,7 @@ TEST(Namespace, Set) {
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   std::vector<std::string> new_tokens = {"nt1", "nt2'", "nt3", "nt4"};
   for(int i = 0; i < namespaces.size(); i++) {
-    auto s = config.SetNamepsace(namespaces[i], tokens[i]);
+    auto s = config.SetNamespace(namespaces[i], tokens[i]);
     EXPECT_FALSE(s.IsOK());
     EXPECT_EQ(s.Msg(), "the namespace was not found");
   }
@@ -43,7 +43,7 @@ TEST(Namespace, Set) {
     EXPECT_EQ(token, tokens[i]);
   }
   for(int i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.SetNamepsace(namespaces[i], new_tokens[i]).IsOK());
+    EXPECT_TRUE(config.SetNamespace(namespaces[i], new_tokens[i]).IsOK());
   }
   for(int i = 0; i < namespaces.size(); i++) {
     std::string token;

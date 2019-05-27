@@ -72,7 +72,7 @@ class CommandNamespace : public Commander {
         *output = Redis::BulkString(token);
       }
     } else if (args_.size() == 4 && args_[1] == "set") {
-      Status s = config->SetNamepsace(args_[2], args_[3]);
+      Status s = config->SetNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3]
       << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();

@@ -519,7 +519,7 @@ void Config::GetNamespace(const std::string &ns, std::string *token) {
   }
 }
 
-Status Config::SetNamepsace(const std::string &ns, const std::string &token) {
+Status Config::SetNamespace(const std::string &ns, const std::string &token) {
   if (ns == kDefaultNamespace) {
     return Status(Status::NotOK, "can't set the default namespace");
   }

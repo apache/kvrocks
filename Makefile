@@ -8,10 +8,10 @@ all: kvrocks
 
 kvrocks:
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR)  && cmake .. && make -j4
+	@sh ./build.sh $(BUILD_DIR)
 	@echo "" 
 	@echo "Hint: It's a good idea to run 'make test' ;)"
-	@echo "" 
+	@echo ""
 
 test:
 	@./$(BUILD_DIR)/unittest

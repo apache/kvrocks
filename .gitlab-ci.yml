@@ -1,16 +1,16 @@
 image: centos7-for-kvrocks
 # image: centos6-for-kvrocks
 stages:
-    - analyise
+    - analysis
     - build
     - test
     - pkg
     - release
 
-code_analyise:
+code_analysis:
     tags:
         - dev
-    stage: analyise
+    stage: analysis
     script:
         - sh cpplint.sh
         - sh cppcheck.sh
@@ -35,7 +35,7 @@ build:
         expire_in: "3 days"
 
     dependencies:
-        - code_analyise
+        - code_analysis
         
 unittest:
     stage: test

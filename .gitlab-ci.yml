@@ -1,10 +1,19 @@
 image: centos7-for-kvrocks
 # image: centos6-for-kvrocks
 stages:
+    - analysis
     - build
     - test
     - pkg
     - release
+
+code_analysis:
+    tags:
+        - dev
+    stage: analysis
+    script:
+        - sh cpplint.sh
+        - sh cppcheck.sh
 
 build:
     stage: build
@@ -12,7 +21,6 @@ build:
         - dev
     script:
         - rm -rf /cache/unittest
-        - sh cpplint.sh
         - git submodule init && git submodule update
         - mkdir build/
         - cd build && cmake -DCMAKE_BUILD_DIRECTORY=/cache/build -DCMAKE_BUILD_TYPE=Release .. && make -j4 && cd ..
@@ -25,6 +33,9 @@ build:
         paths:
             - _build/
         expire_in: "3 days"
+
+    dependencies:
+        - code_analysis
         
 unittest:
     stage: test

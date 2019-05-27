@@ -16,7 +16,6 @@ void PutDouble(std::string *dst, double value);
 void EncodeFixed8(char *buf, uint8_t value);
 void EncodeFixed32(char *buf, uint32_t value);
 void EncodeFixed64(char *buf, uint64_t value);
-uint8_t DecodeFixed8(const char *ptr);
 uint32_t DecodeFixed32(const char *ptr);
 uint64_t DecodeFixed64(const char *ptr);
 double DecodeDouble(const char *ptr);

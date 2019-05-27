@@ -267,7 +267,7 @@ class CommandGetRange: public Commander {
   }
 
  private:
-  int start_, stop_;
+  int start_ = 0, stop_ = 0;
 };
 
 class CommandSetRange: public Commander {
@@ -400,7 +400,7 @@ class CommandSetEX : public Commander {
   }
 
  private:
-  int ttl_;
+  int ttl_ = 0;
 };
 
 class CommandMSet : public Commander {
@@ -578,7 +578,7 @@ class CommandGetBit : public Commander {
     return Status::OK();
   }
  private:
-  uint32_t offset_;
+  uint32_t offset_ = 0;
 };
 
 class CommandSetBit : public Commander {
@@ -610,8 +610,8 @@ class CommandSetBit : public Commander {
   }
 
  private:
-  uint32_t offset_;
-  bool bit_;
+  uint32_t offset_ = 0;
+  bool bit_ = false;
 };
 
 class CommandBitCount : public Commander {
@@ -670,7 +670,7 @@ class CommandBitPos: public Commander {
 
  private:
   int start_ = 0, stop_ = -1;
-  bool bit_;
+  bool bit_ = false;
 };
 
 class CommandType : public Commander {
@@ -831,7 +831,7 @@ class CommandExpireAt : public Commander {
   }
 
  private:
-  int timestamp_;
+  int timestamp_ = 0;
 };
 
 class CommandPExpireAt : public Commander {
@@ -860,7 +860,7 @@ class CommandPExpireAt : public Commander {
   }
 
  private:
-  int timestamp_;
+  int timestamp_ = 0;
 };
 
 class CommandPersist : public Commander {
@@ -1343,8 +1343,8 @@ class CommandBPop : public Commander {
   }
 
  private:
-  bool left_;
-  int timeout_;  // second
+  bool left_ = false;
+  int timeout_ = 0;  // second
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;

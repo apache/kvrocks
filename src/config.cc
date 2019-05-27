@@ -58,7 +58,7 @@ int Config::yesnotoi(std::string input) {
   return -1;
 }
 
-Status Config::parseRocksdbOption(std::string key, std::string value) {
+Status Config::parseRocksdbOption(const std::string &key, std::string value) {
   if (key == "compression") {
     for (size_t i = 0; i < kNumCompressionType; i++) {
       if (Util::ToLower(value) == kCompressionType[i]) {

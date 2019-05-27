@@ -80,7 +80,7 @@ class Server {
   Status WakeupBlockingConns(const std::string &key, size_t n_conns);
 
   std::string GetLastRandomKeyCursor() { return last_random_key_cursor_; }
-  void SetLastRandomKeyCursor(std::string cursor) { last_random_key_cursor_ = cursor; }
+  void SetLastRandomKeyCursor(const std::string &cursor) { last_random_key_cursor_ = cursor; }
 
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
@@ -153,7 +153,7 @@ class Server {
 
   // threads
   std::thread cron_thread_;
-  TaskRunner *task_runner_;
+  TaskRunner *task_runner_ = nullptr;
   std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };

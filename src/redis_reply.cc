@@ -1,4 +1,5 @@
 #include "redis_reply.h"
+#include <numeric>
 
 namespace Redis {
 
@@ -39,11 +40,7 @@ std::string MultiBulkString(std::vector<std::string> list) {
 }
 
 std::string Array(std::vector<std::string> list) {
-  auto buf = "*" + std::to_string(list.size()) + CRLF;
-  for (const auto &s : list) {
-    buf += s;
-  }
-  return buf;
+  return std::accumulate(list.begin(), list.end(), "*" + std::to_string(list.size()) + CRLF);
 }
 
 }  // namespace Redis

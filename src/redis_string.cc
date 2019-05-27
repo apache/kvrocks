@@ -250,7 +250,7 @@ rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int tt
   }
 
   int exists;
-  std::string ns_key, value;
+  std::string ns_key;
   for (StringPair pair : pairs) {
     AppendNamespacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);

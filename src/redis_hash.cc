@@ -236,7 +236,7 @@ rocksdb::Status RedisHash::MSet(const Slice &user_key, const std::vector<FieldVa
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisHash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, int type) {
+rocksdb::Status RedisHash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {
   field_values->clear();
 
   std::string ns_key;
@@ -256,10 +256,10 @@ rocksdb::Status RedisHash::GetAll(const Slice &user_key, std::vector<FieldValue>
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
     FieldValue fv;
-    if (type == 1) {  // only keys
+    if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key());
       fv.field = ikey.GetSubKey().ToString();
-    } else if (type == 2) {  // only values
+    } else if (type == HashFetchType::kOnlyValue) {
       fv.value = iter->value().ToString();
     } else {
       InternalKey ikey(iter->key());

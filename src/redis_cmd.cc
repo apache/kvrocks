@@ -1096,7 +1096,7 @@ class CommandHKeys : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 1);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1115,7 +1115,7 @@ class CommandHVals : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisHash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, 2);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }

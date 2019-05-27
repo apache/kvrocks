@@ -146,8 +146,11 @@ Status Storage::OpenForReadOnly() {
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   auto tm = std::time(nullptr);
-  auto s = backup_->CreateNewBackupWithMetadata(
-      db_, std::asctime(std::localtime(&tm)));
+  char time_str[25];
+  if (!std::strftime(time_str, sizeof(time_str), "%c", std::localtime(&tm))) {
+    return Status(Status::DBBackupErr, "Fail to format local time_str");
+  }
+  auto s = backup_->CreateNewBackupWithMetadata(db_, time_str);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();

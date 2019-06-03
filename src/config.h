@@ -43,6 +43,7 @@ struct Config{
   std::string dir = "/tmp/ev";
   std::string db_dir = dir+"/db";
   std::string backup_dir;
+  std::string pidfile = dir+"/kvrocks.pid";
   std::string db_name = "changeme.name";
   std::string masterauth;
   std::string requirepass;

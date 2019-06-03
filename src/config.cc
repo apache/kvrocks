@@ -166,6 +166,7 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "dir") {
     dir = args[1];
     db_dir = dir + "/db";
+    pidfile = dir + "/kvrocks.pid";
   } else if (size == 2 && args[0] == "backup-dir") {
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
@@ -181,6 +182,8 @@ Status Config::parseConfigFromString(std::string input) {
     max_backup_keep_hours = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size == 2 && args[0] == "requirepass") {
     requirepass = args[1];
+  } else if (size == 2 && args[0] == "pidfile") {
+    pidfile = args[1];
   } else if (size == 2 && args[0] == "loglevel") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (Util::ToLower(args[1]) == kLogLevels[i]) {
@@ -314,6 +317,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
   PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
   PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
+  PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));

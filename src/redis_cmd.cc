@@ -2676,6 +2676,16 @@ class CommandShutdown : public Commander {
   }
 };
 
+class CommandQuit : public Commander {
+ public:
+  CommandQuit() : Commander("quit", -1, false) {}
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    conn->EnableFlag(Redis::Connection::kCloseAfterReply);
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 class CommandScanBase : public Commander {
  public:
   explicit CommandScanBase(const std::string &name, int arity, bool is_write = false)
@@ -2970,6 +2980,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"shutdown",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandShutdown);
+     }},
+    {"quit",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandQuit);
      }},
     {"scan",
      []() -> std::unique_ptr<Commander> {

@@ -27,14 +27,11 @@
 #endif
 
 const char *kDefaultConfPath = "../kvrocks.conf";
-const char *kDefaultPidPath = "/var/run/kvrocks.pid";
 
-char *pidfile_path_ = nullptr;
 std::function<void()> hup_handler;
 
 struct Options {
   std::string conf_file = kDefaultConfPath;
-  std::string pid_file = kDefaultPidPath;
   bool show_usage = false;
 };
 
@@ -97,7 +94,6 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
   act.sa_handler = SIG_DFL;
   sigaction(sig, &act, nullptr);
-  if (pidfile_path_) std::remove(pidfile_path_);
   kill(getpid(), sig);
 }
 
@@ -129,7 +125,6 @@ void setupSigSegvAction() {
 static void usage(const char* program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"
             << "\t-c config file, default is " << kDefaultConfPath << "\n"
-            << "\t-p pid file, default is " << kDefaultPidPath << "\n"
             << "\t-h help\n";
   exit(0);
 }
@@ -137,10 +132,9 @@ static void usage(const char* program) {
 static Options parseCommandLineOptions(int argc, char **argv) {
   int ch;
   Options opts;
-  while ((ch = ::getopt(argc, argv, "c:p:hv")) != -1) {
+  while ((ch = ::getopt(argc, argv, "c:hv")) != -1) {
     switch (ch) {
       case 'c': opts.conf_file = optarg; break;
-      case 'p': opts.pid_file = optarg; break;
       case 'h': opts.show_usage = true; break;
       case 'v': exit(0);
       default: usage(argv[0]);
@@ -203,13 +197,11 @@ int main(int argc, char* argv[]) {
   std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts.show_usage) usage(argv[0]);
-  pidfile_path_ = strdup(opts.pid_file.data());
 
   Config config;
   Status s = config.Load(opts.conf_file);
   if (!s.IsOK()) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
-    free(pidfile_path_);
     exit(1);
   }
   initGoogleLog(&config);
@@ -219,14 +211,12 @@ int main(int argc, char* argv[]) {
   if (Util::IsPortInUse(config.port)) {
     std::cout << "Failed to start the server, the specified port["
               << config.port << "] is already in use" << std::endl;
-    free(pidfile_path_);
     exit(1);
   }
   if (config.daemonize) daemonize();
-  s = createPidFile(pidfile_path_);
+  s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
-    free(pidfile_path_);
     exit(1);
   }
 
@@ -234,8 +224,7 @@ int main(int argc, char* argv[]) {
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
-    removePidFile(pidfile_path_);
-    free(pidfile_path_);
+    removePidFile(config.pidfile);
     exit(1);
   }
   Server svr(&storage, &config);
@@ -248,8 +237,7 @@ int main(int argc, char* argv[]) {
   svr.Start();
   svr.Join();
 
-  removePidFile(pidfile_path_);
-  free(pidfile_path_);
+  removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();
   google::ShutDownCommandLineFlags();
   libevent_global_shutdown();

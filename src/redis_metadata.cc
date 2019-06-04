@@ -5,6 +5,7 @@
 #include "stdlib.h"
 
 #include "util.h"
+#include "server.h"
 
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
@@ -326,16 +327,16 @@ rocksdb::Status RedisDB::TTL(const Slice &user_key, int *ttl) {
   return rocksdb::Status::OK();
 }
 
-uint64_t RedisDB::GetKeyNum(const std::string &prefix) {
-  return Keys(prefix, nullptr);
+void RedisDB::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
+  Keys(prefix, nullptr, stats);
 }
 
-uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
-  uint64_t  cnt = 0;
+void RedisDB::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   std::string ns_prefix, ns, real_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
   prefix = ns_prefix;
 
+  uint64_t ttl_sum = 0;
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -349,15 +350,27 @@ uint64_t RedisDB::Keys(std::string prefix, std::vector<std::string> *keys) {
     Metadata metadata(kRedisNone);
     value = iter->value().ToString();
     metadata.Decode(value);
-    if (metadata.Expired()) continue;
+    if (metadata.Expired()) {
+      if (stats) stats->n_expired++;
+      continue;
+    }
+    if (stats) {
+      int32_t ttl = metadata.TTL();
+      stats->n_key++;
+      if (ttl != -1) {
+        stats->n_expires++;
+        if (ttl > 0) ttl_sum += ttl;
+      }
+    }
     if (keys) {
       ExtractNamespaceKey(iter->key(), &ns, &real_key);
       keys->emplace_back(real_key);
     }
-    cnt++;
+  }
+  if (stats && stats->n_expires > 0) {
+    stats->avg_ttl = ttl_sum/stats->n_expires;
   }
   delete iter;
-  return cnt;
 }
 
 rocksdb::Status RedisDB::Scan(const std::string &cursor,

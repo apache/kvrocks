@@ -2250,7 +2250,9 @@ class CommandDBSize : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string ns = conn->GetNamespace();
     if (args_.size() == 1) {
-      *output = Redis::Integer(svr->GetLastKeyNum(ns));
+      KeyNumStats stats;
+      svr->GetLastestKeyNumStats(ns, &stats);
+      *output = Redis::Integer(stats.n_key);
     } else if (args_.size() == 2 && args_[1] == "scan") {
       Status s = svr->AsyncScanDBSize(ns);
       if (s.IsOK()) {

@@ -1,3 +1,6 @@
+* Version 0.2.2(@2019-05-22)
+	- supports makefile
+
 * Version 0.2.1(@2019-05-22)
 	- fix subkey compact filter may delete the living data
 	- supports setxx command

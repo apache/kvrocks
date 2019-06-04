@@ -581,10 +581,13 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << commands_stats_info;
   }
   if (all || section == "keyspace") {
+    KeyNumStats stats;
+    GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
     string_stream << "# Keyspace\r\n";
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
-    string_stream << "dbsize: " << GetLastKeyNum(ns) << "\r\n";
+    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires
+                  << ",avg_ttl:" << stats.avg_ttl << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size: " << storage_->GetTotalSize() << "\r\n";
     string_stream << "max_db_size: " << config_->max_db_size * GiB << "\r\n";
@@ -688,10 +691,11 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   task.callback = [ns](void *arg) {
     auto svr = static_cast<Server*>(arg);
     RedisDB db(svr->storage_, ns);
-    uint64_t key_num = db.GetKeyNum();
+    KeyNumStats stats;
+    db.GetKeyNumStats("", &stats);
 
     svr->db_mu_.lock();
-    svr->db_scan_infos_[ns].n_key = key_num;
+    svr->db_scan_infos_[ns].key_num_stats = stats;
     time(&svr->db_scan_infos_[ns].last_scan_time);
     svr->db_scan_infos_[ns].is_scanning = false;
     svr->db_mu_.unlock();
@@ -699,12 +703,11 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   return task_runner_->Publish(task);
 }
 
-uint64_t Server::GetLastKeyNum(const std::string &ns) {
+void Server::GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
-    return iter->second.n_key;
+    *stats = iter->second.key_num_stats;
   }
-  return 0;
 }
 
 time_t Server::GetLastScanTime(const std::string &ns) {

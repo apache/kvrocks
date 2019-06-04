@@ -34,6 +34,13 @@ enum RedisCommand {
 
 using rocksdb::Slice;
 
+struct KeyNumStats {
+  uint64_t n_key = 0;
+  uint64_t n_expires = 0;
+  uint64_t n_expired = 0;
+  uint64_t avg_ttl = 0;
+};
+
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key);
 
@@ -120,8 +127,8 @@ class RedisDB {
   rocksdb::Status TTL(const Slice &user_key, int *ttl);
   rocksdb::Status Type(const Slice &user_key, RedisType *type);
   rocksdb::Status FlushAll();
-  uint64_t GetKeyNum(const std::string &prefix = "");
-  uint64_t Keys(std::string prefix, std::vector<std::string> *keys);
+  void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
+  void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
   rocksdb::Status Scan(const std::string &cursor,
                        uint64_t limit,
                        const std::string &prefix,

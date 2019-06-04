@@ -17,7 +17,7 @@
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
-  uint64_t n_key = 0;
+  KeyNumStats key_num_stats;
   bool is_scanning = false;
 };
 
@@ -95,7 +95,7 @@ class Server {
   Status AsyncCompactDB();
   Status AsyncBgsaveDB();
   Status AsyncScanDBSize(const std::string &ns);
-  uint64_t GetLastKeyNum(const std::string &ns);
+  void GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
   void SlowlogReset();

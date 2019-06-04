@@ -381,14 +381,13 @@ void Server::GetRocksDBInfo(std::string *info) {
   std::ostringstream string_stream;
   rocksdb::DB *db = storage_->GetDB();
 
-  uint64_t metadata_estimate_keys, subkey_estimate_keys, score_estimate_keys;
   uint64_t memtable_sizes, num_snapshots, num_running_flushes;
   uint64_t num_immutable_tables, memtable_flush_pending, compaction_pending;
   uint64_t num_running_compaction, num_live_versions, num_superversion, num_backgroud_errors;
+  std::string index_and_filter_cache_usage, memtable_size;
 
-  db->GetIntProperty(storage_->GetCFHandle("default"), "rocksdb.estimate-num-keys", &subkey_estimate_keys);
-  db->GetIntProperty(storage_->GetCFHandle("zset_score"), "rocksdb.estimate-num-keys", &score_estimate_keys);
-  db->GetIntProperty(storage_->GetCFHandle("metadata"), "rocksdb.estimate-num-keys", &metadata_estimate_keys);
+  db->GetProperty("rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
+  db->GetProperty("rocksdb.cur-size-all-mem-tables", &memtable_size);
   db->GetAggregatedIntProperty("rocksdb.num-snapshots", &num_snapshots);
   db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
   db->GetAggregatedIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
@@ -401,10 +400,18 @@ void Server::GetRocksDBInfo(std::string *info) {
   db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
-  string_stream << "estimate_keys:" << metadata_estimate_keys << "\r\n";
-  string_stream << "estimate_keys[subkey]:" << subkey_estimate_keys << "\r\n";
-  string_stream << "estimate_keys[score]:" << score_estimate_keys << "\r\n";
+  for (auto cf_handle : storage_->GetCFHandles()) {
+    uint64_t estimate_keys, block_cache_usage, block_cache_pinned_usage;
+    db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
+    db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
+    string_stream << "block_cache_usage[" << cf_handle->GetName() << "]:" << block_cache_usage << "\r\n";
+    db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
+    string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
+  }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
+  string_stream << "memtable_size:" << memtable_size << "\r\n";
+  string_stream << "index_and_filter_cache_usage:" << index_and_filter_cache_usage << "\r\n";
   string_stream << "snapshots:" << num_snapshots << "\r\n";
   string_stream << "num_immutable_tables:" << num_immutable_tables << "\r\n";
   string_stream << "num_running_flushes:" << num_running_flushes << "\r\n";

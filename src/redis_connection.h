@@ -3,6 +3,8 @@
 #include <event2/buffer.h>
 #include <vector>
 #include <string>
+#include <utility>
+#include <memory>
 
 #include "redis_cmd.h"
 #include "redis_request.h"

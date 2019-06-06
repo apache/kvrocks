@@ -8,6 +8,7 @@
 #include <rocksdb/table.h>
 #include <rocksdb/sst_file_manager.h>
 #include <iostream>
+#include <memory>
 
 #include "config.h"
 #include "redis_metadata.h"
@@ -36,6 +37,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options->statistics = rocksdb::CreateDBStatistics();
+  options->stats_dump_period_sec = 0;
   options->OptimizeLevelStyleCompaction();
   options->max_open_files = config_->rocksdb_options.max_open_files;
   options->max_subcompactions = config_->rocksdb_options.max_sub_compactions;
@@ -48,11 +50,11 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->max_manifest_file_size = 64 * MiB;
   options->max_log_file_size = 512 * MiB;
   options->keep_log_file_num = 24;
-  options->compaction_readahead_size = 2 * MiB;
+//  options->compaction_readahead_size = 2 * MiB;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
   options->listeners.emplace_back(new KvrocksEventListener(this));
-
+  options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
   options->sst_file_manager = sst_file_manager_;
 }

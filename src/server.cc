@@ -5,6 +5,7 @@
 #include <sys/resource.h>
 #include <glog/logging.h>
 #include <utility>
+#include <memory>
 
 #include "util.h"
 #include "worker.h"

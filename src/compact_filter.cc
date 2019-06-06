@@ -1,6 +1,7 @@
 #include "compact_filter.h"
 #include <glog/logging.h>
 #include <string>
+#include <utility>
 
 #include "redis_bitmap.h"
 

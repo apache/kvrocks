@@ -4,6 +4,7 @@
 #include <thread>
 #include <vector>
 #include <utility>
+#include <memory>
 #include <tuple>
 #include <string>
 #include <deque>

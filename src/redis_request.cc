@@ -1,5 +1,6 @@
 #include <glog/logging.h>
 #include <chrono>
+#include <utility>
 
 #include "util.h"
 #include "redis_cmd.h"

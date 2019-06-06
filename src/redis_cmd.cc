@@ -6,6 +6,8 @@
 #include <cctype>
 #include <chrono>
 #include <thread>
+#include <utility>
+#include <memory>
 
 #include "redis_cmd.h"
 #include "redis_hash.h"

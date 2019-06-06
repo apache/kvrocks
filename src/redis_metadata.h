@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <utility>
 
 #include "redis_encoding.h"
 #include "storage.h"

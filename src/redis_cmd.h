@@ -11,6 +11,9 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <utility>
+#include <memory>
+
 
 #include "redis_reply.h"
 #include "status.h"

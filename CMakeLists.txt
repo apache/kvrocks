@@ -16,6 +16,7 @@ find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)
     list(APPEND EXTERNAL_LIBS PRIVATE rt)
 endif()
+list(APPEND EXTERNAL_LIBS PRIVATE jemalloc)
 
 include(cmake/gflags.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${gflags_LIBRARIES})

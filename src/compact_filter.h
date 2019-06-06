@@ -2,6 +2,7 @@
 
 #include <rocksdb/compaction_filter.h>
 #include <vector>
+#include <memory>
 #include <string>
 #include "redis_metadata.h"
 

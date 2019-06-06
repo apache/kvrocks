@@ -6,6 +6,7 @@
 #include <rocksdb/utilities/backupable_db.h>
 #include <event2/bufferevent.h>
 #include <utility>
+#include <memory>
 #include <string>
 #include <vector>
 #include <atomic>

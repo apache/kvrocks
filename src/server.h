@@ -7,6 +7,7 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "stats.h"
 #include "storage.h"

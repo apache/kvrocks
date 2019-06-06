@@ -63,6 +63,7 @@ struct Config{
     int max_background_flushes = 2;
     uint32_t max_sub_compactions = 1;
     rocksdb::CompressionType compression = rocksdb::kSnappyCompression;  // default: snappy
+    int stats_dump_period_sec = 0;
   } rocksdb_options;
 
  public:

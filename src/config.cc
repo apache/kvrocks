@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <utility>
 
 #include "config.h"
 #include "util.h"
@@ -346,6 +347,8 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
       "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
   PUSH_IF_MATCH(is_rocksdb_all, key,
                 "rocksdb.compression", kCompressionType[rocksdb_options.compression]);
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+                "rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
 }
 
 Status Config::Set(std::string key, const std::string &value, Server *svr) {
@@ -446,6 +449,21 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
     return Status::OK();
+  }
+  if (key == "stats_dump_period_sec") {
+    try {
+      int i = std::stoi(value);
+      if (i != 0 && i < 60) {
+        return Status(Status::RedisParseErr, "value should be >= 60");
+      }
+      rocksdb_options.stats_dump_period_sec = i;
+      auto db = svr->storage_->GetDB();
+      auto s = db->SetDBOptions({{"stats_dump_period_sec", value}});
+      if (s.ok()) return Status::OK();
+      return Status(Status::NotOK, s.ToString());
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
+    }
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }

@@ -9,6 +9,7 @@
 #include <sys/types.h> /* This will likely define BYTE_ORDER */
 
 #include <string>
+#include <utility>
 
 #ifndef BYTE_ORDER
 #if (BSD >= 199103)

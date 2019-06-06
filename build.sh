@@ -8,7 +8,7 @@ fi
 BUILD_DIR=$1
 WORKING_DIR=$(pwd)
 CMAKE_INSTALL_DIR=$WORKING_DIR/$BUILD_DIR/cmake
-CMAKE_REQUIRE_VERSION="3.13.2"
+CMAKE_REQUIRE_VERSION="3.13.0"
 
 if [ -x "$(command -v cmake)" ]; then
     CMAKE_BIN=$(command -v cmake)
@@ -34,4 +34,4 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     CMAKE_BIN=$CMAKE_INSTALL_DIR/bin/cmake
 fi
 
-cd $BUILD_DIR && $CMAKE_BIN .. && make -j4
+cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=Release .. && make -j4

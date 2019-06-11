@@ -486,7 +486,7 @@ void Server::GetReplicationInfo(std::string *info) {
   string_stream << "# Replication\r\n";
   if (IsSlave()) {
     time(&now);
-    string_stream << "role: slave\r\n";
+    string_stream << "role:slave\r\n";
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
@@ -495,11 +495,11 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
   } else {
-    string_stream << "role: master\r\n";
+    string_stream << "role:master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
     slave_threads_mu_.lock();
-    string_stream << "connected_slaves: " << slave_threads_.size() << "\r\n";
+    string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
       string_stream << "slave" << std::to_string(idx) << ":";
@@ -601,9 +601,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires
                   << ",avg_ttl:" << stats.avg_ttl << ",expired=" << stats.n_expired << "\r\n";
-    string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
-    string_stream << "used_db_size: " << storage_->GetTotalSize() << "\r\n";
-    string_stream << "max_db_size: " << config_->max_db_size * GiB << "\r\n";
+    string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
+    string_stream << "used_db_size:" << storage_->GetTotalSize() << "\r\n";
+    string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
     double used_percent = config_->max_db_size ?
                           storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";

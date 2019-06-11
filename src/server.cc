@@ -495,12 +495,13 @@ void Server::GetReplicationInfo(std::string *info) {
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
     slave_threads_mu_.lock();
+    string_stream << "connected_slaves: " << slave_threads_.size() << "\r\n";
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
-      string_stream << "slave_" << std::to_string(idx) << ":";
-      string_stream << "addr=" << slave->GetConn()->GetIP()
+      string_stream << "slave" << std::to_string(idx) << ":";
+      string_stream << "ip=" << slave->GetConn()->GetIP()
                     << ",port=" << slave->GetConn()->GetPort()
-                    << ",seq=" << slave->GetCurrentReplSeq()
+                    << ",offset=" << slave->GetCurrentReplSeq()
                     << ",lag=" << latest_seq-slave->GetCurrentReplSeq() << "\r\n";
       ++idx;
     }

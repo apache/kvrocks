@@ -19,6 +19,7 @@ enum ReplState {
   kReplConnecting = 1,
   kReplSendAuth,
   kReplCheckDBName,
+  kReplReplConf,
   kReplSendPSync,
   kReplFetchMeta,
   kReplFetchSST,
@@ -151,6 +152,8 @@ class ReplicationThread {
   static CBState authReadCB(bufferevent *bev, void *ctx);
   static CBState checkDBNameWriteCB(bufferevent *bev, void *ctx);
   static CBState checkDBNameReadCB(bufferevent *bev, void *ctx);
+  static CBState replConfWriteCB(bufferevent *bev, void *ctx);
+  static CBState replConfReadCB(bufferevent *bev, void *ctx);
   static CBState tryPSyncWriteCB(bufferevent *bev, void *ctx);
   static CBState tryPSyncReadCB(bufferevent *bev, void *ctx);
   static CBState incrementBatchLoopCB(bufferevent *bev, void *ctx);

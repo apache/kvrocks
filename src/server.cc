@@ -503,10 +503,15 @@ void Server::GetReplicationInfo(std::string *info) {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
       string_stream << "slave" << std::to_string(idx) << ":";
-      string_stream << "ip=" << slave->GetConn()->GetIP()
-                    << ",port=" << slave->GetConn()->GetPort()
-                    << ",offset=" << slave->GetCurrentReplSeq()
-                    << ",lag=" << latest_seq-slave->GetCurrentReplSeq() << "\r\n";
+      string_stream << "ip=" << slave->GetConn()->GetIP();
+      string_stream << ",port=";
+      if (slave->GetConn()->GetListeningPort() == 0) {
+        string_stream << slave->GetConn()->GetPort();
+      } else {
+        string_stream << slave->GetConn()->GetListeningPort();
+      }
+      string_stream << ",offset=" << slave->GetCurrentReplSeq()
+                    << ",lag=" << latest_seq - slave->GetCurrentReplSeq() << "\r\n";
       ++idx;
     }
     slave_threads_mu_.unlock();

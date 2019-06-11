@@ -231,6 +231,12 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                            CallbacksStateMachine::READ, "dbname read", checkDBNameReadCB
                        },
                        CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::WRITE, "replconf write", replConfWriteCB
+                       },
+                       CallbacksStateMachine::CallbackType{
+                           CallbacksStateMachine::READ, "replconf read", replConfReadCB
+                       },
+                       CallbacksStateMachine::CallbackType{
                            CallbacksStateMachine::WRITE, "psync write", tryPSyncWriteCB
                        },
                        CallbacksStateMachine::CallbackType{
@@ -366,6 +372,35 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
   LOG(ERROR) << "[replication] db-name mismatched, remote db name: " << line;
   free(line);
   return CBState::QUIT;
+}
+
+ReplicationThread::CBState ReplicationThread::replConfWriteCB(
+    bufferevent *bev, void *ctx) {
+  auto self = static_cast<ReplicationThread *>(ctx);
+  send_string(bev,
+              Redis::MultiBulkString({"replconf", "listening-port", std::to_string(self->srv_->GetConfig()->port)}));
+  self->repl_state_ = kReplReplConf;
+  LOG(INFO) << "[replication] replconf request was sent, waiting for response";
+  return CBState::NEXT;
+}
+
+ReplicationThread::CBState ReplicationThread::replConfReadCB(
+    bufferevent *bev, void *ctx) {
+  char *line;
+  size_t line_len;
+  auto input = bufferevent_get_input(bev);
+  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) return CBState::AGAIN;
+
+  if (strncmp(line, "+OK", 3) != 0) {
+    free(line);
+    LOG(INFO) << "[replication] Failed to replconf, quiting";
+    return CBState::QUIT;
+  } else {
+    free(line);
+    LOG(INFO) << "[replication] replconf is ok, start psync";
+    return CBState::NEXT;
+  }
 }
 
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(

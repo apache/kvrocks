@@ -58,6 +58,8 @@ class Connection {
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() { return ip_; }
   int GetPort() { return port_; }
+  void SetListeningPort(int port) { listening_port_ = port; }
+  int GetListeningPort() { return listening_port_; }
 
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
@@ -81,6 +83,7 @@ class Connection {
   std::string ip_;
   int port_ = 0;
   std::string addr_;
+  int listening_port_ = 0;
   bool is_admin_ = false;
   std::string last_cmd_;
   time_t create_time_;

@@ -90,10 +90,12 @@ Status Server::AddMaster(std::string host, uint32_t port) {
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }
-  master_host_ = std::move(host);
+  master_host_ = host;
   master_port_ = port;
+  config_->master_host = host;
+  config_->master_port = port;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(master_host_, master_port_, this, config_->masterauth));
+      new ReplicationThread(host, port, this, config_->masterauth));
   replication_thread_->Start([this]() { this->is_loading_ = true; },
                              [this]() { this->is_loading_ = false; });
   slaveof_mu_.unlock();
@@ -105,6 +107,8 @@ Status Server::RemoveMaster() {
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
+    config_->master_host.clear();
+    config_->master_port = 0;
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }
@@ -482,7 +486,7 @@ void Server::GetReplicationInfo(std::string *info) {
   string_stream << "# Replication\r\n";
   if (IsSlave()) {
     time(&now);
-    string_stream << "role: slave\r\n";
+    string_stream << "role:slave\r\n";
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
@@ -491,17 +495,18 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
   } else {
-    string_stream << "role: master\r\n";
+    string_stream << "role:master\r\n";
     int idx = 0;
     rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
     slave_threads_mu_.lock();
+    string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
-      string_stream << "slave_" << std::to_string(idx) << ":";
-      string_stream << "addr=" << slave->GetConn()->GetIP()
-                    << ",port=" << slave->GetConn()->GetPort()
-                    << ",seq=" << slave->GetCurrentReplSeq()
-                    << ",lag=" << latest_seq-slave->GetCurrentReplSeq() << "\r\n";
+      string_stream << "slave" << std::to_string(idx) << ":";
+      string_stream << "ip=" << slave->GetConn()->GetIP()
+                    << ",port=" << slave->GetConn()->GetListeningPort()
+                    << ",offset=" << slave->GetCurrentReplSeq()
+                    << ",lag=" << latest_seq - slave->GetCurrentReplSeq() << "\r\n";
       ++idx;
     }
     slave_threads_mu_.unlock();
@@ -596,9 +601,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires
                   << ",avg_ttl:" << stats.avg_ttl << ",expired=" << stats.n_expired << "\r\n";
-    string_stream << "sequence: " << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
-    string_stream << "used_db_size: " << storage_->GetTotalSize() << "\r\n";
-    string_stream << "max_db_size: " << config_->max_db_size * GiB << "\r\n";
+    string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
+    string_stream << "used_db_size:" << storage_->GetTotalSize() << "\r\n";
+    string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
     double used_percent = config_->max_db_size ?
                           storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";

@@ -2865,6 +2865,58 @@ class CommandRandomKey : public Commander {
   }
 };
 
+class CommandReplConf : public Commander {
+ public:
+  CommandReplConf() : Commander("replconf", -3, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 == 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    if (args.size() >= 3) {
+      Status s = ParseParam(Util::ToLower(args[1]), args_[2]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    if (args.size() >= 5) {
+      Status s = ParseParam(Util::ToLower(args[3]), args_[4]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status ParseParam(const std::string &option, const std::string &value) {
+    if (option == "listening-port") {
+      try {
+        auto p = std::stoul(value);
+        if (p > UINT32_MAX) {
+          throw std::overflow_error("listening-port out of range");
+        }
+        port_ = static_cast<uint32_t>(p);
+      } catch (const std::exception &e) {
+        return Status(Status::RedisParseErr, "listening-port should be number");
+      }
+    } else {
+      return Status(Status::RedisParseErr, "unknown option");
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (port_ != 0) {
+      conn->SetListeningPort(port_);
+    }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  uint32_t port_ = 0;
+};
+
 class CommandFetchMeta : public Commander {
  public:
   CommandFetchMeta() : Commander("_fetch_meta", 1, false) {}
@@ -3423,6 +3475,10 @@ std::map<std::string, CommanderFactory> repl_command_table = {
     {"auth",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandAuth);
+     }},
+    {"replconf",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandReplConf);
      }},
     {"psync",
      []() -> std::unique_ptr<Commander> {

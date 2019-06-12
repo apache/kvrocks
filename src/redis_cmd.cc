@@ -2411,8 +2411,7 @@ class CommandSlaveOf : public Commander {
       if (p > UINT32_MAX) {
         throw std::overflow_error("port out of range");
       }
-      // we use port + 1 as repl port, so incr the slaveof port here
-      port_ = static_cast<uint32_t>(p)+1;
+      port_ = static_cast<uint32_t>(p);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, "port should be number");
     }
@@ -2426,11 +2425,17 @@ class CommandSlaveOf : public Commander {
     Status s;
     if (host_.empty()) {
       s = svr->RemoveMaster();
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+        LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
+      }
     } else {
       s = svr->AddMaster(host_, port_);
-    }
-    if (s.IsOK()) {
-      *output = Redis::SimpleString("OK");
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+        LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_
+                     << " enabled (user request from '" << conn->GetAddr() << "')";
+      }
     }
     return s;
   }

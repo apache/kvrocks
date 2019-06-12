@@ -494,6 +494,8 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
+    string_stream << "slave_repl_offset:" << storage_->LatestSeq() << "\r\n";
+    string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   } else {
     string_stream << "role:master\r\n";
     int idx = 0;

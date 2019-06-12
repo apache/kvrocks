@@ -35,6 +35,7 @@ struct Config{
   unsigned int slowlog_max_len = 0;
   bool daemonize = false;
   bool slave_readonly = true;
+  uint32_t slave_priority = 100;
   uint32_t max_db_size = 0;  // unit is GB
   uint64_t max_replication_mb = 0;  // unit is MB
 

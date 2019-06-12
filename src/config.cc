@@ -162,6 +162,8 @@ Status Config::parseConfigFromString(std::string input) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     slave_readonly = (i == 1);
+  } else if (size == 2 && args[0] == "slave-priority") {
+    slave_priority = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "tcp-backlog") {
     backlog = std::stoi(args[1]);
   } else if (size == 2 && args[0] == "dir") {
@@ -310,6 +312,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
   PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
   PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
+  PUSH_IF_MATCH(is_all, key, "slave-priority", std::to_string(slave_priority));
   PUSH_IF_MATCH(is_all, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
   PUSH_IF_MATCH(is_all, key, "max-backup-keep-hours", std::to_string(max_backup_keep_hours));
   PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
@@ -395,6 +398,10 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     slave_readonly = (i == 1);
+    return Status::OK();
+  }
+  if (key == "slave-priority") {
+    slave_priority = std::stoi(value);
     return Status::OK();
   }
   if (key == "loglevel") {
@@ -497,6 +504,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("backup-dir", backup_dir);
   WRITE_TO_FILE("tcp-backlog", std::to_string(backlog));
   WRITE_TO_FILE("slave-read-only", (slave_readonly? "yes":"no"));
+  WRITE_TO_FILE("slave-priority", std::to_string(slave_priority));
   WRITE_TO_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
   WRITE_TO_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));

@@ -195,8 +195,7 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 3 && args[0] == "slaveof") {
     if (args[1] != "no" && args[2] != "one") {
       master_host = args[1];
-      // we use port + 1 as repl port, so incr the slaveof port here
-      master_port = std::stoi(args[2]) + 1;
+      master_port = std::stoi(args[2]);
       if (master_port <= 0 || master_port >= 65535) {
         return Status(Status::NotOK, "master port range should be between 0 and 65535");
       }
@@ -504,7 +503,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
   WRITE_TO_FILE("max-replication-mb", std::to_string(max_replication_mb));
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
-  if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port-1));
+  if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());
   if (bgsave_cron.IsEnabled()) WRITE_TO_FILE("bgave-cron", bgsave_cron.ToString());
 

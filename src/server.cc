@@ -94,8 +94,9 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   master_port_ = port;
   config_->master_host = host;
   config_->master_port = port;
+  // we use port + 1 as repl port, so incr the slaveof port here
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(host, port, this, config_->masterauth));
+      new ReplicationThread(host, port+1, this, config_->masterauth));
   replication_thread_->Start([this]() { this->is_loading_ = true; },
                              [this]() { this->is_loading_ = false; });
   slaveof_mu_.unlock();

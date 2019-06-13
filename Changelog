@@ -1,3 +1,7 @@
+* Version 0.3.0(@2019-06-13)
+	- supports redis sentinel
+	- add jemalloc submodule and use static
+
 * Version 0.2.3(@2019-06-06)
 	- use jemalloc as memory allocator in rocksdb
 	- supports modify the dump stats period online

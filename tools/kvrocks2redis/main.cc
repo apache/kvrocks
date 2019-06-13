@@ -67,7 +67,7 @@ static void initGoogleLog(const Kvrocks2redis::Config *config) {
 }
 
 static Status createPidFile(const std::string &path) {
-  int fd = open(path.data(), O_RDWR | O_CREAT | O_EXCL);
+  int fd = open(path.data(), O_RDWR | O_CREAT | O_EXCL, 0660);
   if (fd < 0) {
     return Status(Status::NotOK, strerror(errno));
   }

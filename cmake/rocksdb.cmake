@@ -11,9 +11,9 @@ if (NOT __ROCKSDB_INCLUDED)
 
   set(ROCKSDB_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
   set(ROCKSDB_C_FLAGS "${CMAKE_C_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
-
+  set(JEMALLOC_ROOT_DIR ${jemalloc_INSTALL})
   ExternalProject_Add(rocksdb
-      DEPENDS gflags snappy
+      DEPENDS gflags jemalloc snappy
       PREFIX ${rocksdb_PREFIX}
       #GIT_REPOSITORY "https://github.com/facebook/rocksdb"
       #GIT_TAG "v5.15.10"
@@ -31,6 +31,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DCMAKE_C_FLAGS=${ROCKSDB_C_FLAGS}
                  -DCMAKE_CXX_FLAGS=${ROCKSDB_CXX_FLAGS}
                  -DCMAKE_PREFIX_PATH=${snappy_INSTALL}
+                 -DJEMALLOC_ROOT_DIR=${JEMALLOC_ROOT_DIR}
                  -DFAIL_ON_WARNINGS=OFF
                  -DWITH_TESTS=OFF
                  -DWITH_SNAPPY=ON

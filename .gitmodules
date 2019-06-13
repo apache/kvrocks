@@ -16,3 +16,6 @@
 [submodule "external/googletest"]
 	path = external/googletest
 	url = https://github.com/abseil/googletest.git
+[submodule "external/jemalloc"]
+	path = external/jemalloc
+	url = https://github.com/jemalloc/jemalloc.git

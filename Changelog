@@ -1,3 +1,7 @@
+* Version 0.3.1(@2019-06-17)
+	- fix open file with O_CREAT flag need to specify open mode
+	- fix backward compatible with old version that doesn't support replconf cmd
+
 * Version 0.3.0(@2019-06-13)
 	- supports redis sentinel
 	- add jemalloc submodule and use static

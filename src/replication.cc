@@ -393,9 +393,10 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(
   if (!line) return CBState::AGAIN;
 
   if (strncmp(line, "+OK", 3) != 0) {
+    LOG(WARNING) << "[replication] Failed to replconf: " << line;
     free(line);
-    LOG(INFO) << "[replication] Failed to replconf, quiting";
-    return CBState::QUIT;
+    //  backward compatible with old version that doesn't support replconf cmd
+    return CBState::NEXT;
   } else {
     free(line);
     LOG(INFO) << "[replication] replconf is ok, start psync";

@@ -51,13 +51,16 @@ void Request::Tokenize(evbuffer *input) {
   }
 }
 
+bool Request::inCommandWhitelist(const std::string &command) {
+  std::vector<std::string> whitelist = {"auth"};
+  for (const auto &allow_command : whitelist) {
+    if (allow_command == command) return true;
+  }
+  return false;
+}
+
 void Request::ExecuteCommands(Connection *conn) {
   if (commands_.empty()) return;
-
-  if (svr_->IsLoading()) {
-    conn->Reply(Redis::Error("replication in progress"));
-    return;
-  }
 
   Config *config = svr_->GetConfig();
   std::string reply;
@@ -72,6 +75,10 @@ void Request::ExecuteCommands(Connection *conn) {
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR unknown command"));
       continue;
+    }
+    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+      conn->Reply(Redis::Error("ERR restoring the db from backup"));
+      break;
     }
     int arity = conn->current_cmd_->GetArity();
     int tokens = static_cast<int>(cmd_tokens.size());
@@ -94,7 +101,9 @@ void Request::ExecuteCommands(Connection *conn) {
 
     svr_->stats_.IncrCalls(conn->current_cmd_->Name());
     auto start = std::chrono::high_resolution_clock::now();
+    svr_->IncrExecutingCommandNum();
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
+    svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));

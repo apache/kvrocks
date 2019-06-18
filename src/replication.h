@@ -164,6 +164,7 @@ class ReplicationThread {
   Status sendAuth(int sock_fd);
   Status fetchFile(int sock_fd, std::string path, uint32_t crc);
   Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
+  static bool isRestoringError(const char *err);
 
   static void EventTimerCB(int, int16_t, void *ctx);
 

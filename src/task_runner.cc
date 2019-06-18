@@ -28,6 +28,17 @@ void TaskRunner::Start() {
   }
 }
 
+void TaskRunner::Restart() {
+  Stop();
+  Join();
+  mu_.lock();
+  threads_.clear();
+  task_queue_.clear();
+  stop_ = false;
+  mu_.unlock();
+  Start();
+}
+
 void TaskRunner::Stop() {
   mu_.lock();
   stop_ = true;
@@ -54,6 +65,7 @@ void TaskRunner::run() {
       lock.lock();
     }
   }
+  task_queue_.clear();
   lock.unlock();
   // CAUTION: drop the rest of tasks, don't use task runner if the task can't be drop
 }

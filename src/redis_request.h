@@ -36,6 +36,7 @@ class Request {
   std::vector<CommandTokens> commands_;
 
   Server *svr_;
+  bool inCommandWhitelist(const std::string &command);
 };
 
 }  // namespace Redis

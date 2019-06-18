@@ -62,6 +62,7 @@ class Server {
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
   Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  void DisconnectSlaves();
   void cleanupExitedSlaves();
   bool IsSlave() { return !master_host_.empty(); }
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
@@ -93,6 +94,7 @@ class Server {
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
   std::string GetRocksDBStatsJson();
 
+  void ReclaimOldDBPtr();
   Status AsyncCompactDB();
   Status AsyncBgsaveDB();
   Status AsyncScanDBSize(const std::string &ns);
@@ -108,6 +110,8 @@ class Server {
   int IncrClientNum();
   int IncrMonitorClientNum();
   int DecrMonitorClientNum();
+  int IncrExecutingCommandNum();
+  int DecrExecutingCommandNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
@@ -134,6 +138,7 @@ class Server {
   std::atomic<int> connected_clients_{0};
   std::atomic<int> monitor_clients_{0};
   std::atomic<uint64_t> total_clients_{0};
+  std::atomic<int> excuting_command_num_{0};
 
   // slave
   std::mutex slave_threads_mu_;

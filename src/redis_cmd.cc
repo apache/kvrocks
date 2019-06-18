@@ -2511,8 +2511,9 @@ class CommandPSync : public Commander {
       if (seq < batch.sequence) {
         return Status(Status::NotOK);
       }
+      return Status::OK();
     }
-    return Status::OK();
+    return Status(Status::NotOK);
   }
 };
 

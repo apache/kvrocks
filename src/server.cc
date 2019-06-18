@@ -71,12 +71,11 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  task_runner_->Join();
-  if (cron_thread_.joinable()) cron_thread_.join();
   for (const auto worker : worker_threads_) {
     worker->Join();
   }
-  cleanupExitedSlaves();
+  task_runner_->Join();
+  if (cron_thread_.joinable()) cron_thread_.join();
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
@@ -97,8 +96,12 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   // we use port + 1 as repl port, so incr the slaveof port here
   replication_thread_ = std::unique_ptr<ReplicationThread>(
       new ReplicationThread(host, port+1, this, config_->masterauth));
-  replication_thread_->Start([this]() { this->is_loading_ = true; },
-                             [this]() { this->is_loading_ = false; });
+  replication_thread_->Start(
+      [this]() {
+        this->is_loading_ = true;
+        ReclaimOldDBPtr();
+      },
+      [this]() { this->is_loading_ = false; });
   slaveof_mu_.unlock();
   return Status::OK();
 }
@@ -137,6 +140,20 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
   slave_threads_.emplace_back(t);
   slave_threads_mu_.unlock();
   return Status::OK();
+}
+
+void Server::DisconnectSlaves() {
+  slave_threads_mu_.lock();
+  for (const auto &slave_thread : slave_threads_) {
+    if (!slave_thread->IsStopped()) slave_thread->Stop();
+  }
+  while (!slave_threads_.empty()) {
+    auto slave_thread = slave_threads_.front();
+    slave_threads_.pop_front();
+    slave_thread->Join();
+    delete slave_thread;
+  }
+  slave_threads_mu_.unlock();
 }
 
 void Server::cleanupExitedSlaves() {
@@ -353,6 +370,14 @@ int Server::DecrMonitorClientNum() {
   return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
+int Server::IncrExecutingCommandNum() {
+  return excuting_command_num_.fetch_add(1, std::memory_order_relaxed);
+}
+
+int Server::DecrExecutingCommandNum() {
+  return excuting_command_num_.fetch_sub(1, std::memory_order_relaxed);
+}
+
 std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
@@ -485,9 +510,9 @@ void Server::GetReplicationInfo(std::string *info) {
   time_t now;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
+  string_stream << "role:" << (IsSlave() ? "slave":"master") << "\r\n";
   if (IsSlave()) {
     time(&now);
-    string_stream << "role:slave\r\n";
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = replication_thread_->State();
@@ -497,23 +522,23 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
     string_stream << "slave_repl_offset:" << storage_->LatestSeq() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
-  } else {
-    string_stream << "role:master\r\n";
-    int idx = 0;
-    rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
-    slave_threads_mu_.lock();
-    string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
-    for (const auto &slave : slave_threads_) {
-      if (slave->IsStopped()) continue;
-      string_stream << "slave" << std::to_string(idx) << ":";
-      string_stream << "ip=" << slave->GetConn()->GetIP()
-                    << ",port=" << slave->GetConn()->GetListeningPort()
-                    << ",offset=" << slave->GetCurrentReplSeq()
-                    << ",lag=" << latest_seq - slave->GetCurrentReplSeq() << "\r\n";
-      ++idx;
-    }
-    slave_threads_mu_.unlock();
   }
+
+  int idx = 0;
+  rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
+  slave_threads_mu_.lock();
+  string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
+  for (const auto &slave : slave_threads_) {
+    if (slave->IsStopped()) continue;
+    string_stream << "slave" << std::to_string(idx) << ":";
+    string_stream << "ip=" << slave->GetConn()->GetIP()
+                  << ",port=" << slave->GetConn()->GetListeningPort()
+                  << ",offset=" << slave->GetCurrentReplSeq()
+                  << ",lag=" << latest_seq - slave->GetCurrentReplSeq() << "\r\n";
+    ++idx;
+  }
+  slave_threads_mu_.unlock();
+
   *info = string_stream.str();
 }
 
@@ -645,6 +670,21 @@ std::string Server::GetRocksDBStatsJson() {
   output.append("}");
   output.shrink_to_fit();
   return output;
+}
+
+/*
+ * Reclaim the old db ptr before restore the db from backup,
+ * as restore db would delete the db and column families.
+ */
+void Server::ReclaimOldDBPtr() {
+  LOG(INFO) << "Disconnecting slaves...";
+  DisconnectSlaves();
+  LOG(INFO) << "Restarting the task runner...";
+  task_runner_->Restart();
+  LOG(INFO) << "Waiting for excuting command...";
+  while (excuting_command_num_ != 0) {
+    usleep(200000);
+  }
 }
 
 Status Server::AsyncCompactDB() {

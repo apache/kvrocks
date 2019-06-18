@@ -23,6 +23,7 @@ class TaskRunner {
   Status Publish(Task task);
   size_t QueueSize() { return task_queue_.size(); }
   void Start();
+  void Restart();
   void Stop();
   void Join();
  private:

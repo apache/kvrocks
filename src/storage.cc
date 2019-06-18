@@ -171,7 +171,6 @@ Status Storage::RestoreFromBackup() {
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
 
-  // Close DB;
   for (auto handle : cf_handles_) delete handle;
   delete db_;
 
@@ -507,4 +506,13 @@ Status Storage::BackupManager::PurgeBackup(Storage *storage) {
   return RmdirRecursively(storage->backup_env_, storage->config_->backup_dir);
 }
 
+void Storage::PurgeBackupIfNeed(uint32_t next_backup_id) {
+  std::vector<rocksdb::BackupInfo> backup_infos;
+  backup_->GetBackupInfo(&backup_infos);
+  int num_backup = backup_infos.size();
+  if (num_backup > 0 && backup_infos[num_backup-1].backup_id != next_backup_id-1)  {
+    RmdirRecursively(backup_env_, config_->backup_dir);
+    rocksdb::Env::Default()->CreateDirIfMissing(config_->backup_dir);
+  }
+}
 }  // namespace Engine

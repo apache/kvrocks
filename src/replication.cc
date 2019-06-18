@@ -71,6 +71,7 @@ void FeedSlaveThread::loop() {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
       if (!srv_->storage_->WALHasNewData(next_repl_seq_)
           || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+        iter_ = nullptr;
         usleep(yield_milliseconds);
         checkLivenessIfNeed();
         continue;
@@ -361,6 +362,11 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
   line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  if (line[0] == '-' && isRestoringError(line)) {
+    free(line);
+    LOG(WARNING) << "The master was restoring the db, retry later";
+    return CBState::RESTART;
+  }
   auto self = static_cast<ReplicationThread *>(ctx);
   std::string db_name = self->storage_->GetName();
   if (line_len == db_name.size() && !strncmp(line, db_name.data(), line_len)) {
@@ -392,6 +398,11 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(
   line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  if (line[0] == '-' && isRestoringError(line)) {
+    free(line);
+    LOG(WARNING) << "The master was restoring the db, retry later";
+    return CBState::RESTART;
+  }
   if (strncmp(line, "+OK", 3) != 0) {
     LOG(WARNING) << "[replication] Failed to replconf: " << line;
     free(line);
@@ -423,6 +434,11 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
   line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  if (line[0] == '-' && isRestoringError(line)) {
+    free(line);
+    LOG(WARNING) << "The master was restoring the db, retry later";
+    return CBState::RESTART;
+  }
   if (strncmp(line, "+OK", 3) != 0) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
@@ -517,6 +533,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         LOG(ERROR) << "[replication] Invalid meta id received";
         return CBState::RESTART;
       }
+      self->storage_->PurgeBackupIfNeed(self->fullsync_meta_id_);
       self->fullsync_state_ = kFetchMetaSize;
       LOG(INFO) << "[replication] Success to fetch meta id: " << self->fullsync_meta_id_;
     case kFetchMetaSize:
@@ -759,6 +776,10 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
   }
 
   return rocksdb::Status::OK();
+}
+
+bool ReplicationThread::isRestoringError(const char *err) {
+  return std::string(err) == "-ERR restoring the db from backup";
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

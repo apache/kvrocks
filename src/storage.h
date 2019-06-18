@@ -46,6 +46,7 @@ class Storage {
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
+  void PurgeBackupIfNeed(uint32_t next_backup_id);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();

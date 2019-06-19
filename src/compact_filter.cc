@@ -73,7 +73,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       || ikey.GetVersion() != metadata.version) {
     return true;
   }
-  if (metadata.Type() == kRedisBitmap && RedisBitmap::IsEmptySegment(value)) {
+  if (metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value)) {
     return true;
   }
   return false;

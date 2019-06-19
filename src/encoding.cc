@@ -1,4 +1,4 @@
-#include "redis_encoding.h"
+#include "encoding.h"
 
 #include <limits.h>
 #include <float.h>

@@ -4,7 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "redis_encoding.h"
+#include "redis_db.h"
+#include "encoding.h"
 #include "redis_metadata.h"
 
 typedef struct FieldValue {
@@ -18,9 +19,10 @@ enum class HashFetchType {
   kOnlyValue = 2
 };
 
-class RedisHash : public RedisSubKeyScanner {
+namespace Redis {
+class Hash : public SubKeyScanner {
  public:
-  RedisHash(Engine::Storage *storage, const std::string &ns) : RedisSubKeyScanner(storage, ns) {}
+  Hash(Engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
   rocksdb::Status Size(const Slice &user_key, uint32_t *ret);
   rocksdb::Status Get(const Slice &user_key, const Slice &field, std::string *value);
   rocksdb::Status Set(const Slice &user_key, const Slice &field, const Slice &value, int *ret);
@@ -41,3 +43,4 @@ class RedisHash : public RedisSubKeyScanner {
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
 };
+}  // namespace Redis

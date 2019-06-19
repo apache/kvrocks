@@ -1,14 +1,9 @@
 #pragma once
 
-#include <rocksdb/env.h>
-#include <rocksdb/status.h>
-#include <rocksdb/db.h>
 #include <string>
 #include <vector>
-#include <map>
-#include <utility>
 
-#include "redis_encoding.h"
+#include "encoding.h"
 #include "storage.h"
 
 enum RedisType {
@@ -118,58 +113,6 @@ class ListMetadata : public Metadata {
   rocksdb::Status Decode(const std::string &bytes) override;
 };
 
-class RedisDB {
- public:
-  explicit RedisDB(Engine::Storage *storage, const std::string &ns = "");
-  rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
-  rocksdb::Status Expire(const Slice &user_key, int timestamp);
-  rocksdb::Status Del(const Slice &user_key);
-  rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
-  rocksdb::Status TTL(const Slice &user_key, int *ttl);
-  rocksdb::Status Type(const Slice &user_key, RedisType *type);
-  rocksdb::Status FlushAll();
-  void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
-  void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
-  rocksdb::Status Scan(const std::string &cursor,
-                       uint64_t limit,
-                       const std::string &prefix,
-                       std::vector<std::string> *keys);
-  rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
-  void AppendNamespacePrefix(const Slice &user_key, std::string *output);
-
- protected:
-  Engine::Storage *storage_;
-  rocksdb::DB *db_;
-  rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
-  std::string namespace_;
-
-  class LatestSnapShot {
-   public:
-    explicit LatestSnapShot(rocksdb::DB *db): db_(db) {
-      snapshot_ = db_->GetSnapshot();
-    }
-    ~LatestSnapShot() {
-      db_->ReleaseSnapshot(snapshot_);
-    }
-    const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
-   private:
-    rocksdb::DB *db_ = nullptr;
-    const rocksdb::Snapshot* snapshot_ = nullptr;
-  };
-};
-
-class RedisSubKeyScanner : public RedisDB {
- public:
-  explicit RedisSubKeyScanner(Engine::Storage *storage, const std::string &ns)
-      : RedisDB(storage, ns) {}
-  rocksdb::Status Scan(RedisType type,
-                       const Slice &user_key,
-                       const std::string &cursor,
-                       uint64_t limit,
-                       const std::string &subkey_prefix,
-                       std::vector<std::string> *keys);
-};
-
 class LockGuard {
  public:
   explicit LockGuard(LockManager *lock_mgr, Slice key):
@@ -185,19 +128,3 @@ class LockGuard {
   Slice key_;
 };
 
-class WriteBatchLogData {
- public:
-  WriteBatchLogData() = default;
-  explicit WriteBatchLogData(RedisType type) : type_(type) {}
-  explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) :
-      type_(type), args_(std::move(args)) {}
-
-  RedisType GetRedisType();
-  std::vector<std::string> *GetArguments();
-  std::string Encode();
-  Status Decode(const rocksdb::Slice &blob);
-
- private:
-  RedisType type_ = kRedisNone;
-  std::vector<std::string> args_;
-};

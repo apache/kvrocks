@@ -3,12 +3,15 @@
 #include <string>
 #include <vector>
 
+#include "redis_db.h"
 #include "redis_metadata.h"
 
-class RedisSet : public RedisSubKeyScanner {
+namespace Redis {
+
+class Set : public SubKeyScanner {
  public:
-  explicit RedisSet(Engine::Storage *storage, const std::string &ns)
-      : RedisSubKeyScanner(storage, ns) {}
+  explicit Set(Engine::Storage *storage, const std::string &ns)
+      : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status IsMember(const Slice &user_key, const Slice &member, int *ret);
@@ -33,3 +36,5 @@ class RedisSet : public RedisSubKeyScanner {
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, SetMetadata *metadata);
 };
+
+}  // namespace Redis

@@ -4,6 +4,7 @@
 #include <map>
 #include <vector>
 
+#include "../../src/redis_db.h"
 #include "../../src/status.h"
 #include "../../src/storage.h"
 #include "../../src/redis_metadata.h"
@@ -58,6 +59,6 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
   std::map<std::string, std::vector<std::string>> *GetAofStrings() { return &aof_strings_; }
  private:
   std::map<std::string, std::vector<std::string>> aof_strings_;
-  WriteBatchLogData log_data_;
+  Redis::WriteBatchLogData log_data_;
   bool firstSeen_ = true;
 };

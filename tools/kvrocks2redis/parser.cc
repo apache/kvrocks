@@ -230,7 +230,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
           return rocksdb::Status::OK();
         }
-        bool bit_value = RedisBitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[0]));
+        bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[0]));
         command_args = {"SETBIT", user_key, (*args)[0], bit_value ? "1" : "0"};
         break;
       }

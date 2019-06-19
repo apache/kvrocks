@@ -4,12 +4,14 @@
 #include <vector>
 #include <string>
 
+#include "redis_db.h"
 #include "redis_metadata.h"
-#include "redis_encoding.h"
+#include "encoding.h"
 
-class RedisList :public RedisDB {
+namespace Redis {
+class List : public Database {
  public:
-  explicit RedisList(Engine::Storage *storage, const std::string &ns) : RedisDB(storage, ns) {}
+  explicit List(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Size(const Slice &user_key, uint32_t *ret);
   rocksdb::Status Trim(const Slice &user_key, int start, int stop);
   rocksdb::Status Set(const Slice &user_key, int index, Slice elem);
@@ -26,3 +28,4 @@ class RedisList :public RedisDB {
   rocksdb::Status GetMetadata(const Slice &ns_key, ListMetadata *metadata);
   rocksdb::Status push(const Slice &user_key, std::vector<Slice> elems, bool create_if_missing, bool left, int *ret);
 };
+}  // namespace Redis

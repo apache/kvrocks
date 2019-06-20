@@ -7,6 +7,7 @@
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/table.h>
 #include <rocksdb/sst_file_manager.h>
+#include <rocksdb/utilities/table_properties_collectors.h>
 #include <iostream>
 #include <memory>
 
@@ -58,6 +59,8 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
   options->sst_file_manager = sst_file_manager_;
+  options->table_properties_collector_factories.emplace_back(
+      rocksdb::NewCompactOnDeletionCollectorFactory(128000, 64000));
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {

@@ -124,7 +124,7 @@ target_sources(kvrocks PRIVATE
         src/event_listener.cc)
 
 # kvrocks2redis sync tool
-add_executable(kvrocks2redis src/redis_db.cc src/redis_db.h)
+add_executable(kvrocks2redis)
 target_compile_features(kvrocks2redis PRIVATE cxx_std_11)
 target_compile_options(kvrocks2redis PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
@@ -137,6 +137,8 @@ target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
 target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks2redis PRIVATE
+        src/redis_db.cc
+        src/redis_db.h
         src/compact_filter.cc
         src/compact_filter.h
         src/worker.cc

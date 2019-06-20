@@ -112,19 +112,3 @@ class ListMetadata : public Metadata {
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;
 };
-
-class LockGuard {
- public:
-  explicit LockGuard(LockManager *lock_mgr, Slice key):
-      lock_mgr_(lock_mgr),
-      key_(key) {
-      lock_mgr->Lock(key_);
-  }
-  ~LockGuard() {
-    lock_mgr_->UnLock(key_);
-  }
- private:
-  LockManager *lock_mgr_ = nullptr;
-  Slice key_;
-};
-

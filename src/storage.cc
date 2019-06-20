@@ -53,7 +53,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
 //  options->compaction_readahead_size = 2 * MiB;
   options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
   options->WAL_size_limit_MB = 3 * 1024;
-  options->listeners.emplace_back(new KvrocksEventListener(this));
+  options->listeners.emplace_back(new EventListener(this));
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
   options->sst_file_manager = sst_file_manager_;

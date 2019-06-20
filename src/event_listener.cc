@@ -1,7 +1,7 @@
 #include "event_listener.h"
 #include <string>
 
-void KvrocksEventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
             << ", reason: " << std::to_string(static_cast<int>(ci.compaction_reason))
             << ", compression: " << std::to_string(static_cast<char>(ci.compression))
@@ -15,7 +15,7 @@ void KvrocksEventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb:
   storage_->CheckDBSizeLimit();
 }
 
-void KvrocksEventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) {
+void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) {
   storage_->IncrFlushCount(1);
   storage_->CheckDBSizeLimit();
   LOG(INFO) << "[event_listener/flush_completed] column family: " << ci.cf_name
@@ -27,7 +27,7 @@ void KvrocksEventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::Flus
             << ", smallest seqno: " << ci.smallest_seqno;
 }
 
-void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {
+void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {
   std::string reason_str;
   switch (reason) {
     case rocksdb::BackgroundErrorReason::kCompaction:reason_str = "compact";
@@ -46,13 +46,13 @@ void KvrocksEventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reas
              << ", status: " << status->ToString();
 }
 
-void KvrocksEventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {
+void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {
   LOG(INFO) << "[event_listener/table_file_deleted] db: " << info.db_name
             << ", sst file: " << info.file_path
             << ", status: " << info.status.ToString();
 }
 
-void KvrocksEventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
+void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
   const char *stall_condition_strings[] = {"normal", "delay", "stop"};
   LOG(WARNING) << "[event_listner/stall_cond_changed] column family: " << info.cf_name
                << " write stall condition was changed, from "

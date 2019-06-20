@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "redis_metadata.h"
 #include "storage.h"

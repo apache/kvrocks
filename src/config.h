@@ -55,8 +55,8 @@ struct Config{
   std::map<std::string, std::string> tokens;
 
   struct {
-    size_t metadata_block_cache_size = 1 * GiB;
-    size_t subkey_block_cache_size = 1 * GiB;
+    size_t metadata_block_cache_size = 4 * GiB;
+    size_t subkey_block_cache_size = 8 * GiB;
     int max_open_files = 4096;
     size_t write_buffer_size = 256 * MiB;
     int max_write_buffer_number = 2;

@@ -38,6 +38,7 @@ struct Config{
   uint32_t slave_priority = 100;
   uint32_t max_db_size = 0;  // unit is GB
   uint64_t max_replication_mb = 0;  // unit is MB
+  uint64_t max_io_mb = 500;  // unit is MB
 
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};

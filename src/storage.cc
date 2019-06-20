@@ -8,6 +8,7 @@
 #include <rocksdb/table.h>
 #include <rocksdb/sst_file_manager.h>
 #include <rocksdb/utilities/table_properties_collectors.h>
+#include <rocksdb/rate_limiter.h>
 #include <iostream>
 #include <memory>
 
@@ -21,6 +22,7 @@ namespace Engine {
 const char *kPubSubColumnFamilyName = "pubsub";
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
+const uint64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 Storage::~Storage() {
@@ -61,6 +63,12 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->sst_file_manager = sst_file_manager_;
   options->table_properties_collector_factories.emplace_back(
       rocksdb::NewCompactOnDeletionCollectorFactory(128000, 64000));
+  uint64_t max_io_mb = kIORateLimitMaxMb;
+  if (config_->max_io_mb > 0) {
+    max_io_mb = config_->max_io_mb;
+  }
+  rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
+  options->rate_limiter = rate_limiter_;
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
@@ -308,6 +316,13 @@ Status Storage::CheckDBSizeLimit() {
     LOG(WARNING) << "[storage] DISABLE db_size limit, set kvrocks to read-write mode ";
   }
   return Status::OK();
+}
+
+void Storage::SetIORateLimit(uint64_t max_io_mb) {
+  if (max_io_mb == 0) {
+    max_io_mb = kIORateLimitMaxMb;
+  }
+  rate_limiter_->SetBytesPerSecond(max_io_mb * MiB);
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }

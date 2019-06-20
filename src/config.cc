@@ -17,6 +17,7 @@
 #include "server.h"
 
 const char *kDefaultNamespace = "__namespace";
+const uint64_t kIORateLimitMinMb = 128;
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
 static const char *kCompressionType[] = {"no", "snappy"};
@@ -208,6 +209,11 @@ Status Config::parseConfigFromString(std::string input) {
     max_db_size = static_cast<uint32_t>(std::stoi(args[1]));
   } else if (size == 2 && args[0] == "max-replication-mb") {
     max_replication_mb = static_cast<uint64_t>(std::stoi(args[1]));
+  } else if (size == 2 && args[0] == "max-io-mb") {
+    max_io_mb = static_cast<uint64_t>(std::stoi(args[1]));
+    if (max_io_mb > 0 && max_io_mb < kIORateLimitMinMb) {
+      return Status(Status::NotOK, std::string("max_io_mb should be >= ") + std::to_string(kIORateLimitMinMb));
+    }
   } else if (size >= 2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
@@ -327,6 +333,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
   PUSH_IF_MATCH(is_all, key, "max-replication-mb", std::to_string(max_replication_mb));
+  PUSH_IF_MATCH(is_all, key, "max-io-mb", std::to_string(max_io_mb));
   PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
 
@@ -457,6 +464,19 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     }
     return Status::OK();
   }
+  if (key == "max-io-mb") {
+    try {
+      int64_t i = std::stoi(value);
+      if (i > 0 && i < static_cast<int64_t>(kIORateLimitMinMb)) {
+        return Status(Status::RedisParseErr, "value should be >= " + std::to_string(kIORateLimitMinMb));
+      }
+      max_io_mb = static_cast<uint64_t>(i);
+      svr->storage_->SetIORateLimit(max_io_mb);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
+    }
+    return Status::OK();
+  }
   if (key == "rocksdb.stats_dump_period_sec") {
     try {
       int i = std::stoi(value);
@@ -521,6 +541,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
   WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
   WRITE_TO_FILE("max-replication-mb", std::to_string(max_replication_mb));
+  WRITE_TO_FILE("max-io-mb", std::to_string(max_io_mb));
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());

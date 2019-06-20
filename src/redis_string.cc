@@ -2,7 +2,9 @@
 #include <string>
 #include <limits>
 
-rocksdb::Status RedisString::getValue(const Slice &ns_key, std::string *raw_value, std::string *value) {
+namespace Redis {
+
+rocksdb::Status String::getValue(const Slice &ns_key, std::string *raw_value, std::string *value) {
   if (value) value->clear();
   if (raw_value) {
     raw_value->clear();
@@ -31,7 +33,7 @@ rocksdb::Status RedisString::getValue(const Slice &ns_key, std::string *raw_valu
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisString::updateValue(const Slice &ns_key, const Slice &raw_value, const Slice &new_value) {
+rocksdb::Status String::updateValue(const Slice &ns_key, const Slice &raw_value, const Slice &new_value) {
   std::string metadata_bytes;
   if (raw_value.empty()) {
     Metadata(kRedisString).Encode(&metadata_bytes);
@@ -47,7 +49,7 @@ rocksdb::Status RedisString::updateValue(const Slice &ns_key, const Slice &raw_v
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisString::Append(const Slice &user_key, const Slice &value, int *ret) {
+rocksdb::Status String::Append(const Slice &user_key, const Slice &value, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -61,7 +63,7 @@ rocksdb::Status RedisString::Append(const Slice &user_key, const Slice &value, i
   return updateValue(ns_key, raw_value_bytes, value_bytes);
 }
 
-std::vector<rocksdb::Status> RedisString::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
+std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
   std::string ns_key;
   std::string value;
   std::vector<rocksdb::Status> statuses;
@@ -73,14 +75,14 @@ std::vector<rocksdb::Status> RedisString::MGet(const std::vector<Slice> &keys, s
   return statuses;
 }
 
-rocksdb::Status RedisString::Get(const Slice &user_key, std::string *value) {
+rocksdb::Status String::Get(const Slice &user_key, std::string *value) {
   std::vector<Slice> keys{user_key};
   std::vector<std::string> values;
   std::vector<rocksdb::Status> statuses = MGet(keys, &values);
   *value = values[0];
   return statuses[0];
 }
-rocksdb::Status RedisString::GetSet(const Slice &user_key, const Slice &new_value, std::string *old_value) {
+rocksdb::Status String::GetSet(const Slice &user_key, const Slice &new_value, std::string *old_value) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -92,22 +94,22 @@ rocksdb::Status RedisString::GetSet(const Slice &user_key, const Slice &new_valu
   return updateValue(ns_key, raw_value_bytes, new_value);
 }
 
-rocksdb::Status RedisString::Set(const Slice &user_key, const Slice &value) {
+rocksdb::Status String::Set(const Slice &user_key, const Slice &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSet(pairs, 0);
 }
 
-rocksdb::Status RedisString::SetEX(const Slice &user_key, const Slice &value, int ttl) {
+rocksdb::Status String::SetEX(const Slice &user_key, const Slice &value, int ttl) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSet(pairs, ttl);
 }
 
-rocksdb::Status RedisString::SetNX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
+rocksdb::Status String::SetNX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSetNX(pairs, ttl, ret);
 }
 
-rocksdb::Status RedisString::SetXX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
+rocksdb::Status String::SetXX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
   *ret = 0;
   int exists = 0;
   uint32_t expire = 0;
@@ -137,7 +139,7 @@ rocksdb::Status RedisString::SetXX(const Slice &user_key, const Slice &value, in
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisString::SetRange(const Slice &user_key, int offset, Slice value, int *ret) {
+rocksdb::Status String::SetRange(const Slice &user_key, int offset, Slice value, int *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -162,7 +164,7 @@ rocksdb::Status RedisString::SetRange(const Slice &user_key, int offset, Slice v
   return updateValue(ns_key, raw_value_bytes, value_bytes);
 }
 
-rocksdb::Status RedisString::IncrBy(const Slice &user_key, int64_t increment, int64_t *ret) {
+rocksdb::Status String::IncrBy(const Slice &user_key, int64_t increment, int64_t *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -187,7 +189,7 @@ rocksdb::Status RedisString::IncrBy(const Slice &user_key, int64_t increment, in
   return updateValue(ns_key, raw_value_bytes, std::to_string(value));
 }
 
-rocksdb::Status RedisString::IncrByFloat(const Slice &user_key, float increment, float *ret) {
+rocksdb::Status String::IncrByFloat(const Slice &user_key, float increment, float *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -213,7 +215,7 @@ rocksdb::Status RedisString::IncrByFloat(const Slice &user_key, float increment,
   return updateValue(ns_key, raw_value_bytes, std::to_string(value));
 }
 
-rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl) {
+rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
   uint32_t expire = 0;
   if (ttl > 0) {
     int64_t now;
@@ -239,7 +241,7 @@ rocksdb::Status RedisString::MSet(const std::vector<StringPair> &pairs, int ttl)
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret) {
+rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret) {
   *ret = 0;
 
   uint32_t expire = 0;
@@ -272,3 +274,4 @@ rocksdb::Status RedisString::MSetNX(const std::vector<StringPair> &pairs, int tt
   *ret = 1;
   return rocksdb::Status::OK();
 }
+}  // namespace Redis

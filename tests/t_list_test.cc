@@ -4,7 +4,7 @@
 class RedisListTest : public TestBase {
 protected:
   explicit RedisListTest():TestBase() {
-    list = new RedisList(storage_, "list_ns");
+    list = new Redis::List(storage_, "list_ns");
   }
   ~RedisListTest() {
     delete list;
@@ -15,7 +15,7 @@ protected:
   }
 
 protected:
-  RedisList *list;
+  Redis::List *list;
 };
 
 TEST_F(RedisListTest, PushAndPop) {

@@ -5,7 +5,7 @@
 class RedisStringTest : public TestBase {
 protected:
   explicit RedisStringTest() : TestBase() {
-    string = new RedisString(storage_, "string_ns");
+    string = new Redis::String(storage_, "string_ns");
   }
   ~RedisStringTest() {
     delete string;
@@ -23,7 +23,7 @@ protected:
   }
 
 protected:
-  RedisString *string;
+  Redis::String *string;
   std::vector<StringPair> pairs_;
 };
 

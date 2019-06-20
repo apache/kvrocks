@@ -4,6 +4,7 @@
 #include <vector>
 #include <limits>
 
+#include "redis_db.h"
 #include "redis_metadata.h"
 
 typedef struct ZRangeSpec {
@@ -31,10 +32,12 @@ typedef struct {
 #define ZSET_REVERSED (1<<3)
 #define ZSET_REMOVED 1<<4
 
-class RedisZSet : public RedisSubKeyScanner {
+namespace Redis {
+
+class ZSet : public SubKeyScanner {
  public:
-  explicit RedisZSet(Engine::Storage *storage, const std::string &ns) :
-      RedisSubKeyScanner(storage, ns),
+  explicit ZSet(Engine::Storage *storage, const std::string &ns) :
+      SubKeyScanner(storage, ns),
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(const Slice &user_key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(const Slice &user_key, int *ret);
@@ -59,3 +62,5 @@ class RedisZSet : public RedisSubKeyScanner {
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
   rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
 };
+
+}  // namespace Redis

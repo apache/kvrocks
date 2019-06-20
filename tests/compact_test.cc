@@ -17,7 +17,7 @@ TEST(Compact, Filter) {
 
   int ret;
   std::string ns = "test_compact";
-  auto hash = new RedisHash(storage_, ns);
+  auto hash = new Redis::Hash(storage_, ns);
   std::string expired_hash_key = "expire_hash_key";
   std::string live_hash_key = "live_hash_key";
   hash->Set(expired_hash_key, "f1", "v1", &ret);
@@ -49,7 +49,7 @@ TEST(Compact, Filter) {
   delete iter;
   delete hash;
 
-  auto zset = new RedisZSet(storage_, ns);
+  auto zset = new Redis::ZSet(storage_, ns);
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores =  {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, 0, &member_scores, &ret);

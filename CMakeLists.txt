@@ -54,7 +54,7 @@ string(STRIP ${GIT_SHA} GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target
-add_executable(kvrocks src/redis_connection.cc src/redis_connection.h)
+add_executable(kvrocks)
 target_compile_features(kvrocks PRIVATE cxx_std_11)
 target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
@@ -68,6 +68,10 @@ target_include_directories(kvrocks ${EXTERNAL_INCS})
 target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer)
 target_link_libraries(kvrocks ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks PRIVATE
+        src/redis_db.cc
+        src/redis_db.h
+        src/redis_connection.cc
+        src/redis_connection.h
         src/compact_filter.cc
         src/compact_filter.h
         src/worker.cc
@@ -88,8 +92,8 @@ target_sources(kvrocks PRIVATE
         src/replication.h
         src/task_runner.cc
         src/task_runner.h
-        src/redis_encoding.h
-        src/redis_encoding.cc
+        src/encoding.h
+        src/encoding.cc
         src/redis_metadata.h
         src/redis_metadata.cc
         src/redis_string.h
@@ -133,6 +137,8 @@ target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
 target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS} -pthread)
 target_sources(kvrocks2redis PRIVATE
+        src/redis_db.cc
+        src/redis_db.h
         src/compact_filter.cc
         src/compact_filter.h
         src/worker.cc
@@ -152,8 +158,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_reply.cc
         src/task_runner.cc
         src/task_runner.h
-        src/redis_encoding.h
-        src/redis_encoding.cc
+        src/encoding.h
+        src/encoding.cc
         src/redis_metadata.h
         src/redis_metadata.cc
         src/redis_string.h
@@ -220,7 +226,7 @@ add_executable(unittest
         src/redis_bitmap.cc
         src/redis_bitmap.h
         src/redis_metadata.cc
-        src/redis_encoding.cc
+        src/encoding.cc
         src/redis_string.cc
         src/redis_hash.cc
         src/redis_list.cc
@@ -234,6 +240,8 @@ add_executable(unittest
         src/task_runner.cc
         src/cron.cc
         src/compact_filter.cc
+        src/redis_db.cc
+        src/redis_db.h
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc
@@ -248,7 +256,9 @@ add_executable(unittest
         tests/stats_test.cc
         tests/cron_test.cc
         tests/config_test.cc
-        tests/task_runner_test.cc tests/t_bitmap_test.cc tests/compact_test.cc)
+        tests/task_runner_test.cc
+        tests/t_bitmap_test.cc
+        tests/compact_test.cc)
 
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)

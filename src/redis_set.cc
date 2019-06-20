@@ -3,12 +3,14 @@
 #include <map>
 #include <iostream>
 
-rocksdb::Status RedisSet::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
-  return RedisDB::GetMetadata(kRedisSet, ns_key, metadata);
+namespace Redis {
+
+rocksdb::Status Set::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
+  return Database::GetMetadata(kRedisSet, ns_key, metadata);
 }
 
 // Make sure members are uniq before use Overwrite
-rocksdb::Status RedisSet::Overwrite(Slice user_key, const std::vector<std::string> &members) {
+rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &members) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -29,7 +31,7 @@ rocksdb::Status RedisSet::Overwrite(Slice user_key, const std::vector<std::strin
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisSet::Add(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
+rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -61,7 +63,7 @@ rocksdb::Status RedisSet::Add(const Slice &user_key, const std::vector<Slice> &m
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisSet::Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
+rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -92,7 +94,7 @@ rocksdb::Status RedisSet::Remove(const Slice &user_key, const std::vector<Slice>
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisSet::Card(const Slice &user_key, int *ret) {
+rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -104,7 +106,7 @@ rocksdb::Status RedisSet::Card(const Slice &user_key, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisSet::Members(const Slice &user_key, std::vector<std::string> *members) {
+rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *members) {
   members->clear();
 
   std::string ns_key;
@@ -131,7 +133,7 @@ rocksdb::Status RedisSet::Members(const Slice &user_key, std::vector<std::string
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisSet::IsMember(const Slice &user_key, const Slice &member, int *ret) {
+rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -154,7 +156,7 @@ rocksdb::Status RedisSet::IsMember(const Slice &user_key, const Slice &member, i
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisSet::Take(const Slice &user_key, std::vector<std::string> *members, int count, bool pop) {
+rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *members, int count, bool pop) {
   int n = 0;
   members->clear();
   if (count <= 0) return rocksdb::Status::OK();
@@ -195,7 +197,7 @@ rocksdb::Status RedisSet::Take(const Slice &user_key, std::vector<std::string> *
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisSet::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {
+rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {
   std::vector<Slice> members{member};
   rocksdb::Status s = Remove(src, members, ret);
   if (!s.ok() || *ret == 0) {
@@ -204,12 +206,12 @@ rocksdb::Status RedisSet::Move(const Slice &src, const Slice &dst, const Slice &
   return Add(dst, members, ret);
 }
 
-rocksdb::Status RedisSet::Scan(const Slice &user_key,
-                               const std::string &cursor,
-                               uint64_t limit,
-                               const std::string &member_prefix,
-                               std::vector<std::string> *members) {
-  return RedisSubKeyScanner::Scan(kRedisSet, user_key, cursor, limit, member_prefix, members);
+rocksdb::Status Set::Scan(const Slice &user_key,
+                          const std::string &cursor,
+                          uint64_t limit,
+                          const std::string &member_prefix,
+                          std::vector<std::string> *members) {
+  return SubKeyScanner::Scan(kRedisSet, user_key, cursor, limit, member_prefix, members);
 }
 
 /*
@@ -220,7 +222,7 @@ rocksdb::Status RedisSet::Scan(const Slice &user_key,
  * key3 = {a,c,e}
  * DIFF key1 key2 key3 = {b,d}
  */
-rocksdb::Status RedisSet::Diff(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::string> *members) {
   members->clear();
   std::vector<std::string> source_members;
   auto s = Members(keys[0], &source_members);
@@ -251,7 +253,7 @@ rocksdb::Status RedisSet::Diff(const std::vector<Slice> &keys, std::vector<std::
  * key3 = {a,c,e}
  * UNION key1 key2 key3 = {a,b,c,d,e}
  */
-rocksdb::Status RedisSet::Union(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::string> *members) {
   members->clear();
 
   std::map<std::string, bool> union_members;
@@ -277,7 +279,7 @@ rocksdb::Status RedisSet::Union(const std::vector<Slice> &keys, std::vector<std:
  * key3 = {a,c,e}
  * INTER key1 key2 key3 = {c}
  */
-rocksdb::Status RedisSet::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
   members->clear();
 
   std::map<std::string, size_t> member_counters;
@@ -303,7 +305,7 @@ rocksdb::Status RedisSet::Inter(const std::vector<Slice> &keys, std::vector<std:
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+rocksdb::Status Set::DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   std::vector<std::string> members;
   auto s = Diff(keys, &members);
@@ -312,7 +314,7 @@ rocksdb::Status RedisSet::DiffStore(const Slice &dst, const std::vector<Slice> &
   return Overwrite(dst, members);
 }
 
-rocksdb::Status RedisSet::UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+rocksdb::Status Set::UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   std::vector<std::string> members;
   auto s = Union(keys, &members);
@@ -321,7 +323,7 @@ rocksdb::Status RedisSet::UnionStore(const Slice &dst, const std::vector<Slice> 
   return Overwrite(dst, members);
 }
 
-rocksdb::Status RedisSet::InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   std::vector<std::string> members;
   auto s = Inter(keys, &members);
@@ -329,3 +331,4 @@ rocksdb::Status RedisSet::InterStore(const Slice &dst, const std::vector<Slice> 
   *ret = static_cast<int>(members.size());
   return Overwrite(dst, members);
 }
+}  // namespace Redis

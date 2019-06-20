@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 
+#include "redis_db.h"
 #include "redis_metadata.h"
 
 typedef struct {
@@ -10,9 +11,11 @@ typedef struct {
   Slice value;
 } StringPair;
 
-class RedisString :public RedisDB {
+namespace Redis {
+
+class String : public Database {
  public:
-  explicit RedisString(Engine::Storage *storage, const std::string &ns) : RedisDB(storage, ns) {}
+  explicit String(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Append(const Slice &user_key, const Slice &value, int *ret);
   rocksdb::Status Get(const Slice &user_key, std::string *value);
   rocksdb::Status GetSet(const Slice &user_key, const Slice &new_value, std::string *old_value);
@@ -31,3 +34,5 @@ class RedisString :public RedisDB {
   rocksdb::Status getValue(const Slice &ns_key, std::string *raw_value, std::string *value = nullptr);
   rocksdb::Status updateValue(const Slice &ns_key, const Slice &raw_value, const Slice &new_value);
 };
+
+}  // namespace Redis

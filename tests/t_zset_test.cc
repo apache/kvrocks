@@ -5,7 +5,7 @@
 class RedisZSetTest : public TestBase {
 protected:
   RedisZSetTest() : TestBase() {
-    zset = new RedisZSet(storage_, "zset_ns"
+    zset = new Redis::ZSet(storage_, "zset_ns"
     );
   }
   ~RedisZSetTest() {
@@ -20,7 +20,7 @@ protected:
 
 protected:
   std::vector<double> scores_;
-  RedisZSet *zset;
+  Redis::ZSet *zset;
 };
 
 TEST_F(RedisZSetTest, Add) {

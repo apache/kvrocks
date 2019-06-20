@@ -46,8 +46,8 @@ TEST(Metadata, EncodeAndDeocde) {
 class RedisTypeTest : public TestBase {
 public:
   RedisTypeTest() :TestBase() {
-    redis = new RedisDB(storage_, "default_ns");
-    hash = new RedisHash(storage_, "default_ns");
+    redis = new Redis::Database(storage_, "default_ns");
+    hash = new Redis::Hash(storage_, "default_ns");
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_  = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
@@ -57,8 +57,8 @@ public:
     delete hash;
   }
 protected:
-  RedisDB *redis;
-  RedisHash *hash;
+  Redis::Database *redis;
+  Redis::Hash *hash;
 };
 
 TEST_F(RedisTypeTest, GetMetadata) {

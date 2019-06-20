@@ -6,7 +6,7 @@
 class RedisBitmapTest : public TestBase {
  protected:
   explicit RedisBitmapTest() : TestBase() {
-    bitmap = new RedisBitmap(storage_, "bitmap_ns");
+    bitmap = new Redis::Bitmap(storage_, "bitmap_ns");
   }
   ~RedisBitmapTest() {
     delete bitmap;
@@ -17,7 +17,7 @@ class RedisBitmapTest : public TestBase {
   void TearDown() override {}
 
  protected:
-  RedisBitmap *bitmap;
+  Redis::Bitmap *bitmap;
 };
 
 TEST_F(RedisBitmapTest, GetAndSetBit) {

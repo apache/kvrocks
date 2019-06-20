@@ -2,7 +2,7 @@
 #define KVROCKS_TEST_BASE_H
 
 #include <gtest/gtest.h>
-
+#include "redis_db.h"
 #include "redis_hash.h"
 
 class TestBase : public testing::Test {

@@ -1,12 +1,13 @@
 #include "redis_list.h"
 
 #include "stdlib.h"
+namespace Redis {
 
-rocksdb::Status RedisList::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
-  return RedisDB::GetMetadata(kRedisList, ns_key, metadata);
+rocksdb::Status List::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
+  return Database::GetMetadata(kRedisList, ns_key, metadata);
 }
 
-rocksdb::Status RedisList::Size(const Slice &user_key, uint32_t *ret) {
+rocksdb::Status List::Size(const Slice &user_key, uint32_t *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -18,19 +19,19 @@ rocksdb::Status RedisList::Size(const Slice &user_key, uint32_t *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+rocksdb::Status List::Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(user_key, elems, true, left, ret);
 }
 
-rocksdb::Status RedisList::PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
+rocksdb::Status List::PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, int *ret) {
   return push(user_key, elems, false, left, ret);
 }
 
-rocksdb::Status RedisList::push(const Slice &user_key,
-                                std::vector<Slice> elems,
-                                bool create_if_missing,
-                                bool left,
-                                int *ret) {
+rocksdb::Status List::push(const Slice &user_key,
+                           std::vector<Slice> elems,
+                           bool create_if_missing,
+                           bool left,
+                           int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -66,7 +67,7 @@ rocksdb::Status RedisList::push(const Slice &user_key,
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Pop(const Slice &user_key, std::string *elem, bool left) {
+rocksdb::Status List::Pop(const Slice &user_key, std::string *elem, bool left) {
   elem->clear();
 
   std::string ns_key;
@@ -77,7 +78,7 @@ rocksdb::Status RedisList::Pop(const Slice &user_key, std::string *elem, bool le
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  uint64_t index = left ? metadata.head : metadata.tail-1;
+  uint64_t index = left ? metadata.head : metadata.tail - 1;
   std::string buf;
   PutFixed64(&buf, index);
   std::string sub_key;
@@ -123,7 +124,7 @@ rocksdb::Status RedisList::Pop(const Slice &user_key, std::string *elem, bool le
  * then trim the list from tail with num of elems to delete, here is 2.
  * and list would become: | E1 | E2 | E3 | E4 | E5 | E6 |
  */
-rocksdb::Status RedisList::Rem(const Slice &user_key, int count, const Slice &elem, int *ret) {
+rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -211,7 +212,7 @@ rocksdb::Status RedisList::Rem(const Slice &user_key, int count, const Slice &el
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *ret) {
+rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -292,7 +293,7 @@ rocksdb::Status RedisList::Insert(const Slice &user_key, const Slice &pivot, con
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::Index(const Slice &user_key, int index, std::string *elem) {
+rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem) {
   elem->clear();
 
   std::string ns_key;
@@ -319,7 +320,7 @@ rocksdb::Status RedisList::Index(const Slice &user_key, int index, std::string *
 // If start is larger than the end of the list, an empty list is returned.
 // If stop is larger than the actual end of the list,
 // Redis will treat it like the last element of the list.
-rocksdb::Status RedisList::Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems) {
+rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems) {
   elems->clear();
 
   std::string ns_key;
@@ -352,14 +353,14 @@ rocksdb::Status RedisList::Range(const Slice &user_key, int start, int stop, std
     uint64_t index;
     GetFixed64(&sub_key, &index);
     // index should be always >= start
-    if (index > metadata.head+stop) break;
+    if (index > metadata.head + stop) break;
     elems->push_back(iter->value().ToString());
   }
   delete iter;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status RedisList::Set(const Slice &user_key, int index, Slice elem) {
+rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -373,7 +374,7 @@ rocksdb::Status RedisList::Set(const Slice &user_key, int index, Slice elem) {
   }
 
   std::string buf, value, sub_key;
-  PutFixed64(&buf, metadata.head+index);
+  PutFixed64(&buf, metadata.head + index);
   InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
   s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (!s.ok()) {
@@ -389,7 +390,7 @@ rocksdb::Status RedisList::Set(const Slice &user_key, int index, Slice elem) {
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status RedisList::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
+rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
   rocksdb::Status s = Pop(src, elem, false);
   if (!s.ok()) return s;
 
@@ -401,7 +402,7 @@ rocksdb::Status RedisList::RPopLPush(const Slice &src, const Slice &dst, std::st
 }
 
 // Caution: trim the big list may block the server
-rocksdb::Status RedisList::Trim(const Slice &user_key, int start, int stop) {
+rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -411,7 +412,7 @@ rocksdb::Status RedisList::Trim(const Slice &user_key, int start, int stop) {
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size+stop : metadata.size;
+  if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size + stop : metadata.size;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start > stop) {
@@ -433,7 +434,7 @@ rocksdb::Status RedisList::Trim(const Slice &user_key, int start, int stop) {
     batch.Delete(sub_key);
     metadata.head++;
   }
-  uint64_t right_index = metadata.head+stop+1;
+  uint64_t right_index = metadata.head + stop + 1;
   for (uint64_t i = right_index; i < metadata.tail; i++) {
     std::string sub_key;
     InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
@@ -446,3 +447,4 @@ rocksdb::Status RedisList::Trim(const Slice &user_key, int start, int stop) {
   batch.Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
+}  // namespace Redis

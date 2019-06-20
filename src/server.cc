@@ -10,6 +10,7 @@
 #include "util.h"
 #include "worker.h"
 #include "version.h"
+#include "redis_db.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 
@@ -746,7 +747,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   task.arg = this;
   task.callback = [ns](void *arg) {
     auto svr = static_cast<Server*>(arg);
-    RedisDB db(svr->storage_, ns);
+    Redis::Database db(svr->storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 

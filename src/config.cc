@@ -333,8 +333,6 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
   PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.enable_pipeplined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));

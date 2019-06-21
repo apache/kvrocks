@@ -38,8 +38,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;
-    rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1],
-                                    metadata_key, &bytes);
+    rocksdb::Status s = (*db_)->Get(rocksdb::ReadOptions(), (*cf_handles_)[1], metadata_key, &bytes);
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {
       cached_metadata_ = std::move(bytes);
@@ -73,10 +72,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       || ikey.GetVersion() != metadata.version) {
     return true;
   }
-  if (metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value)) {
-    return true;
-  }
-  return false;
+  return metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value);
 }
 
 bool SubKeyFilter::Filter(int level,

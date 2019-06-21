@@ -131,7 +131,7 @@ void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
 }
 
 void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
-  std::string ns_prefix, ns, real_key, value;
+  std::string ns_prefix, ns, user_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
   prefix = ns_prefix;
 
@@ -162,8 +162,8 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
       }
     }
     if (keys) {
-      ExtractNamespaceKey(iter->key(), &ns, &real_key);
-      keys->emplace_back(real_key);
+      ExtractNamespaceKey(iter->key(), &ns, &user_key);
+      keys->emplace_back(user_key);
     }
   }
   if (stats && stats->n_expires > 0) {
@@ -177,7 +177,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
                          const std::string &prefix,
                          std::vector<std::string> *keys) {
   uint64_t cnt = 0;
-  std::string ns_prefix, ns_cursor, ns, real_key, value;
+  std::string ns_prefix, ns_cursor, ns, user_key, value;
   AppendNamespacePrefix(prefix, &ns_prefix);
   AppendNamespacePrefix(cursor, &ns_cursor);
 
@@ -205,8 +205,8 @@ rocksdb::Status Database::Scan(const std::string &cursor,
     value = iter->value().ToString();
     metadata.Decode(value);
     if (metadata.Expired()) continue;
-    ExtractNamespaceKey(iter->key(), &ns, &real_key);
-    keys->emplace_back(real_key);
+    ExtractNamespaceKey(iter->key(), &ns, &user_key);
+    keys->emplace_back(user_key);
     cnt++;
   }
   delete iter;

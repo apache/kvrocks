@@ -514,56 +514,55 @@ Status Config::Rewrite() {
 #define WRITE_TO_FILE(key, value) do { \
   string_stream << (key) << " " << (value) <<  "\n"; \
 } while (0)
+
   std::string binds_str, repl_binds_str;
   array2String(binds, ",", &binds_str);
   array2String(repl_binds, ",", &repl_binds_str);
-
   string_stream << "################################ GERNERAL #####################################\n";
   WRITE_TO_FILE("bind", binds_str);
-  WRITE_TO_FILE("port", std::to_string(port));
+  WRITE_TO_FILE("port", port);
   WRITE_TO_FILE("repl-bind", repl_binds_str);
-  WRITE_TO_FILE("timeout", std::to_string(timeout));
-  WRITE_TO_FILE("workers", std::to_string(workers));
-  WRITE_TO_FILE("maxclients", std::to_string(maxclients));
-  WRITE_TO_FILE("repl-workers", std::to_string(repl_workers));
+  WRITE_TO_FILE("timeout", timeout);
+  WRITE_TO_FILE("workers", workers);
+  WRITE_TO_FILE("maxclients", maxclients);
+  WRITE_TO_FILE("repl-workers", repl_workers);
   WRITE_TO_FILE("loglevel", kLogLevels[loglevel]);
   WRITE_TO_FILE("daemonize", (daemonize?"yes":"no"));
   WRITE_TO_FILE("requirepass", requirepass);
   WRITE_TO_FILE("db-name", db_name);
   WRITE_TO_FILE("dir", dir);
   WRITE_TO_FILE("backup-dir", backup_dir);
-  WRITE_TO_FILE("tcp-backlog", std::to_string(backlog));
+  WRITE_TO_FILE("tcp-backlog", backlog);
   WRITE_TO_FILE("slave-read-only", (slave_readonly? "yes":"no"));
-  WRITE_TO_FILE("slave-priority", std::to_string(slave_priority));
-  WRITE_TO_FILE("slowlog-max-len", std::to_string(slowlog_max_len));
-  WRITE_TO_FILE("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
-  WRITE_TO_FILE("max-backup-to-keep", std::to_string(max_backup_to_keep));
-  WRITE_TO_FILE("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
-  WRITE_TO_FILE("max-db-size", std::to_string(max_db_size));
-  WRITE_TO_FILE("max-replication-mb", std::to_string(max_replication_mb));
-  WRITE_TO_FILE("max-io-mb", std::to_string(max_io_mb));
+  WRITE_TO_FILE("slave-priority", slave_priority);
+  WRITE_TO_FILE("slowlog-max-len", slowlog_max_len);
+  WRITE_TO_FILE("slowlog-log-slower-than", slowlog_log_slower_than);
+  WRITE_TO_FILE("max-backup-to-keep", max_backup_to_keep);
+  WRITE_TO_FILE("max-backup-keep-hours", max_backup_keep_hours);
+  WRITE_TO_FILE("max-db-size", max_db_size);
+  WRITE_TO_FILE("max-replication-mb", max_replication_mb);
+  WRITE_TO_FILE("max-io-mb", max_io_mb);
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());
   if (bgsave_cron.IsEnabled()) WRITE_TO_FILE("bgave-cron", bgsave_cron.ToString());
 
   string_stream << "\n################################ ROCKSDB #####################################\n";
-  WRITE_TO_FILE("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
-  WRITE_TO_FILE("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
-  WRITE_TO_FILE("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
-  WRITE_TO_FILE("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
-  WRITE_TO_FILE("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
-  WRITE_TO_FILE("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
-  WRITE_TO_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
-  WRITE_TO_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  WRITE_TO_FILE("rocksdb.max_open_files", rocksdb_options.max_open_files);
+  WRITE_TO_FILE("rocksdb.write_buffer_size", rocksdb_options.write_buffer_size/MiB);
+  WRITE_TO_FILE("rocksdb.max_write_buffer_number", rocksdb_options.max_write_buffer_number);
+  WRITE_TO_FILE("rocksdb.max_background_compactions", rocksdb_options.max_background_compactions);
+  WRITE_TO_FILE("rocksdb.metadata_block_cache_size", rocksdb_options.metadata_block_cache_size/MiB);
+  WRITE_TO_FILE("rocksdb.subkey_block_cache_size", rocksdb_options.subkey_block_cache_size/MiB);
+  WRITE_TO_FILE("rocksdb.max_background_flushes", rocksdb_options.max_background_flushes);
+  WRITE_TO_FILE("rocksdb.max_sub_compactions", rocksdb_options.max_sub_compactions);
   WRITE_TO_FILE("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
   WRITE_TO_FILE("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
 
   string_stream << "\n################################ Namespace #####################################\n";
-  std::string ns_prefix = "namespace.";
   for (const auto &iter : tokens) {
     if (iter.second == kDefaultNamespace) continue;
-    WRITE_TO_FILE(ns_prefix+iter.second, iter.first);
+    WRITE_TO_FILE("namespace."+iter.second, iter.first);
   }
   output_file.write(string_stream.str().c_str(), string_stream.str().size());
   output_file.close();

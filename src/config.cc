@@ -326,10 +326,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
-  PUSH_IF_MATCH(is_all,
-                key,
-                "max-replication-mb",
-                std::to_string(max_replication_mb));
+  PUSH_IF_MATCH(is_all, key, "max-replication-mb", std::to_string(max_replication_mb));
   PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
 

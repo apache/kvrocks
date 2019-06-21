@@ -289,11 +289,10 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   key = Util::ToLower(key);
   values->clear();
   bool is_all = key == "*";
-  bool is_rocksdb_all = (key == "rocksdb.*" || is_all);
 
-#define PUSH_IF_MATCH(force, k1, k2, value) do { \
-  if ((force) || (k1) == (k2)) { \
-    values->emplace_back((k2)); \
+#define PUSH_IF_MATCH(name, value) do { \
+  if ((is_all) || (key) == (name)) { \
+    values->emplace_back((name)); \
     values->emplace_back((value)); \
   } \
 } while (0);
@@ -307,58 +306,45 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
     binds_str.append(bind);
     binds_str.append(",");
   }
-  binds_str = binds_str.substr(0, binds_str.size()-1);
-
-  PUSH_IF_MATCH(is_all, key, "dir", dir);
-  PUSH_IF_MATCH(is_all, key, "db-dir", db_dir);
-  PUSH_IF_MATCH(is_all, key, "backup-dir", backup_dir);
-  PUSH_IF_MATCH(is_all, key, "port", std::to_string(port));
-  PUSH_IF_MATCH(is_all, key, "workers", std::to_string(workers));
-  PUSH_IF_MATCH(is_all, key, "timeout", std::to_string(timeout));
-  PUSH_IF_MATCH(is_all, key, "tcp-backlog", std::to_string(backlog));
-  PUSH_IF_MATCH(is_all, key, "daemonize", (daemonize ? "yes" : "no"));
-  PUSH_IF_MATCH(is_all, key, "maxclients", std::to_string(maxclients));
-  PUSH_IF_MATCH(is_all, key, "slave-read-only", (slave_readonly ? "yes" : "no"));
-  PUSH_IF_MATCH(is_all, key, "slave-priority", std::to_string(slave_priority));
-  PUSH_IF_MATCH(is_all, key, "max-backup-to-keep", std::to_string(max_backup_to_keep));
-  PUSH_IF_MATCH(is_all, key, "max-backup-keep-hours", std::to_string(max_backup_keep_hours));
-  PUSH_IF_MATCH(is_all, key, "compact-cron", compact_cron.ToString());
-  PUSH_IF_MATCH(is_all, key, "bgsave-cron", bgsave_cron.ToString());
-  PUSH_IF_MATCH(is_all, key, "loglevel", kLogLevels[loglevel]);
-  PUSH_IF_MATCH(is_all, key, "requirepass", requirepass);
-  PUSH_IF_MATCH(is_all, key, "masterauth", masterauth);
-  PUSH_IF_MATCH(is_all, key, "slaveof", master_str);
-  PUSH_IF_MATCH(is_all, key, "pidfile", pidfile);
-  PUSH_IF_MATCH(is_all, key, "db-name", db_name);
-  PUSH_IF_MATCH(is_all, key, "binds", binds_str);
-  PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
-  PUSH_IF_MATCH(is_all, key, "max-replication-mb", std::to_string(max_replication_mb));
-  PUSH_IF_MATCH(is_all, key, "max-io-mb", std::to_string(max_io_mb));
-  PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
-  PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
-
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-                "rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-                "rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-      "rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-                "rocksdb.compression", kCompressionType[rocksdb_options.compression]);
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-                "rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
-  PUSH_IF_MATCH(is_rocksdb_all, key,
-                "rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes": "no"))
+  binds_str.pop_back();
+  PUSH_IF_MATCH("dir", dir);
+  PUSH_IF_MATCH("db-dir", db_dir);
+  PUSH_IF_MATCH("backup-dir", backup_dir);
+  PUSH_IF_MATCH("port", std::to_string(port));
+  PUSH_IF_MATCH("workers", std::to_string(workers));
+  PUSH_IF_MATCH("timeout", std::to_string(timeout));
+  PUSH_IF_MATCH("tcp-backlog", std::to_string(backlog));
+  PUSH_IF_MATCH("daemonize", (daemonize ? "yes" : "no"));
+  PUSH_IF_MATCH("maxclients", std::to_string(maxclients));
+  PUSH_IF_MATCH("slave-read-only", (slave_readonly ? "yes" : "no"));
+  PUSH_IF_MATCH("slave-priority", std::to_string(slave_priority));
+  PUSH_IF_MATCH("max-backup-to-keep", std::to_string(max_backup_to_keep));
+  PUSH_IF_MATCH("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
+  PUSH_IF_MATCH("compact-cron", compact_cron.ToString());
+  PUSH_IF_MATCH("bgsave-cron", bgsave_cron.ToString());
+  PUSH_IF_MATCH("loglevel", kLogLevels[loglevel]);
+  PUSH_IF_MATCH("requirepass", requirepass);
+  PUSH_IF_MATCH("masterauth", masterauth);
+  PUSH_IF_MATCH("slaveof", master_str);
+  PUSH_IF_MATCH("pidfile", pidfile);
+  PUSH_IF_MATCH("db-name", db_name);
+  PUSH_IF_MATCH("binds", binds_str);
+  PUSH_IF_MATCH("max-io-mb", std::to_string(max_io_mb));
+  PUSH_IF_MATCH("max-db-size", std::to_string(max_db_size));
+  PUSH_IF_MATCH("slowlog-max-len", std::to_string(slowlog_max_len));
+  PUSH_IF_MATCH("max-replication-mb", std::to_string(max_replication_mb));
+  PUSH_IF_MATCH("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
+  PUSH_IF_MATCH("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  PUSH_IF_MATCH("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
+  PUSH_IF_MATCH("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
+  PUSH_IF_MATCH("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
+  PUSH_IF_MATCH("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
+  PUSH_IF_MATCH("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
+  PUSH_IF_MATCH("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
+  PUSH_IF_MATCH("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes": "no"))
+  PUSH_IF_MATCH("rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
+  PUSH_IF_MATCH("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
 Status Config::Set(std::string key, const std::string &value, Server *svr) {

@@ -57,6 +57,7 @@ class Storage {
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize();
   Status CheckDBSizeLimit();
+  void SetIORateLimit(uint64_t max_io_mb);
 
   uint64_t GetFlushCount() { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
@@ -99,6 +100,7 @@ class Storage {
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *backup_env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
+  std::shared_ptr<rocksdb::RateLimiter> rate_limiter_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;

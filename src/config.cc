@@ -499,7 +499,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     }
     rocksdb_options.enable_pipelined_write = i == 1;
     auto db = svr->storage_->GetDB();
-    auto s = db->SetDBOptions({{"enable_pipelined_write", (i==1?"true":"false")}});
+    auto s = db->SetDBOptions({{"enable_pipelined_write", (i == 1 ? "true" : "false")}});
     return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");

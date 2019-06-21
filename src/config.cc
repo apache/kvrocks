@@ -67,6 +67,8 @@ Status Config::parseRocksdbOption(const std::string &key, std::string value) {
         break;
       }
     }
+  } else if (key == "enable_pipelined_write")  {
+    rocksdb_options.enable_pipelined_write = value == "yes";
   } else {
     return parseRocksdbIntOption(key, value);
   }
@@ -324,15 +326,14 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH(is_all, key, "db-name", db_name);
   PUSH_IF_MATCH(is_all, key, "binds", binds_str);
   PUSH_IF_MATCH(is_all, key, "max-db-size", std::to_string(max_db_size));
-  PUSH_IF_MATCH(is_all,
-                key,
-                "max-replication-mb",
-                std::to_string(max_replication_mb));
+  PUSH_IF_MATCH(is_all, key, "max-replication-mb", std::to_string(max_replication_mb));
   PUSH_IF_MATCH(is_all, key, "slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH(is_all, key, "slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
 
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+      "rocksdb.enable_pipeplined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
   PUSH_IF_MATCH(is_rocksdb_all, key,
       "rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
   PUSH_IF_MATCH(is_rocksdb_all, key,
@@ -351,6 +352,8 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
                 "rocksdb.compression", kCompressionType[rocksdb_options.compression]);
   PUSH_IF_MATCH(is_rocksdb_all, key,
                 "rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
+  PUSH_IF_MATCH(is_rocksdb_all, key,
+                "rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes": "no"))
 }
 
 Status Config::Set(std::string key, const std::string &value, Server *svr) {
@@ -456,7 +459,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     }
     return Status::OK();
   }
-  if (key == "stats_dump_period_sec") {
+  if (key == "rocksdb.stats_dump_period_sec") {
     try {
       int i = std::stoi(value);
       if (i != 0 && i < 60) {
@@ -470,6 +473,16 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
+  }
+  if (key == "rocksdb.enable_pipelined_write") {
+    int i;
+    if ((i = yesnotoi(value)) == -1) {
+      return Status(Status::NotOK, "value must be 'yes' or 'no'");
+    }
+    rocksdb_options.enable_pipelined_write = i == 1;
+    auto db = svr->storage_->GetDB();
+    auto s = db->SetDBOptions({{"enable_pipelined_write", value}});
+    return Status::OK();
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }
@@ -525,6 +538,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   WRITE_TO_FILE("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
   WRITE_TO_FILE("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
+  WRITE_TO_FILE("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
 
   string_stream << "\n################################ Namespace #####################################\n";
   std::string ns_prefix = "namespace.";

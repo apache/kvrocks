@@ -65,6 +65,7 @@ struct Config{
     uint32_t max_sub_compactions = 1;
     rocksdb::CompressionType compression = rocksdb::kSnappyCompression;  // default: snappy
     int stats_dump_period_sec = 0;
+    bool enable_pipelined_write = true;
   } rocksdb_options;
 
  public:

@@ -46,6 +46,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
   options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
   options->compression = config_->rocksdb_options.compression;
+  options->enable_pipelined_write = config_->rocksdb_options.enable_pipelined_write;
   options->target_file_size_base = 256 * MiB;
   options->max_manifest_file_size = 64 * MiB;
   options->max_log_file_size = 512 * MiB;

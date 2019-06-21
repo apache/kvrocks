@@ -13,20 +13,20 @@ bool MetadataFilter::Filter(int level,
                                     const Slice &value,
                                     std::string *new_value,
                                     bool *modified) const {
-  std::string ns, real_key, bytes = value.ToString();
+  std::string ns, user_key, bytes = value.ToString();
   Metadata metadata(kRedisNone);
   rocksdb::Status s = metadata.Decode(bytes);
-  ExtractNamespaceKey(key, &ns, &real_key);
+  ExtractNamespaceKey(key, &ns, &user_key);
   if (!s.ok()) {
     LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
-                 << "namespace: " << ns
-                 << "key: " << real_key
+                 << ", namespace: " << ns
+                 << ", key: " << user_key
                  << ", err: " << s.ToString();
     return false;
   }
   DLOG(INFO) << "[compact_filter/metadata] "
-             << " namespace: " << ns
-             << ", key: " << real_key
+             << "namespace: " << ns
+             << ", key: " << user_key
              << ", result: " << (metadata.Expired() ? "deleted" : "reserved");
   return metadata.Expired();
 }
@@ -48,9 +48,10 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       cached_metadata_.clear();
       return true;
     } else {
-      // failed to getValue metadata, clear the cached key and reserve
-      LOG(ERROR) << "Failed to get the metadata, namespace: " << ikey.GetNamespace().ToString()
-                 << ", key: " << ikey.GetKey().ToString() << ", err: " << s.ToString();
+      LOG(ERROR) << "[compact_filter/subkey] Failed to fetch metadata"
+                 << ", namespace: " << ikey.GetNamespace().ToString()
+                 << ", key: " << ikey.GetKey().ToString()
+                 << ", err: " << s.ToString();
       cached_key_.clear();
       cached_metadata_.clear();
       return false;
@@ -63,8 +64,10 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   rocksdb::Status s = metadata.Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    LOG(ERROR) << "Failed to decode the metadata, namespace: " << ikey.GetNamespace().ToString()
-               << ", key: " << ikey.GetKey().ToString() << ", err: " << s.ToString();
+    LOG(ERROR) << "[compact_filter/subkey] Failed to decode metadata"
+               << ", namespace: " << ikey.GetNamespace().ToString()
+               << ", key: " << ikey.GetKey().ToString()
+               << ", err: " << s.ToString();
     return false;
   }
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
@@ -82,8 +85,8 @@ bool SubKeyFilter::Filter(int level,
                                   bool *modified) const {
   InternalKey ikey(key);
   bool result = IsKeyExpired(ikey, value);
-  DLOG(INFO) << "[compact_filter/subkey]"
-             << " namespace: " << ikey.GetNamespace().ToString()
+  DLOG(INFO) << "[compact_filter/subkey] "
+             << "namespace: " << ikey.GetNamespace().ToString()
              << ", metadata key: " << ikey.GetKey().ToString()
              << ", subkey: " << ikey.GetSubKey().ToString()
              << ", verison: " << ikey.GetVersion()

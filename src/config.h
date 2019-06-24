@@ -15,9 +15,9 @@ class Server;
 
 extern const char *kDefaultNamespace;
 
-const uint32_t KiB = 1024;
-const uint32_t MiB = 1024 * KiB;
-const uint32_t GiB = 1024 * MiB;
+const size_t KiB = 1024L;
+const size_t MiB = 1024L * KiB;
+const size_t GiB = 1024L * MiB;
 
 struct Config{
  public:

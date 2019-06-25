@@ -1,5 +1,6 @@
 #pragma once
 
+#include <rocksdb/db.h>
 #include <rocksdb/compaction_filter.h>
 #include <vector>
 #include <memory>

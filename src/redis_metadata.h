@@ -1,10 +1,11 @@
 #pragma once
 
+#include <rocksdb/status.h>
+
 #include <string>
 #include <vector>
 
 #include "encoding.h"
-#include "storage.h"
 
 enum RedisType {
   kRedisNone,

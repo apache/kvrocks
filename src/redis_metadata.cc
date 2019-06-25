@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <cstdlib>
+#include <atomic>
 
 #include "util.h"
 

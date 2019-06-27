@@ -130,6 +130,7 @@
 | ttl       | √                |                      |
 | type      | √                |                      |
 | scan      | √                |                      |
+| rename    | X                |                      |
 | randomkey | √                |                      |
 
 ## Bit Commands

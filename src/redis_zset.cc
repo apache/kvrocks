@@ -140,7 +140,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   }
   delete iter;
 
-  if (mscores->size() > 0) {
+  if (!mscores->empty()) {
     metadata.size -= mscores->size();
     std::string bytes;
     metadata.Encode(&bytes);

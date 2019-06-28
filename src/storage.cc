@@ -534,7 +534,7 @@ Status Storage::BackupManager::PurgeBackup(Storage *storage) {
 void Storage::PurgeBackupIfNeed(uint32_t next_backup_id) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
-  int num_backup = backup_infos.size();
+  size_t num_backup = backup_infos.size();
   if (num_backup > 0 && backup_infos[num_backup-1].backup_id != next_backup_id-1)  {
     RmdirRecursively(backup_env_, config_->backup_dir);
     rocksdb::Env::Default()->CreateDirIfMissing(config_->backup_dir);

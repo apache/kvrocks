@@ -1933,6 +1933,36 @@ class CommandZIncrBy : public Commander {
   double incr_ = 0.0;
 };
 
+class CommandZLexCount : public Commander {
+ public:
+  CommandZLexCount() : Commander("zlexcount", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+      if (!s.IsOK()) {
+        return Status(Status::RedisParseErr, s.Msg());
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
+};
+
 class CommandZPop : public Commander {
  public:
   explicit CommandZPop(bool min) : Commander("zpop", -2, true), min_(min) {}
@@ -2028,12 +2058,57 @@ class CommandZRevRange : public CommandZRange {
   CommandZRevRange() : CommandZRange(true) { name_ = "zrevrange"; }
 };
 
-class CommandZRangeByScore : public Commander {
+class CommandZRangeByLex : public Commander {
  public:
-  CommandZRangeByScore() : Commander("zrangebyscore", -4, false) {}
+  CommandZRangeByLex() : Commander("zrangebylex", -4, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+      if (!s.IsOK()) {
+        return Status(Status::RedisParseErr, s.Msg());
+      }
+      if (args.size() == 7 && Util::ToLower(args[4]) == "limit") {
+        spec_.offset = std::stoi(args[5]);
+        spec_.count = std::stoi(args[6]);
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> members;
+    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    output->append(Redis::MultiLen(members.size()));
+    for (const auto &m : members) {
+      output->append(Redis::BulkString(m));
+    }
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
+};
+
+class CommandZRangeByScore : public Commander {
+ public:
+  explicit CommandZRangeByScore(bool reversed = false) : Commander("zrangebyscore", -4, false) {
+    spec_.reversed = reversed;
+  }
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      Status s;
+      if (spec_.reversed) {
+        s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
+      } else {
+        s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+      }
       if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.Msg());
       }
@@ -2099,6 +2174,11 @@ class CommandZRank : public Commander {
 class CommandZRevRank : public CommandZRank {
  public:
   CommandZRevRank() : CommandZRank(true) { name_ = "zrevrank"; }
+};
+
+class CommandZRevRangeByScore : public CommandZRangeByScore {
+ public:
+  CommandZRevRangeByScore() : CommandZRangeByScore(true) { name_ = "zrevrangebyscore"; }
 };
 
 class CommandZRem : public Commander {
@@ -2179,6 +2259,36 @@ class CommandZRemRangeByScore : public Commander {
 
  private:
   ZRangeSpec spec_;
+};
+
+class CommandZRemRangeByLex : public Commander {
+ public:
+  CommandZRemRangeByLex() : Commander("zremrangebylex", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+      if (!s.IsOK()) {
+        return Status(Status::RedisParseErr, s.Msg());
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
 };
 
 class CommandZScore : public Commander {
@@ -3386,6 +3496,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZIncrBy);
      }},
+    {"zlexcount",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZLexCount);
+     }},
     {"zpopmax",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZPopMax);
@@ -3401,6 +3515,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zrevrange",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRevRange);
+     }},
+    {"zrangebylex",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRangeByLex);
      }},
     {"zrangebyscore",
      []() -> std::unique_ptr<Commander> {
@@ -3421,6 +3539,14 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zremrangebyscore",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRemRangeByScore);
+     }},
+    {"zremrangebylex",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRemRangeByLex);
+     }},
+    {"zrevrangebyscore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRevRangeByScore);
      }},
     {"zrevrank",
      []() -> std::unique_ptr<Commander> {

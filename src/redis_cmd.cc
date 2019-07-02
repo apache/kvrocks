@@ -2112,15 +2112,21 @@ class CommandZRangeByScore : public Commander {
       if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.Msg());
       }
-      if (args.size() == 8 && Util::ToLower(args[5]) == "limit") {
-        spec_.offset = std::stoi(args[6]);
-        spec_.count = std::stoi(args[7]);
+      size_t i = 4;
+      while (i < args.size()) {
+        if (Util::ToLower(args[i]) == "withscores") {
+          with_scores_ = true;
+          i++;
+        } else if (Util::ToLower(args[i]) == "limit" && i + 2 < args.size()) {
+          spec_.offset = std::stoi(args[i + 1]);
+          spec_.count = std::stoi(args[i + 2]);
+          i += 3;
+        } else {
+          return Status(Status::RedisParseErr, "syntax error");
+        }
       }
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr);
-    }
-    if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
-      with_scores_ = true;
     }
     return Commander::Parse(args);
   }

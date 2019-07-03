@@ -114,6 +114,10 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
     rocksdb_options.metadata_block_cache_size = n * MiB;
   } else if (key == "subkey_block_cache_size") {
     rocksdb_options.subkey_block_cache_size = n * MiB;
+  } else if (key == "delayed_write_rate") {
+    rocksdb_options.delayed_write_rate = n;
+  } else if (key == "compaction_readahead_size") {
+    rocksdb_options.compaction_readahead_size = n;
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -340,10 +344,12 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
   PUSH_IF_MATCH("rocksdb.metadata_block_cache_size", std::to_string(rocksdb_options.metadata_block_cache_size/MiB));
   PUSH_IF_MATCH("rocksdb.subkey_block_cache_size", std::to_string(rocksdb_options.subkey_block_cache_size/MiB));
+  PUSH_IF_MATCH("rocksdb.compaction_readahead_size", std::to_string(rocksdb_options.compaction_readahead_size));
   PUSH_IF_MATCH("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   PUSH_IF_MATCH("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes": "no"))
   PUSH_IF_MATCH("rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
   PUSH_IF_MATCH("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
+  PUSH_IF_MATCH("rocksdb.delayed_write_rate", std::to_string(rocksdb_options.delayed_write_rate));
   PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
@@ -478,15 +484,29 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
       return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
   }
-  if (key == "rocksdb.enable_pipelined_write") {
-    int i;
-    if ((i = yesnotoi(value)) == -1) {
-      return Status(Status::NotOK, "value must be 'yes' or 'no'");
+  if (key == "rocksdb.delayed_write_rate") {
+    try {
+      int i = std::stoi(value);
+      rocksdb_options.delayed_write_rate= i;
+      auto db = svr->storage_->GetDB();
+      auto s = db->SetDBOptions({{"delayed_write_rate", value}});
+      if (s.ok()) return Status::OK();
+      return Status(Status::NotOK, s.ToString());
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
     }
-    rocksdb_options.enable_pipelined_write = i == 1;
-    auto db = svr->storage_->GetDB();
-    auto s = db->SetDBOptions({{"enable_pipelined_write", (i == 1 ? "true" : "false")}});
-    return Status::OK();
+  }
+  if (key == "rocksdb.compaction_readahead_size") {
+    try {
+      int i = std::stoi(value);
+      rocksdb_options.compaction_readahead_size= i;
+      auto db = svr->storage_->GetDB();
+      auto s = db->SetDBOptions({{"compaction_readahead_size", value}});
+      if (s.ok()) return Status::OK();
+      return Status(Status::NotOK, s.ToString());
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, "value is not an integer or out of range");
+    }
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }
@@ -544,6 +564,8 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.max_sub_compactions", rocksdb_options.max_sub_compactions);
   WRITE_TO_FILE("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
   WRITE_TO_FILE("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
+  WRITE_TO_FILE("rocksdb.delayed_write_rate", rocksdb_options.delayed_write_rate);
+  WRITE_TO_FILE("rocksdb.compaction_readahead_size", rocksdb_options.compaction_readahead_size);
 
   string_stream << "\n################################ Namespace #####################################\n";
   for (const auto &iter : tokens) {

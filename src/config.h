@@ -67,6 +67,8 @@ struct Config{
     rocksdb::CompressionType compression = rocksdb::kSnappyCompression;  // default: snappy
     int stats_dump_period_sec = 0;
     bool enable_pipelined_write = true;
+    uint64_t delayed_write_rate = 0;
+    size_t compaction_readahead_size = 2 * MiB;
   } rocksdb_options;
 
  public:

@@ -69,6 +69,8 @@ void Storage::InitOptions(rocksdb::Options *options) {
   }
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
   options->rate_limiter = rate_limiter_;
+  options->delayed_write_rate = config_->rocksdb_options.delayed_write_rate;
+  options->compaction_readahead_size = config_->rocksdb_options.compaction_readahead_size;
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {

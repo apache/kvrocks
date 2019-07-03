@@ -54,7 +54,7 @@ void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &inf
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
   const char *stall_condition_strings[] = {"normal", "delay", "stop"};
-  LOG(WARNING) << "[event_listner/stall_cond_changed] column family: " << info.cf_name
+  LOG(WARNING) << "[event_listener/stall_cond_changed] column family: " << info.cf_name
                << " write stall condition was changed, from "
                << stall_condition_strings[static_cast<int>(info.condition.prev)]
                << " to " << stall_condition_strings[static_cast<int>(info.condition.cur)];

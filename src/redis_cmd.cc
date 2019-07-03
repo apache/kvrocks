@@ -1912,7 +1912,7 @@ class CommandZIncrBy : public Commander {
     try {
       incr_ = std::stod(args[2]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "value is not an double or out of range");
     }
     return Commander::Parse(args);
   }
@@ -1943,7 +1943,7 @@ class CommandZLexCount : public Commander {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "syntax error");
     }
     return Commander::Parse(args);
   }
@@ -1972,7 +1972,7 @@ class CommandZPop : public Commander {
       try {
         count_ = std::stoi(args[2]);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr);
+        return Status(Status::RedisParseErr, kValueNotInterger);
       }
     }
     return Commander::Parse(args);
@@ -2017,7 +2017,7 @@ class CommandZRange : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
       with_scores_ = true;
@@ -2072,7 +2072,7 @@ class CommandZRangeByLex : public Commander {
         spec_.count = std::stoi(args[6]);
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -2126,7 +2126,7 @@ class CommandZRangeByScore : public Commander {
         }
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -2214,7 +2214,7 @@ class CommandZRemRangeByRank : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -2247,7 +2247,7 @@ class CommandZRemRangeByScore : public Commander {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "syntax error");
     }
     return Commander::Parse(args);
   }
@@ -2277,7 +2277,7 @@ class CommandZRemRangeByLex : public Commander {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "syntax error");
     }
     return Commander::Parse(args);
   }
@@ -2584,7 +2584,7 @@ class CommandPSync : public Commander {
       auto s = std::stoull(args[1]);
       next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
     }
     return Commander::Parse(args);
   }
@@ -2653,7 +2653,7 @@ class CommandSlowlog : public Commander {
         auto c = std::stoul(args[2]);
         count_ = static_cast<uint32_t>(c);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr);
+        return Status(Status::RedisParseErr, "value is not an unsigned long or out of range");
       }
       return Status::OK();
     }

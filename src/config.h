@@ -76,6 +76,7 @@ struct Config{
   Status Load(std::string path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(std::string key, const std::string &value, Server *svr);
+  Status setRocksdbOption(rocksdb::DB *db, const std::string &key, const std::string &value);
   void GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);
   Status SetNamespace(const std::string &ns, const std::string &token);

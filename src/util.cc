@@ -83,6 +83,18 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
   return -2;  // only support AF_INET currently
 }
 
+Status StringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
+  try {
+    *n = static_cast<int64_t>(std::stoll(str));
+    if (max > min && (*n < min || *n > max)) {
+      return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
+    }
+  } catch (std::exception &e) {
+    return Status(Status::NotOK, "value is not an integer or out of range");
+  }
+  return Status::OK();
+}
+
 std::string ToLower(std::string in) {
   std::transform(in.begin(), in.end(), in.begin(),
                  [](char c) -> char { return static_cast<char>(std::tolower(c)); });

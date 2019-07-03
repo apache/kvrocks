@@ -77,14 +77,12 @@ Status Config::parseRocksdbOption(const std::string &key, std::string value) {
 }
 
 Status Config::parseRocksdbIntOption(std::string key, std::string value) {
-  int32_t n;
-  try {
-    n = std::stoi(value);
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, e.what());
-  }
+  int64_t n;
+  auto s = Util::StringToNum(value, &n);
+  if (!s.IsOK()) return s;
+
   if (key == "max_open_files") {
-    rocksdb_options.max_open_files = n;
+    rocksdb_options.max_open_files = static_cast<int>(n);
   } else if (!strncasecmp(key.data(), "write_buffer_size" , strlen("write_buffer_size"))) {
     if (n < 16 || n > 4096) {
       return Status(Status::NotOK, "write_buffer_size should be between 16MB and 4GB");
@@ -111,13 +109,13 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
     }
     rocksdb_options.max_sub_compactions = static_cast<uint32_t>(n);
   } else if (key == "metadata_block_cache_size") {
-    rocksdb_options.metadata_block_cache_size = n * MiB;
+    rocksdb_options.metadata_block_cache_size = static_cast<size_t>(n) * MiB;
   } else if (key == "subkey_block_cache_size") {
-    rocksdb_options.subkey_block_cache_size = n * MiB;
+    rocksdb_options.subkey_block_cache_size = static_cast<size_t>(n) * MiB;
   } else if (key == "delayed_write_rate") {
-    rocksdb_options.delayed_write_rate = n;
+    rocksdb_options.delayed_write_rate = static_cast<uint64_t>(n);
   } else if (key == "compaction_readahead_size") {
-    rocksdb_options.compaction_readahead_size = n;
+    rocksdb_options.compaction_readahead_size = static_cast<size_t>(n);
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -279,7 +277,6 @@ Status Config::Load(std::string path) {
     file.close();
     return Status(Status::NotOK, s.ToString());
   }
-
   if (requirepass.empty()) {
     file.close();
     return Status(Status::NotOK, "requirepass cannot be empty");
@@ -351,6 +348,31 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
   PUSH_IF_MATCH("rocksdb.delayed_write_rate", std::to_string(rocksdb_options.delayed_write_rate));
   PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
+}
+
+Status Config::setRocksdbOption(rocksdb::DB *db, const std::string &key, const std::string &value) {
+  int64_t i;
+
+  auto s = Util::StringToNum(value, &i);
+  if (!s.IsOK()) return s;
+  if (key == "stats_dump_period_sec") {
+    rocksdb_options.stats_dump_period_sec = static_cast<int>(i);
+  } else if (key == "max_open_files") {
+    rocksdb_options.max_open_files = static_cast<int>(i);
+  } else if (key == "delayed_write_rate") {
+    rocksdb_options.delayed_write_rate = static_cast<uint64_t>(i);
+  } else if (key == "max_background_compactions") {
+    rocksdb_options.max_background_compactions = static_cast<int>(i);
+  } else if (key == "max_background_flushes") {
+    rocksdb_options.max_background_flushes = static_cast<int>(i);
+  } else if (key == "compaction_readahead_size") {
+    rocksdb_options.compaction_readahead_size = static_cast<size_t>(i);
+  } else {
+    return Status(Status::NotOK, "option can't be set in-flight");
+  }
+  auto r_status = db->SetDBOptions({{key, value}});
+  if (r_status.ok()) return Status::OK();
+  return Status(Status::NotOK, r_status.ToString());
 }
 
 Status Config::Set(std::string key, const std::string &value, Server *svr) {
@@ -444,69 +466,21 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return Status::OK();
   }
   if (key == "max-replication-mb") {
-    try {
-      int64_t i = std::stoi(value);
-      if (i < 0) {
-        return Status(Status::RedisParseErr, "value should be >= 0");
-      }
-      max_replication_mb = static_cast<uint64_t>(i);
-      svr->SetReplicationRateLimit(max_replication_mb);
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an integer or out of range");
-    }
+    int64_t i;
+    auto s = Util::StringToNum(value, &i);
+    if (!s.IsOK()) return s;
+    svr->SetReplicationRateLimit(static_cast<uint64_t>(i));
     return Status::OK();
   }
   if (key == "max-io-mb") {
-    try {
-      int64_t i = std::stoi(value);
-      if (i > 0 && i < static_cast<int64_t>(kIORateLimitMinMb)) {
-        return Status(Status::RedisParseErr, "value should be >= " + std::to_string(kIORateLimitMinMb));
-      }
-      max_io_mb = static_cast<uint64_t>(i);
-      svr->storage_->SetIORateLimit(max_io_mb);
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an integer or out of range");
-    }
+    int64_t i;
+    auto s = Util::StringToNum(value, &i, kIORateLimitMinMb);
+    if (!s.IsOK()) return s;
+    svr->storage_->SetIORateLimit(static_cast<uint64_t>(i));
     return Status::OK();
   }
-  if (key == "rocksdb.stats_dump_period_sec") {
-    try {
-      int i = std::stoi(value);
-      if (i != 0 && i < 60) {
-        return Status(Status::RedisParseErr, "value should be >= 60");
-      }
-      rocksdb_options.stats_dump_period_sec = i;
-      auto db = svr->storage_->GetDB();
-      auto s = db->SetDBOptions({{"stats_dump_period_sec", value}});
-      if (s.ok()) return Status::OK();
-      return Status(Status::NotOK, s.ToString());
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an integer or out of range");
-    }
-  }
-  if (key == "rocksdb.delayed_write_rate") {
-    try {
-      int i = std::stoi(value);
-      rocksdb_options.delayed_write_rate= i;
-      auto db = svr->storage_->GetDB();
-      auto s = db->SetDBOptions({{"delayed_write_rate", value}});
-      if (s.ok()) return Status::OK();
-      return Status(Status::NotOK, s.ToString());
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an integer or out of range");
-    }
-  }
-  if (key == "rocksdb.compaction_readahead_size") {
-    try {
-      int i = std::stoi(value);
-      rocksdb_options.compaction_readahead_size= i;
-      auto db = svr->storage_->GetDB();
-      auto s = db->SetDBOptions({{"compaction_readahead_size", value}});
-      if (s.ok()) return Status::OK();
-      return Status(Status::NotOK, s.ToString());
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an integer or out of range");
-    }
+  if (!strncasecmp(key.c_str(), "rocksdb.", 8)) {
+    return setRocksdbOption(svr->storage_->GetDB(), key.substr(8, key.size()-8), value);
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }

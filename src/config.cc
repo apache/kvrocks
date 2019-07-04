@@ -17,7 +17,6 @@
 #include "server.h"
 
 const char *kDefaultNamespace = "__namespace";
-const uint64_t kIORateLimitMinMb = 128;
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
 static const char *kCompressionType[] = {"no", "snappy"};
@@ -79,38 +78,21 @@ Status Config::parseRocksdbOption(const std::string &key, std::string value) {
 Status Config::parseRocksdbIntOption(std::string key, std::string value) {
   int64_t n;
   auto s = Util::StringToNum(value, &n);
-  if (!s.IsOK()) return s;
-
   if (key == "max_open_files") {
     rocksdb_options.max_open_files = static_cast<int>(n);
   } else if (!strncasecmp(key.data(), "write_buffer_size" , strlen("write_buffer_size"))) {
-    if (n < 16 || n > 4096) {
-      return Status(Status::NotOK, "write_buffer_size should be between 16MB and 4GB");
-    }
     rocksdb_options.write_buffer_size = static_cast<size_t>(n) * MiB;
   }  else if (key == "max_write_buffer_number") {
-    if (n < 1 || n > 64) {
-      return Status(Status::NotOK, "max_write_buffer_number should be between 1 and 64");
-    }
     rocksdb_options.max_write_buffer_number = static_cast<int>(n);
   }  else if (key == "write_buffer_size") {
     rocksdb_options.write_buffer_size = static_cast<uint64_t>(n);
   }  else if (key == "target_file_size_base") {
     rocksdb_options.target_file_size_base = static_cast<uint64_t>(n);
   }  else if (key == "max_background_compactions") {
-    if (n < 1 || n > 16) {
-      return Status(Status::NotOK, "max_background_compactions should be between 1 and 16");
-    }
     rocksdb_options.max_background_compactions = static_cast<int>(n);
   }  else if (key == "max_background_flushes") {
-    if (n < 1 || n > 16) {
-      return Status(Status::NotOK, "max_background_flushes should be between 1 and 16");
-    }
     rocksdb_options.max_background_flushes = static_cast<int>(n);
   }  else if (key == "max_sub_compactions") {
-    if (n < 1 || n > 8) {
-      return Status(Status::NotOK, "max_sub_compactions should be between 1 and 8");
-    }
     rocksdb_options.max_sub_compactions = static_cast<uint32_t>(n);
   } else if (key == "metadata_block_cache_size") {
     rocksdb_options.metadata_block_cache_size = static_cast<size_t>(n) * MiB;
@@ -224,9 +206,6 @@ Status Config::parseConfigFromString(std::string input) {
     max_replication_mb = static_cast<uint64_t>(std::stoi(args[1]));
   } else if (size == 2 && args[0] == "max-io-mb") {
     max_io_mb = static_cast<uint64_t>(std::stoi(args[1]));
-    if (max_io_mb > 0 && max_io_mb < kIORateLimitMinMb) {
-      return Status(Status::NotOK, std::string("max_io_mb should be >= ") + std::to_string(kIORateLimitMinMb));
-    }
   } else if (size >= 2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
@@ -492,14 +471,14 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
   }
   if (key == "max-replication-mb") {
     int64_t i;
-    auto s = Util::StringToNum(value, &i);
+    auto s = Util::StringToNum(value, &i, 0);
     if (!s.IsOK()) return s;
     svr->SetReplicationRateLimit(static_cast<uint64_t>(i));
     return Status::OK();
   }
   if (key == "max-io-mb") {
     int64_t i;
-    auto s = Util::StringToNum(value, &i, kIORateLimitMinMb);
+    auto s = Util::StringToNum(value, &i, 0);
     if (!s.IsOK()) return s;
     svr->storage_->SetIORateLimit(static_cast<uint64_t>(i));
     return Status::OK();

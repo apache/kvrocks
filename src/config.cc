@@ -346,9 +346,10 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
-Status Config::setRocksdbOption(rocksdb::DB *db, const std::string &key, const std::string &value) {
+Status Config::setRocksdbOption(Engine::Storage *storage, const std::string &key, const std::string &value) {
   int64_t i;
-
+  bool is_cf_mutal_option = false;
+  auto db = storage->GetDB();
   auto s = Util::StringToNum(value, &i, 0);
   if (!s.IsOK()) return s;
   if (key == "stats_dump_period_sec") {
@@ -364,18 +365,31 @@ Status Config::setRocksdbOption(rocksdb::DB *db, const std::string &key, const s
   } else if (key == "compaction_readahead_size") {
     rocksdb_options.compaction_readahead_size = static_cast<size_t>(i);
   } else if (key == "target_file_size_base") {
+    is_cf_mutal_option = true;
     rocksdb_options.target_file_size_base = static_cast<uint64_t>(i);
   } else if (key == "write_buffer_size") {
+    is_cf_mutal_option = true;
     rocksdb_options.write_buffer_size = static_cast<uint64_t>(i*MiB);
   } else if (key == "max_write_buffer_number") {
+    is_cf_mutal_option = true;
     rocksdb_options.max_write_buffer_number =  static_cast<int>(i);
   } else if (key == "level0_slowdown_writes_trigger") {
+    is_cf_mutal_option = true;
     rocksdb_options.level0_slowdown_writes_trigger = static_cast<int>(i);
     rocksdb_options.level0_stop_writes_trigger = static_cast<int>(i * 2);
   } else {
     return Status(Status::NotOK, "option can't be set in-flight");
   }
-  auto r_status = db->SetDBOptions({{key, value}});
+  rocksdb::Status r_status;
+  if (!is_cf_mutal_option) {
+    r_status = db->SetDBOptions({{key, value}});
+  } else {
+    auto cf_handles = storage->GetCFHandles();
+    for (auto & cf_handle : cf_handles) {
+      r_status = db->SetOptions(cf_handle, {{key, value}});
+      if (!r_status.ok()) break;
+    }
+  }
   if (r_status.ok()) return Status::OK();
   return Status(Status::NotOK, r_status.ToString());
 }
@@ -485,7 +499,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return Status::OK();
   }
   if (!strncasecmp(key.c_str(), "rocksdb.", 8)) {
-    return setRocksdbOption(svr->storage_->GetDB(), key.substr(8, key.size()-8), value);
+    return setRocksdbOption(svr->storage_, key.substr(8, key.size()-8), value);
   }
   return Status(Status::NotOK, "Unsupported CONFIG parameter");
 }

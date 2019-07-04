@@ -61,6 +61,7 @@ class Server {
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
+  void ResetMaster();
   Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
   void cleanupExitedSlaves();

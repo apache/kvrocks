@@ -9,7 +9,8 @@ class EventListener : public rocksdb::EventListener {
  public:
   explicit EventListener(Engine::Storage *storage) : storage_(storage) {}
   ~EventListener() override = default;
-  void OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) override;
+  void OnFlushBegin(rocksdb::DB* db, const rocksdb::FlushJobInfo& fi) override;
+  void OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) override;
   void OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) override;
   void OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) override;
   void OnTableFileDeleted(const rocksdb::TableFileDeletionInfo& info) override;

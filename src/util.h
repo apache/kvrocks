@@ -19,6 +19,7 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 bool IsPortInUse(int port);
 
 // string util
+Status StringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
 std::string ToLower(std::string in);
 void BytesToHuman(char *buf, size_t size, uint64_t n);
 void Trim(const std::string &in, const std::string &chars, std::string *out);

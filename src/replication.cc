@@ -257,17 +257,14 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port,
                       }) {
 }
 
-void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
-                              std::function<void()> &&post_fullsync_cb) {
+Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
+                                std::function<void()> &&post_fullsync_cb) {
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
   // Remove the backup_dir, so we can start replication in a clean state
-  LOG(INFO) << "[replication] Purge backup dir before start replication";
   if (!Engine::Storage::BackupManager::PurgeBackup(storage_).IsOK()) {
-    LOG(ERROR) << "[replication] Failed to purge existed backup dir";
-    stop_flag_ = true;
-    return;
+    return Status(Status::NotOK, "can't delete the existed backup dir");
   }
 
   try {
@@ -277,10 +274,9 @@ void ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
       assert(stop_flag_);
     });
   } catch (const std::system_error &e) {
-    LOG(ERROR) << "[replication] Failed to create thread: " << e.what();
-    return;
+    return Status(Status::NotOK, e.what());
   }
-  LOG(INFO) << "[replication] Start replicate the data from master";
+  return Status::OK();
 }
 
 void ReplicationThread::Stop() {
@@ -338,6 +334,8 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
     // Auth failed
     LOG(ERROR) << "[replication] Auth failed: " << line;
     free(line);
+    auto self = static_cast<ReplicationThread *>(ctx);
+    self->srv_->ResetMaster();
     return CBState::QUIT;
   }
   free(line);
@@ -377,6 +375,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
   }
   LOG(ERROR) << "[replication] db-name mismatched, remote db name: " << line;
   free(line);
+  self->srv_->ResetMaster();
   return CBState::QUIT;
 }
 
@@ -488,6 +487,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
             if (!s.IsOK()) {
               LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
               self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
+              self->srv_->ResetMaster();
               return CBState::QUIT;
             }
             self->ParseWriteBatch(bulk_string);

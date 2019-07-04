@@ -58,8 +58,8 @@ class ReplicationThread {
  public:
   explicit ReplicationThread(std::string host, uint32_t port,
                              Server *srv, std::string auth = "");
-  void Start(std::function<void()> &&pre_fullsync_cb,
-             std::function<void()> &&post_fullsync_cb);
+  Status Start(std::function<void()> &&pre_fullsync_cb,
+               std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_; }
   time_t LastIOTime() { return last_io_time_; }

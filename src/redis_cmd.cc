@@ -2436,6 +2436,9 @@ class CommandSlaveOf : public Commander {
         *output = Redis::SimpleString("OK");
         LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_
                      << " enabled (user request from '" << conn->GetAddr() << "')";
+      } else {
+        LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_
+                   << " (user request from '" << conn->GetAddr() << "') encounter error: " << s.Msg();
       }
     }
     return s;

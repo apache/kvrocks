@@ -90,21 +90,25 @@ Status Server::AddMaster(std::string host, uint32_t port) {
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }
-  master_host_ = host;
-  master_port_ = port;
-  config_->master_host = host;
-  config_->master_port = port;
   // we use port + 1 as repl port, so incr the slaveof port here
   replication_thread_ = std::unique_ptr<ReplicationThread>(
       new ReplicationThread(host, port+1, this, config_->masterauth));
-  replication_thread_->Start(
+  auto s = replication_thread_->Start(
       [this]() {
         this->is_loading_ = true;
         ReclaimOldDBPtr();
       },
       [this]() { this->is_loading_ = false; });
+  if (s.IsOK()) {
+    master_host_ = host;
+    master_port_ = port;
+    config_->master_host = host;
+    config_->master_port = port;
+  } else {
+    replication_thread_ = nullptr;
+  }
   slaveof_mu_.unlock();
-  return Status::OK();
+  return s;
 }
 
 Status Server::RemoveMaster() {
@@ -119,6 +123,13 @@ Status Server::RemoveMaster() {
   }
   slaveof_mu_.unlock();
   return Status::OK();
+}
+
+void Server::ResetMaster() {
+  slaveof_mu_.lock();
+  master_host_.clear();
+  master_port_ = 0;
+  slaveof_mu_.unlock();
 }
 
 Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {

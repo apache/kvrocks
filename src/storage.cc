@@ -50,13 +50,12 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
   options->compression = config_->rocksdb_options.compression;
   options->enable_pipelined_write = config_->rocksdb_options.enable_pipelined_write;
-  options->target_file_size_base = 256 * MiB;
+  options->target_file_size_base = config_->rocksdb_options.target_file_size_base;
   options->max_manifest_file_size = 64 * MiB;
-  options->max_log_file_size = 512 * MiB;
-  options->keep_log_file_num = 24;
-//  options->compaction_readahead_size = 2 * MiB;
-  options->WAL_ttl_seconds = 7 * 24 * 60 * 60;
-  options->WAL_size_limit_MB = 3 * 1024;
+  options->max_log_file_size = 256 * MiB;
+  options->keep_log_file_num = 12;
+  options->WAL_ttl_seconds = config_->rocksdb_options.WAL_ttl_seconds;
+  options->WAL_size_limit_MB = config_->rocksdb_options.WAL_size_limit_MB;
   options->listeners.emplace_back(new EventListener(this));
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
@@ -71,6 +70,8 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->rate_limiter = rate_limiter_;
   options->delayed_write_rate = config_->rocksdb_options.delayed_write_rate;
   options->compaction_readahead_size = config_->rocksdb_options.compaction_readahead_size;
+  options->level0_slowdown_writes_trigger = config_->rocksdb_options.level0_slowdown_writes_trigger;
+  options->level0_stop_writes_trigger = config_->rocksdb_options.level0_stop_writes_trigger;
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {

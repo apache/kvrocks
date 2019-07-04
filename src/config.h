@@ -59,7 +59,7 @@ struct Config{
     size_t metadata_block_cache_size = 4 * GiB;
     size_t subkey_block_cache_size = 8 * GiB;
     int max_open_files = 4096;
-    size_t write_buffer_size = 256 * MiB;
+    uint64_t write_buffer_size = 256 * MiB;
     int max_write_buffer_number = 2;
     int max_background_compactions = 2;
     int max_background_flushes = 2;
@@ -69,6 +69,11 @@ struct Config{
     bool enable_pipelined_write = true;
     uint64_t delayed_write_rate = 0;
     size_t compaction_readahead_size = 2 * MiB;
+    uint64_t target_file_size_base = 256 * MiB;
+    uint64_t WAL_ttl_seconds = 7 * 24 * 3600;
+    uint64_t WAL_size_limit_MB = 5 * 1024;
+    int level0_slowdown_writes_trigger = 20;
+    int level0_stop_writes_trigger = 36;
   } rocksdb_options;
 
  public:

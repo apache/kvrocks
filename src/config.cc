@@ -92,17 +92,21 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
     if (n < 1 || n > 64) {
       return Status(Status::NotOK, "max_write_buffer_number should be between 1 and 64");
     }
-    rocksdb_options.max_write_buffer_number = n;
+    rocksdb_options.max_write_buffer_number = static_cast<int>(n);
+  }  else if (key == "write_buffer_size") {
+    rocksdb_options.write_buffer_size = static_cast<uint64_t>(n);
+  }  else if (key == "target_file_size_base") {
+    rocksdb_options.target_file_size_base = static_cast<uint64_t>(n);
   }  else if (key == "max_background_compactions") {
     if (n < 1 || n > 16) {
       return Status(Status::NotOK, "max_background_compactions should be between 1 and 16");
     }
-    rocksdb_options.max_background_compactions = n;
+    rocksdb_options.max_background_compactions = static_cast<int>(n);
   }  else if (key == "max_background_flushes") {
     if (n < 1 || n > 16) {
       return Status(Status::NotOK, "max_background_flushes should be between 1 and 16");
     }
-    rocksdb_options.max_background_flushes = n;
+    rocksdb_options.max_background_flushes = static_cast<int>(n);
   }  else if (key == "max_sub_compactions") {
     if (n < 1 || n > 8) {
       return Status(Status::NotOK, "max_sub_compactions should be between 1 and 8");
@@ -116,6 +120,13 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
     rocksdb_options.delayed_write_rate = static_cast<uint64_t>(n);
   } else if (key == "compaction_readahead_size") {
     rocksdb_options.compaction_readahead_size = static_cast<size_t>(n);
+  } else if (key == "wal_ttl_seconds") {
+    rocksdb_options.WAL_ttl_seconds = static_cast<uint64_t>(n);
+  } else if (key == "wal_size_limit_mb") {
+    rocksdb_options.WAL_size_limit_MB= static_cast<uint64_t>(n);
+  } else if (key == "level0_slowdown_writes_trigger") {
+    rocksdb_options.level0_slowdown_writes_trigger = static_cast<int>(n);
+    rocksdb_options.level0_stop_writes_trigger = static_cast<int>(n*2);
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -347,13 +358,18 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
   PUSH_IF_MATCH("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
   PUSH_IF_MATCH("rocksdb.delayed_write_rate", std::to_string(rocksdb_options.delayed_write_rate));
+  PUSH_IF_MATCH("rocksdb.wal_ttl_seconds", std::to_string(rocksdb_options.WAL_ttl_seconds));
+  PUSH_IF_MATCH("rocksdb.wal_size_limit_mb", std::to_string(rocksdb_options.WAL_size_limit_MB));
+  PUSH_IF_MATCH("rocksdb.target_file_size_base", std::to_string(rocksdb_options.target_file_size_base));
+  PUSH_IF_MATCH("rocksdb.level0_slowdown_writes_trigger", std::to_string(rocksdb_options.level0_slowdown_writes_trigger));
+  PUSH_IF_MATCH("rocksdb.level0_stop_writes_trigger", std::to_string(rocksdb_options.level0_stop_writes_trigger));
   PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }
 
 Status Config::setRocksdbOption(rocksdb::DB *db, const std::string &key, const std::string &value) {
   int64_t i;
 
-  auto s = Util::StringToNum(value, &i);
+  auto s = Util::StringToNum(value, &i, 0);
   if (!s.IsOK()) return s;
   if (key == "stats_dump_period_sec") {
     rocksdb_options.stats_dump_period_sec = static_cast<int>(i);
@@ -367,6 +383,15 @@ Status Config::setRocksdbOption(rocksdb::DB *db, const std::string &key, const s
     rocksdb_options.max_background_flushes = static_cast<int>(i);
   } else if (key == "compaction_readahead_size") {
     rocksdb_options.compaction_readahead_size = static_cast<size_t>(i);
+  } else if (key == "target_file_size_base") {
+    rocksdb_options.target_file_size_base = static_cast<uint64_t>(i);
+  } else if (key == "write_buffer_size") {
+    rocksdb_options.write_buffer_size = static_cast<uint64_t>(i*MiB);
+  } else if (key == "max_write_buffer_number") {
+    rocksdb_options.max_write_buffer_number =  static_cast<int>(i);
+  } else if (key == "level0_slowdown_writes_trigger") {
+    rocksdb_options.level0_slowdown_writes_trigger = static_cast<int>(i);
+    rocksdb_options.level0_stop_writes_trigger = static_cast<int>(i * 2);
   } else {
     return Status(Status::NotOK, "option can't be set in-flight");
   }
@@ -540,6 +565,11 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
   WRITE_TO_FILE("rocksdb.delayed_write_rate", rocksdb_options.delayed_write_rate);
   WRITE_TO_FILE("rocksdb.compaction_readahead_size", rocksdb_options.compaction_readahead_size);
+  WRITE_TO_FILE("rocksdb.target_file_size_base", rocksdb_options.target_file_size_base);
+  WRITE_TO_FILE("rocksdb.level0_slowdown_writes_trigger", rocksdb_options.level0_slowdown_writes_trigger);
+  WRITE_TO_FILE("rocksdb.level0_stop_writes_trigger", rocksdb_options.level0_stop_writes_trigger);
+  WRITE_TO_FILE("rocksdb.wal_ttl_seconds", rocksdb_options.WAL_ttl_seconds);
+  WRITE_TO_FILE("rocksdb.wal_size_limit_mb", rocksdb_options.WAL_size_limit_MB);
 
   string_stream << "\n################################ Namespace #####################################\n";
   for (const auto &iter : tokens) {

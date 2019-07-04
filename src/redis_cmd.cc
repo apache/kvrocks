@@ -2316,6 +2316,87 @@ class CommandZScore : public Commander {
   }
 };
 
+class CommandZUnionStore : public Commander {
+ public:
+  CommandZUnionStore() : Commander("zunionstore", -4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      numkeys_ = std::stoi(args[2]);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    if (numkeys_ > args.size() - 3) {
+      return Status(Status::RedisParseErr, "syntax error");
+    }
+    size_t j = 0;
+    while (j < numkeys_) {
+      keys_weights_.emplace_back(KeyWeight{args[j + 3], 1});
+      j++;
+    }
+    size_t i = 3 + numkeys_;
+    while (i < args.size()) {
+      if (Util::ToLower(args[i]) == "aggregate" && i + 1 < args.size()) {
+        if (Util::ToLower(args[i + 1]) == "sum") {
+          aggregate_method_ = kAggregateSum;
+        } else if (Util::ToLower(args[i + 1]) == "min") {
+          aggregate_method_ = kAggregateMin;
+        } else if (Util::ToLower(args[i + 1]) == "max") {
+          aggregate_method_ = kAggregateMax;
+        } else {
+          return Status(Status::RedisParseErr, "aggregate para error");
+        }
+        i += 2;
+      } else if (Util::ToLower(args[i]) == "weights" && i + numkeys_ < args.size()) {
+        size_t j = 0;
+        while (j < numkeys_) {
+          try {
+            keys_weights_[j].weight = std::stod(args[i + j + 1]);
+          } catch (const std::exception &e) {
+            return Status(Status::RedisParseErr, "value is not an double or out of range");
+          }
+          j++;
+        }
+        i += numkeys_ + 1;
+      } else {
+        return Status(Status::RedisParseErr, "syntax error");
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ protected:
+  size_t numkeys_ = 0;
+  std::vector<KeyWeight> keys_weights_;
+  AggregateMethod aggregate_method_ = kAggregateSum;
+};
+
+class CommandZInterStore : public CommandZUnionStore {
+ public:
+  CommandZInterStore() : CommandZUnionStore() { name_ = "zinterstore"; }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+};
+
 class CommandInfo : public Commander {
  public:
   CommandInfo() : Commander("info", -1, false) {}
@@ -3502,6 +3583,10 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZIncrBy);
      }},
+    {"zinterstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZInterStore);
+     }},
     {"zlexcount",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZLexCount);
@@ -3565,6 +3650,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zscan",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZScan);
+     }},
+    {"zunionstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZUnionStore);
      }},
     // pub/sub command
     {"publish",

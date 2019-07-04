@@ -94,7 +94,7 @@
 | zcard            | √                |      |
 | zcount           | √                |      |
 | zincrby          | √                |      |
-| zinterstore      | X                |      |
+| zinterstore      | √                |      |
 | zlexcount        | √                |      |
 | zpopmin          | √                |      |
 | zpopmax          | √                |      |
@@ -111,7 +111,7 @@
 | zrevrangebyscore | √                |      |
 | zscan            | √                |      |
 | zscore           | √                |      |
-| zunionscore      | X                |      |
+| zunionscore      | √                |      |
 
 ## Key Commands
 

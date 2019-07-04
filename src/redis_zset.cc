@@ -1,6 +1,7 @@
 #include "redis_zset.h"
 
 #include <math.h>
+#include <map>
 #include <limits>
 
 namespace Redis {
@@ -464,6 +465,133 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   delete iter;
 
   *ret = rank;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::Overwrite(const Slice &user_key, const std::vector<MemberScore> &mscores) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  ZSetMetadata metadata;
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
+  for (const auto &ms : mscores) {
+    std::string member_key, score_bytes, score_key;
+    InternalKey(ns_key, ms.member, metadata.version).Encode(&member_key);
+    PutDouble(&score_bytes, ms.score);
+    batch.Put(member_key, score_bytes);
+    score_bytes.append(ms.member);
+    InternalKey(ns_key, score_bytes, metadata.version).Encode(&score_key);
+    batch.Put(score_cf_handle_, score_key, Slice());
+  }
+  metadata.size = static_cast<uint32_t>(mscores.size());
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
+rocksdb::Status ZSet::InterStore(const Slice &dst,
+                                 const std::vector<KeyWeight> &keys_weights,
+                                 AggregateMethod aggregate_method,
+                                 int *size) {
+  if (size) *size = 0;
+
+  std::map<std::string, double> dst_zset;
+  std::map<std::string, size_t> member_counters;
+  std::vector<MemberScore> target_mscores;
+  int target_size;
+  ZRangeSpec spec;
+  auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
+  if (!s.ok() || target_mscores.empty()) return s;
+  for (const auto &ms : target_mscores) {
+    double score = ms.score * keys_weights[0].weight;
+    dst_zset[ms.member] = score;
+    member_counters[ms.member] = 1;
+  }
+  for (size_t i = 1; i < keys_weights.size(); i++) {
+    auto s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
+    if (!s.ok() || target_mscores.empty()) return s;
+    for (const auto &ms : target_mscores) {
+      if (dst_zset.find(ms.member) == dst_zset.end()) continue;
+      member_counters[ms.member]++;
+      double score = ms.score * keys_weights[i].weight;
+      switch (aggregate_method) {
+        case kAggregateSum:dst_zset[ms.member] += score;
+          break;
+        case kAggregateMin:
+          if (dst_zset[ms.member] > score) {
+            dst_zset[ms.member] = score;
+          }
+          break;
+        case kAggregateMax:
+          if (dst_zset[ms.member] < score) {
+            dst_zset[ms.member] = score;
+          }
+          break;
+      }
+    }
+  }
+  if (!dst_zset.empty()) {
+    std::vector<MemberScore> mscores;
+    for (const auto &iter : dst_zset) {
+      if (member_counters[iter.first] != keys_weights.size()) continue;
+      mscores.emplace_back(MemberScore{iter.first, iter.second});
+    }
+    if (size) *size = mscores.size();
+    Overwrite(dst, mscores);
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::UnionStore(const Slice &dst,
+                                 const std::vector<KeyWeight> &keys_weights,
+                                 AggregateMethod aggregate_method,
+                                 int *size) {
+  if (size) *size = 0;
+
+  std::map<std::string, double> dst_zset;
+  std::vector<MemberScore> target_mscores;
+  int target_size;
+  ZRangeSpec spec;
+  for (const auto &key_weight : keys_weights) {
+    // get all member
+    auto s = RangeByScore(key_weight.key, spec, &target_mscores, &target_size);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    for (const auto &ms : target_mscores) {
+      double score = ms.score * key_weight.weight;
+      if (dst_zset.find(ms.member) == dst_zset.end()) {
+        dst_zset[ms.member] = score;
+      } else {
+        switch (aggregate_method) {
+          case kAggregateSum:dst_zset[ms.member] += score;
+            break;
+          case kAggregateMin:
+            if (dst_zset[ms.member] > score) {
+              dst_zset[ms.member] = score;
+            }
+            break;
+          case kAggregateMax:
+            if (dst_zset[ms.member] < score) {
+              dst_zset[ms.member] = score;
+            }
+            break;
+        }
+      }
+    }
+  }
+  if (!dst_zset.empty()) {
+    std::vector<MemberScore> mscores;
+    for (const auto &iter : dst_zset) {
+      mscores.emplace_back(MemberScore{iter.first, iter.second});
+    }
+    if (size) *size = mscores.size();
+    Overwrite(dst, mscores);
+  }
+
   return rocksdb::Status::OK();
 }
 

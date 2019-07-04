@@ -7,6 +7,12 @@
 #include "redis_db.h"
 #include "redis_metadata.h"
 
+enum AggregateMethod {
+  kAggregateSum,
+  kAggregateMin,
+  kAggregateMax
+};
+
 typedef struct ZRangeSpec {
   double min, max;
   bool minex, maxex; /* are min or max exclusive */
@@ -35,6 +41,11 @@ typedef struct ZRangeLexSpec {
     removed = false;
   }
 } ZRangeLexSpec;
+
+typedef struct KeyWeight {
+  std::string key;
+  double weight;
+} KeyWeight;
 
 typedef struct {
   std::string member;
@@ -75,6 +86,15 @@ class ZSet : public SubKeyScanner {
                        uint64_t limit,
                        const std::string &member_prefix,
                        std::vector<std::string> *members);
+  rocksdb::Status Overwrite(const Slice &user_key, const std::vector<MemberScore> &mscores);
+  rocksdb::Status InterStore(const Slice &dst,
+                             const std::vector<KeyWeight> &keys_weights,
+                             AggregateMethod aggregate_method,
+                             int *size);
+  rocksdb::Status UnionStore(const Slice &dst,
+                             const std::vector<KeyWeight> &keys_weights,
+                             AggregateMethod aggregate_method,
+                             int *size);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

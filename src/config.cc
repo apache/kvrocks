@@ -105,7 +105,7 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
   } else if (key == "wal_ttl_seconds") {
     rocksdb_options.WAL_ttl_seconds = static_cast<uint64_t>(n);
   } else if (key == "wal_size_limit_mb") {
-    rocksdb_options.WAL_size_limit_MB= static_cast<uint64_t>(n);
+    rocksdb_options.WAL_size_limit_MB = static_cast<uint64_t>(n);
   } else if (key == "level0_slowdown_writes_trigger") {
     rocksdb_options.level0_slowdown_writes_trigger = static_cast<int>(n);
     rocksdb_options.level0_stop_writes_trigger = static_cast<int>(n*2);
@@ -340,7 +340,8 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.wal_ttl_seconds", std::to_string(rocksdb_options.WAL_ttl_seconds));
   PUSH_IF_MATCH("rocksdb.wal_size_limit_mb", std::to_string(rocksdb_options.WAL_size_limit_MB));
   PUSH_IF_MATCH("rocksdb.target_file_size_base", std::to_string(rocksdb_options.target_file_size_base));
-  PUSH_IF_MATCH("rocksdb.level0_slowdown_writes_trigger", std::to_string(rocksdb_options.level0_slowdown_writes_trigger));
+  PUSH_IF_MATCH("rocksdb.level0_slowdown_writes_trigger",
+                std::to_string(rocksdb_options.level0_slowdown_writes_trigger));
   PUSH_IF_MATCH("rocksdb.level0_stop_writes_trigger", std::to_string(rocksdb_options.level0_stop_writes_trigger));
   PUSH_IF_MATCH("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
 }

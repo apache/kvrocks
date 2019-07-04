@@ -547,7 +547,6 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.compaction_readahead_size", rocksdb_options.compaction_readahead_size);
   WRITE_TO_FILE("rocksdb.target_file_size_base", rocksdb_options.target_file_size_base);
   WRITE_TO_FILE("rocksdb.level0_slowdown_writes_trigger", rocksdb_options.level0_slowdown_writes_trigger);
-  WRITE_TO_FILE("rocksdb.level0_stop_writes_trigger", rocksdb_options.level0_stop_writes_trigger);
   WRITE_TO_FILE("rocksdb.wal_ttl_seconds", rocksdb_options.WAL_ttl_seconds);
   WRITE_TO_FILE("rocksdb.wal_size_limit_mb", rocksdb_options.WAL_size_limit_MB);
 

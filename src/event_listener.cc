@@ -3,8 +3,8 @@
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
-            << ", reason: " << std::to_string(static_cast<int>(ci.compaction_reason))
-            << ", compression: " << std::to_string(static_cast<char>(ci.compression))
+            << ", reason: " << static_cast<int>(ci.compaction_reason)
+            << ", compression: " << static_cast<char>(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
             << ", input bytes: " << ci.stats.total_input_bytes
@@ -15,16 +15,23 @@ void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::Compac
   storage_->CheckDBSizeLimit();
 }
 
-void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &ci) {
+void EventListener::OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
+  LOG(INFO) << "[event_listener/flush_begin] column family: " << fi.cf_name
+            << ", thread_id: " << fi.thread_id << ", job_id: " << fi.job_id
+            << ", reason: " << static_cast<int>(fi.flush_reason);
+}
+
+void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   storage_->IncrFlushCount(1);
   storage_->CheckDBSizeLimit();
-  LOG(INFO) << "[event_listener/flush_completed] column family: " << ci.cf_name
-            << ", file: " << ci.file_path
-            << ", reason: " << std::to_string(static_cast<int>(ci.flush_reason))
-            << ", is_write_slowdown: " << (ci.triggered_writes_slowdown ? "yes" : "no")
-            << ", is_write_stall: " << (ci.triggered_writes_stop? "yes" : "no")
-            << ", largest seqno: " << ci.largest_seqno
-            << ", smallest seqno: " << ci.smallest_seqno;
+  LOG(INFO) << "[event_listener/flush_completed] column family: " << fi.cf_name
+            << ", thread_id: " << fi.thread_id << ", job_id: " << fi.job_id
+            << ", file: " << fi.file_path
+            << ", reason: " << static_cast<int>(fi.flush_reason)
+            << ", is_write_slowdown: " << (fi.triggered_writes_slowdown ? "yes" : "no")
+            << ", is_write_stall: " << (fi.triggered_writes_stop? "yes" : "no")
+            << ", largest seqno: " << fi.largest_seqno
+            << ", smallest seqno: " << fi.smallest_seqno;
 }
 
 void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {

@@ -260,6 +260,9 @@ def test_zremrangebylex():
     ret = conn.zrangebylex(key, '-', '+')
     assert (ret == ['ALPHA', 'aaaa', 'zap', 'zip'])
 
+    ret = conn.zrange(key, 0, -1)
+    assert (ret == ['ALPHA', 'aaaa', 'zap', 'zip'])
+
     ret = conn.zremrangebylex(key, '-', '+')
     assert (ret == 4)
 

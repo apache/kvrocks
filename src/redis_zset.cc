@@ -329,8 +329,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
     if (spec.minex && member == spec.min) continue;  // the min score was exclusive
     if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
     if (spec.removed) {
+      std::string score_bytes = iter->value().ToString();
+      score_bytes.append(member.ToString());
       std::string score_key;
-      InternalKey(ns_key, iter->value(), metadata.version).Encode(&score_key);
+      InternalKey(ns_key, score_bytes, metadata.version).Encode(&score_key);
       batch.Delete(score_cf_handle_, score_key);
       batch.Delete(iter->key());
     } else {

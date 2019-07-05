@@ -107,11 +107,14 @@ def test_hlen():
 def test_mget_and_mset():
     key = "test_mget_and_mset"
     conn = get_redis_conn()
+    conn.delete(key)
     kvs = {'kkk-%s' % i :'vvv-%s' % i for i in range(10)}
     ret = conn.hmset(key, kvs)
     assert(ret == True)
     ret = conn.hmget(key, kvs.keys())
     assert(ret == kvs.values())
+    ret = conn.hmget(key, ['kkk-1', 'f-no-exist'])
+    assert(ret == ['vvv-1', None])
     ret = conn.delete(key)
     assert(ret == 1)
 

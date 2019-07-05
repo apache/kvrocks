@@ -1937,13 +1937,9 @@ class CommandZLexCount : public Commander {
  public:
   CommandZLexCount() : Commander("zlexcount", 4, true) {}
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-    } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "syntax error");
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
     }
     return Commander::Parse(args);
   }
@@ -2062,11 +2058,11 @@ class CommandZRangeByLex : public Commander {
  public:
   CommandZRangeByLex() : Commander("zrangebylex", -4, false) {}
   Status Parse(const std::vector<std::string> &args) override {
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
     try {
-      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
       if (args.size() == 7 && Util::ToLower(args[4]) == "limit") {
         spec_.offset = std::stoi(args[5]);
         spec_.count = std::stoi(args[6]);
@@ -2085,10 +2081,7 @@ class CommandZRangeByLex : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    output->append(Redis::MultiLen(members.size()));
-    for (const auto &m : members) {
-      output->append(Redis::BulkString(m));
-    }
+    *output = Redis::MultiBulkString(members);
     return Status::OK();
   }
 
@@ -2102,16 +2095,16 @@ class CommandZRangeByScore : public Commander {
     spec_.reversed = reversed;
   }
   Status Parse(const std::vector<std::string> &args) override {
+    Status s;
+    if (spec_.reversed) {
+      s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
+    } else {
+      s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+    }
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
     try {
-      Status s;
-      if (spec_.reversed) {
-        s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
-      } else {
-        s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      }
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
       size_t i = 4;
       while (i < args.size()) {
         if (Util::ToLower(args[i]) == "withscores") {
@@ -2241,13 +2234,9 @@ class CommandZRemRangeByScore : public Commander {
  public:
   CommandZRemRangeByScore() : Commander("zremrangebyscore", -4, true) {}
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-    } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "syntax error");
+    Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
     }
     return Commander::Parse(args);
   }
@@ -2271,13 +2260,9 @@ class CommandZRemRangeByLex : public Commander {
  public:
   CommandZRemRangeByLex() : Commander("zremrangebylex", 4, true) {}
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-    } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "syntax error");
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
     }
     return Commander::Parse(args);
   }

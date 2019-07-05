@@ -399,12 +399,12 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
     spec->min = std::numeric_limits<double>::lowest();
   } else {
     sptr = min.data();
-    if (min[0] == '(') {
+    if (!min.empty() && min[0] == '(') {
       spec->minex = true;
-      eptr++;
+      sptr++;
     }
     spec->min = strtod(sptr, &eptr);
-    if (eptr[0] != '\0' || isnan(spec->min)) {
+    if ((eptr && eptr[0] != '\0') || isnan(spec->min)) {
       return Status(Status::NotOK, "the min isn't double");
     }
   }
@@ -413,12 +413,12 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
     spec->max = std::numeric_limits<double>::max();
   } else {
     sptr = max.data();
-    if (max[0] == '(') {
+    if (!max.empty() && max[0] == '(') {
       spec->maxex = true;
       sptr++;
     }
     spec->max = strtod(sptr, &eptr);
-    if (eptr[0] != '\0' || isnan(spec->max)) {
+    if ((eptr && eptr[0] != '\0') || isnan(spec->max)) {
       return Status(Status::NotOK, "the max isn't double");
     }
   }

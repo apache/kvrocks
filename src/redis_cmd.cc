@@ -1912,7 +1912,7 @@ class CommandZIncrBy : public Commander {
     try {
       incr_ = std::stod(args[2]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "value is not an double or out of range");
     }
     return Commander::Parse(args);
   }
@@ -1933,6 +1933,32 @@ class CommandZIncrBy : public Commander {
   double incr_ = 0.0;
 };
 
+class CommandZLexCount : public Commander {
+ public:
+  CommandZLexCount() : Commander("zlexcount", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
+};
+
 class CommandZPop : public Commander {
  public:
   explicit CommandZPop(bool min) : Commander("zpop", -2, true), min_(min) {}
@@ -1942,7 +1968,7 @@ class CommandZPop : public Commander {
       try {
         count_ = std::stoi(args[2]);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr);
+        return Status(Status::RedisParseErr, kValueNotInterger);
       }
     }
     return Commander::Parse(args);
@@ -1987,7 +2013,7 @@ class CommandZRange : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
       with_scores_ = true;
@@ -2028,24 +2054,72 @@ class CommandZRevRange : public CommandZRange {
   CommandZRevRange() : CommandZRange(true) { name_ = "zrevrange"; }
 };
 
-class CommandZRangeByScore : public Commander {
+class CommandZRangeByLex : public Commander {
  public:
-  CommandZRangeByScore() : Commander("zrangebyscore", -4, false) {}
+  CommandZRangeByLex() : Commander("zrangebylex", -4, false) {}
   Status Parse(const std::vector<std::string> &args) override {
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
     try {
-      Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-      if (args.size() == 8 && Util::ToLower(args[5]) == "limit") {
-        spec_.offset = std::stoi(args[6]);
-        spec_.count = std::stoi(args[7]);
+      if (args.size() == 7 && Util::ToLower(args[4]) == "limit") {
+        spec_.offset = std::stoi(args[5]);
+        spec_.count = std::stoi(args[6]);
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
-    if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
-      with_scores_ = true;
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> members;
+    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::MultiBulkString(members);
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
+};
+
+class CommandZRangeByScore : public Commander {
+ public:
+  explicit CommandZRangeByScore(bool reversed = false) : Commander("zrangebyscore", -4, false) {
+    spec_.reversed = reversed;
+  }
+  Status Parse(const std::vector<std::string> &args) override {
+    Status s;
+    if (spec_.reversed) {
+      s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
+    } else {
+      s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+    }
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
+    try {
+      size_t i = 4;
+      while (i < args.size()) {
+        if (Util::ToLower(args[i]) == "withscores") {
+          with_scores_ = true;
+          i++;
+        } else if (Util::ToLower(args[i]) == "limit" && i + 2 < args.size()) {
+          spec_.offset = std::stoi(args[i + 1]);
+          spec_.count = std::stoi(args[i + 2]);
+          i += 3;
+        } else {
+          return Status(Status::RedisParseErr, "syntax error");
+        }
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -2101,6 +2175,11 @@ class CommandZRevRank : public CommandZRank {
   CommandZRevRank() : CommandZRank(true) { name_ = "zrevrank"; }
 };
 
+class CommandZRevRangeByScore : public CommandZRangeByScore {
+ public:
+  CommandZRevRangeByScore() : CommandZRangeByScore(true) { name_ = "zrevrangebyscore"; }
+};
+
 class CommandZRem : public Commander {
  public:
   CommandZRem() : Commander("zrem", -3, true) {}
@@ -2128,7 +2207,7 @@ class CommandZRemRangeByRank : public Commander {
       start_ = std::stoi(args[2]);
       stop_ = std::stoi(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, kValueNotInterger);
     }
     return Commander::Parse(args);
   }
@@ -2155,13 +2234,9 @@ class CommandZRemRangeByScore : public Commander {
  public:
   CommandZRemRangeByScore() : Commander("zremrangebyscore", -4, true) {}
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-    } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+    Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
     }
     return Commander::Parse(args);
   }
@@ -2181,6 +2256,32 @@ class CommandZRemRangeByScore : public Commander {
   ZRangeSpec spec_;
 };
 
+class CommandZRemRangeByLex : public Commander {
+ public:
+  CommandZRemRangeByLex() : Commander("zremrangebylex", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  ZRangeLexSpec spec_;
+};
+
 class CommandZScore : public Commander {
  public:
   CommandZScore() : Commander("zscore", 3, false) {}
@@ -2196,6 +2297,87 @@ class CommandZScore : public Commander {
     } else {
       *output = Redis::BulkString(std::to_string(score));
     }
+    return Status::OK();
+  }
+};
+
+class CommandZUnionStore : public Commander {
+ public:
+  CommandZUnionStore() : Commander("zunionstore", -4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      numkeys_ = std::stoi(args[2]);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    if (numkeys_ > args.size() - 3) {
+      return Status(Status::RedisParseErr, "syntax error");
+    }
+    size_t j = 0;
+    while (j < numkeys_) {
+      keys_weights_.emplace_back(KeyWeight{args[j + 3], 1});
+      j++;
+    }
+    size_t i = 3 + numkeys_;
+    while (i < args.size()) {
+      if (Util::ToLower(args[i]) == "aggregate" && i + 1 < args.size()) {
+        if (Util::ToLower(args[i + 1]) == "sum") {
+          aggregate_method_ = kAggregateSum;
+        } else if (Util::ToLower(args[i + 1]) == "min") {
+          aggregate_method_ = kAggregateMin;
+        } else if (Util::ToLower(args[i + 1]) == "max") {
+          aggregate_method_ = kAggregateMax;
+        } else {
+          return Status(Status::RedisParseErr, "aggregate para error");
+        }
+        i += 2;
+      } else if (Util::ToLower(args[i]) == "weights" && i + numkeys_ < args.size()) {
+        size_t j = 0;
+        while (j < numkeys_) {
+          try {
+            keys_weights_[j].weight = std::stod(args[i + j + 1]);
+          } catch (const std::exception &e) {
+            return Status(Status::RedisParseErr, "value is not an double or out of range");
+          }
+          j++;
+        }
+        i += numkeys_ + 1;
+      } else {
+        return Status(Status::RedisParseErr, "syntax error");
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
+    return Status::OK();
+  }
+
+ protected:
+  size_t numkeys_ = 0;
+  std::vector<KeyWeight> keys_weights_;
+  AggregateMethod aggregate_method_ = kAggregateSum;
+};
+
+class CommandZInterStore : public CommandZUnionStore {
+ public:
+  CommandZInterStore() : CommandZUnionStore() { name_ = "zinterstore"; }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int size;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(size);
     return Status::OK();
   }
 };
@@ -2468,7 +2650,7 @@ class CommandPSync : public Commander {
       auto s = std::stoull(args[1]);
       next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr);
+      return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
     }
     return Commander::Parse(args);
   }
@@ -2537,7 +2719,7 @@ class CommandSlowlog : public Commander {
         auto c = std::stoul(args[2]);
         count_ = static_cast<uint32_t>(c);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr);
+        return Status(Status::RedisParseErr, "value is not an unsigned long or out of range");
       }
       return Status::OK();
     }
@@ -3386,6 +3568,14 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZIncrBy);
      }},
+    {"zinterstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZInterStore);
+     }},
+    {"zlexcount",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZLexCount);
+     }},
     {"zpopmax",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZPopMax);
@@ -3401,6 +3591,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zrevrange",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRevRange);
+     }},
+    {"zrangebylex",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRangeByLex);
      }},
     {"zrangebyscore",
      []() -> std::unique_ptr<Commander> {
@@ -3422,6 +3616,14 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRemRangeByScore);
      }},
+    {"zremrangebylex",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRemRangeByLex);
+     }},
+    {"zrevrangebyscore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZRevRangeByScore);
+     }},
     {"zrevrank",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZRevRank);
@@ -3433,6 +3635,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zscan",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZScan);
+     }},
+    {"zunionstore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandZUnionStore);
      }},
     // pub/sub command
     {"publish",

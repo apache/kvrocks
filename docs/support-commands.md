@@ -94,16 +94,16 @@
 | zcard            | √                |      |
 | zcount           | √                |      |
 | zincrby          | √                |      |
-| zinterstore      | X                |      |
-| zlexcount        | X                |      |
+| zinterstore      | √                |      |
+| zlexcount        | √                |      |
 | zpopmin          | √                |      |
 | zpopmax          | √                |      |
 | zrange           | √                |      |
-| zrangebylex      | X                |      |
+| zrangebylex      | √                |      |
 | zrangebyscore    | √                |      |
 | zrank            | √                |      |
 | zrem             | √                |      |
-| zremrangebylex   | X                |      |
+| zremrangebylex   | √                |      |
 | zremrangebyrank  | √                |      |
 | zremrangebyscore | √                |      |
 | zrevrange        | √                |      |
@@ -111,7 +111,7 @@
 | zrevrangebyscore | √                |      |
 | zscan            | √                |      |
 | zscore           | √                |      |
-| zunionscore      | X                |      |
+| zunionscore      | √                |      |
 
 ## Key Commands
 

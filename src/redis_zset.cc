@@ -1,6 +1,7 @@
 #include "redis_zset.h"
 
 #include <math.h>
+#include <map>
 #include <limits>
 
 namespace Redis {
@@ -227,7 +228,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   std::string start_score_bytes;
-  PutDouble(&start_score_bytes, spec.min);
+  PutDouble(&start_score_bytes, spec.reversed ? spec.max : spec.min);
   std::string start_key, prefix_key;
   InternalKey(ns_key, start_score_bytes, metadata.version).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version).Encode(&prefix_key);
@@ -242,16 +243,32 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
-  for (iter->Seek(start_key);
-       iter->Valid() && iter->key().starts_with(prefix_key);
-       iter->Next()) {
+  iter->Seek(start_key);
+  if (!iter->Valid() && spec.reversed) {
+    iter->SeekForPrev(start_key);
+  }
+  for (;
+      iter->Valid() && iter->key().starts_with(prefix_key);
+      !spec.reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key());
     Slice score_key = ikey.GetSubKey();
     double score;
     GetDouble(&score_key, &score);
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    if (spec.minex && score <= spec.min) continue;  // the min score was exclusive
-    if ((spec.maxex && score >= spec.max) || score > spec.max) break;
+    if ((spec.minex && score <= spec.min) || score < spec.min) {
+      if (spec.reversed) {
+        break;
+      } else {
+        continue;
+      }
+    }
+    if ((spec.maxex && score >= spec.max) || score > spec.max) {
+      if (spec.reversed) {
+        continue;
+      } else {
+        break;
+      }
+    }
     if (spec.removed) {
       std::string sub_key;
       InternalKey(ns_key, score_key, metadata.version).Encode(&sub_key);
@@ -262,6 +279,65 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     }
     if (size) *size += 1;
     if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
+  }
+  delete iter;
+
+  if (spec.removed && *size > 0) {
+    metadata.size -= *size;
+    std::string bytes;
+    metadata.Encode(&bytes);
+    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    return storage_->Write(rocksdb::WriteOptions(), &batch);
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
+                                 ZRangeLexSpec spec,
+                                 std::vector<std::string> *members,
+                                 int *size) {
+  if (size) *size = 0;
+  if (members) members->clear();
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  ZSetMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  std::string start_key, prefix_key;
+  InternalKey(ns_key, spec.min, metadata.version).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version).Encode(&prefix_key);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+
+  int pos = 0;
+  auto iter = db_->NewIterator(read_options);
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
+  for (iter->Seek(start_key);
+       iter->Valid() && iter->key().starts_with(prefix_key);
+       iter->Next()) {
+    InternalKey ikey(iter->key());
+    Slice member = ikey.GetSubKey();
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
+    if (spec.minex && member == spec.min) continue;  // the min score was exclusive
+    if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    if (spec.removed) {
+      std::string score_key;
+      InternalKey(ns_key, iter->value(), metadata.version).Encode(&score_key);
+      batch.Delete(score_cf_handle_, score_key);
+      batch.Delete(iter->key());
+    } else {
+      if (members) members->emplace_back(member.ToString());
+    }
+    if (size) *size += 1;
+    if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
   }
   delete iter;
 
@@ -336,6 +412,11 @@ rocksdb::Status ZSet::RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec,
   return RangeByScore(user_key, spec, nullptr, ret);
 }
 
+rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, ZRangeLexSpec spec, int *ret) {
+  spec.removed = true;
+  return RangeByLex(user_key, spec, nullptr, ret);
+}
+
 rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret) {
   uint8_t flags = ZSET_REMOVED;
   std::vector<MemberScore> mscores;
@@ -387,6 +468,133 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::Overwrite(const Slice &user_key, const std::vector<MemberScore> &mscores) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  ZSetMetadata metadata;
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisZSet);
+  batch.PutLogData(log_data.Encode());
+  for (const auto &ms : mscores) {
+    std::string member_key, score_bytes, score_key;
+    InternalKey(ns_key, ms.member, metadata.version).Encode(&member_key);
+    PutDouble(&score_bytes, ms.score);
+    batch.Put(member_key, score_bytes);
+    score_bytes.append(ms.member);
+    InternalKey(ns_key, score_bytes, metadata.version).Encode(&score_key);
+    batch.Put(score_cf_handle_, score_key, Slice());
+  }
+  metadata.size = static_cast<uint32_t>(mscores.size());
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
+rocksdb::Status ZSet::InterStore(const Slice &dst,
+                                 const std::vector<KeyWeight> &keys_weights,
+                                 AggregateMethod aggregate_method,
+                                 int *size) {
+  if (size) *size = 0;
+
+  std::map<std::string, double> dst_zset;
+  std::map<std::string, size_t> member_counters;
+  std::vector<MemberScore> target_mscores;
+  int target_size;
+  ZRangeSpec spec;
+  auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
+  if (!s.ok() || target_mscores.empty()) return s;
+  for (const auto &ms : target_mscores) {
+    double score = ms.score * keys_weights[0].weight;
+    dst_zset[ms.member] = score;
+    member_counters[ms.member] = 1;
+  }
+  for (size_t i = 1; i < keys_weights.size(); i++) {
+    auto s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
+    if (!s.ok() || target_mscores.empty()) return s;
+    for (const auto &ms : target_mscores) {
+      if (dst_zset.find(ms.member) == dst_zset.end()) continue;
+      member_counters[ms.member]++;
+      double score = ms.score * keys_weights[i].weight;
+      switch (aggregate_method) {
+        case kAggregateSum:dst_zset[ms.member] += score;
+          break;
+        case kAggregateMin:
+          if (dst_zset[ms.member] > score) {
+            dst_zset[ms.member] = score;
+          }
+          break;
+        case kAggregateMax:
+          if (dst_zset[ms.member] < score) {
+            dst_zset[ms.member] = score;
+          }
+          break;
+      }
+    }
+  }
+  if (!dst_zset.empty()) {
+    std::vector<MemberScore> mscores;
+    for (const auto &iter : dst_zset) {
+      if (member_counters[iter.first] != keys_weights.size()) continue;
+      mscores.emplace_back(MemberScore{iter.first, iter.second});
+    }
+    if (size) *size = mscores.size();
+    Overwrite(dst, mscores);
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::UnionStore(const Slice &dst,
+                                 const std::vector<KeyWeight> &keys_weights,
+                                 AggregateMethod aggregate_method,
+                                 int *size) {
+  if (size) *size = 0;
+
+  std::map<std::string, double> dst_zset;
+  std::vector<MemberScore> target_mscores;
+  int target_size;
+  ZRangeSpec spec;
+  for (const auto &key_weight : keys_weights) {
+    // get all member
+    auto s = RangeByScore(key_weight.key, spec, &target_mscores, &target_size);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    for (const auto &ms : target_mscores) {
+      double score = ms.score * key_weight.weight;
+      if (dst_zset.find(ms.member) == dst_zset.end()) {
+        dst_zset[ms.member] = score;
+      } else {
+        switch (aggregate_method) {
+          case kAggregateSum:dst_zset[ms.member] += score;
+            break;
+          case kAggregateMin:
+            if (dst_zset[ms.member] > score) {
+              dst_zset[ms.member] = score;
+            }
+            break;
+          case kAggregateMax:
+            if (dst_zset[ms.member] < score) {
+              dst_zset[ms.member] = score;
+            }
+            break;
+        }
+      }
+    }
+  }
+  if (!dst_zset.empty()) {
+    std::vector<MemberScore> mscores;
+    for (const auto &iter : dst_zset) {
+      mscores.emplace_back(MemberScore{iter.first, iter.second});
+    }
+    if (size) *size = mscores.size();
+    Overwrite(dst, mscores);
+  }
+
+  return rocksdb::Status::OK();
+}
+
 Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec) {
   const char *sptr = nullptr;
   char *eptr = nullptr;
@@ -421,6 +629,39 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
     if ((eptr && eptr[0] != '\0') || isnan(spec->max)) {
       return Status(Status::NotOK, "the max isn't double");
     }
+  }
+  return Status::OK();
+}
+
+Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, ZRangeLexSpec *spec) {
+  if (min == "+" || max == "-") {
+    return Status(Status::NotOK, "min > max");
+  }
+
+  if (min == "-") {
+    spec->min = "";
+  } else {
+    if (min[0] == '(') {
+      spec->minex = true;
+    } else if (min[0] == '[') {
+      spec->minex = false;
+    } else {
+      return Status(Status::NotOK, "the min is illegal");
+    }
+    spec->min = min.substr(1);
+  }
+
+  if (max == "+") {
+    spec->max_infinite = true;
+  } else {
+    if (max[0] == '(') {
+      spec->maxex = true;
+    } else if (max[0] == '[') {
+      spec->maxex = false;
+    } else {
+      return Status(Status::NotOK, "the max is illegal");
+    }
+    spec->max = max.substr(1);
   }
   return Status::OK();
 }

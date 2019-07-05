@@ -81,6 +81,8 @@ def test_zrange():
     assert (ret == 2)
     ret = conn.zrange(key, 0, 1)
     assert(ret == ['a', 'b'])
+    ret = conn.zrange(key, 0, 1, False, True)
+    assert(ret == [('a', 1.3), ('b', 1.8)])
 
     ret = conn.delete(key)
     assert(ret == 1)
@@ -89,10 +91,67 @@ def test_zrange():
 def test_zrangebyscore():
     conn = get_redis_conn()
     key = "test_zrangebyscore"
-    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
-    assert (ret == 2)
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', 2.5)
+    assert (ret == 3)
     ret = conn.zrangebyscore(key, 1, 3)
-    assert(ret == ['a', 'b'])
+    assert(ret == ['a', 'b', 'c'])
+
+    ret = conn.zrangebyscore(key, 1, 3, None, None, True)
+    assert (ret == [('a', 1.3), ('b', 1.8), ('c', 2.5)])
+
+    ret = conn.zrangebyscore(key, 1, 3, 0, 2, True)
+    assert (ret == [('a', 1.3), ('b', 1.8)])
+
+    ret = conn.zrangebyscore(key, 1, 3, 1, 2)
+    assert (ret == ['b', 'c'])
+
+    ret = conn.delete(key)
+    assert(ret == 1)
+
+
+def test_zlexcount():
+    conn = get_redis_conn()
+    key = "test_zlexcount"
+    ret = conn.zadd(key, 'a', 0, 'b', 0, 'c', 0)
+    assert (ret == 3)
+    ret = conn.zlexcount(key, '-', '+')
+    assert(ret == 3)
+
+    ret = conn.zlexcount(key, '(a', '(c')
+    assert (ret == 1)
+
+    ret = conn.zlexcount(key, '(a', '[c')
+    assert (ret == 2)
+
+    ret = conn.zlexcount(key, '[a', '[c')
+    assert (ret == 3)
+
+    ret = conn.delete(key)
+    assert(ret == 1)
+
+
+def test_zrangebylex():
+    conn = get_redis_conn()
+    key = "test_zrangebylex"
+    ret = conn.zadd(key, 'a', 0, 'b', 0, 'c', 0)
+    assert (ret == 3)
+    ret = conn.zrangebylex(key, '-', '+')
+    assert(ret == ['a', 'b', 'c'])
+
+    ret = conn.zrangebylex(key, '(a', '(c')
+    assert (ret == ['b'])
+
+    ret = conn.zrangebylex(key, '(a', '[c')
+    assert (ret == ['b', 'c'])
+
+    ret = conn.zrangebylex(key, '[a', '[c')
+    assert (ret == ['a', 'b', 'c'])
+
+    ret = conn.zrangebylex(key, '[a', '[c', 0, 2)
+    assert (ret == ['a', 'b'])
+
+    ret = conn.zrangebylex(key, '[a', '[c', 1, 2)
+    assert (ret == ['b', 'c'])
 
     ret = conn.delete(key)
     assert(ret == 1)
@@ -112,16 +171,40 @@ def test_zrank():
 
 def test_zrevrange():
     conn = get_redis_conn()
-    key = "test_zrange"
-    ret = conn.delete(key)
+    key = "test_zrevrange"
     ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
     assert (ret == 2)
     ret = conn.zrevrange(key, 0, 1)
     assert (ret == ['b', 'a'])
 
+    ret = conn.zrevrange(key, 0, 1, True)
+    assert (ret == [('b', 1.8), ('a', 1.3)])
+
     ret = conn.delete(key)
     assert (ret == 1)
 
+
+def test_zrevrangebyscore():
+    conn = get_redis_conn()
+    key = "test_zrevrangebyscore"
+    conn.delete(key)
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', 2.5)
+    assert (ret == 3)
+    ret = conn.zrevrangebyscore(key, 3, 1)
+    assert(ret == ['c', 'b', 'a'])
+
+    ret = conn.zrevrangebyscore(key, 3, 1, None, None, True)
+    assert (ret == [('c', 2.5), ('b', 1.8), ('a', 1.3)])
+
+    ret = conn.zrevrangebyscore(key, 3, 1, 0, 2, True)
+    assert (ret == [('c', 2.5), ('b', 1.8)])
+
+    ret = conn.zrevrangebyscore(key, 3, 1, 1, 2, True)
+    assert (ret == [('b', 1.8), ('a', 1.3)])
+
+    ret = conn.delete(key)
+    assert(ret == 1)
+    
 
 def test_zrevrank():
     conn = get_redis_conn()
@@ -164,6 +247,26 @@ def test_zremrangebyscore():
     ret = conn.zremrangebyscore(key, 0, 3)
     assert (ret == 2)
 
+
+def test_zremrangebylex():
+    conn = get_redis_conn()
+    key = "test_zremrangebylex"
+    ret = conn.zadd(key, 'aaaa', 0, 'b', 0,
+                    'c', 0, 'd', 0, 'e', 0, 'foo', 0, 'zap', 0, 'zip', 0, 'ALPHA', 0, 'alpha', 0)
+    assert (ret == 10)
+    ret = conn.zremrangebylex(key, '[alpha', '[omega')
+    assert(ret == 6)
+
+    ret = conn.zrangebylex(key, '-', '+')
+    assert (ret == ['ALPHA', 'aaaa', 'zap', 'zip'])
+
+    ret = conn.zremrangebylex(key, '-', '+')
+    assert (ret == 4)
+
+    ret = conn.zrangebylex(key, '-', '+')
+    assert (ret == [])
+
+    
 def test_zscan():
     conn = get_redis_conn()
     key = "test_zscan"
@@ -176,5 +279,81 @@ def test_zscan():
     assert (ret == 1)
 
 
+def test_zunionstore():
+    conn = get_redis_conn()
+    key = "test_zunionstore"
+    key1 = key + "_1"
+    key2 = key + "_2"
+    ret = conn.zadd(key1, 'one', 1, 'two', 2)
+    assert (ret == 2)
+    ret = conn.zadd(key2, 'one', 1, 'two', 2, 'three', 3)
+    assert (ret == 3)
 
+    ret = conn.zunionstore(key, [key1, key2])
+    assert (ret == 3)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 2.0), ('three', 3), ('two', 4.0)])
+
+    ret = conn.zunionstore(key, [key1, key2], "MIN")
+    assert (ret == 3)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 1.0), ('two', 2.0), ('three', 3)])
+
+    ret = conn.zunionstore(key, [key1, key2], "MAX")
+    assert (ret == 3)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 1.0), ('two', 2.0), ('three', 3)])
+
+    ret = conn.zunionstore(key, {key1: 10, key2: 30})
+    assert (ret == 3)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 40.0), ('two', 80.0), ('three', 90.0)])
+
+    ret = conn.delete(key)
+    assert (ret == 1)
+    ret = conn.delete(key1)
+    assert (ret == 1)
+    ret = conn.delete(key2)
+    assert (ret == 1)
+
+
+def test_zinterstore():
+    conn = get_redis_conn()
+    key = "test_zinterstore"
+    key1 = key + "_1"
+    key2 = key + "_2"
+    conn.delete(key1);
+    conn.delete(key2);
+    conn.delete(key);
+    ret = conn.zadd(key1, 'one', 1, 'two', 2)
+    assert (ret == 2)
+    ret = conn.zadd(key2, 'one', 1, 'two', 2, 'three', 3)
+    assert (ret == 3)
+
+    ret = conn.zinterstore(key, [key1, key2])
+    assert (ret == 2)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 2.0), ('two', 4.0)])
+
+    ret = conn.zinterstore(key, [key1, key2], "MIN")
+    assert (ret == 2)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 1.0), ('two', 2.0)])
+
+    ret = conn.zinterstore(key, [key1, key2], "MAX")
+    assert (ret == 2)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 1.0), ('two', 2.0)])
+
+    ret = conn.zinterstore(key, {key1: 10, key2: 30})
+    assert (ret == 2)
+    ret = conn.zrange(key, 0, -1, False, True)
+    assert (ret == [('one', 40.0), ('two', 80.0)])
+
+    ret = conn.delete(key)
+    assert (ret == 1)
+    ret = conn.delete(key1)
+    assert (ret == 1)
+    ret = conn.delete(key2)
+    assert (ret == 1)
 

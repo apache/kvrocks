@@ -145,7 +145,9 @@ rocksdb::Status Hash::MGet(const Slice &user_key,
   std::string sub_key, value;
   for (const auto &field : fields) {
     InternalKey(ns_key, field, metadata.version).Encode(&sub_key);
-    db_->Get(read_options, sub_key, &value);
+    value.clear();
+    auto s = db_->Get(read_options, sub_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
     values->emplace_back(value);
   }
   return rocksdb::Status::OK();

@@ -53,6 +53,7 @@ class Commander {
   bool is_write_;
 };
 
+void GetCommandList(std::vector<std::string> *cmds);
 Status LookupCommand(const std::string &cmd_name,
                      std::unique_ptr<Commander> *cmd, bool is_repl);
 }  // namespace Redis

@@ -3733,4 +3733,13 @@ Status LookupCommand(const std::string &cmd_name,
   return Status::OK();
 }
 
+void GetCommandList(std::vector<std::string> *cmds) {
+  cmds->clear();
+  for (const auto &cmd : command_table) {
+    cmds->emplace_back(cmd.first);
+  }
+  for (const auto &cmd : repl_command_table) {
+    cmds->emplace_back(cmd.first);
+  }
+}
 }  // namespace Redis

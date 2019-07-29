@@ -1,3 +1,9 @@
+* Version 0.3.3(@2019-07-05)
+	- add io limit for compaction and flush
+	- add some rocksdb options can be modifical in-flight
+	- add filter/index cache into the block cache 
+	- fix cleanup master host and port when replication thread was stopped
+
 * Version 0.3.2(@2019-06-18)
 	- fix disconnect all slaves and wait for inusing db_ pointer before restore the db from backup
 	- fix checkWALBoundary return incorrect status when iter was out of range

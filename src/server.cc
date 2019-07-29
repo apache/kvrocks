@@ -16,6 +16,14 @@
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
+  // init commands stats here to prevent concurrent insert, and cause core
+  std::vector<std::string> commands;
+  Redis::GetCommandList(&commands);
+  for (const auto &cmd : commands) {
+    stats_.commands_stats[cmd].calls = 0;
+    stats_.commands_stats[cmd].latency = 0;
+  }
+
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
@@ -575,6 +583,7 @@ void Server::GetCommandsStatsInfo(std::string *info) {
   for (const auto &cmd_stat : stats_.commands_stats) {
     auto calls = cmd_stat.second.calls.load();
     auto latency = cmd_stat.second.latency.load();
+    if (calls == 0) continue;
     string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls
                   << ",usec=" << latency << ",usec_per_call="
                   << ((calls == 0) ? 0 : static_cast<float>(latency/calls))

@@ -495,6 +495,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     int64_t i;
     auto s = Util::StringToNum(value, &i, 0);
     if (!s.IsOK()) return s;
+    max_io_mb = i;
     svr->storage_->SetIORateLimit(static_cast<uint64_t>(i));
     return Status::OK();
   }

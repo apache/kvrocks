@@ -11,6 +11,8 @@
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
+const size_t PROTO_BULK_MAX_SIZE = 128 * 1024L * 1024L;
+const size_t PROTO_MAX_MULTI_BULKS = 8 * 1024L;
 
 Status Request::Tokenize(evbuffer *input) {
   char *line;
@@ -26,13 +28,17 @@ Status Request::Tokenize(evbuffer *input) {
             multi_bulk_len_ = std::stoull(std::string(line + 1, len-1));
           } catch (std::exception &e) {
             free(line);
-            return Status(Status::NotOK, "ERR value is not an integer or out of range");
+            return Status(Status::NotOK, "Protocol error: expect integer");
+          }
+          if (multi_bulk_len_ > PROTO_MAX_MULTI_BULKS) {
+            free(line);
+            return Status(Status::NotOK, "Protocol error: too many bulk strings");
           }
           state_ = BulkLen;
         } else {
           if (len > PROTO_INLINE_MAX_SIZE) {
             free(line);
-            return Status(Status::NotOK, "ERR Protocol error: too big inline request");
+            return Status(Status::NotOK, "Protocol error: too big inline request");
           }
           Util::Split(std::string(line, len), " \t", &tokens_);
           commands_.push_back(std::move(tokens_));
@@ -46,13 +52,17 @@ Status Request::Tokenize(evbuffer *input) {
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] != '$') {
           free(line);
-          return Status(Status::NotOK, "ERR protocol error, expect '$'");
+          return Status(Status::NotOK, "Protocol error: expect '$'");
         }
         try {
           bulk_len_ = std::stoull(std::string(line + 1, len-1));
         } catch (std::exception &e) {
           free(line);
-          return Status(Status::NotOK, "ERR value is not an integer or out of range");
+          return Status(Status::NotOK, "Protocol error: expect integer");
+        }
+        if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
+          free(line);
+          return Status(Status::NotOK, "Protocol error: too big bulk string");
         }
         free(line);
         state_ = BulkData;

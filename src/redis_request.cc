@@ -10,6 +10,8 @@
 #include "server.h"
 
 namespace Redis {
+const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
+
 Status Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
@@ -28,6 +30,10 @@ Status Request::Tokenize(evbuffer *input) {
           }
           state_ = BulkLen;
         } else {
+          if (len > PROTO_INLINE_MAX_SIZE) {
+            free(line);
+            return Status(Status::NotOK, "ERR Protocol error: too big inline request");
+          }
           Util::Split(std::string(line, len), " \t", &tokens_);
           commands_.push_back(std::move(tokens_));
           state_ = ArrayLen;

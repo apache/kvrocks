@@ -51,7 +51,12 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
 
   conn->SetLastInteraction();
-  conn->req_.Tokenize(conn->Input());
+  auto s = conn->req_.Tokenize(conn->Input());
+  if (!s.IsOK()) {
+    conn->EnableFlag(Redis::Connection::kCloseAfterReply);
+    conn->Reply(Redis::Error(s.Msg()));
+    return;
+  }
   conn->req_.ExecuteCommands(conn);
 }
 

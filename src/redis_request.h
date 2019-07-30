@@ -20,7 +20,7 @@ class Request {
   Request &operator=(const Request &) = delete;
 
   // Parse the redis requests (bulk string array format)
-  void Tokenize(evbuffer *input);
+  Status Tokenize(evbuffer *input);
   // Exec return true when command finished
   void ExecuteCommands(Connection *conn);
 

@@ -428,7 +428,7 @@ rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int st
 }
 
 rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *ret) {
-  *ret = 0;
+  *ret = -1;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

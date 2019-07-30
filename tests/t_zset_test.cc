@@ -282,5 +282,11 @@ TEST_F(RedisZSetTest, Rank) {
     zset->Rank(key_, fields_[i], true, &rank);
     EXPECT_EQ(i, fields_.size()-rank-1);
   }
+  std::vector<std::string> no_exist_members = {"a", "b"};
+  for (const auto &member : no_exist_members) {
+    int rank;
+    zset->Rank(key_, member, true, &rank);
+    EXPECT_EQ(-1, rank);
+  }
   zset->Del(key_);
 }

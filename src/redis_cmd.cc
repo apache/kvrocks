@@ -2162,7 +2162,11 @@ class CommandZRank : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::Integer(rank);
+    if (rank == -1) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::Integer(rank);
+    }
     return Status::OK();
   }
 

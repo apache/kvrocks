@@ -17,31 +17,43 @@ Status Request::Tokenize(evbuffer *input) {
     switch (state_) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return Status::OK();
+        if (!line || len <= 0) return Status::OK();
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] == '*') {
-          multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+          try {
+            multi_bulk_len_ = std::stoull(std::string(line + 1, len-1));
+          } catch (std::exception &e) {
+            free(line);
+            return Status(Status::NotOK, "ERR value is not an integer or out of range");
+          }
           state_ = BulkLen;
         } else {
           Util::Split(std::string(line, len), " \t", &tokens_);
           commands_.push_back(std::move(tokens_));
           state_ = ArrayLen;
-          return Status::OK();
         }
         free(line);
         break;
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return Status::OK();
+        if (!line || len <= 0) return Status::OK();
         svr_->stats_.IncrInbondBytes(len);
-        bulk_len_ = std::strtoull(line + 1, nullptr, 10);
+        if (line[0] != '$') {
+          free(line);
+          return Status(Status::NotOK, "ERR protocol error, expect '$'");
+        }
+        try {
+          bulk_len_ = std::stoull(std::string(line + 1, len-1));
+        } catch (std::exception &e) {
+          free(line);
+          return Status(Status::NotOK, "ERR value is not an integer or out of range");
+        }
         free(line);
         state_ = BulkData;
         break;
       case BulkData:
         if (evbuffer_get_length(input) < bulk_len_ + 2) return Status::OK();
-        char *data =
-            reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
+        char *data = reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
         svr_->stats_.IncrInbondBytes(bulk_len_ + 2);

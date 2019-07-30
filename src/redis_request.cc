@@ -10,29 +10,36 @@
 #include "server.h"
 
 namespace Redis {
-void Request::Tokenize(evbuffer *input) {
+Status Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
   while (true) {
     switch (state_) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return;
+        if (!line) return Status::OK();
         svr_->stats_.IncrInbondBytes(len);
-        multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        if (line[0] == '*') {
+          multi_bulk_len_ = len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+          state_ = BulkLen;
+        } else {
+          Util::Split(std::string(line, len), " \t", &tokens_);
+          commands_.push_back(std::move(tokens_));
+          state_ = ArrayLen;
+          return Status::OK();
+        }
         free(line);
-        state_ = BulkLen;
         break;
       case BulkLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return;
+        if (!line) return Status::OK();
         svr_->stats_.IncrInbondBytes(len);
         bulk_len_ = std::strtoull(line + 1, nullptr, 10);
         free(line);
         state_ = BulkData;
         break;
       case BulkData:
-        if (evbuffer_get_length(input) < bulk_len_ + 2) return;
+        if (evbuffer_get_length(input) < bulk_len_ + 2) return Status::OK();
         char *data =
             reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
         tokens_.emplace_back(data, bulk_len_);

@@ -214,6 +214,9 @@ def test_zrevrank():
     ret = conn.zrevrank(key, 'a')
     assert (ret == 1)
 
+    ret = conn.zrevrank(key, 'c')
+    assert (ret == None)
+
     ret = conn.delete(key)
     assert (ret == 1)
 

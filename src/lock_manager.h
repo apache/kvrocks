@@ -21,7 +21,6 @@ class LockManager {
   unsigned hash(const rocksdb::Slice &key);
 };
 
-
 class LockGuard {
  public:
   explicit LockGuard(LockManager *lock_mgr, rocksdb::Slice key):

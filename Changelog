@@ -1,4 +1,8 @@
-* Version 0.3.4(@2019-07-30)
+* Version 0.3.6(@2019-08-02)
+	- fix return error when the protocol is invalid
+	- lock the key to prevent the data race in set command
+
+* Version 0.3.5(@2019-07-30)
 	- fix ZREVRANK and ZRANK should return nil string instead of 0 if member wasn't exists 
 
 * Version 0.3.4(@2019-07-29)

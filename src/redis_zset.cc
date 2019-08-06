@@ -255,19 +255,12 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     double score;
     GetDouble(&score_key, &score);
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    if ((spec.minex && score <= spec.min) || score < spec.min) {
-      if (spec.reversed) {
-        break;
-      } else {
-        continue;
-      }
-    }
-    if ((spec.maxex && score >= spec.max) || score > spec.max) {
-      if (spec.reversed) {
-        continue;
-      } else {
-        break;
-      }
+    if (spec.reversed) {
+      if ((spec.minex && score == spec.min) || score < spec.min) break;
+      if ((spec.maxex && score == spec.max) || score > spec.max) continue;
+    } else {
+      if ((spec.minex && score == spec.min) || score < spec.min) continue;
+      if ((spec.maxex && score == spec.max) || score > spec.max) break;
     }
     if (spec.removed) {
       std::string sub_key;

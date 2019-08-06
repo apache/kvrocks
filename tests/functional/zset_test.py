@@ -193,6 +193,18 @@ def test_zrevrangebyscore():
     ret = conn.zrevrangebyscore(key, 3, 1)
     assert(ret == ['c', 'b', 'a'])
 
+    ret = conn.zrevrangebyscore(key, "+inf", "-inf")
+    assert(ret == ['c', 'b', 'a'])
+
+    ret = conn.zrevrangebyscore(key, 1.8, 1.3)
+    assert(ret == ['b', 'a'])
+
+    ret = conn.zrevrangebyscore(key, 1.8, "(1.3")
+    assert(ret == ['b'])
+
+    ret = conn.zrevrangebyscore(key, "(1.8", "(1.3")
+    assert(ret == [])
+
     ret = conn.zrevrangebyscore(key, 3, 1, None, None, True)
     assert (ret == [('c', 2.5), ('b', 1.8), ('a', 1.3)])
 
@@ -201,6 +213,7 @@ def test_zrevrangebyscore():
 
     ret = conn.zrevrangebyscore(key, 3, 1, 1, 2, True)
     assert (ret == [('b', 1.8), ('a', 1.3)])
+
 
     ret = conn.delete(key)
     assert(ret == 1)

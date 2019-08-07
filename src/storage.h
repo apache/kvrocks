@@ -35,6 +35,7 @@ class Storage {
   Status Open(bool read_only);
   Status Open();
   Status OpenForReadOnly();
+  void CloseDB();
   void InitOptions(rocksdb::Options *options);
   Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
@@ -50,6 +51,9 @@ class Storage {
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
+  bool IsClosing();
+  Status IncrDBRefs();
+  Status DecrDBRefs();
   const std::string GetName() {return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *> GetCFHandles() { return cf_handles_; }
@@ -107,6 +111,10 @@ class Storage {
   bool reach_db_size_limit_ = false;
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
+
+  std::mutex db_mu_;
+  int db_refs_ = 0;
+  bool db_closing_ = true;
 };
 
 }  // namespace Engine

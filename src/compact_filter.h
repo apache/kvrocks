@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include "redis_metadata.h"
+#include "storage.h"
 
 namespace Engine {
 class MetadataFilter : public rocksdb::CompactionFilter {
@@ -27,11 +28,10 @@ class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
 
 class SubKeyFilter : public rocksdb::CompactionFilter {
  public:
-  SubKeyFilter(rocksdb::DB **db, std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles)
+  explicit SubKeyFilter(Storage *storage)
       : cached_key_(""),
         cached_metadata_(""),
-        db_(db),
-        cf_handles_(cf_handles) {}
+        stor_(storage) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
   bool IsKeyExpired(const InternalKey &ikey, const Slice &value) const;
@@ -41,29 +41,24 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
  protected:
   mutable std::string cached_key_;
   mutable std::string cached_metadata_;
-  rocksdb::DB **db_;
-  std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
+  Engine::Storage *stor_;
 };
 
 class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit SubKeyFilterFactory(
-      rocksdb::DB **db,
-      std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles) {
-    db_ = db;
-    cf_handles_ = cf_handles;
+  explicit SubKeyFilterFactory(Engine::Storage *storage) {
+    stor_ = storage;
   }
 
   const char *Name() const override { return "SubKeyFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(
-        new SubKeyFilter(db_, cf_handles_));
+        new SubKeyFilter(stor_));
   }
 
  private:
-  rocksdb::DB **db_;
-  std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
+  Engine::Storage *stor_ = nullptr;
 };
 
 class PubSubFilter : public rocksdb::CompactionFilter {

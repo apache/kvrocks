@@ -1,4 +1,5 @@
 import redis
+import sys
 from assert_helper import *
 from conn import *
 
@@ -52,10 +53,11 @@ def test_zincrby():
 def test_zpopmax():
     conn = get_redis_conn()
     key = "test_zpopmax"
-    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
-    assert (ret == 2)
-    ret = conn.execute_command("ZPOPMAX " + key)
-    assert (ret == ['b', '1.800000'])
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', sys.float_info.max)
+    assert (ret == 3)
+    ret = conn.execute_command("ZPOPMAX", key)
+    assert (ret[0] == 'c')
+    assert (float(ret[1]) == sys.float_info.max)
 
     ret = conn.delete(key)
     assert(ret == 1)
@@ -66,7 +68,7 @@ def test_zpopmin():
     key = "test_zpopmin"
     ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
     assert (ret == 2)
-    ret = conn.execute_command("ZPOPMIN " + key)
+    ret = conn.execute_command("ZPOPMIN", key)
     assert (ret == ['a', '1.300000'])
 
     ret = conn.delete(key)
@@ -172,12 +174,12 @@ def test_zrank():
 def test_zrevrange():
     conn = get_redis_conn()
     key = "test_zrevrange"
-    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
-    assert (ret == 2)
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', sys.float_info.max)
+    assert (ret == 3)
     ret = conn.zrevrange(key, 0, 1)
-    assert (ret == ['b', 'a'])
+    assert (ret == ['c', 'b'])
 
-    ret = conn.zrevrange(key, 0, 1, True)
+    ret = conn.zrevrange(key, 1, 2, True)
     assert (ret == [('b', 1.8), ('a', 1.3)])
 
     ret = conn.delete(key)
@@ -187,14 +189,15 @@ def test_zrevrange():
 def test_zrevrangebyscore():
     conn = get_redis_conn()
     key = "test_zrevrangebyscore"
-    conn.delete(key)
-    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', 2.5)
-    assert (ret == 3)
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', 2.5, 'd', sys.float_info.max)
+    assert (ret == 4)
+    ret = conn.zrevrangebyscore(key, sys.float_info.max, 1)
+    assert (ret == ['d', 'c', 'b', 'a'])
     ret = conn.zrevrangebyscore(key, 3, 1)
     assert(ret == ['c', 'b', 'a'])
 
     ret = conn.zrevrangebyscore(key, "+inf", "-inf")
-    assert(ret == ['c', 'b', 'a'])
+    assert(ret == ['d', 'c', 'b', 'a'])
 
     ret = conn.zrevrangebyscore(key, 1.8, 1.3)
     assert(ret == ['b', 'a'])
@@ -222,12 +225,15 @@ def test_zrevrangebyscore():
 def test_zrevrank():
     conn = get_redis_conn()
     key = "test_zrevrank"
-    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8)
-    assert (ret == 2)
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.8, 'c', sys.float_info.max)
+    assert (ret == 3)
     ret = conn.zrevrank(key, 'a')
-    assert (ret == 1)
+    assert (ret == 2)
 
     ret = conn.zrevrank(key, 'c')
+    assert (ret == 0)
+
+    ret = conn.zrevrank(key, 'd')
     assert (ret == None)
 
     ret = conn.delete(key)

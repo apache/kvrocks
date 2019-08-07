@@ -271,7 +271,6 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     Slice score_key = ikey.GetSubKey();
     double score;
     GetDouble(&score_key, &score);
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.reversed) {
       if ((spec.minex && score == spec.min) || score < spec.min) break;
       if ((spec.maxex && score == spec.max) || score > spec.max) continue;
@@ -279,6 +278,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
       if ((spec.minex && score == spec.min) || score < spec.min) continue;
       if ((spec.maxex && score == spec.max) || score > spec.max) break;
     }
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string sub_key;
       InternalKey(ns_key, score_key, metadata.version).Encode(&sub_key);
@@ -335,9 +335,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
        iter->Next()) {
     InternalKey ikey(iter->key());
     Slice member = ikey.GetSubKey();
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.minex && member == spec.min) continue;  // the min score was exclusive
     if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string score_bytes = iter->value().ToString();
       score_bytes.append(member.ToString());

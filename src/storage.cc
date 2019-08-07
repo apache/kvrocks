@@ -27,9 +27,21 @@ using rocksdb::Slice;
 
 Storage::~Storage() {
   DestroyBackup();
+  CloseDB();
+}
+
+void Storage::CloseDB() {
   db_->SyncWAL();
+  // prevent to destroy the cloumn family while the compact filter was using
+  db_mu_.lock();
+  db_closing_ = true;
+  while (db_refs_ != 0) {
+    db_mu_.unlock();
+    usleep(10000);
+    db_mu_.lock();
+  }
+  db_mu_.unlock();
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
-  db_->Close();
   delete db_;
 }
 
@@ -98,10 +110,14 @@ Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
 }
 
 Status Storage::Open(bool read_only) {
+  db_mu_.lock();
+  db_closing_ = false;
+  db_refs_ = 0;
+  db_mu_.unlock();
+
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamiles(options);
-
   rocksdb::BlockBasedTableOptions metadata_table_opts;
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   metadata_table_opts.block_cache =
@@ -191,9 +207,7 @@ Status Storage::RestoreFromBackup() {
   rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
-
-  for (auto handle : cf_handles_) delete handle;
-  delete db_;
+  CloseDB();
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
@@ -329,6 +343,28 @@ void Storage::SetIORateLimit(uint64_t max_io_mb) {
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }
+
+Status Storage::IncrDBRefs() {
+  db_mu_.lock();
+  if (db_closing_) {
+    db_mu_.unlock();
+    return Status(Status::NotOK, "db is closing");
+  }
+  db_refs_++;
+  db_mu_.unlock();
+  return Status::OK();
+}
+
+Status Storage::DecrDBRefs() {
+  db_mu_.lock();
+  if (db_refs_ == 0) {
+    db_mu_.unlock();
+    return Status(Status::NotOK, "db refs was zero");
+  }
+  db_refs_--;
+  db_mu_.unlock();
+  return Status::OK();
+}
 
 Status Storage::BackupManager::OpenLatestMeta(Storage *storage,
                                               int *fd,

@@ -28,7 +28,7 @@ class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
 
 class SubKeyFilter : public rocksdb::CompactionFilter {
  public:
-  SubKeyFilter(Storage *storage)
+  explicit SubKeyFilter(Storage *storage)
       : cached_key_(""),
         cached_metadata_(""),
         stor_(storage) {}
@@ -42,7 +42,6 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
   mutable std::string cached_key_;
   mutable std::string cached_metadata_;
   Engine::Storage *stor_;
-  std::vector<rocksdb::ColumnFamilyHandle *> *cf_handles_;
 };
 
 class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {

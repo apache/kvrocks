@@ -36,12 +36,17 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
 
   auto db = stor_->GetDB();
   auto cf_handles = stor_->GetCFHandles();
-  if (!db || cf_handles_->size() < 2)  return false;
+  // storage close the would delete the column familiy handler and DB
+  if (!db || cf_handles.size() < 2)  return false;
 
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;
+    if (!stor_->IncrDBRefs().IsOK()) {  // the db is closing, don't use DB and cf_handles
+      return false;
+    }
     rocksdb::Status s = db->Get(rocksdb::ReadOptions(), cf_handles[1], metadata_key, &bytes);
+    stor_->DecrDBRefs();
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {
       cached_metadata_ = std::move(bytes);

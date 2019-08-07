@@ -1,3 +1,7 @@
+* Version 0.3.7(@2019-08-07)
+	- fix zrevrangebyscore,zrevrank,zrevrange,zpopmax would return incorrent result
+	- fix zrangebyscore,zrangebylex would return incorrent result
+
 * Version 0.3.6(@2019-08-02)
 	- fix return error when the protocol is invalid
 	- lock the key to prevent the data race in set command

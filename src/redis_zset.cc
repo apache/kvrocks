@@ -126,9 +126,14 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
-  for (min ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
-       iter->Valid() && iter->key().starts_with(prefix_key);
-       min ? iter->Next() : iter->Prev()) {
+  iter->Seek(start_key);
+  // see comment in rangebyscore()
+  if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+  for (;
+      iter->Valid() && iter->key().starts_with(prefix_key);
+      min ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key());
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
@@ -183,9 +188,14 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.fill_cache = false;
   rocksdb::WriteBatch batch;
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
-  for (!reversed? iter->Seek(start_key) : iter->SeekForPrev(start_key);
-       iter->Valid() && iter->key().starts_with(prefix_key);
-       !reversed? iter->Next() : iter->Prev()) {
+  iter->Seek(start_key);
+  // see comment in rangebyscore()
+  if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+  for (;
+      iter->Valid() && iter->key().starts_with(prefix_key);
+      !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key());
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
@@ -244,7 +254,14 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
   iter->Seek(start_key);
-  if (!iter->Valid() && spec.reversed) {
+  // when using reverse range, we should use the `SeekForPrev` to put the iter to the right position in those cases:
+  //    a. the key with the max score was the maximum key in DB and the iter would be invalid, try to seek the prev key
+  //    b. there's some key after the key with max score and the iter would be valid, but the current key may be:
+  //        b1. the prefix was the same with start key, don't skip it (the zset key has existed)
+  //        b2. the prefix was not the same with start key, try to seek the prev key
+  // Note: the DB key was composed by `NS|key|version|score|member`, so SeekForPrev(`NS|key|version|score`)
+  // may skip the current score if exists, so do SeekForPrev if prefix was not the same with start key
+  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
   for (;
@@ -254,7 +271,6 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     Slice score_key = ikey.GetSubKey();
     double score;
     GetDouble(&score_key, &score);
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.reversed) {
       if ((spec.minex && score == spec.min) || score < spec.min) break;
       if ((spec.maxex && score == spec.max) || score > spec.max) continue;
@@ -262,6 +278,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
       if ((spec.minex && score == spec.min) || score < spec.min) continue;
       if ((spec.maxex && score == spec.max) || score > spec.max) break;
     }
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string sub_key;
       InternalKey(ns_key, score_key, metadata.version).Encode(&sub_key);
@@ -318,9 +335,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
        iter->Next()) {
     InternalKey ikey(iter->key());
     Slice member = ikey.GetSubKey();
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.minex && member == spec.min) continue;  // the min score was exclusive
     if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string score_bytes = iter->value().ToString();
       score_bytes.append(member.ToString());
@@ -447,9 +464,14 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   int rank = 0;
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
-  for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
-       iter->Valid() && iter->key().starts_with(prefix_key);
-       !reversed ? iter->Next() : iter->Prev()) {
+  iter->Seek(start_key);
+  // see comment in rangebyscore()
+  if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+  for (;
+      iter->Valid() && iter->key().starts_with(prefix_key);
+      !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key());
     Slice score_key = ikey.GetSubKey();
     double score;

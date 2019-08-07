@@ -120,7 +120,7 @@ Status Storage::Open(bool read_only) {
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
-  subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(&db_, &cf_handles_);
+  subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;
   pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));

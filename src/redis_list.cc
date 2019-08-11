@@ -403,6 +403,7 @@ rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string 
 
 // Caution: trim the big list may block the server
 rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
+  uint32_t trim_cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -433,6 +434,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
     InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.head++;
+    trim_cnt++;
   }
   uint64_t right_index = metadata.head + stop + 1;
   for (uint64_t i = right_index; i < metadata.tail; i++) {
@@ -440,8 +442,13 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
     InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);
     metadata.tail--;
+    trim_cnt++;
   }
-  metadata.size = uint32_t(stop - start + 1);
+  if (metadata.size >= trim_cnt) {
+    metadata.size -= trim_cnt;
+  } else {
+    metadata.size = 0;
+  }
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);

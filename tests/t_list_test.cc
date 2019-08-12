@@ -104,7 +104,7 @@ TEST_F(RedisListTest, Trim) {
   int ret;
   list->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  list->Trim(key_, 1, -1);
+  list->Trim(key_, 1, 2000);
   uint32_t len;
   list->Size(key_, &len);
   EXPECT_EQ(fields_.size()-1, len);

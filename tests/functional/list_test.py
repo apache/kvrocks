@@ -132,6 +132,10 @@ def test_ltrim():
     elems = ["one", "two", "three"]
     ret = conn.rpush(key, *elems)
     assert(ret == len(elems))
+    ret = conn.ltrim(key, 0, 2000)
+    assert(ret)
+    ret = conn.llen(key)
+    assert(ret == len(elems))
     ret = conn.ltrim(key, 1, -1)
     assert(ret)
     ret = conn.lrange(key, 0, -1)

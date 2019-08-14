@@ -66,6 +66,7 @@ void FeedSlaveThread::checkLivenessIfNeed() {
 
 void FeedSlaveThread::loop() {
   uint32_t yield_milliseconds = 2000;
+  std::vector<std::string> batch_list;
   while (!IsStopped()) {
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
@@ -80,12 +81,19 @@ void FeedSlaveThread::loop() {
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
     auto data = batch.writeBatchPtr->Data();
-    const auto bulk_str = Redis::BulkString(data);
-    auto s = Util::SockSend(conn_->GetFD(), bulk_str);
-    if (!s.IsOK()) {
-      LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg();
-      Stop();
-      return;
+    batch_list.emplace_back(Redis::BulkString(data));
+    // feed the bulks data to slave in batch mode iff the lag was far from the master
+    auto latest_seq = srv_->storage_->LatestSeq();
+    if (latest_seq - batch.sequence <= 20 || batch_list.size() >= 20) {
+      for (const auto &bulk_str : batch_list) {
+        auto s = Util::SockSend(conn_->GetFD(), bulk_str);
+        if (!s.IsOK()) {
+          LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg();
+          Stop();
+          return;
+        }
+      }
+      batch_list.clear();
     }
     if (batch.sequence != next_repl_seq_) {
       LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";

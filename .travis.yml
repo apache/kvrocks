@@ -1,0 +1,54 @@
+dist: trusty
+language: c++
+os:
+  - linux
+sudo: yes
+compiler:
+  - gcc
+
+cache:
+   directories:
+     - $TRAVIS_BUILD_DIR/build/
+     - $TRAVIS_BUILD_DIR/external/
+stages:
+    - analysis
+    - build
+    - test
+    - push
+
+jobs:
+  include:
+    - stage: analysis
+      name: Static check the source code and lint 
+      install:
+        - sudo apt-get install -y cppcheck
+        - sudo pip install --upgrade pip 
+        - sudo pip install cpplint
+      script:
+        - sh cpplint.sh 
+        - sh cppcheck.sh 
+    - stage: build
+      name: Build the kvrocks 
+      script:
+        - make -j4
+    - stage: test 
+      name: Unit Tests 
+      install:
+        - sudo pip install nose
+        - sudo pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
+      script:
+        - make test
+    - stage: test 
+      name: Functional Tests
+      script:
+        - sh tests/scripts/setup-env.sh build
+        - cd tests/functional && nosetests -v
+    - stage: push
+      name: Push to dockerhub
+      services: 
+        - docker
+      before_install:  
+        - docker build -t hulkdev/kvrocks:$TRAVIS_TAG .
+      script: bash docker_push.sh
+      on: # push image when tag 
+        tag: true

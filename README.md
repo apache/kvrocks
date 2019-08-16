@@ -1,4 +1,4 @@
-# kvrocks
+# kvrocks![image](https://travis-ci.org/meitu/kvrocks.svg?branch=master)
 
 kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  To replace the function of Redis in some scenes, intention to decrease the cost of memory and increase the capability. The design of replication and storage was inspired by `rocksplicator` and  `blackwisdow`.
 
@@ -9,7 +9,7 @@ kvrocks has the following key features:
 -  Replication,   async replicate the binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
 
-## Build
+## Build and run
 
 #### requirements
 
@@ -21,6 +21,19 @@ $ git clone --recursive https://github.com/meitu/kvrocks.git
 $ cd kvrocks
 $ make -j4
 ```
+
+#### run
+
+```
+$ mkdir /data # default data dir is /data/kvrocks
+$ ./build/kvrocks -c kvrocks.conf
+```
+
+### Supported platforms
+
+* centos 6/7
+* ubuntu
+* macosx
 
 ## Try kvrocks using Docker
 
@@ -58,6 +71,39 @@ OK
 ```
 
 ## Performance
+
+#### Hardware
+
+* CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
+* Memory: 32 GiB
+* NET:  Intel Corporation I350 Gigabit Network Connection
+* DISK: 2TB NVMe SSD
+
+>  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
+
+ #### 1. Commands QPS
+
+> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
+
+latency: 99.9% < 10ms
+
+![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-commands.png)
+
+#### 2.  QPS on different payload
+
+> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns
+
+latency: 99.9% < 10ms
+
+![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-values.png)
+
+#### 3. QPS on different workers
+
+> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
+
+latency: 99.9% < 10ms
+
+![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-threads.png)
 
 ## License
 

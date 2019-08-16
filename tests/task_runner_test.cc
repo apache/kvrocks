@@ -42,7 +42,7 @@ TEST(TaskRunner, Run) {
     s = tr.Publish(t);
     ASSERT_TRUE(s.IsOK());
   }
-  usleep(1000);
+  sleep(1);
   ASSERT_EQ(100, counter);
   tr.Stop();
   tr.Join();

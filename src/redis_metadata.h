@@ -29,6 +29,11 @@ enum RedisCommand {
   kRedisCmdExpire,
 };
 
+const std::vector<std::string> RedisTypeNames = {
+    "none", "string", "hash",
+    "list", "set", "zset"
+};
+
 using rocksdb::Slice;
 
 struct KeyNumStats {
@@ -37,6 +42,9 @@ struct KeyNumStats {
   uint64_t n_expired = 0;
   uint64_t avg_ttl = 0;
 };
+
+// 52 bit for microseconds and 11 bit for counter
+const int VersionCounterBits = 11;
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key);
@@ -75,6 +83,7 @@ class Metadata {
 
   RedisType Type() const;
   virtual int32_t TTL() const;
+  virtual timeval Time() const;
   virtual bool Expired() const;
   virtual void Encode(std::string *dst);
   virtual rocksdb::Status Decode(const std::string &bytes);

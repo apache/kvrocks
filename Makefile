@@ -17,7 +17,7 @@ test:
 	@./$(BUILD_DIR)/unittest
 
 clean:
-	@cd $(BUILD_DIR) && make clean
+	@rm -rf $(BUILD_DIR)/*
 
 distclean:
 	@rm -rf $(BUILD_DIR)/*

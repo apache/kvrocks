@@ -1,12 +1,12 @@
-# kvrocks![image](https://travis-ci.org/meitu/kvrocks.svg?branch=master)
+# kvrocks  ![image](https://travis-ci.org/meitu/kvrocks.svg?branch=master)
 
-kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  To replace the function of Redis in some scenes, intention to decrease the cost of memory and increase the capability. The design of replication and storage was inspired by `rocksplicator` and  `blackwisdow`.
+kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwisdow`.
 
 kvrocks has the following key features:
 
--  Redis protocol, user can use redis client to visit kvrocks
--  Namespace,  similar to redis db but use token per namespace
--  Replication,   async replicate the binlog like MySQL
+- Redis protocol, user can use redis client to visit the kvrocks
+- Namespace, similar to redis db but use token per namespace
+- Replication, async replication using binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
 
 ## Build and run
@@ -47,7 +47,7 @@ $ redis-cli -a foobared -p 6666
 
 ##  Namspace
 
-namespace was used to isolate data between users. unlike the redis databases can be visited by `requirepass`, we use one token per namespace and `requirepass` was regraded as admin token. only admin token allows to add or del the namespace, as well as some commands like `config`, `slaveof`, `bgave`, etc… 
+namespace was used to isolate data between users. unlike all the redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` was regraded as admin token, only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgave`, etc… 
 
 ```
 # add token

@@ -18,6 +18,7 @@ class Database {
   rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   rocksdb::Status TTL(const Slice &user_key, int *ttl);
   rocksdb::Status Type(const Slice &user_key, RedisType *type);
+  rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   rocksdb::Status FlushAll();
   void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
   void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);

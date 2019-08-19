@@ -684,12 +684,32 @@ class CommandType : public Commander {
     RedisType type;
     rocksdb::Status s = redis.Type(args_[1], &type);
     if (s.ok()) {
-      std::vector<std::string> type_names = {"none", "string", "hash",
-                                             "list", "set",    "zset"};
-      *output = Redis::BulkString(type_names[type]);
+      *output = Redis::BulkString(RedisTypeNames[type]);
       return Status::OK();
     }
     return Status(Status::RedisExecErr, s.ToString());
+  }
+};
+
+class CommandObject : public Commander {
+ public:
+  CommandObject() : Commander("object", 3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (Util::ToLower(args_[1]) == "dump") {
+      Redis::Database redis(svr->storage_, conn->GetNamespace());
+      std::vector<std::string> infos;
+      rocksdb::Status s = redis.Dump(args_[2], &infos);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      output->append(Redis::MultiLen(infos.size()));
+      for (const auto info : infos) {
+        output->append(Redis::BulkString(info));
+      }
+    } else {
+      *output = Redis::Error("object subcommand must be dump");
+    }
+    return Status::OK();
   }
 };
 
@@ -3257,6 +3277,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"type",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandType);
+     }},
+    {"object",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandObject);
      }},
     {"exists",
      []() -> std::unique_ptr<Commander> {

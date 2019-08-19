@@ -1,4 +1,6 @@
 
+#include <ctime>
+
 #include "redis_db.h"
 
 #include "server.h"
@@ -249,6 +251,56 @@ rocksdb::Status Database::FlushAll() {
     db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
   }
   delete iter;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *infos) {
+  infos->clear();
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  std::string value;
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  Metadata metadata(kRedisNone);
+  metadata.Decode(value);
+
+  infos->emplace_back("namespace");
+  infos->emplace_back(namespace_);
+  infos->emplace_back("type");
+  infos->emplace_back(RedisTypeNames[metadata.Type()]);
+  infos->emplace_back("version");
+  infos->emplace_back(std::to_string(metadata.version));
+  infos->emplace_back("expire");
+  infos->emplace_back(std::to_string(metadata.expire));
+  infos->emplace_back("size");
+  infos->emplace_back(std::to_string(metadata.size));
+
+  infos->emplace_back("created_at");
+  struct timeval created_at = metadata.Time();
+  std::time_t tm = created_at.tv_sec;
+  char time_str[25];
+  if (!std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&tm))) {
+    return rocksdb::Status::TryAgain("Fail to format local time_str");
+  }
+  std::string created_at_str(time_str);
+  infos->emplace_back(created_at_str + "." + std::to_string(created_at.tv_usec));
+
+  if (metadata.Type() == kRedisList) {
+    ListMetadata metadata;
+    GetMetadata(kRedisList, ns_key, &metadata);
+    if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+    infos->emplace_back("head");
+    infos->emplace_back(std::to_string(metadata.head));
+    infos->emplace_back("tail");
+    infos->emplace_back(std::to_string(metadata.tail));
+  }
+
   return rocksdb::Status::OK();
 }
 

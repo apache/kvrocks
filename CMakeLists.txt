@@ -64,8 +64,15 @@ endif()
 add_dependencies(kvrocks jemalloc libevent gflags glog snappy rocksdb gtest)
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
+find_package(Threads REQUIRED)
+if(THREADS_HAVE_PTHREAD_ARG)
+    target_compile_options(kvrocks PUBLIC "-pthread")
+endif()
+if(CMAKE_THREAD_LIBS_INIT)
+    target_link_libraries(kvrocks PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
+endif()
 target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer)
-target_link_libraries(kvrocks ${EXTERNAL_LIBS} -pthread)
+target_link_libraries(kvrocks ${EXTERNAL_LIBS})
 target_sources(kvrocks PRIVATE
         src/redis_db.cc
         src/redis_db.h
@@ -134,7 +141,15 @@ endif()
 add_dependencies(kvrocks2redis libevent gflags glog rocksdb gtest)
 target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
-target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS} -pthread)
+
+find_package(Threads REQUIRED)
+if(THREADS_HAVE_PTHREAD_ARG)
+    target_compile_options(kvrocks2redis PUBLIC "-pthread")
+endif()
+if(CMAKE_THREAD_LIBS_INIT)
+    target_link_libraries(kvrocks2redis PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
+endif()
+target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS})
 target_sources(kvrocks2redis PRIVATE
         src/redis_db.cc
         src/redis_db.h

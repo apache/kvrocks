@@ -140,14 +140,12 @@ uint64_t Metadata::generateVersion() {
   gettimeofday(&now, nullptr);
   uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
   version += static_cast<uint64_t>(now.tv_usec);
-  // 52 bit for microseconds and 11 bit for counter
-  const int counter_bits = 11;
   // use random position for initial counter to avoid conflicts,
   // when the slave was promoted as master and the system clock may backoff
   srand(static_cast<unsigned>(now.tv_sec));
   static std::atomic<uint64_t> version_counter_ {static_cast<uint64_t>(std::rand())};
   uint64_t counter = version_counter_.fetch_add(1);
-  return (version << counter_bits) + (counter%(1 << counter_bits));
+  return (version << VersionCounterBits) + (counter%(1 << VersionCounterBits));
 }
 
 bool Metadata::operator==(const Metadata &that) const {
@@ -171,6 +169,12 @@ int32_t Metadata::TTL() const {
     return -2;
   }
   return expire == 0 ? -1 : int32_t (expire - now);
+}
+
+timeval Metadata::Time() const {
+  auto t = version >> VersionCounterBits;
+  struct timeval created_at{static_cast<uint32_t>(t / 1000000), static_cast<int32_t>(t % 1000000)};
+  return created_at;
 }
 
 bool Metadata::Expired() const {

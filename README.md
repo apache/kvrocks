@@ -1,6 +1,6 @@
 # kvrocks  ![image](https://travis-ci.org/meitu/kvrocks.svg?branch=master)
 
-kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwisdow`.
+kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
 kvrocks has the following key features:
 

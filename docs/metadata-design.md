@@ -1,6 +1,6 @@
 # Design Complex Structure On Rocksdb
 
-kvrocks use the rocksdb as storage, rocksdb was developed by facebook which built on LevelDB with many extra features supports, like column family, transaction, backup, etc... for more detail, you can see the rocksdb wiki: [Features Not In LevelDB](https://github.com/facebook/rocksdb/wiki/Features-Not-in-LevelDB). the basic operations are `Put(key, value)`, `Get(key)`, `Delete(key)`, other complex structures weren't supported. the main goal of this doc would explain how we built the Redis hash/list/set/zset/bitmap on rocksdb. most of the design was derived from Qihoo360 `Blackwidow`, but with little modified, like the bitmap design, it's really interesting part
+kvrocks use the rocksdb as storage, it's developed by facebook which built on LevelDB with many extra features supports, like column family, transaction, backup, see the rocksdb wiki: [Features Not In LevelDB](https://github.com/facebook/rocksdb/wiki/Features-Not-in-LevelDB). the basic operations in rocksdb are `Put(key, value)`, `Get(key)`, `Delete(key)`, other complex structures weren't supported. the main goal of this doc would explain how we built the Redis hash/list/set/zset/bitmap on rocksdb. most of the design was derived from Qihoo360 `Blackwidow`, but with little modified, like the bitmap design, it's really interesting part.
 
 ## String
 

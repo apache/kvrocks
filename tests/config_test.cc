@@ -4,6 +4,8 @@
 
 TEST(Namespace, Add) {
   Config config;
+  EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
+  config.requirepass = "foobared";
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for(int i = 0; i < namespaces.size(); i++) {
@@ -26,6 +28,7 @@ TEST(Namespace, Add) {
 
 TEST(Namespace, Set) {
   Config config;
+  config.requirepass = "foobared";
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   std::vector<std::string> new_tokens = {"nt1", "nt2'", "nt3", "nt4"};
@@ -54,6 +57,7 @@ TEST(Namespace, Set) {
 
 TEST(Namespace, Delete) {
   Config config;
+  config.requirepass = "foobared";
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for(int i = 0; i < namespaces.size(); i++) {

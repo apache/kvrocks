@@ -101,10 +101,13 @@ void Request::ExecuteCommands(Connection *conn) {
   std::string reply;
   for (auto &cmd_tokens : commands_) {
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
-    if (conn->GetNamespace().empty()
-        && Util::ToLower(cmd_tokens.front()) != "auth") {
-      conn->Reply(Redis::Error("NOAUTH Authentication required."));
-      continue;
+    if (conn->GetNamespace().empty()) {
+      if (!config->requirepass.empty() && Util::ToLower(cmd_tokens.front()) != "auth") {
+        conn->Reply(Redis::Error("NOAUTH Authentication required."));
+        continue;
+      }
+      conn->BecomeAdmin();
+      conn->SetNamespace(kDefaultNamespace);
     }
     auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_, conn->IsRepl());
     if (!s.IsOK()) {

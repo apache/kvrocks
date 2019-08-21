@@ -168,6 +168,7 @@
 | config       | √                |      |
 | dbsize       | √                |      |
 | namespace    | √                |      |
+| flushdb      | √                |      |
 
 **NOTE : The db size was updated async after execute `dbsize scan` command**
 

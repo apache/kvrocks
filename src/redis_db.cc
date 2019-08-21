@@ -333,13 +333,8 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
                                     const std::string &subkey_prefix,
                                     std::vector<std::string> *keys) {
   uint64_t cnt = 0;
-  if (type == kRedisString) {
-    return rocksdb::Status::InvalidArgument("redis_type string is not allowed");
-  }
-
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-
   Metadata metadata(type);
   rocksdb::Status s = GetMetadata(type, ns_key, &metadata);
   if (!s.ok()) return s;
@@ -349,7 +344,6 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options);
-
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
     InternalKey(ns_key, subkey_prefix, metadata.version).Encode(&match_prefix_key);
@@ -363,7 +357,6 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   } else {
     start_key = match_prefix_key;
   }
-
   for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
     if (!cursor.empty() && iter->key() == start_key) {
       // if cursor is not empty, then we need to skip start_key
@@ -377,7 +370,6 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
     keys->emplace_back(ikey.GetSubKey().ToString());
     cnt++;
   }
-
   delete iter;
   return rocksdb::Status::OK();
 }

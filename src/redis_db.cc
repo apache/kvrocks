@@ -237,7 +237,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::FlushAll() {
+rocksdb::Status Database::FlushDB() {
   std::string prefix;
   AppendNamespacePrefix("", &prefix);
   LatestSnapShot ss(db_);

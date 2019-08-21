@@ -118,12 +118,12 @@ class CommandKeys : public Commander {
   }
 };
 
-class CommandFlushAll : public Commander {
+class CommandFlushDB : public Commander {
  public:
-  CommandFlushAll() : Commander("flushall", 1, false) {}
+  CommandFlushDB() : Commander("flushdb", 1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.FlushAll();
+    rocksdb::Status s = redis.FlushDB();
     LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace()
               << " was flused, addr: " << conn->GetAddr();
     if (s.ok()) {
@@ -3229,9 +3229,9 @@ std::map<std::string, CommanderFactory> command_table = {
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandKeys);
      }},
-    {"flushall",
+    {"flushdb",
      []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandFlushAll);
+       return std::unique_ptr<Commander>(new CommandFlushDB);
      }},
     {"dbsize",
      []() -> std::unique_ptr<Commander> {

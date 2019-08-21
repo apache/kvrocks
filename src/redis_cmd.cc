@@ -3026,10 +3026,9 @@ class CommandHScan : public CommandSubkeyScanBase {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
     auto s = hash_db.Scan(key, cursor, limit, prefix, &fields);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-
     *output = GenerateOutput(fields);
     return Status::OK();
   }

@@ -20,6 +20,7 @@ class Database {
   rocksdb::Status Type(const Slice &user_key, RedisType *type);
   rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   rocksdb::Status FlushDB();
+  rocksdb::Status FlushAll();
   void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
   void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
   rocksdb::Status Scan(const std::string &cursor,

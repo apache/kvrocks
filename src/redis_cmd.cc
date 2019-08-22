@@ -141,6 +141,25 @@ class CommandFlushDB : public Commander {
   }
 };
 
+class CommandFlushAll : public Commander {
+ public:
+  CommandFlushAll() : Commander("flushall", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use flushall command");
+      return Status::OK();
+    }
+    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = redis.FlushAll();
+    LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
+    if (s.ok()) {
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
+    }
+    return Status(Status::RedisExecErr, s.ToString());
+  }
+};
+
 class CommandPing : public Commander {
  public:
   CommandPing() : Commander("ping", 1, false) {}
@@ -3238,6 +3257,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"flushdb",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandFlushDB);
+     }},
+    {"flushall",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandFlushAll);
      }},
     {"dbsize",
      []() -> std::unique_ptr<Commander> {

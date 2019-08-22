@@ -248,7 +248,11 @@ rocksdb::Status Database::FlushDB() {
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
-    db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
+    auto s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
+    if (!s.ok()) {
+      delete iter;
+      return s;
+    }
   }
   delete iter;
   return rocksdb::Status::OK();

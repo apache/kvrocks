@@ -289,3 +289,73 @@ def test_scan():
 
     ret = conn.delete(key)
     assert (ret == 1)
+
+
+def test_flushdb():
+    key = "test_flushdb"
+    key_zset = key + "_zset"
+    conn = get_redis_conn()
+    ret = conn.set(key, "bar")
+    assert ret
+    ret = conn.zadd(key_zset, 'a', 1.3)
+    assert (ret == 1)
+
+    ret = conn.flushdb()
+    assert ret
+
+    ret = conn.exists(key)
+    assert (ret == False)
+    ret = conn.exists(key_zset)
+    assert (ret == False)
+
+    ret = conn.set(key, "bar")
+    assert ret
+    ret = conn.get(key)
+    assert (ret == "bar")
+    ret = conn.zadd(key_zset, 'a', 1.3)
+    assert (ret == 1)
+    ret = conn.zscore(key_zset, 'a')
+    assert (ret == 1.3)
+
+    ret = conn.flushdb()
+    assert ret
+
+    ret = conn.exists(key)
+    assert (ret == False)
+    ret = conn.exists(key_zset)
+    assert (ret == False)
+
+
+def test_flushall():
+    key = "test_flushall"
+    key_zset = key + "_zset"
+    conn = get_redis_conn()
+    ret = conn.set(key, "bar")
+    assert (ret)
+    ret = conn.zadd(key_zset, 'a', 1.3)
+    assert (ret == 1)
+
+    ret = conn.flushall()
+    assert (ret)
+
+    ret = conn.exists(key)
+    assert (ret == False)
+    ret = conn.exists(key_zset)
+    assert (ret == False)
+
+    ret = conn.set(key, "bar")
+    assert ret
+    ret = conn.get(key)
+    assert (ret == "bar")
+    ret = conn.zadd(key_zset, 'a', 1.3)
+    assert (ret == 1)
+    ret = conn.zscore(key_zset, 'a')
+    assert (ret == 1.3)
+
+    ret = conn.flushdb()
+    assert ret
+
+    ret = conn.exists(key)
+    assert (ret == False)
+    ret = conn.exists(key_zset)
+    assert (ret == False)

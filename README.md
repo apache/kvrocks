@@ -70,6 +70,17 @@ OK
 OK
 ```
 
+## DOCs
+
+* [supported commands](https://github.com/meitu/kvrocks/blob/master/docs/support-commands.md)
+* [design complex kv on rocksdb](https://github.com/meitu/kvrocks/blob/master/docs/metadata-design.md)
+* [replication design](https://github.com/meitu/kvrocks/blob/master/docs/replication-design.md)
+
+## Migrate Tools
+
+* migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which developed by vipshop
+* migrate from kvrocks to redis. use `kvrocks2redis` in build dir
+
 ## Performance
 
 #### Hardware

@@ -41,6 +41,7 @@ class Storage {
   Status CreateBackup();
   Status DestroyBackup();
   Status RestoreFromBackup();
+  Status FlushAll();
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status WriteBatch(std::string &&raw_batch);

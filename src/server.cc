@@ -697,13 +697,13 @@ std::string Server::GetRocksDBStatsJson() {
  * Reclaim the old db ptr before restore the db from backup,
  * as restore db would delete the db and column families.
  */
-void Server::ReclaimOldDBPtr() {
+void Server::ReclaimOldDBPtr(uint32_t max_excuting_command_num) {
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
   LOG(INFO) << "Restarting the task runner...";
   task_runner_->Restart();
   LOG(INFO) << "Waiting for excuting command...";
-  while (excuting_command_num_ != 0) {
+  while (excuting_command_num_ != max_excuting_command_num) {
     usleep(200000);
   }
 }
@@ -874,4 +874,9 @@ void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {
       t->GetWorker()->SetReplicationRateLimit(max_rate_per_repl_worker);
     }
   }
+}
+
+Status Server::FlushAll() {
+  ReclaimOldDBPtr(1);
+  return storage_->FlushAll();
 }

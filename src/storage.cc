@@ -225,6 +225,20 @@ Status Storage::RestoreFromBackup() {
   return Status::OK();
 }
 
+Status Storage::FlushAll() {
+  auto options = db_->GetOptions();
+  CloseDB();
+  auto s = rocksdb::DestroyDB(config_->db_dir, options);
+  if (!s.ok()) {
+    return Status(Status::NotOK, "Failed to destroy db: " + s.ToString());
+  }
+  auto status = Open();
+  if (!status.IsOK()) {
+    return Status(Status::NotOK, "Failed to open storage: " + status.Msg());
+  }
+  return Status::OK();
+}
+
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);

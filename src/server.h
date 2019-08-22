@@ -95,7 +95,7 @@ class Server {
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
   std::string GetRocksDBStatsJson();
 
-  void ReclaimOldDBPtr();
+  void ReclaimOldDBPtr(uint32_t max_excuting_command_num = 0);
   Status AsyncCompactDB();
   Status AsyncBgsaveDB();
   Status AsyncScanDBSize(const std::string &ns);
@@ -117,6 +117,7 @@ class Server {
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
+  Status FlushAll();
 
   Stats stats_;
   Engine::Storage *storage_;

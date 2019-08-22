@@ -248,7 +248,43 @@ rocksdb::Status Database::FlushDB() {
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
-    db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
+    auto s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
+    if (!s.ok()) {
+      delete iter;
+      return s;
+    }
+  }
+  delete iter;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::FlushAll() {
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  iter->SeekToFirst();
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  auto first_key = iter->key().ToString();
+  iter->SeekToLast();
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  auto last_key = iter->key().ToString();
+  auto s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, first_key, last_key);
+  if (!s.ok()) {
+    delete iter;
+    return s;
+  }
+  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, last_key);
+  if (!s.ok()) {
+    delete iter;
+    return s;
   }
   delete iter;
   return rocksdb::Status::OK();

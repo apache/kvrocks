@@ -257,6 +257,10 @@ Status Config::Load(std::string path) {
   if (backup_dir.empty()) {  // backup-dir was not assigned in config file
     backup_dir = dir+"/backup";
   }
+  if (!tokens.empty() && requirepass.empty()) {
+    file.close();
+    return Status(Status::NotOK, "requirepass was required when namespace isn't empty");
+  }
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
   if (!s.ok()) {
     file.close();
@@ -267,11 +271,6 @@ Status Config::Load(std::string path) {
     file.close();
     return Status(Status::NotOK, s.ToString());
   }
-  if (requirepass.empty()) {
-    file.close();
-    return Status(Status::NotOK, "requirepass cannot be empty");
-  }
-  tokens[requirepass] = kDefaultNamespace;
   file.close();
   return Status::OK();
 }
@@ -423,13 +422,10 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return Status::OK();
   }
   if (key == "requirepass") {
-    if (value.empty()) {
-      return Status(Status::NotOK, "requirepass cannot be empty");
+    if (requirepass.empty() && !tokens.empty()) {
+      return Status(Status::NotOK, "don't clear the requirepass while the namespace wasn't empty");
     }
-    tokens.erase(requirepass);
     requirepass = value;
-    tokens[requirepass] = kDefaultNamespace;
-    LOG(WARNING) << "Updated requirepass,  new requirepass: " << value;
     return Status::OK();
   }
   if (key == "slave-read-only") {
@@ -567,7 +563,6 @@ Status Config::Rewrite() {
 
   string_stream << "\n################################ Namespace #####################################\n";
   for (const auto &iter : tokens) {
-    if (iter.second == kDefaultNamespace) continue;
     WRITE_TO_FILE("namespace."+iter.second, iter.first);
   }
   output_file.write(string_stream.str().c_str(), string_stream.str().size());
@@ -604,6 +599,9 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
 }
 
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
+  if (requirepass.empty()) {
+    return Status(Status::NotOK, "forbid to add new namespace while the requirepass is empty");
+  }
   if (ns.size() > 255) {
     return Status(Status::NotOK, "the namespace size exceed limit " + std::to_string(INT8_MAX));
   }

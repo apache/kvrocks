@@ -169,6 +169,7 @@
 | dbsize       | √                |      |
 | namespace    | √                |      |
 | flushdb      | √                |      |
+| flushall     | √                |      |
 
 **NOTE : The db size was updated async after execute `dbsize scan` command**
 

@@ -1,2 +1,8 @@
 * Version 1.0.0(@2019-08-15)
 	- init version for open source
+
+* Version 1.0.1(@2019-08-23)
+	- ADD: supports flushall/object command
+	- MOD: update rocksdb to latest release(v6.2.2)
+	- FIX: incorrect command name, flushall => flushdb
+	- FIX: hscan return not found when key not exists

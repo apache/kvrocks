@@ -524,7 +524,6 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("repl-workers", repl_workers);
   WRITE_TO_FILE("loglevel", kLogLevels[loglevel]);
   WRITE_TO_FILE("daemonize", (daemonize?"yes":"no"));
-  WRITE_TO_FILE("requirepass", requirepass);
   WRITE_TO_FILE("db-name", db_name);
   WRITE_TO_FILE("dir", dir);
   WRITE_TO_FILE("backup-dir", backup_dir);
@@ -538,6 +537,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("max-db-size", max_db_size);
   WRITE_TO_FILE("max-replication-mb", max_replication_mb);
   WRITE_TO_FILE("max-io-mb", max_io_mb);
+  if (!requirepass.empty()) WRITE_TO_FILE("requirepass", requirepass);
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());

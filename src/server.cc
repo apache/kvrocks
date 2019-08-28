@@ -14,6 +14,53 @@
 #include "redis_request.h"
 #include "redis_connection.h"
 
+size_t PerfLog::Len() {
+  mu_.lock();
+  size_t len = entries_.size();
+  mu_.unlock();
+  return len;
+}
+
+void PerfLog::Reset() {
+  mu_.lock();
+  entries_.clear();
+  mu_.unlock();
+}
+
+void PerfLog::PushEntry(PerfEntry entry) {
+  mu_.lock();
+  entry.id = id_++;
+  while (entries_.size() >= static_cast<size_t>(max_entries_)) {
+    entries_.pop_back();
+  }
+  entries_.push_front(std::move(entry));
+  mu_.unlock();
+}
+
+std::string PerfLog::ToString(int count) {
+  int n;
+  std::string output;
+
+  mu_.lock();
+  if (count > 0) {
+    n = entries_.size() > static_cast<size_t>(count) ? count : static_cast<int>(entries_.size());
+  } else {
+    n = static_cast<int>(entries_.size());
+  }
+  output.append(Redis::MultiLen(n));
+  for (const auto &entry : entries_) {
+    output.append(Redis::MultiLen(5));
+    output.append(Redis::Integer(entry.id));
+    output.append(Redis::BulkString(entry.cmd_name));
+    output.append(Redis::Integer(entry.duration));
+    output.append(Redis::BulkString(entry.perf_context));
+    output.append(Redis::BulkString(entry.iostats_context));
+    if (--n == 0) break;
+  }
+  mu_.unlock();
+  return output;
+}
+
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
@@ -35,6 +82,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
     repl_worker->SetReplicationRateLimit(max_replication_bytes);
     worker_threads_.emplace_back(new WorkerThread(repl_worker));
   }
+  perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
   task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
 }

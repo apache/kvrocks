@@ -218,6 +218,29 @@ Status Config::parseConfigFromString(std::string input) {
     if (!s.IsOK()) {
       return Status(Status::NotOK, "bgsave-cron time expression format error : " + s.Msg());
     }
+  } else if (size == 2 && args[0] == "profiling-sample-ratio") {
+    profiling_sample_ratio = std::stoi(args[1]);
+    if (profiling_sample_ratio < 0 || profiling_sample_ratio > 100) {
+      return Status(Status::NotOK, "profiling_sample_ratio value should between 0 and 100");
+    }
+  } else if (size == 2 && args[0] == "profiling-sample-record-max-len") {
+    profiling_sample_record_max_len = std::stoi(args[1]);
+  } else if (size == 2 && args[0] == "profiling-sample-record-threshold-ms") {
+    profiling_sample_record_threshold_ms = std::stoi(args[1]);
+  } else if (size == 2 && args[0] == "profiling-sample-commands") {
+    std::vector<std::string> cmds;
+    Util::Split(args[1], ",", &cmds);
+    for (auto const &cmd : cmds) {
+      if (cmd == "*") {
+        profiling_sample_all_commands = true;
+        profiling_sample_commands.clear();
+        break;
+      }
+      if (!Redis::IsCommandExists(cmd)) {
+        return Status(Status::NotOK, "invalid command: "+cmd+" in profiling-sample-commands");
+      }
+      profiling_sample_commands.insert(cmd);
+    }
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
@@ -230,6 +253,7 @@ Status Config::parseConfigFromString(std::string input) {
     slowlog_log_slower_than = std::stoll(args[1]);
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
     slowlog_max_len = std::stoi(args[1]);
+
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -297,6 +321,16 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
     binds_str.append(",");
   }
   binds_str.pop_back();
+  std::string profiling_sample_commands_str;
+  if (profiling_sample_all_commands) {
+    profiling_sample_commands_str = "*";
+  } else {
+    for (const auto &cmd : profiling_sample_commands) {
+      profiling_sample_commands_str.append(cmd);
+      profiling_sample_commands_str.append(",");
+    }
+    profiling_sample_commands_str.pop_back();
+  }
   PUSH_IF_MATCH("dir", dir);
   PUSH_IF_MATCH("db-dir", db_dir);
   PUSH_IF_MATCH("backup-dir", backup_dir);
@@ -323,6 +357,10 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("max-db-size", std::to_string(max_db_size));
   PUSH_IF_MATCH("slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH("max-replication-mb", std::to_string(max_replication_mb));
+  PUSH_IF_MATCH("profiling-sample-commands", profiling_sample_commands_str);
+  PUSH_IF_MATCH("profiling-sample-ratio", std::to_string(profiling_sample_ratio));
+  PUSH_IF_MATCH("profiling-sample-record-max-len", std::to_string(profiling_sample_record_max_len));
+  PUSH_IF_MATCH("profiling-sample-record-threshold-ms", std::to_string(profiling_sample_record_threshold_ms));
   PUSH_IF_MATCH("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   PUSH_IF_MATCH("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
   PUSH_IF_MATCH("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
@@ -495,6 +533,48 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     svr->storage_->SetIORateLimit(static_cast<uint64_t>(i));
     return Status::OK();
   }
+  if (key == "profiling-sample-ratio") {
+    int64_t i;
+    auto s = Util::StringToNum(value, &i, 0, 100);
+    if (!s.IsOK()) return s;
+    profiling_sample_ratio = static_cast<int>(i);
+    return Status::OK();
+  }
+  if (key == "profiling-sample-record-threshold-ms") {
+    int64_t i;
+    auto s = Util::StringToNum(value, &i, 0, INT_MAX);
+    if (!s.IsOK()) return s;
+    profiling_sample_record_threshold_ms = static_cast<int>(i);
+    return Status::OK();
+  }
+  if (key == "profiling-sample-record-max-len") {
+    int64_t i;
+    auto s = Util::StringToNum(value, &i, 0, INT_MAX);
+    if (!s.IsOK()) return s;
+    profiling_sample_record_max_len = static_cast<int>(i);
+    svr->GetPerLog()->SetMaxEntries(profiling_sample_record_max_len);
+    return Status::OK();
+  }
+  if (key == "profiling-sample-commands") {
+    std::vector<std::string> cmds;
+    Util::Split(value, ",", &cmds);
+    for (auto const &cmd : cmds) {
+      if (!Redis::IsCommandExists(cmd) && cmd != "*") {
+        return Status(Status::NotOK, "invalid command: "+cmd+" in profiling-sample-commands");
+      }
+    }
+    profiling_sample_all_commands = false;
+    profiling_sample_commands.clear();
+    for (auto const &cmd : cmds) {
+      if (cmd == "*") {
+        profiling_sample_all_commands = true;
+        profiling_sample_commands.clear();
+        break;
+      }
+      profiling_sample_commands.insert(cmd);
+    }
+    return Status::OK();
+  }
   if (!strncasecmp(key.c_str(), "rocksdb.", 8)) {
     return setRocksdbOption(svr->storage_, key.substr(8, key.size()-8), value);
   }
@@ -511,9 +591,18 @@ Status Config::Rewrite() {
   string_stream << (key) << " " << (value) <<  "\n"; \
 } while (0)
 
-  std::string binds_str, repl_binds_str;
+  std::string binds_str, repl_binds_str, sample_commands_str;
   array2String(binds, ",", &binds_str);
   array2String(repl_binds, ",", &repl_binds_str);
+  if (profiling_sample_all_commands) {
+    sample_commands_str = "*";
+  } else {
+    for (const auto &cmd : profiling_sample_commands) {
+      sample_commands_str.append(cmd);
+      sample_commands_str.append(",");
+    }
+    sample_commands_str.pop_back();
+  }
   string_stream << "################################ GERNERAL #####################################\n";
   WRITE_TO_FILE("bind", binds_str);
   WRITE_TO_FILE("port", port);
@@ -542,6 +631,10 @@ Status Config::Rewrite() {
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
   if (compact_cron.IsEnabled()) WRITE_TO_FILE("compact-cron", compact_cron.ToString());
   if (bgsave_cron.IsEnabled()) WRITE_TO_FILE("bgave-cron", bgsave_cron.ToString());
+  WRITE_TO_FILE("profiling-sample-ratio", profiling_sample_ratio);
+  if (!sample_commands_str.empty()) WRITE_TO_FILE("profiling-sample-commands", sample_commands_str);
+  WRITE_TO_FILE("profiling-sample-record-max-len", profiling_sample_record_max_len);
+  WRITE_TO_FILE("profiling-sample-record-threshold-ms", profiling_sample_record_threshold_ms);
 
   string_stream << "\n################################ ROCKSDB #####################################\n";
   WRITE_TO_FILE("rocksdb.max_open_files", rocksdb_options.max_open_files);
@@ -568,7 +661,7 @@ Status Config::Rewrite() {
   output_file.write(string_stream.str().c_str(), string_stream.str().size());
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
-    return Status(Status::NotOK, std::string("unable to rename, err: ")+strerror(errno));
+    return Status(Status::NotOK, std::string("unable to rename config file, err: ")+strerror(errno));
   }
   return Status::OK();
 }

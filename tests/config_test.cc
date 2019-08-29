@@ -40,13 +40,13 @@ TEST(Config, ProfilingMaxRecordLen) {
   Config config;
   config.profiling_sample_record_max_len = 1;
   Server srv(nullptr, &config);
-  srv.GetPerLog()->PushEntry(PerfEntry{});
-  srv.GetPerLog()->PushEntry(PerfEntry{});
-  EXPECT_EQ(srv.GetPerLog()->Len(), 1);
+  srv.GetPerfLog()->PushEntry(PerfEntry{});
+  srv.GetPerfLog()->PushEntry(PerfEntry{});
+  EXPECT_EQ(srv.GetPerfLog()->Len(), 1);
   config.Set("profiling-sample-record-max-len", "2", &srv);
-  srv.GetPerLog()->PushEntry(PerfEntry{});
-  srv.GetPerLog()->PushEntry(PerfEntry{});
-  EXPECT_EQ(srv.GetPerLog()->Len(), 2);
+  srv.GetPerfLog()->PushEntry(PerfEntry{});
+  srv.GetPerfLog()->PushEntry(PerfEntry{});
+  EXPECT_EQ(srv.GetPerfLog()->Len(), 2);
 }
 
 TEST(Namespace, Add) {

@@ -2750,7 +2750,7 @@ class CommandPerfLog : public Commander {
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    auto perf_log = srv->GetPerLog();
+    auto perf_log = srv->GetPerfLog();
     if (subcommand_ == "len") {
       *output = Redis::Integer(perf_log->Len());
     } else if (subcommand_ == "reset") {

@@ -2734,6 +2734,39 @@ class CommandPSync : public Commander {
   }
 };
 
+class CommandPerfLog : public Commander {
+ public:
+  CommandPerfLog() : Commander("perflog", -2, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
+      return Status(Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
+    }
+    if (subcommand_ == "get" && args.size() >= 3) {
+      cnt = std::stoi(args[3]);
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    auto perf_log = srv->GetPerLog();
+    if (subcommand_ == "len") {
+      *output = Redis::Integer(perf_log->Len());
+    } else if (subcommand_ == "reset") {
+      perf_log->Reset();
+      *output = Redis::SimpleString("OK");
+    } else if (subcommand_ == "get") {
+      *output = perf_log->ToString(cnt);
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
+  int cnt = 0;
+};
+
 class CommandSlowlog : public Commander {
  public:
   CommandSlowlog() : Commander("slowlog", -2, false) {}
@@ -3246,6 +3279,10 @@ std::map<std::string, CommanderFactory> command_table = {
     {"slowlog",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSlowlog);
+     }},
+    {"perflog",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandPerfLog);
      }},
     {"client",
      []()->std::unique_ptr<Commander> {
@@ -3765,6 +3802,10 @@ Status LookupCommand(const std::string &cmd_name,
     *cmd = cmd_factory->second();
   }
   return Status::OK();
+}
+
+bool IsCommandExists(const std::string &cmd) {
+  return command_table.find(cmd) != command_table.end();
 }
 
 void GetCommandList(std::vector<std::string> *cmds) {

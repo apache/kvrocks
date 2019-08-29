@@ -1,6 +1,53 @@
 #include "config.h"
+#include "server.h"
+#include <map>
 #include <vector>
 #include <gtest/gtest.h>
+
+TEST(Config, Profiling) {
+  const char *path = "test.conf";
+  Config config;
+  Server srv(nullptr, &config);
+
+  config.Load(path);
+  std::map<std::string, std::string> cases = {
+      {"profiling-sample-ratio" , "50"},
+      {"profiling-sample-record-max-len" , "1"},
+      {"profiling-sample-record-threshold-ms" , "50"},
+      {"profiling-sample-commands" , "get,set"},
+  };
+  std::vector<std::string> values;
+  for (const auto &iter : cases) {
+    config.Set(iter.first, iter.second, &srv);
+    config.Get(iter.first, &values);
+    ASSERT_EQ(values.size(), 2);
+    EXPECT_EQ(values[0], iter.first);
+    EXPECT_EQ(values[1], iter.second);
+  }
+  ASSERT_TRUE(config.Rewrite().IsOK());
+  config.Load(path);
+  for (const auto &iter : cases) {
+    config.Set(iter.first, iter.second, &srv);
+    config.Get(iter.first, &values);
+    ASSERT_EQ(values.size(), 2);
+    EXPECT_EQ(values[0], iter.first);
+    EXPECT_EQ(values[1], iter.second);
+  }
+  unlink(path);
+}
+
+TEST(Config, ProfilingMaxRecordLen) {
+  Config config;
+  config.profiling_sample_record_max_len = 1;
+  Server srv(nullptr, &config);
+  srv.GetPerLog()->PushEntry(PerfEntry{});
+  srv.GetPerLog()->PushEntry(PerfEntry{});
+  EXPECT_EQ(srv.GetPerLog()->Len(), 1);
+  config.Set("profiling-sample-record-max-len", "2", &srv);
+  srv.GetPerLog()->PushEntry(PerfEntry{});
+  srv.GetPerLog()->PushEntry(PerfEntry{});
+  EXPECT_EQ(srv.GetPerLog()->Len(), 2);
+}
 
 TEST(Namespace, Add) {
   Config config;

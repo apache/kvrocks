@@ -118,7 +118,7 @@
 | Command   | Supported OR Not | Desc                 |
 | --------- | ---------------- | -------------------- |
 | del       | √                |                      |
-| dump      | √                |                      |
+| dump      | X                |                      |
 | exists    | √                |                      |
 | expire    | √                |                      |
 | expireat  | √                |                      |

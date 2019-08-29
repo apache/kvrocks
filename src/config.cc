@@ -548,7 +548,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     auto s = Util::StringToNum(value, &i, 0, INT_MAX);
     if (!s.IsOK()) return s;
     profiling_sample_record_max_len = static_cast<int>(i);
-    svr->GetPerLog()->SetMaxEntries(profiling_sample_record_max_len);
+    svr->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
     return Status::OK();
   }
   if (key == "profiling-sample-commands") {

@@ -316,20 +316,16 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
     master_str = master_host+" "+ std::to_string(master_port);
   }
   std::string binds_str;
-  for (const auto &bind : binds) {
-    binds_str.append(bind);
-    binds_str.append(",");
-  }
-  binds_str.pop_back();
-  std::string profiling_sample_commands_str;
+  array2String(binds, ",", &binds_str);
+  std::string sample_commands_str;
   if (profiling_sample_all_commands) {
-    profiling_sample_commands_str = "*";
+    sample_commands_str = "*";
   } else {
     for (const auto &cmd : profiling_sample_commands) {
-      profiling_sample_commands_str.append(cmd);
-      profiling_sample_commands_str.append(",");
+      sample_commands_str.append(cmd);
+      sample_commands_str.append(",");
     }
-    profiling_sample_commands_str.pop_back();
+    if (!sample_commands_str.empty()) sample_commands_str.pop_back();
   }
   PUSH_IF_MATCH("dir", dir);
   PUSH_IF_MATCH("db-dir", db_dir);
@@ -357,7 +353,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("max-db-size", std::to_string(max_db_size));
   PUSH_IF_MATCH("slowlog-max-len", std::to_string(slowlog_max_len));
   PUSH_IF_MATCH("max-replication-mb", std::to_string(max_replication_mb));
-  PUSH_IF_MATCH("profiling-sample-commands", profiling_sample_commands_str);
+  PUSH_IF_MATCH("profiling-sample-commands", sample_commands_str);
   PUSH_IF_MATCH("profiling-sample-ratio", std::to_string(profiling_sample_ratio));
   PUSH_IF_MATCH("profiling-sample-record-max-len", std::to_string(profiling_sample_record_max_len));
   PUSH_IF_MATCH("profiling-sample-record-threshold-ms", std::to_string(profiling_sample_record_threshold_ms));
@@ -601,7 +597,7 @@ Status Config::Rewrite() {
       sample_commands_str.append(cmd);
       sample_commands_str.append(",");
     }
-    sample_commands_str.pop_back();
+    if (!sample_commands_str.empty()) sample_commands_str.pop_back();
   }
   string_stream << "################################ GERNERAL #####################################\n";
   WRITE_TO_FILE("bind", binds_str);

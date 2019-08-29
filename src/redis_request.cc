@@ -114,7 +114,7 @@ bool Request::turnOnProfilingIfNeed(const std::string &cmd) {
   return false;
 }
 
-void Request::recordProfilingIfNeed(const std::string &cmd, uint64_t duration) {
+void Request::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
   int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
   if (threshold > 0 && static_cast<int>(duration/1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
@@ -124,7 +124,7 @@ void Request::recordProfilingIfNeed(const std::string &cmd, uint64_t duration) {
   std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
   if (perf_context.empty()) return;  // request without db operation
-  svr_->GetPerLog()->PushEntry({cmd, std::move(perf_context),
+  svr_->GetPerfLog()->PushEntry({cmd, std::move(perf_context),
                                 std::move(iostats_context), duration, 0});
 }
 
@@ -178,7 +178,7 @@ void Request::ExecuteCommands(Connection *conn) {
     svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    if (is_profiling) recordProfilingIfNeed(conn->current_cmd_->Name(), duration);
+    if (is_profiling) recordProfilingSampleIfNeed(conn->current_cmd_->Name(), duration);
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
     svr_->FeedMonitorConns(conn, cmd_tokens);

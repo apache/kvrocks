@@ -142,7 +142,7 @@ class Server {
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
-  PerfLog *GetPerLog() { return &perf_log_; }
+  PerfLog *GetPerfLog() { return &perf_log_; }
 
   Stats stats_;
   Engine::Storage *storage_;

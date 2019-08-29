@@ -37,6 +37,8 @@ class Request {
 
   Server *svr_;
   bool inCommandWhitelist(const std::string &command);
+  bool turnOnProfilingIfNeed(const std::string &cmd);
+  void recordProfilingIfNeed(const std::string &cmd, uint64_t duration);
 };
 
 }  // namespace Redis

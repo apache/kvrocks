@@ -35,6 +35,30 @@ struct SlowLog {
   std::mutex mu;
 };
 
+struct PerfEntry {
+ public:
+  std::string cmd_name;
+  std::string perf_context;
+  std::string iostats_context;
+  uint64_t duration;
+  uint64_t id;
+};
+
+struct PerfLog {
+ public:
+  size_t Len();
+  void Reset();
+  void PushEntry(PerfEntry entry);
+  std::string ToString(int count);
+  void SetMaxEntries(int max_entries) { max_entries_ = max_entries; }
+
+ private:
+  int max_entries_ = 128;
+  std::list<PerfEntry> entries_;
+  uint64_t id_ = 0;
+  std::mutex mu_;
+};
+
 struct ConnContext {
   Worker *owner;
   int fd;
@@ -118,6 +142,8 @@ class Server {
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
+  PerfLog *GetPerLog() { return &perf_log_; }
+
   Stats stats_;
   Engine::Storage *storage_;
 
@@ -151,6 +177,7 @@ class Server {
   std::map<std::string, DBScanInfo> db_scan_infos_;
 
   SlowLog slowlog_;
+  PerfLog perf_log_;
   std::map<ConnContext *, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
   std::map<std::string, std::list<ConnContext *>> pubsub_patterns_;

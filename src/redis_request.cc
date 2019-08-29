@@ -121,9 +121,9 @@ void Request::recordProfilingIfNeed(const std::string &cmd, uint64_t duration) {
     return;
   }
   std::string perf_context = rocksdb::get_perf_context()->ToString(true);
-  if (perf_context.empty()) return;  // request without db operation
   std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+  if (perf_context.empty()) return;  // request without db operation
   svr_->GetPerLog()->PushEntry({cmd, std::move(perf_context),
                                 std::move(iostats_context), duration, 0});
 }

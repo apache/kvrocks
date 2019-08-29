@@ -1,4 +1,7 @@
 #include <glog/logging.h>
+#include <rocksdb/perf_context.h>
+#include <rocksdb/iostats_context.h>
+
 #include <chrono>
 #include <utility>
 
@@ -94,6 +97,37 @@ bool Request::inCommandWhitelist(const std::string &command) {
   return false;
 }
 
+bool Request::turnOnProfilingIfNeed(const std::string &cmd) {
+  auto config = svr_->GetConfig();
+  if (config->profiling_sample_ratio == 0) return false;
+  if (!config->profiling_sample_all_commands &&
+      config->profiling_sample_commands.find(cmd) == config->profiling_sample_commands.end()) {
+    return false;
+  }
+  if (config->profiling_sample_ratio == 100 ||
+      std::rand() % 100 <= config->profiling_sample_ratio) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+    rocksdb::get_perf_context()->Reset();
+    rocksdb::get_iostats_context()->Reset();
+    return true;
+  }
+  return false;
+}
+
+void Request::recordProfilingIfNeed(const std::string &cmd, uint64_t duration) {
+  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
+  if (threshold > 0 && static_cast<int>(duration/1000) < threshold) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+    return;
+  }
+  std::string perf_context = rocksdb::get_perf_context()->ToString(true);
+  std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+  if (perf_context.empty()) return;  // request without db operation
+  svr_->GetPerLog()->PushEntry({cmd, std::move(perf_context),
+                                std::move(iostats_context), duration, 0});
+}
+
 void Request::ExecuteCommands(Connection *conn) {
   if (commands_.empty()) return;
 
@@ -136,15 +170,16 @@ void Request::ExecuteCommands(Connection *conn) {
       continue;
     }
     conn->SetLastCmd(conn->current_cmd_->Name());
-
     svr_->stats_.IncrCalls(conn->current_cmd_->Name());
     auto start = std::chrono::high_resolution_clock::now();
+    bool is_profiling = turnOnProfilingIfNeed(conn->current_cmd_->Name());
     svr_->IncrExecutingCommandNum();
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
     svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), static_cast<uint64_t>(duration));
+    if (is_profiling) recordProfilingIfNeed(conn->current_cmd_->Name(), duration);
+    svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
     svr_->FeedMonitorConns(conn, cmd_tokens);
     if (!s.IsOK()) {

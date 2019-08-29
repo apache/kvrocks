@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <set>
 
 #include "status.h"
 #include "cron.h"
@@ -57,6 +58,13 @@ struct Config{
   Cron compact_cron;
   Cron bgsave_cron;
   std::map<std::string, std::string> tokens;
+
+  // profiling
+  int profiling_sample_ratio = 0;
+  int profiling_sample_record_threshold_ms = 0;
+  int profiling_sample_record_max_len = 256;
+  std::set<std::string> profiling_sample_commands;
+  bool profiling_sample_all_commands = false;
 
   struct {
     size_t metadata_block_cache_size = 4 * GiB;

@@ -1,19 +1,30 @@
 image: centos7-for-kvrocks
 # image: centos6-for-kvrocks
 stages:
+    - fetch_code
     - analysis
     - build
     - test
     - pkg
     - release
 
+fetch_code:
+    tags:
+        - dev
+    stage: fetch_code
+    script:
+        - git submodule init && git submodule update --remote
+
 code_analysis:
     tags:
         - dev
     stage: analysis
     script:
+        - cd kvrocks
         - sh cpplint.sh
         - sh cppcheck.sh
+    dependencies:
+        - fetch_code
 
 build:
     stage: build
@@ -21,13 +32,15 @@ build:
         - dev
     script:
         - rm -rf /cache/unittest
+        - cd kvrocks
         - git submodule init && git submodule update
-        - mkdir build/
+        - mkdir -p build/
         - cd build && cmake -DCMAKE_BUILD_DIRECTORY=/cache/build -DCMAKE_BUILD_TYPE=Release .. && make -j4 && cd ..
-        - mkdir -p _build/bin && cp build/kvrocks _build/bin
-        - mkdir -p _build/conf && cp kvrocks.conf _build/conf
         - cp build/unittest /cache # reuse unittest in test stage
         - cp build/kvrocks /cache # reuse kvrocks in test stage
+        - cd $CI_PROJECT_DIR
+        - mkdir -p _build/bin && cp kvrocks/build/kvrocks _build/bin
+        - mkdir -p _build/conf && cp kvrocks/kvrocks.conf _build/conf
     artifacts:
         name: "kvrocks-${CI_PIPELINE_ID}-build"
         paths:
@@ -55,7 +68,9 @@ function-test:
 
     script:
         - pip install nose && pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
+        - yum install -y nc
         - mkdir /data
+        - cd kvrocks
         - sh tests/scripts/setup-env.sh /cache
         - cd tests/functional && nosetests -v
 

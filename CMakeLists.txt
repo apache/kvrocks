@@ -116,6 +116,8 @@ target_sources(kvrocks PRIVATE
         src/redis_bitmap.h
         src/redis_pubsub.cc
         src/redis_pubsub.h
+        src/redis_sortint.cc
+        src/redis_sortint.h
         src/lock_manager.cc
         src/rocksdb_crc32c.h
         src/config.cc
@@ -193,6 +195,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_bitmap.h
         src/redis_pubsub.cc
         src/redis_pubsub.h
+        src/redis_sortint.cc
+        src/redis_sortint.h
         src/replication.cc
         src/replication.h
         src/lock_manager.cc
@@ -251,6 +255,8 @@ add_executable(unittest
         src/redis_list.cc
         src/redis_set.cc
         src/redis_zset.cc
+        src/redis_sortint.cc
+        src/redis_sortint.h
         src/util.cc
         src/storage.cc
         src/lock_manager.cc

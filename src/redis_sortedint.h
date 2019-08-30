@@ -8,9 +8,9 @@
 
 namespace Redis {
 
-class Sortint : public Database {
+class Sortedint : public Database {
  public:
-  explicit Sortint(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  explicit Sortedint(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
   rocksdb::Status Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
@@ -22,7 +22,7 @@ class Sortint : public Database {
                         std::vector<uint64_t> *ids);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, SortintMetadata *metadata);
+  rocksdb::Status GetMetadata(const Slice &ns_key, SortedintMetadata *metadata);
 };
 
 }  // namespace Redis

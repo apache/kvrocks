@@ -1,6 +1,6 @@
 # Design Complex Structure On Rocksdb
 
-kvrocks use the rocksdb as storage, it's developed by facebook which built on LevelDB with many extra features supports, like column family, transaction, backup, see the rocksdb wiki: [Features Not In LevelDB](https://github.com/facebook/rocksdb/wiki/Features-Not-in-LevelDB). the basic operations in rocksdb are `Put(key, value)`, `Get(key)`, `Delete(key)`, other complex structures weren't supported. the main goal of this doc would explain how we built the Redis hash/list/set/zset/bitmap on rocksdb. most of the design was derived from Qihoo360 `Blackwidow`, but with little modified, like the bitmap design, it's really interesting part.
+kvrocks use the rocksdb as storage, it's developed by facebook which built on LevelDB with many extra features supports, like column family, transaction, backup, see the rocksdb wiki: [Features Not In LevelDB](https://github.com/facebook/rocksdb/wiki/Features-Not-in-LevelDB). the basic operations in rocksdb are `Put(key, value)`, `Get(key)`, `Delete(key)`, other complex structures weren't supported. the main goal of this doc would explain how we built the Redis hash/list/set/zset/bitmap on rocksdb. most of the design was derived from Qihoo360 `Blackwidow`, but with little modified, like the bitmap design, it's a really interesting part.
 
 ## String
 
@@ -35,7 +35,7 @@ key =>  |  flags   |  expire    |  version  |  size     |
 the value of key we call it metadata here, it stored the metadata of hash key includes:
 
 - `flags` like the string, the field was used to tell which type of this key
-- `expire ` is same with string type, record the expire time
+- `expire ` is same as the string type, record the expire time
 - `version`  is used to accomplish fast delete when the number of sub keys/values grew bigger
 - `size` records the number sub of keys/values in this hash key
 
@@ -49,23 +49,23 @@ key|version|field => |     value     |
                      +---------------+
 ```
 
-we prepend the hash `key` and `version` before the hash field, the value of  `version`  was from the metdata.  for exmple, when request  `hget h1 f1` was  received,  kvrocks would fetch the metadata by hash key(here is `h1`) first, and concat the hash key, version, field as new key, then fetch the value with new key.
+we prepend the hash `key` and `version` before the hash field, the value of  `version`  was from the metadata.  for example, when the request `hget h1 f1` was received, kvrocks would fetch the metadata by hash key(here is `h1`) first, and concat the hash key, version, field as new key, then fetch the value with new key.
 
 
 
-***Question1:  why store version in metadata***
+***Question1:  why store version in the metadata***
 
 > we store the hash keys/values into single key-value, if the store millions of sub keys-values in one hash key . if user delete this key, the kvrocks must iterator millions of sub keys-values and delete, and it would cause performance problem.  with version we can fast delete the metadata and then recycle the others keys-values in compaction background threads. the cost is those tombstone key would take some disk stroage. you can regard the version as atomic increment number, but it's combined with timestamp.
 
 
 
-***Question2:  what can we do if the user key was conflicted with composed key?***
+***Question2:  what can we do if the user key was conflicted with the composed key?***
 
 > we store the metadata key and composed key in different  column families, so it wouldn't happend
 
 ## Set
 
-Redis set can be regared as hash with value of sub-key always be null, the metadata was same with the hash:
+Redis set can be regarded as a hash, with the value of sub-key always be null, the metadata was same with the hash:
 
 ```shell
         +----------+------------+-----------+-----------+
@@ -86,7 +86,7 @@ key|version|member => |     NULL      |
 
 #### list metadata
 
-Redis list also organized by metadata and sub keys-values, and sub key is index instead of user key.  metadata like below:
+Redis list also organized by metadata and sub keys-values, and sub key is index instead of the user key.  metadata like below:
 
 ```shell
         +----------+------------+-----------+-----------+-----------+-----------+
@@ -95,14 +95,14 @@ key =>  |  flags   |  expire    |  version  |  size     |  head     |  tail     
         +----------+------------+-----------+-----------+-----------+-----------+         
 ```
 
-- `head` was used to indicate the start position of list head
-- `tail` was used to indicate the stop position of list tail
+- `head` was used to indicate the start position of the list head
+- `tail` was used to indicate the stop position of the list tail
 
-the meaning of other fields were same with other types, just add extra head/tail to record the boundary of list.
+the meaning of other fields was the same as other types, just add extra head/tail to record the boundary of the list.
 
 #### list sub keys-values
 
-the sub key in list was compsed by list key,version,index, and index was calculated from metadata's head or tail. for example, when user request the `rpush list elem`,  kvrocks would fetch fetch the metadata with list key first, and  generate the sub key with list key, version, and tail, simply increase the tail, then write the medata and sub key value back to rocksdb.
+the subkey in list was composed by list key, version, index, index was calculated from metadata's head or tail. for example, when the user requests the `rpush list elem`, kvrocks would fetch the metadata with list key first, and  generate the subkey with list key, version, and tail, simply increase the tail, then write the metadata and subkey's value back to rocksdb.
 
 ```shell
                      +---------------+
@@ -112,7 +112,7 @@ key|version|index => |     value     |
 
 ## ZSet
 
-Redis zset was set with sorted property, so it's a little different with other types. it must be able to search with member, as well as retrieve members with score range.
+Redis zset was set with sorted property, so it's a little different with other types. it must be able to search with the member, as well as retrieve members with score range.
 
 #### zset metadata
 
@@ -140,11 +140,11 @@ key|version|score|member => |     NULL      |   (2)
 
 ```
 
-if user want to get the score of member or  check the member exists or not, it would try first one.
+if the user wants to get the score of the member or check the member exists or not, it would try first one.
 
 ## Bitmap
 
-Redis bitmap is the most interesting part in kvrocks design, while unlike other types, it's not subkey and the value would be very large if the user treats it as a sparse array. it's apparent that the things would break down if store the bitmap into a single value, so we should break the bitmap value into multi fragments. another behavior of bitmap is the position would write always arbitrary, it's very similar to access model of Linux virtual memory, so the idea of the bitmap design came from that.
+Redis bitmap is the most interesting part in kvrocks design, while unlike other types, it's not subkey and the value would be very large if the user treats it as a sparse array. it's apparent that the things would break down if store the bitmap into a single value, so we should break the bitmap value into multi fragments. another behavior of bitmap is the position would write always arbitrary, it's very similar to the access model of Linux virtual memory, so the idea of the bitmap design came from that.
 
 #### bitmap metadata
 

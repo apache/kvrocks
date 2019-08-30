@@ -1,4 +1,4 @@
-#include "redis_sortint.h"
+#include "redis_sortedint.h"
 
 #include <map>
 #include <iostream>
@@ -6,24 +6,24 @@
 
 namespace Redis {
 
-rocksdb::Status Sortint::GetMetadata(const Slice &ns_key, SortintMetadata *metadata) {
-  return Database::GetMetadata(kRedisSortint, ns_key, metadata);
+rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *metadata) {
+  return Database::GetMetadata(kRedisSortedint, ns_key, metadata);
 }
 
-rocksdb::Status Sortint::Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
+rocksdb::Status Sortedint::Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
   *ret = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  SortintMetadata metadata;
+  SortedintMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
   rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisSortint);
+  WriteBatchLogData log_data(kRedisSortedint);
   batch.PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto id : ids) {
@@ -44,20 +44,20 @@ rocksdb::Status Sortint::Add(const Slice &user_key, std::vector<uint64_t> ids, i
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status Sortint::Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
+rocksdb::Status Sortedint::Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
   *ret = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  SortintMetadata metadata;
+  SortedintMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value, sub_key;
   rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisSortint);
+  WriteBatchLogData log_data(kRedisSortedint);
   batch.PutLogData(log_data.Encode());
   for (const auto id : ids) {
     std::string id_buf;
@@ -68,28 +68,27 @@ rocksdb::Status Sortint::Remove(const Slice &user_key, std::vector<uint64_t> ids
     batch.Delete(sub_key);
     *ret += 1;
   }
-  if (*ret > 0) {
-    metadata.size -= *ret;
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
-  }
+  if (*ret == 0) return rocksdb::Status::OK();
+  metadata.size -= *ret;
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status Sortint::Card(const Slice &user_key, int *ret) {
+rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SortintMetadata metadata;
+  SortedintMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortint::Range(const Slice &user_key,
+rocksdb::Status Sortedint::Range(const Slice &user_key,
                                uint64_t cursor_id,
                                uint64_t offset,
                                uint64_t limit,
@@ -100,7 +99,7 @@ rocksdb::Status Sortint::Range(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SortintMetadata metadata;
+  SortedintMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -124,10 +123,7 @@ rocksdb::Status Sortint::Range(const Slice &user_key,
     InternalKey ikey(iter->key());
     Slice sub_key = ikey.GetSubKey();
     GetFixed64(&sub_key, &id);
-    if (id == cursor_id) {
-      continue;
-    }
-    if (offset >= 0 && pos++ < offset) continue;
+    if ( id == cursor_id || pos++ < offset ) continue;
     ids->emplace_back(id);
     if (limit > 0 && ids && ids->size() >= limit) break;
   }

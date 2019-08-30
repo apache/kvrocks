@@ -2763,7 +2763,7 @@ class CommandPerfLog : public Commander {
       return Status(Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
-      cnt = std::stoi(args[3]);
+      cnt = std::stoi(args[2]);
     }
     return Status::OK();
   }

@@ -20,6 +20,7 @@
 #include "redis_string.h"
 #include "redis_zset.h"
 #include "redis_pubsub.h"
+#include "redis_sortint.h"
 #include "replication.h"
 #include "util.h"
 #include "storage.h"
@@ -2433,6 +2434,129 @@ class CommandZInterStore : public CommandZUnionStore {
   }
 };
 
+class CommandSortintAdd : public Commander {
+ public:
+  CommandSortintAdd() : Commander("siadd", -3, true) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      for (unsigned i = 2; i < args.size(); i++) {
+        auto id = std::stoi(args[i]);
+        ids_.emplace_back(id);
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortint sortint_db(svr->storage_, conn->GetNamespace());
+    int ret;
+    rocksdb::Status s = sortint_db.Add(args_[1], ids_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<uint64_t> ids_;
+};
+
+class CommandSortintRem : public Commander {
+ public:
+  CommandSortintRem() : Commander("sirem", -3, true) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      for (unsigned i = 2; i < args.size(); i++) {
+        auto id = std::stoi(args[i]);
+        ids_.emplace_back(id);
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortint sortint_db(svr->storage_, conn->GetNamespace());
+    int ret;
+    rocksdb::Status s = sortint_db.Remove(args_[1], ids_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<uint64_t> ids_;
+};
+
+class CommandSortintCard : public Commander {
+ public:
+  CommandSortintCard() : Commander("sicard", 2, false) {}
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortint sortint_db(svr->storage_, conn->GetNamespace());
+    int ret;
+    rocksdb::Status s = sortint_db.Card(args_[1], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandSortintRange : public Commander {
+ public:
+  explicit CommandSortintRange(bool reversed = false) : Commander("sirange", -4, false) {
+    reversed_ = reversed;
+  }
+
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      offset_ = std::stoi(args[2]);
+      limit_ = std::stoi(args[3]);
+      if (args.size() == 5) {
+        cursor_id_ = std::stoi(args[4]);
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortint sortint_db(svr->storage_, conn->GetNamespace());
+    std::vector<uint64_t> ids;
+    rocksdb::Status s = sortint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    output->append(Redis::MultiLen(ids.size()));
+    for (const auto id : ids) {
+      output->append(Redis::BulkString(std::to_string(id)));
+    }
+    return Status::OK();
+  }
+
+ private:
+  uint64_t cursor_id_ = 0;
+  uint64_t offset_ = 0;
+  uint64_t limit_ = 20;
+  bool reversed_ = false;
+};
+
+class CommandSortintRevRange : public CommandSortintRange {
+ public:
+  CommandSortintRevRange() : CommandSortintRange(true) { name_ = "sirevrange"; }
+};
+
 class CommandInfo : public Commander {
  public:
   CommandInfo() : Commander("info", -1, false) {}
@@ -3748,6 +3872,27 @@ std::map<std::string, CommanderFactory> command_table = {
     {"pubsub",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandPubSub);
+     }},
+    // sortint command
+    {"siadd",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSortintAdd);
+     }},
+    {"sirem",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSortintRem);
+     }},
+    {"sicard",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSortintCard);
+     }},
+    {"sirange",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSortintRange);
+     }},
+    {"sirevrange",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSortintRevRange);
      }},
 
     // internal management cmd

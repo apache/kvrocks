@@ -14,7 +14,8 @@ enum RedisType {
   kRedisList,
   kRedisSet,
   kRedisZSet,
-  kRedisBitmap
+  kRedisBitmap,
+  kRedisSortint,
 };
 
 enum RedisCommand {
@@ -111,6 +112,11 @@ class ZSetMetadata : public Metadata {
 class BitmapMetadata : public Metadata {
  public:
   BitmapMetadata(): Metadata(kRedisBitmap){}
+};
+
+class SortintMetadata : public Metadata {
+ public:
+  SortintMetadata() : Metadata(kRedisSortint) {}
 };
 
 class ListMetadata : public Metadata {

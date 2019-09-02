@@ -127,7 +127,10 @@ target_sources(kvrocks PRIVATE
         src/cron.cc
         src/cron.h
         src/event_listener.h
-        src/event_listener.cc)
+        src/event_listener.cc
+        src/log_collector.h
+        src/log_collector.cc
+        )
 
 # kvrocks2redis sync tool
 add_executable(kvrocks2redis)
@@ -204,6 +207,8 @@ target_sources(kvrocks2redis PRIVATE
         src/cron.h
         src/event_listener.h
         src/event_listener.cc
+        src/log_collector.h
+        src/log_collector.cc
         tools/kvrocks2redis/config.cc
         tools/kvrocks2redis/config.h
         tools/kvrocks2redis/main.cc
@@ -256,6 +261,8 @@ add_executable(unittest
         src/compact_filter.cc
         src/redis_db.cc
         src/redis_db.h
+        src/log_collector.h
+        src/log_collector.cc
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc

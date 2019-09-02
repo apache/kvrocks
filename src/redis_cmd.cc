@@ -25,6 +25,7 @@
 #include "storage.h"
 #include "worker.h"
 #include "server.h"
+#include "log_collector.h"
 
 namespace Redis {
 
@@ -2763,7 +2764,7 @@ class CommandPerfLog : public Commander {
       return Status(Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
-      cnt = std::stoi(args[2]);
+      cnt_ = std::stoi(args[2]);
     }
     return Status::OK();
   }
@@ -2771,19 +2772,19 @@ class CommandPerfLog : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     auto perf_log = srv->GetPerfLog();
     if (subcommand_ == "len") {
-      *output = Redis::Integer(perf_log->Len());
+      *output = Redis::Integer(static_cast<int64_t>(perf_log->Size()));
     } else if (subcommand_ == "reset") {
       perf_log->Reset();
       *output = Redis::SimpleString("OK");
     } else if (subcommand_ == "get") {
-      *output = perf_log->ToString(cnt);
+      *output = perf_log->GetLatestEntries(cnt_);
     }
     return Status::OK();
   }
 
  private:
   std::string subcommand_;
-  int cnt = 0;
+  int cnt_ = 0;
 };
 
 class CommandSlowlog : public Commander {
@@ -2812,15 +2813,16 @@ class CommandSlowlog : public Commander {
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    auto slowlog = srv->GetSlowLog();
     if (subcommand_ == "reset") {
-      srv->SlowlogReset();
+      slowlog->Reset();
       *output = Redis::SimpleString("OK");
       return Status::OK();
     } else if (subcommand_ == "len") {
-      *output = Redis::Integer(srv->SlowlogLen());
+      *output = Redis::Integer(static_cast<int64_t>(slowlog->Size()));
       return Status::OK();
     } else if (subcommand_ == "get") {
-      srv->CreateSlowlogReply(output, count_);
+      *output = slowlog->GetLatestEntries(count_);
       return Status::OK();
     }
     return Status(

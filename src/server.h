@@ -14,49 +14,13 @@
 #include "task_runner.h"
 #include "replication.h"
 #include "redis_metadata.h"
+#include "log_collector.h"
 #include "worker.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
   KeyNumStats key_num_stats;
   bool is_scanning = false;
-};
-
-struct SlowlogEntry {
-  std::vector<std::string> args;
-  uint64_t id;
-  uint64_t duration;
-  time_t time;
-};
-
-struct SlowLog {
-  std::list<SlowlogEntry> entry_list;
-  uint64_t id = 0;
-  std::mutex mu;
-};
-
-struct PerfEntry {
- public:
-  std::string cmd_name;
-  std::string perf_context;
-  std::string iostats_context;
-  uint64_t duration;
-  uint64_t id;
-};
-
-struct PerfLog {
- public:
-  size_t Len();
-  void Reset();
-  void PushEntry(PerfEntry entry);
-  std::string ToString(int count);
-  void SetMaxEntries(int max_entries) { max_entries_ = max_entries; }
-
- private:
-  int max_entries_ = 128;
-  std::list<PerfEntry> entries_;
-  uint64_t id_ = 0;
-  std::mutex mu_;
 };
 
 struct ConnContext {
@@ -69,7 +33,6 @@ typedef struct {
   std::string channel;
   size_t subscribe_num;
 } ChannelSubscribeNum;
-
 
 class Server {
  public:
@@ -126,11 +89,6 @@ class Server {
   void GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
-  void SlowlogReset();
-  uint32_t SlowlogLen();
-  void CreateSlowlogReply(std::string *output, uint32_t count);
-  void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
-
   int DecrClientNum();
   int IncrClientNum();
   int IncrMonitorClientNum();
@@ -142,7 +100,9 @@ class Server {
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
-  PerfLog *GetPerfLog() { return &perf_log_; }
+  LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
+  LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
+  void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -176,8 +136,9 @@ class Server {
   bool db_bgsave_ = false;
   std::map<std::string, DBScanInfo> db_scan_infos_;
 
-  SlowLog slowlog_;
-  PerfLog perf_log_;
+  LogCollector<SlowEntry> slow_log_;
+  LogCollector<PerfEntry> perf_log_;
+
   std::map<ConnContext *, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
   std::map<std::string, std::list<ConnContext *>> pubsub_patterns_;

@@ -15,6 +15,7 @@
 #include "status.h"
 #include "cron.h"
 #include "server.h"
+#include "log_collector.h"
 
 const char *kDefaultNamespace = "__namespace";
 static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
@@ -253,7 +254,6 @@ Status Config::parseConfigFromString(std::string input) {
     slowlog_log_slower_than = std::stoll(args[1]);
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
     slowlog_max_len = std::stoi(args[1]);
-
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -499,6 +499,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
   }
   if (key == "slowlog-max-len") {
     slowlog_max_len = std::stoi(value);
+    svr->GetSlowLog()->SetMaxEntries(slowlog_log_slower_than);
     return Status::OK();
   }
   if (key == "max-db-size") {

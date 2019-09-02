@@ -120,12 +120,17 @@ void Request::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t durat
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
     return;
   }
+
   std::string perf_context = rocksdb::get_perf_context()->ToString(true);
   std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
   if (perf_context.empty()) return;  // request without db operation
-  svr_->GetPerfLog()->PushEntry({cmd, std::move(perf_context),
-                                std::move(iostats_context), duration, 0});
+  auto entry = new PerfEntry();
+  entry->cmd_name = cmd;
+  entry->duration = duration;
+  entry->iostats_context = std::move(iostats_context);
+  entry->perf_context = std::move(perf_context);
+  svr_->GetPerfLog()->PushEntry(entry);
 }
 
 void Request::ExecuteCommands(Connection *conn) {

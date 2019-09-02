@@ -2784,7 +2784,7 @@ class CommandPerfLog : public Commander {
 
  private:
   std::string subcommand_;
-  int cnt_ = 0;
+  int cnt_ = 10;
 };
 
 class CommandSlowlog : public Commander {
@@ -2793,23 +2793,13 @@ class CommandSlowlog : public Commander {
 
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
-    if ((subcommand_ == "reset" || subcommand_ == "len" ||
-         subcommand_ == "get") &&
-        args.size() == 2) {
-      return Status::OK();
+    if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
+      return Status(Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
     }
-    if (subcommand_ == "get" && args.size() == 3) {
-      try {
-        auto c = std::stoul(args[2]);
-        count_ = static_cast<uint32_t>(c);
-      } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr, "value is not an unsigned long or out of range");
-      }
-      return Status::OK();
+    if (subcommand_ == "get" && args.size() >= 3) {
+      cnt_ = std::stoi(args[2]);
     }
-    return Status(
-        Status::RedisInvalidCmd,
-        "Unknown SLOWLOG subcommand or wrong # of args. Try GET, RESET, LEN.");
+    return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -2822,17 +2812,15 @@ class CommandSlowlog : public Commander {
       *output = Redis::Integer(static_cast<int64_t>(slowlog->Size()));
       return Status::OK();
     } else if (subcommand_ == "get") {
-      *output = slowlog->GetLatestEntries(count_);
+      *output = slowlog->GetLatestEntries(cnt_);
       return Status::OK();
     }
-    return Status(
-        Status::RedisInvalidCmd,
-        "Unknown SLOWLOG subcommand or wrong # of args. Try GET, RESET, LEN.");
+    return Status(Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
   }
 
  private:
   std::string subcommand_;
-  uint32_t count_ = 10;
+  uint32_t cnt_ = 10;
 };
 
 class CommandClient : public Commander {

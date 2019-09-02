@@ -279,7 +279,8 @@ add_executable(unittest
         tests/config_test.cc
         tests/task_runner_test.cc
         tests/t_bitmap_test.cc
-        tests/compact_test.cc)
+        tests/compact_test.cc
+        tests/log_collector_test.cc)
 
 add_dependencies(unittest gflags glog rocksdb gtest)
 target_compile_features(unittest PRIVATE cxx_std_11)

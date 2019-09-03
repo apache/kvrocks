@@ -2522,8 +2522,11 @@ class CommandSortedintRange : public Commander {
     try {
       offset_ = std::stoi(args[2]);
       limit_ = std::stoi(args[3]);
-      if (args.size() == 5) {
-        cursor_id_ = std::stoull(args[4]);
+      if (args.size() == 6) {
+        if (args[4] != "cursor") {
+          return Status(Status::RedisParseErr, "syntax error");
+        }
+        cursor_id_ = std::stoull(args[5]);
       }
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, kValueNotInterger);

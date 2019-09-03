@@ -499,7 +499,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
   }
   if (key == "slowlog-max-len") {
     slowlog_max_len = std::stoi(value);
-    svr->GetSlowLog()->SetMaxEntries(slowlog_log_slower_than);
+    svr->GetSlowLog()->SetMaxEntries(slowlog_max_len);
     return Status::OK();
   }
   if (key == "max-db-size") {

@@ -276,6 +276,7 @@ add_executable(unittest
         tests/t_list_test.cc
         tests/t_hash_test.cc
         tests/t_set_test.cc
+        tests/t_sortedint_test.cc
         tests/t_zset_test.cc
         tests/t_metadata_test.cc
         tests/string_util_test.cc

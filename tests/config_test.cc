@@ -36,19 +36,6 @@ TEST(Config, Profiling) {
   unlink(path);
 }
 
-TEST(Config, ProfilingMaxRecordLen) {
-  Config config;
-  config.profiling_sample_record_max_len = 1;
-  Server srv(nullptr, &config);
-  srv.GetPerfLog()->PushEntry(PerfEntry{});
-  srv.GetPerfLog()->PushEntry(PerfEntry{});
-  EXPECT_EQ(srv.GetPerfLog()->Len(), 1);
-  config.Set("profiling-sample-record-max-len", "2", &srv);
-  srv.GetPerfLog()->PushEntry(PerfEntry{});
-  srv.GetPerfLog()->PushEntry(PerfEntry{});
-  EXPECT_EQ(srv.GetPerfLog()->Len(), 2);
-}
-
 TEST(Namespace, Add) {
   Config config;
   EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());

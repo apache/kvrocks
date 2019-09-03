@@ -14,53 +14,6 @@
 #include "redis_request.h"
 #include "redis_connection.h"
 
-size_t PerfLog::Len() {
-  mu_.lock();
-  size_t len = entries_.size();
-  mu_.unlock();
-  return len;
-}
-
-void PerfLog::Reset() {
-  mu_.lock();
-  entries_.clear();
-  mu_.unlock();
-}
-
-void PerfLog::PushEntry(PerfEntry entry) {
-  mu_.lock();
-  entry.id = id_++;
-  while (entries_.size() >= static_cast<size_t>(max_entries_)) {
-    entries_.pop_back();
-  }
-  entries_.push_front(std::move(entry));
-  mu_.unlock();
-}
-
-std::string PerfLog::ToString(int count) {
-  int n;
-  std::string output;
-
-  mu_.lock();
-  if (count > 0) {
-    n = entries_.size() > static_cast<size_t>(count) ? count : static_cast<int>(entries_.size());
-  } else {
-    n = static_cast<int>(entries_.size());
-  }
-  output.append(Redis::MultiLen(n));
-  for (const auto &entry : entries_) {
-    output.append(Redis::MultiLen(5));
-    output.append(Redis::Integer(entry.id));
-    output.append(Redis::BulkString(entry.cmd_name));
-    output.append(Redis::Integer(entry.duration));
-    output.append(Redis::BulkString(entry.perf_context));
-    output.append(Redis::BulkString(entry.iostats_context));
-    if (--n == 0) break;
-  }
-  mu_.unlock();
-  return output;
-}
-
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
@@ -82,6 +35,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
     repl_worker->SetReplicationRateLimit(max_replication_bytes);
     worker_threads_.emplace_back(new WorkerThread(repl_worker));
   }
+  slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
   task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
@@ -843,42 +797,13 @@ time_t Server::GetLastScanTime(const std::string &ns) {
   return 0;
 }
 
-void Server::SlowlogReset() {
-  slowlog_.mu.lock();
-  slowlog_.entry_list.clear();
-  slowlog_.mu.unlock();
-}
-
-uint Server::SlowlogLen() {
-  std::unique_lock<std::mutex> lock(slowlog_.mu);
-  return slowlog_.entry_list.size();
-}
-
-void Server::CreateSlowlogReply(std::string *output, uint32_t count) {
-  uint32_t sent = 0;
-  slowlog_.mu.lock();
-  for (auto iter = slowlog_.entry_list.begin(); iter != slowlog_.entry_list.end() && sent < count; ++iter) {
-    sent++;
-    output->append(Redis::MultiLen(4));
-    output->append(Redis::Integer(iter->id));
-    output->append(Redis::Integer(iter->time));
-    output->append(Redis::Integer(iter->duration));
-    output->append(Redis::MultiBulkString(iter->args));
-  }
-  output->insert(0, Redis::MultiLen(sent));
-  slowlog_.mu.unlock();
-}
-
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration) {
-  if (config_->slowlog_log_slower_than < 0) return;
-  if (static_cast<int64_t>(duration) < config_->slowlog_log_slower_than) return;
-  slowlog_.mu.lock();
-  slowlog_.entry_list.emplace_front(SlowlogEntry{*args, ++slowlog_.id, duration, time(nullptr)});
-
-  while (slowlog_.entry_list.size() > config_->slowlog_max_len) {
-    slowlog_.entry_list.pop_back();
-  }
-  slowlog_.mu.unlock();
+  int64_t threshold = config_->slowlog_log_slower_than;
+  if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
+  auto entry = new SlowEntry();
+  entry->args = *args;
+  entry->duration = duration;
+  slow_log_.PushEntry(entry);
 }
 
 std::string Server::GetClientsStr() {

@@ -37,6 +37,7 @@ def test_sicard():
 def test_sirange():
     conn = get_redis_conn()
     key = "test_sirange"
+    ret = conn.delete(key)
     ret = conn.execute_command("siadd", key, 1, 2, 3, 4, 60, 231, 9999)
     assert (ret == 7)
     ret = conn.execute_command("sirange", key, 0, 20)
@@ -45,7 +46,7 @@ def test_sirange():
     assert (ret == ['1', '2'])
     ret = conn.execute_command("sirange", key, 3, 2)
     assert (ret == ['4', '60'])
-    ret = conn.execute_command("sirange", key, 0, 2, 3)
+    ret = conn.execute_command("sirange", key, 0, 2, "cursor", 3)
     assert (ret == ['4', '60'])
 
     ret = conn.delete(key)
@@ -55,6 +56,7 @@ def test_sirange():
 def test_sirevrange():
     conn = get_redis_conn()
     key = "test_sirevrange"
+    ret = conn.delete(key)
     ret = conn.execute_command("siadd", key, 1, 2, 3, 4, 60, 231, 9999)
     assert (ret == 7)
     ret = conn.execute_command("sirevrange", key, 0, 20)
@@ -63,7 +65,7 @@ def test_sirevrange():
     assert (ret == ['9999', '231'])
     ret = conn.execute_command("sirevrange", key, 3, 2)
     assert (ret == ['4', '3'])
-    ret = conn.execute_command("sirevrange", key, 0, 2, 3)
+    ret = conn.execute_command("sirevrange", key, 0, 2, "cursor", 3)
     assert (ret == ['2', '1'])
 
     ret = conn.delete(key)

@@ -166,3 +166,22 @@ key|version|index => |     fragment  |
 ```
 
 when the user requests to get it of position P, kvrocks would first fetch the metadata with bitmap's key and calculate the index of the fragment with bit position, then fetch the bitmap fragment with composed key and find the bit was set or not in fragment offset. for example, if getbit bitmap 8097, so the index is `1` (8097/8096) and subkey is `bitmap|1|1` (assume the version is 1), then fetch the subkey from rocksdb and check the bit of offset `1`(8097%8096) was set or not.
+
+## Sortint
+
+Sortint is Set whose member is int and sorted in int ascending order:
+
+```shell
+        +----------+------------+-----------+-----------+
+key =>  |  flags   |  expire    |  version  |  size     |
+        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        +----------+------------+-----------+-----------+
+```
+
+and the sub keys-values in rocksdb would be:
+
+```shell
+                      +---------------+
+key|version|id => |     NULL      |
+                      +---------------+
+```

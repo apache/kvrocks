@@ -6,3 +6,9 @@
 	- MOD: update rocksdb to latest release(v6.2.2)
 	- FIX: incorrect command name, flushall => flushdb
 	- FIX: hscan return not found when key not exists
+
+* Version 1.0.2(@2019-09-04)
+	- MOD: revert rocksdb to v5.15.10
+	- FIX: empty requirepass shouldn't rewrite to config
+	- MOD: supports profiling the rocksdb in-flight
+	- ADD: support sortedint data type

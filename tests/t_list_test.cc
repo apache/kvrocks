@@ -22,14 +22,14 @@ TEST_F(RedisListTest, PushAndPop) {
   int ret;
   list->Push(key_, fields_, true, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     list->Pop(key_, &elem, false);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     list->Pop(key_, &elem, true);
     EXPECT_EQ(elem, fields_[i].ToString());
@@ -54,11 +54,11 @@ TEST_F(RedisListTest, Index) {
   list->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::string elem;
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     list->Index(key_,i, &elem);
     EXPECT_EQ(fields_[i].ToString(), elem);
   }
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     list->Pop(key_, &elem, true);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
@@ -76,7 +76,7 @@ TEST_F(RedisListTest, Set) {
   std::string elem;
   list->Index(key_, -1, &elem);
   EXPECT_EQ(new_elem.ToString(), elem);
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     list->Pop(key_, &elem, true);
   }
   list->Del(key_);
@@ -89,10 +89,10 @@ TEST_F(RedisListTest, Range) {
   std::vector<std::string> elems;
   list->Range(key_, 0, int(elems.size()-1), &elems);
   EXPECT_EQ(elems.size(), fields_.size());
-  for (int i = 0; i < elems.size(); i++) {
+  for (size_t i = 0; i < elems.size(); i++) {
     EXPECT_EQ(fields_[i].ToString(), elems[i]);
   }
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     list->Pop(key_, &elem, true);
     EXPECT_EQ(elem, fields_[i].ToString());
@@ -108,7 +108,7 @@ TEST_F(RedisListTest, Trim) {
   uint32_t len;
   list->Size(key_, &len);
   EXPECT_EQ(fields_.size()-1, len);
-  for (int i = 1; i < fields_.size(); i++) {
+  for (size_t i = 1; i < fields_.size(); i++) {
     std::string elem;
     list->Pop(key_, &elem, true);
     EXPECT_EQ(elem, fields_[i].ToString());
@@ -121,12 +121,12 @@ TEST_F(RedisListTest, RPopLPush) {
   list->Push(key_, fields_, true, &ret);
   EXPECT_EQ(fields_.size(), ret);
   Slice dst("test-list-rpoplpush-key");
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     list->RPopLPush(key_, dst, &elem);
     EXPECT_EQ(fields_[i].ToString(), elem);
   }
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     list->Pop(dst, &elem, false);
     EXPECT_EQ(elem, fields_[i].ToString());

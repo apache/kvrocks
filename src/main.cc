@@ -151,7 +151,7 @@ static void initGoogleLog(const Config *config) {
 }
 
 static Status createPidFile(const std::string &path) {
-  int fd = open(path.data(), O_RDWR|O_CREAT|O_EXCL, 0660);
+  int fd = open(path.data(), O_RDWR|O_CREAT, 0660);
   if (fd < 0) {
     return Status(Status::NotOK, strerror(errno));
   }

@@ -1,6 +1,3 @@
-# glog depends on gflags
-include("cmake/gflags.cmake")
-
 if (NOT __GLOG_INCLUDED)
     set(__GLOG_INCLUDED TRUE)
     # build directory
@@ -16,7 +13,6 @@ if (NOT __GLOG_INCLUDED)
     set(GLOG_C_FLAGS "${CMAKE_C_FLAGS} ${GLOG_EXTRA_COMPILER_FLAGS}")
 
     ExternalProject_Add(glog
-        DEPENDS gflags
         PREFIX ${glog_PREFIX}
         #GIT_REPOSITORY "https://github.com/google/glog"
         #GIT_TAG "v0.3.5"
@@ -31,9 +27,9 @@ if (NOT __GLOG_INCLUDED)
                    -DBUILD_NC_TESTS=OFF
                    -DBUILD_CONFIG_TESTS=OFF
                    -DINSTALL_HEADERS=ON
+                   -DWITH_GFLAGS=OFF
                    -DCMAKE_C_FLAGS=${GLOG_C_FLAGS}
                    -DCMAKE_CXX_FLAGS=${GLOG_CXX_FLAGS}
-                   -DCMAKE_PREFIX_PATH=${gflags_INSTALL}
         LOG_DOWNLOAD 1
         LOG_CONFIGURE 1
         LOG_INSTALL 1

@@ -13,7 +13,7 @@ if (NOT __ROCKSDB_INCLUDED)
   set(ROCKSDB_C_FLAGS "${CMAKE_C_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
   set(JEMALLOC_ROOT_DIR ${jemalloc_INSTALL})
   ExternalProject_Add(rocksdb
-      DEPENDS gflags jemalloc snappy
+      DEPENDS jemalloc snappy
       PREFIX ${rocksdb_PREFIX}
       #GIT_REPOSITORY "https://github.com/facebook/rocksdb"
       #GIT_TAG "v5.15.10"

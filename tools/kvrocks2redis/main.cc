@@ -1,6 +1,5 @@
 #include <getopt.h>
 #include <event2/thread.h>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -103,7 +102,6 @@ static void daemonize() {
 
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging("kvrocks2redis");
-  gflags::SetUsageMessage("kvrocks2redis");
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);

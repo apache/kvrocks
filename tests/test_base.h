@@ -13,7 +13,10 @@ protected:
     config_->backup_dir = "testsdb/backup";
     storage_ = new Engine::Storage(config_);
     Status s = storage_->Open();
-    assert(s.IsOK());
+    if (!s.IsOK()) {
+      std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
+      assert(s.IsOK());
+    }
   }
   ~TestBase() override {
     rmdir("testsdb");

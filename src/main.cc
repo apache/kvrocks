@@ -239,7 +239,6 @@ int main(int argc, char* argv[]) {
 
   removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();
-  google::ShutDownCommandLineFlags();
   libevent_global_shutdown();
   return 0;
 }

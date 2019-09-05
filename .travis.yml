@@ -25,23 +25,28 @@ jobs:
         - sudo pip install --upgrade pip 
         - sudo pip install cpplint
       script:
-        - sh cpplint.sh 
-        - sh cppcheck.sh 
+          make lint
     - stage: build
       name: Build the kvrocks 
       script:
+        - mkdir -p build
+        - sudo apt-get install libsnappy-dev
         - make -j4
+        - cp src/kvrocks build/kvrocks
     - stage: test 
       name: Unit Tests 
       script:
+        - sudo apt-get install libsnappy-dev
+        - cd external/googletest && cmake CMakeLists.txt && sudo make install && cd - 
         - make test
     - stage: test 
       name: Functional Tests
       install:
         - sudo pip install nose
+        - sudo apt-get install libsnappy-dev
         - sudo pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
       script:
-        - sh tests/scripts/setup-env.sh build
+        - sh tests/scripts/setup-env.sh ./build 
         - cd tests/functional && nosetests -v
     - stage: push
       name: Push to dockerhub

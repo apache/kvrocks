@@ -1,5 +1,6 @@
 FROM ubuntu:18.04
 
+RUN apt install libsnappy-dev
 WORKDIR /kvrocks
 
 RUN mkdir /data 

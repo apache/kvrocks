@@ -1,31 +1,11 @@
-BUILD_DIR=./build
-INSTALL_DIR=/usr/local
-BIN_DIR=$(INSTALL_DIR)/bin
-INSTALL=/usr/bin/install
+# Top level makefile, the real shit is at src/Makefile
 
-all: kvrocks
-.PHONY: all test
+default: all
 
-kvrocks:
-	@mkdir -p $(BUILD_DIR)
-	@sh ./build.sh $(BUILD_DIR)
-	@echo "" 
-	@echo "Hint: It's a good idea to run 'make test' ;)"
-	@echo ""
-
-test:
-	@./$(BUILD_DIR)/unittest
-
-clean:
-	@rm -rf $(BUILD_DIR)/*
-
-distclean:
-	@rm -rf $(BUILD_DIR)/*
+.DEFAULT:
+	cd src && $(MAKE) $@
 
 install:
-	mkdir -p $(BIN_DIR)
-	$(INSTALL) $(BUILD_DIR)/kvrocks $(BIN_DIR)
-	$(INSTALL) $(BUILD_DIR)/kvrocks2redis $(BIN_DIR)
-	@echo ""
-	@echo "Installed success, everying is ok!"
-	@echo ""
+	cd src && $(MAKE) $@
+
+.PHONY: install

@@ -40,8 +40,8 @@ SHARED_OBJS= compact_filter.o config.o cron.o encoding.o event_listener.o lock_m
 KVROCKS_OBJS= $(SHARED_OBJS) main.o
 
 UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../tests/compact_test.o \
-			   ../tests/config_test.o ../tests/cron_test.o ../tests/log_collector_test.o ../tests/redisdb_test.o \
-			   ../tests/rwlock_test.o ../tests/stats_test.o ../tests/string_util_test.o ../tests/t_bitmap_test.o \
+			   ../tests/config_test.o ../tests/cron_test.o ../tests/log_collector_test.o \
+			   ../tests/rwlock_test.o ../tests/string_util_test.o ../tests/t_bitmap_test.o \
 			   ../tests/t_encoding_test.o ../tests/t_hash_test.o ../tests/t_list_test.o ../tests/t_set_test.o \
 			   ../tests/task_runner_test.o  ../tests/t_string_test.o ../tests/t_zset_test.o ../tests/t_sortedint_test.o
 

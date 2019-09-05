@@ -281,7 +281,6 @@ add_executable(unittest
         tests/t_metadata_test.cc
         tests/string_util_test.cc
         tests/rwlock_test.cc
-        tests/stats_test.cc
         tests/cron_test.cc
         tests/config_test.cc
         tests/task_runner_test.cc

@@ -29,24 +29,24 @@ protected:
 
 TEST_F(RedisStringTest, Append) {
   int ret;
-  for (int i = 0; i < 32; i++) {
+  for (size_t i = 0; i < 32; i++) {
     rocksdb::Status s = string->Append(key_, "a", &ret);
     EXPECT_TRUE(s.ok());
-    EXPECT_EQ(i+1, ret);
+    EXPECT_EQ(static_cast<int>(i+1), ret);
   }
   string->Del(key_);
 }
 
 TEST_F(RedisStringTest, GetAndSet) {
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     string->Set(pairs_[i].key, pairs_[i].value);
   }
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     std::string got_value;
     string->Get(pairs_[i].key, &got_value);
     EXPECT_EQ(pairs_[i].value, got_value);
   }
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
   }
 }
@@ -59,10 +59,10 @@ TEST_F(RedisStringTest, MGetAndMSet) {
     keys.emplace_back(pair.key);
   }
   string->MGet(keys, &values);
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
   }
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
   }
 }
@@ -91,7 +91,7 @@ TEST_F(RedisStringTest, IncrBy) {
 
 TEST_F(RedisStringTest, GetSet) {
   std::vector<Slice> values = {"a", "b", "c", "d"};
-  for(int i = 0; i < values.size(); i++) {
+  for(size_t i = 0; i < values.size(); i++) {
     std::string old_value;
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {
@@ -126,7 +126,7 @@ TEST_F(RedisStringTest, MSetNX) {
     keys.emplace_back(pair.key);
   }
   string->MGet(keys, &values);
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
   }
 
@@ -140,7 +140,7 @@ TEST_F(RedisStringTest, MSetNX) {
   string->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(0, ret);
 
-  for (int i = 0; i < pairs_.size(); i++) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
   }
 }

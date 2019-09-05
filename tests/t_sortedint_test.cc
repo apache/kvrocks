@@ -23,11 +23,11 @@ protected:
 TEST_F(RedisSortedintTest, AddAndRemove) {
   int ret;
    rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
-   EXPECT_TRUE(s.ok() && ids_.size() == ret);
+   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
    s = sortedint->Card(key_, &ret);
-  EXPECT_TRUE(s.ok() && ids_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   s = sortedint->Remove(key_, ids_, &ret);
-  EXPECT_TRUE(s.ok() && ids_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   s = sortedint->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   sortedint->Del(key_);
@@ -36,14 +36,14 @@ TEST_F(RedisSortedintTest, AddAndRemove) {
 TEST_F(RedisSortedintTest, Range) {
   int ret;
   rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
-  EXPECT_TRUE(s.ok() && ids_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   std::vector<uint64_t> ids;
   s = sortedint->Range(key_, 0, 0, 20, false, &ids);
   EXPECT_TRUE(s.ok() && ids_.size() == ids.size());
-  for (int i = 0; i < ids_.size(); i++) {
+  for (size_t i = 0; i < ids_.size(); i++) {
     EXPECT_EQ(ids_[i], ids[i]);
   }
   s = sortedint->Remove(key_, ids_, &ret);
-  EXPECT_TRUE(s.ok() && ids_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   sortedint->Del(key_);
 }

@@ -24,37 +24,37 @@ protected:
 
 TEST_F(RedisHashTest, GetAndSet) {
   int ret;
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     std::string got;
     rocksdb::Status s = hash->Get(key_, fields_[i], &got);
     EXPECT_EQ(values_[i], got);
   }
   rocksdb::Status s = hash->Delete(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   hash->Del(key_);
 }
 
 TEST_F(RedisHashTest, MGetAndMSet) {
   int ret;
   std::vector<FieldValue> fvs;
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && fvs.size()==ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_EQ(ret ,0);
   std::vector<std::string> values;
   s = hash->MGet(key_, fields_, &values);
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(values[i], values_[i].ToString());
   }
   s = hash->Delete(key_, fields_, &ret);
-  EXPECT_EQ(fields_.size(), ret);
+  EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   hash->Del(key_);
 }
 
@@ -73,7 +73,7 @@ TEST_F(RedisHashTest, SetNX) {
 
 TEST_F(RedisHashTest, HGetAll) {
   int ret;
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
@@ -81,7 +81,7 @@ TEST_F(RedisHashTest, HGetAll) {
   rocksdb::Status s = hash->GetAll(key_, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
   s = hash->Delete(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   hash->Del(key_);
 }
 

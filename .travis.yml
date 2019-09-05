@@ -36,8 +36,9 @@ jobs:
     - stage: test 
       name: Unit Tests 
       script:
-        - sudo apt-get install libsnappy-dev
-        - cd external/googletest && cmake CMakeLists.txt && sudo make install && cd - 
+        - sudo apt-get install tar libsnappy-dev
+        - wget https://github.com/google/googletest/archive/release-1.8.1.tar.gz && tar -zxvf release-1.8.1.tar.gz
+          && cd googletest-release-1.8.1/ && cmake CMakeLists.txt && make && sudo make install && cd -
         - make test
     - stage: test 
       name: Functional Tests

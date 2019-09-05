@@ -1,9 +1,6 @@
 [submodule "external/glog"]
 	path = external/glog
 	url = https://github.com/google/glog.git
-[submodule "external/gflags"]
-	path = external/gflags
-	url = https://github.com/gflags/gflags.git
 [submodule "external/rocksdb"]
 	path = external/rocksdb
 	url = https://github.com/facebook/rocksdb.git
@@ -13,9 +10,6 @@
 [submodule "external/libevent"]
 	path = external/libevent
 	url = https://github.com/libevent/libevent.git
-[submodule "external/googletest"]
-	path = external/googletest
-	url = https://github.com/abseil/googletest.git
 [submodule "external/jemalloc"]
 	path = external/jemalloc
 	url = https://github.com/jemalloc/jemalloc.git

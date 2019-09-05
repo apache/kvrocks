@@ -22,11 +22,11 @@ protected:
 TEST_F(RedisSetTest, AddAndRemove) {
   int ret;
    rocksdb::Status s = set->Add(key_, fields_, &ret);
-   EXPECT_TRUE(s.ok() && fields_.size() == ret);
+   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
    s = set->Card(key_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   s = set->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   s = set->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   set->Del(key_);
@@ -35,40 +35,40 @@ TEST_F(RedisSetTest, AddAndRemove) {
 TEST_F(RedisSetTest, Members) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   std::vector<std::string> members;
   s = set->Members(key_, &members);
   EXPECT_TRUE(s.ok() && fields_.size() == members.size());
   // Note: the members was fetched by iterator, so the order should be asec
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(fields_[i], members[i]);
   }
   s = set->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Del(key_);
 }
 
 TEST_F(RedisSetTest, IsMember) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  for (int i = 0; i < fields_.size(); i++) {
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  for (size_t i = 0; i < fields_.size(); i++) {
     s = set->IsMember(key_, fields_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
   set->IsMember(key_, "foo", &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   s = set->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Del(key_);
 }
 
 TEST_F(RedisSetTest, Move) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   Slice dst("set-test-move-key");
-  for (int i = 0; i < fields_.size(); i++) {
+  for (size_t i = 0; i < fields_.size(); i++) {
     s = set->Move(key_, dst, fields_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
@@ -77,9 +77,9 @@ TEST_F(RedisSetTest, Move) {
   s = set->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   s = set->Card(dst, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   s = set->Remove(dst, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Del(key_);
   set->Del(dst);
 }
@@ -87,7 +87,7 @@ TEST_F(RedisSetTest, Move) {
 TEST_F(RedisSetTest, TakeWithPop) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   std::vector<std::string> members;
   s = set->Take(key_, &members, 3, true);
   EXPECT_EQ(members.size(),3);
@@ -152,7 +152,7 @@ TEST_F(RedisSetTest, Inter) {
 TEST_F(RedisSetTest, Overwrite) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Overwrite(key_, {"a"});
   int count;
   set->Card(key_, &count);
@@ -163,13 +163,13 @@ TEST_F(RedisSetTest, Overwrite) {
 TEST_F(RedisSetTest, TakeWithoutPop) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   std::vector<std::string> members;
   s = set->Take(key_, &members, int(fields_.size()+1), false);
   EXPECT_EQ(members.size(), fields_.size());
   s = set->Take(key_, &members, int(fields_.size()-1), false);
   EXPECT_EQ(members.size(), fields_.size()-1);
   s = set->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && fields_.size() == ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Del(key_);
 }

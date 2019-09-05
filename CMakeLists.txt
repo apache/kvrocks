@@ -21,10 +21,6 @@ include(cmake/jemalloc.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
 
-include(cmake/gflags.cmake)
-list(APPEND EXTERNAL_LIBS PRIVATE ${gflags_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${gflags_INCLUDE_DIRS})
-
 include(cmake/glog.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})
@@ -41,9 +37,6 @@ include(cmake/libevent.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${libevent_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${libevent_INCLUDE_DIRS})
 
-include(cmake/gtest.cmake)
-list(APPEND EXTERNAL_LIBS PRIVATE ${gtest_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${gtest_INCLUDE_DIRS})
 # End dependences
 
 # Add git sha to version.h
@@ -61,7 +54,7 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks PRIVATE -fsanitize=address)
     target_link_libraries(kvrocks PRIVATE -fsanitize=address)
 endif()
-add_dependencies(kvrocks jemalloc libevent gflags glog snappy rocksdb gtest)
+add_dependencies(kvrocks jemalloc libevent glog snappy rocksdb)
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
 find_package(Threads REQUIRED)
@@ -143,7 +136,7 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
 endif()
-add_dependencies(kvrocks2redis libevent gflags glog rocksdb gtest)
+add_dependencies(kvrocks2redis libevent glog rocksdb)
 target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
 
@@ -289,9 +282,9 @@ add_executable(unittest
         tests/compact_test.cc
         tests/log_collector_test.cc)
 
-add_dependencies(unittest gflags glog rocksdb gtest)
+add_dependencies(unittest glog rocksdb)
 target_compile_features(unittest PRIVATE cxx_std_11)
-target_link_libraries(unittest ${EXTERNAL_LIBS})
+target_link_libraries(unittest ${EXTERNAL_LIBS} -lgtest)
 target_include_directories(unittest PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(unittest ${EXTERNAL_INCS})
 target_include_directories(unittest PRIVATE src)

@@ -41,3 +41,4 @@ cmake-build-debug
 kvrocks
 version.h
 Makefile.dep
+make_config.mk

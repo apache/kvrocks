@@ -1,6 +1,7 @@
 if (NOT __JEMALLOC_INCLUDED) # guard against multiple includes
     set(__JEMALLOC_INCLUDED TRUE)
 
+    find_package(Threads)
     # build directory
     set(jemalloc_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/jemalloc-prefix)
     # install directory

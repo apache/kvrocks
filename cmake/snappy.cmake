@@ -4,6 +4,7 @@ if (NOT __SNAPPY_INCLUDED)
   set(snappy_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/snappy-prefix)
   # install directory
   set(snappy_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/snappy-install)
+  set(CMAKE_INSTALL_LIBDIR lib)
 
   if (UNIX)
       set(SNAPPY_EXTRA_COMPILER_FLAGS "-fPIC")
@@ -20,6 +21,7 @@ if (NOT __SNAPPY_INCLUDED)
       INSTALL_DIR ${snappy_INSTALL}
       CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                  -DCMAKE_INSTALL_PREFIX=${snappy_INSTALL}
+		 -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
                  -DBUILD_SHARED_LIBS=OFF
                  -DBUILD_STATIC_LIBS=ON
                  -DBUILD_PACKAGING=OFF

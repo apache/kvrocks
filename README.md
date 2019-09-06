@@ -42,7 +42,7 @@ $ make -j4
 ```shell
 $ git clone --recursive https://github.com/meitu/kvrocks.git
 $ cd kvrocks
-$ sh build.sh ./build.sh
+$ sh build.sh ./build
 ```
 
 #### run

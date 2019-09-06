@@ -16,7 +16,7 @@ kvrocks has the following key features:
 * g++ (required by c++11, version >= 4.8)
 * autoconf (required by jemalloc)
 
-#### Built with make
+#### Build
 
 ***NOTE: You shoud install the snappy first:***
 
@@ -37,18 +37,10 @@ $ cd kvrocks
 $ make -j4
 ```
 
-#### Built with CMake
-
-```shell
-$ git clone --recursive https://github.com/meitu/kvrocks.git
-$ cd kvrocks
-$ sh build.sh ./build
-```
-
 #### run
 
 ```shell
-$ ./kvrocks -c ../kvrocks.conf
+$ ./src/kvrocks -c ../kvrocks.conf
 ```
 
 ### TEST

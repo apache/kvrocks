@@ -51,6 +51,8 @@ jobs:
         - cd tests/functional && nosetests -v
     - stage: push
       name: Push to dockerhub
+      on:
+        tags: true
       if: tag IS present
       services: 
         - docker

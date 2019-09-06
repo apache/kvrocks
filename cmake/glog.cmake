@@ -1,5 +1,7 @@
 if (NOT __GLOG_INCLUDED)
     set(__GLOG_INCLUDED TRUE)
+    find_package(Threads)
+    set(CMAKE_INSTALL_LIBDIR lib)
     # build directory
     set(glog_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/glog-prefix)
     # install directory
@@ -19,6 +21,7 @@ if (NOT __GLOG_INCLUDED)
         SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/glog
         INSTALL_DIR ${glog_INSTALL}
         CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release
+		   -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
                    -DCMAKE_INSTALL_PREFIX=${glog_INSTALL}
                    -DBUILD_SHARED_LIBS=OFF
                    -DBUILD_STATIC_LIBS=ON
@@ -37,6 +40,6 @@ if (NOT __GLOG_INCLUDED)
 
     set(glog_FOUND TRUE)
     set(glog_INCLUDE_DIRS ${glog_INSTALL}/include)
-    set(glog_LIBRARIES ${glog_INSTALL}/lib/libglog.a)
+    set(glog_LIBRARIES ${glog_INSTALL}/${CMAKE_INSTALL_LIBDIR}/libglog.a)
 endif()
 

@@ -18,22 +18,23 @@ if (REALTIME_LIB)
 endif()
 
 include(cmake/jemalloc.cmake)
+include(cmake/glog.cmake)
+include(cmake/snappy.cmake)
+include(cmake/rocksdb.cmake)
+include(cmake/libevent.cmake)
+
 list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
 
-include(cmake/glog.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})
 
-include(cmake/snappy.cmake)
-list(APPEND EXTERNAL_LIBS PRIVATE ${snappy_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${snappy_INCLUDE_DIRS})
-
-include(cmake/rocksdb.cmake)
 list(APPEND EXTERNAL_LIBS PRIVATE ${rocksdb_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${rocksdb_INCLUDE_DIRS})
 
-include(cmake/libevent.cmake)
+list(APPEND EXTERNAL_LIBS PRIVATE ${snappy_LIBRARIES})
+list(APPEND EXTERNAL_INCS PRIVATE ${snappy_INCLUDE_DIRS})
+
 list(APPEND EXTERNAL_LIBS PRIVATE ${libevent_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${libevent_INCLUDE_DIRS})
 
@@ -281,9 +282,10 @@ add_executable(unittest
         tests/compact_test.cc
         tests/log_collector_test.cc)
 
-add_dependencies(unittest glog rocksdb)
+add_dependencies(unittest glog rocksdb snappy jemalloc)
 target_compile_features(unittest PRIVATE cxx_std_11)
-target_link_libraries(unittest ${EXTERNAL_LIBS} -lgtest)
+message(${snappy_LIBRARIES})
+target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} -lgtest)
 target_include_directories(unittest PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(unittest ${EXTERNAL_INCS})
 target_include_directories(unittest PRIVATE src)

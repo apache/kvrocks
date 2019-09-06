@@ -1,5 +1,8 @@
 if (NOT __ROCKSDB_INCLUDED)
   set(__ROCKSDB_INCLUDED TRUE)
+
+  find_package(Threads)
+  set(CMAKE_INSTALL_LIBDIR lib)
   # build directory
   set(rocksdb_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-prefix)
   # install directory
@@ -20,6 +23,7 @@ if (NOT __ROCKSDB_INCLUDED)
       SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/rocksdb
       INSTALL_DIR ${rocksdb_INSTALL}
       CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+		 -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
                  -DCMAKE_INSTALL_PREFIX=${rocksdb_INSTALL}
                  -DBUILD_SHARED_LIBS=OFF
                  -DBUILD_STATIC_LIBS=ON

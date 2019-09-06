@@ -22,7 +22,7 @@ kvrocks has the following key features:
 
 ```shell
 # Centos/Rehat
-sudo yum install -y snappy-devel
+sudo yum install -y snappy snappy-devel
 
 # Ubuntu
 sudo apt-get install libsnappy-dev

@@ -159,7 +159,7 @@
 | subscribe    | √                |      |
 | unsubscribe  | √                |      |
 
-## Sortint Commands
+## Sortedint Commands
 
 | Command      | Supported OR Not | Desc |
 | ------------ | ---------------- | ---- |

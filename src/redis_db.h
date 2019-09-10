@@ -29,6 +29,7 @@ class Database {
                        std::vector<std::string> *keys);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   void AppendNamespacePrefix(const Slice &user_key, std::string *output);
+  static void ComposeNextPrefixKey(const std::string &prefix, std::string *output);
 
  protected:
   Engine::Storage *storage_;

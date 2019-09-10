@@ -238,21 +238,42 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 }
 
 rocksdb::Status Database::FlushDB() {
-  std::string prefix;
+  std::string prefix, next_prefix;
   AppendNamespacePrefix("", &prefix);
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
-  for (iter->Seek(prefix);
-       iter->Valid() && iter->key().starts_with(prefix);
-       iter->Next()) {
-    auto s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, iter->key());
-    if (!s.ok()) {
-      delete iter;
-      return s;
+  iter->Seek(prefix);
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  auto first_key = iter->key().ToString();
+
+  ComposeNextPrefixKey(prefix, &next_prefix);
+  iter->SeekForPrev(next_prefix);
+  while (iter->Valid()) {
+    if (iter->key().starts_with(prefix)) {
+      break;
     }
+    iter->Prev();
+  }
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  auto last_key = iter->key().ToString();
+  auto s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, first_key, last_key);
+  if (!s.ok()) {
+    delete iter;
+    return s;
+  }
+  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, last_key);
+  if (!s.ok()) {
+    delete iter;
+    return s;
   }
   delete iter;
   return rocksdb::Status::OK();
@@ -360,6 +381,15 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
 
 void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output) {
   ComposeNamespaceKey(namespace_, user_key, output);
+}
+
+void Database::ComposeNextPrefixKey(const std::string &prefix, std::string *output) {
+  output->clear();
+  char last_char = prefix.back();
+  last_char++;
+  std::string s(1, last_char);
+  output->append(prefix.substr(0, prefix.size() - 1));
+  output->append(s);
 }
 
 rocksdb::Status SubKeyScanner::Scan(RedisType type,

@@ -108,4 +108,5 @@ struct Config{
   Status parseRocksdbOption(const std::string &key, std::string value);
   Status parseRocksdbIntOption(std::string key, std::string value);
   void array2String(const std::vector<std::string> &array, const std::string &delim, std::string *output);
+  Status isNamespaceLegal(const std::string &ns);
 };

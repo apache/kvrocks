@@ -238,44 +238,20 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 }
 
 rocksdb::Status Database::FlushDB() {
-  std::string prefix, next_prefix;
+  std::string prefix, begin_key, end_key;
   AppendNamespacePrefix("", &prefix);
-  LatestSnapShot ss(db_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
-  iter->Seek(prefix);
-  if (!iter->Valid()) {
-    delete iter;
+  auto s = FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
+  if (!s.ok()) {
     return rocksdb::Status::OK();
   }
-  auto first_key = iter->key().ToString();
-
-  ComposeNextPrefixKey(prefix, &next_prefix);
-  iter->SeekForPrev(next_prefix);
-  while (iter->Valid()) {
-    if (iter->key().starts_with(prefix)) {
-      break;
-    }
-    iter->Prev();
-  }
-  if (!iter->Valid()) {
-    delete iter;
-    return rocksdb::Status::OK();
-  }
-  auto last_key = iter->key().ToString();
-  auto s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, first_key, last_key);
+  s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, begin_key, end_key);
   if (!s.ok()) {
-    delete iter;
     return s;
   }
-  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, last_key);
+  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, end_key);
   if (!s.ok()) {
-    delete iter;
     return s;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -383,13 +359,41 @@ void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output)
   ComposeNamespaceKey(namespace_, user_key, output);
 }
 
-void Database::ComposeNextPrefixKey(const std::string &prefix, std::string *output) {
-  output->clear();
-  char last_char = prefix.back();
+rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std::string *begin, std::string *end) {
+  begin->clear();
+  end->clear();
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  iter->Seek(prefix);
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::NotFound();
+  }
+  *begin = iter->key().ToString();
+
+  //compose next prefix key
+  std::string next_prefix = prefix;
+  char last_char = next_prefix.back();
   last_char++;
-  std::string s(1, last_char);
-  output->append(prefix.substr(0, prefix.size() - 1));
-  output->append(s);
+  next_prefix.pop_back();
+  next_prefix.push_back(last_char);
+
+  iter->SeekForPrev(next_prefix);
+  // reversed seek the key til with prefix or end of the iterator
+  while (iter->Valid() && !iter->key().starts_with(prefix)) {
+    iter->Prev();
+  }
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::NotFound();
+  }
+  *end = iter->key().ToString();
+  delete iter;
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status SubKeyScanner::Scan(RedisType type,

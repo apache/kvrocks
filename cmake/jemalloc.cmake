@@ -19,7 +19,8 @@ if (NOT __JEMALLOC_INCLUDED) # guard against multiple includes
         SOURCE_DIR ${JEMALLOC_SOURCE_DIR}
         PREFIX ${jemalloc_PREFIX}
         INSTALL_DIR ${jemalloc_INSTALL}
-        CONFIGURE_COMMAND ${JEMALLOC_SOURCE_DIR}/configure --enable-autogen --disable-libdl --prefix=${jemalloc_INSTALL}
+        CONFIGURE_COMMAND ${JEMALLOC_SOURCE_DIR}/configure --enable-autogen --disable-libdl --with-jemalloc-prefix=""
+            --prefix=${jemalloc_INSTALL}
         BUILD_COMMAND make
         INSTALL_COMMAND make dist COMMAND make install
     )

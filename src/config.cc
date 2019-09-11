@@ -246,8 +246,9 @@ Status Config::parseConfigFromString(std::string input) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size()-10);
-    if (ns.size() > INT8_MAX) {
-      return Status(Status::NotOK, std::string("namespace size exceed limit ")+std::to_string(INT8_MAX));
+    auto s = isNamespaceLegal(ns);
+    if (!s.IsOK()) {
+      return s;
     }
     tokens[args[1]] = ns;
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-log-slower-than")) {
@@ -692,8 +693,9 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbid to add new namespace while the requirepass is empty");
   }
-  if (ns.size() > 255) {
-    return Status(Status::NotOK, "the namespace size exceed limit " + std::to_string(INT8_MAX));
+  auto s = isNamespaceLegal(ns);
+  if (!s.IsOK()) {
+    return s;
   }
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
@@ -718,4 +720,15 @@ Status Config::DelNamespace(const std::string &ns) {
     }
   }
   return Status(Status::NotOK, "the namespace was not found");
+}
+
+Status Config::isNamespaceLegal(const std::string &ns) {
+  if (ns.size() > UINT8_MAX) {
+    return Status(Status::NotOK, std::string("namespace size exceed limit ") + std::to_string(UINT8_MAX));
+  }
+  char last_char = ns.back();
+  if (last_char == std::numeric_limits<char>::max()) {
+    return Status(Status::NotOK, std::string("namespace contain ilegal letter"));
+  }
+  return Status::OK();
 }

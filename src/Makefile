@@ -105,7 +105,7 @@ $(ROCKSDB): $(JEMALLOC)
 
 $(JEMALLOC):
 	cd $(JEMALLOC_PATH); ./autogen.sh; \
-	   	./configure --enable-autogen --disable-libdl --enable-static; \
+	   	./configure --enable-autogen --disable-libdl --enable-static --with-jemalloc-prefix=""; \
 		$(MAKE) -C $(JEMALLOC_PATH)/
 
 kvrocks2redis: $(PROG) $(KVROCKS2REDIS_OBJS)

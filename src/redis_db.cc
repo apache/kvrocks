@@ -375,13 +375,13 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std:
   }
   *begin = iter->key().ToString();
 
-  //compose next prefix key
+  // it's ok to increase the last char in prefix as the boundary of the prefix
+  // while we limit the namespace last char shouldn't be larger than 128.
   std::string next_prefix = prefix;
   char last_char = next_prefix.back();
   last_char++;
   next_prefix.pop_back();
   next_prefix.push_back(last_char);
-
   iter->SeekForPrev(next_prefix);
   // reversed seek the key til with prefix or end of the iterator
   while (iter->Valid() && !iter->key().starts_with(prefix)) {

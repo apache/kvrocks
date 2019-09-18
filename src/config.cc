@@ -9,6 +9,7 @@
 #include <sstream>
 #include <vector>
 #include <utility>
+#include <limits>
 
 #include "config.h"
 #include "util.h"

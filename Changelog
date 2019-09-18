@@ -1,3 +1,7 @@
+* Version 1.0.3 (@2019-09-18)
+	- MOD: update rocksdb to v6.2.2
+	- MOD: use delete range to speedup the flushdb
+
 * Version 1.0.2 (@2019-09-04)
 	- MOD: revert rocksdb to v5.15.10
 	- FIX: empty requirepass shouldn't rewrite to config

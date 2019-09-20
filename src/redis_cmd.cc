@@ -21,6 +21,7 @@
 #include "redis_zset.h"
 #include "redis_pubsub.h"
 #include "redis_sortedint.h"
+#include "redis_slot.h"
 #include "replication.h"
 #include "util.h"
 #include "storage.h"
@@ -643,6 +644,29 @@ class CommandSetBit : public Commander {
  private:
   uint32_t offset_ = 0;
   bool bit_ = false;
+};
+
+class CommandMSetBit : public Commander {
+ public:
+  CommandMSetBit() : Commander("msetbit", -4, true) {}
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    std::vector<BitmapPair> kvs;
+    uint32_t index;
+    for (size_t i = 2; i < args_.size(); i += 2) {
+      try {
+        index = std::stoi(args_[i]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, kValueNotInterger);
+      }
+      kvs.emplace_back(BitmapPair{index, args_[i + 1]});
+    }
+    rocksdb::Status s = bitmap_db.MSetBit(args_[1], kvs);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
 };
 
 class CommandBitCount : public Commander {
@@ -3384,6 +3408,282 @@ class CommandDBName : public Commander {
   }
 };
 
+class CommandSlotsInfo : public Commander {
+ public:
+  CommandSlotsInfo() : Commander("slotsinfo", -1, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 1) {
+      try {
+        start_ = std::stoi(args[1]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, kValueNotInterger);
+      }
+    }
+    if (args.size() > 2) {
+      try {
+        count_ = std::stoi(args[2]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, kValueNotInterger);
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+
+    std::vector<SlotCount> slot_counts;
+    rocksdb::Status s =
+        slot_db.GetInfo(start_, count_, &slot_counts);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
+    output->append(Redis::MultiLen(slot_counts.size()));
+    for (const auto sc : slot_counts) {
+      output->append(Redis::MultiLen(2));
+      output->append(Redis::Integer(sc.slot_num));
+      output->append(Redis::Integer(sc.count));
+    }
+    return Status::OK();
+  }
+
+ private:
+  int start_ = 0;
+  int count_ = HASH_SLOTS_SIZE - 1;
+};
+
+class CommandSlotsScan : public CommandScanBase {
+ public:
+  CommandSlotsScan() : CommandScanBase("slotsscan", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 1) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    try {
+      slot_num_ = std::stoi(args[1]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    ParseCursor(args[2]);
+    if (args.size() == 5) {
+      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      if (!s.IsOK()) {
+        return s;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    std::vector<std::string> keys;
+    auto s = slot_db.Scan(slot_num_, cursor, limit, &keys);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
+    *output = GenerateOutput(keys);
+    return Status::OK();
+  }
+
+ private:
+  uint32_t slot_num_ = 0;
+};
+
+class CommandSlotsDel : public Commander {
+ public:
+  CommandSlotsDel() : Commander("slotsdel", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    std::vector<uint32_t> slot_nums;
+    uint32_t slot_num;
+    for (size_t i = 1; i < args_.size(); i++) {
+      try {
+        slot_num = std::stoi(args_[i]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, kValueNotInterger);
+      }
+      slot_nums.emplace_back(slot_num);
+      slot_db.Del(slot_num);
+    }
+
+    output->append(Redis::MultiLen(slot_nums.size()));
+    for (const auto sn : slot_nums) {
+      output->append(Redis::MultiLen(2));
+      output->append(Redis::Integer(sn));
+      output->append(Redis::Integer(0));
+    }
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtBase : public Commander {
+ public:
+  explicit CommandSlotsMgrtBase(const std::string &name, int arity, bool is_write = false)
+      : Commander(name, arity, is_write) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != static_cast<size_t>(arity_)) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    host = args[1];
+    try {
+      port = std::stoi(args[2]);
+      timeout = std::stoull(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+
+ protected:
+  std::string host;
+  uint32_t port = 0;
+  uint64_t timeout = 0;
+};
+
+class CommandSlotsMgrtSlot : public CommandSlotsMgrtBase {
+ public:
+  CommandSlotsMgrtSlot() : CommandSlotsMgrtBase("slotsmgrtslot", 5, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+
+    uint32_t slot_num;
+    try {
+      slot_num = std::stoi(args_[4]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    auto s = slot_db.MigrateSlotRandomOne(host, port, timeout, slot_num);
+    uint32_t size;
+    auto st = slot_db.Size(slot_num, &size);
+
+    output->append(Redis::MultiLen(2));
+    output->append(s.IsOK() ? Redis::Integer(1) : Redis::Integer(0));
+    output->append(Redis::Integer(size));
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtOne : public CommandSlotsMgrtBase {
+ public:
+  CommandSlotsMgrtOne() : CommandSlotsMgrtBase("slotsmgrtone", 5, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+
+    auto s = slot_db.MigrateOne(host, port, timeout, args_[4]);
+    *output = s.IsOK() ? Redis::Integer(1) : Redis::Integer(0);
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtTagSlot : public CommandSlotsMgrtBase {
+ public:
+  CommandSlotsMgrtTagSlot() : CommandSlotsMgrtBase("slotsmgrttagslot", 5, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+
+    uint32_t slot_num;
+    try {
+      slot_num = std::stoi(args_[4]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    int ret;
+    auto s = slot_db.MigrateTagSlot(host, port, timeout, slot_num, &ret);
+    uint32_t size;
+    auto st = slot_db.Size(slot_num, &size);
+
+    output->append(Redis::MultiLen(2));
+    output->append(s.IsOK() ? Redis::Integer(ret) : Redis::Integer(0));
+    output->append(Redis::Integer(size));
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtTagOne : public CommandSlotsMgrtBase {
+ public:
+  CommandSlotsMgrtTagOne() : CommandSlotsMgrtBase("slotsmgrttagone", 5, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+
+    int ret;
+    auto s = slot_db.MigrateTag(host, port, timeout, args_[4], &ret);
+    *output = s.IsOK() ? Redis::Integer(ret) : Redis::Integer(0);
+    return Status::OK();
+  }
+};
+
+class CommandSlotsRestore : public Commander {
+ public:
+  CommandSlotsRestore() : Commander("slotsrestore", -4, false) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    if ((args_.size() - 4) % 3 != 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    for (unsigned int i = 1; i < args_.size(); i += 3) {
+      int ttl;
+      try {
+        ttl = std::stoi(args_[i + 1]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, kValueNotInterger);
+      }
+      key_values_.push_back(KeyValue{args_[i], ttl, args_[i + 2]});
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    auto s = slot_db.Restore(key_values_);
+    if (!s.ok()) {
+      *output = Redis::Error(s.ToString());
+    } else {
+      *output = Redis::SimpleString("OK");
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::vector<KeyValue> key_values_;
+};
+
+class CommandSlotsHashKey : public Commander {
+ public:
+  CommandSlotsHashKey() : Commander("slotshashkey", -2, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    std::vector<uint32_t> slot_nums;
+    for (size_t i = 1; i < args_.size(); i++) {
+      auto slot_num = GetSlotNumFromKey(args_[i]);
+      slot_nums.emplace_back(slot_num);
+    }
+    output->append(Redis::MultiLen(slot_nums.size()));
+    for (const auto slot_num : slot_nums) {
+      output->append(Redis::Integer(slot_num));
+    }
+    return Status::OK();
+  }
+};
+
+class CommandSlotsCheck : public Commander {
+ public:
+  CommandSlotsCheck() : Commander("slotscheck", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error("only administrator can use slotscheck command");
+      return Status::OK();
+    }
+    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    auto s = slot_db.Check();
+    if (!s.ok()) {
+      *output = Redis::Error(s.ToString());
+    } else {
+      *output = Redis::SimpleString("OK");
+    }
+    return Status::OK();
+  }
+};
+
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
     {"auth",
@@ -3576,6 +3876,10 @@ std::map<std::string, CommanderFactory> command_table = {
      {"setbit",
       []() -> std::unique_ptr<Commander> {
         return std::unique_ptr<Commander>(new CommandSetBit);
+     }},
+    {"msetbit",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandMSetBit);
      }},
     {"bitcount",
      []() -> std::unique_ptr<Commander> {
@@ -3906,6 +4210,47 @@ std::map<std::string, CommanderFactory> command_table = {
     {"sirevrange",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSortedintRevRange);
+     }},
+    // Codis Slot command
+    {"slotsinfo",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsInfo);
+     }},
+    {"slotsscan",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsScan);
+     }},
+    {"slotsdel",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsDel);
+     }},
+    {"slotsmgrtslot",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtSlot);
+     }},
+    {"slotsmgrtone",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtOne);
+     }},
+    {"slotsmgrttagslot",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagSlot);
+     }},
+    {"slotsmgrttagone",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagOne);
+     }},
+    {"slotsrestore",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsRestore);
+     }},
+    {"slotshashkey",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsHashKey);
+     }},
+    {"slotscheck",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsCheck);
      }},
 
     // internal management cmd

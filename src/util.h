@@ -13,7 +13,7 @@
 namespace Util {
 // sock util
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(std::string host, uint32_t port, int *fd);
+Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout = 0, uint64_t timeout = 0);
 Status SockSend(int fd, const std::string &data);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 bool IsPortInUse(int port);
@@ -28,4 +28,5 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);
 
 void ThreadSetName(const char *name);
+int aeWait(int fd, int mask, uint64_t milliseconds);
 }  // namespace Util

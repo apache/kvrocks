@@ -227,6 +227,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       case kRedisBitmap: {
         auto args = log_data_.GetArguments();
         if (args->size() < 1) {
+          // codis migrate special cmd msetbit will fall into this, will opti to slotsrestore, so ignore temporary
           LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
           return rocksdb::Status::OK();
         }

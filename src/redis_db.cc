@@ -87,7 +87,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
-  return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
@@ -244,14 +244,11 @@ rocksdb::Status Database::FlushDB() {
   if (!s.ok()) {
     return rocksdb::Status::OK();
   }
-  s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, begin_key, end_key);
+  s = storage_->DeleteAll(begin_key, end_key);
   if (!s.ok()) {
     return s;
   }
-  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, end_key);
-  if (!s.ok()) {
-    return s;
-  }
+
   return rocksdb::Status::OK();
 }
 
@@ -273,12 +270,7 @@ rocksdb::Status Database::FlushAll() {
     return rocksdb::Status::OK();
   }
   auto last_key = iter->key().ToString();
-  auto s = db_->DeleteRange(rocksdb::WriteOptions(), metadata_cf_handle_, first_key, last_key);
-  if (!s.ok()) {
-    delete iter;
-    return s;
-  }
-  s = db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, last_key);
+  auto s = storage_->DeleteAll(first_key, last_key);
   if (!s.ok()) {
     delete iter;
     return s;
@@ -401,7 +393,8 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
                                     const std::string &cursor,
                                     uint64_t limit,
                                     const std::string &subkey_prefix,
-                                    std::vector<std::string> *keys) {
+                                    std::vector<std::string> *keys,
+                                    std::vector<std::string> *values) {
   uint64_t cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -427,7 +420,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   } else {
     start_key = match_prefix_key;
   }
-  for (iter->Seek(start_key); iter->Valid() && cnt < limit; iter->Next()) {
+  for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     if (!cursor.empty() && iter->key() == start_key) {
       // if cursor is not empty, then we need to skip start_key
       // because we already return that key in the last scan
@@ -438,7 +431,13 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
     }
     InternalKey ikey(iter->key());
     keys->emplace_back(ikey.GetSubKey().ToString());
+    if (values != nullptr) {
+      values->emplace_back(iter->value().ToString());
+    }
     cnt++;
+    if (limit > 0 && cnt >= limit) {
+      break;
+    }
   }
   delete iter;
   return rocksdb::Status::OK();
@@ -468,6 +467,31 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 
   return Status::OK();
+}
+
+void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
+  log_data_.Decode(blob);
+}
+
+rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key,
+                                           const Slice &value) {
+  std::string ns, user_key;
+  std::vector<std::string> command_args;
+  if (column_family_id == kColumnFamilyIDMetadata) {
+    ExtractNamespaceKey(key, &ns, &user_key);
+    put_keys_.emplace_back(user_key);
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const Slice &key) {
+  std::string ns, user_key;
+  std::vector<std::string> command_args;
+  if (column_family_id == kColumnFamilyIDMetadata) {
+    ExtractNamespaceKey(key, &ns, &user_key);
+    delete_keys_.emplace_back(user_key);
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace Redis

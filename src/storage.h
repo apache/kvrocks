@@ -26,10 +26,7 @@ namespace Engine {
 
 class Storage {
  public:
-  explicit Storage(Config *config)
-      :backup_env_(rocksdb::Env::Default()),
-       config_(config),
-       lock_mgr_(16) {}
+  explicit Storage(Config *config);
   ~Storage();
 
   Status Open(bool read_only);
@@ -46,6 +43,10 @@ class Storage {
   Status WriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
+  rocksdb::Status Delete(const rocksdb::WriteOptions &options,
+                         rocksdb::ColumnFamilyHandle *cf_handle,
+                         const rocksdb::Slice &key);
+  rocksdb::Status DeleteAll(const std::string &first_key, const std::string &last_key);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
   void PurgeBackupIfNeed(uint32_t next_backup_id);
 

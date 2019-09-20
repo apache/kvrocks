@@ -417,7 +417,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start > stop) {
-    return db_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+    return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
   }
   if (start < 0) start = 0;
 

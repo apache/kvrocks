@@ -51,6 +51,8 @@ struct Config{
   uint64_t max_replication_mb = 0;  // unit is MB
   uint64_t max_io_mb = 500;  // unit is MB
 
+  bool codis_enabled = false;
+
   std::vector<std::string> binds{"127.0.0.1"};
   std::vector<std::string> repl_binds{"127.0.0.1"};
   std::string dir = "/tmp/ev";

@@ -61,7 +61,8 @@ class SubKeyScanner : public Redis::Database {
                        const std::string &cursor,
                        uint64_t limit,
                        const std::string &subkey_prefix,
-                       std::vector<std::string> *keys);
+                       std::vector<std::string> *keys,
+                       std::vector<std::string> *values = nullptr);
 };
 
 class WriteBatchLogData {
@@ -79,6 +80,24 @@ class WriteBatchLogData {
  private:
   RedisType type_ = kRedisNone;
   std::vector<std::string> args_;
+};
+
+/*
+ * An extractor to extract update from raw writebatch
+ */
+class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
+ public:
+  void LogData(const rocksdb::Slice &blob) override;
+  rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
+                        const rocksdb::Slice &value) override;
+
+  rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override;
+  std::vector<std::string> *GetPutKeys() { return &put_keys_; }
+  std::vector<std::string> *GetDeleteKeys() { return &delete_keys_; }
+ private:
+  std::vector<std::string> put_keys_;
+  std::vector<std::string> delete_keys_;
+  Redis::WriteBatchLogData log_data_;
 };
 
 }  // namespace Redis

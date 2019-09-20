@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include "redis_metadata.h"
+#include "redis_slot.h"
 #include "storage.h"
 
 namespace Engine {
@@ -76,5 +77,40 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
       const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
   }
+};
+
+class SlotKeyFilter : public rocksdb::CompactionFilter {
+ public:
+  explicit SlotKeyFilter(Storage *storage)
+      : cached_key_(""),
+        cached_metadata_(""),
+        stor_(storage) {}
+
+  const char *Name() const override { return "SlotKeyFilter"; }
+  bool IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value) const;
+  bool Filter(int level, const Slice &key, const Slice &value,
+              std::string *new_value, bool *modified) const override;
+
+ protected:
+  mutable std::string cached_key_;
+  mutable std::string cached_metadata_;
+  Engine::Storage *stor_;
+};
+
+class SlotKeyFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  explicit SlotKeyFilterFactory(Engine::Storage *storage) {
+    stor_ = storage;
+  }
+
+  const char *Name() const override { return "SlotKeyFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(
+        new SlotKeyFilter(stor_));
+  }
+
+ private:
+  Engine::Storage *stor_ = nullptr;
 };
 }  // namespace Engine

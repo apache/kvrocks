@@ -103,6 +103,35 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
+rocksdb::Status Bitmap::MSetBit(const Slice &user_key, const std::vector<BitmapPair> &pairs) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  BitmapMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) return s;
+
+  uint32_t cnt = 0;
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisBitmap);
+  batch.PutLogData(log_data.Encode());
+  for (const auto &pair : pairs) {
+    std::string sub_key;
+    InternalKey(ns_key, std::to_string(pair.index), metadata.version).Encode(&sub_key);
+    batch.Put(sub_key, pair.value);
+
+    for (size_t j = 0; j < pair.value.size(); j++) {
+      cnt += kNum2Bits[static_cast<int>(pair.value[j])];
+    }
+  }
+  metadata.size = cnt;
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uint32_t *cnt) {
   *cnt = 0;
   std::string ns_key;

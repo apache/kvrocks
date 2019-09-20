@@ -20,6 +20,7 @@ const size_t PROTO_MAX_MULTI_BULKS = 8 * 1024L;
 Status Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
+  Config *config = svr_->GetConfig();
   while (true) {
     switch (state_) {
       case ArrayLen:
@@ -33,7 +34,7 @@ Status Request::Tokenize(evbuffer *input) {
             free(line);
             return Status(Status::NotOK, "Protocol error: expect integer");
           }
-          if (multi_bulk_len_ > PROTO_MAX_MULTI_BULKS) {
+          if (!config->codis_enabled && multi_bulk_len_ > PROTO_MAX_MULTI_BULKS) {
             free(line);
             return Status(Status::NotOK, "Protocol error: too many bulk strings");
           }

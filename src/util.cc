@@ -10,6 +10,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 #include <string>
 #include <algorithm>
@@ -26,6 +27,9 @@
 # define POLLNVAL    0x0020    /* Invalid request: fd not open */
 #endif
 
+#define AE_READABLE 1
+#define AE_WRITABLE 2
+
 namespace Util {
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   sockaddr_in sin{};
@@ -35,18 +39,55 @@ sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   return sin;
 }
 
-Status SockConnect(std::string host, uint32_t port, int *fd) {
+Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr(host.c_str());
   sin.sin_port = htons(port);
   *fd = socket(AF_INET, SOCK_STREAM, 0);
-  auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
-  if (rv < 0) {
-    close(*fd);
-    *fd = -1;
-    return Status(Status::NotOK, strerror(errno));
+  if (conn_timeout > 0) {
+    fcntl(*fd, F_SETFL, O_NONBLOCK);
+    connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+
+    if ((Util::aeWait(*fd, AE_WRITABLE, conn_timeout) & AE_WRITABLE) == 0) {
+      close(*fd);
+      *fd = -1;
+      return Status(Status::NotOK, strerror(errno));
+    }
+
+    int socket_arg;
+    // Set to blocking mode again...
+    if ((socket_arg = fcntl(*fd, F_GETFL, NULL)) < 0) {
+      close(*fd);
+      *fd = -1;
+      return Status(Status::NotOK, strerror(errno));
+    }
+    socket_arg &= (~O_NONBLOCK);
+    if (fcntl(*fd, F_SETFL, socket_arg) < 0) {
+      close(*fd);
+      *fd = -1;
+      return Status(Status::NotOK, strerror(errno));
+    }
+  } else {
+    auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+    if (rv < 0) {
+      close(*fd);
+      *fd = -1;
+      return Status(Status::NotOK, strerror(errno));
+    }
   }
+
+  if (timeout > 0) {
+    struct timeval tv;
+    tv.tv_sec = timeout / 1000;
+    tv.tv_usec = (timeout % 1000) * 1000;
+    if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
+      close(*fd);
+      *fd = -1;
+      return Status(Status::NotOK, "setsockopt failed");
+    }
+  }
+
   setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
   setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
   return Status::OK();
@@ -288,4 +329,27 @@ void ThreadSetName(const char *name) {
   pthread_setname_np(pthread_self(), name);
 #endif
 }
+
+/* Wait for milliseconds until the given file descriptor becomes
+ * writable/readable/exception */
+int aeWait(int fd, int mask, uint64_t timeout) {
+  struct pollfd pfd;
+  int retmask = 0, retval;
+
+  memset(&pfd, 0, sizeof(pfd));
+  pfd.fd = fd;
+  if (mask & AE_READABLE) pfd.events |= POLLIN;
+  if (mask & AE_WRITABLE) pfd.events |= POLLOUT;
+
+  if ((retval = poll(&pfd, 1, timeout)) == 1) {
+    if (pfd.revents & POLLIN) retmask |= AE_READABLE;
+    if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
+    if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
+    if (pfd.revents & POLLHUP) retmask |= AE_WRITABLE;
+    return retmask;
+  } else {
+    return retval;
+  }
+}
+
 }  // namespace Util

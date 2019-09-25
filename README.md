@@ -40,7 +40,7 @@ $ make -j4
 #### run
 
 ```shell
-$ ./src/kvrocks -c ../kvrocks.conf
+$ ./src/kvrocks -c kvrocks.conf
 ```
 
 ### TEST

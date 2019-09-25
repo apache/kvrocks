@@ -14,18 +14,18 @@ kvrocks has the following key features:
 #### requirements
 
 * g++ (required by c++11, version >= 4.8)
-* autoconf (required by jemalloc)
+* autoconf automake libtool
 
 #### Build
 
 ***NOTE: You shoud install the snappy first:***
 
 ```shell
-# Centos/Rehat
-sudo yum install -y snappy snappy-devel
+# Centos/Redhat
+sudo yum install -y snappy snappy-devel autoconf automake libtool
 
 # Ubuntu
-sudo apt-get install libsnappy-dev
+sudo apt-get install libsnappy-dev autoconf automake libtool
 
 # MACOSX
 brew install snappy
@@ -110,7 +110,7 @@ OK
 * CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
 * Memory: 32 GiB
 * NET:  Intel Corporation I350 Gigabit Network Connection
-* DISK: 2TB NVMe SSD
+* DISK: 2TB NVMe Intel SSD DC P460
 
 >  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
 

@@ -126,17 +126,17 @@ Status Config::parseConfigFromString(std::string input) {
   args[0] = Util::ToLower(args[0]);
   size_t size = args.size();
   if (size == 2 && args[0] == "port") {
-    port = std::stoi(args[1]);
+    port = std::atoi(args[1].c_str());
     repl_port = port + 1;
   } else if (size == 2 && args[0] == "timeout") {
-    timeout = std::stoi(args[1]);
+    timeout = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "workers") {
-    workers = std::stoi(args[1]);
+    workers = std::atoi(args[1].c_str());
     if (workers < 1 || workers > 1024) {
       return Status(Status::NotOK, "too many worker threads");
     }
   } else if (size == 2 && args[0] == "repl-workers") {
-    repl_workers = std::stoi(args[1]);
+    repl_workers = std::atoi(args[1].c_str());
     if (workers < 1 || workers > 1024) {
       return Status(Status::NotOK, "too many replication worker threads");
     }
@@ -163,9 +163,9 @@ Status Config::parseConfigFromString(std::string input) {
     }
     slave_readonly = (i == 1);
   } else if (size == 2 && args[0] == "slave-priority") {
-    slave_priority = std::stoi(args[1]);
+    slave_priority = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "tcp-backlog") {
-    backlog = std::stoi(args[1]);
+    backlog = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "dir") {
     dir = args[1];
     db_dir = dir + "/db";
@@ -173,16 +173,16 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "backup-dir") {
     backup_dir = args[1];
   } else if (size == 2 && args[0] == "maxclients") {
-    maxclients = std::stoi(args[1]);
+    maxclients = std::atoi(args[1].c_str());
     if (maxclients > 0) incrOpenFilesLimit(static_cast<rlim_t >(maxclients));
   } else if (size == 2 && args[0] == "db-name") {
     db_name = args[1];
   } else if (size == 2 && args[0] == "masterauth") {
     masterauth = args[1];
   } else if (size == 2 && args[0] == "max-backup-to-keep") {
-    max_backup_to_keep = static_cast<uint32_t>(std::stoi(args[1]));
+    max_backup_to_keep = static_cast<uint32_t>(std::atoi(args[1].c_str()));
   } else if (size == 2 && args[0] == "max-backup-keep-hours") {
-    max_backup_keep_hours = static_cast<uint32_t>(std::stoi(args[1]));
+    max_backup_keep_hours = static_cast<uint32_t>(std::atoi(args[1].c_str()));
   } else if (size == 2 && args[0] == "requirepass") {
     requirepass = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
@@ -197,17 +197,17 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 3 && args[0] == "slaveof") {
     if (args[1] != "no" && args[2] != "one") {
       master_host = args[1];
-      master_port = std::stoi(args[2]);
+      master_port = std::atoi(args[2].c_str());
       if (master_port <= 0 || master_port >= 65535) {
         return Status(Status::NotOK, "master port range should be between 0 and 65535");
       }
     }
   } else if (size == 2 && args[0] == "max-db-size") {
-    max_db_size = static_cast<uint32_t>(std::stoi(args[1]));
+    max_db_size = static_cast<uint32_t>(std::atoi(args[1].c_str()));
   } else if (size == 2 && args[0] == "max-replication-mb") {
-    max_replication_mb = static_cast<uint64_t>(std::stoi(args[1]));
+    max_replication_mb = static_cast<uint64_t>(std::atoi(args[1].c_str()));
   } else if (size == 2 && args[0] == "max-io-mb") {
-    max_io_mb = static_cast<uint64_t>(std::stoi(args[1]));
+    max_io_mb = static_cast<uint64_t>(std::atoi(args[1].c_str()));
   } else if (size >= 2 && args[0] == "compact-cron") {
     args.erase(args.begin());
     Status s = compact_cron.SetScheduleTime(args);
@@ -221,14 +221,14 @@ Status Config::parseConfigFromString(std::string input) {
       return Status(Status::NotOK, "bgsave-cron time expression format error : " + s.Msg());
     }
   } else if (size == 2 && args[0] == "profiling-sample-ratio") {
-    profiling_sample_ratio = std::stoi(args[1]);
+    profiling_sample_ratio = std::atoi(args[1].c_str());
     if (profiling_sample_ratio < 0 || profiling_sample_ratio > 100) {
       return Status(Status::NotOK, "profiling_sample_ratio value should between 0 and 100");
     }
   } else if (size == 2 && args[0] == "profiling-sample-record-max-len") {
-    profiling_sample_record_max_len = std::stoi(args[1]);
+    profiling_sample_record_max_len = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "profiling-sample-record-threshold-ms") {
-    profiling_sample_record_threshold_ms = std::stoi(args[1]);
+    profiling_sample_record_threshold_ms = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "profiling-sample-commands") {
     std::vector<std::string> cmds;
     Util::Split(args[1], ",", &cmds);
@@ -253,9 +253,9 @@ Status Config::parseConfigFromString(std::string input) {
     }
     tokens[args[1]] = ns;
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-log-slower-than")) {
-    slowlog_log_slower_than = std::stoll(args[1]);
+    slowlog_log_slower_than = std::atoll(args[1].c_str());
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
-    slowlog_max_len = std::stoi(args[1]);
+    slowlog_max_len = std::atoi(args[1].c_str());
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -432,7 +432,7 @@ Status Config::setRocksdbOption(Engine::Storage *storage, const std::string &key
 Status Config::Set(std::string key, const std::string &value, Server *svr) {
   key = Util::ToLower(key);
   if (key == "timeout") {
-    timeout = std::stoi(value);
+    timeout = std::atoi(value.c_str());
     return Status::OK();
   }
   if (key == "backup-dir") {
@@ -442,15 +442,15 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return Status::OK();
   }
   if (key == "maxclients") {
-    maxclients = std::stoi(value);
+    maxclients = std::atoi(value.c_str());
     return Status::OK();
   }
   if (key == "max-backup-to-keep") {
-    max_backup_to_keep = static_cast<uint32_t>(std::stoi(value));
+    max_backup_to_keep = static_cast<uint32_t>(std::atoi(value.c_str()));
     return Status::OK();
   }
   if (key == "max-backup-keep-hours") {
-    max_backup_keep_hours = static_cast<uint32_t>(std::stoi(value));
+    max_backup_keep_hours = static_cast<uint32_t>(std::atoi(value.c_str()));
     return Status::OK();
   }
   if (key == "masterauth") {
@@ -473,7 +473,7 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return Status::OK();
   }
   if (key == "slave-priority") {
-    slave_priority = std::stoi(value);
+    slave_priority = std::atoi(value.c_str());
     return Status::OK();
   }
   if (key == "loglevel") {
@@ -496,17 +496,17 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
     return bgsave_cron.SetScheduleTime(args);
   }
   if (key == "slowlog-log-slower-than") {
-    slowlog_log_slower_than = std::stoll(value);
+    slowlog_log_slower_than = std::atoll(value.c_str());
     return Status::OK();
   }
   if (key == "slowlog-max-len") {
-    slowlog_max_len = std::stoi(value);
+    slowlog_max_len = std::atoi(value.c_str());
     svr->GetSlowLog()->SetMaxEntries(slowlog_max_len);
     return Status::OK();
   }
   if (key == "max-db-size") {
     try {
-      int32_t i = std::stoi(value);
+      int32_t i = std::atoi(value.c_str());
       if (i < 0) {
         return Status(Status::RedisParseErr, "value should be >= 0");
       }

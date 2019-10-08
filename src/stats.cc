@@ -40,7 +40,7 @@ int64_t Stats::GetMemoryRSS() {
   char *stop = strchr(start, ' ');
   if (!stop) return 0;
   *stop = '\0';
-  int rss = std::stoi(start);
+  int rss = std::atoi(start);
   return static_cast<int64_t>(rss * sysconf(_SC_PAGESIZE));
 }
 #endif

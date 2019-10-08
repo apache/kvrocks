@@ -1,3 +1,8 @@
+* Version 1.0.4 (@2019-10-08)
+	- MOD: shrink the default value of write buffer size
+	- FIX: slowlog/perflog didn't catch the cast exception
+	- MOD: use atoi instead of stoi to prevent exception and abort the program
+
 * Version 1.0.3 (@2019-09-18)
 	- MOD: update rocksdb to v6.2.2
 	- MOD: use delete range to speedup the flushdb

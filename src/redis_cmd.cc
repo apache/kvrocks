@@ -2891,7 +2891,12 @@ class CommandPerfLog : public Commander {
       return Status(Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
-      cnt_ = std::stoi(args[2]);
+      if (args[2] == "*") {
+        cnt_ = 0;
+      } else {
+        Status s = Util::StringToNum(args[2], &cnt_);
+        return s;
+      }
     }
     return Status::OK();
   }
@@ -2911,7 +2916,7 @@ class CommandPerfLog : public Commander {
 
  private:
   std::string subcommand_;
-  int cnt_ = 10;
+  int64_t cnt_ = 10;
 };
 
 class CommandSlowlog : public Commander {
@@ -2924,7 +2929,12 @@ class CommandSlowlog : public Commander {
       return Status(Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
-      cnt_ = std::stoi(args[2]);
+      if (args[2] == "*") {
+        cnt_ = 0;
+      } else {
+        Status s = Util::StringToNum(args[2], &cnt_);
+        return s;
+      }
     }
     return Status::OK();
   }
@@ -2947,7 +2957,7 @@ class CommandSlowlog : public Commander {
 
  private:
   std::string subcommand_;
-  uint32_t cnt_ = 10;
+  int64_t cnt_ = 10;
 };
 
 class CommandClient : public Commander {

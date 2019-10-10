@@ -24,6 +24,35 @@ static const size_t kNumLogLevel = sizeof(kLogLevels)/ sizeof(kLogLevels[0]);
 static const char *kCompressionType[] = {"no", "snappy"};
 static const size_t kNumCompressionType = sizeof(kCompressionType) / sizeof(kCompressionType[0]);
 
+typedef struct configEnum {
+  const char *name;
+  const int val;
+} configEnum;
+
+configEnum supervised_mode_enum[] = {
+    {"no", SUPERVISED_NONE},
+    {"auto", SUPERVISED_AUTODETECT},
+    {"upstart", SUPERVISED_UPSTART},
+    {"systemd", SUPERVISED_SYSTEMD},
+    {nullptr, 0}
+};
+
+int configEnumGetValue(configEnum *ce, const char *name) {
+  while(ce->name != nullptr) {
+    if (!strcasecmp(ce->name, name)) return ce->val;
+    ce++;
+  }
+  return INT_MIN;
+}
+
+const char *configEnumGetName(configEnum *ce, int val) {
+  while(ce->name != nullptr) {
+    if (ce->val == val) return ce->name;
+    ce++;
+  }
+  return nullptr;
+}
+
 void Config::incrOpenFilesLimit(rlim_t maxfiles) {
   struct rlimit limit;
 
@@ -256,6 +285,12 @@ Status Config::parseConfigFromString(std::string input) {
     slowlog_log_slower_than = std::atoll(args[1].c_str());
   } else if (size == 2 && !strcasecmp(args[0].data(), "slowlog-max-len")) {
     slowlog_max_len = std::atoi(args[1].c_str());
+  } else if (size == 2 && args[0] == "supervised") {
+    supervised_mode = configEnumGetValue(supervised_mode_enum, args[1].c_str());
+    if (supervised_mode == INT_MIN) {
+      return Status(Status::NotOK, "Invalid option for 'supervised'."
+                                   " Allowed values: 'upstart', 'systemd', 'auto', 'no'");
+    }
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }
@@ -337,6 +372,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("timeout", std::to_string(timeout));
   PUSH_IF_MATCH("tcp-backlog", std::to_string(backlog));
   PUSH_IF_MATCH("daemonize", (daemonize ? "yes" : "no"));
+  PUSH_IF_MATCH("supervised", configEnumGetName(supervised_mode_enum, supervised_mode));
   PUSH_IF_MATCH("maxclients", std::to_string(maxclients));
   PUSH_IF_MATCH("slave-read-only", (slave_readonly ? "yes" : "no"));
   PUSH_IF_MATCH("slave-priority", std::to_string(slave_priority));
@@ -612,6 +648,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("repl-workers", repl_workers);
   WRITE_TO_FILE("loglevel", kLogLevels[loglevel]);
   WRITE_TO_FILE("daemonize", (daemonize?"yes":"no"));
+  WRITE_TO_FILE("supervised", (configEnumGetName(supervised_mode_enum, supervised_mode)));
   WRITE_TO_FILE("db-name", db_name);
   WRITE_TO_FILE("dir", dir);
   WRITE_TO_FILE("backup-dir", backup_dir);

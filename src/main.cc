@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <execinfo.h>
 #include <ucontext.h>
+#include <sys/un.h>
 
 
 #include "worker.h"
@@ -150,6 +151,83 @@ static void initGoogleLog(const Config *config) {
   FLAGS_log_dir = config->dir;
 }
 
+bool supervisedUpstart() {
+  const char *upstart_job = getenv("UPSTART_JOB");
+  if (!upstart_job) {
+    LOG(WARNING) << "upstart supervision requested, but UPSTART_JOB not found";
+    return false;
+  }
+  LOG(INFO) << "supervised by upstart, will stop to signal readiness";
+  raise(SIGSTOP);
+  unsetenv("UPSTART_JOB");
+  return true;
+}
+
+bool supervisedSystemd() {
+  const char *notify_socket = getenv("NOTIFY_SOCKET");
+  if (!notify_socket) {
+    LOG(WARNING) << "systemd supervision requested, but NOTIFY_SOCKET not found";
+    return false;
+  }
+
+  int fd = 1;
+  if ((fd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1) {
+    LOG(WARNING) << "Can't connect to systemd socket " << notify_socket;
+    return false;
+  }
+
+  struct sockaddr_un su;
+  memset(&su, 0, sizeof(su));
+  su.sun_family = AF_UNIX;
+  strncpy (su.sun_path, notify_socket, sizeof(su.sun_path) -1);
+  su.sun_path[sizeof(su.sun_path) - 1] = '\0';
+  if (notify_socket[0] == '@')
+    su.sun_path[0] = '\0';
+
+  struct iovec iov;
+  memset(&iov, 0, sizeof(iov));
+  iov.iov_base = (void *)"READY=1";
+  iov.iov_len = strlen("READY=1");
+
+  struct msghdr hdr;
+  memset(&hdr, 0, sizeof(hdr));
+  hdr.msg_name = &su;
+  hdr.msg_namelen = offsetof(struct sockaddr_un, sun_path) + strlen(notify_socket);
+  hdr.msg_iov = &iov;
+  hdr.msg_iovlen = 1;
+
+  int sendto_flags = 0;
+  unsetenv("NOTIFY_SOCKET");
+#ifdef HAVE_MSG_NOSIGNAL
+  sendto_flags |= MSG_NOSIGNAL;
+#endif
+  if (sendmsg(fd, &hdr, sendto_flags) < 0) {
+    LOG(WARNING) << "Can't send notification to systemd";
+    close(fd);
+    return false;
+  }
+  close(fd);
+  return true;
+}
+
+bool isSupervisedMode(int mode) {
+  if (mode == SUPERVISED_AUTODETECT)  {
+    const char *upstart_job = getenv("UPSTART_JOB");
+    const char *notify_socket = getenv("NOTIFY_SOCKET");
+    if (upstart_job) {
+      mode = SUPERVISED_UPSTART;
+    }  else if (notify_socket) {
+      mode = SUPERVISED_SYSTEMD;
+    }
+  }
+  if (mode == SUPERVISED_UPSTART) {
+    return supervisedUpstart();
+  } else if (mode == SUPERVISED_SYSTEMD) {
+    return supervisedSystemd();
+  }
+  return false;
+}
+
 static Status createPidFile(const std::string &path) {
   int fd = open(path.data(), O_RDWR|O_CREAT, 0660);
   if (fd < 0) {
@@ -213,7 +291,8 @@ int main(int argc, char* argv[]) {
               << config.port << "] is already in use" << std::endl;
     exit(1);
   }
-  if (config.daemonize) daemonize();
+  bool is_supervised = isSupervisedMode(config.supervised_mode);
+  if (config.daemonize && !is_supervised) daemonize();
   s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();

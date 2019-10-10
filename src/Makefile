@@ -133,7 +133,7 @@ distclean: clean
 
 install: all
 	@mkdir -p $(INSTALL_DIR)
-	$(KVROCKS_INSTALL) $(PROG) $(INSTALL_DIR)
+	$(KVROCKS_INSTALL) $(PROG) $(BIN_DIR)
 
 uninstall:
 	rm -rf $(INSTALL_DIR)/$(PROG)

@@ -19,6 +19,11 @@ class Storage;
 
 extern const char *kDefaultNamespace;
 
+#define SUPERVISED_NONE 0
+#define SUPERVISED_AUTODETECT 1
+#define SUPERVISED_SYSTEMD 2
+#define SUPERVISED_UPSTART 3
+
 const size_t KiB = 1024L;
 const size_t MiB = 1024L * KiB;
 const size_t GiB = 1024L * MiB;
@@ -38,6 +43,7 @@ struct Config{
   int64_t slowlog_log_slower_than = 200000;  // 200ms
   unsigned int slowlog_max_len = 0;
   bool daemonize = false;
+  int supervised_mode = SUPERVISED_NONE;
   bool slave_readonly = true;
   uint32_t slave_priority = 100;
   uint32_t max_db_size = 0;  // unit is GB

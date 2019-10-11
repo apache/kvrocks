@@ -1,0 +1,16 @@
+[Unit]
+Description=kvrocks SSD key-value database
+Documentation=https://github.com/meitu/kvrocks
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/kvrocks -c /etc/kvrocks/kvrocks.conf
+Restart=on-failure
+ExecStop=/bin/kill -s TERM $MAINPID
+RestartSec=10s
+LimitNOFILE=100000
+
+[Install]
+WantedBy=multi-user.target
+Alias=kvrocks.service

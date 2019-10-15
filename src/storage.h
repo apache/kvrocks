@@ -46,7 +46,7 @@ class Storage {
   rocksdb::Status Delete(const rocksdb::WriteOptions &options,
                          rocksdb::ColumnFamilyHandle *cf_handle,
                          const rocksdb::Slice &key);
-  rocksdb::Status DeleteAll(const std::string &first_key, const std::string &last_key);
+  rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
   void PurgeBackupIfNeed(uint32_t next_backup_id);
 

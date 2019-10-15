@@ -13,7 +13,8 @@
 namespace Util {
 // sock util
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout = 0, uint64_t timeout = 0);
+Status SockConnect(std::string host, uint32_t port, int *fd);
+Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout = 0);
 Status SockSend(int fd, const std::string &data);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 bool IsPortInUse(int port);

@@ -244,7 +244,7 @@ rocksdb::Status Database::FlushDB() {
   if (!s.ok()) {
     return rocksdb::Status::OK();
   }
-  s = storage_->DeleteAll(begin_key, end_key);
+  s = storage_->DeleteRange(begin_key, end_key);
   if (!s.ok()) {
     return s;
   }
@@ -270,7 +270,7 @@ rocksdb::Status Database::FlushAll() {
     return rocksdb::Status::OK();
   }
   auto last_key = iter->key().ToString();
-  auto s = storage_->DeleteAll(first_key, last_key);
+  auto s = storage_->DeleteRange(first_key, last_key);
   if (!s.ok()) {
     delete iter;
     return s;

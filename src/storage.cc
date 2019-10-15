@@ -345,7 +345,7 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
   return db_->Write(options, &batch);
 }
 
-rocksdb::Status Storage::DeleteAll(const std::string &first_key, const std::string &last_key) {
+rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
   auto s = db_->DeleteRange(rocksdb::WriteOptions(), GetCFHandle("metadata"), first_key, last_key);
   if (!s.ok()) {
     return s;
@@ -355,6 +355,8 @@ rocksdb::Status Storage::DeleteAll(const std::string &first_key, const std::stri
     return s;
   }
   if (config_->codis_enabled) {
+    // currently only flushall and flushdb use deleterange , so we can delete all codis slot data
+    // please do not use Storage::DeleteRange in other scenario
     Redis::Slot slot_db(this);
     auto s = slot_db.DeleteAll();
     if (!s.ok()) return s;

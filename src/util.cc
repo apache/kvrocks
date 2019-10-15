@@ -39,6 +39,23 @@ sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
   return sin;
 }
 
+Status SockConnect(std::string host, uint32_t port, int *fd) {
+  sockaddr_in sin{};
+  sin.sin_family = AF_INET;
+  sin.sin_addr.s_addr = inet_addr(host.c_str());
+  sin.sin_port = htons(port);
+  *fd = socket(AF_INET, SOCK_STREAM, 0);
+  auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+  if (rv < 0) {
+    close(*fd);
+    *fd = -1;
+    return Status(Status::NotOK, strerror(errno));
+  }
+  setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
+  setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
+  return Status::OK();
+}
+
 Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;

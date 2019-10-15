@@ -337,7 +337,7 @@ Status Config::Load(std::string path) {
     }
     if (codis_enabled) {
       file.close();
-      return Status(Status::NotOK, "namespace should be empty when codis support is enabled");
+      return Status(Status::NotOK, "namespace wasn't allowed when the codis mode enabled");
     }
   }
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);

@@ -1,13 +1,16 @@
 #include "redis_slot.h"
 #include <time.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <sys/time.h>
 #include <rocksdb/env.h>
+#include <glog/logging.h>
 
 #include <vector>
 #include <cstdlib>
 #include <atomic>
 #include <string>
+#include <algorithm>
 #include <map>
 
 #include "util.h"
@@ -59,6 +62,25 @@ std::string GetTagFromKey(const std::string &key) {
   if (right_pos == std::string::npos || right_pos < left_pos) return std::string();
 
   return key.substr(left_pos + 1, right_pos - left_pos - 1);
+}
+
+static void PthreadCall(const char* label, int result) {
+  if (result != 0) {
+    fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
+    abort();
+  }
+}
+
+// Return false if timeout
+static bool PthreadTimeoutCall(const char* label, int result) {
+  if (result != 0) {
+    if (result == ETIMEDOUT) {
+      return false;
+    }
+    fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
+    abort();
+  }
+  return true;
 }
 
 SlotInternalKey::SlotInternalKey(rocksdb::Slice input) {
@@ -163,6 +185,61 @@ bool SlotMetadata::operator==(const SlotMetadata &that) const {
   return true;
 }
 
+Mutex::Mutex() {
+  PthreadCall("init mutex", pthread_mutex_init(&mu_, NULL));
+}
+
+Mutex::~Mutex() {
+  PthreadCall("destroy mutex", pthread_mutex_destroy(&mu_));
+}
+
+void Mutex::Lock() {
+  PthreadCall("lock", pthread_mutex_lock(&mu_));
+}
+
+void Mutex::Unlock() {
+  PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+}
+
+CondVar::CondVar(Mutex* mu)
+    : mu_(mu) {
+  PthreadCall("init cv", pthread_cond_init(&cv_, NULL));
+}
+
+CondVar::~CondVar() {
+  PthreadCall("destroy cv", pthread_cond_destroy(&cv_));
+}
+
+void CondVar::Wait() {
+  PthreadCall("wait", pthread_cond_wait(&cv_, &mu_->mu_));
+}
+
+// return false if timeout
+bool CondVar::TimedWait(uint32_t timeout) {
+  /*
+   * pthread_cond_timedwait api use absolute API
+   * so we need gettimeofday + timeout
+   */
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  struct timespec tsp;
+
+  int64_t usec = now.tv_usec + timeout * 1000LL;
+  tsp.tv_sec = now.tv_sec + usec / 1000000;
+  tsp.tv_nsec = (usec % 1000000) * 1000;
+
+  return PthreadTimeoutCall("timewait",
+                            pthread_cond_timedwait(&cv_, &mu_->mu_, &tsp));
+}
+
+void CondVar::Signal() {
+  PthreadCall("signal", pthread_cond_signal(&cv_));
+}
+
+void CondVar::SignalAll() {
+  PthreadCall("broadcast", pthread_cond_broadcast(&cv_));
+}
+
 namespace Redis {
 
 rocksdb::Status Slot::GetMetadata(uint32_t slot_num, SlotMetadata *metadata) {
@@ -198,30 +275,29 @@ Status Slot::MigrateOne(const std::string &host,
                         uint32_t port,
                         uint64_t timeout,
                         const rocksdb::Slice &key) {
-  std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
-
-  LatestSnapShot ss(db_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  std::string bytes;
-  rocksdb::Status st = db_->Get(read_options, metadata_cf_handle_, ns_key, &bytes);
-  if (!st.ok()) return Status(Status::RedisExecErr, st.ToString());
-
-  Metadata metadata(kRedisNone);
-  metadata.Decode(bytes);
-
-  if (metadata.Expired()) {
-    return Status(Status::RedisExecErr, "the key was Expired");
-  }
-  if (metadata.Type() != kRedisString && metadata.size == 0) {
-    return Status(Status::RedisExecErr, "no elements");
-  }
-
   int sock_fd;
-  Status s = Util::SockConnect(host, port, &sock_fd, timeout, timeout);
+  auto s = Util::SockConnect(host, port, &sock_fd, timeout, timeout);
   if (!s.IsOK()) {
     return Status(Status::NotOK, "connect the server err: " + s.Msg());
+  }
+  s = MigrateOneKey(sock_fd, key);
+  close(sock_fd);
+  return s;
+}
+
+Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
+  std::string ns_key;
+  AppendNamespacePrefix(key, &ns_key);
+  std::string bytes;
+  auto st = Database::GetRawMetadata(ns_key,&bytes);
+  if (!st.ok()) return Status(Status::NotFound, st.ToString());
+  Metadata metadata(kRedisNone);
+  metadata.Decode(bytes);
+  if (metadata.Expired()) {
+    return Status(Status::NotFound, "the key was Expired");
+  }
+  if (metadata.Type() != kRedisString && metadata.size == 0) {
+    return Status(Status::NotFound, "no elements");
   }
 
   size_t line_len;
@@ -246,15 +322,13 @@ Status Slot::MigrateOne(const std::string &host,
     }
     default:break;  // should never get here
   }
-  s = Util::SockSend(sock_fd, restore_command);
+  auto s = Util::SockSend(sock_fd, restore_command);
   if (!s.IsOK()) {
-    close(sock_fd);
     return Status(Status::NotOK, "[slotsrestore] send command err:" + s.Msg());
   }
   while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
       evbuffer_free(evbuf);
-      close(sock_fd);
       return Status(Status::NotOK, std::string("[slotsrestore] read response err: ") + strerror(errno));
     }
     char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
@@ -263,7 +337,6 @@ Status Slot::MigrateOne(const std::string &host,
       auto error_msg = "[slotsrestore] got invalid response: " + std::string(line);
       free(line);
       evbuffer_free(evbuf);
-      close(sock_fd);
       return Status(Status::NotOK, error_msg);
     }
     free(line);
@@ -274,13 +347,11 @@ Status Slot::MigrateOne(const std::string &host,
         Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)});
     s = Util::SockSend(sock_fd, ttl_command);
     if (!s.IsOK()) {
-      close(sock_fd);
       return Status(Status::NotOK, "[slotsrestore] send expire command err:" + s.Msg());
     }
     while (true) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
-        close(sock_fd);
         return Status(Status::NotOK,
                       std::string("[slotsrestore] expire command read response err: ") + strerror(errno));
       }
@@ -289,7 +360,6 @@ Status Slot::MigrateOne(const std::string &host,
       if (line[0] == '-') {
         free(line);
         evbuffer_free(evbuf);
-        close(sock_fd);
         return Status(Status::NotOK, "[slotsrestore] expire command got invalid response");
       }
       free(line);
@@ -297,7 +367,6 @@ Status Slot::MigrateOne(const std::string &host,
     }
   }
   evbuffer_free(evbuf);
-  close(sock_fd);
   Database::Del(key);
   return Status::OK();
 }
@@ -309,7 +378,7 @@ Status Slot::MigrateSlotRandomOne(const std::string &host,
   std::vector<std::string> keys;
   auto s = Scan(slot_num, std::string(), 1, &keys);
   if (!s.ok()) {
-    return Status(Status::RedisExecErr, s.ToString());
+    return Status(Status::NotOK, s.ToString());
   }
   if (keys.size() == 0) {
     return Status(Status::NotOK, "slot is empty");
@@ -327,7 +396,7 @@ Status Slot::MigrateTagSlot(const std::string &host,
   std::vector<std::string> keys;
   auto s = Scan(slot_num, std::string(), 1, &keys);
   if (!s.ok()) {
-    return Status(Status::RedisExecErr, s.ToString());
+    return Status(Status::NotOK, s.ToString());
   }
   if (keys.size() == 0) {
     return Status(Status::NotOK, "slot is empty");
@@ -525,10 +594,71 @@ rocksdb::Status Slot::Del(uint32_t slot_num) {
 
   std::string value, metadata_key;
   PutFixed32(&metadata_key, slot_num);
-  rocksdb::Status
-      s = db_->Get(rocksdb::ReadOptions(), slot_metadata_cf_handle_, metadata_key, &value);
+  auto s = db_->Get(rocksdb::ReadOptions(), slot_metadata_cf_handle_, metadata_key, &value);
   if (!s.ok()) return s;
   return storage_->Delete(rocksdb::WriteOptions(), slot_metadata_cf_handle_, metadata_key);
+}
+
+rocksdb::Status Slot::AddKey(const Slice &key) {
+  LockGuard guard(storage_->GetLockManager(), key);
+
+  auto slot_num = GetSlotNumFromKey(key.ToString());
+  SlotMetadata metadata;
+  rocksdb::Status s = GetMetadata(slot_num, &metadata);
+  if (!s.ok() && !s.IsNotFound()) return s;
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+
+  std::string slot_key, raw_bytes;
+  SlotInternalKey(key, metadata.version).Encode(&slot_key);
+  s = db_->Get(read_options, slot_key_cf_handle_, slot_key, &raw_bytes);
+  if (s.ok()) {
+    return rocksdb::Status::OK();
+  } else if (!s.IsNotFound()) {
+    return s;
+  }
+
+  rocksdb::WriteBatch batch;
+  batch.Put(slot_key_cf_handle_, slot_key, NULL);
+
+  metadata.size++;
+  std::string bytes, metadata_key;
+  PutFixed32(&metadata_key, slot_num);
+  metadata.Encode(&bytes);
+  batch.Put(slot_metadata_cf_handle_, metadata_key, bytes);
+
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
+rocksdb::Status Slot::DeleteKey(const Slice &key) {
+  LockGuard guard(storage_->GetLockManager(), key);
+
+  auto slot_num = GetSlotNumFromKey(key.ToString());
+  SlotMetadata metadata;
+  rocksdb::Status s = GetMetadata(slot_num, &metadata);
+  if (!s.ok()) return s;
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+
+  std::string slot_key, raw_bytes;
+  SlotInternalKey(key, metadata.version).Encode(&slot_key);
+  s = db_->Get(read_options, slot_key_cf_handle_, slot_key, &raw_bytes);
+  if (!s.ok()) return s;
+
+  rocksdb::WriteBatch batch;
+  batch.Delete(slot_key_cf_handle_, slot_key);
+
+  metadata.size--;
+  std::string bytes, metadata_key;
+  PutFixed32(&metadata_key, slot_num);
+  metadata.Encode(&bytes);
+  batch.Put(slot_metadata_cf_handle_, metadata_key, bytes);
+
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status Slot::DeleteAll() {
@@ -643,6 +773,15 @@ rocksdb::Status Slot::Restore(const std::vector<KeyValue> &key_values) {
   return rocksdb::Status::OK();
 }
 
+SlotsMgrtSenderThread::~SlotsMgrtSenderThread() {
+  if (is_migrating_) {
+    is_migrating_ = false;
+    slotsmgrt_cond_.SignalAll();
+  }
+  StopMigrateSlot();
+  LOG(INFO) << "[slots-mgrt-sender-thread] exit!";
+}
+
 Status Slot::CheckCodisEnabledStatus(bool enabled) {
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
@@ -663,6 +802,320 @@ Status Slot::CheckCodisEnabledStatus(bool enabled) {
     }
   }
   return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::Start() {
+  try {
+    t_ = std::thread([this]() {
+      Util::ThreadSetName("slots-mgrt-sender-thread");
+      this->loop();
+    });
+  } catch (const std::system_error &e) {
+    return Status(Status::NotOK, e.what());
+  }
+  return Status::OK();
+}
+
+void SlotsMgrtSenderThread::Stop() {
+  stop_ = true;
+  LOG(WARNING) << "[slots-mgrt-sender-thread] stopped";
+}
+
+void SlotsMgrtSenderThread::StopMigrateSlot() {
+  is_migrating_ = false;
+  LOG(WARNING) << "[slots-mgrt-sender-thread] migrate slot " + std::to_string(slot_num_) +" stopped";
+}
+
+void SlotsMgrtSenderThread::Join() {
+  if (t_.joinable()) t_.join();
+}
+
+Status SlotsMgrtSenderThread::SlotsMigrateOne(const std::string &key, int *ret) {
+  std::lock_guard<std::mutex> guard(db_mu_);
+  std::lock_guard<std::mutex> batch_guard(batch_mu_);
+  std::lock_guard<std::mutex> ones_guard(ones_mu_);
+  Redis::Slot slot_db(storage_);
+
+  std::string bytes;
+  auto s = slot_db.GetRawMetadataByUserKey(key,&bytes);
+  if (!s.ok()) {
+    if (s.IsNotFound()) {
+      *ret = 0;
+      return Status(Status::NotOK, "Migrate key: " + key + " not found");
+    } else {
+      *ret = -1;
+      return Status(Status::NotOK, "Migrate one key: " + key + " error: " + s.ToString());
+    }
+  }
+  Metadata metadata(kRedisNone);
+  metadata.Decode(bytes);
+  if (metadata.Expired()) {
+    *ret = 0;
+    return Status(Status::NotOK, "the key was Expired");
+  }
+  if (metadata.Type() != kRedisString && metadata.size == 0) {
+    *ret = 0;
+    return Status(Status::NotOK, "no elements");
+  }
+
+  // when this slot has been finished migrating, and the thread migrating status is reset, but the result
+  // has not been returned to proxy, during this time, some more request on this slot are sent to the server,
+  // so need to check if the key exists first, if not exists the proxy forwards the request to destination server
+  // if the key exists, it is an error which should not happen.
+  auto slot_num = GetSlotNumFromKey(key);
+  if (slot_num != slot_num_ ) {
+    *ret = -1;
+    return Status(Status::NotOK, "Slot : " + std::to_string(slot_num) + " is not the migrating slot:" + std::to_string(slot_num_));
+  } else if (!is_migrating_) {
+    *ret = -1;
+    return Status(Status::NotOK, "Slot : " + std::to_string(slot_num) + " is not migrating");
+  }
+
+  if (std::find(migrating_ones_.begin(),migrating_ones_.end(),key) != migrating_ones_.end()){
+    *ret = 1;
+    return Status::OK();
+  }
+  if (std::find(migrating_batch_.begin(),migrating_batch_.end(),key) != migrating_batch_.end()){
+    *ret = 1;
+    return Status::OK();
+  }
+
+  s = slot_db.DeleteKey(key);
+  if (s.IsNotFound()) {
+    *ret = 0;
+    return Status(Status::NotOK, "Migrate key: " + key + " delete from slotkey_cf error: " + s.ToString());
+  }
+
+  migrating_ones_.push_back(key);
+  *ret = 1;
+  return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::SlotsMigrateBatch(const std::string &ip, int64_t port, int64_t time_out, int64_t slot, int64_t keys_num) {
+  MutexLock guard(&slotsmgrt_cond_mu_);
+  // if is_migrating_, does some check and prepare the keys to be migrated
+  if (is_migrating_){
+    if (!(dest_ip_==ip && dest_port_==port && slot_num_==slot)) {
+      return Status(Status::NotOK, "wrong dest_ip, dest_port or slot_num");
+    }
+    timeout_ms_ = time_out;
+    keys_num_ = keys_num;
+    auto s = ElectMigrateKeys();
+    if (!s.IsOK()) {
+      StopMigrateSlot();
+      return Status(Status::NotOK, "Slots migrating sender get batch keys error: " + s.Msg());
+    }
+    return Status::OK();
+    // if not migrating, start thread migrating
+  } else {
+    // set state and start a new sender
+    dest_ip_ = ip;
+    dest_port_ = port;
+    timeout_ms_ = time_out;
+    slot_num_ = slot;
+    keys_num_ = keys_num;
+    is_migrating_ = true;
+    error_ = false;
+    LOG(INFO) << "[slots-mgrt-sender-thread] Migrate batch slot: " << slot;
+  }
+  return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::GetSlotsMigrateResult(int64_t *moved, int64_t *remained){
+  MutexLock guard(&slotsmgrt_cond_mu_);
+  slotsmgrt_cond_.TimedWait(timeout_ms_);
+  *moved = moved_keys_num_;
+  *remained = remained_keys_num_;
+  LOG(ERROR) << "moved: " << *moved  << std::endl << "remained: " << *remained << std::endl;
+  //TODO delete this ?
+  if (*remained <= 0){
+    moved_keys_num_ = 0;
+    StopMigrateSlot();
+  }
+  return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::GetSlotsMgrtSenderStatus(std::string *ip,
+                                                       uint32_t *port,
+                                                       uint32_t *slot_num,
+                                                       bool *migrating,
+                                                       uint64_t *moved,
+                                                       uint64_t *remained) {
+  std::lock_guard<std::mutex> guard(db_mu_);
+  std::lock_guard<std::mutex> batch_guard(batch_mu_);
+  std::lock_guard<std::mutex> ones_guard(ones_mu_);
+  *ip = dest_ip_;
+  *port = dest_port_;
+  *slot_num = slot_num_;
+  *migrating = is_migrating_;
+  *moved = moved_keys_num_;
+  *remained = remained_keys_num_;
+  return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::SlotsMigrateAsyncCancel() {
+  std::lock_guard<std::mutex> guard(db_mu_);
+  dest_ip_ = "none";
+  dest_port_ = -1;
+  timeout_ms_ = 3000;
+  slot_num_ = 0;
+  moved_keys_num_ = -1;
+  moved_keys_all_ = -1;
+  remained_keys_num_ = -1;
+  StopMigrateSlot();
+  std::vector<std::string>().swap(migrating_batch_);
+  std::vector<std::string>().swap(migrating_ones_);
+  return Status::OK();
+}
+
+Status SlotsMgrtSenderThread::ElectMigrateKeys(){
+  std::lock_guard<std::mutex> guard(db_mu_);
+  std::lock_guard<std::mutex> batch_guard(batch_mu_);
+  Redis::Slot slot_db(storage_);
+
+  SlotMetadata metadata;
+  auto s = slot_db.GetMetadata(slot_num_, &metadata);
+  if (!s.ok()) {
+    StopMigrateSlot();
+    return Status(Status::NotOK, s.ToString());
+  }
+  LOG(ERROR) << "slot_num: " << slot_num_ << std::endl;
+  LOG(ERROR) << "metadata_size: " << metadata.size << std::endl;
+  LOG(ERROR) << "migrating_batch_ size: " << migrating_batch_.size() << std::endl;
+  LOG(ERROR) << "migrating_ones_ size: " << migrating_ones_.size() << std::endl;
+  remained_keys_num_ = metadata.size + migrating_batch_.size() + migrating_ones_.size();
+  if (remained_keys_num_ == 0){
+    LOG(WARNING) << "[slots-mgrt-sender-thread] No keys in slot: " << slot_num_;
+    StopMigrateSlot();
+    return Status::OK();
+  }
+  std::vector<std::string> keys;
+  auto ss = slot_db.Scan(slot_num_, std::string(), keys_num_, &keys);
+  if (!ss.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  if (keys.size() == 0) {
+    LOG(WARNING) << "No keys in slot: " << slot_num_;
+    StopMigrateSlot();
+    return Status(Status::NotOK, "slot is empty");
+  }
+  for (const auto& key : keys) {
+    migrating_batch_.push_back(key);
+    s = slot_db.DeleteKey(key);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        LOG(INFO) << "[slots-mgrt-sender-thread] delete key " << key << " from slotkey_cf error : not found ";
+      } else {
+        std::vector<std::string>().swap(migrating_batch_);
+        return Status(Status::NotOK, "delete key: " + key + " from slotKey, error: " + s.ToString());
+      }
+    }
+  }
+  return Status::OK();
+}
+
+void SlotsMgrtSenderThread::loop() {
+  Redis::Slot slot_db(storage_);
+
+  while (!IsStopped()) {
+    if (!is_migrating_) {
+      sleep(1);
+      continue;
+    }
+    LOG(INFO) << "[slots-mgrt-sender-thread] Start migrate slot:" << slot_num_;
+    int sock_fd = 0 ;
+    moved_keys_all_ = 0;
+    while (is_migrating_) {
+      if (sock_fd == 0) {
+        auto s = Util::SockConnect(dest_ip_, dest_port_, &sock_fd, timeout_ms_, timeout_ms_);
+        if (!s.IsOK()) {
+          LOG(WARNING) << "[slots-mgrt-sender-thread] Failed to Connect server(" << dest_ip_ << ":" << dest_port_ << ")";
+          slotsmgrt_cond_.Signal();
+          StopMigrateSlot();
+          break;
+        }
+        LOG(INFO) << "[slots-mgrt-sender-thread] Succ Connect server (" << dest_ip_ << ":" << dest_port_ << ") ";
+      }
+      auto s = ElectMigrateKeys();
+      LOG(ERROR) << "ElectMigrateKeys : " << s.Msg() << std::endl;
+      LOG(ERROR) << "remained_keys_num_ : " << remained_keys_num_ << std::endl;
+      if (!s.IsOK()) {
+        LOG(WARNING) << "[slots-mgrt-sender-thread] Failed to get batch keys: " + s.Msg();
+        slotsmgrt_cond_.Signal();
+        StopMigrateSlot();
+        break;
+      } else if (remained_keys_num_ == 0) {
+        StopMigrateSlot();
+        break;
+      }
+
+      std::vector<std::string>::const_iterator iter;
+      while (is_migrating_) {
+        MutexLock guard(&slotsmgrt_cond_mu_);
+        {
+          std::lock_guard<std::mutex> guard(batch_mu_);
+          std::lock_guard<std::mutex> ones_guard(ones_mu_);
+          uint32_t slot_size;
+          auto s = slot_db.Size(slot_num_, &slot_size);
+          remained_keys_num_ = slot_size + migrating_batch_.size() + migrating_ones_.size();
+          // add ones to batch end; empty ones
+          std::copy (migrating_ones_.begin(), migrating_ones_.end(), std::back_inserter(migrating_batch_));
+          if (migrating_batch_.size() != 0) {
+            moved_keys_num_ = 0;
+          }
+          std::vector<std::string>().swap(migrating_ones_);
+        }
+
+        iter = migrating_batch_.begin();
+        while (iter != migrating_batch_.end()) {
+          std::lock_guard<std::mutex> guard(batch_mu_);
+          for (int r=0; iter != migrating_batch_.end() && (r < 64); iter++,r++) {
+            LOG(ERROR) << "migarate key: " << *iter << std::endl;
+            auto s = slot_db.MigrateOneKey(sock_fd, *iter);
+            if (!s.IsOK()) {
+              LOG(WARNING) << "[slots-mgrt-sender-thread] Failed to Migrate batch key " << *iter << ": " << s.Msg();
+              if (!s.IsNotFound()) {
+                slot_db.AddKey(*iter);
+              }
+              slotsmgrt_cond_.Signal();
+              StopMigrateSlot();
+              error_ = true;
+              break;
+            }
+            moved_keys_num_++;
+            moved_keys_all_++;
+            remained_keys_num_--;
+          }
+          if (error_) {
+            break;
+          }
+        }
+        if (error_) {
+          break;
+        }
+
+        {
+          std::lock_guard<std::mutex> guard(batch_mu_);
+          std::vector<std::string>().swap(migrating_batch_);
+        }
+
+        if (remained_keys_num_ == 0) {
+          LOG(INFO) << "[slots-mgrt-sender-thread] Migrate slot: " << slot_num_ << " finished";
+          slotsmgrt_cond_.Signal();
+          StopMigrateSlot();
+          break;
+        }
+      }
+    }
+    if (sock_fd != 0 ) {
+      close(sock_fd);
+    }
+    if (error_) {
+      sleep(1);
+    }
+  }
+  LOG(INFO) << "[slots-mgrt-sender-thread] Stopped!";
+  return;
 }
 
 }  // namespace Redis

@@ -18,11 +18,8 @@ Database::Database(Engine::Storage *storage, const std::string &ns) {
 rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
-  LatestSnapShot ss(db_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
   std::string bytes;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &bytes);
+  auto s = GetRawMetadata(ns_key, &bytes);
   if (!s.ok()) {
     return rocksdb::Status::NotFound();
   }
@@ -41,6 +38,19 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
     return rocksdb::Status::NotFound("no elements");
   }
   return s;
+}
+
+rocksdb::Status Database::GetRawMetadata(const Slice &ns_key,std::string *bytes) {
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  return db_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+}
+
+rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  return GetRawMetadata(ns_key,bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {

@@ -14,6 +14,7 @@
 #include "task_runner.h"
 #include "replication.h"
 #include "redis_metadata.h"
+#include "redis_slot.h"
 #include "log_collector.h"
 #include "worker.h"
 
@@ -107,6 +108,7 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
+  Redis::SlotsMgrtSenderThread* slotsmgrt_sender_thread_ = nullptr;
 
  private:
   void cron();

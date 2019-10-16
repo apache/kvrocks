@@ -65,6 +65,10 @@ Status Server::Start() {
     Util::ThreadSetName("server-cron");
     this->cron();
   });
+  if (config_->codis_enabled) {
+    slotsmgrt_sender_thread_ = new Redis::SlotsMgrtSenderThread(storage_);
+    slotsmgrt_sender_thread_->Start();
+  }
   return Status::OK();
 }
 
@@ -79,6 +83,9 @@ void Server::Stop() {
   slave_threads_mu_.unlock();
   cleanupExitedSlaves();
   task_runner_->Stop();
+  if (slotsmgrt_sender_thread_ != nullptr) {
+    slotsmgrt_sender_thread_->Stop();
+  }
 }
 
 void Server::Join() {
@@ -87,6 +94,9 @@ void Server::Join() {
   }
   task_runner_->Join();
   if (cron_thread_.joinable()) cron_thread_.join();
+  if (slotsmgrt_sender_thread_ != nullptr) {
+    slotsmgrt_sender_thread_ -> Join();
+  }
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {

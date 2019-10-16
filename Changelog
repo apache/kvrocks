@@ -1,3 +1,6 @@
+* Version 1.0.5 (@2019-10-17)
+	- FIX: auth would incorrect when requirepass from empty to non empty 
+	
 * Version 1.0.4 (@2019-10-08)
 	- MOD: shrink the default value of write buffer size
 	- FIX: slowlog/perflog didn't catch the cast exception

@@ -145,8 +145,10 @@ void Request::ExecuteCommands(Connection *conn) {
         conn->Reply(Redis::Error("NOAUTH Authentication required."));
         continue;
       }
-      conn->BecomeAdmin();
-      conn->SetNamespace(kDefaultNamespace);
+      if (config->requirepass.empty()) {
+        conn->BecomeAdmin();
+        conn->SetNamespace(kDefaultNamespace);
+      }
     }
     auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_, conn->IsRepl());
     if (!s.IsOK()) {

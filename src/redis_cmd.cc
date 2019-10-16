@@ -3429,7 +3429,7 @@ class CommandSlotsInfo : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
 
     std::vector<SlotCount> slot_counts;
     rocksdb::Status s =
@@ -3474,7 +3474,7 @@ class CommandSlotsScan : public CommandScanBase {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
     std::vector<std::string> keys;
     auto s = slot_db.Scan(slot_num_, cursor, limit, &keys);
     if (!s.ok() && !s.IsNotFound()) {
@@ -3493,7 +3493,7 @@ class CommandSlotsDel : public Commander {
  public:
   CommandSlotsDel() : Commander("slotsdel", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
     std::vector<uint32_t> slot_nums;
     uint32_t slot_num;
     for (size_t i = 1; i < args_.size(); i++) {
@@ -3544,7 +3544,7 @@ class CommandSlotsMgrtSlot : public CommandSlotsMgrtBase {
  public:
   CommandSlotsMgrtSlot() : CommandSlotsMgrtBase("slotsmgrtslot", 5, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
 
     uint32_t slot_num;
     try {
@@ -3567,7 +3567,7 @@ class CommandSlotsMgrtOne : public CommandSlotsMgrtBase {
  public:
   CommandSlotsMgrtOne() : CommandSlotsMgrtBase("slotsmgrtone", 5, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
 
     auto s = slot_db.MigrateOne(host, port, timeout, args_[4]);
     *output = s.IsOK() ? Redis::Integer(1) : Redis::Integer(0);
@@ -3579,7 +3579,7 @@ class CommandSlotsMgrtTagSlot : public CommandSlotsMgrtBase {
  public:
   CommandSlotsMgrtTagSlot() : CommandSlotsMgrtBase("slotsmgrttagslot", 5, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
 
     uint32_t slot_num;
     try {
@@ -3603,11 +3603,116 @@ class CommandSlotsMgrtTagOne : public CommandSlotsMgrtBase {
  public:
   CommandSlotsMgrtTagOne() : CommandSlotsMgrtBase("slotsmgrttagone", 5, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
 
     int ret;
     auto s = slot_db.MigrateTag(host, port, timeout, args_[4], &ret);
     *output = s.IsOK() ? Redis::Integer(ret) : Redis::Integer(0);
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtTagSlotAsync : public CommandSlotsMgrtBase {
+ public:
+  explicit CommandSlotsMgrtTagSlotAsync()
+      : CommandSlotsMgrtBase("slotsmgrttagslot-async", 8, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    uint32_t slot_num;
+    try {
+      slot_num = std::stoi(args_[6]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    uint32_t key_num;
+    try {
+      key_num = std::stoi(args_[7]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, kValueNotInterger);
+    }
+    auto s = svr->slotsmgrt_sender_thread_->SlotsMigrateBatch(host, port, timeout, slot_num, key_num);
+    if (!s.IsOK()) {
+      LOG(WARNING) << "Slot batch migrate keys error";
+      return Status(Status::RedisExecErr, "Slot batch migrating keys error: "  + s.Msg());
+    }
+
+    int64_t moved = 0, remained = 0;
+    s = svr->slotsmgrt_sender_thread_->GetSlotsMigrateResult(&moved, &remained);
+    if (!s.IsOK()){
+      LOG(WARNING) << "Slot batch migrate keys get result error";
+      return Status(Status::RedisExecErr, "Slot batch migrating keys get result error");
+    }
+    output->append(Redis::MultiLen(2));
+    output->append(Redis::Integer(moved));
+    output->append(Redis::Integer(remained));
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtSlotAsync : public CommandSlotsMgrtTagSlotAsync {
+ public:
+  CommandSlotsMgrtSlotAsync() : CommandSlotsMgrtTagSlotAsync() { name_ = "slotsmgrtslot-async"; }
+};
+
+class CommandSlotsMgrtExecWrapper : public Commander {
+ public:
+  CommandSlotsMgrtExecWrapper() : Commander("slotsmgrt-exec-wrapper", -3, true) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Slot slot_db(svr->storage_);
+
+    int ret;
+    auto s = svr->slotsmgrt_sender_thread_->SlotsMigrateOne(args_[1], &ret);
+    output->append(Redis::MultiLen(2));
+    output->append(Redis::Integer(ret));
+    output->append(Redis::Integer(ret));
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtAsyncStatus : public Commander {
+ public:
+  CommandSlotsMgrtAsyncStatus() : Commander("slotsmgrt-async-status", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!svr->GetConfig()->codis_enabled) {
+      return Status(Status::RedisExecErr, "codis is no enabled");
+    }
+    std::string ip;
+    uint32_t port;
+    uint32_t slot_num;
+    bool migrating;
+    uint64_t moved_keys;
+    uint64_t remain_keys;
+    auto s = svr->slotsmgrt_sender_thread_->GetSlotsMgrtSenderStatus(&ip, &port, &slot_num, &migrating, &moved_keys, &remain_keys);
+
+    std::string migrate_status = migrating ? "yes" : "no";
+    std::vector<std::string> list;
+    list.emplace_back(Redis::BulkString("host"));
+    list.emplace_back(Redis::BulkString(ip));
+    list.emplace_back(Redis::BulkString("port"));
+    list.emplace_back(Redis::Integer(port));
+    list.emplace_back(Redis::BulkString("slot number"));
+    list.emplace_back(Redis::BulkString(std::to_string(slot_num)));
+    list.emplace_back(Redis::BulkString("migrating"));
+    list.emplace_back(Redis::BulkString(migrate_status));
+    list.emplace_back(Redis::BulkString("moved keys"));
+    list.emplace_back(Redis::BulkString(std::to_string(moved_keys)));
+    list.emplace_back(Redis::BulkString("remain keys"));
+    list.emplace_back(Redis::BulkString(std::to_string(remain_keys)));
+
+    *output =  Redis::MultiBulkString(list);
+    return Status::OK();
+  }
+};
+
+class CommandSlotsMgrtAsyncCancel : public Commander {
+ public:
+  CommandSlotsMgrtAsyncCancel() : Commander("slotsmgrt-async-cancel", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!svr->GetConfig()->codis_enabled) {
+      return Status(Status::RedisExecErr, "codis is no enabled");
+    }
+
+    auto s = svr->slotsmgrt_sender_thread_->SlotsMigrateAsyncCancel();
+    *output = s.IsOK() ? Redis::Integer(1) : Redis::Integer(0);
     return Status::OK();
   }
 };
@@ -3633,7 +3738,7 @@ class CommandSlotsRestore : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
     auto s = slot_db.Restore(key_values_);
     if (!s.ok()) {
       *output = Redis::Error(s.ToString());
@@ -3651,7 +3756,7 @@ class CommandSlotsHashKey : public Commander {
  public:
   CommandSlotsHashKey() : Commander("slotshashkey", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
     std::vector<uint32_t> slot_nums;
     for (size_t i = 1; i < args_.size(); i++) {
       auto slot_num = GetSlotNumFromKey(args_[i]);
@@ -3673,7 +3778,7 @@ class CommandSlotsCheck : public Commander {
       *output = Redis::Error("only administrator can use slotscheck command");
       return Status::OK();
     }
-    Redis::Slot slot_db(svr->storage_, conn->GetNamespace());
+    Redis::Slot slot_db(svr->storage_);
     auto s = slot_db.Check();
     if (!s.ok()) {
       *output = Redis::Error(s.ToString());
@@ -4251,6 +4356,26 @@ std::map<std::string, CommanderFactory> command_table = {
     {"slotscheck",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandSlotsCheck);
+     }},
+    {"slotsmgrtslot-async",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtSlotAsync);
+     }},
+    {"slotsmgrttagslot-async",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagSlotAsync);
+     }},
+    {"slotsmgrt-exec-wrapper",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtExecWrapper);
+     }},
+    {"slotsmgrt-async-status",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtAsyncStatus);
+     }},
+    {"slotsmgrt-async-cancel",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandSlotsMgrtAsyncCancel);
      }},
 
     // internal management cmd

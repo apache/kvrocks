@@ -8,6 +8,7 @@ class Status {
   enum Code {
     cOK,
     NotOK,
+    NotFound,
 
     // DB
     DBOpenErr,
@@ -32,6 +33,7 @@ class Status {
   Status() : Status(cOK, "ok") {}
   explicit Status(Code code, std::string msg = "") : code_(code), msg_(std::move(msg)) {}
   bool IsOK() { return code_ == cOK; }
+  bool IsNotFound() { return code_ == NotFound; }
   std::string Msg() { return msg_; }
   static Status OK() { return Status(cOK, "ok"); }
 

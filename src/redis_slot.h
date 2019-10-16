@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <thread>
 
 #include "encoding.h"
 #include "redis_db.h"
@@ -71,15 +72,70 @@ class SlotMetadata {
   uint64_t generateVersion();
 };
 
+class Mutex {
+ public:
+  Mutex();
+  ~Mutex();
+
+  void Lock();
+  void Unlock();
+  void AssertHeld() { }
+
+ private:
+  friend class CondVar;
+  pthread_mutex_t mu_;
+
+  // No copying
+  Mutex(const Mutex&);
+  void operator=(const Mutex&);
+};
+
+class CondVar {
+ public:
+  explicit CondVar(Mutex* mu);
+  ~CondVar();
+  void Wait();
+  /*
+   * timeout is millisecond
+   * so if you want to wait for 1 s, you should call
+   * TimeWait(1000);
+   * return false if timeout
+   */
+  bool TimedWait(uint32_t timeout);
+  void Signal();
+  void SignalAll();
+
+ private:
+  pthread_cond_t cv_;
+  Mutex* mu_;
+};
+
+class MutexLock {
+ public:
+  explicit MutexLock(Mutex *mu)
+      : mu_(mu)  {
+    this->mu_->Lock();
+  }
+  ~MutexLock() { this->mu_->Unlock(); }
+
+ private:
+  Mutex *const mu_;
+  // No copying allowed
+  MutexLock(const MutexLock&);
+  void operator=(const MutexLock&);
+};
+
 namespace Redis {
 class Slot : public SubKeyScanner {
  public:
-  explicit Slot(Engine::Storage *storage, const std::string &ns = "") :
-      SubKeyScanner(storage, ns),
+  explicit Slot(Engine::Storage *storage) :
+      SubKeyScanner(storage, kDefaultNamespace),
       slot_metadata_cf_handle_(storage->GetCFHandle("slot_metadata")),
       slot_key_cf_handle_(storage->GetCFHandle("slot")) {}
 
+  rocksdb::Status GetMetadata(uint32_t slot_num, SlotMetadata *metadata);
   Status MigrateOne(const std::string &host, uint32_t port, uint64_t timeout, const rocksdb::Slice &key);
+  Status MigrateOneKey(int sock_fd, const rocksdb::Slice &key);
   Status MigrateSlotRandomOne(const std::string &host,
                               uint32_t port,
                               uint64_t timeout,
@@ -97,6 +153,8 @@ class Slot : public SubKeyScanner {
   rocksdb::Status Check();
   rocksdb::Status GetInfo(uint64_t start, uint64_t count, std::vector<SlotCount> *slot_counts);
   rocksdb::Status Del(uint32_t slot_num);
+  rocksdb::Status AddKey(const Slice &key);
+  rocksdb::Status DeleteKey(const Slice &key);
   rocksdb::Status DeleteAll();
   rocksdb::Status Size(uint32_t slot_num, uint32_t *ret);
   rocksdb::Status UpdateKeys(const std::vector<std::string> &put_keys,
@@ -114,9 +172,60 @@ class Slot : public SubKeyScanner {
   std::string codis_enabled_status_key_ = "codis_enabled";
   rocksdb::ColumnFamilyHandle *slot_metadata_cf_handle_;
   rocksdb::ColumnFamilyHandle *slot_key_cf_handle_;
-  rocksdb::Status GetMetadata(uint32_t slot_num, SlotMetadata *metadata);
   Status generateMigrateCommandComplexKV(const Slice &key, const Metadata &metadata, std::string *output);
 };
+
+class SlotsMgrtSenderThread {
+ public:
+  explicit SlotsMgrtSenderThread(Engine::Storage *storage):
+    slotsmgrt_cond_(&slotsmgrt_cond_mu_),
+    storage_(storage),
+    is_migrating_(false) {};
+  virtual ~SlotsMgrtSenderThread();
+
+  Status Start();
+  void Stop();
+  void StopMigrateSlot();
+  void Join();
+  bool IsStopped() { return stop_; }
+  Status SlotsMigrateOne(const std::string &key, int *ret);
+  Status SlotsMigrateBatch(const std::string &ip, int64_t port, int64_t time_out, int64_t slot, int64_t keys_num);
+  Status GetSlotsMigrateResult(int64_t *moved, int64_t *remained);
+  Status GetSlotsMgrtSenderStatus(std::string *ip,
+                                  uint32_t *port,
+                                  uint32_t *slot_num,
+                                  bool *migrating,
+                                  uint64_t *moved,
+                                  uint64_t *remained);
+  Status SlotsMigrateAsyncCancel();
+
+ private:
+  std::thread t_;
+  std::mutex db_mu_;
+  std::mutex batch_mu_;
+  std::mutex ones_mu_;
+  Mutex slotsmgrt_cond_mu_;
+  CondVar slotsmgrt_cond_;
+  bool stop_ = false;
+  Engine::Storage *storage_;
+
+  std::string dest_ip_;
+  int64_t dest_port_ = 0;
+  int64_t timeout_ms_ = 0;
+  uint32_t slot_num_ = 0;
+  int64_t keys_num_ = 0;
+  int64_t moved_keys_num_ = 0; // during one batch moved
+  int64_t moved_keys_all_ = 0; // all keys moved in the slot
+  int64_t remained_keys_num_ = 0;
+  bool error_ = false;
+  std::vector<std::string> migrating_batch_;
+  std::vector<std::string> migrating_ones_;
+  std::atomic<bool> is_migrating_;
+
+  Status ElectMigrateKeys();
+  void loop();
+};
+
 }  // namespace Redis
 
 

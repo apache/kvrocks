@@ -207,7 +207,7 @@ Status Storage::Open(bool read_only) {
     if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   }
 
-  Redis::Slot slot_db(this, kDefaultNamespace);
+  Redis::Slot slot_db(this);
   auto st = slot_db.CheckCodisEnabledStatus(config_->codis_enabled);
   if (!st.IsOK()) return st;
   return Status::OK();

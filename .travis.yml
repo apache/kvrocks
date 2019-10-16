@@ -58,4 +58,5 @@ jobs:
         - docker
       before_install:  
         - docker build -t hulkdev/kvrocks:$TRAVIS_TAG .
+        - docker tag hulkdev/kvrocks:$TRAVIS_TAG hulkdev/kvrock:latest
       script: bash docker_push.sh

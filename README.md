@@ -60,8 +60,8 @@ make test
 ## Try kvrocks using Docker
 
 ```
-$ docker run -it hulkdev/kvrocks
-$ redis-cli -a foobared -p 6666
+$ docker run -it -p 6666:6666 hulkdev/kvrocks
+$ redis-cli -p 6666
 
 127.0.0.1:6666> get a
 (nil)

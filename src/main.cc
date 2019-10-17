@@ -186,7 +186,7 @@ bool supervisedSystemd() {
 
   struct iovec iov;
   memset(&iov, 0, sizeof(iov));
-  iov.iov_base = (void *)"READY=1";
+  iov.iov_base = static_cast<void *>"READY=1";
   iov.iov_len = strlen("READY=1");
 
   struct msghdr hdr;

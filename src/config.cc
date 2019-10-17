@@ -38,7 +38,7 @@ configEnum supervised_mode_enum[] = {
 };
 
 int configEnumGetValue(configEnum *ce, const char *name) {
-  while(ce->name != nullptr) {
+  while (ce->name != nullptr) {
     if (!strcasecmp(ce->name, name)) return ce->val;
     ce++;
   }
@@ -46,7 +46,7 @@ int configEnumGetValue(configEnum *ce, const char *name) {
 }
 
 const char *configEnumGetName(configEnum *ce, int val) {
-  while(ce->name != nullptr) {
+  while (ce->name != nullptr) {
     if (ce->val == val) return ce->name;
     ce++;
   }

@@ -186,7 +186,9 @@ bool supervisedSystemd() {
 
   struct iovec iov;
   memset(&iov, 0, sizeof(iov));
-  iov.iov_base = static_cast<void *>"READY=1";
+  void *ready = calloc(1, 8);
+  memcpy(ready, "READY=1", 7);
+  iov.iov_base = ready;
   iov.iov_len = strlen("READY=1");
 
   struct msghdr hdr;
@@ -203,9 +205,11 @@ bool supervisedSystemd() {
 #endif
   if (sendmsg(fd, &hdr, sendto_flags) < 0) {
     LOG(WARNING) << "Can't send notification to systemd";
+    free(ready);
     close(fd);
     return false;
   }
+  free(ready);
   close(fd);
   return true;
 }

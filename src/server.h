@@ -81,6 +81,7 @@ class Server {
   void GetCommandsStatsInfo(std::string *info);
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
   std::string GetRocksDBStatsJson();
+  ReplState GetReplicationState();
 
   void ReclaimOldDBPtr();
   Status AsyncCompactDB();

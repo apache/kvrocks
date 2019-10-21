@@ -176,6 +176,12 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
+    if (!config->slave_serve_stale_data && svr_->IsSlave()
+        && svr_->GetReplicationState() != kReplConnected) {
+      conn->Reply(Redis::Error("MASTERDOWN Link with MASTER is down "
+                               "and slave-serve-stale-data is set to 'no'."));
+      continue;
+    }
     conn->SetLastCmd(conn->current_cmd_->Name());
     svr_->stats_.IncrCalls(conn->current_cmd_->Name());
     auto start = std::chrono::high_resolution_clock::now();

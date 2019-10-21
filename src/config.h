@@ -45,6 +45,7 @@ struct Config{
   bool daemonize = false;
   int supervised_mode = SUPERVISED_NONE;
   bool slave_readonly = true;
+  bool slave_serve_stale_data = true;
   uint32_t slave_priority = 100;
   uint32_t max_db_size = 0;  // unit is GB
   uint64_t max_replication_mb = 0;  // unit is MB

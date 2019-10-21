@@ -848,3 +848,10 @@ void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {
     }
   }
 }
+
+ReplState Server::GetReplicationState() {
+  if (IsSlave() && replication_thread_) {
+    return replication_thread_->State();
+  }
+  return kReplConnecting;
+}

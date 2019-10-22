@@ -176,22 +176,30 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
-    conn->SetLastCmd(conn->current_cmd_->Name());
-    svr_->stats_.IncrCalls(conn->current_cmd_->Name());
+    auto cmd_name = conn->current_cmd_->Name();
+    if (!config->slave_serve_stale_data && svr_->IsSlave()
+        && cmd_name != "info" && cmd_name != "slaveof"
+        && svr_->GetReplicationState() != kReplConnected) {
+      conn->Reply(Redis::Error("MASTERDOWN Link with MASTER is down "
+                               "and slave-serve-stale-data is set to 'no'."));
+      continue;
+    }
+    conn->SetLastCmd(cmd_name);
+    svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();
-    bool is_profiling = turnOnProfilingIfNeed(conn->current_cmd_->Name());
+    bool is_profiling = turnOnProfilingIfNeed(cmd_name);
     svr_->IncrExecutingCommandNum();
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
     svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    if (is_profiling) recordProfilingSampleIfNeed(conn->current_cmd_->Name(), duration);
+    if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
     svr_->SlowlogPushEntryIfNeeded(conn->current_cmd_->Args(), duration);
-    svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), conn->current_cmd_->Name());
+    svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(conn, cmd_tokens);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR " + s.Msg()));
-      LOG(ERROR) << "[request] Failed to execute command: " << conn->current_cmd_->Name()
+      LOG(ERROR) << "[request] Failed to execute command: " << cmd_name
                  << ", encounter err: " << s.Msg();
       continue;
     }

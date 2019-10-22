@@ -191,6 +191,12 @@ Status Config::parseConfigFromString(std::string input) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     slave_readonly = (i == 1);
+  } else if (size == 2 && args[0] == "slave-serve-stale-data") {
+    int i;
+    if ((i = yesnotoi(args[1])) == -1) {
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+    }
+    slave_serve_stale_data = (i == 1);
   } else if (size == 2 && args[0] == "slave-priority") {
     slave_priority = std::atoi(args[1].c_str());
   } else if (size == 2 && args[0] == "tcp-backlog") {
@@ -375,6 +381,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("supervised", configEnumGetName(supervised_mode_enum, supervised_mode));
   PUSH_IF_MATCH("maxclients", std::to_string(maxclients));
   PUSH_IF_MATCH("slave-read-only", (slave_readonly ? "yes" : "no"));
+  PUSH_IF_MATCH("slave-serve-stale-data", (slave_serve_stale_data ? "yes" : "no"));
   PUSH_IF_MATCH("slave-priority", std::to_string(slave_priority));
   PUSH_IF_MATCH("max-backup-to-keep", std::to_string(max_backup_to_keep));
   PUSH_IF_MATCH("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
@@ -506,6 +513,14 @@ Status Config::Set(std::string key, const std::string &value, Server *svr) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     slave_readonly = (i == 1);
+    return Status::OK();
+  }
+  if (key == "slave-serve-stale-data") {
+    int i;
+    if ((i = yesnotoi(value)) == -1) {
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+    }
+    slave_serve_stale_data = (i == 1);
     return Status::OK();
   }
   if (key == "slave-priority") {
@@ -654,6 +669,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("backup-dir", backup_dir);
   WRITE_TO_FILE("tcp-backlog", backlog);
   WRITE_TO_FILE("slave-read-only", (slave_readonly? "yes":"no"));
+  WRITE_TO_FILE("slave-serve-stale-data", (slave_serve_stale_data? "yes":"no"));
   WRITE_TO_FILE("slave-priority", slave_priority);
   WRITE_TO_FILE("slowlog-max-len", slowlog_max_len);
   WRITE_TO_FILE("slowlog-log-slower-than", slowlog_log_slower_than);

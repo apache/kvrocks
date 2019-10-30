@@ -643,7 +643,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             fetch_cnt.fetch_add(1);
             uint32_t cur_skip_cnt = skip_cnt.load();
             uint32_t cur_fetch_cnt = fetch_cnt.load();
-            DLOG(INFO) << "[fetch] " << f_name << " " << f_crc
+            LOG(INFO) << "[fetch] " << f_name << " " << f_crc
                        << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
                        << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
             s = this->fetchFile(sock_fd, f_name, f_crc);

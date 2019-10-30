@@ -40,7 +40,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
   return s;
 }
 
-rocksdb::Status Database::GetRawMetadata(const Slice &ns_key,std::string *bytes) {
+rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -50,7 +50,7 @@ rocksdb::Status Database::GetRawMetadata(const Slice &ns_key,std::string *bytes)
 rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  return GetRawMetadata(ns_key,bytes);
+  return GetRawMetadata(ns_key, bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {

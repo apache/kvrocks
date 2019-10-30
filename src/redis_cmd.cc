@@ -3553,7 +3553,7 @@ class CommandSlotsMgrtSlot : public CommandSlotsMgrtBase {
       return Status(Status::RedisParseErr, kValueNotInterger);
     }
     auto s = slot_db.MigrateSlotRandomOne(host, port, timeout, slot_num);
-    uint32_t size;
+    uint64_t size;
     auto st = slot_db.Size(slot_num, &size);
 
     output->append(Redis::MultiLen(2));
@@ -3589,7 +3589,7 @@ class CommandSlotsMgrtTagSlot : public CommandSlotsMgrtBase {
     }
     int ret;
     auto s = slot_db.MigrateTagSlot(host, port, timeout, slot_num, &ret);
-    uint32_t size;
+    uint64_t size;
     auto st = slot_db.Size(slot_num, &size);
 
     output->append(Redis::MultiLen(2));
@@ -3614,7 +3614,7 @@ class CommandSlotsMgrtTagOne : public CommandSlotsMgrtBase {
 
 class CommandSlotsMgrtTagSlotAsync : public CommandSlotsMgrtBase {
  public:
-  explicit CommandSlotsMgrtTagSlotAsync()
+  CommandSlotsMgrtTagSlotAsync()
       : CommandSlotsMgrtBase("slotsmgrttagslot-async", 8, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t slot_num;
@@ -3632,12 +3632,12 @@ class CommandSlotsMgrtTagSlotAsync : public CommandSlotsMgrtBase {
     auto s = svr->slotsmgrt_sender_thread_->SlotsMigrateBatch(host, port, timeout, slot_num, key_num);
     if (!s.IsOK()) {
       LOG(WARNING) << "Slot batch migrate keys error";
-      return Status(Status::RedisExecErr, "Slot batch migrating keys error: "  + s.Msg());
+      return Status(Status::RedisExecErr, "Slot batch migrating keys error: " + s.Msg());
     }
 
-    int64_t moved = 0, remained = 0;
+    uint64_t moved = 0, remained = 0;
     s = svr->slotsmgrt_sender_thread_->GetSlotsMigrateResult(&moved, &remained);
-    if (!s.IsOK()){
+    if (!s.IsOK()) {
       LOG(WARNING) << "Slot batch migrate keys get result error";
       return Status(Status::RedisExecErr, "Slot batch migrating keys get result error");
     }
@@ -3676,12 +3676,17 @@ class CommandSlotsMgrtAsyncStatus : public Commander {
       return Status(Status::RedisExecErr, "codis is no enabled");
     }
     std::string ip;
-    uint32_t port;
+    int port;
     uint32_t slot_num;
     bool migrating;
     uint64_t moved_keys;
     uint64_t remain_keys;
-    auto s = svr->slotsmgrt_sender_thread_->GetSlotsMgrtSenderStatus(&ip, &port, &slot_num, &migrating, &moved_keys, &remain_keys);
+    auto s = svr->slotsmgrt_sender_thread_->GetSlotsMgrtSenderStatus(&ip,
+                                                                     &port,
+                                                                     &slot_num,
+                                                                     &migrating,
+                                                                     &moved_keys,
+                                                                     &remain_keys);
 
     std::string migrate_status = migrating ? "yes" : "no";
     std::vector<std::string> list;
@@ -3698,7 +3703,7 @@ class CommandSlotsMgrtAsyncStatus : public Commander {
     list.emplace_back(Redis::BulkString("remain keys"));
     list.emplace_back(Redis::BulkString(std::to_string(remain_keys)));
 
-    *output =  Redis::MultiBulkString(list);
+    *output = Redis::MultiBulkString(list);
     return Status::OK();
   }
 };

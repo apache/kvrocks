@@ -29,6 +29,8 @@
 
 #define AE_READABLE 1
 #define AE_WRITABLE 2
+#define AE_ERROR 4
+#define AE_HUP 8
 
 namespace Util {
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
@@ -57,16 +59,24 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
 }
 
 Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
-  sockaddr_in sin{};
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr(host.c_str());
-  sin.sin_port = htons(port);
-  *fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (conn_timeout > 0) {
+  if (conn_timeout == 0) {
+    auto s = SockConnect(host, port, fd);
+    if (!s.IsOK()) return s;
+  } else {
+    sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = inet_addr(host.c_str());
+    sin.sin_port = htons(port);
+    *fd = socket(AF_INET, SOCK_STREAM, 0);
+
     fcntl(*fd, F_SETFL, O_NONBLOCK);
     connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
 
-    if ((Util::aeWait(*fd, AE_WRITABLE, conn_timeout) & AE_WRITABLE) == 0) {
+    auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
+    if ((retmask & AE_WRITABLE) == 0 ||
+        (retmask & AE_ERROR) != 0 ||
+        (retmask & AE_HUP) != 0
+        ) {
       close(*fd);
       *fd = -1;
       return Status(Status::NotOK, strerror(errno));
@@ -85,15 +95,9 @@ Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeo
       *fd = -1;
       return Status(Status::NotOK, strerror(errno));
     }
-  } else {
-    auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
-    if (rv < 0) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
-    }
+    setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
+    setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
   }
-
   if (timeout > 0) {
     struct timeval tv;
     tv.tv_sec = timeout / 1000;
@@ -101,12 +105,9 @@ Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeo
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
       close(*fd);
       *fd = -1;
-      return Status(Status::NotOK, "setsockopt failed");
+      return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
     }
   }
-
-  setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
-  setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
   return Status::OK();
 }
 
@@ -361,8 +362,8 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   if ((retval = poll(&pfd, 1, timeout)) == 1) {
     if (pfd.revents & POLLIN) retmask |= AE_READABLE;
     if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
-    if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
-    if (pfd.revents & POLLHUP) retmask |= AE_WRITABLE;
+    if (pfd.revents & POLLERR) retmask |= AE_ERROR;
+    if (pfd.revents & POLLHUP) retmask |= AE_HUP;
     return retmask;
   } else {
     return retval;

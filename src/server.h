@@ -108,7 +108,7 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
-  Redis::SlotsMgrtSenderThread* slotsmgrt_sender_thread_ = nullptr;
+  Redis::SlotsMgrtSenderThread *slotsmgrt_sender_thread_ = nullptr;
 
  private:
   void cron();

@@ -49,6 +49,9 @@ Server::~Server() {
     delete iter.first;
   }
   delete task_runner_;
+  if (slotsmgrt_sender_thread_ != nullptr) {
+    delete slotsmgrt_sender_thread_;
+  }
 }
 
 Status Server::Start() {
@@ -95,7 +98,7 @@ void Server::Join() {
   task_runner_->Join();
   if (cron_thread_.joinable()) cron_thread_.join();
   if (slotsmgrt_sender_thread_ != nullptr) {
-    slotsmgrt_sender_thread_ -> Join();
+    slotsmgrt_sender_thread_->Join();
   }
 }
 

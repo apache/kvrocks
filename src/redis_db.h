@@ -13,8 +13,8 @@ class Database {
  public:
   explicit Database(Engine::Storage *storage, const std::string &ns = "");
   rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
-  rocksdb::Status GetRawMetadata(const Slice &ns_key,std::string *bytes);
-  rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key,std::string *bytes);
+  rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
+  rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes);
   rocksdb::Status Expire(const Slice &user_key, int timestamp);
   rocksdb::Status Del(const Slice &user_key);
   rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);

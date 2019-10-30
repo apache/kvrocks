@@ -59,7 +59,7 @@ class SlotInternalKey {
 class SlotMetadata {
  public:
   uint64_t version;
-  uint32_t size;
+  uint64_t size;
 
  public:
   SlotMetadata();
@@ -79,20 +79,20 @@ class Mutex {
 
   void Lock();
   void Unlock();
-  void AssertHeld() { }
+  void AssertHeld() {}
 
  private:
   friend class CondVar;
   pthread_mutex_t mu_;
 
   // No copying
-  Mutex(const Mutex&);
-  void operator=(const Mutex&);
+  Mutex(const Mutex &);
+  void operator=(const Mutex &);
 };
 
 class CondVar {
  public:
-  explicit CondVar(Mutex* mu);
+  explicit CondVar(Mutex *mu);
   ~CondVar();
   void Wait();
   /*
@@ -107,13 +107,13 @@ class CondVar {
 
  private:
   pthread_cond_t cv_;
-  Mutex* mu_;
+  Mutex *mu_;
 };
 
 class MutexLock {
  public:
   explicit MutexLock(Mutex *mu)
-      : mu_(mu)  {
+      : mu_(mu) {
     this->mu_->Lock();
   }
   ~MutexLock() { this->mu_->Unlock(); }
@@ -121,8 +121,8 @@ class MutexLock {
  private:
   Mutex *const mu_;
   // No copying allowed
-  MutexLock(const MutexLock&);
-  void operator=(const MutexLock&);
+  MutexLock(const MutexLock &);
+  void operator=(const MutexLock &);
 };
 
 namespace Redis {
@@ -134,29 +134,29 @@ class Slot : public SubKeyScanner {
       slot_key_cf_handle_(storage->GetCFHandle("slot")) {}
 
   rocksdb::Status GetMetadata(uint32_t slot_num, SlotMetadata *metadata);
-  Status MigrateOne(const std::string &host, uint32_t port, uint64_t timeout, const rocksdb::Slice &key);
+  Status MigrateOne(const std::string &host, int port, uint64_t timeout, const rocksdb::Slice &key);
   Status MigrateOneKey(int sock_fd, const rocksdb::Slice &key);
   Status MigrateSlotRandomOne(const std::string &host,
-                              uint32_t port,
+                              int port,
                               uint64_t timeout,
                               uint32_t slot_num);
   Status MigrateTagSlot(const std::string &host,
-                        uint32_t port,
+                        int port,
                         uint64_t timeout,
                         uint32_t slot_num,
                         int *ret);
   Status MigrateTag(const std::string &host,
-                    uint32_t port,
+                    int port,
                     uint64_t timeout,
                     const std::string &key,
                     int *ret);
   rocksdb::Status Check();
-  rocksdb::Status GetInfo(uint64_t start, uint64_t count, std::vector<SlotCount> *slot_counts);
+  rocksdb::Status GetInfo(uint32_t start, int count, std::vector<SlotCount> *slot_counts);
   rocksdb::Status Del(uint32_t slot_num);
   rocksdb::Status AddKey(const Slice &key);
   rocksdb::Status DeleteKey(const Slice &key);
   rocksdb::Status DeleteAll();
-  rocksdb::Status Size(uint32_t slot_num, uint32_t *ret);
+  rocksdb::Status Size(uint32_t slot_num, uint64_t *ret);
   rocksdb::Status UpdateKeys(const std::vector<std::string> &put_keys,
                              const std::vector<std::string> &delete_keys,
                              rocksdb::WriteBatch *updates);
@@ -177,10 +177,10 @@ class Slot : public SubKeyScanner {
 
 class SlotsMgrtSenderThread {
  public:
-  explicit SlotsMgrtSenderThread(Engine::Storage *storage):
-    slotsmgrt_cond_(&slotsmgrt_cond_mu_),
-    storage_(storage),
-    is_migrating_(false) {};
+  explicit SlotsMgrtSenderThread(Engine::Storage *storage) :
+      slotsmgrt_cond_(&slotsmgrt_cond_mu_),
+      storage_(storage),
+      is_migrating_(false) {}
   virtual ~SlotsMgrtSenderThread();
 
   Status Start();
@@ -189,10 +189,10 @@ class SlotsMgrtSenderThread {
   void Join();
   bool IsStopped() { return stop_; }
   Status SlotsMigrateOne(const std::string &key, int *ret);
-  Status SlotsMigrateBatch(const std::string &ip, int64_t port, int64_t time_out, int64_t slot, int64_t keys_num);
-  Status GetSlotsMigrateResult(int64_t *moved, int64_t *remained);
+  Status SlotsMigrateBatch(const std::string &ip, int port, uint64_t time_out, uint32_t slot, int keys_num);
+  Status GetSlotsMigrateResult(uint64_t *moved, uint64_t *remained);
   Status GetSlotsMgrtSenderStatus(std::string *ip,
-                                  uint32_t *port,
+                                  int *port,
                                   uint32_t *slot_num,
                                   bool *migrating,
                                   uint64_t *moved,
@@ -202,7 +202,6 @@ class SlotsMgrtSenderThread {
  private:
   std::thread t_;
   std::mutex db_mu_;
-  std::mutex batch_mu_;
   std::mutex ones_mu_;
   Mutex slotsmgrt_cond_mu_;
   CondVar slotsmgrt_cond_;
@@ -210,19 +209,18 @@ class SlotsMgrtSenderThread {
   Engine::Storage *storage_;
 
   std::string dest_ip_;
-  int64_t dest_port_ = 0;
-  int64_t timeout_ms_ = 0;
+  int dest_port_ = 0;
+  uint64_t timeout_ms_ = 0;
   uint32_t slot_num_ = 0;
-  int64_t keys_num_ = 0;
-  int64_t moved_keys_num_ = 0; // during one batch moved
-  int64_t moved_keys_all_ = 0; // all keys moved in the slot
-  int64_t remained_keys_num_ = 0;
+  std::atomic<int> keys_num_{0};
+  uint64_t moved_keys_num_ = 0;  // during one batch moved
+  uint64_t moved_keys_all_ = 0;  // all keys moved in the slot
+  uint64_t remained_keys_num_ = 0;
   bool error_ = false;
-  std::vector<std::string> migrating_batch_;
   std::vector<std::string> migrating_ones_;
   std::atomic<bool> is_migrating_;
 
-  Status ElectMigrateKeys();
+  Status ElectMigrateKeys(std::vector<std::string> *keys);
   void loop();
 };
 

@@ -1,5 +1,6 @@
 #include "test_base.h"
 #include "redis_list.h"
+#include <gtest/gtest.h>
 
 class RedisListTest : public TestBase {
 protected:

@@ -152,3 +152,48 @@ def test_slotscheck():
     ret = conn.delete(key)
     assert (ret == 1)
 
+
+def test_slotsmgrtslot_async():
+    conn = get_redis_conn_codis(1)
+    conn_group2 = get_redis_conn_codis(2)
+    key = "test_slotsmgrtslot_async"
+    ret = conn.sadd(key, 'a')
+    assert (ret == 1)
+    hash_num = conn.execute_command("slotshashkey", key)
+    ret = conn.execute_command("slotsmgrtslot-async", "127.0.0.1", 6672, 3000, 20000, 2000, hash_num[0], 500)
+    assert (ret == [1L, 0L])
+
+    value = conn_group2.sismember(key, 'a')
+    assert (value == 1)
+    value = conn.sismember(key, 'a')
+    assert (value == 0)
+
+    ret = conn_group2.delete(key)
+    assert (ret == 1)
+
+
+
+def test_slotsmgrttagslot_async():
+    conn = get_redis_conn_codis(1)
+    conn_group2 = get_redis_conn_codis(2)
+    key = "test_slots{mgrt}tagslot"
+    key2 = "test_slots{mgrt}tagslot_3333"
+    ret = conn.execute_command("siadd", key, 1, 2, 3, 4)
+    assert (ret == 4)
+    ret = conn.hset(key2, "f1", 'v1')
+    assert (ret == 1)
+    hash_num = conn.execute_command("slotshashkey", key)
+    ret = conn.execute_command("slotsmgrttagslot-async", "127.0.0.1", 6672, 3000, 20000, 2000, hash_num[0], 500)
+    assert (ret == [2L, 0L])
+
+    ret = conn_group2.execute_command("sirange", key, 0, 20)
+    assert (ret == ['1', '2', '3', '4'])
+    value = conn_group2.hget(key2, "f1")
+    assert (value == "v1")
+    value = conn.execute_command("sirange", key, 0, 20)
+    assert (value == [])
+    value = conn.hget(key2, "f1")
+    assert (value == None)
+
+    ret = conn_group2.delete(key, key2)
+    assert (ret == 2)

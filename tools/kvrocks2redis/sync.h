@@ -13,28 +13,23 @@
 #include "writer.h"
 #include "parser.h"
 
-class Sync : public ReplicationThread {
+class Sync {
  public:
-  explicit Sync(Server *srv, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
-  ~Sync() {
-    if (next_seq_fd_) close(next_seq_fd_);
-  }
+  explicit Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
+  ~Sync();
   void Start();
   void Stop();
   bool IsStopped() { return stop_flag_; }
 
  private:
+  int sock_fd_;
   bool stop_flag_ = false;
   Engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
   Parser *parser_ = nullptr;
   Kvrocks2redis::Config *config_ = nullptr;
-  ReplState sync_state_;
   int next_seq_fd_;
   rocksdb::SequenceNumber next_seq_ = static_cast<rocksdb::SequenceNumber>(0);
-
-  using CBState = CallbacksStateMachine::State;
-  CallbacksStateMachine psync_steps_;
 
   // Internal states managed by IncrementBatchLoop procedure
   enum IncrementBatchLoopState {
@@ -44,11 +39,9 @@ class Sync : public ReplicationThread {
 
   size_t incr_bulk_len_ = 0;
 
-  static CBState tryPSyncWriteCB(bufferevent *bev, void *ctx);
-  static CBState tryPSyncReadCB(bufferevent *bev, void *ctx);
-  static CBState incrementBatchLoopCB(bufferevent *bev, void *ctx);
-
-  static void EventTimerCB(int, int16_t, void *ctx);
+  Status auth();
+  Status tryPSync();
+  Status incrementBatchLoop();
 
   void parseKVFromLocalStorage();
 

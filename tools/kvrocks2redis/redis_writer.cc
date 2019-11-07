@@ -183,9 +183,9 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
 Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   const auto db_number_str = std::to_string(db_number);
   const auto db_number_str_len = std::to_string(db_number_str.length());
-  Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "select" CRLF "$" + db_number_str_len + CRLF +
+  Util::SockSend(redis_fds_[ns], "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF +
       db_number_str + CRLF);
-  LOG(INFO) << "[kvrocks2redis] Auth request was sent, waiting for response";
+  LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
 
   size_t line_len;
   evbuffer *evbuf = evbuffer_new();

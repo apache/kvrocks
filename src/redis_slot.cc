@@ -301,7 +301,6 @@ Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
   }
 
   size_t line_len;
-  evbuffer *evbuf = evbuffer_new();
   std::string restore_command;
   switch (metadata.Type()) {
     case kRedisString:
@@ -326,6 +325,7 @@ Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
   if (!s.IsOK()) {
     return Status(Status::NotOK, "[slotsrestore] send command err:" + s.Msg());
   }
+  evbuffer *evbuf = evbuffer_new();
   while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
       evbuffer_free(evbuf);
@@ -347,6 +347,7 @@ Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
         Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)});
     s = Util::SockSend(sock_fd, ttl_command);
     if (!s.IsOK()) {
+      evbuffer_free(evbuf);
       return Status(Status::NotOK, "[slotsrestore] send expire command err:" + s.Msg());
     }
     while (true) {

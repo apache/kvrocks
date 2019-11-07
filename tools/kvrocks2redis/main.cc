@@ -6,10 +6,7 @@
 #include <csignal>
 
 #include "../../src/config.h"
-#include "../../src/worker.h"
 #include "../../src/storage.h"
-#include "../../src/server.h"
-#include "../../src/util.h"
 
 #include "sync.h"
 #include "redis_writer.h"
@@ -133,19 +130,17 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  Server srv(&storage, &kvrocks_config);
-
   RedisWriter writer(&config);
   Parser parser(&storage, &writer);
 
-  Sync sync(&srv, &writer, &parser, &config);
-  hup_handler = [&sync, &config]() {
+  Sync sync(&storage, &writer, &parser, &config);
+  hup_handler = [&sync]() {
     if (!sync.IsStopped()) {
       LOG(INFO) << "Bye Bye";
       sync.Stop();
-      removePidFile(config.pidfile);
     }
   };
   sync.Start();
+  removePidFile(config.pidfile);
   return 0;
 }

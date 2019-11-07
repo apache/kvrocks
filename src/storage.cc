@@ -38,7 +38,9 @@ Storage::Storage(Config *config)
 }
 
 Storage::~Storage() {
-  DestroyBackup();
+  if (backup_ != nullptr) {
+    DestroyBackup();
+  }
   CloseDB();
 }
 

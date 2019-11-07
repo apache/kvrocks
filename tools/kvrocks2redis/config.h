@@ -21,6 +21,7 @@ struct Config {
 
   std::string dir = "/tmp/ev";
   std::string db_dir = dir + "/db";
+  std::string pidfile = dir+"/kvrocks2redis.pid";
   std::string aof_file_name = "appendonly.aof";
   std::string next_offset_file_name = "last_next_offset.txt";
   std::string next_seq_file_path = dir + "/last_next_seq.txt";

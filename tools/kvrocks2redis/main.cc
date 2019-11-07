@@ -18,13 +18,11 @@
 #include "version.h"
 
 const char *kDefaultConfPath = "../kvrocks2redis.conf";
-const char *kDefaultPidPath = "/var/run/kvrocks2redis.pid";
 
 std::function<void()> hup_handler;
 
 struct Options {
   std::string conf_file = kDefaultConfPath;
-  std::string pid_file = kDefaultPidPath;
   bool show_usage = false;
 };
 
@@ -35,7 +33,6 @@ extern "C" void signal_handler(int sig) {
 static void usage(const char *program) {
   std::cout << program << " sync kvrocks to redis\n"
             << "\t-c config file, default is " << kDefaultConfPath << "\n"
-            << "\t-p pid file, default is " << kDefaultPidPath << "\n"
             << "\t-h help\n";
   exit(0);
 }
@@ -46,8 +43,6 @@ static Options parseCommandLineOptions(int argc, char **argv) {
   while ((ch = ::getopt(argc, argv, "c:p:hv")) != -1) {
     switch (ch) {
       case 'c': opts.conf_file = optarg;
-        break;
-      case 'p': opts.pid_file = optarg;
         break;
       case 'h': opts.show_usage = true;
         break;
@@ -122,7 +117,7 @@ int main(int argc, char *argv[]) {
   initGoogleLog(&config);
 
   if (config.daemonize) daemonize();
-  s = createPidFile(opts.pid_file);
+  s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     exit(1);
@@ -144,11 +139,11 @@ int main(int argc, char *argv[]) {
   Parser parser(&storage, &writer);
 
   Sync sync(&srv, &writer, &parser, &config);
-  hup_handler = [&sync, &opts]() {
+  hup_handler = [&sync, &config]() {
     if (!sync.IsStopped()) {
       LOG(INFO) << "Bye Bye";
       sync.Stop();
-      removePidFile(opts.pid_file);
+      removePidFile(config.pidfile);
     }
   };
   sync.Start();

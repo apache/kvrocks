@@ -12,6 +12,7 @@ struct redis_server {
   std::string host;
   uint32_t port;
   std::string auth;
+  int db_number;
 };
 struct Config {
  public:

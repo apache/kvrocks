@@ -72,6 +72,7 @@ Status Config::parseConfigFromString(std::string input) {
     if (size == 4) {
       tokens[ns].auth = args[3];
     }
+    tokens[ns].db_number = size == 5 ? std::atoi(args[4].c_str()) : 0;
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }

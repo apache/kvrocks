@@ -85,7 +85,7 @@ void RedisWriter::sync() {
         continue;
       }
 
-      s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth);
+      s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
         continue;
@@ -119,7 +119,8 @@ void RedisWriter::sync() {
 Status RedisWriter::getRedisConn(const std::string &ns,
                                  const std::string &host,
                                  const uint32_t &port,
-                                 const std::string &auth) {
+                                 const std::string &auth,
+                                 int db_index) {
   auto iter = redis_fds_.find(ns);
   if (iter == redis_fds_.end()) {
     auto s = Util::SockConnect(host, port, &redis_fds_[ns]);
@@ -129,6 +130,14 @@ Status RedisWriter::getRedisConn(const std::string &ns,
 
     if (!auth.empty()) {
       auto s = authRedis(ns, auth);
+      if (!s.IsOK()) {
+        close(redis_fds_[ns]);
+        redis_fds_.erase(ns);
+        return Status(Status::NotOK, s.Msg());
+      }
+    }
+    if (db_index != 0) {
+      auto s = selectDB(ns, db_index);
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
@@ -161,6 +170,38 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
       free(line);
       evbuffer_free(evbuf);
       return Status(Status::NotOK, "[kvrocks2redis] Auth failed: " + std::string(line, line_len));;
+    }
+    free(line);
+    break;
+  }
+
+  evbuffer_free(evbuf);
+
+  return Status::OK();
+}
+
+Status RedisWriter::selectDB(const std::string &ns, int db_number) {
+  const auto db_number_str = std::to_string(db_number);
+  const auto db_number_str_len = std::to_string(db_number_str.length());
+  Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "select" CRLF "$" + db_number_str_len + CRLF +
+      db_number_str + CRLF);
+  LOG(INFO) << "[kvrocks2redis] Auth request was sent, waiting for response";
+
+  size_t line_len;
+  evbuffer *evbuf = evbuffer_new();
+  // Read auth response
+  while (true) {
+    if (evbuffer_read(evbuf, redis_fds_[ns], -1) <= 0) {
+      evbuffer_free(evbuf);
+      return Status(Status::NotOK, std::string("read select db response err: ") + strerror(errno));
+    }
+    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    if (!line) continue;
+    if (strncmp(line, "+OK", 3) != 0) {
+      // Auth failed
+      free(line);
+      evbuffer_free(evbuf);
+      return Status(Status::NotOK, "[kvrocks2redis] select db failed: " + std::string(line, line_len));;
     }
     free(line);
     break;

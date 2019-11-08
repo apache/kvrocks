@@ -6,6 +6,8 @@ fi
 
 BIN="$1/kvrocks"
 
+# clean the old data dir
+rm -rf /tmp/*
 # setup the master and wait for ready
 $BIN -c tests/scripts/test-master.conf
 until nc -z 127.0.0.1 6666; do echo "master is not ready"; sleep 1; done

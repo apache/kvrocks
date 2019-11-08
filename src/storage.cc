@@ -105,9 +105,11 @@ Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
   if (s.ok()) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                          kZSetScoreColumnFamilyName,
-                                         kPubSubColumnFamilyName,
-                                         kSlotMetadataColumnFamilyName,
-                                         kSlotColumnFamilyName};
+                                         kPubSubColumnFamilyName};
+    if (config_->codis_enabled) {
+      cf_names.emplace_back(kSlotMetadataColumnFamilyName);
+      cf_names.emplace_back(kSlotColumnFamilyName);
+    }
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -163,36 +165,46 @@ Status Storage::Open(bool read_only) {
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
 
-  rocksdb::BlockBasedTableOptions slot_metadata_table_opts;
-  slot_metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  slot_metadata_table_opts.block_cache =
-      rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
-  slot_metadata_table_opts.cache_index_and_filter_blocks = true;
-  slot_metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
-  rocksdb::ColumnFamilyOptions slot_metadata_opts(options);
-  slot_metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slot_metadata_table_opts));
-
-  rocksdb::BlockBasedTableOptions slotkey_table_opts;
-  slotkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  slotkey_table_opts.block_cache =
-      rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
-  slotkey_table_opts.cache_index_and_filter_blocks = true;
-  slotkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
-  rocksdb::ColumnFamilyOptions slotkey_opts(options);
-  slotkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slotkey_table_opts));
-  slotkey_opts.compaction_filter_factory = std::make_shared<SlotKeyFilterFactory>(this);
-
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotMetadataColumnFamilyName, slot_metadata_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotColumnFamilyName, slotkey_opts));
+  std::vector<std::string> old_column_families;
+  auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
+  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  if (!config_->codis_enabled && column_families.size() != old_column_families.size()) {
+    return Status(Status::NotOK, "the db enabled codis mode at first open, please set codis-enabled 'yes'");
+  }
+  if (config_->codis_enabled && column_families.size() == old_column_families.size()) {
+    return Status(Status::NotOK, "the db disabled codis mode at first open, please set codis-enabled 'no'");
+  }
+  if (config_->codis_enabled) {
+    rocksdb::BlockBasedTableOptions slot_metadata_table_opts;
+    slot_metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+    slot_metadata_table_opts.block_cache =
+        rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
+    slot_metadata_table_opts.cache_index_and_filter_blocks = true;
+    slot_metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
+    rocksdb::ColumnFamilyOptions slot_metadata_opts(options);
+    slot_metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slot_metadata_table_opts));
+
+    rocksdb::BlockBasedTableOptions slotkey_table_opts;
+    slotkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+    slotkey_table_opts.block_cache =
+        rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
+    slotkey_table_opts.cache_index_and_filter_blocks = true;
+    slotkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
+    rocksdb::ColumnFamilyOptions slotkey_opts(options);
+    slotkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slotkey_table_opts));
+    slotkey_opts.compaction_filter_factory = std::make_shared<SlotKeyFilterFactory>(this);
+
+    column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotMetadataColumnFamilyName, slot_metadata_opts));
+    column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotColumnFamilyName, slotkey_opts));
+  }
 
   auto start = std::chrono::high_resolution_clock::now();
-  rocksdb::Status s;
   if (read_only) {
     s = rocksdb::DB::OpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_, &db_);
   } else {
@@ -211,10 +223,6 @@ Status Storage::Open(bool read_only) {
     s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
     if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   }
-
-  Redis::Slot slot_db(this);
-  auto st = slot_db.CheckCodisEnabledStatus(config_->codis_enabled);
-  if (!st.IsOK()) return st;
   return Status::OK();
 }
 

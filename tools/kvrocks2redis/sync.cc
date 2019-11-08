@@ -90,21 +90,21 @@ Status Sync::auth() {
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
     if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
-    while (true) {
-      if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
-        evbuffer_free(evbuf);
-        return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
-      }
-      char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-      if (!line) continue;
-      if (strncmp(line, "+OK", 3) != 0) {
-        free(line);
-        evbuffer_free(evbuf);
-        return Status(Status::NotOK, "auth got invalid response");
-      }
-      free(line);
-      break;
+    if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
+      evbuffer_free(evbuf);
+      return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
     }
+    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    if (!line) {
+      free(line);
+      return Status(Status::NotOK, std::string("get auth response err(empty): ") + strerror(errno));
+    }
+    if (strncmp(line, "+OK", 3) != 0) {
+      free(line);
+      evbuffer_free(evbuf);
+      return Status(Status::NotOK, "auth got invalid response");
+    }
+    free(line);
     evbuffer_free(evbuf);
   }
   LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
@@ -121,38 +121,37 @@ Status Sync::tryPSync() {
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
   if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
-  while (true) {
-    if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
-      evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("read psync response err: ") + strerror(errno));
-    }
-    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) continue;
-    if (strncmp(line, "+OK", 3) != 0) {
-      if (next_seq_ > 0) {
-        // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
-        // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-        auto error_msg =
-            "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : " + std::string(line);
-        stop_flag_ = true;
-        free(line);
-        evbuffer_free(evbuf);
-        return Status(Status::NotOK, error_msg);
-      }
-      // PSYNC isn't OK, we should use parseAllLocalStorage
-      // Switch to parseAllLocalStorage
-      parseKVFromLocalStorage();
-      LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage : " << std::string(line);
+  if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
+    evbuffer_free(evbuf);
+    return Status(Status::NotOK, std::string("read psync response err: ") + strerror(errno));
+  }
+  char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) {
+    free(line);
+    return Status(Status::NotOK, std::string("get psync response err(empty): ") + strerror(errno));
+  }
+  if (strncmp(line, "+OK", 3) != 0) {
+    if (next_seq_ > 0) {
+      // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
+      // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
+      auto error_msg =
+          "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : " + std::string(line);
+      stop_flag_ = true;
       free(line);
       evbuffer_free(evbuf);
-      // Restart tryPSync
-      return tryPSync();
+      return Status(Status::NotOK, error_msg);
     }
-    // PSYNC is OK, use IncrementBatchLoop
+    // PSYNC isn't OK, we should use parseAllLocalStorage
+    // Switch to parseAllLocalStorage
+    parseKVFromLocalStorage();
+    LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage : " << std::string(line);
     free(line);
-    LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
-    break;
+    evbuffer_free(evbuf);
+    // Restart tryPSync
+    return tryPSync();
   }
+  LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
+  free(line);
   evbuffer_free(evbuf);
   return Status::OK();
 }

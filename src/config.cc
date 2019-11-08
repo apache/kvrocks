@@ -113,6 +113,8 @@ Status Config::parseRocksdbIntOption(std::string key, std::string value) {
   auto s = Util::StringToNum(value, &n);
   if (key == "max_open_files") {
     rocksdb_options.max_open_files = static_cast<int>(n);
+  }  else if (key == "block_size") {
+    rocksdb_options.block_size = static_cast<size_t>(n);
   } else if (!strncasecmp(key.data(), "write_buffer_size" , strlen("write_buffer_size"))) {
     rocksdb_options.write_buffer_size = static_cast<size_t>(n) * MiB;
   }  else if (key == "max_write_buffer_number") {
@@ -406,6 +408,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("profiling-sample-record-threshold-ms", std::to_string(profiling_sample_record_threshold_ms));
   PUSH_IF_MATCH("slowlog-log-slower-than", std::to_string(slowlog_log_slower_than));
   PUSH_IF_MATCH("rocksdb.max_open_files", std::to_string(rocksdb_options.max_open_files));
+  PUSH_IF_MATCH("rocksdb.block_size", std::to_string(rocksdb_options.block_size));
   PUSH_IF_MATCH("rocksdb.write_buffer_size", std::to_string(rocksdb_options.write_buffer_size/MiB));
   PUSH_IF_MATCH("rocksdb.max_write_buffer_number", std::to_string(rocksdb_options.max_write_buffer_number));
   PUSH_IF_MATCH("rocksdb.max_background_compactions", std::to_string(rocksdb_options.max_background_compactions));
@@ -693,6 +696,7 @@ Status Config::Rewrite() {
 
   string_stream << "\n################################ ROCKSDB #####################################\n";
   WRITE_TO_FILE("rocksdb.max_open_files", rocksdb_options.max_open_files);
+  WRITE_TO_FILE("rocksdb.block_size", rocksdb_options.block_size);
   WRITE_TO_FILE("rocksdb.write_buffer_size", rocksdb_options.write_buffer_size/MiB);
   WRITE_TO_FILE("rocksdb.max_write_buffer_number", rocksdb_options.max_write_buffer_number);
   WRITE_TO_FILE("rocksdb.max_background_compactions", rocksdb_options.max_background_compactions);

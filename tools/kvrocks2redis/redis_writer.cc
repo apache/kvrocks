@@ -118,7 +118,7 @@ void RedisWriter::sync() {
 
 Status RedisWriter::getRedisConn(const std::string &ns,
                                  const std::string &host,
-                                 const uint32_t &port,
+                                 uint32_t port,
                                  const std::string &auth,
                                  int db_index) {
   auto iter = redis_fds_.find(ns);

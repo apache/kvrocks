@@ -74,11 +74,11 @@ struct Config{
   bool profiling_sample_all_commands = false;
 
   struct {
-    size_t metadata_block_cache_size = 4 * GiB;
-    size_t subkey_block_cache_size = 8 * GiB;
+    size_t metadata_block_cache_size = 2 * GiB;
+    size_t subkey_block_cache_size = 2 * GiB;
     int max_open_files = 4096;
-    uint64_t write_buffer_size = 256 * MiB;
-    int max_write_buffer_number = 2;
+    uint64_t write_buffer_size = 64 * MiB;
+    int max_write_buffer_number = 4;
     int max_background_compactions = 2;
     int max_background_flushes = 2;
     uint32_t max_sub_compactions = 1;

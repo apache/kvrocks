@@ -75,6 +75,7 @@ void RedisWriter::sync() {
     }
   }
 
+  std::string line;
   size_t chunk_size = 4 * 1024 * 1024;
   char *buffer = new char[chunk_size];
   while (!stop_flag_) {
@@ -84,13 +85,11 @@ void RedisWriter::sync() {
         LOG(ERROR) << s.Msg();
         continue;
       }
-
       s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
         continue;
       }
-
       while (true) {
         auto getted_line_leng = pread(aof_fds_[iter.first], buffer, chunk_size, next_offsets_[iter.first]);
         if (getted_line_leng <= 0) {
@@ -99,20 +98,28 @@ void RedisWriter::sync() {
           }
           break;
         }
-
         s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
         if (!s.IsOK()) {
           LOG(ERROR) << "ERR send data to redis err: " + s.Msg();
+          break;
         }
-
+        s = Util::SockReadLine(redis_fds_[iter.first], &line);
+        if (!s.IsOK()) {
+          LOG(ERROR) << "read redis response err: " + s.Msg();
+          break;
+        }
+        if (line.compare(0, 1, "-") == 0) {
+          // Ooops, something went wrong , sync process has been terminated, administrator should be notified
+          // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
+          LOG(ERROR) << "[kvrocks2redis] CRITICAL - redis sync return error , administrator confirm needed : " << line;
+          Stop();
+          return;
+        }
         updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
       }
-
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
   }
-
   delete[] buffer;
 }
 

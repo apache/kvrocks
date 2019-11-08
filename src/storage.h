@@ -34,6 +34,8 @@ class Storage {
   Status OpenForReadOnly();
   void CloseDB();
   void InitOptions(rocksdb::Options *options);
+  Status SetColumnFamilyOption(const std::string &key, const std::string &value);
+  Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamiles(const rocksdb::Options &options);
   Status CreateBackup();
   Status DestroyBackup();

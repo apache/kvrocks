@@ -18,7 +18,7 @@ TEST(Config, Profiling) {
   };
   std::vector<std::string> values;
   for (const auto &iter : cases) {
-    config.Set(iter.first, iter.second, &srv);
+    config.Set(&srv, iter.first, iter.second);
     config.Get(iter.first, &values);
     ASSERT_EQ(values.size(), 2);
     EXPECT_EQ(values[0], iter.first);
@@ -27,7 +27,7 @@ TEST(Config, Profiling) {
   ASSERT_TRUE(config.Rewrite().IsOK());
   config.Load(path);
   for (const auto &iter : cases) {
-    config.Set(iter.first, iter.second, &srv);
+    config.Set(&srv, iter.first, iter.second);
     config.Get(iter.first, &values);
     ASSERT_EQ(values.size(), 2);
     EXPECT_EQ(values[0], iter.first);
@@ -122,10 +122,11 @@ TEST(Namespace, RewriteNamespaces) {
   for(size_t i = 0; i < namespaces.size(); i++) {
     EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
   }
-  EXPECT_TRUE(config.Rewrite().IsOK());
-  Config new_config;
-  auto s = new_config.Load(path) ;
+  auto s = config.Rewrite();
   std::cout << s.Msg() << std::endl;
+  EXPECT_TRUE(s.IsOK());
+  Config new_config;
+  s = new_config.Load(path) ;
   for(size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
     new_config.GetNamespace(namespaces[i], &token);

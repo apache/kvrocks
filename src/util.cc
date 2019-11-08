@@ -203,6 +203,26 @@ void Split(std::string in, std::string delim, std::vector<std::string> *out) {
   } while (pos != std::string::npos);
 }
 
+void Split2KV(const std::string&in, std::string delim, std::vector<std::string> *out) {
+  out->clear();
+  std::string::size_type pos;
+  if ((pos = in.find_first_of(delim)) != std::string::npos) {
+    pos = in.find_first_of(delim);
+    std::string str, key, value;
+    str = in.substr(0, pos);
+    Util::Trim(str, delim, &key);
+    if (!key.empty()) out->push_back(key);
+    str = in.substr(pos+1);
+    Util::Trim(str, delim, &value);
+    if (!value.empty()) out->push_back(value);
+  }
+}
+
+bool HasPrefix(const std::string &str, const std::string &prefix) {
+  if (str.empty() || prefix.empty()) return false;
+  return !strncasecmp(str.data(), prefix.data(), prefix.size());
+}
+
 int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
   return StringMatchLen(pattern.c_str(), pattern.length(), in.c_str(), in.length(), nocase);
 }

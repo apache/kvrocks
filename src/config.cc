@@ -222,6 +222,12 @@ Status Config::parseConfigFromString(std::string input) {
     max_backup_to_keep = static_cast<uint32_t>(std::atoi(args[1].c_str()));
   } else if (size == 2 && args[0] == "max-backup-keep-hours") {
     max_backup_keep_hours = static_cast<uint32_t>(std::atoi(args[1].c_str()));
+  } else if (size == 2 && args[0] == "codis-enabled") {
+    int i;
+    if ((i = yesnotoi(args[1])) == -1) {
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+    }
+    codis_enabled = (i == 1);
   } else if (size == 2 && args[0] == "requirepass") {
     requirepass = args[1];
   } else if (size == 2 && args[0] == "pidfile") {
@@ -328,9 +334,15 @@ Status Config::Load(std::string path) {
   if (backup_dir.empty()) {  // backup-dir was not assigned in config file
     backup_dir = dir+"/backup";
   }
-  if (!tokens.empty() && requirepass.empty()) {
-    file.close();
-    return Status(Status::NotOK, "requirepass was required when namespace isn't empty");
+  if (!tokens.empty()) {
+    if (requirepass.empty()) {
+      file.close();
+      return Status(Status::NotOK, "requirepass was required when namespace isn't empty");
+    }
+    if (codis_enabled) {
+      file.close();
+      return Status(Status::NotOK, "namespace wasn't allowed when the codis mode enabled");
+    }
   }
   auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
   if (!s.ok()) {
@@ -389,6 +401,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("slave-priority", std::to_string(slave_priority));
   PUSH_IF_MATCH("max-backup-to-keep", std::to_string(max_backup_to_keep));
   PUSH_IF_MATCH("max-backup-keep-hours", std::to_string(max_backup_keep_hours));
+  PUSH_IF_MATCH("codis-enabled", (codis_enabled ? "yes" : "no"));
   PUSH_IF_MATCH("compact-cron", compact_cron.ToString());
   PUSH_IF_MATCH("bgsave-cron", bgsave_cron.ToString());
   PUSH_IF_MATCH("loglevel", kLogLevels[loglevel]);
@@ -684,6 +697,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("max-db-size", max_db_size);
   WRITE_TO_FILE("max-replication-mb", max_replication_mb);
   WRITE_TO_FILE("max-io-mb", max_io_mb);
+  WRITE_TO_FILE("codis-enabled", (codis_enabled? "yes":"no"));
   if (!requirepass.empty()) WRITE_TO_FILE("requirepass", requirepass);
   if (!masterauth.empty()) WRITE_TO_FILE("masterauth", masterauth);
   if (!master_host.empty())  WRITE_TO_FILE("slaveof", master_host+" "+std::to_string(master_port));
@@ -754,6 +768,9 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbid to add new namespace while the requirepass is empty");
+  }
+  if (codis_enabled) {
+    return Status(Status::NotOK, "forbid to add new namespace while codis support is enabled");
   }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) {

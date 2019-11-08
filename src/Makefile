@@ -35,7 +35,7 @@ FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(JEMALLOC) $(ROCKSDB)
 SHARED_OBJS= compact_filter.o config.o cron.o encoding.o event_listener.o lock_manager.o \
 			   log_collector.o redis_bitmap.o redis_cmd.o redis_connection.o redis_db.o \
 			   redis_hash.o redis_list.o redis_metadata.o redis_pubsub.o redis_reply.o \
-			   redis_request.o redis_set.o redis_string.o redis_zset.o replication.o \
+			   redis_request.o redis_set.o redis_string.o redis_zset.o redis_slot.o replication.o \
 			   server.o stats.o storage.o task_runner.o util.o worker.o redis_sortedint.o
 KVROCKS_OBJS= $(SHARED_OBJS) main.o
 

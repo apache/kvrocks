@@ -115,6 +115,8 @@ target_sources(kvrocks PRIVATE
         src/redis_pubsub.h
         src/redis_sortedint.cc
         src/redis_sortedint.h
+        src/redis_slot.cc
+        src/redis_slot.h
         src/lock_manager.cc
         src/rocksdb_crc32c.h
         src/config.cc

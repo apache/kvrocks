@@ -26,7 +26,7 @@ class RedisWriter : public Writer {
   void sync();
   Status getRedisConn(const std::string &ns,
                       const std::string &host,
-                      const uint32_t &port,
+                      uint32_t port,
                       const std::string &auth,
                       int db_index);
   Status authRedis(const std::string &ns, const std::string &auth);

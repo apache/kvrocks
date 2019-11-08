@@ -115,6 +115,8 @@ Status Storage::Open(bool read_only) {
   db_refs_ = 0;
   db_mu_.unlock();
 
+  bool cache_index_and_filter_blocks = config_->rocksdb_options.cache_index_and_filter_blocks;
+  size_t block_size = config_->rocksdb_options.block_size;
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamiles(options);
@@ -122,8 +124,9 @@ Status Storage::Open(bool read_only) {
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   metadata_table_opts.block_cache =
       rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
-  metadata_table_opts.cache_index_and_filter_blocks = true;
+  metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
+  metadata_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
@@ -132,14 +135,16 @@ Status Storage::Open(bool read_only) {
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   subkey_table_opts.block_cache =
       rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
-  subkey_table_opts.cache_index_and_filter_blocks = true;
+  subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
+  subkey_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;
   pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  pubsub_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();

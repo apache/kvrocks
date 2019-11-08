@@ -83,37 +83,25 @@ void Sync::Stop() {
 }
 
 Status Sync::auth() {
-  size_t line_len;
   // Send auth when needed
   if (!config_->kvrocks_auth.empty()) {
-    evbuffer *evbuf = evbuffer_new();
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
     if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
-    if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
-      evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
+    std::string line;
+    s = Util::SockReadLine(sock_fd_, &line);
+    if (!s.IsOK()) {
+      return Status(Status::NotOK, std::string("read auth response err: ") + s.Msg());
     }
-    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) {
-      free(line);
-      return Status(Status::NotOK, std::string("get auth response err(empty): ") + strerror(errno));
-    }
-    if (strncmp(line, "+OK", 3) != 0) {
-      free(line);
-      evbuffer_free(evbuf);
+    if (line.compare(0, 3, "+OK") != 0) {
       return Status(Status::NotOK, "auth got invalid response");
     }
-    free(line);
-    evbuffer_free(evbuf);
   }
   LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
   return Status::OK();
 }
 
 Status Sync::tryPSync() {
-  size_t line_len;
-  evbuffer *evbuf = evbuffer_new();
   const auto seq_str = std::to_string(next_seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
@@ -121,38 +109,29 @@ Status Sync::tryPSync() {
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
   if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
-  if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
-    evbuffer_free(evbuf);
-    return Status(Status::NotOK, std::string("read psync response err: ") + strerror(errno));
+  std::string line;
+  s = Util::SockReadLine(sock_fd_, &line);
+  if (!s.IsOK()) {
+    return Status(Status::NotOK, std::string("read psync response err: ") + s.Msg());
   }
-  char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-  if (!line) {
-    free(line);
-    return Status(Status::NotOK, std::string("get psync response err(empty): ") + strerror(errno));
-  }
-  if (strncmp(line, "+OK", 3) != 0) {
+
+  if (line.compare(0, 3, "+OK") != 0) {
     if (next_seq_ > 0) {
       // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
       // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
       auto error_msg =
           "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : " + std::string(line);
       stop_flag_ = true;
-      free(line);
-      evbuffer_free(evbuf);
       return Status(Status::NotOK, error_msg);
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
     parseKVFromLocalStorage();
     LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage : " << std::string(line);
-    free(line);
-    evbuffer_free(evbuf);
     // Restart tryPSync
     return tryPSync();
   }
   LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
-  free(line);
-  evbuffer_free(evbuf);
   return Status::OK();
 }
 

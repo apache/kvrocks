@@ -115,6 +115,7 @@ Status Storage::Open(bool read_only) {
   db_refs_ = 0;
   db_mu_.unlock();
 
+  bool cache_index_and_filter_blocks = config_->rocksdb_options.cache_index_and_filter_blocks;
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamiles(options);
@@ -122,7 +123,7 @@ Status Storage::Open(bool read_only) {
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   metadata_table_opts.block_cache =
       rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
-  metadata_table_opts.cache_index_and_filter_blocks = true;
+  metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
@@ -132,7 +133,7 @@ Status Storage::Open(bool read_only) {
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   subkey_table_opts.block_cache =
       rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
-  subkey_table_opts.cache_index_and_filter_blocks = true;
+  subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));

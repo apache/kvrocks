@@ -74,6 +74,7 @@ struct Config{
   bool profiling_sample_all_commands = false;
 
   struct {
+    bool cache_index_and_filter_blocks = false;
     size_t metadata_block_cache_size = 2 * GiB;
     size_t subkey_block_cache_size = 2 * GiB;
     int max_open_files = 4096;

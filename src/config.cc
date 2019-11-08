@@ -100,6 +100,8 @@ Status Config::parseRocksdbOption(const std::string &key, std::string value) {
     }
   } else if (key == "enable_pipelined_write")  {
     rocksdb_options.enable_pipelined_write = value == "yes";
+  } else if (key == "cache_index_and_filter_blocks")  {
+    rocksdb_options.cache_index_and_filter_blocks = value == "yes";
   } else {
     return parseRocksdbIntOption(key, value);
   }
@@ -412,6 +414,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   PUSH_IF_MATCH("rocksdb.compaction_readahead_size", std::to_string(rocksdb_options.compaction_readahead_size));
   PUSH_IF_MATCH("rocksdb.max_background_flushes", std::to_string(rocksdb_options.max_background_flushes));
   PUSH_IF_MATCH("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes": "no"))
+  PUSH_IF_MATCH("rocksdb.cache_index_and_filter_blocks", (rocksdb_options.cache_index_and_filter_blocks? "yes": "no"))
   PUSH_IF_MATCH("rocksdb.stats_dump_period_sec", std::to_string(rocksdb_options.stats_dump_period_sec));
   PUSH_IF_MATCH("rocksdb.max_sub_compactions", std::to_string(rocksdb_options.max_sub_compactions));
   PUSH_IF_MATCH("rocksdb.delayed_write_rate", std::to_string(rocksdb_options.delayed_write_rate));
@@ -699,6 +702,7 @@ Status Config::Rewrite() {
   WRITE_TO_FILE("rocksdb.max_sub_compactions", rocksdb_options.max_sub_compactions);
   WRITE_TO_FILE("rocksdb.compression", kCompressionType[rocksdb_options.compression]);
   WRITE_TO_FILE("rocksdb.enable_pipelined_write", (rocksdb_options.enable_pipelined_write ? "yes" : "no"));
+  WRITE_TO_FILE("rocksdb.cache_index_and_filter_blocks", (rocksdb_options.cache_index_and_filter_blocks? "yes" : "no"));
   WRITE_TO_FILE("rocksdb.delayed_write_rate", rocksdb_options.delayed_write_rate);
   WRITE_TO_FILE("rocksdb.compaction_readahead_size", rocksdb_options.compaction_readahead_size);
   WRITE_TO_FILE("rocksdb.target_file_size_base", rocksdb_options.target_file_size_base);

@@ -166,10 +166,8 @@ class Slot : public SubKeyScanner {
                        uint64_t limit,
                        std::vector<std::string> *keys);
   rocksdb::Status Restore(const std::vector<KeyValue> &key_values);
-  Status CheckCodisEnabledStatus(bool enabled);
 
  private:
-  std::string codis_enabled_status_key_ = "codis_enabled";
   rocksdb::ColumnFamilyHandle *slot_metadata_cf_handle_;
   rocksdb::ColumnFamilyHandle *slot_key_cf_handle_;
   Status generateMigrateCommandComplexKV(const Slice &key, const Metadata &metadata, std::string *output);

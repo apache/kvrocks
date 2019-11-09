@@ -577,7 +577,6 @@ rocksdb::Status Slot::GetInfo(uint32_t start, int count, std::vector<SlotCount> 
 
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     auto key = iter->key().ToString();
-    if (key == codis_enabled_status_key_) continue;
     auto slot_num = DecodeFixed32(key.data());
     if (slot_num > max_slot_num) {
       break;
@@ -779,28 +778,6 @@ SlotsMgrtSenderThread::~SlotsMgrtSenderThread() {
     StopMigrateSlot();
     slotsmgrt_cond_.SignalAll();
   }
-}
-
-Status Slot::CheckCodisEnabledStatus(bool enabled) {
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
-  read_options.snapshot = ss.GetSnapShot();
-  std::string raw_bytes;
-  auto s = db_->Get(read_options, slot_metadata_cf_handle_, codis_enabled_status_key_, &raw_bytes);
-  if (!s.ok() && !s.IsNotFound()) return Status(Status::DBOpenErr, "get codis enabled status error");
-
-  if (s.IsNotFound()) {
-    db_->Put(rocksdb::WriteOptions(),
-             slot_metadata_cf_handle_,
-             codis_enabled_status_key_,
-             std::to_string(enabled));
-  } else {
-    auto codis_enabled = raw_bytes.data();
-    if (codis_enabled != std::to_string(enabled)) {
-      return Status(Status::DBOpenErr, "codis enabled status mismatch");
-    }
-  }
-  return Status::OK();
 }
 
 Status SlotsMgrtSenderThread::Start() {

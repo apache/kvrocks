@@ -44,6 +44,7 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "dir") {
     dir = args[1];
     db_dir = dir + "/db";
+    pidfile = dir + "/kvrocks2redis.pid";
     next_seq_file_path = dir + "/last_next_seq.txt";
   } else if (size == 2 && args[0] == "loglevel") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
@@ -52,6 +53,8 @@ Status Config::parseConfigFromString(std::string input) {
         break;
       }
     }
+  } else if (size == 2 && args[0] == "pidfile") {
+    pidfile = args[1];
   } else if (size >= 3 && args[0] == "kvrocks") {
     kvrocks_host = args[1];
     // we use port + 1 as repl port, so incr the kvrocks port here
@@ -72,6 +75,7 @@ Status Config::parseConfigFromString(std::string input) {
     if (size == 4) {
       tokens[ns].auth = args[3];
     }
+    tokens[ns].db_number = size == 5 ? std::atoi(args[4].c_str()) : 0;
   } else {
     return Status(Status::NotOK, "Bad directive or wrong number of arguments");
   }

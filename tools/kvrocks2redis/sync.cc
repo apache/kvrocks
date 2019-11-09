@@ -10,6 +10,7 @@
 #include <fstream>
 
 #include "../../src/redis_reply.h"
+#include "../../src/util.h"
 
 #include "util.h"
 
@@ -18,26 +19,18 @@ void send_string_to_event(bufferevent *bev, const std::string &data) {
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-Sync::Sync(Server *srv, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
-    : ReplicationThread(config->kvrocks_host, config->kvrocks_port, srv, config->kvrocks_auth),
-      storage_(srv->storage_),
+Sync::Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
+    : storage_(storage),
       writer_(writer),
       parser_(parser),
-      config_(config),
-      sync_state_(kReplConnecting),
-      psync_steps_(this,
-                   CallbacksStateMachine::CallbackList{
-                       CallbacksStateMachine::CallbackType{
-                           CallbacksStateMachine::WRITE, "psync write", tryPSyncWriteCB
-                       },
-                       CallbacksStateMachine::CallbackType{
-                           CallbacksStateMachine::READ, "psync read", tryPSyncReadCB
-                       },
-                       CallbacksStateMachine::CallbackType{
-                           CallbacksStateMachine::READ, "batch loop", incrementBatchLoopCB
-                       }
-                   }) {
+      config_(config) {
 }
+
+Sync::~Sync() {
+  if (next_seq_fd_) close(next_seq_fd_);
+  writer_->Stop();
+}
+
 /*
  * Run connect to kvrocks, and start the following steps
  * asynchronously
@@ -52,132 +45,141 @@ void Sync::Start() {
     return;
   }
 
-  base_ = event_base_new();
-  if (base_ == nullptr) {
-    LOG(ERROR) << "[kvrocks2redis] Failed to create new ev base";
-    return;
-  }
-
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
-
-  psync_steps_.Start();
-
-  auto timer = event_new(base_, -1, EV_PERSIST, EventTimerCB, this);
-  timeval tmo{1, 0};  // 1 sec
-  evtimer_add(timer, &tmo);
-
-  event_base_dispatch(base_);
-  event_free(timer);
-  event_base_free(base_);
+  while (!IsStopped()) {
+    s = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port, &sock_fd_);
+    if (!s.IsOK()) {
+      LOG(ERROR) << s.Msg();
+      usleep(10000);
+      continue;
+    }
+    s = auth();
+    if (!s.IsOK()) {
+      LOG(ERROR) << s.Msg();
+      usleep(10000);
+      continue;
+    }
+    while (!IsStopped()) {
+      s = tryPSync();
+      if (!s.IsOK()) {
+        LOG(ERROR) << s.Msg();
+        break;
+      }
+      s = incrementBatchLoop();
+      if (!s.IsOK()) {
+        LOG(ERROR) << s.Msg();
+        continue;
+      }
+    }
+    close(sock_fd_);
+  }
 }
 
 void Sync::Stop() {
   if (stop_flag_) return;
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
-  // handled by timer
   LOG(INFO) << "[kvrocks2redis] Stopped";
 }
 
-Sync::CBState Sync::tryPSyncWriteCB(
-    bufferevent *bev, void *ctx) {
-  auto self = static_cast<Sync *>(ctx);
+Status Sync::auth() {
+  // Send auth when needed
+  if (!config_->kvrocks_auth.empty()) {
+    const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
+    auto s = Util::SockSend(sock_fd_, auth_command);
+    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
+    std::string line;
+    s = Util::SockReadLine(sock_fd_, &line);
+    if (!s.IsOK()) {
+      return Status(Status::NotOK, std::string("read auth response err: ") + s.Msg());
+    }
+    if (line.compare(0, 3, "+OK") != 0) {
+      return Status(Status::NotOK, "auth got invalid response");
+    }
+  }
+  LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
+  return Status::OK();
+}
 
-  const auto seq_str = std::to_string(self->next_seq_);
+Status Sync::tryPSync() {
+  const auto seq_str = std::to_string(next_seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
       CRLF + seq_str + CRLF;
-  send_string_to_event(bev, cmd_str);
-  self->sync_state_ = kReplSendPSync;
-  LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << self->next_seq_;
-  return CBState::NEXT;
-}
+  auto s = Util::SockSend(sock_fd_, cmd_str);
+  LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
+  if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
+  std::string line;
+  s = Util::SockReadLine(sock_fd_, &line);
+  if (!s.IsOK()) {
+    return Status(Status::NotOK, std::string("read psync response err: ") + s.Msg());
+  }
 
-Sync::CBState Sync::tryPSyncReadCB(bufferevent *bev,
-                                   void *ctx) {
-  char *line;
-  size_t line_len;
-  auto self = static_cast<Sync *>(ctx);
-  auto input = bufferevent_get_input(bev);
-  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-  if (!line) return CBState::AGAIN;
-
-  if (strncmp(line, "+OK", 3) != 0) {
-    if (self->next_seq_ > 0) {
+  if (line.compare(0, 3, "+OK") != 0) {
+    if (next_seq_ > 0) {
       // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
       // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-      LOG(ERROR) << "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : ";
-      self->stop_flag_ = true;
-      return CBState::QUIT;
+      auto error_msg =
+          "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : " + std::string(line);
+      stop_flag_ = true;
+      return Status(Status::NotOK, error_msg);
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
-    self->parseKVFromLocalStorage();
-    LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage";
-    LOG(INFO) << line;
-    free(line);
-    // Restart psync state machine
-    return CBState::RESTART;
-  } else {
-    // PSYNC is OK, use IncrementBatchLoop
-    free(line);
-    LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
-    return CBState::NEXT;
+    parseKVFromLocalStorage();
+    LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage : " << std::string(line);
+    // Restart tryPSync
+    return tryPSync();
   }
+  LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
+  return Status::OK();
 }
 
-Sync::CBState Sync::incrementBatchLoopCB(
-    bufferevent *bev, void *ctx) {
+Status Sync::incrementBatchLoop() {
   char *line = nullptr;
   size_t line_len = 0;
   char *bulk_data = nullptr;
-  auto self = static_cast<Sync *>(ctx);
-  self->sync_state_ = kReplConnected;
-  auto input = bufferevent_get_input(bev);
-  while (true) {
-    switch (self->incr_state_) {
+  evbuffer *evbuf = evbuffer_new();
+  while (!IsStopped()) {
+    if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
+      evbuffer_free(evbuf);
+      return Status(Status::NotOK,
+                    std::string("[kvrocks2redis] read psync response err: ") + strerror(errno));
+    }
+    switch (incr_state_) {
       case Incr_batch_size:
         // Read bulk length
-        line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return CBState::AGAIN;
-        self->incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-        free(line);
-        if (self->incr_bulk_len_ == 0) {
-          LOG(ERROR) << "[kvrocks2redis] Invalid increment data size";
-          return CBState::RESTART;
+        line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+        if (!line) {
+          usleep(10000);
+          continue;
         }
-        self->incr_state_ = Incr_batch_data;
+        incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+        free(line);
+        if (incr_bulk_len_ == 0) {
+          return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
+        }
+        incr_state_ = Incr_batch_data;
       case Incr_batch_data:
         // Read bulk data (batch data)
-        if (self->incr_bulk_len_ + 2 <= evbuffer_get_length(input)) {  // We got enough data
-          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
-          auto bat = rocksdb::WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+        if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
+          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, incr_bulk_len_ + 2));
+          auto bat = rocksdb::WriteBatch(std::string(bulk_data, incr_bulk_len_));
           int count = bat.Count();
 
-          self->parser_->ParseWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+          parser_->ParseWriteBatch(std::string(bulk_data, incr_bulk_len_));
 
-          self->updateNextSeq(self->next_seq_ + count);
+          updateNextSeq(next_seq_ + count);
 
-          evbuffer_drain(input, self->incr_bulk_len_ + 2);
-          self->incr_state_ = Incr_batch_size;
+          evbuffer_drain(evbuf, incr_bulk_len_ + 2);
+          incr_state_ = Incr_batch_size;
         } else {
-          return CBState::AGAIN;
+          usleep(10000);
+          continue;
         }
     }
   }
-}
-
-// Check if stop_flag_ is set, when do, tear down kvrocks2redis
-void Sync::EventTimerCB(int, int16_t, void *ctx) {
-  // DLOG(INFO) << "[kvrocks2redis] timer";
-  auto self = static_cast<Sync *>(ctx);
-  if (self->stop_flag_) {
-    LOG(INFO) << "[kvrocks2redis] Stop ev loop";
-    event_base_loopbreak(self->base_);
-    self->psync_steps_.Stop();
-    self->writer_->Stop();
-    // stop parseAllLocalStorage ?
-  }
+  return Status::OK();
 }
 
 void Sync::parseKVFromLocalStorage() {

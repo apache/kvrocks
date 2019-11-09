@@ -196,6 +196,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_pubsub.h
         src/redis_sortedint.cc
         src/redis_sortedint.h
+        src/redis_slot.cc
+        src/redis_slot.h
         src/replication.cc
         src/replication.h
         src/lock_manager.cc

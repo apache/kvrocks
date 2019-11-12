@@ -872,7 +872,7 @@ Status SlotsMgrtSenderThread::SlotsMigrateBatch(const std::string &ip,
     return Status::OK();
   } else {
     Redis::Slot slot_db(storage_);
-    auto s = slot_db.Size(slot_num_,&remained_keys_num_);
+    auto s = slot_db.Size(slot_num_, &remained_keys_num_);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::NotOK, "get slot_size error");
     }
@@ -967,7 +967,8 @@ void SlotsMgrtSenderThread::loop() {
     int sock_fd = 0;
     auto s = Util::SockConnect(dest_ip_, dest_port_, &sock_fd, timeout_ms_, timeout_ms_);
     if (!s.IsOK()) {
-      LOG(WARNING) << "[slots-mgrt-sender-thread] Failed to Connect server(" << dest_ip_ << ":" << dest_port_ << ") " << s.Msg();
+      LOG(WARNING) << "[slots-mgrt-sender-thread] Failed to connect the server ("
+                   << dest_ip_ << ":" << dest_port_ << ") " << s.Msg();
       slotsmgrt_cond_.Signal();
       StopMigrateSlot();
       sleep(1);

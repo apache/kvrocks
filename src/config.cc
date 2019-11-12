@@ -291,7 +291,7 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && !strncasecmp(args[0].data(), "rocksdb.", 8)) {
     return parseRocksdbOption(args[0].substr(8, args[0].size() - 8), args[1]);
   } else if (size == 2 && !strncasecmp(args[0].data(), "namespace.", 10)) {
-    std::string ns = args[0].substr(10, args.size()-10);
+    std::string ns = args[0].substr(10, args[0].size()-10);
     auto s = isNamespaceLegal(ns);
     if (!s.IsOK()) {
       return s;

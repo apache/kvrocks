@@ -37,7 +37,7 @@ ConfigField::~ConfigField() = default;
 std::string trimRocksDBPrefix (std::string s) {
   if (strncasecmp(s.data(), "rocksdb.",8)) return s;
   return s.substr(8, s.size()-8);
-};
+}
 
 int configEnumGetValue(configEnum *ce, const char *name) {
   while (ce->name != nullptr) {

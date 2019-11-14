@@ -8,6 +8,7 @@ kvrocks has the following key features:
 - Namespace, similar to redis db but use token per namespace
 - Replication, async replication using binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
+- Codis Protocol, the user can use the codis proxy and dashboard to manage the kvrocks
 
 ## Build and run
 

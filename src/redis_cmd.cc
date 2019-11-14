@@ -209,7 +209,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->Set(svr, args_[2], args_[3]);
       if (!s.IsOK()) {
-        *output = Redis::Error("ERR "+s.Msg());
+        *output = Redis::Error("CONFIG SET '"+args_[2]+"' error: "+s.Msg());
       } else {
         *output = Redis::SimpleString("OK");
       }

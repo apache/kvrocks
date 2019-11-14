@@ -189,23 +189,30 @@ class CommandConfig : public Commander {
       *output = Redis::Error("only administrator can use config command");
       return Status::OK();
     }
-
     Config *config = svr->GetConfig();
-    if (args_.size() == 2 && Util::ToLower(args_[1]) == "rewrite") {
+    std::string sub_command = Util::ToLower(args_[1]);
+    if ((sub_command == "rewrite" && args_.size() != 2) ||
+        (sub_command == "get" && args_.size() != 3) ||
+        (sub_command == "set" && args_.size() != 4)) {
+      *output = Redis::Error("ERR wrong number of arguments");
+      return Status::OK();
+    }
+    if (args_.size() == 2 && sub_command == "rewrite") {
       Status s = config->Rewrite();
       if (!s.IsOK()) return Status(Status::RedisExecErr, s.Msg());
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success";
-    } else if (args_.size() == 3 && Util::ToLower(args_[1]) == "get") {
+    } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
       *output = Redis::MultiBulkString(values);
-    } else if (args_.size() == 4 && Util::ToLower(args_[1]) == "set") {
-      Status s = config->Set(args_[2], args_[3], svr);
+    } else if (args_.size() == 4 && sub_command == "set") {
+      Status s = config->Set(svr, args_[2], args_[3]);
       if (!s.IsOK()) {
-        return Status(Status::NotOK, s.Msg() + ", key: " + args_[2]);
+        *output = Redis::Error("CONFIG SET '"+args_[2]+"' error: "+s.Msg());
+      } else {
+        *output = Redis::SimpleString("OK");
       }
-      *output = Redis::SimpleString("OK");
     } else {
       *output = Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
     }

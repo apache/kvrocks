@@ -125,8 +125,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   if (s.IsOK()) {
     master_host_ = host;
     master_port_ = port;
-    config_->master_host = host;
-    config_->master_port = port;
+    config_->SetMaster(host, port);
   } else {
     replication_thread_ = nullptr;
   }
@@ -139,8 +138,7 @@ Status Server::RemoveMaster() {
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
-    config_->master_host.clear();
-    config_->master_port = 0;
+    config_->ClearMaster();
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }

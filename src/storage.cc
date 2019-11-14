@@ -68,20 +68,20 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->statistics = rocksdb::CreateDBStatistics();
   options->stats_dump_period_sec = 0;
   options->OptimizeLevelStyleCompaction();
-  options->max_open_files = config_->rocksdb_options.max_open_files;
-  options->max_subcompactions = config_->rocksdb_options.max_sub_compactions;
-  options->max_background_flushes = config_->rocksdb_options.max_background_flushes;
-  options->max_background_compactions = config_->rocksdb_options.max_background_compactions;
-  options->max_write_buffer_number = config_->rocksdb_options.max_write_buffer_number;
-  options->write_buffer_size =  config_->rocksdb_options.write_buffer_size;
-  options->compression = config_->rocksdb_options.compression;
-  options->enable_pipelined_write = config_->rocksdb_options.enable_pipelined_write;
-  options->target_file_size_base = config_->rocksdb_options.target_file_size_base;
+  options->max_open_files = config_->RocksDB.max_open_files;
+  options->max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
+  options->max_background_flushes = config_->RocksDB.max_background_flushes;
+  options->max_background_compactions = config_->RocksDB.max_background_compactions;
+  options->max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
+  options->write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
+  options->compression = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+  options->enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
+  options->target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
   options->max_manifest_file_size = 64 * MiB;
   options->max_log_file_size = 256 * MiB;
   options->keep_log_file_num = 12;
-  options->WAL_ttl_seconds = config_->rocksdb_options.WAL_ttl_seconds;
-  options->WAL_size_limit_MB = config_->rocksdb_options.WAL_size_limit_MB;
+  options->WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
+  options->WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
   options->listeners.emplace_back(new EventListener(this));
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
@@ -89,15 +89,27 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->table_properties_collector_factories.emplace_back(
       rocksdb::NewCompactOnDeletionCollectorFactory(128000, 64000));
   uint64_t max_io_mb = kIORateLimitMaxMb;
-  if (config_->max_io_mb > 0) {
-    max_io_mb = config_->max_io_mb;
-  }
+  if (config_->max_io_mb > 0) max_io_mb = static_cast<uint64_t>(config_->max_io_mb);
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
   options->rate_limiter = rate_limiter_;
-  options->delayed_write_rate = config_->rocksdb_options.delayed_write_rate;
-  options->compaction_readahead_size = config_->rocksdb_options.compaction_readahead_size;
-  options->level0_slowdown_writes_trigger = config_->rocksdb_options.level0_slowdown_writes_trigger;
-  options->level0_stop_writes_trigger = config_->rocksdb_options.level0_stop_writes_trigger;
+  options->delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
+  options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
+  options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
+  options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+}
+
+Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
+  for (auto &cf_handle : cf_handles_) {
+    auto s = db_->SetOptions(cf_handle, {{key, value}});
+    if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+Status Storage::SetDBOption(const std::string &key, const std::string &value) {
+  auto s = db_->SetDBOptions({{key, value}});
+  if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  return Status::OK();
 }
 
 Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
@@ -133,15 +145,16 @@ Status Storage::Open(bool read_only) {
   db_refs_ = 0;
   db_mu_.unlock();
 
-  bool cache_index_and_filter_blocks = config_->rocksdb_options.cache_index_and_filter_blocks;
-  size_t block_size = config_->rocksdb_options.block_size;
+  bool cache_index_and_filter_blocks = config_->RocksDB.cache_index_and_filter_blocks;
+  size_t block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
+  size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamiles(options);
   rocksdb::BlockBasedTableOptions metadata_table_opts;
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  metadata_table_opts.block_cache =
-      rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
+  metadata_table_opts.block_cache = rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   metadata_table_opts.block_size = block_size;
@@ -151,8 +164,7 @@ Status Storage::Open(bool read_only) {
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  subkey_table_opts.block_cache =
-      rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
+  subkey_table_opts.block_cache = rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   subkey_table_opts.block_size = block_size;
@@ -186,7 +198,7 @@ Status Storage::Open(bool read_only) {
     rocksdb::BlockBasedTableOptions slot_metadata_table_opts;
     slot_metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
     slot_metadata_table_opts.block_cache =
-        rocksdb::NewLRUCache(config_->rocksdb_options.metadata_block_cache_size, -1, false, 0.75);
+        rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
     slot_metadata_table_opts.cache_index_and_filter_blocks = true;
     slot_metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
     rocksdb::ColumnFamilyOptions slot_metadata_opts(options);
@@ -195,7 +207,7 @@ Status Storage::Open(bool read_only) {
     rocksdb::BlockBasedTableOptions slotkey_table_opts;
     slotkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
     slotkey_table_opts.block_cache =
-        rocksdb::NewLRUCache(config_->rocksdb_options.subkey_block_cache_size, -1, false, 0.75);
+        rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
     slotkey_table_opts.cache_index_and_filter_blocks = true;
     slotkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
     rocksdb::ColumnFamilyOptions slotkey_opts(options);

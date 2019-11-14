@@ -121,6 +121,7 @@ target_sources(kvrocks PRIVATE
         src/rocksdb_crc32c.h
         src/config.cc
         src/config.h
+        src/config_type.h
         src/stats.cc
         src/stats.h
         src/server.cc
@@ -204,6 +205,7 @@ target_sources(kvrocks2redis PRIVATE
         src/rocksdb_crc32c.h
         src/config.cc
         src/config.h
+        src/config_type.h
         src/stats.cc
         src/stats.h
         src/server.cc
@@ -258,6 +260,8 @@ add_executable(unittest
         src/redis_zset.cc
         src/redis_sortedint.cc
         src/redis_sortedint.h
+        src/redis_slot.cc
+        src/redis_slot.h
         src/util.cc
         src/storage.cc
         src/lock_manager.cc
@@ -287,7 +291,7 @@ add_executable(unittest
         tests/task_runner_test.cc
         tests/t_bitmap_test.cc
         tests/compact_test.cc
-        tests/log_collector_test.cc)
+        tests/log_collector_test.cc src/config_type.h)
 
 add_dependencies(unittest glog rocksdb snappy jemalloc)
 target_compile_features(unittest PRIVATE cxx_std_11)

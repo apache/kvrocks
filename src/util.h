@@ -26,6 +26,8 @@ std::string ToLower(std::string in);
 void BytesToHuman(char *buf, size_t size, uint64_t n);
 void Trim(const std::string &in, const std::string &chars, std::string *out);
 void Split(std::string in, std::string delim, std::vector<std::string> *out);
+void Split2KV(const std::string&in, std::string delim, std::vector<std::string> *out);
+bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);
 

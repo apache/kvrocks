@@ -1,3 +1,9 @@
+* Version 1.1.0 (@2019-11-14)
+	- Feature: supports codis protocol
+	- Update: upgrade jemalloc to v5.2.1
+	- Update: refactor the config to make the code more tidy
+	- Fix: wrong substr argument when loading the namespace from config file
+
 * Version 1.0.5 (@2019-10-17)
 	- FIX: auth would incorrect when requirepass from empty to non empty 
 	

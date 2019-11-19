@@ -429,8 +429,28 @@ rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   return rocksdb::Status::OK();
 }
 
-uint64_t Storage::GetTotalSize() {
-  return sst_file_manager_->GetTotalSize();
+uint64_t Storage::GetTotalSize(const std::string &ns) {
+  if (ns == kDefaultNamespace) {
+    return sst_file_manager_->GetTotalSize();
+  }
+  std::string prefix, begin_key, end_key;
+  ComposeNamespaceKey(ns, "", &prefix);
+
+  Redis::Database db(this, ns);
+  auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
+  if (!s.ok()) {
+    return 0;
+  }
+  uint64_t size, total_size = 0;
+  rocksdb::Range r(begin_key, end_key);
+  uint8_t include_both = rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES |
+      rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
+  for (auto cf_handle : cf_handles_) {
+    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName)) continue;
+    db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);
+    total_size += size;
+  }
+  return total_size;
 }
 
 Status Storage::CheckDBSizeLimit() {

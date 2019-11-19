@@ -664,7 +664,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires
                   << ",avg_ttl=" << stats.avg_ttl << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
-    string_stream << "used_db_size:" << storage_->GetTotalSize() << "\r\n";
+    string_stream << "used_db_size:" << storage_->GetTotalSize(ns) << "\r\n";
     string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
     double used_percent = config_->max_db_size ?
                           storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;

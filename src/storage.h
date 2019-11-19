@@ -62,7 +62,7 @@ class Storage {
   std::vector<rocksdb::ColumnFamilyHandle *> GetCFHandles() { return cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
-  uint64_t GetTotalSize();
+  uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
   Status CheckDBSizeLimit();
   void SetIORateLimit(uint64_t max_io_mb);
 

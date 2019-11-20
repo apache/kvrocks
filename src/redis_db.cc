@@ -144,8 +144,10 @@ void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
 
 void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   std::string ns_prefix, ns, user_key, value;
-  AppendNamespacePrefix(prefix, &ns_prefix);
-  prefix = ns_prefix;
+  if (namespace_ != kDefaultNamespace || keys != nullptr) {
+    AppendNamespacePrefix(prefix, &ns_prefix);
+    prefix = ns_prefix;
+  }
 
   uint64_t ttl_sum = 0;
   LatestSnapShot ss(db_);

@@ -721,7 +721,7 @@ void Server::ReclaimOldDBPtr() {
   }
 }
 
-Status Server::AsyncCompactDB() {
+Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
   db_mu_.lock();
   if (db_compacting_) {
     db_mu_.unlock();
@@ -732,12 +732,17 @@ Status Server::AsyncCompactDB() {
 
   Task task;
   task.arg = this;
-  task.callback = [](void *arg) {
-    auto svr = static_cast<Server*>(arg);
-    svr->storage_->Compact(nullptr, nullptr);
+  task.callback = [begin_key, end_key](void *arg) {
+    auto svr = static_cast<Server *>(arg);
+    Slice *begin = nullptr, *end = nullptr;
+    if (!begin_key.empty()) begin = new Slice(begin_key);
+    if (!end_key.empty()) end = new Slice(end_key);
+    svr->storage_->Compact(begin, end);
     svr->db_mu_.lock();
     svr->db_compacting_ = false;
     svr->db_mu_.unlock();
+    delete begin;
+    delete end;
   };
   return task_runner_->Publish(task);
 }

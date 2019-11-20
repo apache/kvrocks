@@ -2610,11 +2610,22 @@ class CommandCompact : public Commander {
  public:
   CommandCompact() : Commander("compact", 1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!conn->IsAdmin()) {
-      *output = Redis::Error("only administrator can compact the db");
-      return Status::OK();
+    auto ns = conn->GetNamespace();
+    std::string begin_key, end_key;
+    if (ns != kDefaultNamespace) {
+      Redis::Database redis_db(svr->storage_, conn->GetNamespace());
+      std::string prefix;
+      ComposeNamespaceKey(ns, "", &prefix);
+      auto s = redis_db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
+      if (!s.ok()) {
+        if (s.IsNotFound()) {
+          *output = Redis::SimpleString("OK");
+          return Status::OK();
+        }
+        return Status(Status::RedisExecErr, s.ToString());
+      }
     }
-    Status s = svr->AsyncCompactDB();
+    Status s = svr->AsyncCompactDB(begin_key, end_key);
     if (!s.IsOK()) return s;
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "Commpact was triggered by manual with executed success";

@@ -20,9 +20,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
   metadata->Encode(&old_metadata);
   std::string bytes;
   auto s = GetRawMetadata(ns_key, &bytes);
-  if (!s.ok()) {
-    return rocksdb::Status::NotFound();
-  }
+  if (!s.ok()) return s;
   metadata->Decode(bytes);
 
   if (metadata->Expired()) {

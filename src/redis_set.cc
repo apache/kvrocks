@@ -86,10 +86,14 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
     *ret += 1;
   }
   if (*ret > 0) {
-    metadata.size -= *ret;
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    if (metadata.size != *ret) {
+      metadata.size -= *ret;
+      std::string bytes;
+      metadata.Encode(&bytes);
+      batch.Put(metadata_cf_handle_, ns_key, bytes);
+    } else {
+      batch.Delete(metadata_cf_handle_, ns_key);
+    }
   }
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }

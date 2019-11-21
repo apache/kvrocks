@@ -1,3 +1,7 @@
+* Version 1.1.1 (@2019-11-20)
+	- Feature: info show the used_db_size by namespace
+	- Feature: allow user's token to compact
+
 * Version 1.1.0 (@2019-11-14)
 	- Feature: supports codis protocol
 	- Update: upgrade jemalloc to v5.2.1

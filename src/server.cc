@@ -28,8 +28,11 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
-  uint64_t max_replication_bytes =
-      config_->max_replication_mb > 0 ? config_->max_replication_mb * 1024 * 1024 / config_->repl_workers : 0;
+  // zero means the replication rate is unlimited(NIC max bandwidth)
+  uint64_t max_replication_bytes = 0;
+  if (config_->max_replication_mb > 0) {
+    max_replication_bytes = (config_->max_replication_mb*MiB)/config_->repl_workers;
+  }
   for (int i = 0; i < config->repl_workers; i++) {
     auto repl_worker = new Worker(this, config, true);
     repl_worker->SetReplicationRateLimit(max_replication_bytes);
@@ -49,9 +52,7 @@ Server::~Server() {
     delete iter.first;
   }
   delete task_runner_;
-  if (slotsmgrt_sender_thread_ != nullptr) {
-    delete slotsmgrt_sender_thread_;
-  }
+  delete slotsmgrt_sender_thread_;
 }
 
 Status Server::Start() {

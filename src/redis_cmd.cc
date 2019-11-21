@@ -3138,7 +3138,7 @@ class CommandScanBase : public Commander {
  public:
   explicit CommandScanBase(const std::string &name, int arity, bool is_write = false)
       : Commander(name, arity, is_write) {}
-  Status ParseMatchAndCountParam(const std::string &type, const std::string &value) {
+  Status ParseMatchAndCountParam(const std::string &type, std::string value) {
     if (type == "match") {
       prefix = std::move(value);
       if (!prefix.empty() && prefix[prefix.size() - 1] == '*') {
@@ -3269,7 +3269,7 @@ class CommandSScan : public CommandSubkeyScanBase {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
     auto s = set_db.Scan(key, cursor, limit, prefix, &members);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
 
@@ -3285,7 +3285,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
     auto s = zset_db.Scan(key, cursor, limit, prefix, &members);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
 

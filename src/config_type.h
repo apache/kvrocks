@@ -1,5 +1,7 @@
-#ifndef KVROCKS_CONFIG_TYPE_H
-#define KVROCKS_CONFIG_TYPE_H
+#pragma once
+
+#include <string>
+#include <utility>
 
 #include "util.h"
 #include "status.h"
@@ -29,7 +31,7 @@ class ConfigField {
  public:
   bool readonly = true;
   validate_fn validate = nullptr;
-  callback_fn callback = nullptr ;
+  callback_fn callback = nullptr;
 };
 
 class StringField: public ConfigField {
@@ -45,6 +47,7 @@ class StringField: public ConfigField {
     *receiver_ = v;
     return Status::OK();
   }
+
  private:
   std::string *receiver_;
 };
@@ -70,6 +73,7 @@ class IntField : public ConfigField {
     *receiver_ = static_cast<int>(n);
     return Status::OK();
   }
+
  private:
   int *receiver_;
   int min_ = INT_MIN;
@@ -97,6 +101,7 @@ class Int64Field : public ConfigField {
     *receiver_ = n;
     return Status::OK();
   }
+
  private:
   int64_t *receiver_;
   int64_t min_ = INT64_MIN;
@@ -110,7 +115,7 @@ class YesNoField : public ConfigField {
   }
   ~YesNoField() override = default;
   std::string ToString() override {
-    return *receiver_ ? "yes":"no" ;
+    return *receiver_ ? "yes":"no";
   }
   Status ToBool(bool *b) override {
     *b = *receiver_;
@@ -126,6 +131,7 @@ class YesNoField : public ConfigField {
     }
     return Status::OK();
   }
+
  private:
   bool *receiver_;
 };
@@ -152,8 +158,8 @@ class EnumField : public ConfigField {
     *receiver_ = e;
     return Status::OK();
   }
+
  private:
   int *receiver_;
   configEnum *enums_ = nullptr;
 };
-#endif //KVROCKS_CONFIG_TYPE_H

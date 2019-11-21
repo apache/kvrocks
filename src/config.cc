@@ -34,8 +34,8 @@ configEnum supervised_mode_enum[] = {
 
 ConfigField::~ConfigField() = default;
 
-std::string trimRocksDBPrefix (std::string s) {
-  if (strncasecmp(s.data(), "rocksdb.",8)) return s;
+std::string trimRocksDBPrefix(std::string s) {
+  if (strncasecmp(s.data(), "rocksdb.", 8)) return s;
   return s.substr(8, s.size()-8);
 }
 
@@ -102,7 +102,7 @@ Config::Config() {
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&RocksDB.max_open_files, 4096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&RocksDB.write_buffer_size, 64, 0, 4096)},
-      {"rocksdb.max_write_buffer_number", false, new IntField(&RocksDB.max_write_buffer_number ,4, 0, 256)},
+      {"rocksdb.max_write_buffer_number", false, new IntField(&RocksDB.max_write_buffer_number, 4, 0, 256)},
       {"rocksdb.target_file_size_base", true, new IntField(&RocksDB.target_file_size_base, 256, 1, 1024)},
       {"rocksdb.max_background_compactions", false, new IntField(&RocksDB.max_background_compactions, 2, 0, 32)},
       {"rocksdb.max_background_flushes", true, new IntField(&RocksDB.max_background_flushes, 2, 0, 32)},
@@ -149,7 +149,7 @@ void Config::initFieldValidator() {
         return bgsave_cron.SetScheduleTime(args);
       }},
   };
-  for (const auto& iter: validators) {
+  for (const auto& iter : validators) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
       field_iter->second->validate = iter.second;
@@ -263,9 +263,9 @@ void Config::initFieldCallback() {
       {"rocksdb.delayed_write_rate", set_db_option_cb},
       {"rocksdb.max_background_compactions", set_db_option_cb},
       {"rocksdb.max_background_flushes", set_db_option_cb},
-      {"rocksdb.compaction_readahead_size",set_db_option_cb},
+      {"rocksdb.compaction_readahead_size", set_db_option_cb},
   };
-  for (const auto& iter: callbacks) {
+  for (const auto& iter : callbacks) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
       field_iter->second->callback = iter.second;
@@ -305,7 +305,7 @@ Status Config::parseConfigFromString(std::string input) {
   if (kv.empty() || kv[0].front() == '#') return Status::OK();
 
   if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
-  if(kv[1] == "\"\"") return Status::OK();
+  if (kv[1] == "\"\"") return Status::OK();
 
   kv[0] = Util::ToLower(kv[0]);
   auto iter = fields_.find(kv[0]);
@@ -397,10 +397,10 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 Status Config::Rewrite() {
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
-  for (const auto &iter: fields_) {
+  for (const auto &iter : fields_) {
     new_config[iter.first] = iter.second->ToString();
   }
-  for (const auto &iter: tokens) {
+  for (const auto &iter : tokens) {
     new_config["namespace." + iter.second] = iter.first;
   }
 
@@ -432,7 +432,7 @@ Status Config::Rewrite() {
   file.close();
 
   std::ostringstream string_stream;
-  for(const auto &line : lines) {
+  for (const auto &line : lines) {
     string_stream << line << "\n";
   }
   for (const auto &remain : new_config) {

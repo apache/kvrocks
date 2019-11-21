@@ -33,27 +33,27 @@ struct Config{
  public:
   Config();
   ~Config();
-  int port;
-  int repl_port;
-  int workers;
-  int repl_workers;
-  int timeout;
-  int loglevel;
-  int backlog;
-  int maxclients;
-  int max_backup_to_keep;
-  int max_backup_keep_hours;
-  int slowlog_log_slower_than;
-  int slowlog_max_len;
-  bool daemonize;
-  int supervised_mode;
-  bool slave_readonly;
-  bool slave_serve_stale_data;
-  int slave_priority;
-  int max_db_size;
-  int max_replication_mb;
-  int max_io_mb;
-  bool codis_enabled;
+  int port = 6666;
+  int repl_port = 66667;
+  int workers = 0;
+  int repl_workers = 1;
+  int timeout = 0;
+  int loglevel = 0;
+  int backlog = 511;
+  int maxclients = 10000;
+  int max_backup_to_keep = 1;
+  int max_backup_keep_hours = 168;
+  int slowlog_log_slower_than = 100000;
+  int slowlog_max_len = 128;
+  bool daemonize = false;
+  int supervised_mode = SUPERVISED_NONE;
+  bool slave_readonly = true;
+  bool slave_serve_stale_data = true;
+  int slave_priority = 100;
+  int max_db_size = 0;
+  int max_replication_mb = 0;
+  int max_io_mb = 0;
+  bool codis_enabled = false;
   std::vector<std::string> binds;
   std::vector<std::string> repl_binds;
   std::string dir;
@@ -70,9 +70,9 @@ struct Config{
   std::map<std::string, std::string> tokens;
 
   // profiling
-  int profiling_sample_ratio;
-  int profiling_sample_record_threshold_ms;
-  int profiling_sample_record_max_len;
+  int profiling_sample_ratio = 0;
+  int profiling_sample_record_threshold_ms = 0;
+  int profiling_sample_record_max_len = 128;
   std::set<std::string> profiling_sample_commands;
   bool profiling_sample_all_commands = false;
 

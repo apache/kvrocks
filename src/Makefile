@@ -86,9 +86,16 @@ lint:
 	- cd ..; ./cpplint.sh
 	- cd ..; ./cppcheck.sh
 
-$(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
+$(PROG): SUBMODULES $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
 
+SUBMODULES:
+	@echo ""
+	@printf $(MAKECOLOR)"Hint: Fetching submodules from the remote"$(ENDCOLOR)
+	@echo ""
+	git submodule init
+	git submodule update
+	
 $(GLOG):
 	cd $(GLOG_PATH);./autogen.sh; ./configure --disable-shared; \
 		$(MAKE) CXXFLAGS='-fPIC' -C $(GLOG_PATH)/

@@ -110,7 +110,7 @@ Config::Config() {
       {"rocksdb.delayed_write_rate", false, new Int64Field(&RocksDB.delayed_write_rate, 0, 0, INT64_MAX)},
       {"rocksdb.wal_ttl_seconds", true, new IntField(&RocksDB.WAL_ttl_seconds, 7*24*3600, 0, INT_MAX)},
       {"rocksdb.wal_size_limit_mb", true, new IntField(&RocksDB.WAL_size_limit_MB, 5120, 0, INT_MAX)},
-      {"rocksdb.enable_pipelined_write", true, new YesNoField(&RocksDB.enable_pipelined_write, true)},
+      {"rocksdb.enable_pipelined_write", true, new YesNoField(&RocksDB.enable_pipelined_write, false)},
       {"rocksdb.stats_dump_period_sec", false, new IntField(&RocksDB.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&RocksDB.cache_index_and_filter_blocks, false)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&RocksDB.subkey_block_cache_size, 2048, 0, INT_MAX)},

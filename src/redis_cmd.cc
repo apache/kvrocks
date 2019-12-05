@@ -38,15 +38,18 @@ class CommandAuth : public Commander {
   CommandAuth() : Commander("auth", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
-    auto iter = config->tokens.find(args_[1]);
-    if (iter != config->tokens.end()) {
-      conn->SetNamespace(iter->second);
-      conn->BecomeUser();
-      *output = Redis::SimpleString("OK");
-      return Status::OK();
+    auto user_password = args_[1];
+    if (!conn->IsRepl()) {
+      auto iter = config->tokens.find(user_password);
+      if (iter != config->tokens.end()) {
+        conn->SetNamespace(iter->second);
+        conn->BecomeUser();
+        *output = Redis::SimpleString("OK");
+        return Status::OK();
+      }
     }
-    const std::string requirepass = config->requirepass;
-    if (!requirepass.empty() && args_[1] != requirepass) {
+    const auto requirepass = conn->IsRepl() ? config->masterauth : config->requirepass;
+    if (!requirepass.empty() && user_password != requirepass) {
       *output = Redis::Error("ERR invaild password");
       return Status::OK();
     }

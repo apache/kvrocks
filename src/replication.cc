@@ -366,9 +366,13 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
   line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
-  if (line[0] == '-' && isRestoringError(line)) {
+  if (line[0] == '-') {
+    if (isRestoringError(line)) {
+      LOG(WARNING) << "The master was restoring the db, retry later";
+    } else {
+      LOG(ERROR) << "Failed to get the db name, " << line;
+    }
     free(line);
-    LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
   auto self = static_cast<ReplicationThread *>(ctx);
@@ -408,7 +412,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(
     return CBState::RESTART;
   }
   if (strncmp(line, "+OK", 3) != 0) {
-    LOG(WARNING) << "[replication] Failed to replconf: " << line;
+    LOG(WARNING) << "[replication] Failed to replconf: " << line+1;
     free(line);
     //  backward compatible with old version that doesn't support replconf cmd
     return CBState::NEXT;

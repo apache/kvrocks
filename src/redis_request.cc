@@ -138,15 +138,16 @@ void Request::ExecuteCommands(Connection *conn) {
   if (commands_.empty()) return;
 
   Config *config = svr_->GetConfig();
-  std::string reply;
+  std::string reply, password;
+  password = conn->IsRepl() ? config->masterauth : config->requirepass;
   for (auto &cmd_tokens : commands_) {
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
     if (conn->GetNamespace().empty()) {
-      if (!config->requirepass.empty() && Util::ToLower(cmd_tokens.front()) != "auth") {
+      if (!password.empty() && Util::ToLower(cmd_tokens.front()) != "auth") {
         conn->Reply(Redis::Error("NOAUTH Authentication required."));
         continue;
       }
-      if (config->requirepass.empty()) {
+      if (password.empty()) {
         conn->BecomeAdmin();
         conn->SetNamespace(kDefaultNamespace);
       }

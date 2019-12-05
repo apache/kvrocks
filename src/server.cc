@@ -147,13 +147,6 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
-void Server::ResetMaster() {
-  slaveof_mu_.lock();
-  master_host_.clear();
-  master_port_ = 0;
-  slaveof_mu_.unlock();
-}
-
 Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
   auto t = new FeedSlaveThread(this, conn, next_repl_seq);
   auto s = t->Start();
@@ -549,7 +542,7 @@ void Server::GetReplicationInfo(std::string *info) {
     time(&now);
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
-    ReplState state = replication_thread_->State();
+    ReplState state = GetReplicationState();
     string_stream << "master_link_status:" << (state == kReplConnected? "up":"down") << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";

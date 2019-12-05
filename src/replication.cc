@@ -495,7 +495,6 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
             auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
             if (!s.IsOK()) {
               LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg();
-              self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
               return CBState::RESTART;
             }
             self->ParseWriteBatch(bulk_string);

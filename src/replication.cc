@@ -342,9 +342,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
     // Auth failed
     LOG(ERROR) << "[replication] Auth failed: " << line;
     free(line);
-    auto self = static_cast<ReplicationThread *>(ctx);
-    self->srv_->ResetMaster();
-    return CBState::QUIT;
+    return CBState::RESTART;
   }
   free(line);
   LOG(INFO) << "[replication] Auth response was received, continue...";
@@ -381,10 +379,9 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
     LOG(INFO) << "[replication] DB name is valid, continue...";
     return CBState::NEXT;
   }
-  LOG(ERROR) << "[replication] db-name mismatched, remote db name: " << line;
+  LOG(ERROR) << "[replication] Mismatched the db name, local: " << db_name << ", remote: " << line;
   free(line);
-  self->srv_->ResetMaster();
-  return CBState::QUIT;
+  return CBState::RESTART;
 }
 
 ReplicationThread::CBState ReplicationThread::replConfWriteCB(
@@ -493,10 +490,9 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           if (bulk_string != "ping") {
             auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
             if (!s.IsOK()) {
-              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, err: " << s.Msg();
+              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg();
               self->stop_flag_ = true;  // This is a very critical error, data might be corrupted
-              self->srv_->ResetMaster();
-              return CBState::QUIT;
+              return CBState::RESTART;
             }
             self->ParseWriteBatch(bulk_string);
           }

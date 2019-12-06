@@ -86,7 +86,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
     *ret += 1;
   }
   if (*ret > 0) {
-    if (metadata.size != *ret) {
+    if (static_cast<int>(metadata.size) != *ret) {
       metadata.size -= *ret;
       std::string bytes;
       metadata.Encode(&bytes);

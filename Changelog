@@ -1,3 +1,8 @@
+* Version 1.1.2 (@2019-12-06)
+	- FIX: the replication auth should use the masterauth instead of requirepass
+	- FIX: keep retrying to restart the replication thread instead of give up
+	- MOD: disable the rocksdb pipelined write
+
 * Version 1.1.1 (@2019-11-20)
 	- Feature: info show the used_db_size by namespace
 	- Feature: allow user's token to compact

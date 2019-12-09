@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include <fcntl.h>
+#include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
 #include <glog/logging.h>
@@ -663,6 +664,15 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     double used_percent = config_->max_db_size ?
                           storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
+    struct statvfs stat;
+    if (statvfs(config_->db_dir.c_str(), &stat) == 0) {
+      auto disk_capacity = stat.f_blocks * stat.f_frsize;
+      auto used_disk_size = (stat.f_blocks - stat.f_bavail) * stat.f_frsize;
+      string_stream << "disk_capacity:" << disk_capacity << "\r\n";
+      string_stream << "used_disk_size:" << used_disk_size << "\r\n";
+      double used_disk_percent = used_disk_size * 100 / disk_capacity;
+      string_stream << "used_disk_percent: " << used_disk_percent << "%\r\n";
+    }
   }
   if (all || section == "rocksdb") {
     std::string rocksdb_info;

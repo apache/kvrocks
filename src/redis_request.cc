@@ -201,8 +201,6 @@ void Request::ExecuteCommands(Connection *conn) {
     svr_->FeedMonitorConns(conn, cmd_tokens);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR " + s.Msg()));
-      LOG(ERROR) << "[request] Encounter error when excuting '" << cmd_name
-                 << "' command, " << s.Msg();
       continue;
     }
     if (!reply.empty()) conn->Reply(reply);

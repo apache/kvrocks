@@ -229,10 +229,19 @@ def test_pexpire():
     ret = conn.pexpire(key, 2000)
     assert(ret == 1)
     ret = conn.pttl(key)
-    assert(ret >= 1000 and ret <= 2000)
+    if not 1000 <= ret <= 2000:
+        raise ValueError('ret is not between 1000~2000: ' + ret)
     time.sleep(3)
     ret = conn.exists(key)
     assert(ret == False)
+
+    ret = conn.hset(key, "f1", "v1")
+    assert(ret == 1)
+    ret = conn.pexpire(key, 900)
+    assert(ret == 1)
+    ret = conn.pttl(key)
+    if not 0 <= ret <= 1000:
+        raise ValueError('ret is not between 0~1000: ' + ret)
 
 def test_pexpireat():
     key = "test_pexpireat"

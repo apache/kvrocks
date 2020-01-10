@@ -385,7 +385,12 @@ class CommandSet : public Commander {
         if (opt == "ex") {
           ttl_ = atoi(args[i+1].c_str());
         } else {
-          ttl_ = atol(args[i+1].c_str())/1000;
+          auto ttl_milliseconds = atol(args[i + 1].c_str());
+          if (1000 > ttl_milliseconds > 0) {
+            ttl_ = 1;
+          } else {
+            ttl_ = ttl_milliseconds / 1000;
+          }
         }
         i++;
         continue;
@@ -864,9 +869,14 @@ class CommandPExpire : public Commander {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
     try {
-      seconds_ = std::stol(args[2])/1000;
-      if (seconds_ >= INT32_MAX - now) {
-        return Status(Status::RedisParseErr, "the expire time was overflow");
+      auto ttl_milliseconds = std::stol(args[2]);
+      if (1000 > ttl_milliseconds > 0) {
+        seconds_ = 1;
+      } else {
+        seconds_ = std::stol(args[2]) / 1000;
+        if (seconds_ >= INT32_MAX - now) {
+          return Status(Status::RedisParseErr, "the expire time was overflow");
+        }
       }
       seconds_ += now;
     } catch (std::exception &e) {

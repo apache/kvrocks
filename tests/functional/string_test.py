@@ -67,15 +67,23 @@ def test_set_with_option():
     ret = conn.set(key, "bar", px=1024000, xx=True)
     assert(ret == True)
     ret = conn.ttl(key)
-    assert(ret >= 1023 and ret <= 1025)
+    if not 1023 <= ret <= 1025:
+        raise ValueError('ret is not between 1023~1025: ' + ret)
+    ret = conn.set(key, "bar", px=900, xx=True)
+    assert(ret == True)
+    ret = conn.ttl(key)
+    if not 0 <= ret <= 1:
+        raise ValueError('ret is not between 0~1: ' + ret)
     ret = conn.set(key, "bar", ex=1024, xx=True)
     assert(ret == True)
     ret = conn.ttl(key)
-    assert(ret >= 1023 and ret <= 1025)
+    if not 1023 <= ret <= 1025:
+        raise ValueError('ret is not between 1023~1025: ' + ret)
     ret = conn.set(key, "bar", ex=1024)
     assert(ret == True)
     ret = conn.ttl(key)
-    assert(ret >= 1023 and ret <= 1025)
+    if not 1023 <= ret <= 1025:
+        raise ValueError('ret is not between 1023~1025: ' + ret)
     ret = conn.delete(key)
     assert(ret == 1)
 

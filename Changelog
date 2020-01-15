@@ -1,3 +1,7 @@
+* Version 1.1.4 (@2012-01-15)
+	- FIX: when ttl is less than one second in SET PX or PEXPIRE, round up to 1 second 
+	- FIX: disable the debug log in Makefile
+
 * Version 1.1.3 (@2019-12-16)
 	- ADD: disk capacity and usage to info
 

@@ -14,8 +14,7 @@
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
-const size_t PROTO_BULK_MAX_SIZE = 128 * 1024L * 1024L;
-const size_t PROTO_MAX_MULTI_BULKS = 8 * 1024L;
+const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
 
 Status Request::Tokenize(evbuffer *input) {
   char *line;
@@ -33,10 +32,6 @@ Status Request::Tokenize(evbuffer *input) {
           } catch (std::exception &e) {
             free(line);
             return Status(Status::NotOK, "Protocol error: expect integer");
-          }
-          if (!config->codis_enabled && multi_bulk_len_ > PROTO_MAX_MULTI_BULKS) {
-            free(line);
-            return Status(Status::NotOK, "Protocol error: too many bulk strings");
           }
           state_ = BulkLen;
         } else {

@@ -1,3 +1,6 @@
+* Version 1.1.5 (@2012-01-15)
+    - MOD: remove the limit of bulk number
+
 * Version 1.1.4 (@2012-01-15)
 	- FIX: when ttl is less than one second in SET PX or PEXPIRE, round up to 1 second 
 	- FIX: disable the debug log in Makefile

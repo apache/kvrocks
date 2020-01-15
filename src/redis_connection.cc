@@ -55,6 +55,7 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   if (!s.IsOK()) {
     conn->EnableFlag(Redis::Connection::kCloseAfterReply);
     conn->Reply(Redis::Error(s.Msg()));
+    LOG(INFO) << "Failed to tokenize the request, encounter error: " << s.Msg();
     return;
   }
   conn->req_.ExecuteCommands(conn);

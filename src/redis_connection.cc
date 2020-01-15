@@ -70,7 +70,7 @@ void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
 void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
-    DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr()
+    LOG(ERROR) << "[connection] Going to remove the client: " << conn->GetAddr()
                << ", while encounter error: "
                << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
     conn->Close();

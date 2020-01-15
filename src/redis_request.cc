@@ -19,7 +19,6 @@ const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
 Status Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
-  Config *config = svr_->GetConfig();
   while (true) {
     switch (state_) {
       case ArrayLen:

@@ -104,6 +104,7 @@ class Storage {
 
  private:
   rocksdb::DB *db_ = nullptr;
+  std::mutex backup_mu_;
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *backup_env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;

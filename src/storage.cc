@@ -255,7 +255,9 @@ Status Storage::CreateBackup() {
   if (!std::strftime(time_str, sizeof(time_str), "%c", std::localtime(&tm))) {
     return Status(Status::DBBackupErr, "Fail to format local time_str");
   }
+  backup_mu_.lock();
   auto s = backup_->CreateNewBackupWithMetadata(db_, time_str);
+  backup_mu_.unlock();
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();

@@ -164,7 +164,7 @@ rocksdb::Status Hash::SetNX(const Slice &user_key, const Slice &field, Slice val
   FieldValue fv = {field.ToString(), value.ToString()};
   std::vector<FieldValue> fvs;
   fvs.push_back(fv);
-  return MSet(user_key, fvs, false, ret);
+  return MSet(user_key, fvs, true, ret);
 }
 
 rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, int *ret) {

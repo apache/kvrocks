@@ -52,7 +52,7 @@ def test_hsetnx():
         ret = conn.hget(key, k)
         assert(ret == kvs[k])
     for i, k in enumerate(keys):
-        ret = conn.hsetnx(key, k, kvs[k])
+        ret = conn.hsetnx(key, k, kvs[k] + "_2")
         assert(ret == 0)
     ret = conn.delete(key)
     assert(ret == 1)

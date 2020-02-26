@@ -58,8 +58,8 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
       } catch (std::exception &e) {
         return rocksdb::Status::InvalidArgument(e.what());
       }
+      exists = true;
     }
-    exists = true;
   }
   if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN-old_value))
       || (increment > 0 && old_value > 0 && increment > (LLONG_MAX-old_value))) {
@@ -104,8 +104,8 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, flo
       } catch (std::exception &e) {
         return rocksdb::Status::InvalidArgument(e.what());
       }
+      exists = true;
     }
-    exists = true;
   }
   if ((increment < 0 && old_value < 0 && increment < (std::numeric_limits<float>::lowest()-old_value))
       || (increment > 0 && old_value > 0 && increment > (std::numeric_limits<float>::max()-old_value))) {

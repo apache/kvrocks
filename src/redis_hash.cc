@@ -189,13 +189,13 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
       batch.Delete(sub_key);
     }
   }
-  // size was updated
-  if (*ret > 0) {
-    metadata.size -= *ret;
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+  if (*ret == 0) {
+    return rocksdb::Status::OK();
   }
+  metadata.size -= *ret;
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 

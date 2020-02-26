@@ -215,6 +215,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   WriteBatchLogData log_data(kRedisHash);
   batch.PutLogData(log_data.Encode());
   for (const auto &fv : field_values) {
+    exists = false;
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version).Encode(&sub_key);
     if (metadata.size > 0) {

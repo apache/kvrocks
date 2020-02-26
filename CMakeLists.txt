@@ -101,6 +101,8 @@ target_sources(kvrocks PRIVATE
         src/redis_metadata.cc
         src/redis_string.h
         src/redis_string.cc
+        src/redis_hash_compressed.h
+        src/redis_hash_compressed.cc
         src/redis_hash.h
         src/redis_hash.cc
         src/redis_list.h
@@ -183,6 +185,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_metadata.cc
         src/redis_string.h
         src/redis_string.cc
+        src/redis_hash_compressed.h
+        src/redis_hash_compressed.cc
         src/redis_hash.h
         src/redis_hash.cc
         src/redis_list.h
@@ -254,6 +258,8 @@ add_executable(unittest
         src/redis_metadata.cc
         src/encoding.cc
         src/redis_string.cc
+        src/redis_hash_compressed.cc
+        src/redis_hash.h
         src/redis_hash.cc
         src/redis_list.cc
         src/redis_set.cc

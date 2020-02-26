@@ -26,6 +26,12 @@ rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
+
+  if (metadata.small_hash_compress_to_meta_threshold != 0) {
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.Get(metadata, field, value);
+  }
+
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -45,6 +51,15 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+
+  if (metadata.small_hash_compress_to_meta_threshold != 0
+      || (metadata.size == 0 && small_hash_compress_to_meta_threshold_ > 0)) {
+    if (metadata.small_hash_compress_to_meta_threshold == 0) {
+      metadata.small_hash_compress_to_meta_threshold = small_hash_compress_to_meta_threshold_;
+    }
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.IncrBy(&metadata, ns_key, field, increment, ret);
+  }
 
   std::string sub_key;
   InternalKey(ns_key, field, metadata.version).Encode(&sub_key);
@@ -91,6 +106,15 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, flo
   HashMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+
+  if (metadata.small_hash_compress_to_meta_threshold != 0
+      || (metadata.size == 0 && small_hash_compress_to_meta_threshold_ > 0)) {
+    if (metadata.small_hash_compress_to_meta_threshold == 0) {
+      metadata.small_hash_compress_to_meta_threshold = small_hash_compress_to_meta_threshold_;
+    }
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.IncrByFloat(&metadata, ns_key, field, increment, ret);
+  }
 
   std::string sub_key;
   InternalKey(ns_key, field, metadata.version).Encode(&sub_key);
@@ -139,6 +163,11 @@ rocksdb::Status Hash::MGet(const Slice &user_key,
     return s;
   }
 
+  if (metadata.small_hash_compress_to_meta_threshold != 0) {
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.MGet(metadata, fields, values);
+  }
+
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -180,6 +209,11 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  if (metadata.small_hash_compress_to_meta_threshold != 0) {
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.Delete(&metadata, ns_key, fields, ret);
+  }
+
   std::string sub_key, value;
   for (const auto &field : fields) {
     InternalKey(ns_key, field, metadata.version).Encode(&sub_key);
@@ -209,13 +243,21 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
+  if (metadata.small_hash_compress_to_meta_threshold != 0
+      || (metadata.size == 0 && small_hash_compress_to_meta_threshold_ > 0)) {
+    if (metadata.small_hash_compress_to_meta_threshold == 0) {
+      metadata.small_hash_compress_to_meta_threshold = small_hash_compress_to_meta_threshold_;
+    }
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.MSet(&metadata, ns_key, field_values, nx, ret);
+  }
+
   int added = 0;
-  bool exists = false;
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisHash);
   batch.PutLogData(log_data.Encode());
   for (const auto &fv : field_values) {
-    exists = false;
+    bool exists = false;
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version).Encode(&sub_key);
     if (metadata.size > 0) {
@@ -249,6 +291,11 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  if (metadata.small_hash_compress_to_meta_threshold != 0) {
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.GetAll(metadata, field_values);
+  }
+
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -281,6 +328,17 @@ rocksdb::Status Hash::Scan(const Slice &user_key,
                                 uint64_t limit,
                                 const std::string &field_prefix,
                                 std::vector<std::string> *fields) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  if (metadata.small_hash_compress_to_meta_threshold != 0) {
+    Redis::HashCompressed hash_compressed_db(storage_, namespace_);
+    return hash_compressed_db.Scan(metadata, cursor, limit, field_prefix, fields);
+  }
+
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields);
 }
 

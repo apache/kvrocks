@@ -213,3 +213,37 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
   }
   return rocksdb::Status();
 }
+
+HashMetadata::HashMetadata() : Metadata(kRedisHash) {
+  small_hash_compress_to_meta_threshold = 0;
+}
+
+void HashMetadata::Encode(std::string *dst) {
+  Metadata::Encode(dst);
+  if (small_hash_compress_to_meta_threshold != 0) {
+    PutFixed32(dst, small_hash_compress_to_meta_threshold);
+  }
+  if (!field_value_bytes.empty()) {
+    PutString(dst, field_value_bytes);
+  }
+}
+
+rocksdb::Status HashMetadata::Decode(const std::string &bytes) {
+  Slice input(bytes);
+  GetFixed8(&input, &flags);
+  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
+  if (Type() != kRedisString) {
+    if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
+    GetFixed64(&input, &version);
+    GetFixed32(&input, &size);
+  }
+  if (Type() == kRedisHash) {
+    if (input.size() >= 4) {
+      GetFixed32(&input, &small_hash_compress_to_meta_threshold);
+    }
+    if (input.size() > 0) {
+      field_value_bytes = input.ToString();
+    }
+  }
+  return rocksdb::Status();
+}

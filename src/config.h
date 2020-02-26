@@ -68,6 +68,7 @@ struct Config{
   Cron compact_cron;
   Cron bgsave_cron;
   std::map<std::string, std::string> tokens;
+  int small_hash_compress_to_meta_threshold = 0;
 
   // profiling
   int profiling_sample_ratio = 0;

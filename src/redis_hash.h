@@ -7,22 +7,16 @@
 #include "redis_db.h"
 #include "encoding.h"
 #include "redis_metadata.h"
-
-typedef struct FieldValue {
-  std::string field;
-  std::string value;
-} FieldValue;
-
-enum class HashFetchType {
-  kAll = 0,
-  kOnlyKey = 1,
-  kOnlyValue = 2
-};
+#include "redis_hash_compressed.h"
 
 namespace Redis {
 class Hash : public SubKeyScanner {
  public:
-  Hash(Engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  Hash(Engine::Storage *storage, const std::string &ns, int small_hash_compress_to_meta_threshold = 0) : SubKeyScanner(
+      storage,
+      ns) {
+    small_hash_compress_to_meta_threshold_ = small_hash_compress_to_meta_threshold;
+  }
   rocksdb::Status Size(const Slice &user_key, uint32_t *ret);
   rocksdb::Status Get(const Slice &user_key, const Slice &field, std::string *value);
   rocksdb::Status Set(const Slice &user_key, const Slice &field, const Slice &value, int *ret);
@@ -42,5 +36,6 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *fields);
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
+  int small_hash_compress_to_meta_threshold_ = 0;
 };
 }  // namespace Redis

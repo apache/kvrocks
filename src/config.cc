@@ -90,6 +90,8 @@ Config::Config() {
       {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
       {"slave-read-only", false, new YesNoField(&slave_readonly, true)},
+      {"small-hash-compress-to-meta-threshold",
+       false, new IntField(&small_hash_compress_to_meta_threshold, 0, 0, INT_MAX)},
       {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},
       {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
       {"profiling-sample-record-threshold-ms",

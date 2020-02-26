@@ -143,6 +143,10 @@ void PutDouble(std::string *dst, double value) {
   PutFixed64(dst, *ptr);
 }
 
+void PutString(std::string *dst, const std::string &value) {
+  dst->append(value);
+}
+
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value) {
   const char *data;
   if (input->size() < sizeof(uint8_t)) {
@@ -176,6 +180,13 @@ bool GetDouble(rocksdb::Slice *input, double *value) {
   if (input->size() < sizeof(double)) return false;
   *value = DecodeDouble(input->data());
   input->remove_prefix(sizeof(double));
+  return true;
+}
+
+bool GetFixedSizeString(rocksdb::Slice *input, uint32_t size, std::string *value) {
+  if (input->size() < size) return false;
+  *value = input->data();
+  input->remove_prefix(size);
   return true;
 }
 

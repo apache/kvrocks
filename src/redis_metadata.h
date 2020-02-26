@@ -96,7 +96,12 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  HashMetadata():Metadata(kRedisHash){}
+  uint32_t small_hash_compress_to_meta_threshold = 0;
+  std::string field_value_bytes;
+  HashMetadata();
+ public:
+  void Encode(std::string *dst) override;
+  rocksdb::Status Decode(const std::string &bytes) override;
 };
 
 class SetMetadata : public Metadata {

@@ -981,7 +981,7 @@ class CommandHGet : public Commander {
  public:
   CommandHGet() : Commander("hget", 3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -997,7 +997,7 @@ class CommandHSet : public Commander {
   CommandHSet() : Commander("hset", 4, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     rocksdb::Status s = hash_db.Set(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1012,7 +1012,7 @@ class CommandHSetNX : public Commander {
   CommandHSetNX() : Commander("hsetnx", 4, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1026,7 +1026,7 @@ class CommandHStrlen : public Commander {
  public:
   CommandHStrlen() : Commander("hstrlen", 3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -1042,7 +1042,7 @@ class CommandHDel : public Commander {
   CommandHDel() : Commander("hdel", -3, true) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
@@ -1060,7 +1060,7 @@ class CommandHExists : public Commander {
  public:
   CommandHExists() : Commander("hexists", 3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -1076,7 +1076,7 @@ class CommandHLen : public Commander {
   CommandHLen() : Commander("hlen", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t count;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     rocksdb::Status s = hash_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1099,7 +1099,7 @@ class CommandHIncrBy : public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     rocksdb::Status s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1125,7 +1125,7 @@ class CommandHIncrByFloat : public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     float ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
@@ -1142,7 +1142,7 @@ class CommandHMGet : public Commander {
  public:
   CommandHMGet() : Commander("hmget", -3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
       fields.emplace_back(Slice(args_[i]));
@@ -1171,7 +1171,7 @@ class CommandHMSet : public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<FieldValue> field_values;
     for (unsigned int i = 2; i < args_.size(); i += 2) {
       field_values.push_back(FieldValue{args_[i], args_[i + 1]});
@@ -1189,7 +1189,7 @@ class CommandHKeys : public Commander {
  public:
   CommandHKeys() : Commander("hkeys", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
     if (!s.ok()) {
@@ -1208,7 +1208,7 @@ class CommandHVals : public Commander {
  public:
   CommandHVals() : Commander("hvals", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
     if (!s.ok()) {
@@ -1227,7 +1227,7 @@ class CommandHGetAll : public Commander {
  public:
   CommandHGetAll() : Commander("hgetall", 2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
@@ -3264,7 +3264,7 @@ class CommandHScan : public CommandSubkeyScanBase {
  public:
   CommandHScan() : CommandSubkeyScanBase("hscan", -3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), svr->GetConfig()->small_hash_compress_to_meta_threshold);
     std::vector<std::string> fields;
     auto s = hash_db.Scan(key, cursor, limit, prefix, &fields);
     if (!s.ok() && !s.IsNotFound()) {

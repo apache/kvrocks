@@ -23,3 +23,7 @@ until nc -z 127.0.0.1 6670; do echo "codis test server group1 is not ready"; sle
 # setup the codis test server group2 and wait for ready
 $BIN -c tests/scripts/test-codis-group2.conf
 until nc -z 127.0.0.1 6672; do echo "codis test server group2 is not ready"; sleep 1; done
+
+# setup hash compress test server and wait for ready
+$BIN -c tests/scripts/test-hash-compress.conf
+until nc -z 127.0.0.1 6674; do echo "hash compress test server is not ready"; sleep 1; done

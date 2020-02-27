@@ -18,3 +18,6 @@ def get_redis_conn_codis(group=1):
     else:
         r = redis.Redis("127.0.0.1", 6672, 0)
     return r
+
+def get_redis_hash_compress_conn():
+    return redis.Redis("127.0.0.1", 6674, 0, "foobared")

@@ -1180,7 +1180,7 @@ class CommandHMSet : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::Integer(ret);
+    *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 };

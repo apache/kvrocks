@@ -58,8 +58,8 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
       } catch (std::exception &e) {
         return rocksdb::Status::InvalidArgument(e.what());
       }
+      exists = true;
     }
-    exists = true;
   }
   if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN-old_value))
       || (increment > 0 && old_value > 0 && increment > (LLONG_MAX-old_value))) {
@@ -104,8 +104,8 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, flo
       } catch (std::exception &e) {
         return rocksdb::Status::InvalidArgument(e.what());
       }
+      exists = true;
     }
-    exists = true;
   }
   if ((increment < 0 && old_value < 0 && increment < (std::numeric_limits<float>::lowest()-old_value))
       || (increment > 0 && old_value > 0 && increment > (std::numeric_limits<float>::max()-old_value))) {
@@ -189,13 +189,13 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
       batch.Delete(sub_key);
     }
   }
-  // size was updated
-  if (*ret > 0) {
-    metadata.size -= *ret;
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+  if (*ret == 0) {
+    return rocksdb::Status::OK();
   }
+  metadata.size -= *ret;
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
@@ -215,6 +215,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   WriteBatchLogData log_data(kRedisHash);
   batch.PutLogData(log_data.Encode());
   for (const auto &fv : field_values) {
+    exists = false;
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version).Encode(&sub_key);
     if (metadata.size > 0) {

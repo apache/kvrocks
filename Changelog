@@ -1,5 +1,7 @@
-* Version 1.1.5 (@2012-01-15)
-    - MOD: remove the limit of bulk number
+* Version 1.1.6 (@2012-02-28)
+	- Upgrade the libevent to stable 2.1.11
+	- FIX: create backup at the same time may cause crash while the CreateNewBackupWithMetadata wasn't thread-safe call 
+	- FIX: some incorrect implements in redis command
 
 * Version 1.1.4 (@2012-01-15)
 	- FIX: when ttl is less than one second in SET PX or PEXPIRE, round up to 1 second 

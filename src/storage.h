@@ -99,7 +99,6 @@ class Storage {
         Storage *storage, const std::string &rel_path);
     static Status SwapTmpFile(Storage *storage, const std::string &rel_path);
     static bool FileExists(Storage *storage, const std::string &rel_path);
-    static Status PurgeBackup(Storage *storage);
   };
 
  private:

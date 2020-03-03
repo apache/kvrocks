@@ -270,10 +270,8 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
-  // Remove the backup_dir, so we can start replication in a clean state
-  if (!Engine::Storage::BackupManager::PurgeBackup(storage_).IsOK()) {
-    return Status(Status::NotOK, "can't delete the existed backup dir");
-  }
+  // cleanup the old backups, so we can start replication in a clean state
+  storage_->PurgeOldBackups(0, 0);
 
   try {
     t_ = std::thread([this]() {

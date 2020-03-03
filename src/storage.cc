@@ -256,6 +256,7 @@ Status Storage::CreateBackup() {
     return Status(Status::DBBackupErr, "Fail to format local time_str");
   }
   backup_mu_.lock();
+  rocksdb::Env::Default()->CreateDirIfMissing(config_->backup_dir);
   auto s = backup_->CreateNewBackupWithMetadata(db_, time_str);
   backup_mu_.unlock();
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());

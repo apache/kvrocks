@@ -1,3 +1,5 @@
+* Version 1.1.7 (@2012-03-03)
+	- FIX: don't cleanup the backup dir manually which may cause the failure of create new backup 
 * Version 1.1.6 (@2012-02-28)
 	- Upgrade the libevent to stable 2.1.11
 	- FIX: create backup at the same time may cause crash while the CreateNewBackupWithMetadata wasn't thread-safe call 

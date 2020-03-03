@@ -656,67 +656,12 @@ bool Storage::BackupManager::FileExists(Storage *storage, const std::string &rel
   return s.ok();
 }
 
-bool isDir(const char* name) {
-  struct stat st{};
-  if (stat(name, &st) != 0) {
-    return false;
-  }
-  return (st.st_mode & S_IFDIR) != 0;
-}
-
-bool PathExists(const char* name) {
-  struct stat st{};
-  if (stat(name, &st) != 0) {
-    if (errno == ENOENT) {
-      return false;
-    }
-    // Other types of error are treated as the path exists (might be a bad idea)
-  }
-  return true;
-}
-
-Status RmdirRecursively(rocksdb::Env *env, const std::string &dir) {
-  if (!PathExists(dir.c_str())) {
-    return Status::OK();
-  }
-
-  std::vector<std::string> children;
-  env->GetChildren(dir, &children);
-  rocksdb::Status s;
-  for (const auto &c : children) {
-    if (c == "." || c == "..") continue;
-    auto abs_path = dir + "/" + c;
-    if (isDir(abs_path.c_str())) {
-      if (!RmdirRecursively(env, abs_path).IsOK()) {
-        return Status(Status::NotOK);
-      }
-    } else {
-      s = env->DeleteFile(abs_path);
-      if (!s.ok()) {
-        LOG(ERROR) << "[storage] Failed to delete file: " << s.ToString();
-        return Status(Status::NotOK);
-      }
-    }
-  }
-  s = env->DeleteDir(dir);
-  if (s.ok()) {
-    return Status::OK();
-  }
-  LOG(ERROR) << "[storage] Failed to delete dir: " << s.ToString();
-  return Status(Status::NotOK);
-}
-
-Status Storage::BackupManager::PurgeBackup(Storage *storage) {
-  return RmdirRecursively(storage->backup_env_, storage->config_->backup_dir);
-}
-
 void Storage::PurgeBackupIfNeed(uint32_t next_backup_id) {
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_->GetBackupInfo(&backup_infos);
   size_t num_backup = backup_infos.size();
   if (num_backup > 0 && backup_infos[num_backup-1].backup_id != next_backup_id-1)  {
-    RmdirRecursively(backup_env_, config_->backup_dir);
-    rocksdb::Env::Default()->CreateDirIfMissing(config_->backup_dir);
+    PurgeOldBackups(0, 0);
   }
 }
 

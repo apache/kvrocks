@@ -97,6 +97,7 @@ struct Config{
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
     int compression;
+    bool disable_auto_compactions;
   } RocksDB;
 
  public:

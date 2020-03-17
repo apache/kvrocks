@@ -110,6 +110,7 @@ Config::Config() {
       {"rocksdb.delayed_write_rate", false, new Int64Field(&RocksDB.delayed_write_rate, 0, 0, INT64_MAX)},
       {"rocksdb.wal_ttl_seconds", true, new IntField(&RocksDB.WAL_ttl_seconds, 7*24*3600, 0, INT_MAX)},
       {"rocksdb.wal_size_limit_mb", true, new IntField(&RocksDB.WAL_size_limit_MB, 5120, 0, INT_MAX)},
+      {"rocksdb.disable_auto_compactions", false, new YesNoField(&RocksDB.disable_auto_compactions, false)},
       {"rocksdb.enable_pipelined_write", true, new YesNoField(&RocksDB.enable_pipelined_write, false)},
       {"rocksdb.stats_dump_period_sec", false, new IntField(&RocksDB.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&RocksDB.cache_index_and_filter_blocks, false)},
@@ -257,6 +258,12 @@ void Config::initFieldCallback() {
         srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
         return srv->storage_->SetColumnFamilyOption("level0_stop_writes_trigger",
                                                     std::to_string(RocksDB.level0_stop_writes_trigger));
+      }},
+      {"rocksdb.disable_auto_compactions", [this](Server* srv,
+                                                        const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string disable_auto_compactions = v == "yes" ? "true" : "false";
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), disable_auto_compactions);
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

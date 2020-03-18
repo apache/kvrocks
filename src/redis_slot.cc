@@ -145,8 +145,8 @@ bool SlotInternalKey::operator==(const SlotInternalKey &that) const {
   return version_ == that.version_;
 }
 
-SlotMetadata::SlotMetadata() {
-  version = generateVersion();
+SlotMetadata::SlotMetadata(bool readonly) {
+  if (!readonly) version = generateVersion();
   size = 0;
 }
 
@@ -256,7 +256,7 @@ rocksdb::Status Slot::GetMetadata(uint32_t slot_num, SlotMetadata *metadata) {
 
 rocksdb::Status Slot::IsKeyExist(const Slice &key) {
   auto slot_num = GetSlotNumFromKey(key.ToString());
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   rocksdb::Status s = GetMetadata(slot_num, &metadata);
   if (!s.ok()) return s;
 
@@ -291,7 +291,7 @@ Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
   std::string bytes;
   auto st = Database::GetRawMetadata(ns_key, &bytes);
   if (!st.ok()) return Status(Status::NotFound, st.ToString());
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, true);
   metadata.Decode(bytes);
   if (metadata.Expired()) {
     return Status(Status::NotFound, "the key was Expired");
@@ -418,7 +418,7 @@ Status Slot::MigrateTag(const std::string &host,
   }
 
   auto slot_num = GetSlotNumFromKey(tag);
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   rocksdb::Status s = GetMetadata(slot_num, &metadata);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
 
@@ -526,7 +526,7 @@ rocksdb::Status Slot::Check() {
   // check cf_metadata against cf_slot
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    Metadata metadata(kRedisNone);
+    Metadata metadata(kRedisNone, true);
     value = iter->value().ToString();
     metadata.Decode(value);
     if (metadata.Expired()) continue;
@@ -545,7 +545,7 @@ rocksdb::Status Slot::Check() {
     SlotInternalKey ikey(iter->key());
     auto key = ikey.GetKey().ToString();
     auto slot_num = GetSlotNumFromKey(key);
-    SlotMetadata metadata;
+    SlotMetadata metadata(true);
     rocksdb::Status s = GetMetadata(slot_num, &metadata);
     if (!s.ok()) {
       continue;
@@ -581,7 +581,7 @@ rocksdb::Status Slot::GetInfo(uint32_t start, int count, std::vector<SlotCount> 
     if (slot_num > max_slot_num) {
       break;
     }
-    SlotMetadata metadata;
+    SlotMetadata metadata(true);
     metadata.Decode(iter->value().ToString());
     slot_counts->emplace_back(SlotCount{(uint32_t) slot_num, metadata.size});
   }
@@ -636,7 +636,7 @@ rocksdb::Status Slot::DeleteKey(const Slice &key) {
   LockGuard guard(storage_->GetLockManager(), key);
 
   auto slot_num = GetSlotNumFromKey(key.ToString());
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   rocksdb::Status s = GetMetadata(slot_num, &metadata);
   if (!s.ok()) return s;
 
@@ -673,7 +673,7 @@ rocksdb::Status Slot::DeleteAll() {
 rocksdb::Status Slot::Size(uint32_t slot_num, uint64_t *ret) {
   *ret = 0;
 
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   auto s = GetMetadata(slot_num, &metadata);
   if (!s.ok()) return s;
   *ret = metadata.size;
@@ -736,7 +736,7 @@ rocksdb::Status Slot::Scan(uint32_t slot_num,
                            uint64_t limit,
                            std::vector<std::string> *keys) {
   uint64_t cnt = 0;
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   rocksdb::Status s = GetMetadata(slot_num, &metadata);
   if (!s.ok()) return s;
 
@@ -822,7 +822,7 @@ Status SlotsMgrtSenderThread::SlotsMigrateOne(const std::string &key, int *ret) 
       return Status(Status::NotOK, "Migrate one key: " + key + " error: " + s.ToString());
     }
   }
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, true);
   metadata.Decode(bytes);
   if (metadata.Expired()) {
     *ret = 0;
@@ -931,7 +931,7 @@ Status SlotsMgrtSenderThread::ElectMigrateKeys(std::vector<std::string> *keys) {
   std::lock_guard<std::mutex> guard(db_mu_);
   Redis::Slot slot_db(storage_);
 
-  SlotMetadata metadata;
+  SlotMetadata metadata(true);
   auto s = slot_db.GetMetadata(slot_num_, &metadata);
   if (!s.ok()) {
     StopMigrateSlot();

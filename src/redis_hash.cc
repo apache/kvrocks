@@ -13,7 +13,7 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint32_t *ret) {
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata;
+  HashMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
   *ret = metadata.size;
@@ -23,7 +23,7 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint32_t *ret) {
 rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata;
+  HashMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
   LatestSnapShot ss(db_);
@@ -133,7 +133,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key,
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata;
+  HashMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) {
     return s;
@@ -172,7 +172,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  HashMetadata metadata;
+  HashMetadata metadata(true);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisHash);
   batch.PutLogData(log_data.Encode());
@@ -245,7 +245,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata;
+  HashMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 

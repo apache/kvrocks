@@ -76,7 +76,7 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
   *ret = metadata.size;
@@ -105,7 +105,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
   if (count <=0) return rocksdb::Status::OK();
@@ -165,7 +165,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
   bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
   if (removed) LockGuard guard(storage_->GetLockManager(), ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
   if (start < 0) start += metadata.size;
@@ -233,7 +233,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   AppendNamespacePrefix(user_key, &ns_key);
 
   if (spec.removed) LockGuard guard(storage_->GetLockManager(), ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
@@ -312,7 +312,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -366,7 +366,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
 rocksdb::Status ZSet::Score(const Slice &user_key, const Slice &member, double *score) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
@@ -388,7 +388,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
@@ -442,7 +442,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  ZSetMetadata metadata;
+  ZSetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 

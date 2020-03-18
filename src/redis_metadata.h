@@ -80,7 +80,7 @@ class Metadata {
   uint32_t size;
 
  public:
-  explicit Metadata(RedisType type);
+  explicit Metadata(RedisType type, bool readonly=false);
 
   RedisType Type() const;
   virtual int32_t TTL() const;
@@ -96,34 +96,34 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  HashMetadata():Metadata(kRedisHash){}
+  HashMetadata(bool readonly=false):Metadata(kRedisHash, readonly){}
 };
 
 class SetMetadata : public Metadata {
  public:
-  SetMetadata(): Metadata(kRedisSet) {}
+  SetMetadata(bool readonly=false): Metadata(kRedisSet, readonly) {}
 };
 
 class ZSetMetadata : public Metadata {
  public:
-  ZSetMetadata(): Metadata(kRedisZSet){}
+  ZSetMetadata(bool readonly=false): Metadata(kRedisZSet, readonly){}
 };
 
 class BitmapMetadata : public Metadata {
  public:
-  BitmapMetadata(): Metadata(kRedisBitmap){}
+  BitmapMetadata(bool readonly=false): Metadata(kRedisBitmap, readonly){}
 };
 
 class SortedintMetadata : public Metadata {
  public:
-  SortedintMetadata() : Metadata(kRedisSortedint) {}
+  SortedintMetadata(bool readonly=false) : Metadata(kRedisSortedint, readonly) {}
 };
 
 class ListMetadata : public Metadata {
  public:
   uint64_t head;
   uint64_t tail;
-  ListMetadata();
+  ListMetadata(bool readonly=false);
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

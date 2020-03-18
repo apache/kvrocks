@@ -70,7 +70,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  SetMetadata metadata;
+  SetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -103,7 +103,7 @@ rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SetMetadata metadata;
+  SetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
@@ -116,7 +116,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SetMetadata metadata;
+  SetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -143,7 +143,7 @@ rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *r
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SetMetadata metadata;
+  SetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -169,7 +169,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   AppendNamespacePrefix(user_key, &ns_key);
 
   if (pop) LockGuard guard(storage_->GetLockManager(), ns_key);
-  SetMetadata metadata;
+  SetMetadata metadata(true);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 

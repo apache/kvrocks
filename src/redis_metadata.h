@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
 
 #include "encoding.h"
 
@@ -46,6 +47,7 @@ struct KeyNumStats {
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
+static std::atomic<uint64_t> version_counter_;
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key);
@@ -81,6 +83,7 @@ class Metadata {
 
  public:
   explicit Metadata(RedisType type, bool readonly=false);
+  static void InitVersionCounter();
 
   RedisType Type() const;
   virtual int32_t TTL() const;

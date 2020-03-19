@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
 
 #include "encoding.h"
 
@@ -46,6 +47,7 @@ struct KeyNumStats {
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
+static std::atomic<uint64_t> version_counter_;
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key);
@@ -80,7 +82,8 @@ class Metadata {
   uint32_t size;
 
  public:
-  explicit Metadata(RedisType type);
+  explicit Metadata(RedisType type, bool generate_version=true);
+  static void InitVersionCounter();
 
   RedisType Type() const;
   virtual int32_t TTL() const;
@@ -96,34 +99,34 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  HashMetadata():Metadata(kRedisHash){}
+  HashMetadata(bool generate_version=true):Metadata(kRedisHash, generate_version){}
 };
 
 class SetMetadata : public Metadata {
  public:
-  SetMetadata(): Metadata(kRedisSet) {}
+  SetMetadata(bool generate_version=true): Metadata(kRedisSet, generate_version) {}
 };
 
 class ZSetMetadata : public Metadata {
  public:
-  ZSetMetadata(): Metadata(kRedisZSet){}
+  ZSetMetadata(bool generate_version=true): Metadata(kRedisZSet, generate_version){}
 };
 
 class BitmapMetadata : public Metadata {
  public:
-  BitmapMetadata(): Metadata(kRedisBitmap){}
+  BitmapMetadata(bool generate_version=true): Metadata(kRedisBitmap, generate_version){}
 };
 
 class SortedintMetadata : public Metadata {
  public:
-  SortedintMetadata() : Metadata(kRedisSortedint) {}
+  SortedintMetadata(bool generate_version=true) : Metadata(kRedisSortedint, generate_version) {}
 };
 
 class ListMetadata : public Metadata {
  public:
   uint64_t head;
   uint64_t tail;
-  ListMetadata();
+  ListMetadata(bool generate_version=true);
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

@@ -9,7 +9,7 @@ rocksdb::Status String::getValue(const Slice &ns_key, std::string *raw_value, st
   if (raw_value) {
     raw_value->clear();
     std::string md_bytes;
-    Metadata(kRedisString).Encode(&md_bytes);
+    Metadata(kRedisString, false).Encode(&md_bytes);
     raw_value->append(md_bytes);
   }
 
@@ -20,7 +20,7 @@ rocksdb::Status String::getValue(const Slice &ns_key, std::string *raw_value, st
   rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &raw_bytes);
   if (!s.ok()) return s;
 
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   metadata.Decode(raw_bytes);
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
@@ -36,7 +36,7 @@ rocksdb::Status String::getValue(const Slice &ns_key, std::string *raw_value, st
 rocksdb::Status String::updateValue(const Slice &ns_key, const Slice &raw_value, const Slice &new_value) {
   std::string metadata_bytes;
   if (raw_value.empty()) {
-    Metadata(kRedisString).Encode(&metadata_bytes);
+    Metadata(kRedisString, false).Encode(&metadata_bytes);
   } else {
     metadata_bytes = raw_value.ToString().substr(0, 5);
   }
@@ -131,7 +131,7 @@ rocksdb::Status String::SetXX(const Slice &user_key, const Slice &value, int ttl
 
   *ret = 1;
   std::string bytes;
-  Metadata metadata(kRedisString);
+  Metadata metadata(kRedisString, false);
   metadata.expire = expire;
   metadata.Encode(&bytes);
   bytes.append(value.ToString());
@@ -228,7 +228,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
   std::string ns_key;
   for (const auto &pair : pairs) {
     std::string bytes;
-    Metadata metadata(kRedisString);
+    Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.ToString());
@@ -263,7 +263,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
       return rocksdb::Status::OK();
     }
     std::string bytes;
-    Metadata metadata(kRedisString);
+    Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.ToString());

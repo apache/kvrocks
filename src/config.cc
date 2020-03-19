@@ -259,7 +259,7 @@ void Config::initFieldCallback() {
         return srv->storage_->SetColumnFamilyOption("level0_stop_writes_trigger",
                                                     std::to_string(RocksDB.level0_stop_writes_trigger));
       }},
-      {"rocksdb.disable_auto_compactions", [this](Server* srv,
+      {"rocksdb.disable_auto_compactions", [](Server* srv,
                                                         const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         std::string disable_auto_compactions = v == "yes" ? "true" : "false";

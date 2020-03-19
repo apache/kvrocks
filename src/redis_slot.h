@@ -62,7 +62,7 @@ class SlotMetadata {
   uint64_t size;
 
  public:
-  SlotMetadata();
+  SlotMetadata(bool generate_version=true);
 
   void Encode(std::string *dst) const;
   rocksdb::Status Decode(const std::string &bytes);

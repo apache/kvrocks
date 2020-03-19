@@ -12,7 +12,7 @@ rocksdb::Status List::Size(const Slice &user_key, uint32_t *ret) {
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
@@ -74,7 +74,7 @@ rocksdb::Status List::Pop(const Slice &user_key, std::string *elem, bool left) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
@@ -131,7 +131,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
@@ -218,7 +218,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
@@ -298,7 +298,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
@@ -325,7 +325,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -365,7 +365,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
   if (index < 0) index = metadata.size + index;
@@ -408,7 +408,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  ListMetadata metadata(true);
+  ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 

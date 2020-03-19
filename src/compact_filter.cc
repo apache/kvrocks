@@ -15,7 +15,7 @@ bool MetadataFilter::Filter(int level,
                                     std::string *new_value,
                                     bool *modified) const {
   std::string ns, user_key, bytes = value.ToString();
-  Metadata metadata(kRedisNone, true);
+  Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(bytes);
   ExtractNamespaceKey(key, &ns, &user_key);
   if (!s.ok()) {
@@ -69,7 +69,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   // the metadata was not found
   if (cached_metadata_.empty()) return true;
   // the metadata is cached
-  Metadata metadata(kRedisNone, true);
+  Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
@@ -140,7 +140,7 @@ bool SlotKeyFilter::IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value
   // the metadata was not found
   if (cached_metadata_.empty()) return true;
   // the metadata is cached
-  SlotMetadata metadata(true);
+  SlotMetadata metadata(false);
   rocksdb::Status s = metadata.Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();

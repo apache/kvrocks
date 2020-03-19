@@ -102,12 +102,12 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key)
   ns_key->append(key.ToString());
 }
 
-Metadata::Metadata(RedisType type, bool readonly) {
+Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
   expire = -1;
   version = 0;
   size = 0;
-  if (!readonly) version = generateVersion();
+  if (generate_version) version = generateVersion();
 }
 
 rocksdb::Status Metadata::Decode(const std::string &bytes) {
@@ -191,7 +191,7 @@ bool Metadata::Expired() const {
   return Type() != kRedisString && size == 0;
 }
 
-ListMetadata::ListMetadata(bool readonly) : Metadata(kRedisList, readonly) {
+ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
   head = UINT64_MAX/2;
   tail = head;
 }

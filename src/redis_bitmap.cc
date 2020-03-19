@@ -34,7 +34,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  BitmapMetadata metadata(true);
+  BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -137,7 +137,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  BitmapMetadata metadata(true);
+  BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -172,7 +172,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int s
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  BitmapMetadata metadata(true);
+  BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (s.IsNotFound()) {

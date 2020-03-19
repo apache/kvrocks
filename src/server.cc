@@ -457,7 +457,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
-  for (const auto &cf_handle : storage_->GetCFHandles()) {
+  for (const auto &cf_handle : *storage_->GetCFHandles()) {
     uint64_t estimate_keys, block_cache_usage, block_cache_pinned_usage, index_and_filter_cache_usage;
     db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";

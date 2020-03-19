@@ -36,9 +36,9 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   std::string metadata_key;
 
   auto db = stor_->GetDB();
-  auto cf_handles = stor_->GetCFHandles();
+  const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column familiy handler and DB
-  if (!db || cf_handles.size() < 2)  return false;
+  if (!db || cf_handles->size() < 2)  return false;
 
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key);
   if (cached_key_.empty() || metadata_key != cached_key_) {
@@ -46,7 +46,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
     if (!stor_->IncrDBRefs().IsOK()) {  // the db is closing, don't use DB and cf_handles
       return false;
     }
-    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), cf_handles[1], metadata_key, &bytes);
+    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), (*cf_handles)[1], metadata_key, &bytes);
     stor_->DecrDBRefs();
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {
@@ -107,9 +107,9 @@ bool SlotKeyFilter::IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value
   std::string metadata_key;
 
   auto db = stor_->GetDB();
-  auto cf_handles = stor_->GetCFHandles();
+  const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column familiy handler and DB
-  if (!db || cf_handles.size() < 2) return false;
+  if (!db || cf_handles->size() < 2) return false;
 
   auto slot_num = GetSlotNumFromKey(ikey.GetKey().ToString());
   PutFixed32(&metadata_key, slot_num);
@@ -118,7 +118,7 @@ bool SlotKeyFilter::IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value
     if (!stor_->IncrDBRefs().IsOK()) {  // the db is closing, don't use DB and cf_handles
       return false;
     }
-    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), cf_handles[4], metadata_key, &bytes);
+    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), (*cf_handles)[4], metadata_key, &bytes);
     stor_->DecrDBRefs();
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {

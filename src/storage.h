@@ -59,7 +59,7 @@ class Storage {
   Status DecrDBRefs();
   const std::string GetName() {return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
-  std::vector<rocksdb::ColumnFamilyHandle *> GetCFHandles() { return cf_handles_; }
+  std::vector<rocksdb::ColumnFamilyHandle *>* GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);

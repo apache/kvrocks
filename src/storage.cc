@@ -35,6 +35,7 @@ Storage::Storage(Config *config)
       config_(config),
       lock_mgr_(16) {
   InitCRC32Table();
+  Metadata::InitVersionCounter();
 }
 
 Storage::~Storage() {

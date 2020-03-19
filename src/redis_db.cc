@@ -56,7 +56,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   std::string value;
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
@@ -90,7 +90,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
@@ -110,7 +110,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
     AppendNamespacePrefix(key, &ns_key);
     s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
     if (s.ok()) {
-      Metadata metadata(kRedisNone);
+      Metadata metadata(kRedisNone, false);
       metadata.Decode(value);
       if (!metadata.Expired()) *ret += 1;
     }
@@ -130,7 +130,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
   rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
   *ttl = metadata.TTL();
   return rocksdb::Status::OK();
@@ -158,7 +158,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
     if (!prefix.empty() && !iter->key().starts_with(prefix)) {
       break;
     }
-    Metadata metadata(kRedisNone);
+    Metadata metadata(kRedisNone, false);
     value = iter->value().ToString();
     metadata.Decode(value);
     if (metadata.Expired()) {
@@ -213,7 +213,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
     if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
       break;
     }
-    Metadata metadata(kRedisNone);
+    Metadata metadata(kRedisNone, false);
     value = iter->value().ToString();
     metadata.Decode(value);
     if (metadata.Expired()) continue;
@@ -302,7 +302,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
 
   infos->emplace_back("namespace");
@@ -327,7 +327,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back(created_at_str + "." + std::to_string(created_at.tv_usec));
 
   if (metadata.Type() == kRedisList) {
-    ListMetadata metadata;
+    ListMetadata metadata(false);
     GetMetadata(kRedisList, ns_key, &metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
@@ -351,7 +351,7 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
   rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  Metadata metadata(kRedisNone);
+  Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
   *type = metadata.Type();
   return rocksdb::Status::OK();
@@ -408,7 +408,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   uint64_t cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  Metadata metadata(type);
+  Metadata metadata(type, false);
   rocksdb::Status s = GetMetadata(type, ns_key, &metadata);
   if (!s.ok()) return s;
 

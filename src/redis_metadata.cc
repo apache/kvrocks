@@ -102,12 +102,12 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key)
   ns_key->append(key.ToString());
 }
 
-Metadata::Metadata(RedisType type) {
+Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
   expire = -1;
   version = 0;
   size = 0;
-  version = generateVersion();
+  if (generate_version) version = generateVersion();
 }
 
 rocksdb::Status Metadata::Decode(const std::string &bytes) {
@@ -135,15 +135,20 @@ void Metadata::Encode(std::string *dst) {
   }
 }
 
+void Metadata::InitVersionCounter() {
+  struct timeval now;
+  gettimeofday(&now, nullptr);
+  // use random position for initial counter to avoid conflicts,
+  // when the slave was promoted as master and the system clock may backoff
+  srand(static_cast<unsigned>(now.tv_sec));
+  version_counter_ = static_cast<uint64_t>(std::rand());
+}
+
 uint64_t Metadata::generateVersion() {
   struct timeval now;
   gettimeofday(&now, nullptr);
   uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
   version += static_cast<uint64_t>(now.tv_usec);
-  // use random position for initial counter to avoid conflicts,
-  // when the slave was promoted as master and the system clock may backoff
-  srand(static_cast<unsigned>(now.tv_sec));
-  static std::atomic<uint64_t> version_counter_ {static_cast<uint64_t>(std::rand())};
   uint64_t counter = version_counter_.fetch_add(1);
   return (version << VersionCounterBits) + (counter%(1 << VersionCounterBits));
 }
@@ -186,7 +191,7 @@ bool Metadata::Expired() const {
   return Type() != kRedisString && size == 0;
 }
 
-ListMetadata::ListMetadata() : Metadata(kRedisList) {
+ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
   head = UINT64_MAX/2;
   tail = head;
 }

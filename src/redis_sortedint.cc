@@ -51,7 +51,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, std::vector<uint64_t> i
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  SortedintMetadata metadata(true);
+  SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -81,7 +81,7 @@ rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SortedintMetadata metadata(true);
+  SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *ret = metadata.size;
@@ -99,7 +99,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  SortedintMetadata metadata(true);
+  SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 

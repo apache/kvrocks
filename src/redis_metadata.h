@@ -82,7 +82,7 @@ class Metadata {
   uint32_t size;
 
  public:
-  explicit Metadata(RedisType type, bool readonly=false);
+  explicit Metadata(RedisType type, bool generate_version=true);
   static void InitVersionCounter();
 
   RedisType Type() const;
@@ -99,34 +99,34 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  HashMetadata(bool readonly=false):Metadata(kRedisHash, readonly){}
+  HashMetadata(bool generate_version=true):Metadata(kRedisHash, generate_version){}
 };
 
 class SetMetadata : public Metadata {
  public:
-  SetMetadata(bool readonly=false): Metadata(kRedisSet, readonly) {}
+  SetMetadata(bool generate_version=true): Metadata(kRedisSet, generate_version) {}
 };
 
 class ZSetMetadata : public Metadata {
  public:
-  ZSetMetadata(bool readonly=false): Metadata(kRedisZSet, readonly){}
+  ZSetMetadata(bool generate_version=true): Metadata(kRedisZSet, generate_version){}
 };
 
 class BitmapMetadata : public Metadata {
  public:
-  BitmapMetadata(bool readonly=false): Metadata(kRedisBitmap, readonly){}
+  BitmapMetadata(bool generate_version=true): Metadata(kRedisBitmap, generate_version){}
 };
 
 class SortedintMetadata : public Metadata {
  public:
-  SortedintMetadata(bool readonly=false) : Metadata(kRedisSortedint, readonly) {}
+  SortedintMetadata(bool generate_version=true) : Metadata(kRedisSortedint, generate_version) {}
 };
 
 class ListMetadata : public Metadata {
  public:
   uint64_t head;
   uint64_t tail;
-  ListMetadata(bool readonly=false);
+  ListMetadata(bool generate_version=true);
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

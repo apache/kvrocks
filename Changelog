@@ -1,3 +1,8 @@
+* Version 1.1.9 (@2012-03-20)
+	- MOD: only generate version when needed
+	- MOD: only init version_counter once
+	- MOD: GetCFHandles use pointer instead of copy
+
 * Version 1.1.8 (@2012-03-17)
 	- ADD: rocksdb.disable_auto_compactions option
 

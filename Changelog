@@ -1,19 +1,24 @@
-* Version 1.1.9 (@2012-03-20)
+* Version 1.1.10 (@2020-03-23)
+	- MOD: change the default WAL expire time as 1 hour and max keep was 100 Gb 
+	- MOD improve the num of rocksdb backgroup threads
+
+* Version 1.1.9 (@2020-03-20)
 	- MOD: only generate version when needed
 	- MOD: only init version_counter once
 	- MOD: GetCFHandles use pointer instead of copy
 
-* Version 1.1.8 (@2012-03-17)
+* Version 1.1.8 (@2020-03-17)
 	- ADD: rocksdb.disable_auto_compactions option
 
-* Version 1.1.7 (@2012-03-03)
+* Version 1.1.7 (@2020-03-03)
 	- FIX: don't cleanup the backup dir manually which may cause the failure of create new backup 
-* Version 1.1.6 (@2012-02-28)
+
+* Version 1.1.6 (@2020-02-28)
 	- Upgrade the libevent to stable 2.1.11
 	- FIX: create backup at the same time may cause crash while the CreateNewBackupWithMetadata wasn't thread-safe call 
 	- FIX: some incorrect implements in redis command
 
-* Version 1.1.4 (@2012-01-15)
+* Version 1.1.4 (@2020-01-15)
 	- FIX: when ttl is less than one second in SET PX or PEXPIRE, round up to 1 second 
 	- FIX: disable the debug log in Makefile
 

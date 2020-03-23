@@ -217,24 +217,26 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   reply.append(Redis::BulkString(channel));
   reply.append(Redis::BulkString(msg));
 
-  std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
+  pubsub_channels_mu_.lock();
+  std::vector<ConnContext> to_publish_conn_ctxs;
   auto iter = pubsub_channels_.find(channel);
   if (iter != pubsub_channels_.end()) {
     for (const auto &conn_ctx : iter->second) {
-      auto s = conn_ctx->owner->Reply(conn_ctx->fd, reply);
-      if (s.IsOK()) {
-        cnt++;
-      }
+      to_publish_conn_ctxs.emplace_back(*conn_ctx);
     }
   }
   for (const auto &iter : pubsub_patterns_) {
     if (Util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {
-        auto s = conn_ctx->owner->Reply(conn_ctx->fd, reply);
-        if (s.IsOK()) {
-          cnt++;
-        }
+        to_publish_conn_ctxs.emplace_back(*conn_ctx);
       }
+    }
+  }
+  pubsub_channels_mu_.unlock();
+  for (const auto &conn_ctx : to_publish_conn_ctxs) {
+    auto s = conn_ctx.owner->Reply(conn_ctx.fd, reply);
+    if (s.IsOK()) {
+      cnt++;
     }
   }
   return cnt;

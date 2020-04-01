@@ -95,10 +95,14 @@ class ZSet : public SubKeyScanner {
                              const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method,
                              int *size);
+  rocksdb::Status MGet(const Slice &user_key,
+                       const std::vector<Slice> &members,
+                       std::map<std::string, double> *mscores);
+
+  rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
-  rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
 };
 
 }  // namespace Redis

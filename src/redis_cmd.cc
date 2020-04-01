@@ -19,6 +19,7 @@
 #include "redis_set.h"
 #include "redis_string.h"
 #include "redis_zset.h"
+#include "redis_geo.h"
 #include "redis_pubsub.h"
 #include "redis_sortedint.h"
 #include "redis_slot.h"
@@ -2478,6 +2479,360 @@ class CommandZInterStore : public CommandZUnionStore {
   }
 };
 
+class CommandGeoBase : public Commander {
+ public:
+  explicit CommandGeoBase(const std::string &name, int arity, bool is_write = false)
+      : Commander(name, arity, is_write) {}
+
+  Status ParseDistanceUnit(const std::string &param) {
+    if (Util::ToLower(param) == "m") {
+      distance_unit_ = kDistanceMeter;
+    } else if (Util::ToLower(param) == "km") {
+      distance_unit_ = kDistanceKilometers;
+    } else if (Util::ToLower(param) == "ft") {
+      distance_unit_ = kDistanceFeet;
+    } else if (Util::ToLower(param) == "mi") {
+      distance_unit_ = kDistanceMiles;
+    } else {
+      return Status(Status::RedisParseErr, "distance unit para error");
+    }
+    return Status::OK();
+  }
+
+  Status ParseLongLat(const std::string &longitude_para,
+                      const std::string &latitude_para,
+                      double *longitude,
+                      double *latitude) {
+    try {
+      *longitude = std::stod(longitude_para);
+      *latitude = std::stod(latitude_para);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+    }
+    if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX ||
+        *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
+      return Status(Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para);
+    }
+    return Status::OK();
+  }
+
+  double GetDistanceByUnit(double distance) {
+    return distance / GetUnitConversion();
+  }
+
+  double GetRadiusMeters(double radius) {
+    return radius * GetUnitConversion();
+  }
+
+  double GetUnitConversion() {
+    double conversion;
+    switch (distance_unit_) {
+      case kDistanceMeter:conversion = 1;
+        break;
+      case kDistanceKilometers:conversion = 1000;
+        break;
+      case kDistanceFeet:conversion = 0.3048;
+        break;
+      case kDistanceMiles:conversion = 1609.34;
+        break;
+    }
+    return conversion;
+  }
+
+ protected:
+  DistanceUnit distance_unit_ = kDistanceMeter;
+};
+
+class CommandGeoAdd : public CommandGeoBase {
+ public:
+  CommandGeoAdd() : CommandGeoBase("geoadd", -5, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if ((args.size() - 5) % 3 != 0) {
+      return Status(Status::RedisParseErr, "wrong number of arguments");
+    }
+    for (unsigned i = 2; i < args.size(); i += 3) {
+      double longitude, latitude;
+      auto s = ParseLongLat(args[i], args[i + 1], &longitude, &latitude);
+      if (!s.IsOK()) return s;
+      geo_points_.emplace_back(GeoPoint{longitude, latitude, args[i + 2]});
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.Add(args_[1], &geo_points_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<GeoPoint> geo_points_;
+};
+
+class CommandGeoDist : public CommandGeoBase {
+ public:
+  CommandGeoDist() : CommandGeoBase("geodist", -4, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 5) {
+      auto s = ParseDistanceUnit(args[4]);
+      if (!s.IsOK()) return s;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    double distance;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(std::to_string(GetDistanceByUnit(distance)));
+    }
+    return Status::OK();
+  }
+};
+
+class CommandGeoHash : public Commander {
+ public:
+  CommandGeoHash() : Commander("geohash", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    for (unsigned i = 2; i < args.size(); i++) {
+      members_.emplace_back(args[i]);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<std::string> hashes;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.Hash(args_[1], members_, &hashes);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::MultiBulkString(hashes);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> members_;
+};
+
+class CommandGeoPos : public Commander {
+ public:
+  CommandGeoPos() : Commander("geopos", -3, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    for (unsigned i = 2; i < args.size(); i++) {
+      members_.emplace_back(args[i]);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::map<std::string, GeoPoint> geo_points;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.Pos(args_[1], members_, &geo_points);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    std::vector<std::string> list;
+    for (const auto &member : members_) {
+      auto iter = geo_points.find(member.ToString());
+      if (iter == geo_points.end()) {
+        list.emplace_back(Redis::NilString());
+      } else {
+        list.emplace_back(Redis::MultiBulkString({std::to_string(iter->second.longitude),
+                                                  std::to_string(iter->second.latitude)}));
+      }
+    }
+    *output = Redis::Array(list);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> members_;
+};
+
+class CommandGeoRadius : public CommandGeoBase {
+ public:
+  CommandGeoRadius() : CommandGeoBase("georadius", -6, true) {}
+  explicit CommandGeoRadius(const std::string &name, int arity, bool is_write = false)
+      : CommandGeoBase(name, arity, is_write) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    auto s = ParseLongLat(args[2], args[3], &longitude_, &latitude_);
+    if (!s.IsOK()) return s;
+    try {
+      radius_ = std::stod(args[4]);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+    }
+    s = ParseDistanceUnit(args[5]);
+    if (!s.IsOK()) return s;
+    s = ParseRadiusExtraOption();
+    if (!s.IsOK()) return s;
+    return Commander::Parse(args);
+  }
+
+  Status ParseRadiusExtraOption(size_t i = 6) {
+    while (i < args_.size()) {
+      if (Util::ToLower(args_[i]) == "withcoord") {
+        with_coord_ = true;
+        i++;
+      } else if (Util::ToLower(args_[i]) == "withdist") {
+        with_dist_ = true;
+        i++;
+      } else if (Util::ToLower(args_[i]) == "withhash") {
+        with_hash_ = true;
+        i++;
+      } else if (Util::ToLower(args_[i]) == "asc") {
+        sort_ = kSortASC;
+        i++;
+      } else if (Util::ToLower(args_[i]) == "desc") {
+        sort_ = kSortDESC;
+        i++;
+      } else if (Util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
+        try {
+          count_ = std::stoi(args_[i + 1]);
+          i += 2;
+        } catch (const std::exception &e) {
+          return Status(Status::RedisParseErr, "ERR count is not a valid int");
+        }
+      } else if (is_write_ && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
+          && i + 1 < args_.size()) {
+        store_key_ = args_[i + 1];
+        if (Util::ToLower(args_[i]) == "storedist") {
+          store_distance_ = true;
+        }
+        i += 2;
+      } else {
+        return Status(Status::RedisParseErr, "syntax error");
+      }
+    }
+    /* Trap options not compatible with STORE and STOREDIST. */
+    if (!store_key_.empty() && (with_dist_ || with_hash_ || with_coord_)) {
+      return Status(Status::RedisParseErr,
+                    "STORE option in GEORADIUS is not compatible with WITHDIST, WITHHASH and WITHCOORDS options");
+    }
+    /* COUNT without ordering does not make much sense, force ASC
+     * ordering if COUNT was specified but no sorting was requested.
+     * */
+    if (count_ != 0 && sort_ == kSortNone) {
+      sort_ = kSortASC;
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<GeoPoint> geo_points;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_),
+                                      count_,
+                                      sort_,
+                                      store_key_,
+                                      store_distance_, GetUnitConversion(), &geo_points);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = GenerateOutput(geo_points);
+    return Status::OK();
+  }
+
+  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
+    int result_length = geo_points.size();
+    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
+    std::vector<std::string> list;
+    for (int i = 0; i < returned_items_count; i++) {
+      auto geo_point = geo_points[i];
+      if (!with_coord_ && !with_hash_ && !with_dist_) {
+        list.emplace_back(Redis::BulkString(geo_point.member));
+      } else {
+        std::vector<std::string> one;
+        one.emplace_back(Redis::BulkString(geo_point.member));
+        if (with_dist_) {
+          one.emplace_back(Redis::BulkString(std::to_string(GetDistanceByUnit(geo_point.dist))));
+        }
+        if (with_hash_) {
+          one.emplace_back(Redis::BulkString(std::to_string(geo_point.score)));
+        }
+        if (with_coord_) {
+          one.emplace_back(Redis::MultiBulkString({std::to_string(geo_point.longitude),
+                                                   std::to_string(geo_point.latitude)}));
+        }
+        list.emplace_back(Redis::Array(one));
+      }
+    }
+    return Redis::Array(list);
+  }
+
+ protected:
+  double radius_;
+  bool with_coord_ = false;
+  bool with_dist_ = false;
+  bool with_hash_ = false;
+  int count_ = 0;
+  DistanceSort sort_ = kSortNone;
+  std::string store_key_;
+  bool store_distance_ = false;
+
+ private:
+  double longitude_;
+  double latitude_;
+};
+
+class CommandGeoRadiusByMember : public CommandGeoRadius {
+ public:
+  CommandGeoRadiusByMember() : CommandGeoRadius("georadiusbymember", -5, true) {}
+  explicit CommandGeoRadiusByMember(const std::string &name, int arity, bool is_write = false)
+      : CommandGeoRadius(name, arity, is_write) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      radius_ = std::stod(args[3]);
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+    }
+    auto s = ParseDistanceUnit(args[4]);
+    if (!s.IsOK()) return s;
+    s = ParseRadiusExtraOption(5);
+    if (!s.IsOK()) return s;
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<GeoPoint> geo_points;
+    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_),
+                                              count_,
+                                              sort_,
+                                              store_key_,
+                                              store_distance_, GetUnitConversion(), &geo_points);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = GenerateOutput(geo_points);
+    return Status::OK();
+  }
+};
+
+class CommandGeoRadiusReadonly : public CommandGeoRadius {
+ public:
+  CommandGeoRadiusReadonly() : CommandGeoRadius("georadius_ro", -6, false) {}
+};
+
+class CommandGeoRadiusByMemberReadonly : public CommandGeoRadiusByMember {
+ public:
+  CommandGeoRadiusByMemberReadonly() : CommandGeoRadiusByMember("georadius_ro", -5, false) {}
+};
+
 class CommandSortedintAdd : public Commander {
  public:
   CommandSortedintAdd() : Commander("siadd", -3, true) {}
@@ -4305,6 +4660,39 @@ std::map<std::string, CommanderFactory> command_table = {
     {"zunionstore",
      []() -> std::unique_ptr<Commander> {
        return std::unique_ptr<Commander>(new CommandZUnionStore);
+     }},
+    // geo command
+    {"geoadd",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoAdd);
+     }},
+    {"geodist",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoDist);
+     }},
+    {"geohash",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoHash);
+     }},
+    {"geopos",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoPos);
+     }},
+    {"georadius",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoRadius);
+     }},
+    {"georadiusbymember",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoRadiusByMember);
+     }},
+    {"georadius_ro",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoRadiusReadonly);
+     }},
+    {"georadiusbymember_ro",
+     []() -> std::unique_ptr<Commander> {
+       return std::unique_ptr<Commander>(new CommandGeoRadiusByMemberReadonly);
      }},
     // pub/sub command
     {"publish",

@@ -86,6 +86,8 @@ target_sources(kvrocks PRIVATE
         src/redis_cmd.h
         src/util.cc
         src/util.h
+        src/geohash.cc
+        src/geohash.h
         src/storage.cc
         src/storage.h
         src/status.h
@@ -109,6 +111,8 @@ target_sources(kvrocks PRIVATE
         src/redis_set.cc
         src/redis_zset.cc
         src/redis_zset.h
+        src/redis_geo.cc
+        src/redis_geo.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
         src/redis_pubsub.cc
@@ -164,6 +168,8 @@ target_sources(kvrocks2redis PRIVATE
         src/worker.h
         src/util.cc
         src/util.h
+        src/geohash.cc
+        src/geohash.h
         src/redis_connection.cc
         src/redis_connection.h
         src/redis_request.cc
@@ -191,6 +197,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_set.cc
         src/redis_zset.cc
         src/redis_zset.h
+        src/redis_geo.cc
+        src/redis_geo.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
         src/redis_pubsub.cc
@@ -258,11 +266,13 @@ add_executable(unittest
         src/redis_list.cc
         src/redis_set.cc
         src/redis_zset.cc
+        src/redis_geo.cc
         src/redis_sortedint.cc
         src/redis_sortedint.h
         src/redis_slot.cc
         src/redis_slot.h
         src/util.cc
+        src/geohash.cc
         src/storage.cc
         src/lock_manager.cc
         src/stats.cc

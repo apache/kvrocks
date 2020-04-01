@@ -691,4 +691,33 @@ rocksdb::Status ZSet::Scan(const Slice &user_key,
   return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members);
 }
 
+rocksdb::Status ZSet::MGet(const Slice &user_key,
+                           const std::vector<Slice> &members,
+                           std::map<std::string, double> *mscores) {
+  mscores->clear();
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  ZSetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  std::string score_bytes, member_key;
+  for (const auto &member : members) {
+    InternalKey(ns_key, member, metadata.version).Encode(&member_key);
+    score_bytes.clear();
+    s = db_->Get(read_options, member_key, &score_bytes);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.IsNotFound()) {
+      continue;
+    }
+    double target_score = DecodeDouble(score_bytes.data());
+    (*mscores)[member.ToString()] = target_score;
+  }
+  return rocksdb::Status::OK();
+}
+
 }  // namespace Redis

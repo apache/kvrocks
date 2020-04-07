@@ -43,7 +43,8 @@ UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../test
 			   ../tests/config_test.o ../tests/cron_test.o ../tests/log_collector_test.o \
 			   ../tests/rwlock_test.o ../tests/string_util_test.o ../tests/t_bitmap_test.o \
 			   ../tests/t_encoding_test.o ../tests/t_hash_test.o ../tests/t_list_test.o ../tests/t_set_test.o \
-			   ../tests/task_runner_test.o  ../tests/t_string_test.o ../tests/t_zset_test.o ../tests/t_sortedint_test.o
+			   ../tests/task_runner_test.o  ../tests/t_string_test.o ../tests/t_zset_test.o ../tests/t_geo_test.o \
+			    ../tests/t_sortedint_test.o
 
 K2RDIR= ../tools/kvrocks2redis
 KVROCKS2REDIS_OBJS= $(SHARED_OBJS) $(K2RDIR)/main.o $(K2RDIR)/config.o $(K2RDIR)/parser.o \

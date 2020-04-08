@@ -39,11 +39,11 @@ TEST_F(RedisStringTest, Append) {
 
 TEST_F(RedisStringTest, GetAndSet) {
   for (size_t i = 0; i < pairs_.size(); i++) {
-    string->Set(pairs_[i].key, pairs_[i].value);
+    string->Set(pairs_[i].key.ToString(), pairs_[i].value.ToString());
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
     std::string got_value;
-    string->Get(pairs_[i].key, &got_value);
+    string->Get(pairs_[i].key.ToString(), &got_value);
     EXPECT_EQ(pairs_[i].value, got_value);
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
@@ -60,7 +60,7 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   }
   string->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
@@ -86,11 +86,10 @@ TEST_F(RedisStringTest, IncrBy) {
   s = string->IncrBy(key_, 1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
   string->Del(key_);
-
 }
 
 TEST_F(RedisStringTest, GetSet) {
-  std::vector<Slice> values = {"a", "b", "c", "d"};
+  std::vector<std::string> values = {"a", "b", "c", "d"};
   for(size_t i = 0; i < values.size(); i++) {
     std::string old_value;
     string->GetSet(key_, values[i], &old_value);
@@ -127,7 +126,7 @@ TEST_F(RedisStringTest, MSetNX) {
   }
   string->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
 
   std::vector<StringPair> new_pairs{

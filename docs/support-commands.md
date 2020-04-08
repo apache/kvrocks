@@ -185,7 +185,14 @@
 
 ## GEO Commands
 
-**Not Supported**
+| Command           | Supported OR Not | Desc |
+| ------------      | ---------------- | ---- |
+| geoadd            | √                |      |
+| geodist           | √                |      |
+| geohash           | √                |      |
+| geopos            | √                |      |
+| georadius         | √                |      |
+| georadiusbymember | √                |      |
 
 ## Hyperloglog Commands
 

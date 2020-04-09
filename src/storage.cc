@@ -162,6 +162,7 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
+  metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
@@ -172,6 +173,7 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
+  subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;
   pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
@@ -179,6 +181,7 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
+  pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
@@ -214,6 +217,7 @@ Status Storage::Open(bool read_only) {
     rocksdb::ColumnFamilyOptions slotkey_opts(options);
     slotkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slotkey_table_opts));
     slotkey_opts.compaction_filter_factory = std::make_shared<SlotKeyFilterFactory>(this);
+    slotkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
     column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotMetadataColumnFamilyName, slot_metadata_opts));
     column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotColumnFamilyName, slotkey_opts));

@@ -161,7 +161,7 @@ rocksdb::Status String::SetRange(const std::string &user_key, int offset, const 
     int paddings = offset-size;
     raw_value.append(paddings, '\0');
   }
-  if (offset+value.size() >= size) {
+  if (offset + static_cast<int>(value.size()) >= size) {
     raw_value = raw_value.substr(0, offset);
     raw_value.append(value);
   } else {

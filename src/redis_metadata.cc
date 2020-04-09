@@ -104,7 +104,7 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key)
 
 Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
-  expire = -1;
+  expire = 0;
   version = 0;
   size = 0;
   if (generate_version) version = generateVersion();
@@ -173,7 +173,7 @@ int32_t Metadata::TTL() const {
   if (expire != 0 && expire < now) {
     return -2;
   }
-  return expire == 0 ? -1 : int32_t (expire - now);
+  return expire <= 0 ? -1 : int32_t (expire - now);
 }
 
 timeval Metadata::Time() const {

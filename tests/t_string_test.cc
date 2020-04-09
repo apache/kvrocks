@@ -39,11 +39,11 @@ TEST_F(RedisStringTest, Append) {
 
 TEST_F(RedisStringTest, GetAndSet) {
   for (size_t i = 0; i < pairs_.size(); i++) {
-    string->Set(pairs_[i].key, pairs_[i].value);
+    string->Set(pairs_[i].key.ToString(), pairs_[i].value.ToString());
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
     std::string got_value;
-    string->Get(pairs_[i].key, &got_value);
+    string->Get(pairs_[i].key.ToString(), &got_value);
     EXPECT_EQ(pairs_[i].value, got_value);
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
@@ -60,11 +60,33 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   }
   string->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
   for (size_t i = 0; i < pairs_.size(); i++) {
     string->Del(pairs_[i].key);
   }
+}
+
+TEST_F(RedisStringTest, IncrByFloat) {
+  float f;
+  float max_float = std::numeric_limits<float>::max();
+  string->IncrByFloat(key_, 1.0, &f);
+  EXPECT_EQ(1.0, f);
+  string->IncrByFloat(key_, max_float-1, &f);
+  EXPECT_EQ(max_float, f);
+  rocksdb::Status s = string->IncrByFloat(key_, 1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  string->IncrByFloat(key_, -1*max_float, &f);
+  EXPECT_EQ(0, f);
+  string->IncrByFloat(key_, -1*max_float, &f);
+  EXPECT_EQ(-1*max_float, f);
+  s = string->IncrByFloat(key_, -1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  // key hold value is not the number
+  string->Set(key_, "abc");
+  s = string->IncrByFloat(key_, 1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  string->Del(key_);
 }
 
 TEST_F(RedisStringTest, IncrBy) {
@@ -86,16 +108,21 @@ TEST_F(RedisStringTest, IncrBy) {
   s = string->IncrBy(key_, 1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
   string->Del(key_);
-
 }
 
 TEST_F(RedisStringTest, GetSet) {
-  std::vector<Slice> values = {"a", "b", "c", "d"};
+  int ttl;
+  int64_t now;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
+  std::vector<std::string> values = {"a", "b", "c", "d"};
   for(size_t i = 0; i < values.size(); i++) {
     std::string old_value;
+    string->Expire(key_, static_cast<int>(now+1000));
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
+      string->TTL(key_, &ttl);
+      EXPECT_TRUE(ttl == -1);
     } else {
       EXPECT_TRUE(old_value.empty());
     }
@@ -127,7 +154,7 @@ TEST_F(RedisStringTest, MSetNX) {
   }
   string->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value.ToString(), values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
 
   std::vector<StringPair> new_pairs{
@@ -170,10 +197,16 @@ TEST_F(RedisStringTest, SetRange) {
   std::string value;
   string->Get(key_, &value);
   EXPECT_EQ("hello,redis", value);
-  string->SetRange(key_, 6, "redis-1", &ret);
-  EXPECT_EQ(13, ret);
+
+  string->SetRange(key_, 6, "test", &ret);
+  EXPECT_EQ(11, ret);
   string->Get(key_, &value);
-  EXPECT_EQ("hello,redis-1", value);
+  EXPECT_EQ("hello,tests", value);
+
+  string->SetRange(key_, 6, "redis-1234", &ret);
+  string->Get(key_, &value);
+  EXPECT_EQ("hello,redis-1234", value);
+
   string->SetRange(key_, 15, "1", &ret);
   EXPECT_EQ(16, ret);
   string->Get(key_, &value);

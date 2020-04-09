@@ -4,63 +4,61 @@
 
 namespace Redis {
 
-rocksdb::Status String::getValue(const Slice &ns_key, std::string *raw_value, std::string *value) {
-  if (value) value->clear();
-  if (raw_value) {
-    raw_value->clear();
-    std::string md_bytes;
-    Metadata(kRedisString, false).Encode(&md_bytes);
-    raw_value->append(md_bytes);
-  }
+const int STRING_HDR_SIZE = 5;
+
+rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
+  raw_value->clear();
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  std::string raw_bytes;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &raw_bytes);
+  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(raw_bytes);
+  metadata.Decode(*raw_value);
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound("the key was expired");
   }
   if (metadata.Type() != kRedisString && metadata.size > 0) {
     return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
   }
-  if (value) value->assign(raw_bytes.substr(5, raw_bytes.size()-5));
-  if (raw_value) raw_value->assign(raw_bytes.data(), raw_bytes.size());
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::updateValue(const Slice &ns_key, const Slice &raw_value, const Slice &new_value) {
-  std::string metadata_bytes;
-  if (raw_value.empty()) {
-    Metadata(kRedisString, false).Encode(&metadata_bytes);
-  } else {
-    metadata_bytes = raw_value.ToString().substr(0, 5);
-  }
-  metadata_bytes.append(new_value.ToString());
+rocksdb::Status String::getValue(const std::string &ns_key, std::string *value) {
+  value->clear();
+  std::string raw_value;
+  auto s = getRawValue(ns_key, &raw_value);
+  if (!s.ok()) return s;
+  *value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
+  return rocksdb::Status::OK();
+}
 
+rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::string &raw_value) {
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisString);
   batch.PutLogData(log_data.Encode());
-  batch.Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  batch.Put(metadata_cf_handle_, ns_key, raw_value);
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status String::Append(const Slice &user_key, const Slice &value, int *ret) {
+rocksdb::Status String::Append(const std::string &user_key, const std::string &value, int *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value_bytes, value_bytes;
-  rocksdb::Status s = getValue(ns_key, &raw_value_bytes, &value_bytes);
+  std::string raw_value;
+  rocksdb::Status s = getRawValue(ns_key, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
-  value_bytes.append(value.ToString());
-  *ret = static_cast<int>(value_bytes.size());
-  return updateValue(ns_key, raw_value_bytes, value_bytes);
+  if (s.IsNotFound()) {
+    Metadata metadata(kRedisString, false);
+    metadata.Encode(&raw_value);
+  }
+  raw_value.append(value);
+  *ret = static_cast<int>(raw_value.size()-STRING_HDR_SIZE);
+  return updateRawValue(ns_key, raw_value);
 }
 
 std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
@@ -69,47 +67,51 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
   std::vector<rocksdb::Status> statuses;
   for (size_t i = 0; i < keys.size(); i++) {
     AppendNamespacePrefix(keys[i], &ns_key);
-    statuses.emplace_back(getValue(ns_key, nullptr, &value));
+    statuses.emplace_back(getValue(ns_key, &value));
     values->emplace_back(value);
   }
   return statuses;
 }
 
-rocksdb::Status String::Get(const Slice &user_key, std::string *value) {
+rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
   std::vector<Slice> keys{user_key};
   std::vector<std::string> values;
   std::vector<rocksdb::Status> statuses = MGet(keys, &values);
-  *value = values[0];
+  *value = std::move(values[0]);
   return statuses[0];
 }
-rocksdb::Status String::GetSet(const Slice &user_key, const Slice &new_value, std::string *old_value) {
+
+rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value_bytes, value_bytes;
-  rocksdb::Status s = getValue(ns_key, &raw_value_bytes, &value_bytes);
+  rocksdb::Status s = getValue(ns_key, old_value);
   if (!s.ok() && !s.IsNotFound()) return s;
-  *old_value = value_bytes;
-  return updateValue(ns_key, raw_value_bytes, new_value);
+
+  std::string raw_value;
+  Metadata metadata(kRedisString, false);
+  metadata.Encode(&raw_value);
+  raw_value.append(new_value);
+  return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::Set(const Slice &user_key, const Slice &value) {
+rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSet(pairs, 0);
 }
 
-rocksdb::Status String::SetEX(const Slice &user_key, const Slice &value, int ttl) {
+rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, int ttl) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSet(pairs, ttl);
 }
 
-rocksdb::Status String::SetNX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
+rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, int ttl, int *ret) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
   return MSetNX(pairs, ttl, ret);
 }
 
-rocksdb::Status String::SetXX(const Slice &user_key, const Slice &value, int ttl, int *ret) {
+rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, int ttl, int *ret) {
   *ret = 0;
   int exists = 0;
   uint32_t expire = 0;
@@ -130,89 +132,114 @@ rocksdb::Status String::SetXX(const Slice &user_key, const Slice &value, int ttl
   if (exists != 1) return rocksdb::Status::OK();
 
   *ret = 1;
-  std::string bytes;
+  std::string raw_value;
   Metadata metadata(kRedisString, false);
   metadata.expire = expire;
-  metadata.Encode(&bytes);
-  bytes.append(value.ToString());
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  metadata.Encode(&raw_value);
+  raw_value.append(value);
+  return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::SetRange(const Slice &user_key, int offset, Slice value, int *ret) {
+rocksdb::Status String::SetRange(const std::string &user_key, int offset, const std::string &value, int *ret) {
+  int size;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value_bytes, value_bytes;
-  rocksdb::Status s = getValue(ns_key, &raw_value_bytes, &value_bytes);
+  std::string raw_value;
+  rocksdb::Status s = getRawValue(ns_key, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
-  if (offset > static_cast<int>(value_bytes.size())) {
-    // padding the value with zero byte while offset is longer than value size
-    int paddings = offset- static_cast<int>(value_bytes.size());
-    value_bytes.append(paddings, '\0');
+
+  if (s.IsNotFound()) {
+    Metadata metadata(kRedisString, false);
+    metadata.Encode(&raw_value);
   }
-  if (offset+value.size() >= value_bytes.size()) {
-    value_bytes = value_bytes.substr(0, offset);
-    value_bytes.append(value.ToString());
+  size = static_cast<int>(raw_value.size());
+  offset += STRING_HDR_SIZE;
+  if (offset > size) {
+    // padding the value with zero byte while offset is longer than value size
+    int paddings = offset-size;
+    raw_value.append(paddings, '\0');
+  }
+  if (offset+value.size() >= size) {
+    raw_value = raw_value.substr(0, offset);
+    raw_value.append(value);
   } else {
     for (size_t i = 0; i < value.size(); i++) {
-      value_bytes[i] = value[i];
+      raw_value[offset+i] = value[i];
     }
   }
-  *ret = static_cast<int>(value_bytes.size());
-  return updateValue(ns_key, raw_value_bytes, value_bytes);
+  *ret = static_cast<int>(raw_value.size()-STRING_HDR_SIZE);
+  return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::IncrBy(const Slice &user_key, int64_t increment, int64_t *ret) {
-  std::string ns_key;
+rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, int64_t *ret) {
+  std::string ns_key, value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value_bytes, value_bytes;
-  rocksdb::Status s = getValue(ns_key, &raw_value_bytes, &value_bytes);
+  std::string raw_value;
+  rocksdb::Status s = getRawValue(ns_key, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
-  int64_t value = 0;
-  if (!value_bytes.empty()) {
+  if (s.IsNotFound()) {
+    Metadata metadata(kRedisString, false);
+    metadata.Encode(&raw_value);
+  }
+
+  value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
+  int64_t n = 0;
+  if (!value.empty()) {
     try {
-      value = std::stoll(value_bytes);
+      n = std::stoll(value);
     } catch(std::exception &e) {
       return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
     }
   }
-  if ((increment < 0 && value < 0 && increment < (LLONG_MIN-value))
-      || (increment > 0 && value > 0 && increment > (LLONG_MAX-value))) {
+  if ((increment < 0 && n <= 0 && increment < (LLONG_MIN-n))
+      || (increment > 0 && n >= 0 && increment > (LLONG_MAX-n))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
-  value += increment;
-  *ret = value;
-  return updateValue(ns_key, raw_value_bytes, std::to_string(value));
+  n += increment;
+  *ret = n;
+
+  raw_value = raw_value.substr(0, STRING_HDR_SIZE);
+  raw_value.append(std::to_string(n));
+  return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::IncrByFloat(const Slice &user_key, float increment, float *ret) {
-  std::string ns_key;
+rocksdb::Status String::IncrByFloat(const std::string &user_key, float increment, float *ret) {
+  std::string ns_key, value;
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value_bytes, value_bytes;
-  rocksdb::Status s = getValue(ns_key, &raw_value_bytes, &value_bytes);
+  std::string raw_value;
+  rocksdb::Status s = getRawValue(ns_key, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
-  float value = 0;
-  if (!value_bytes.empty()) {
+
+  if (s.IsNotFound()) {
+    Metadata metadata(kRedisString, false);
+    metadata.Encode(&raw_value);
+  }
+  value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
+  float n = 0;
+  if (!value.empty()) {
     try {
-      value = std::stof(value_bytes);
+      n = std::stof(value);
     } catch(std::exception &e) {
       return rocksdb::Status::InvalidArgument("value is not an integer");
     }
   }
   auto float_min = std::numeric_limits<float>::min();
   auto float_max = std::numeric_limits<float>::max();
-  if ((increment < 0 && value < 0 && increment < (float_min-value))
-      || (increment > 0 && value > 0 && increment > (float_max-value))) {
+  if ((increment < 0 && n < 0 && increment < (float_min-n))
+      || (increment > 0 && n > 0 && increment > (float_max-n))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
-  value += increment;
-  *ret = value;
-  return updateValue(ns_key, raw_value_bytes, std::to_string(value));
+  n += increment;
+  *ret = n;
+
+  raw_value = raw_value.substr(0, STRING_HDR_SIZE);
+  raw_value.append(std::to_string(n));
+  return updateRawValue(ns_key, raw_value);
 }
 
 rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {

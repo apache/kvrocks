@@ -27,7 +27,7 @@ protected:
 protected:
   Engine::Storage *storage_;
   Config *config_ = nullptr;
-  Slice key_;
+  std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
 };

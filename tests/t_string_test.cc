@@ -67,6 +67,28 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   }
 }
 
+TEST_F(RedisStringTest, IncrByFloat) {
+  float f;
+  float max_float = std::numeric_limits<float>::max();
+  string->IncrByFloat(key_, 1.0, &f);
+  EXPECT_EQ(1.0, f);
+  string->IncrByFloat(key_, max_float-1, &f);
+  EXPECT_EQ(max_float, f);
+  rocksdb::Status s = string->IncrByFloat(key_, 1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  string->IncrByFloat(key_, -1*max_float, &f);
+  EXPECT_EQ(0, f);
+  string->IncrByFloat(key_, -1*max_float, &f);
+  EXPECT_EQ(-1*max_float, f);
+  s = string->IncrByFloat(key_, -1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  // key hold value is not the number
+  string->Set(key_, "abc");
+  s = string->IncrByFloat(key_, 1.2, &f);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  string->Del(key_);
+}
+
 TEST_F(RedisStringTest, IncrBy) {
   int64_t ret;
   string->IncrBy(key_, 1, &ret);
@@ -89,12 +111,18 @@ TEST_F(RedisStringTest, IncrBy) {
 }
 
 TEST_F(RedisStringTest, GetSet) {
+  int ttl;
+  int64_t now;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for(size_t i = 0; i < values.size(); i++) {
     std::string old_value;
+    string->Expire(key_, static_cast<int>(now+1000));
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
+      string->TTL(key_, &ttl);
+      EXPECT_TRUE(ttl == -1);
     } else {
       EXPECT_TRUE(old_value.empty());
     }
@@ -169,10 +197,16 @@ TEST_F(RedisStringTest, SetRange) {
   std::string value;
   string->Get(key_, &value);
   EXPECT_EQ("hello,redis", value);
-  string->SetRange(key_, 6, "redis-1", &ret);
-  EXPECT_EQ(13, ret);
+
+  string->SetRange(key_, 6, "test", &ret);
+  EXPECT_EQ(11, ret);
   string->Get(key_, &value);
-  EXPECT_EQ("hello,redis-1", value);
+  EXPECT_EQ("hello,tests", value);
+
+  string->SetRange(key_, 6, "redis-1234", &ret);
+  string->Get(key_, &value);
+  EXPECT_EQ("hello,redis-1234", value);
+
   string->SetRange(key_, 15, "1", &ret);
   EXPECT_EQ(16, ret);
   string->Get(key_, &value);

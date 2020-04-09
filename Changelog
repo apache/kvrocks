@@ -1,3 +1,11 @@
+* Version 1.1.11 (@2020-04-09)
+	- FIX: dead lock
+	- MOD: refactor redis string
+	- FIX: ttl command should returns -1 if the key exists but has no associated expire
+	- FIX: config rocksdb.disable_auto_compactions didn't work in config file
+	- MOD: turn the rocksdb.cache_index_and_filter_blocks default value to 'yes'
+	- ADD: incrbyfloat test case
+
 * Version 1.1.10 (@2020-03-23)
 	- MOD: change the default WAL expire time as 1 hour and max keep was 100 Gb 
 	- MOD improve the num of rocksdb backgroup threads

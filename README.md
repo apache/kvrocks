@@ -1,4 +1,4 @@
-# kvrocks  ![image](https://travis-ci.org/meitu/kvrocks.svg?branch=master)
+# kvrocks  ![image](https://travis-ci.org/bitleak/kvrocks.svg?branch=master)
 
 kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
@@ -33,7 +33,7 @@ brew install snappy
 ```
 
 ```shell
-$ git clone --recursive https://github.com/meitu/kvrocks.git
+$ git clone --recursive https://github.com/bitleak/kvrocks.git
 $ cd kvrocks
 $ make -j4
 ```
@@ -95,9 +95,9 @@ OK
 
 ## DOCs
 
-* [supported commands](https://github.com/meitu/kvrocks/blob/master/docs/support-commands.md)
-* [design complex kv on rocksdb](https://github.com/meitu/kvrocks/blob/master/docs/metadata-design.md)
-* [replication design](https://github.com/meitu/kvrocks/blob/master/docs/replication-design.md)
+* [supported commands](https://github.com/bitleak/kvrocks/blob/master/docs/support-commands.md)
+* [design complex kv on rocksdb](https://github.com/bitleak/kvrocks/blob/master/docs/metadata-design.md)
+* [replication design](https://github.com/bitleak/kvrocks/blob/master/docs/replication-design.md)
 
 ## Migrate Tools
 
@@ -121,7 +121,7 @@ OK
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-commands.png)
+![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-commands.png)
 
 #### 2.  QPS on different payload
 
@@ -129,7 +129,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-values.png)
+![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -137,7 +137,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/meitu/kvrocks/master/docs/images/chart-threads.png)
+![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-threads.png)
 
 ## License
 

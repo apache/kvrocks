@@ -45,13 +45,13 @@
 #define ECCENT (sqrt(1.0 - (RATIO *RATIO)))
 #define COM (0.5 * ECCENT)
 
-/// @brief The usual PI/180 constant
-//const double DEG_TO_RAD = 0.017453292519943295769236907684886;
-/// @brief Earth's quatratic mean radius for WGS-84
+// @brief The usual PI/180 constant
+// const double DEG_TO_RAD = 0.017453292519943295769236907684886;
+// @brief Earth's quatratic mean radius for WGS-84
 const double EARTH_RADIUS_IN_METERS = 6372797.560856;
 
 const double MERCATOR_MAX = 20037726.37;
-//const double MERCATOR_MIN = -20037726.37;
+// const double MERCATOR_MIN = -20037726.37;
 
 static inline double deg_rad(double ang) { return ang * D_R; }
 static inline double rad_deg(double ang) { return ang / D_R; }
@@ -189,8 +189,8 @@ int geohashEncodeWGS84(double longitude, double latitude, uint8_t step,
   return geohashEncodeType(longitude, latitude, step, hash);
 }
 
-int geohashDecode(const GeoHashRange long_range, const GeoHashRange lat_range,
-                  const GeoHashBits hash, GeoHashArea *area) {
+int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
+                  const GeoHashBits &hash, GeoHashArea *area) {
   if (HASHISZERO(hash) || NULL == area || RANGEISZERO(lat_range) ||
       RANGEISZERO(long_range)) {
     return 0;
@@ -221,13 +221,13 @@ int geohashDecode(const GeoHashRange long_range, const GeoHashRange lat_range,
   return 1;
 }
 
-int geohashDecodeType(const GeoHashBits hash, GeoHashArea *area) {
+int geohashDecodeType(const GeoHashBits &hash, GeoHashArea *area) {
   GeoHashRange r[2] = {{0}};
   geohashGetCoordRange(&r[0], &r[1]);
   return geohashDecode(r[0], r[1], hash, area);
 }
 
-int geohashDecodeWGS84(const GeoHashBits hash, GeoHashArea *area) {
+int geohashDecodeWGS84(const GeoHashBits &hash, GeoHashArea *area) {
   return geohashDecodeType(hash, area);
 }
 
@@ -242,14 +242,14 @@ int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
   return 1;
 }
 
-int geohashDecodeToLongLatType(const GeoHashBits hash, double *xy) {
+int geohashDecodeToLongLatType(const GeoHashBits &hash, double *xy) {
   GeoHashArea area = {{0}};
   if (!xy || !geohashDecodeType(hash, &area))
     return 0;
   return geohashDecodeAreaToLongLat(&area, xy);
 }
 
-int geohashDecodeToLongLatWGS84(const GeoHashBits hash, double *xy) {
+int geohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy) {
   return geohashDecodeToLongLatType(hash, xy);
 }
 
@@ -474,7 +474,7 @@ GeoHashRadius GeoHashHelper::GetAreasByRadiusWGS84(double longitude, double lati
   return GetAreasByRadius(longitude, latitude, radius_meters);
 }
 
-GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits hash) {
+GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits &hash) {
   uint64_t bits = hash.bits;
   bits <<= (52 - hash.step * 2);
   return bits;

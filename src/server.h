@@ -49,7 +49,6 @@ class Server {
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
-  void ResetMaster();
   Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
   void cleanupExitedSlaves();
@@ -151,7 +150,7 @@ class Server {
 
   // threads
   std::thread cron_thread_;
-  TaskRunner *task_runner_ = nullptr;
+  TaskRunner task_runner_;
   std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };

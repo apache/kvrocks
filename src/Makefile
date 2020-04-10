@@ -84,8 +84,8 @@ endif
 .PHONY: all
 
 lint:
-	- cd ..; ./cpplint.sh
-	- cd ..; ./cppcheck.sh
+	cd ..; ./cpplint.sh
+	cd ..; ./cppcheck.sh
 
 $(PROG): SUBMODULES $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
@@ -134,10 +134,10 @@ clean:
 	- rm -rf $(K2RDIR)/*.o kvrocks2redis
 
 distclean: clean
-	-make -C $(ROCKSDB_PATH)/ clean
-	-make -C $(LIBEVENT_PATH)/ clean
-	-make -C $(JEMALLOC_PATH)/ distclean
-	-make -C $(GLOG_PATH)/ distclean
+	- make -C $(ROCKSDB_PATH)/ clean
+	- make -C $(LIBEVENT_PATH)/ clean
+	- make -C $(JEMALLOC_PATH)/ distclean
+	- make -C $(GLOG_PATH)/ distclean
 
 install: all
 	@mkdir -p $(INSTALL_DIR)

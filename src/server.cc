@@ -41,7 +41,6 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
-  task_runner_ = new TaskRunner(2, 1024);
   time(&start_time_);
 }
 
@@ -52,7 +51,6 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
-  delete task_runner_;
   delete slotsmgrt_sender_thread_;
 }
 
@@ -64,7 +62,7 @@ Status Server::Start() {
   for (const auto worker : worker_threads_) {
     worker->Start();
   }
-  task_runner_->Start();
+  task_runner_.Start();
   // setup server cron thread
   cron_thread_ = std::thread([this]() {
     Util::ThreadSetName("server-cron");
@@ -87,7 +85,7 @@ void Server::Stop() {
   for (const auto slave_thread : slave_threads_) slave_thread->Stop();
   slave_threads_mu_.unlock();
   cleanupExitedSlaves();
-  task_runner_->Stop();
+  task_runner_.Stop();
   if (slotsmgrt_sender_thread_ != nullptr) {
     slotsmgrt_sender_thread_->Stop();
   }
@@ -97,7 +95,7 @@ void Server::Join() {
   for (const auto worker : worker_threads_) {
     worker->Join();
   }
-  task_runner_->Join();
+  task_runner_.Join();
   if (cron_thread_.joinable()) cron_thread_.join();
   if (slotsmgrt_sender_thread_ != nullptr) {
     slotsmgrt_sender_thread_->Join();
@@ -720,7 +718,7 @@ void Server::ReclaimOldDBPtr() {
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
   LOG(INFO) << "Restarting the task runner...";
-  task_runner_->Restart();
+  task_runner_.Restart();
   LOG(INFO) << "Waiting for excuting command...";
   while (excuting_command_num_ != 0) {
     usleep(200000);
@@ -750,7 +748,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     delete begin;
     delete end;
   };
-  return task_runner_->Publish(task);
+  return task_runner_.Publish(task);
 }
 
 Status Server::AsyncBgsaveDB() {
@@ -771,7 +769,7 @@ Status Server::AsyncBgsaveDB() {
     svr->db_bgsave_ = false;
     svr->db_mu_.unlock();
   };
-  return task_runner_->Publish(task);
+  return task_runner_.Publish(task);
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
@@ -801,7 +799,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     svr->db_scan_infos_[ns].is_scanning = false;
     svr->db_mu_.unlock();
   };
-  return task_runner_->Publish(task);
+  return task_runner_.Publish(task);
 }
 
 void Server::GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats) {

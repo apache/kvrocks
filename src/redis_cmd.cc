@@ -2774,7 +2774,7 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
  protected:
-  double radius_;
+  double radius_ = 0;
   bool with_coord_ = false;
   bool with_dist_ = false;
   bool with_hash_ = false;
@@ -2784,8 +2784,8 @@ class CommandGeoRadius : public CommandGeoBase {
   bool store_distance_ = false;
 
  private:
-  double longitude_;
-  double latitude_;
+  double longitude_ = 0;
+  double latitude_ = 0;
 };
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {

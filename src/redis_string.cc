@@ -1,4 +1,5 @@
 #include "redis_string.h"
+#include <utility>
 #include <string>
 #include <limits>
 

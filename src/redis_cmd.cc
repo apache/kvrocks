@@ -376,27 +376,29 @@ class CommandSet : public Commander {
  public:
   CommandSet() : Commander("set", -3, true) {}
   Status Parse(const std::vector<std::string> &args) override {
+    bool last_arg;
     for (size_t i = 3; i < args.size(); i++) {
+      last_arg = (i == args.size()-1);
       std::string opt = Util::ToLower(args[i]);
-      if (opt == "nx" || opt == "xx") {
-        opt == "nx" ? nx_ = true : xx_ = true;
-        continue;
-      }
-      if ((opt == "ex" || opt == "px") && i+1 < args.size()) {
-        if (opt == "ex") {
-          ttl_ = atoi(args[i+1].c_str());
+      if (opt == "nx") {
+        nx_ = true;
+      } else if (opt == "xx") {
+        xx_ = true;
+      } else if (opt == "ex") {
+        if (last_arg) return Status(Status::NotOK, "syntax error");
+        ttl_ = atoi(args_[++i].c_str());
+      } else if (opt == "px") {
+        if (last_arg) return Status(Status::NotOK, "syntax error");
+        auto ttl_ms = atol(args[++i].c_str());
+        if (ttl_ms > 0 && ttl_ms < 1000) {
+          // round up the pttl to second
+          ttl_ = 1;
         } else {
-          auto ttl_ms = atol(args[i + 1].c_str());
-          if (ttl_ms > 0 && ttl_ms < 1000) {
-            ttl_ = 1;
-          } else {
-            ttl_ = ttl_ms / 1000;
-          }
+          ttl_ = static_cast<int>(ttl_ms/1000);
         }
-        i++;
-        continue;
+      } else {
+        return Status(Status::NotOK, "syntax error");
       }
-      return Status(Status::NotOK, "syntax error");
     }
     return Commander::Parse(args);
   }

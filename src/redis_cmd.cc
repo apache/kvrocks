@@ -4185,674 +4185,204 @@ class CommandSlotsCheck : public Commander {
   }
 };
 
+#define ADD_CMD(name, fn) \
+{name,  []() -> std::unique_ptr<Commander> { \
+  return std::unique_ptr<Commander>(new fn()); \
+}}
+
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 std::map<std::string, CommanderFactory> command_table = {
-    {"auth",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandAuth);
-     }},
-    {"ping",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPing);
-     }},
-    {"select",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSelect);
-     }},
-    {"info",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandInfo);
-     }},
-    {"config",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandConfig);
-     }},
-    {"namespace",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandNamespace);
-     }},
-    {"keys",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandKeys);
-     }},
-    {"flushdb",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandFlushDB);
-     }},
-    {"flushall",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandFlushAll);
-     }},
-    {"dbsize",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandDBSize);
-     }},
-    {"slowlog",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlowlog);
-     }},
-    {"perflog",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPerfLog);
-     }},
-    {"client",
-     []()->std::unique_ptr<Commander> {
-        return std::unique_ptr<Commander>(new CommandClient);
-    }},
-    {"monitor",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandMonitor);
-     }},
-    {"shutdown",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandShutdown);
-     }},
-    {"quit",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandQuit);
-     }},
-    {"scan",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandScan);
-     }},
-    {"randomkey",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandRandomKey);
-     }},
+    ADD_CMD("auth",      CommandAuth),
+    ADD_CMD("ping",      CommandPing),
+    ADD_CMD("select",    CommandSelect),
+    ADD_CMD("info",      CommandInfo),
+    ADD_CMD("config",    CommandConfig),
+    ADD_CMD("namespace", CommandNamespace),
+    ADD_CMD("keys",      CommandKeys),
+    ADD_CMD("flushdb",   CommandFlushDB),
+    ADD_CMD("flushall",  CommandFlushAll),
+    ADD_CMD("dbsize",    CommandDBSize),
+    ADD_CMD("slowlog",   CommandSlowlog),
+    ADD_CMD("perflog",   CommandPerfLog),
+    ADD_CMD("client",    CommandClient),
+    ADD_CMD("monitor",   CommandMonitor),
+    ADD_CMD("shutdown",  CommandShutdown),
+    ADD_CMD("quit",      CommandQuit),
+    ADD_CMD("scan",      CommandScan),
+    ADD_CMD("randomkey", CommandRandomKey),
+
     // key command
-    {"ttl",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandTTL);
-     }},
-    {"pttl",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPTTL);
-     }},
-    {"type",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandType);
-     }},
-    {"object",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandObject);
-     }},
-    {"exists",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandExists);
-     }},
-    {"persist",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPersist);
-     }},
-    {"expire",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandExpire);
-     }},
-    {"pexpire",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPExpire);
-     }},
-    {"expireat",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandExpireAt);
-     }},
-    {"pexpireat",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPExpireAt);
-     }},
-    {"del",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandDel);
-     }},
+    ADD_CMD("ttl",       CommandTTL),
+    ADD_CMD("pttl",      CommandPTTL),
+    ADD_CMD("type",      CommandType),
+    ADD_CMD("object",    CommandObject),
+    ADD_CMD("exists",    CommandExists),
+    ADD_CMD("persist",   CommandPersist),
+    ADD_CMD("expire",    CommandExpire),
+    ADD_CMD("pexpire",   CommandPExpire),
+    ADD_CMD("expireat",  CommandExpireAt),
+    ADD_CMD("pexpireat", CommandPExpireAt),
+    ADD_CMD("del",       CommandDel),
+
     // string command
-    {"get",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGet);
-     }},
-    {"strlen",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandStrlen);
-     }},
-    {"getset",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGetSet);
-     }},
-    {"getrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGetRange);
-     }},
-    {"setrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSetRange);
-     }},
-    {"mget",
-          []() -> std::unique_ptr<Commander> {
-            return std::unique_ptr<Commander>(new CommandMGet);
-     }},
-    {"append",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandAppend);
-     }},
-    {"set",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSet);
-     }},
-    {"setex",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSetEX);
-     }},
-    {"setnx",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSetNX);
-     }},
-    {"mset",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandMSet);
-     }},
-    {"incrby",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandIncrBy);
-     }},
-    {"incrbyfloat",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandIncrByFloat);
-     }},
-    {"incr",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandIncr);
-     }},
-    {"decrby",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandDecrBy);
-     }},
-    {"decr",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandDecr);
-     }},
+    ADD_CMD("get",         CommandGet),
+    ADD_CMD("strlen",      CommandStrlen),
+    ADD_CMD("getset",      CommandGetSet),
+    ADD_CMD("getrange",    CommandGetRange),
+    ADD_CMD("setrange",    CommandSetRange),
+    ADD_CMD("mget",        CommandMGet),
+    ADD_CMD("append",      CommandAppend),
+    ADD_CMD("set",         CommandSet),
+    ADD_CMD("setex",       CommandSetEX),
+    ADD_CMD("setnx",       CommandSetNX),
+    ADD_CMD("mset",        CommandMSet),
+    ADD_CMD("incrby",      CommandIncrBy),
+    ADD_CMD("incrbyfloat", CommandIncrByFloat),
+    ADD_CMD("incr",        CommandIncr),
+    ADD_CMD("decrby",      CommandDecrBy),
+    ADD_CMD("decr",        CommandDecr),
+
     // bit command
-    {"getbit",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGetBit);
-     }},
-     {"setbit",
-      []() -> std::unique_ptr<Commander> {
-        return std::unique_ptr<Commander>(new CommandSetBit);
-     }},
-    {"msetbit",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandMSetBit);
-     }},
-    {"bitcount",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandBitCount);
-     }},
-    {"bitpos",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandBitPos);
-     }},
+    ADD_CMD("getbit",   CommandGetBit),
+    ADD_CMD("setbit",   CommandSetBit),
+    ADD_CMD("msetbit",  CommandMSetBit),
+    ADD_CMD("bitcount", CommandBitCount),
+    ADD_CMD("bitpos",   CommandBitPos),
+
     // hash command
-    {"hget",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHGet);
-     }},
-    {"hincrby",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHIncrBy);
-     }},
-    {"hincrbyfloat",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHIncrByFloat);
-     }},
-    {"hset",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHSet);
-     }},
-    {"hsetnx",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHSetNX);
-     }},
-    {"hdel",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHDel);
-     }},
-    {"hstrlen",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHStrlen);
-     }},
-    {"hexists",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHExists);
-     }},
-    {"hlen",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHLen);
-     }},
-    {"hmget",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHMGet);
-     }},
-    {"hmset",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHMSet);
-     }},
-    {"hkeys",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHKeys);
-     }},
-    {"hvals",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHVals);
-     }},
-    {"hgetall",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHGetAll);
-     }},
-    {"hscan",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandHScan);
-     }},
+    ADD_CMD("hget",         CommandHGet),
+    ADD_CMD("hincrby",      CommandHIncrBy),
+    ADD_CMD("hincrbyfloat", CommandHIncrByFloat),
+    ADD_CMD("hset",         CommandHSet),
+    ADD_CMD("hsetnx",       CommandHSetNX),
+    ADD_CMD("hdel",         CommandHDel),
+    ADD_CMD("hstrlen",      CommandHStrlen),
+    ADD_CMD("hexists",      CommandHExists),
+    ADD_CMD("hlen",         CommandHLen),
+    ADD_CMD("hmget",        CommandHMGet),
+    ADD_CMD("hmset",        CommandHMSet),
+    ADD_CMD("hkeys",        CommandHKeys),
+    ADD_CMD("hvals",        CommandHVals),
+    ADD_CMD("hgetall",      CommandHGetAll),
+    ADD_CMD("hscan",        CommandHScan),
+
     // list command
-    {"lpush",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLPush);
-     }},
-    {"rpush",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandRPush);
-     }},
-    {"lpushx",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLPushX);
-     }},
-    {"rpushx",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandRPushX);
-     }},
-    {"lpop",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLPop);
-     }},
-    {"rpop",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandRPop);
-     }},
-    {"blpop",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandBLPop);
-     }},
-    {"brpop",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandBRPop);
-     }},
-    {"lrem",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLRem);
-     }},
-    {"linsert",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLInsert);
-     }},
-    {"lrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLRange);
-     }},
-    {"lindex",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLIndex);
-     }},
-    {"ltrim",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLTrim);
-     }},
-    {"llen",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLLen);
-     }},
-    {"lset",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandLSet);
-     }},
-    {"rpoplpush",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandRPopLPUSH);
-     }},
+    ADD_CMD("lpush",     CommandLPush),
+    ADD_CMD("rpush",     CommandRPush),
+    ADD_CMD("lpushx",    CommandLPushX),
+    ADD_CMD("rpushx",    CommandRPushX),
+    ADD_CMD("lpop",      CommandLPop),
+    ADD_CMD("rpop",      CommandRPop),
+    ADD_CMD("blpop",     CommandBLPop),
+    ADD_CMD("brpop",     CommandBRPop),
+    ADD_CMD("lrem",      CommandLRem),
+    ADD_CMD("linsert",   CommandLInsert),
+    ADD_CMD("lrange",    CommandLRange),
+    ADD_CMD("lindex",    CommandLIndex),
+    ADD_CMD("ltrim",     CommandLTrim),
+    ADD_CMD("llen",      CommandLLen),
+    ADD_CMD("lset",      CommandLSet),
+    ADD_CMD("rpoplpush", CommandRPopLPUSH),
+
     // set command
-    {"sadd",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSAdd);
-     }},
-    {"srem",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSRem);
-     }},
-    {"scard",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSCard);
-     }},
-    {"smembers",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSMembers);
-     }},
-    {"sismember",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSIsMember);
-     }},
-    {"spop",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSPop);
-     }},
-    {"srandmember",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSRandMember);
-     }},
-    {"smove",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSMove);
-     }},
-    {"sdiff",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSDiff);
-     }},
-    {"sunion",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSUnion);
-     }},
-    {"sinter",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSInter);
-     }},
-    {"sdiffstore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSDiffStore);
-     }},
-    {"sunionstore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSUnionStore);
-     }},
-    {"sinterstore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSInterStore);
-     }},
-    {"sscan",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSScan);
-     }},
+    ADD_CMD("sadd",        CommandSAdd),
+    ADD_CMD("srem",        CommandSRem),
+    ADD_CMD("scard",       CommandSCard),
+    ADD_CMD("smembers",    CommandSMembers),
+    ADD_CMD("sismember",   CommandSIsMember),
+    ADD_CMD("spop",        CommandSPop),
+    ADD_CMD("srandmember", CommandSRandMember),
+    ADD_CMD("smove",       CommandSMove),
+    ADD_CMD("sdiff",       CommandSDiff),
+    ADD_CMD("sunion",      CommandSUnion),
+    ADD_CMD("sinter",      CommandSInter),
+    ADD_CMD("sdiffstore",  CommandSDiffStore),
+    ADD_CMD("sunionstore", CommandSUnionStore),
+    ADD_CMD("sinterstore", CommandSInterStore),
+    ADD_CMD("sscan",       CommandSScan),
+
     // zset command
-    {"zadd",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZAdd);
-     }},
-    {"zcard",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZCard);
-     }},
-    {"zcount",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZCount);
-     }},
-    {"zincrby",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZIncrBy);
-     }},
-    {"zinterstore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZInterStore);
-     }},
-    {"zlexcount",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZLexCount);
-     }},
-    {"zpopmax",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZPopMax);
-     }},
-    {"zpopmin",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZPopMin);
-     }},
-    {"zrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRange);
-     }},
-    {"zrevrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRevRange);
-     }},
-    {"zrangebylex",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRangeByLex);
-     }},
-    {"zrangebyscore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRangeByScore);
-     }},
-    {"zrank",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRank);
-     }},
-    {"zrem",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRem);
-     }},
-    {"zremrangebyrank",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRemRangeByRank);
-     }},
-    {"zremrangebyscore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRemRangeByScore);
-     }},
-    {"zremrangebylex",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRemRangeByLex);
-     }},
-    {"zrevrangebyscore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRevRangeByScore);
-     }},
-    {"zrevrank",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZRevRank);
-     }},
-    {"zscore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZScore);
-     }},
-    {"zscan",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZScan);
-     }},
-    {"zunionstore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandZUnionStore);
-     }},
+    ADD_CMD("zadd",             CommandZAdd),
+    ADD_CMD("zcard",            CommandZCard),
+    ADD_CMD("zcount",           CommandZCount),
+    ADD_CMD("zincrby",          CommandZIncrBy),
+    ADD_CMD("zinterstore",      CommandZInterStore),
+    ADD_CMD("zlexcount",        CommandZLexCount),
+    ADD_CMD("zpopmax",          CommandZPopMax),
+    ADD_CMD("zpopmin",          CommandZPopMin),
+    ADD_CMD("zrange",           CommandZRange),
+    ADD_CMD("zrevrange",        CommandZRevRange),
+    ADD_CMD("zrangebylex",      CommandZRangeByLex),
+    ADD_CMD("zrangebyscore",    CommandZRangeByScore),
+    ADD_CMD("zrank",            CommandZRank),
+    ADD_CMD("zrem",             CommandZRem),
+    ADD_CMD("zremrangebyrank",  CommandZRemRangeByRank),
+    ADD_CMD("zremrangebyscore", CommandZRemRangeByScore),
+    ADD_CMD("zremrangebylex",   CommandZRemRangeByLex),
+    ADD_CMD("zrevrangebyscore", CommandZRevRangeByScore),
+    ADD_CMD("zrevrank",         CommandZRevRank),
+    ADD_CMD("zscore",           CommandZScore),
+    ADD_CMD("zscan",            CommandZScan),
+    ADD_CMD("zunionstore",      CommandZUnionStore),
+
     // geo command
-    {"geoadd",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoAdd);
-     }},
-    {"geodist",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoDist);
-     }},
-    {"geohash",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoHash);
-     }},
-    {"geopos",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoPos);
-     }},
-    {"georadius",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoRadius);
-     }},
-    {"georadiusbymember",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoRadiusByMember);
-     }},
-    {"georadius_ro",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoRadiusReadonly);
-     }},
-    {"georadiusbymember_ro",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandGeoRadiusByMemberReadonly);
-     }},
+    ADD_CMD("geoadd",               CommandGeoAdd),
+    ADD_CMD("geodist",              CommandGeoDist),
+    ADD_CMD("geohash",              CommandGeoHash),
+    ADD_CMD("geopos",               CommandGeoPos),
+    ADD_CMD("georadius",            CommandGeoRadius),
+    ADD_CMD("georadiusbymember",    CommandGeoRadiusByMember),
+    ADD_CMD("georadius_ro",         CommandGeoRadiusReadonly),
+    ADD_CMD("georadiusbymember_ro", CommandGeoRadiusByMemberReadonly),
+
     // pub/sub command
-    {"publish",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPublish);
-     }},
-    {"subscribe",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSubscribe);
-     }},
-    {"unsubscribe",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandUnSubscribe);
-     }},
-    {"psubscribe",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPSubscribe);
-     }},
-    {"punsubscribe",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPUnSubscribe);
-     }},
-    {"pubsub",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPubSub);
-     }},
+    ADD_CMD("publish",      CommandPublish),
+    ADD_CMD("subscribe",    CommandSubscribe),
+    ADD_CMD("unsubscribe",  CommandUnSubscribe),
+    ADD_CMD("psubscribe",   CommandPSubscribe),
+    ADD_CMD("punsubscribe", CommandPUnSubscribe),
+    ADD_CMD("pubsub",       CommandPubSub),
+
     // Sortedint command
-    {"siadd",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSortedintAdd);
-     }},
-    {"sirem",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSortedintRem);
-     }},
-    {"sicard",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSortedintCard);
-     }},
-    {"sirange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSortedintRange);
-     }},
-    {"sirevrange",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSortedintRevRange);
-     }},
+    ADD_CMD("siadd",      CommandSortedintAdd),
+    ADD_CMD("sirem",      CommandSortedintRem),
+    ADD_CMD("sicard",     CommandSortedintCard),
+    ADD_CMD("sirange",    CommandSortedintRange),
+    ADD_CMD("sirevrange", CommandSortedintRevRange),
+
     // Codis Slot command
-    {"slotsinfo",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsInfo);
-     }},
-    {"slotsscan",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsScan);
-     }},
-    {"slotsdel",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsDel);
-     }},
-    {"slotsmgrtslot",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtSlot);
-     }},
-    {"slotsmgrtone",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtOne);
-     }},
-    {"slotsmgrttagslot",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagSlot);
-     }},
-    {"slotsmgrttagone",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagOne);
-     }},
-    {"slotsrestore",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsRestore);
-     }},
-    {"slotshashkey",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsHashKey);
-     }},
-    {"slotscheck",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsCheck);
-     }},
-    {"slotsmgrtslot-async",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtSlotAsync);
-     }},
-    {"slotsmgrttagslot-async",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtTagSlotAsync);
-     }},
-    {"slotsmgrt-exec-wrapper",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtExecWrapper);
-     }},
-    {"slotsmgrt-async-status",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtAsyncStatus);
-     }},
-    {"slotsmgrt-async-cancel",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlotsMgrtAsyncCancel);
-     }},
+    ADD_CMD("slotsinfo",              CommandSlotsInfo),
+    ADD_CMD("slotsscan",              CommandSlotsScan),
+    ADD_CMD("slotsdel",               CommandSlotsDel),
+    ADD_CMD("slotsmgrtslot",          CommandSlotsMgrtSlot),
+    ADD_CMD("slotsmgrtone",           CommandSlotsMgrtOne),
+    ADD_CMD("slotsmgrttagslot",       CommandSlotsMgrtTagSlot),
+    ADD_CMD("slotsmgrttagone",        CommandSlotsMgrtTagOne),
+    ADD_CMD("slotsrestore",           CommandSlotsRestore),
+    ADD_CMD("slotshashkey",           CommandSlotsHashKey),
+    ADD_CMD("slotscheck",             CommandSlotsCheck),
+    ADD_CMD("slotsmgrtslot-async",    CommandSlotsMgrtSlotAsync),
+    ADD_CMD("slotsmgrttagslot-async", CommandSlotsMgrtTagSlotAsync),
+    ADD_CMD("slotsmgrt-exec-wrapper", CommandSlotsMgrtExecWrapper),
+    ADD_CMD("slotsmgrt-async-status", CommandSlotsMgrtAsyncStatus),
+    ADD_CMD("slotsmgrt-async-cancel", CommandSlotsMgrtAsyncCancel),
 
     // internal management cmd
-    {"compact",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandCompact);
-     }},
-    {"bgsave",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandBGSave);
-     }},
-    {"slaveof",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandSlaveOf);
-     }},
-    {"stats",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandStats);
-     }},
+    ADD_CMD("compact", CommandCompact),
+    ADD_CMD("bgsave",  CommandBGSave),
+    ADD_CMD("slaveof", CommandSlaveOf),
+    ADD_CMD("stats",   CommandStats),
 };
 
 // Replication related commands, which are received by workers listening on
 // `repl-port`
 std::map<std::string, CommanderFactory> repl_command_table = {
-    {"auth",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandAuth);
-     }},
-    {"replconf",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandReplConf);
-     }},
-    {"psync",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandPSync);
-     }},
-    {"_fetch_meta",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandFetchMeta);
-     }},
-    {"_fetch_file",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandFetchFile);
-     }},
-    {"_db_name",
-     []() -> std::unique_ptr<Commander> {
-       return std::unique_ptr<Commander>(new CommandDBName);
-     }},
+    ADD_CMD("auth",        CommandAuth),
+    ADD_CMD("replconf",    CommandReplConf),
+    ADD_CMD("psync",       CommandPSync),
+    ADD_CMD("_fetch_meta", CommandFetchMeta),
+    ADD_CMD("_fetch_file", CommandFetchFile),
+    ADD_CMD("_db_name",    CommandDBName),
 };
 
 Status LookupCommand(const std::string &cmd_name,

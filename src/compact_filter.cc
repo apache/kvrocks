@@ -137,9 +137,9 @@ bool SlotKeyFilter::IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value
       return false;
     }
   }
-  // the metadata was not found
+  // the metadata was not found, delete the subkey
   if (cached_metadata_.empty()) return true;
-  // the metadata is cached
+
   SlotMetadata metadata(false);
   rocksdb::Status s = metadata.Decode(cached_metadata_);
   if (!s.ok()) {
@@ -149,10 +149,10 @@ bool SlotKeyFilter::IsKeyDeleted(const SlotInternalKey &ikey, const Slice &value
                << ", err: " << s.ToString();
     return false;
   }
-  if (ikey.GetVersion() != metadata.version) {
-    return true;
-  }
-  return false;
+  // subkey's version wasn't equal to metadata's version means
+  // that key was deleted and created new one, so the old subkey
+  // should be deleted as well.
+  return ikey.GetVersion() != metadata.version;
 }
 
 bool SlotKeyFilter::Filter(int level,

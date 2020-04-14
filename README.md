@@ -10,6 +10,16 @@ kvrocks has the following key features:
 - High Available, supports redis sentinel to failover when master or slave was failed
 - Codis Protocol, the user can use the codis proxy and dashboard to manage the kvrocks
 
+## Who uses kvrocks 
+
+<table>
+<tr>
+<td height = "128" width = "164"><img src="https://imgur.com/9X1kc2j.png" alt="Meitu"></td>
+<td height = "128" width = "164"><img src="https://imgur.com/oXI25Cp.jpeg" alt="Ctrip"></td>
+<td height = "128" width = "164"><img src="https://imgur.com/MJsoEN7.png" alt="BaishanCloud"></td>
+</tr>
+</table>
+
 ## Build and run
 
 #### requirements

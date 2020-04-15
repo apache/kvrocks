@@ -15,7 +15,7 @@ kvrocks has the following key features:
 <table>
 <tr>
 <td height = "128" width = "164"><img src="https://imgur.com/9X1kc2j.png" alt="Meitu"></td>
-<td height = "128" width = "164"><img src="https://imgur.com/oXI25Cp.jpeg" alt="Ctrip"></td>
+<td height = "128" width = "164"><img src="https://imgur.com/vqgSmMz.jpeg" alt="Ctrip"></td>
 <td height = "128" width = "164"><img src="https://imgur.com/MJsoEN7.png" alt="BaishanCloud"></td>
 </tr>
 </table>

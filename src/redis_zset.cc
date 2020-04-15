@@ -451,7 +451,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.snapshot = ss.GetSnapShot();
   std::string score_bytes, member_key;
   InternalKey(ns_key, member, metadata.version).Encode(&member_key);
-  s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
+  s = db_->Get(read_options, member_key, &score_bytes);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   double target_score = DecodeDouble(score_bytes.data());

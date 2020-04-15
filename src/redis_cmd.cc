@@ -3580,6 +3580,25 @@ class CommandSubkeyScanBase : public CommandScanBase {
     return Commander::Parse(args);
   }
 
+  std::string GenerateOutput(const std::vector<std::string> &fields, const std::vector<std::string> &values) {
+    std::vector<std::string> list;
+    if (!fields.empty()) {
+      list.emplace_back(Redis::BulkString(fields.back()));
+    } else {
+      list.emplace_back(Redis::BulkString("0"));
+    }
+    std::vector<std::string> fvs;
+    auto items_count = fields.size();
+    if (items_count > 0) {
+      for (size_t i = 0; i < items_count; i++) {
+        fvs.emplace_back(fields[i]);
+        fvs.emplace_back(values[i]);
+      }
+      list.emplace_back(Redis::MultiBulkString(fvs));
+    }
+    return Redis::Array(list);
+  }
+
  protected:
   std::string key;
 };
@@ -3626,11 +3645,12 @@ class CommandHScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
-    auto s = hash_db.Scan(key, cursor, limit, prefix, &fields);
+    std::vector<std::string> values;
+    auto s = hash_db.Scan(key, cursor, limit, prefix, &fields, &values);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = GenerateOutput(fields);
+    *output = GenerateOutput(fields, values);
     return Status::OK();
   }
 };
@@ -3646,7 +3666,7 @@ class CommandSScan : public CommandSubkeyScanBase {
       return Status(Status::RedisExecErr, s.ToString());
     }
 
-    *output = GenerateOutput(members);
+    *output = CommandScanBase::GenerateOutput(members);
     return Status::OK();
   }
 };
@@ -3657,12 +3677,16 @@ class CommandZScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    auto s = zset_db.Scan(key, cursor, limit, prefix, &members);
+    std::vector<double> scores;
+    auto s = zset_db.Scan(key, cursor, limit, prefix, &members, &scores);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-
-    *output = GenerateOutput(members);
+    std::vector<std::string> score_strings;
+    for (const auto &score : scores) {
+      score_strings.emplace_back(std::to_string(score));
+    }
+    *output = GenerateOutput(members, score_strings);
     return Status::OK();
   }
 };

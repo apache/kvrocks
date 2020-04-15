@@ -2530,7 +2530,7 @@ class CommandGeoBase : public Commander {
   }
 
   double GetUnitConversion() {
-    double conversion;
+    double conversion = 0;
     switch (distance_unit_) {
       case kDistanceMeter:conversion = 1;
         break;
@@ -2556,7 +2556,7 @@ class CommandGeoAdd : public CommandGeoBase {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
     }
     for (unsigned i = 2; i < args.size(); i += 3) {
-      double longitude, latitude;
+      double longitude = 0, latitude = 0;
       auto s = ParseLongLat(args[i], args[i + 1], &longitude, &latitude);
       if (!s.IsOK()) return s;
       geo_points_.emplace_back(GeoPoint{longitude, latitude, args[i + 2]});

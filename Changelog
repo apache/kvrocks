@@ -1,3 +1,10 @@
+* Version 1.1.12 (@2020-04-15)
+	- ADD: geo command
+	- FIX：hscan and zscan should return field value
+	- FIX: lint error, warning
+	- MOD: migrate kvrocks from meitu to bitleak group
+	- MOD: refactor and simplify the code
+
 * Version 1.1.11 (@2020-04-09)
 	- FIX: dead lock
 	- MOD: refactor redis string

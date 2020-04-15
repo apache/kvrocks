@@ -684,10 +684,22 @@ Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, Z
 }
 
 rocksdb::Status ZSet::Scan(const Slice &user_key,
-                                const std::string &cursor,
-                                uint64_t limit,
-                                const std::string &member_prefix,
-                                std::vector<std::string> *members) {
+                           const std::string &cursor,
+                           uint64_t limit,
+                           const std::string &member_prefix,
+                           std::vector<std::string> *members,
+                           std::vector<double> *scores) {
+  if (scores != nullptr) {
+    std::vector<std::string> values;
+    auto s = SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members, &values);
+    if (!s.ok()) return s;
+
+    for (const auto &value : values) {
+      double target_score = DecodeDouble(value.data());
+      scores->emplace_back(target_score);
+    }
+    return s;
+  }
   return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members);
 }
 

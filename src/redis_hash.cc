@@ -277,11 +277,12 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 }
 
 rocksdb::Status Hash::Scan(const Slice &user_key,
-                                const std::string &cursor,
-                                uint64_t limit,
-                                const std::string &field_prefix,
-                                std::vector<std::string> *fields) {
-  return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields);
+                           const std::string &cursor,
+                           uint64_t limit,
+                           const std::string &field_prefix,
+                           std::vector<std::string> *fields,
+                           std::vector<std::string> *values) {
+  return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
 }  // namespace Redis

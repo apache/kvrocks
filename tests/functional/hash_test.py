@@ -160,7 +160,7 @@ def test_hscan():
     ret = conn.hset(key, 'a', 1.3)
     assert (ret == 1)
     ret = conn.execute_command("HSCAN " + key + " 0")
-    assert (ret == ['a', ['a']])
+    assert (ret == ['a', ['a', '1.3']])
 
     ret = conn.delete(key)
     assert (ret == 1)

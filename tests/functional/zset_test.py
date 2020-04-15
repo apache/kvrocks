@@ -298,7 +298,7 @@ def test_zscan():
     ret = conn.zadd(key, 'a', 1.3)
     assert (ret == 1)
     ret = conn.execute_command("ZSCAN " + key + " 0")
-    assert (ret == ['a', ['a']])
+    assert (ret == ['a', ['a', '1.300000']])
 
     ret = conn.delete(key)
     assert (ret == 1)

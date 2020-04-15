@@ -86,7 +86,8 @@ class ZSet : public SubKeyScanner {
                        const std::string &cursor,
                        uint64_t limit,
                        const std::string &member_prefix,
-                       std::vector<std::string> *members);
+                       std::vector<std::string> *members,
+                       std::vector<double> *scores = nullptr);
   rocksdb::Status Overwrite(const Slice &user_key, const std::vector<MemberScore> &mscores);
   rocksdb::Status InterStore(const Slice &dst,
                              const std::vector<KeyWeight> &keys_weights,

@@ -80,6 +80,11 @@ void FeedSlaveThread::loop() {
     }
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
+    if (batch.sequence != next_repl_seq_) {
+      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
+      Stop();
+      return;
+    }
     auto data = batch.writeBatchPtr->Data();
     batch_list.emplace_back(Redis::BulkString(data));
     // feed the bulks data to slave in batch mode iff the lag was far from the master
@@ -94,11 +99,6 @@ void FeedSlaveThread::loop() {
         }
       }
       batch_list.clear();
-    }
-    if (batch.sequence != next_repl_seq_) {
-      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
-      Stop();
-      return;
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
     while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {

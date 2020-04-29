@@ -579,8 +579,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       self->pre_fullsync_cb_();
       s = self->storage_->RestoreFromBackup();
       if (!s.IsOK()) {
-        LOG(ERROR) << "[replication] Failed to restore backup while " + s.Msg();
-        self->post_fullsync_cb_();
+        LOG(ERROR) << "[replication] Failed to restore backup while " + s.Msg() + ", restart fullsync";
         return CBState::RESTART;
       }
       LOG(INFO) << "[replication] Succeeded restoring the backup, fullsync was finish";

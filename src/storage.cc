@@ -294,7 +294,7 @@ Status Storage::RestoreFromBackup() {
   auto s2 = Open();
   if (!s2.IsOK()) {
     LOG(ERROR) << "[storage] Failed to reopen db: " << s2.Msg();
-    return Status(Status::DBOpenErr);
+    return Status(Status::DBOpenErr, s2.Msg());
   }
   return Status::OK();
 }

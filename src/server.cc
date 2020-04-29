@@ -121,7 +121,10 @@ Status Server::AddMaster(std::string host, uint32_t port) {
         this->is_loading_ = true;
         ReclaimOldDBPtr();
       },
-      [this]() { this->is_loading_ = false; });
+      [this]() {
+        this->is_loading_ = false;
+        task_runner_.Start();
+      });
   if (s.IsOK()) {
     master_host_ = host;
     master_port_ = port;
@@ -717,8 +720,8 @@ std::string Server::GetRocksDBStatsJson() {
 void Server::ReclaimOldDBPtr() {
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
-  LOG(INFO) << "Restarting the task runner...";
-  task_runner_.Restart();
+  LOG(INFO) << "Stopping the task runner and clear task queue...";
+  task_runner_.StopAndClear();
   LOG(INFO) << "Waiting for excuting command...";
   while (excuting_command_num_ != 0) {
     usleep(200000);

@@ -28,7 +28,7 @@ void TaskRunner::Start() {
   }
 }
 
-void TaskRunner::Restart() {
+void TaskRunner::StopAndClear() {
   Stop();
   Join();
   mu_.lock();
@@ -36,7 +36,6 @@ void TaskRunner::Restart() {
   task_queue_.clear();
   stop_ = false;
   mu_.unlock();
-  Start();
 }
 
 void TaskRunner::Stop() {

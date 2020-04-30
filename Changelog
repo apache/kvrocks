@@ -1,3 +1,6 @@
+* Version 1.1.14 (@2020-04-30)
+	- FIX: coredump after restorefrombackup failed
+
 * Version 1.1.13 (@2020-04-27)
 	- FIX: check sequence continuity before feed data to slave
 	- FIX: warning and typo

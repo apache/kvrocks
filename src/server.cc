@@ -721,7 +721,9 @@ void Server::ReclaimOldDBPtr() {
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
   LOG(INFO) << "Stopping the task runner and clear task queue...";
-  task_runner_.StopAndClear();
+  task_runner_.Stop();
+  task_runner_.Join();
+  task_runner_.Purge();
   LOG(INFO) << "Waiting for excuting command...";
   while (excuting_command_num_ != 0) {
     usleep(200000);

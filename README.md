@@ -24,6 +24,8 @@ kvrocks has the following key features:
 </tr>
 </table>
 
+***Tickets a pull reqeust to let us known that you're using kvrocks and add your logo to README***
+
 ## Build and run
 
 #### requirements

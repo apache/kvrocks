@@ -86,6 +86,7 @@ class Server {
   void ReclaimOldDBPtr();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
+  Status AsyncPurgeOldBackups();
   Status AsyncScanDBSize(const std::string &ns);
   void GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);

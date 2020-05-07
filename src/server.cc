@@ -431,7 +431,8 @@ void Server::cron() {
     }
     // check every minutes
     if (counter != 0 && counter % 600 == 0) {
-      storage_->PurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
+      Status s = AsyncPurgeOldBackups();
+      LOG(INFO) << "[server] Schedule to purge old backups, result: " << s.Msg();
     }
     cleanupExitedSlaves();
     counter++;
@@ -773,6 +774,16 @@ Status Server::AsyncBgsaveDB() {
     svr->db_mu_.lock();
     svr->db_bgsave_ = false;
     svr->db_mu_.unlock();
+  };
+  return task_runner_.Publish(task);
+}
+
+Status Server::AsyncPurgeOldBackups() {
+  Task task;
+  task.arg = this;
+  task.callback = [](void *arg) {
+    auto svr = static_cast<Server *>(arg);
+    svr->storage_->PurgeOldBackups(svr->config_->max_backup_to_keep, svr->config_->max_backup_keep_hours);
   };
   return task_runner_.Publish(task);
 }

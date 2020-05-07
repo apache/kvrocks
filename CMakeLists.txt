@@ -138,6 +138,30 @@ target_sources(kvrocks PRIVATE
         src/log_collector.cc
         )
 
+# kvrocksrestore restore backup tool
+add_executable(kvrocksrestore)
+target_compile_features(kvrocksrestore PRIVATE cxx_std_11)
+target_compile_options(kvrocksrestore PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
+option(ENABLE_ASAN "enable ASAN santinizer" OFF)
+if(ENBALE_ASAN)
+    target_compile_options(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+    target_link_libraries(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+endif()
+add_dependencies(kvrocksrestore jemalloc glog rocksdb)
+target_include_directories(kvrocksrestore PRIVATE ${PROJECT_BINARY_DIR})
+target_include_directories(kvrocksrestore ${EXTERNAL_INCS})
+
+find_package(Threads REQUIRED)
+if(THREADS_HAVE_PTHREAD_ARG)
+    target_compile_options(kvrocksrestore PUBLIC "-pthread")
+endif()
+if(CMAKE_THREAD_LIBS_INIT)
+    target_link_libraries(kvrocksrestore PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
+endif()
+target_link_libraries(kvrocksrestore ${EXTERNAL_LIBS})
+target_sources(kvrocksrestore PRIVATE
+        tools/kvrocksrestore/main.cc)
+
 # kvrocks2redis sync tool
 add_executable(kvrocks2redis)
 target_compile_features(kvrocks2redis PRIVATE cxx_std_11)
@@ -237,30 +261,6 @@ target_sources(kvrocks2redis PRIVATE
         tools/kvrocks2redis/writer.h
         tools/kvrocks2redis/parser.cc
         tools/kvrocks2redis/parser.h)
-
-# kvrocksrestore restore backup tool
-add_executable(kvrocksrestore)
-target_compile_features(kvrocksrestore PRIVATE cxx_std_11)
-target_compile_options(kvrocksrestore PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
-option(ENABLE_ASAN "enable ASAN santinizer" OFF)
-if(ENBALE_ASAN)
-    target_compile_options(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-    target_link_libraries(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-endif()
-add_dependencies(kvrocksrestore jemalloc glog rocksdb)
-target_include_directories(kvrocksrestore PRIVATE ${PROJECT_BINARY_DIR})
-target_include_directories(kvrocksrestore ${EXTERNAL_INCS})
-
-find_package(Threads REQUIRED)
-if(THREADS_HAVE_PTHREAD_ARG)
-    target_compile_options(kvrocksrestore PUBLIC "-pthread")
-endif()
-if(CMAKE_THREAD_LIBS_INIT)
-    target_link_libraries(kvrocksrestore PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
-endif()
-target_link_libraries(kvrocksrestore ${EXTERNAL_LIBS})
-target_sources(kvrocksrestore PRIVATE
-        tools/kvrocksrestore/main.cc)
 
 add_executable(unittest
         src/server.cc

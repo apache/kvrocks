@@ -147,7 +147,7 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
 endif()
-add_dependencies(kvrocksrestore jemalloc glog rocksdb)
+add_dependencies(kvrocksrestore libevent glog rocksdb)
 target_include_directories(kvrocksrestore PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocksrestore ${EXTERNAL_INCS})
 
@@ -160,6 +160,70 @@ if(CMAKE_THREAD_LIBS_INIT)
 endif()
 target_link_libraries(kvrocksrestore ${EXTERNAL_LIBS})
 target_sources(kvrocksrestore PRIVATE
+        src/redis_db.cc
+        src/redis_db.h
+        src/compact_filter.cc
+        src/compact_filter.h
+        src/worker.cc
+        src/worker.h
+        src/util.cc
+        src/util.h
+        src/geohash.cc
+        src/geohash.h
+        src/redis_connection.cc
+        src/redis_connection.h
+        src/redis_request.cc
+        src/redis_request.h
+        src/redis_cmd.cc
+        src/redis_cmd.h
+        src/storage.cc
+        src/storage.h
+        src/status.h
+        src/redis_reply.h
+        src/redis_reply.cc
+        src/task_runner.cc
+        src/task_runner.h
+        src/encoding.h
+        src/encoding.cc
+        src/redis_metadata.h
+        src/redis_metadata.cc
+        src/redis_string.h
+        src/redis_string.cc
+        src/redis_hash.h
+        src/redis_hash.cc
+        src/redis_list.h
+        src/redis_list.cc
+        src/redis_set.h
+        src/redis_set.cc
+        src/redis_zset.cc
+        src/redis_zset.h
+        src/redis_geo.cc
+        src/redis_geo.h
+        src/redis_bitmap.cc
+        src/redis_bitmap.h
+        src/redis_pubsub.cc
+        src/redis_pubsub.h
+        src/redis_sortedint.cc
+        src/redis_sortedint.h
+        src/redis_slot.cc
+        src/redis_slot.h
+        src/replication.cc
+        src/replication.h
+        src/lock_manager.cc
+        src/rocksdb_crc32c.h
+        src/config.cc
+        src/config.h
+        src/config_type.h
+        src/stats.cc
+        src/stats.h
+        src/server.cc
+        src/server.h
+        src/cron.cc
+        src/cron.h
+        src/event_listener.h
+        src/event_listener.cc
+        src/log_collector.h
+        src/log_collector.cc
         tools/kvrocksrestore/main.cc)
 
 # kvrocks2redis sync tool

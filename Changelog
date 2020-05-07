@@ -1,3 +1,6 @@
+* Version 1.1.15 (@2020-05-07)
+	- ADD: kvrocksrestore tool (restore backup_dir to db_dir)
+
 * Version 1.1.14 (@2020-04-30)
 	- FIX: coredump after restorefrombackup failed
 

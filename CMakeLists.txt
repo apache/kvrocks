@@ -247,7 +247,7 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocksrestore PRIVATE -fno-omit-frame-pointer -fsanitize=address)
 endif()
-add_dependencies(kvrocksrestore glog rocksdb)
+add_dependencies(kvrocksrestore jemalloc glog rocksdb)
 target_include_directories(kvrocksrestore PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocksrestore ${EXTERNAL_INCS})
 

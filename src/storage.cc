@@ -301,6 +301,7 @@ Status Storage::RestoreFromBackup() {
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   std::vector<rocksdb::BackupInfo> backup_infos;
+  backup_mu_.lock();
   backup_->GetBackupInfo(&backup_infos);
   if (backup_infos.size() > num_backups_to_keep) {
     uint32_t num_backups_to_purge = static_cast<uint32_t>(backup_infos.size()) - num_backups_to_keep;
@@ -312,11 +313,15 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
                 << ", size: " << backup_infos[i].size
                 << ", num files: " << backup_infos[i].number_files;
     }
+
     auto s = backup_->PurgeOldBackups(num_backups_to_keep);
     LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
   }
 
-  if (backup_max_keep_hours == 0) return;
+  if (backup_max_keep_hours == 0) {
+    backup_mu_.unlock();
+    return;
+  }
   backup_infos.clear();
   backup_->GetBackupInfo(&backup_infos);
   time_t now = time(nullptr);
@@ -329,6 +334,7 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
               << ", num files: " << backup_infos[i].number_files;
     backup_->DeleteBackup(backup_infos[i].backup_id);
   }
+  backup_mu_.unlock();
 }
 
 Status Storage::GetWALIter(

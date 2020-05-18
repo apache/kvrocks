@@ -19,6 +19,7 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   Metadata metadata(kRedisNone, false);
   metadata.Decode(*raw_value);
   if (metadata.Expired()) {
+    raw_value->clear();
     return rocksdb::Status::NotFound("the key was expired");
   }
   if (metadata.Type() != kRedisString && metadata.size > 0) {

@@ -1,3 +1,6 @@
+* Version 1.1.17 (@2020-05-18)
+	- FIX: string getRawValue when expired, should clear raw_value
+
 * Version 1.1.16 (@2020-05-08)
 	- FIX: create backup and purge old backups at the same time may cause crash
 

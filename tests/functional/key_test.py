@@ -30,7 +30,17 @@ def test_type():
     assert(ret == 1)
     ret = conn.type(zset_key)
     assert(ret == "zset")
-    ret = conn.delete(string_key, hash_key, list_key, set_key, zset_key)
+    bitmap_key = "test_bitmap_type"
+    ret = conn.setbit(bitmap_key, 0, 1)
+    assert(ret == 0)
+    ret = conn.type(bitmap_key)
+    assert(ret == "bitmap")
+    sortedint_key = "test_sortedint_type"
+    ret = conn.execute_command("siadd", sortedint_key, 1)
+    assert(ret == 1)
+    ret = conn.type(sortedint_key)
+    assert(ret == "sortedint")
+    ret = conn.delete(string_key, hash_key, list_key, set_key, zset_key, bitmap_key, sortedint_key)
     assert(ret == 5)
 
 def test_expire():

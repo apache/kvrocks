@@ -33,7 +33,7 @@ enum RedisCommand {
 
 const std::vector<std::string> RedisTypeNames = {
     "none", "string", "hash",
-    "list", "set", "zset"
+    "list", "set", "zset", "bitmap", "sortedint"
 };
 
 using rocksdb::Slice;

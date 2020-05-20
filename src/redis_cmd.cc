@@ -77,7 +77,8 @@ class CommandNamespace : public Commander {
       return Status::OK();
     }
     Config *config = svr->GetConfig();
-    if (args_.size() == 3 && args_[1] == "get") {
+    std::string sub_command = Util::ToLower(args_[1]);
+    if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
         auto tokens = config->tokens;
@@ -91,17 +92,17 @@ class CommandNamespace : public Commander {
         config->GetNamespace(args_[2], &token);
         *output = Redis::BulkString(token);
       }
-    } else if (args_.size() == 4 && args_[1] == "set") {
+    } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->SetNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3]
       << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
-    } else if (args_.size() == 4 && args_[1] == "add") {
+    } else if (args_.size() == 4 && sub_command == "add") {
       Status s = config->AddNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3]
                    << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
-    } else if (args_.size() == 3 && args_[1] == "del") {
+    } else if (args_.size() == 3 && sub_command == "del") {
       Status s = config->DelNamespace(args_[2]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "Deleted namespace: " << args_[2]

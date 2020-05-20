@@ -2,6 +2,7 @@
 
 default: all
 
+clone_dependencies := $(shell sh -c 'git submodule init && git submodule update')
 .DEFAULT:
 	cd src && $(MAKE) $@
 

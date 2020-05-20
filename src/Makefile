@@ -9,7 +9,6 @@ INSTALL_DIR= /usr/local
 BIN_DIR= $(INSTALL_DIR)/bin
 INSTALL= /usr/bin/install
 
-clone_dependencies := $(shell sh -c 'git submodule init && git submodule update')
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 detect_platform := $(shell sh -c '../build_detect_platform make_config.mk')
 include make_config.mk
@@ -90,15 +89,8 @@ lint:
 	cd ..; ./cpplint.sh
 	cd ..; ./cppcheck.sh
 
-$(PROG): SUBMODULES $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
+$(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
-
-SUBMODULES:
-	@echo ""
-	@printf $(MAKECOLOR)"Hint: Fetching submodules from the remote"$(ENDCOLOR)
-	@echo ""
-	git submodule init
-	git submodule update
 	
 $(GLOG):
 	cd $(GLOG_PATH);./autogen.sh; ./configure --disable-shared; \

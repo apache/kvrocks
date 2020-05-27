@@ -299,18 +299,28 @@ def test_randomkey():
         assert(ret == 1)
 
 def test_scan():
-    key = "test_scan"
+    keys = ["test_scankey", "test_scankey_1", "test_scankey_2"]
     conn = get_redis_conn()
-    ret = conn.execute_command("SCAN" + " 0")
+    ret = conn.execute_command("SCAN 0")
     if ret != ["0", []]:
-        raise ValueError('ret is not ["0", []]: ' + ret)
+        raise ValueError('ret is not ["0", []]')
 
-    ret = conn.set(key, "bar")
-    assert(ret)
+    for key in keys:
+        ret = conn.set(key, "bar")
+        if not ret:
+            raise ValueError('ret is not OK')
 
-    ret = conn.execute_command("SCAN" + " 0")
-    if ret != ["0", [key]]:
-        raise ValueError('ret is not ["0", [' + key + ']]: ' + ret)
+    ret = conn.execute_command("SCAN 0 count 10")
+    if ret != ["0", keys]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("SCAN 0 count 2")
+    if ret != [keys[1], [keys[0], keys[1]]]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("SCAN " + keys[1] + " count 2")
+    if ret != ['0', [keys[2]]]:
+        raise ValueError('ret illegal')
 
     ret = conn.delete(key)
     assert (ret == 1)

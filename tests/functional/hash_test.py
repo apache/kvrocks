@@ -157,10 +157,12 @@ def test_hgetall():
 def test_hscan():
     conn = get_redis_conn()
     key = "test_hscan"
+    ret = conn.execute_command("HSCAN " + key + " 0")
+    assert (ret == ['0', []])
     ret = conn.hset(key, 'a', 1.3)
     assert (ret == 1)
     ret = conn.execute_command("HSCAN " + key + " 0")
-    assert (ret == ['a', ['a', '1.3']])
+    assert (ret == ['0', ['a', '1.3']])
 
     ret = conn.delete(key)
     assert (ret == 1)

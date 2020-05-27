@@ -296,11 +296,13 @@ def test_zscan():
     conn = get_redis_conn()
     key = "test_zscan"
     ret = conn.execute_command("ZSCAN " + key + " 0")
-    assert (ret == ['0', []])
+    if ret != ["0", []]:
+        raise ValueError('ret is not ["0", []]: ' + ret)
     ret = conn.zadd(key, 'a', 1.3)
     assert (ret == 1)
     ret = conn.execute_command("ZSCAN " + key + " 0")
-    assert (ret == ['0', ['a', '1.300000']])
+    if ret != ['0', ['a', '1.300000']]:
+        raise ValueError('ret illegal: ' + ret)
 
     ret = conn.delete(key)
     assert (ret == 1)

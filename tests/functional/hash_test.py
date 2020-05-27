@@ -159,12 +159,22 @@ def test_hscan():
     key = "test_hscan"
     ret = conn.execute_command("HSCAN " + key + " 0")
     if ret != ["0", []]:
-        raise ValueError('ret is not ["0", []]: ' + ret)
-    ret = conn.hset(key, 'a', 1.3)
-    assert (ret == 1)
+        raise ValueError('ret is not ["0", []]')
+    kvs = {'kkk-%s' % i :'vvv-%s' % i for i in range(3)}
+    ret = conn.hmset(key, kvs)
+    if not ret:
+        raise ValueError('ret is not ok')
     ret = conn.execute_command("HSCAN " + key + " 0")
-    if ret != ['0', ['a', '1.3']]:
-        raise ValueError('ret illegal: ' + ret)
+    if ret != ['0', ['kkk-0', 'vvv-0', 'kkk-1', 'vvv-1', 'kkk-2', 'vvv-2']]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("HSCAN " + key + " 0 COUNT 2")
+    if ret != ['kkk-1', ['kkk-0', 'vvv-0', 'kkk-1', 'vvv-1']]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("HSCAN " + key + " kkk-1 COUNT 2")
+    if ret != ['0', ['kkk-2', 'vvv-2']]:
+        raise ValueError('ret illegal')
 
     ret = conn.delete(key)
     assert (ret == 1)

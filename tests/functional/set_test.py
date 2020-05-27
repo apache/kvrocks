@@ -189,13 +189,22 @@ def test_sunionstore():
 def test_sscan():
     conn = get_redis_conn()
     key = "test_sscan"
+    members = ['a', 'b', 'c']
     ret = conn.execute_command("SSCAN " + key + " 0")
     if ret != ["0", []]:
-        raise ValueError('ret is not ["0", []]: ' + ret)
-    ret = conn.sadd(key, 'a')
+        raise ValueError('ret is not ["0", []]: ')
+    ret = conn.sadd(key, members[0], members[1], members[2])
     ret = conn.execute_command("SSCAN " + key + " 0")
-    if ret != ['0', ['a']]:
-        raise ValueError('ret illegal: ' + ret)
+    if ret != ['0', members]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("SSCAN " + key + " 0 COUNT 2")
+    if ret != ['b', [members[0], members[1]]]:
+        raise ValueError('ret illegal')
+
+    ret = conn.execute_command("SSCAN " + key + " b COUNT 2")
+    if ret != ['0', [members[2]]]:
+        raise ValueError('ret illegal')
 
     ret = conn.delete(key)
     assert(ret == 1)

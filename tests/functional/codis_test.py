@@ -22,7 +22,8 @@ def test_slotsscan():
     assert (ret == 1)
     hash_num = conn.execute_command("slotshashkey", key)
     ret = conn.execute_command("slotsscan", hash_num[0], 0)
-    assert (ret == [key, [key]])
+    if ret != ["0", [key]]:
+        raise ValueError('ret illegal')
 
     ret = conn.delete(key)
     assert(ret == 1)
@@ -35,7 +36,9 @@ def test_slotsdel():
     assert(ret == 1)
     hash_num = conn.execute_command("slotshashkey", key)
     ret = conn.execute_command("slotsscan", hash_num[0], 0)
-    assert (ret == [key, [key]])
+    if ret != ["0", [key]]:
+        raise ValueError('ret illegal')
+
     ret = conn.execute_command("slotsdel", hash_num[0])
     assert (ret == [[hash_num[0], 0]])
     ret = conn.execute_command("slotsscan", hash_num[0], 0)

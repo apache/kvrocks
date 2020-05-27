@@ -3526,6 +3526,9 @@ class CommandScanBase : public Commander {
       } catch (const std::exception &e) {
         return Status(Status::RedisParseErr, "ERR count param should be type int");
       }
+      if (limit <= 0) {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
     }
     return Status::OK();
   }
@@ -3539,7 +3542,7 @@ class CommandScanBase : public Commander {
 
   std::string GenerateOutput(const std::vector<std::string> &keys) {
     std::vector<std::string> list;
-    if (!keys.empty()) {
+    if (keys.size() == static_cast<size_t>(limit)) {
       list.emplace_back(Redis::BulkString(keys.back()));
     } else {
       list.emplace_back(Redis::BulkString("0"));
@@ -3583,20 +3586,20 @@ class CommandSubkeyScanBase : public CommandScanBase {
 
   std::string GenerateOutput(const std::vector<std::string> &fields, const std::vector<std::string> &values) {
     std::vector<std::string> list;
-    if (!fields.empty()) {
+    auto items_count = fields.size();
+    if (items_count == static_cast<size_t>(limit)) {
       list.emplace_back(Redis::BulkString(fields.back()));
     } else {
       list.emplace_back(Redis::BulkString("0"));
     }
     std::vector<std::string> fvs;
-    auto items_count = fields.size();
     if (items_count > 0) {
       for (size_t i = 0; i < items_count; i++) {
         fvs.emplace_back(fields[i]);
         fvs.emplace_back(values[i]);
       }
-      list.emplace_back(Redis::MultiBulkString(fvs));
     }
+    list.emplace_back(Redis::MultiBulkString(fvs));
     return Redis::Array(list);
   }
 

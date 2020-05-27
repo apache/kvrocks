@@ -295,10 +295,12 @@ def test_zremrangebylex():
 def test_zscan():
     conn = get_redis_conn()
     key = "test_zscan"
+    ret = conn.execute_command("ZSCAN " + key + " 0")
+    assert (ret == ['0', []])
     ret = conn.zadd(key, 'a', 1.3)
     assert (ret == 1)
     ret = conn.execute_command("ZSCAN " + key + " 0")
-    assert (ret == ['a', ['a', '1.300000']])
+    assert (ret == ['0', ['a', '1.300000']])
 
     ret = conn.delete(key)
     assert (ret == 1)

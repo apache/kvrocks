@@ -189,9 +189,11 @@ def test_sunionstore():
 def test_sscan():
     conn = get_redis_conn()
     key = "test_sscan"
+    ret = conn.execute_command("SSCAN " + key + " 0")
+    assert (ret == ['0', []])
     ret = conn.sadd(key, 'a')
     ret = conn.execute_command("SSCAN " + key + " 0")
-    assert (ret == ['a', ['a']])
+    assert (ret == ['0', ['a']])
 
     ret = conn.delete(key)
     assert(ret == 1)

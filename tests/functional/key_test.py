@@ -41,7 +41,7 @@ def test_type():
     ret = conn.type(sortedint_key)
     assert(ret == "sortedint")
     ret = conn.delete(string_key, hash_key, list_key, set_key, zset_key, bitmap_key, sortedint_key)
-    assert(ret == 5)
+    assert(ret == 7)
 
 def test_expire():
     key = "test_expire"
@@ -300,11 +300,14 @@ def test_randomkey():
 def test_scan():
     key = "test_scan"
     conn = get_redis_conn()
+    ret = conn.execute_command("SCAN" + " 0")
+    assert (ret == ["0", []])
+
     ret = conn.set(key, "bar")
     assert(ret)
 
     ret = conn.execute_command("SCAN" + " 0")
-    assert (ret == [key, [key]])
+    assert (ret == ["0", [key]])
 
     ret = conn.delete(key)
     assert (ret == 1)

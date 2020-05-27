@@ -190,10 +190,12 @@ def test_sscan():
     conn = get_redis_conn()
     key = "test_sscan"
     ret = conn.execute_command("SSCAN " + key + " 0")
-    assert (ret == ['0', []])
+    if ret != ["0", []]:
+        raise ValueError('ret is not ["0", []]: ' + ret)
     ret = conn.sadd(key, 'a')
     ret = conn.execute_command("SSCAN " + key + " 0")
-    assert (ret == ['0', ['a']])
+    if ret != ['0', ['a']]:
+        raise ValueError('ret illegal: ' + ret)
 
     ret = conn.delete(key)
     assert(ret == 1)

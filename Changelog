@@ -1,3 +1,10 @@
+* Version 1.1.18 (@2020-05-28)
+	- FIX: add missing bitmap and sortedint typeName
+	- FIX: ignore case in namespace sub_command
+	- FIX: git submodule init should be at toplevel of the working tree
+    - FIX: should return empty list when hscan,zscan,sscan is empty
+    - FIX: return cursor "0" when there is no more key left in scan,hscan,zscan,sscan cmd
+
 * Version 1.1.17 (@2020-05-18)
 	- FIX: string getRawValue when expired, should clear raw_value
 

@@ -215,10 +215,10 @@ def bpop(key):
     ret = conn.execute_command("brpop", key, 1)
     assert (ret == None)
     ret = conn.execute_command("brpop", key, 0)
-    assert (ret == 'a')
+    assert (ret == [key, 'a'])
 
     ret = conn.execute_command("blpop", key, 0)
-    assert (ret == 'b')
+    assert (ret == [key, 'b'])
 
 
 def test_bpop():

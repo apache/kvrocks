@@ -1382,16 +1382,17 @@ class CommandBPop : public Commander {
 
   rocksdb::Status TryPopFromList() {
     Redis::List list_db(svr_->storage_, conn_->GetNamespace());
-    std::string elem;
+    std::string last_key, elem;
     rocksdb::Status s;
     for (const auto &key : keys_) {
+     last_key = key;
       s = list_db.Pop(key, &elem, left_);
       if (s.ok() || !s.IsNotFound()) {
         break;
       }
     }
     if (s.ok()) {
-      conn_->Reply(Redis::BulkString(elem));
+      conn_->Reply(Redis::MultiBulkString({last_key, elem}));
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));
       LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->Name()

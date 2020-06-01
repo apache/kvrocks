@@ -1,8 +1,8 @@
 #pragma once
 
-#include <event2/buffer.h>
 #include <string>
 #include <vector>
+#include <event2/buffer.h>
 
 #define CRLF "\r\n"
 

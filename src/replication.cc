@@ -2,14 +2,14 @@
 
 #include <signal.h>
 #include <arpa/inet.h>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-#include <event2/event.h>
-#include <glog/logging.h>
 #include <netinet/tcp.h>
 #include <future>
 #include <string>
 #include <thread>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/event.h>
+#include <glog/logging.h>
 
 #include "redis_reply.h"
 #include "rocksdb_crc32c.h"

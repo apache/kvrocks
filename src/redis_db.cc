@@ -1,8 +1,5 @@
-
-#include <ctime>
-
 #include "redis_db.h"
-
+#include <ctime>
 #include "server.h"
 #include "util.h"
 

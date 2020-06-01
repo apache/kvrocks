@@ -1,7 +1,7 @@
 #include "redis_hash.h"
-#include <rocksdb/status.h>
 #include <limits>
 #include <iostream>
+#include <rocksdb/status.h>
 
 namespace Redis {
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {

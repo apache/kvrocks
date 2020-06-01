@@ -1,15 +1,14 @@
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
-#include <glog/logging.h>
-#include <rocksdb/env.h>
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <utility>
 #include <limits>
+#include <glog/logging.h>
+#include <rocksdb/env.h>
 
 #include "config.h"
 #include "util.h"

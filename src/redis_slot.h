@@ -1,12 +1,10 @@
 #pragma once
-
-#include <rocksdb/status.h>
-#include <rocksdb/write_batch.h>
-#include <rocksdb/db.h>
-
 #include <string>
 #include <vector>
 #include <thread>
+#include <rocksdb/status.h>
+#include <rocksdb/write_batch.h>
+#include <rocksdb/db.h>
 
 #include "encoding.h"
 #include "redis_db.h"

@@ -1,10 +1,12 @@
 #pragma once
 
-#include <rocksdb/db.h>
-#include <rocksdb/compaction_filter.h>
 #include <vector>
 #include <memory>
 #include <string>
+
+#include <rocksdb/db.h>
+#include <rocksdb/compaction_filter.h>
+
 #include "redis_metadata.h"
 #include "redis_slot.h"
 #include "storage.h"

@@ -3,18 +3,18 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
-#include <event2/util.h>
-#include <event2/buffer.h>
-#include <glog/logging.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <poll.h>
 #include <errno.h>
 #include <pthread.h>
 #include <fcntl.h>
-
 #include <string>
 #include <algorithm>
+#include <event2/util.h>
+#include <event2/buffer.h>
+#include <glog/logging.h>
+
 
 #include "util.h"
 #include "status.h"

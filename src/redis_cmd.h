@@ -1,11 +1,5 @@
 #pragma once
 
-#include <event2/bufferevent.h>
-#include <event2/event.h>
-#include <glog/logging.h>
-#include <rocksdb/types.h>
-#include <rocksdb/utilities/backupable_db.h>
-
 #include <list>
 #include <map>
 #include <string>
@@ -14,6 +8,11 @@
 #include <utility>
 #include <memory>
 
+#include <event2/bufferevent.h>
+#include <event2/event.h>
+#include <glog/logging.h>
+#include <rocksdb/types.h>
+#include <rocksdb/utilities/backupable_db.h>
 
 #include "redis_reply.h"
 #include "status.h"

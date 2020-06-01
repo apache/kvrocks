@@ -1,10 +1,10 @@
 #pragma once
 
-#include <rocksdb/status.h>
-
 #include <string>
 #include <vector>
 #include <atomic>
+
+#include <rocksdb/status.h>
 
 #include "encoding.h"
 

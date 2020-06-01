@@ -1,7 +1,5 @@
 #include <getopt.h>
 #include <stdlib.h>
-#include <event2/thread.h>
-#include <glog/logging.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -10,12 +8,12 @@
 #else
 #define _XOPEN_SOURCE
 #endif
+#include <sys/un.h>
 #include <signal.h>
 #include <execinfo.h>
 #include <ucontext.h>
-#include <sys/un.h>
-
-
+#include <event2/thread.h>
+#include <glog/logging.h>
 #include "worker.h"
 #include "storage.h"
 #include "version.h"

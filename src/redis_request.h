@@ -1,8 +1,8 @@
 #pragma once
 
-#include <event2/buffer.h>
 #include <vector>
 #include <string>
+#include <event2/buffer.h>
 
 #include "status.h"
 

@@ -2,11 +2,11 @@
 #include <time.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#include <rocksdb/env.h>
 
 #include <vector>
 #include <cstdlib>
 #include <atomic>
+#include <rocksdb/env.h>
 
 #include "util.h"
 

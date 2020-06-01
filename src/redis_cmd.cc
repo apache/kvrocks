@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <glog/logging.h>
 #include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
@@ -8,6 +7,7 @@
 #include <thread>
 #include <utility>
 #include <memory>
+#include <glog/logging.h>
 
 #include "redis_db.h"
 #include "redis_cmd.h"

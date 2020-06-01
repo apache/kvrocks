@@ -4,9 +4,9 @@
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
-#include <glog/logging.h>
 #include <utility>
 #include <memory>
+#include <glog/logging.h>
 
 #include "util.h"
 #include "worker.h"

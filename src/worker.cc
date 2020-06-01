@@ -1,10 +1,10 @@
 #include "worker.h"
 
-#include <glog/logging.h>
 #include <list>
 #include <cctype>
 #include <utility>
 #include <algorithm>
+#include <glog/logging.h>
 
 #include "redis_request.h"
 #include "redis_connection.h"

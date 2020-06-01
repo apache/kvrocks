@@ -1,6 +1,5 @@
 #pragma once
 
-#include <event2/bufferevent.h>
 #include <thread>
 #include <vector>
 #include <utility>
@@ -8,6 +7,7 @@
 #include <tuple>
 #include <string>
 #include <deque>
+#include <event2/bufferevent.h>
 
 #include "status.h"
 #include "storage.h"

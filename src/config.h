@@ -1,12 +1,12 @@
 #pragma once
-
 #include <sys/resource.h>
-#include <rocksdb/options.h>
 
 #include <string>
 #include <map>
 #include <vector>
 #include <set>
+
+#include <rocksdb/options.h>
 
 #include "config_type.h"
 #include "status.h"

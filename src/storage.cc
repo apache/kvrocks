@@ -2,6 +2,8 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <iostream>
+#include <memory>
 #include <event2/buffer.h>
 #include <glog/logging.h>
 #include <rocksdb/filter_policy.h>
@@ -9,8 +11,6 @@
 #include <rocksdb/sst_file_manager.h>
 #include <rocksdb/utilities/table_properties_collectors.h>
 #include <rocksdb/rate_limiter.h>
-#include <iostream>
-#include <memory>
 
 #include "config.h"
 #include "redis_db.h"

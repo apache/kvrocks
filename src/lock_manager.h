@@ -1,9 +1,9 @@
 #pragma once
 
-#include <rocksdb/db.h>
-
 #include <mutex>
 #include <vector>
+
+#include <rocksdb/db.h>
 
 class LockManager {
  public:

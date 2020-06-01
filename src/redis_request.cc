@@ -1,9 +1,8 @@
+#include <chrono>
+#include <utility>
 #include <glog/logging.h>
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>
-
-#include <chrono>
-#include <utility>
 
 #include "util.h"
 #include "redis_cmd.h"

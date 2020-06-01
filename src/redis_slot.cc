@@ -3,15 +3,14 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <sys/time.h>
-#include <rocksdb/env.h>
-#include <glog/logging.h>
-
 #include <vector>
 #include <cstdlib>
 #include <atomic>
 #include <string>
 #include <algorithm>
 #include <map>
+#include <rocksdb/env.h>
+#include <glog/logging.h>
 
 #include "util.h"
 #include "redis_reply.h"

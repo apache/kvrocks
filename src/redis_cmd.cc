@@ -718,7 +718,7 @@ class CommandBitCount : public Commander {
 
 class CommandBitPos: public Commander {
  public:
-  CommandBitPos() : Commander("bitcount", -3, false) {}
+  CommandBitPos() : Commander("bitpos", -3, false) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
       if (args.size() >= 4) start_ = std::stoi(args[3]);

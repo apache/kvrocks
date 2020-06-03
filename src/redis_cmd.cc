@@ -722,7 +722,10 @@ class CommandBitPos: public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     try {
       if (args.size() >= 4) start_ = std::stoi(args[3]);
-      if (args.size() >= 5) stop_ = std::stoi(args[4]);
+      if (args.size() >= 5) {
+        stop_given_ = true;
+        stop_ = std::stoi(args[4]);
+      }
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
@@ -739,7 +742,7 @@ class CommandBitPos: public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int pos;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, &pos);
+    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(pos);
     return Status::OK();
@@ -747,7 +750,7 @@ class CommandBitPos: public Commander {
 
  private:
   int start_ = 0, stop_ = -1;
-  bool bit_ = false;
+  bool bit_ = false, stop_given_ = false;
 };
 
 class CommandType : public Commander {

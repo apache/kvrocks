@@ -13,6 +13,8 @@ typedef struct {
 
 namespace Redis {
 
+const int STRING_HDR_SIZE = 5;
+
 class String : public Database {
  public:
   explicit String(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}

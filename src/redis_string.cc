@@ -5,8 +5,6 @@
 
 namespace Redis {
 
-const int STRING_HDR_SIZE = 5;
-
 rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
   raw_value->clear();
 

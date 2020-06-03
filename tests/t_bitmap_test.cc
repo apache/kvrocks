@@ -51,7 +51,7 @@ TEST_F(RedisBitmapTest, BitPosClearBit) {
   int pos;
   bool old_bit;
   for (int i = 0; i < 1024+16;i ++) {
-    bitmap->BitPos(key_, false, 0, -1, &pos);
+    bitmap->BitPos(key_, false, 0, -1, true, &pos);
     EXPECT_EQ(pos, i);
     bitmap->SetBit(key_, i, true, &old_bit);
     EXPECT_FALSE(old_bit);
@@ -68,7 +68,7 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
   int pos;
   int start_indexes[] = {0, 1, 124, 1025, 1027, 3*1024+1};
   for (size_t i = 0; i < sizeof(start_indexes)/ sizeof(start_indexes[0]); i++) {
-    bitmap->BitPos(key_, true, start_indexes[i], -1, &pos);
+    bitmap->BitPos(key_, true, start_indexes[i], -1, true, &pos);
     EXPECT_EQ(pos, offsets[i]);
   }
   bitmap->Del(key_);

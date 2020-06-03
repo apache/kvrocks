@@ -115,6 +115,8 @@ target_sources(kvrocks PRIVATE
         src/redis_geo.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
+        src/redis_bitmap_string.cc
+        src/redis_bitmap_string.h
         src/redis_pubsub.cc
         src/redis_pubsub.h
         src/redis_sortedint.cc
@@ -201,6 +203,8 @@ target_sources(kvrocks2redis PRIVATE
         src/redis_geo.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
+        src/redis_bitmap_string.cc
+        src/redis_bitmap_string.h
         src/redis_pubsub.cc
         src/redis_pubsub.h
         src/redis_sortedint.cc
@@ -281,6 +285,8 @@ add_executable(unittest
         src/redis_reply.h
         src/redis_bitmap.cc
         src/redis_bitmap.h
+        src/redis_bitmap_string.cc
+        src/redis_bitmap_string.h
         src/redis_metadata.cc
         src/encoding.cc
         src/redis_string.cc

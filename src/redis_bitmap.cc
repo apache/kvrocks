@@ -1,6 +1,8 @@
 #include "redis_bitmap.h"
 #include <vector>
 
+#include "redis_bitmap_string.h"
+
 namespace Redis {
 
 const uint32_t kBitmapSegmentBits = 1024 * 8;
@@ -25,18 +27,42 @@ uint32_t kNum2Bits[256] = {
     4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
 };
 
-rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata) {
-  return Database::GetMetadata(kRedisBitmap, ns_key, metadata);
+rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
+  std::string old_metadata;
+  metadata->Encode(&old_metadata);
+  auto s = GetRawMetadata(ns_key, raw_value);
+  if (!s.ok()) return s;
+  metadata->Decode(*raw_value);
+
+  if (metadata->Expired()) {
+    metadata->Decode(old_metadata);
+    return rocksdb::Status::NotFound("the key was Expired");
+  }
+  if (metadata->Type() == kRedisString) return s;
+  if (metadata->Type() != kRedisBitmap && metadata->size > 0) {
+    metadata->Decode(old_metadata);
+    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+  }
+  if (metadata->size == 0) {
+    metadata->Decode(old_metadata);
+    return rocksdb::Status::NotFound("no elements");
+  }
+  return s;
 }
 
 rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit) {
   *bit = false;
-  std::string ns_key;
+  std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  if (metadata.Type() == kRedisString) {
+    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    return bitmap_string_db.GetBit(raw_value, offset, bit);
+  }
 
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -54,13 +80,18 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
 }
 
 rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit) {
-  std::string ns_key;
+  std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   BitmapMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
+
+  if (metadata.Type() == kRedisString) {
+    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    return bitmap_string_db.SetBit(ns_key, &raw_value, offset, new_bit, old_bit);
+  }
 
   std::string sub_key, value;
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
@@ -104,12 +135,12 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
 }
 
 rocksdb::Status Bitmap::MSetBit(const Slice &user_key, const std::vector<BitmapPair> &pairs) {
-  std::string ns_key;
+  std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   BitmapMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   uint32_t cnt = 0;
@@ -134,12 +165,17 @@ rocksdb::Status Bitmap::MSetBit(const Slice &user_key, const std::vector<BitmapP
 
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uint32_t *cnt) {
   *cnt = 0;
-  std::string ns_key;
+  std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  if (metadata.Type() == kRedisString) {
+    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
+  }
 
   if (start < 0) start += metadata.size + 1;
   if (stop < 0) stop += metadata.size + 1;
@@ -168,17 +204,23 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int stop, int *pos) {
-  std::string ns_key;
+rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int stop, bool stop_given, int *pos) {
+  std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (s.IsNotFound()) {
     *pos = bit ? -1 : 0;
     return rocksdb::Status::OK();
   }
+
+  if (metadata.Type() == kRedisString) {
+    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos);
+  }
+
   if (start < 0) start += metadata.size + 1;
   if (stop < 0) stop += metadata.size + 1;
   if (start < 0 || stop < 0 || start > stop) {

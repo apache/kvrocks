@@ -16,8 +16,8 @@ class BitmapString : public Database {
   rocksdb::Status BitCount(const std::string &raw_value, int start, int stop, uint32_t *cnt);
   rocksdb::Status BitPos(const std::string &raw_value, bool bit, int start, int stop, bool stop_given, int *pos);
  private:
-  size_t redisPopcount(unsigned char *p, long count);
-  long redisBitpos(unsigned char *c, unsigned long count, int bit);
+  size_t redisPopcount(unsigned char *p, int count);
+  int redisBitpos(unsigned char *c, int count, int bit);
 };
 
 }  // namespace Redis

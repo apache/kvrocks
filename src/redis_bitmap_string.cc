@@ -62,7 +62,7 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int start, 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
      * zero can be returned is: start > stop. */
   if (start <= stop) {
-    long bytes = stop - start + 1;
+    int bytes = stop - start + 1;
     *cnt = redisPopcount((unsigned char *) (&string_value[0] + start), bytes);
   }
   return rocksdb::Status::OK();
@@ -86,7 +86,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
   if (start > stop) {
     *pos = -1;
   } else {
-    long bytes = stop - start + 1;
+    int bytes = stop - start + 1;
     *pos = redisBitpos((unsigned char *) (&string_value[0] + start), bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
@@ -113,7 +113,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
  * This function started out as:
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L40
  * */
-size_t BitmapString::redisPopcount(unsigned char *p, long count) {
+size_t BitmapString::redisPopcount(unsigned char *p, int count) {
   size_t bits = 0;
   uint32_t *p4;
   static const unsigned char bitsinbyte[256] =
@@ -126,13 +126,13 @@ size_t BitmapString::redisPopcount(unsigned char *p, long count) {
        4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
 
   /* Count initial bytes not aligned to 32 bit. */
-  while ((unsigned long) p & 3 && count) {
+  while (reinterpret_cast<uint64_t>(p) & 3 && count) {
     bits += bitsinbyte[*p++];
     count--;
   }
 
   /* Count bits 28 bytes at a time */
-  p4 = (uint32_t *) p;
+  p4 = reinterpret_cast<uint32_t *>(p);
   while (count >= 28) {
     uint32_t aux1, aux2, aux3, aux4, aux5, aux6, aux7;
 
@@ -185,11 +185,11 @@ size_t BitmapString::redisPopcount(unsigned char *p, long count) {
  * This function started out as:
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L101
  * */
-long BitmapString::redisBitpos(unsigned char *c, unsigned long count, int bit) {
-  unsigned long *l;
-  unsigned long skipval, word = 0, one;
-  long pos = 0; /* Position of bit, to return to the caller. */
-  unsigned long j;
+int BitmapString::redisBitpos(unsigned char *c, int count, int bit) {
+  uint64_t *l;
+  uint64_t skipval, word = 0, one;
+  int pos = 0; /* Position of bit, to return to the caller. */
+  uint64_t j;
   int found;
 
   /* Process whole words first, seeking for first word that is not
@@ -204,7 +204,7 @@ long BitmapString::redisBitpos(unsigned char *c, unsigned long count, int bit) {
   /* Skip initial bits not aligned to sizeof(unsigned long) byte by byte. */
   skipval = bit ? 0 : UCHAR_MAX;
   found = 0;
-  while ((unsigned long) c & (sizeof(*l) - 1) && count) {
+  while (reinterpret_cast<uint64_t>(c) & (sizeof(*l) - 1) && count) {
     if (*c != skipval) {
       found = 1;
       break;
@@ -215,10 +215,10 @@ long BitmapString::redisBitpos(unsigned char *c, unsigned long count, int bit) {
   }
 
   /* Skip bits with full word step. */
-  l = (unsigned long *) c;
+  l = reinterpret_cast<uint64_t *>(c);
   if (!found) {
-    skipval = bit ? 0 : ULONG_MAX;
-    while (count >= sizeof(*l)) {
+    skipval = bit ? 0 : UINT64_MAX;
+    while (count >= static_cast<int>(sizeof(*l))) {
       if (*l != skipval) break;
       l++;
       count -= sizeof(*l);
@@ -233,7 +233,7 @@ long BitmapString::redisBitpos(unsigned char *c, unsigned long count, int bit) {
    *
    * Note that the loading is designed to work even when the bytes left
    * (count) are less than a full word. We pad it with zero on the right. */
-  c = (unsigned char *) l;
+  c = reinterpret_cast<unsigned char *>(l);
   for (j = 0; j < sizeof(*l); j++) {
     word <<= 8;
     if (count) {
@@ -254,7 +254,7 @@ long BitmapString::redisBitpos(unsigned char *c, unsigned long count, int bit) {
    * have a single "1" set in the most significant position in an
    * unsigned long. We don't know the size of the long so we use a
    * simple trick. */
-  one = ULONG_MAX; /* All bits set to 1.*/
+  one = UINT64_MAX; /* All bits set to 1.*/
   one >>= 1;       /* All bits set to 1 but the MSB. */
   one = ~one;      /* All bits set to 0 but the MSB. */
 

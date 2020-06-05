@@ -23,7 +23,7 @@ jobs:
       install:
         - sudo apt-get install -y cppcheck
         - sudo pip install --upgrade pip 
-        - sudo pip install cpplint
+        - sudo pip install cpplint==1.5.0
       script:
           make lint
     - stage: build

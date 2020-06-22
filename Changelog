@@ -1,3 +1,9 @@
+* Version 1.1.19 (@2020-06-22)
+	- FIX: missing blocking key in response
+	- FIX: use cpplint 1.5.0 && cpplint include order warning
+	- ADD: bitmap support redis bitmap format(string)
+    - FIX: add BEV_OPT_THREADSAFE option in connection
+
 * Version 1.1.18 (@2020-05-28)
 	- FIX: add missing bitmap and sortedint typeName
 	- FIX: ignore case in namespace sub_command

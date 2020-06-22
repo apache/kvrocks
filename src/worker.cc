@@ -75,10 +75,10 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
     return;
   }
   event_base *base = evconnlistener_get_base(listener);
+  auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
   bufferevent *bev = bufferevent_socket_new(base,
                                             fd,
-                                            BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS
-                                                | BEV_OPT_UNLOCK_CALLBACKS);
+                                            BEV_OPT_CLOSE_ON_FREE | evThreadSafeFlags);
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);

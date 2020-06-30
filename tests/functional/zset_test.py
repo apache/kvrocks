@@ -395,3 +395,18 @@ def test_zinterstore():
     ret = conn.delete(key2)
     assert (ret == 1)
 
+
+def test_zmscore():
+    conn = get_redis_conn()
+    key = "test_zmscore"
+    ret = conn.zadd(key, 'a', 1.3, 'b', 1.4)
+    if not ret == 2:
+        raise ValueError('ret illegal')
+    ret = conn.execute_command("zmscore", key, "a", "b", "c")
+    if not ret == ['1.300000', '1.400000', None]:
+        print ret
+        raise ValueError('ret illegal')
+
+    ret = conn.delete(key)
+    if not ret == 1:
+        raise ValueError('ret illegal')

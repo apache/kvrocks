@@ -21,7 +21,18 @@ redis> SIREVRANGE mysi 0 3 cursor 5
 3) 2
 redis> SIRANGE mysi 0 3 cursor 123
 1) 245
+redis> SIMEXIST mysi 1 88 2
+1) 1
+2) 0
+3) 1
 redis> SIREM mysi 2
 (integer) 1
 redis>
+```
+* simexist key member1 (member2 ...)
+```
+Return value
+Array reply: list of integers at the specified keys, specifically:
+    1 if the key exists.
+    0 if the key does not exist.
 ```

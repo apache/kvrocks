@@ -130,4 +130,31 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   delete iter;
   return rocksdb::Status::OK();
 }
+
+rocksdb::Status Sortedint::MExist(const Slice &user_key, std::vector<uint64_t> ids, std::vector<int> *exists) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  SortedintMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  std::string sub_key, value;
+  for (const auto id : ids) {
+    std::string id_buf;
+    PutFixed64(&id_buf, id);
+    InternalKey(ns_key, id_buf, metadata.version).Encode(&sub_key);
+    s = db_->Get(read_options, sub_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.IsNotFound()) {
+      exists->emplace_back(0);
+    } else {
+      exists->emplace_back(1);
+    }
+  }
+  return rocksdb::Status::OK();
+}
 }  // namespace Redis

@@ -86,32 +86,33 @@
 
 ## ZSet Commands
 
-| Command          | Supported OR Not | Desc |
-| ---------------- | ---------------- | ---- |
-| bzpopmin         | X                |      |
-| bzpopmax         | X                |      |
-| zadd             | √                |      |
-| zcard            | √                |      |
-| zcount           | √                |      |
-| zincrby          | √                |      |
-| zinterstore      | √                |      |
-| zlexcount        | √                |      |
-| zpopmin          | √                |      |
-| zpopmax          | √                |      |
-| zrange           | √                |      |
-| zrangebylex      | √                |      |
-| zrangebyscore    | √                |      |
-| zrank            | √                |      |
-| zrem             | √                |      |
-| zremrangebylex   | √                |      |
-| zremrangebyrank  | √                |      |
-| zremrangebyscore | √                |      |
-| zrevrange        | √                |      |
-| zrevrangebylex   | X                |      |
-| zrevrangebyscore | √                |      |
-| zscan            | √                |      |
-| zscore           | √                |      |
-| zunionscore      | √                |      |
+| Command          | Supported OR Not | Desc        |
+| ---------------- | ---------------- | ----------- |
+| bzpopmin         | X                |             |
+| bzpopmax         | X                |             |
+| zadd             | √                |             |
+| zcard            | √                |             |
+| zcount           | √                |             |
+| zincrby          | √                |             |
+| zinterstore      | √                |             |
+| zlexcount        | √                |             |
+| zpopmin          | √                |             |
+| zpopmax          | √                |             |
+| zrange           | √                |             |
+| zrangebylex      | √                |             |
+| zrangebyscore    | √                |             |
+| zrank            | √                |             |
+| zrem             | √                |             |
+| zremrangebylex   | √                |             |
+| zremrangebyrank  | √                |             |
+| zremrangebyscore | √                |             |
+| zrevrange        | √                |             |
+| zrevrangebylex   | X                |             |
+| zrevrangebyscore | √                |             |
+| zscan            | √                |             |
+| zscore           | √                |             |
+| zmscore          | √                |multi zscore |
+| zunionscore      | √                |             |
 
 ## Key Commands
 
@@ -161,13 +162,14 @@
 
 ## Sortedint Commands
 
-| Command      | Supported OR Not | Desc |
-| ------------ | ---------------- | ---- |
+| Command      | Supported OR Not | Desc                                      |
+| ------------ | ---------------- | ----------------------------------------- |
 | sicard       | √                | like scard                                |
 | siadd        | √                | like sadd, but member is int              |
 | sirem        | √                | like srem, but member is int              |
 | sirange      | √                | sirange key offset count cursor since_id  |
 | sirevrange   | √                | sirevrange key offset count cursor max_id |
+| simexist     | √                | simexist key member1 (member2 ...)        |
 
 ## Administrator Commands
 

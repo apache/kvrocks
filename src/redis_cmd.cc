@@ -2408,6 +2408,38 @@ class CommandZScore : public Commander {
   }
 };
 
+class CommandZMScore : public Commander {
+ public:
+  CommandZMScore() : Commander("zmscore", -3, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> members;
+    for (unsigned int i = 2; i < args_.size(); i++) {
+      members.emplace_back(Slice(args_[i]));
+    }
+    std::map<std::string, double> mscores;
+    rocksdb::Status s = zset_db.MGet(args_[1], members, &mscores);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    std::vector<std::string> values;
+    if (s.IsNotFound()) {
+      values.resize(members.size(), "");
+    } else {
+      for (const auto &member : members) {
+        auto iter = mscores.find(member.ToString());
+        if (iter == mscores.end()) {
+          values.emplace_back("");
+        } else {
+          values.emplace_back(std::to_string(iter->second));
+        }
+      }
+    }
+    *output = Redis::MultiBulkString(values);
+    return Status::OK();
+  }
+};
+
 class CommandZUnionStore : public Commander {
  public:
   CommandZUnionStore() : Commander("zunionstore", -4, true) {}
@@ -2917,6 +2949,37 @@ class CommandSortedintCard : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandSortedintMExist : public Commander {
+ public:
+  CommandSortedintMExist() : Commander("simexist", -3, false) {}
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
+    std::vector<uint64_t> ids;
+    try {
+      for (unsigned int i = 2; i < args_.size(); i++) {
+        ids.emplace_back(std::stoi(args_[i]));
+      }
+    } catch (const std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+
+    std::vector<int> exists;
+    rocksdb::Status s = sortedint_db.MExist(args_[1], ids, &exists);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      exists.resize(ids.size(), 0);
+    }
+    output->append(Redis::MultiLen(exists.size()));
+    for (const auto &exist : exists) {
+      output->append(Redis::Integer(exist));
+    }
     return Status::OK();
   }
 };
@@ -4354,6 +4417,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("zrevrangebyscore", CommandZRevRangeByScore),
     ADD_CMD("zrevrank",         CommandZRevRank),
     ADD_CMD("zscore",           CommandZScore),
+    ADD_CMD("zmscore",          CommandZMScore),
     ADD_CMD("zscan",            CommandZScan),
     ADD_CMD("zunionstore",      CommandZUnionStore),
 
@@ -4379,6 +4443,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("siadd",      CommandSortedintAdd),
     ADD_CMD("sirem",      CommandSortedintRem),
     ADD_CMD("sicard",     CommandSortedintCard),
+    ADD_CMD("simexist",   CommandSortedintMExist),
     ADD_CMD("sirange",    CommandSortedintRange),
     ADD_CMD("sirevrange", CommandSortedintRevRange),
 

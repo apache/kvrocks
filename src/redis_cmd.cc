@@ -2953,9 +2953,9 @@ class CommandSortedintCard : public Commander {
   }
 };
 
-class CommandSortedintMExist : public Commander {
+class CommandSortedintExists : public Commander {
  public:
-  CommandSortedintMExist() : Commander("simexist", -3, false) {}
+  CommandSortedintExists() : Commander("siexists", -3, false) {}
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
@@ -4443,7 +4443,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("siadd",      CommandSortedintAdd),
     ADD_CMD("sirem",      CommandSortedintRem),
     ADD_CMD("sicard",     CommandSortedintCard),
-    ADD_CMD("simexist",   CommandSortedintMExist),
+    ADD_CMD("siexists",   CommandSortedintExists),
     ADD_CMD("sirange",    CommandSortedintRange),
     ADD_CMD("sirevrange", CommandSortedintRevRange),
 

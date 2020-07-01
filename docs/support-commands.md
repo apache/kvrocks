@@ -169,7 +169,7 @@
 | sirem        | √                | like srem, but member is int              |
 | sirange      | √                | sirange key offset count cursor since_id  |
 | sirevrange   | √                | sirevrange key offset count cursor max_id |
-| simexist     | √                | simexist key member1 (member2 ...)        |
+| siexists     | √                | siexists key member1 (member2 ...)        |
 
 ## Administrator Commands
 

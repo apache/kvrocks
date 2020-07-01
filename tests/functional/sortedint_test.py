@@ -71,22 +71,22 @@ def test_sirevrange():
         raise ValueError('ret illegal')
 
 
-def test_simexist():
+def test_siexists():
     conn = get_redis_conn()
-    key = "test_simexist"
-    ret = conn.execute_command("simexist", key, 1, 2)
+    key = "test_siexists"
+    ret = conn.execute_command("siexists", key, 1, 2)
     if not ret == [0, 0]:
         raise ValueError('ret illegal')
     ret = conn.execute_command("siadd", key, 1, 2, 3, 4, 60, 231, 9999)
     if not ret == 7:
         raise ValueError('ret illegal')
-    ret = conn.execute_command("simexist", key, 1, 20, 2, 3, 4, 60, 231, 9999)
+    ret = conn.execute_command("siexists", key, 1, 20, 2, 3, 4, 60, 231, 9999)
     if not ret == [1, 0, 1, 1, 1, 1, 1, 1]:
         raise ValueError('ret illegal')
     ret = conn.execute_command("sirem", key, 1)
     if not ret == 1:
         raise ValueError('ret illegal')
-    ret = conn.execute_command("simexist", key, 1, 2)
+    ret = conn.execute_command("siexists", key, 1, 2)
     if not ret == [0, 1]:
         raise ValueError('ret illegal')
 
@@ -94,6 +94,6 @@ def test_simexist():
     if not ret == 1:
         raise ValueError('ret illegal')
 
-    ret = conn.execute_command("simexist", key, 1, 2)
+    ret = conn.execute_command("siexists", key, 1, 2)
     if not ret == [0, 0]:
         raise ValueError('ret illegal')

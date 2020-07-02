@@ -50,7 +50,7 @@ configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 endif()
-add_executable(kvrocks)
+add_executable(kvrocks )
 target_compile_features(kvrocks PRIVATE cxx_std_11)
 target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
@@ -138,6 +138,10 @@ target_sources(kvrocks PRIVATE
         src/event_listener.cc
         src/log_collector.h
         src/log_collector.cc
+        src/table_properties_collector.cc
+        src/table_properties_collector.h
+        src/compaction_checker.cc
+        src/compaction_checker.h
         )
 
 # kvrocks2redis sync tool
@@ -228,6 +232,10 @@ target_sources(kvrocks2redis PRIVATE
         src/event_listener.cc
         src/log_collector.h
         src/log_collector.cc
+        src/table_properties_collector.cc
+        src/table_properties_collector.h
+        src/compaction_checker.cc
+        src/compaction_checker.h
         tools/kvrocks2redis/config.cc
         tools/kvrocks2redis/config.h
         tools/kvrocks2redis/main.cc
@@ -312,6 +320,10 @@ add_executable(unittest
         src/redis_db.h
         src/log_collector.h
         src/log_collector.cc
+        src/table_properties_collector.cc
+        src/table_properties_collector.h
+        src/compaction_checker.cc
+        src/compaction_checker.h
         tests/main.cc
         tests/test_base.h
         tests/t_string_test.cc

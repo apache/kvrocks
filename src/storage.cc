@@ -18,15 +18,19 @@
 #include "redis_slot.h"
 #include "event_listener.h"
 #include "compact_filter.h"
+#include "table_properties_collector.h"
 
 namespace Engine {
 
 const char *kPubSubColumnFamilyName = "pubsub";
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
+const char *kSubkeyColumnFamilyName = "default";
 const char *kSlotMetadataColumnFamilyName = "slot_metadata";
 const char *kSlotColumnFamilyName = "slot";
+
 const uint64_t kIORateLimitMaxMb = 1024000;
+
 using rocksdb::Slice;
 using Redis::WriteBatchExtractor;
 
@@ -87,8 +91,6 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
   options->sst_file_manager = sst_file_manager_;
-  options->table_properties_collector_factories.emplace_back(
-      rocksdb::NewCompactOnDeletionCollectorFactory(128000, 64000));
   uint64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = static_cast<uint64_t>(config_->max_io_mb);
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
@@ -113,7 +115,7 @@ Status Storage::SetDBOption(const std::string &key, const std::string &value) {
   return Status::OK();
 }
 
-Status Storage::CreateColumnFamiles(const rocksdb::Options &options) {
+Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   rocksdb::DB *tmp_db;
   rocksdb::ColumnFamilyOptions cf_options(options);
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
@@ -152,7 +154,7 @@ Status Storage::Open(bool read_only) {
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
   rocksdb::Options options;
   InitOptions(&options);
-  CreateColumnFamiles(options);
+  CreateColumnFamilies(options);
   rocksdb::BlockBasedTableOptions metadata_table_opts;
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
   metadata_table_opts.block_cache = rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
@@ -163,6 +165,8 @@ Status Storage::Open(bool read_only) {
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
   metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  metadata_opts.table_properties_collector_factories.emplace_back(
+      NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
@@ -174,6 +178,8 @@ Status Storage::Open(bool read_only) {
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  metadata_opts.table_properties_collector_factories.emplace_back(
+      NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;
   pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
@@ -435,9 +441,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
 rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
-  for (auto cf_handle : cf_handles_) {
-    rocksdb::Status s =
-        db_->CompactRange(compact_opts, cf_handle, begin, end);
+  for (const auto &cf_handle : cf_handles_) {
+    rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle, begin, end);
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();

@@ -78,6 +78,7 @@ Config::Config() {
       {"slaveof", true, new StringField(&slaveof_, "")},
       {"compact-cron", false, new StringField(&compact_cron_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_, "")},
+      {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"db-name", true, new StringField(&db_name, "changeme.name")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", true, new StringField(&backup_dir, "")},
@@ -147,6 +148,22 @@ void Config::initFieldValidator() {
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         return bgsave_cron.SetScheduleTime(args);
+      }},
+      {"compaction-checker-range", [this](const std::string& k, const std::string& v)->Status {
+        std::vector<std::string> args;
+        Util::Split(v, "-", &args);
+        if (args.size() != 2) {
+          return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");
+        }
+        int64_t start, stop;
+        Status s = Util::StringToNum(args[0], &start, 0, 24);
+        if (!s.IsOK()) return s;
+        s = Util::StringToNum(args[1], &stop, 0, 24);
+        if (!s.IsOK()) return s;
+        if (start > stop)  return Status(Status::NotOK, "invalid range format, start should be smaller than stop");
+        compaction_checker_range.Start = start;
+        compaction_checker_range.Stop = stop;
+        return Status::OK();
       }},
   };
   for (const auto& iter : validators) {

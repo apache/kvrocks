@@ -72,6 +72,7 @@ class Server {
   std::string GetLastRandomKeyCursor() { return last_random_key_cursor_; }
   void SetLastRandomKeyCursor(const std::string &cursor) { last_random_key_cursor_ = cursor; }
 
+  static int GetUnixTime();
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
   void GetMemoryInfo(std::string *info);
@@ -109,10 +110,12 @@ class Server {
   Stats stats_;
   Engine::Storage *storage_;
   Redis::SlotsMgrtSenderThread *slotsmgrt_sender_thread_ = nullptr;
+  static std::atomic<int> unix_time_;
 
  private:
   void cron();
   void delConnContext(ConnContext *c);
+  void updateCachedTime();
 
   bool stop_ = false;
   bool is_loading_ = false;
@@ -151,6 +154,7 @@ class Server {
 
   // threads
   std::thread cron_thread_;
+  std::thread compaction_checker_thread_;
   TaskRunner task_runner_;
   std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;

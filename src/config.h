@@ -29,6 +29,16 @@ const size_t GiB = 1024L * MiB;
 
 extern const char *kDefaultNamespace;
 
+struct CompactionCheckerRange {
+ public:
+  int Start;
+  int Stop;
+
+  bool Enabled() {
+    return Start != -1 || Stop != -1;
+  }
+};
+
 struct Config{
  public:
   Config();
@@ -67,6 +77,7 @@ struct Config{
   int master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
+  CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
 
   // profiling
@@ -119,6 +130,7 @@ struct Config{
   std::string slaveof_;
   std::string compact_cron_;
   std::string bgsave_cron_;
+  std::string compaction_checker_range_;
   std::string profiling_sample_commands_;
   std::map<std::string, ConfigField*> fields_;
 

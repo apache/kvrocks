@@ -14,6 +14,9 @@
 #include "redis_db.h"
 #include "redis_request.h"
 #include "redis_connection.h"
+#include "compaction_checker.h"
+
+std::atomic<int>Server::unix_time_ = {0};
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
@@ -68,6 +71,36 @@ Status Server::Start() {
     Util::ThreadSetName("server-cron");
     this->cron();
   });
+
+  compaction_checker_thread_ = std::thread([this]() {
+    uint64_t counter = 0;
+    int32_t last_compact_date = 0;
+    Util::ThreadSetName("compaction-checker");
+    CompactionChecker compaction_checker(this->storage_);
+    while (!stop_) {
+      if (++counter % 600 == 0  // check every minute
+          && config_->compaction_checker_range.Enabled()) {
+        auto t = std::time(nullptr);
+        auto local_time = std::localtime(&t);
+        if (local_time->tm_hour >= config_->compaction_checker_range.Start
+        && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
+          std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
+                                               Engine::kSubkeyColumnFamilyName,
+                                               Engine::kZSetScoreColumnFamilyName};
+          for (const auto &cf_name : cf_names) {
+            compaction_checker.PickCompactionFiles(cf_name);
+          }
+          // compact once per day
+          if (last_compact_date != local_time->tm_yday) {
+            compaction_checker.CompactPubsubAndSlotFiles();
+            last_compact_date = local_time->tm_yday;
+          }
+        }
+      }
+      usleep(100000);
+    }
+  });
+
   if (config_->codis_enabled) {
     slotsmgrt_sender_thread_ = new Redis::SlotsMgrtSenderThread(storage_);
     slotsmgrt_sender_thread_->Start();
@@ -100,6 +133,7 @@ void Server::Join() {
   if (slotsmgrt_sender_thread_ != nullptr) {
     slotsmgrt_sender_thread_->Join();
   }
+  if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 
 Status Server::AddMaster(std::string host, uint32_t port) {
@@ -384,6 +418,12 @@ void Server::delConnContext(ConnContext *c) {
   }
 }
 
+void Server::updateCachedTime() {
+  time_t ret = time(nullptr);
+  if (ret == -1) return;
+  unix_time_.store(static_cast<int>(ret));
+}
+
 int Server::IncrClientNum() {
   total_clients_.fetch_add(1, std::memory_order::memory_order_relaxed);
   return connected_clients_.fetch_add(1, std::memory_order_relaxed);
@@ -416,11 +456,15 @@ std::atomic<uint64_t> *Server::GetClientID() {
 void Server::cron() {
   uint64_t counter = 0;
   while (!stop_) {
+    updateCachedTime();
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
       auto now = std::localtime(&t);
-      if (config_->compact_cron.IsEnabled() && config_->compact_cron.IsTimeMatch(now)) {
+      // disable compaction cron when the compaction checker was enabled
+      if (!config_->compaction_checker_range.Enabled()
+          && config_->compact_cron.IsEnabled()
+          && config_->compact_cron.IsTimeMatch(now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
@@ -572,6 +616,14 @@ void Server::GetReplicationInfo(std::string *info) {
   slave_threads_mu_.unlock();
 
   *info = string_stream.str();
+}
+
+int Server::GetUnixTime() {
+  if (unix_time_.load() == 0) {
+    time_t ret = time(nullptr);
+    unix_time_.store(static_cast<int>(ret));
+  }
+  return unix_time_.load();
 }
 
 void Server::GetStatsInfo(std::string *info) {

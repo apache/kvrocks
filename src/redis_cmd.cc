@@ -3356,6 +3356,8 @@ class CommandPSync : public Commander {
     if (s.IsOK() && iter->Valid()) {
       auto batch = iter->GetBatch();
       if (seq != batch.sequence) {
+        LOG(ERROR) << "checkWALBoundary with sequence: " << seq
+                   << ", but GetWALIter return older sequence: " << batch.sequence;
         return Status(Status::NotOK);
       }
       return Status::OK();

@@ -3355,7 +3355,7 @@ class CommandPSync : public Commander {
     auto s = storage->GetWALIter(seq, &iter);
     if (s.IsOK() && iter->Valid()) {
       auto batch = iter->GetBatch();
-      if (seq < batch.sequence) {
+      if (seq != batch.sequence) {
         return Status(Status::NotOK);
       }
       return Status::OK();

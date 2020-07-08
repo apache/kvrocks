@@ -81,7 +81,8 @@ void FeedSlaveThread::loop() {
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
     if (batch.sequence != next_repl_seq_) {
-      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost";
+      LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost"
+                 << ", sequence " << next_repl_seq_ << " expectd, but got " << batch.sequence;
       Stop();
       return;
     }

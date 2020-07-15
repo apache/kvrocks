@@ -22,7 +22,6 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   rocksdb::TablePropertiesCollection props;
   rocksdb::ColumnFamilyHandle *cf = storage_->GetCFHandle(cf_name);
 
-  LOG(INFO) << "";
   auto s = storage_->GetDB()->GetPropertiesOfAllTables(cf, &props);
   if (!s.ok()) {
     LOG(WARNING) << "[compaction checker] Failed to get table properties, " << s.ToString();

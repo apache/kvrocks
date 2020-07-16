@@ -178,7 +178,7 @@ Status Storage::Open(bool read_only) {
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
-  metadata_opts.table_properties_collector_factories.emplace_back(
+  subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;

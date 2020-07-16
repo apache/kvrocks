@@ -1,3 +1,6 @@
+* Version 1.1.22 (@2020-07-16)
+	- MOD: improve the compaction(avoid unneccessary full compaction every day)
+
 * Version 1.1.21 (@2020-07-08)
 	- FIX: GetUpdatesSince should not getting data that is older than seq (seems like a bug in rocksdb)
 

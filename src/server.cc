@@ -80,8 +80,8 @@ Status Server::Start() {
     while (!stop_) {
       if (++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
-        auto t = std::time(nullptr);
-        auto local_time = std::localtime(&t);
+        auto now = std::time(nullptr);
+        auto local_time = std::localtime(&now);
         if (local_time->tm_hour >= config_->compaction_checker_range.Start
         && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
@@ -90,11 +90,11 @@ Status Server::Start() {
           for (const auto &cf_name : cf_names) {
             compaction_checker.PickCompactionFiles(cf_name);
           }
-          // compact once per day
-          if (last_compact_date != local_time->tm_yday) {
-            compaction_checker.CompactPubsubAndSlotFiles();
-            last_compact_date = local_time->tm_yday;
-          }
+        }
+        // compact once per day
+        if (now != 0 && last_compact_date != now/86400) {
+          last_compact_date = now/86400;
+          compaction_checker.CompactPubsubAndSlotFiles();
         }
       }
       usleep(100000);

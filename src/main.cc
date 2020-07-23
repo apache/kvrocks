@@ -301,6 +301,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
+  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {

@@ -143,7 +143,7 @@ class CommandFlushDB : public Commander {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.FlushDB();
     LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace()
-              << " was flused, addr: " << conn->GetAddr();
+              << " was flushed, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
@@ -3356,8 +3356,10 @@ class CommandPSync : public Commander {
     if (s.IsOK() && iter->Valid()) {
       auto batch = iter->GetBatch();
       if (seq != batch.sequence) {
-        LOG(ERROR) << "checkWALBoundary with sequence: " << seq
-                   << ", but GetWALIter return older sequence: " << batch.sequence;
+        if (seq > batch.sequence) {
+          LOG(ERROR) << "checkWALBoundary with sequence: " << seq
+                     << ", but GetWALIter return older sequence: " << batch.sequence;
+        }
         return Status(Status::NotOK);
       }
       return Status::OK();

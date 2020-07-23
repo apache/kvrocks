@@ -1,3 +1,7 @@
+* Version 1.1.23 (@2020-07-23)
+	- FIX: compact pub/sub once per day
+	- FIX: FindKeyRangeWithPrefix stuck when there is more than one namespace and current namespace is empty
+
 * Version 1.1.22 (@2020-07-16)
 	- MOD: improve the compaction(avoid unneccessary full compaction every day)
 

@@ -368,7 +368,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std:
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
   iter->Seek(prefix);
-  if (!iter->Valid()) {
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     delete iter;
     return rocksdb::Status::NotFound();
   }
@@ -382,11 +382,13 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std:
   next_prefix.pop_back();
   next_prefix.push_back(last_char);
   iter->SeekForPrev(next_prefix);
+  int max_prev_limit = 128;  // prevent unpredicted long while loop
+  int i = 0;
   // reversed seek the key til with prefix or end of the iterator
-  while (iter->Valid() && !iter->key().starts_with(prefix)) {
+  while (i++ < max_prev_limit && iter->Valid() && !iter->key().starts_with(prefix)) {
     iter->Prev();
   }
-  if (!iter->Valid()) {
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     delete iter;
     return rocksdb::Status::NotFound();
   }

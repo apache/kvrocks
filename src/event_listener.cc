@@ -1,5 +1,7 @@
 #include "event_listener.h"
 #include <string>
+#include <vector>
+#include <map>
 
 const std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
   std::vector<std::string> file_created_reason = { "flush", "compaction", "recovery", "misc"};

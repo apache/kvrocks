@@ -1,15 +1,35 @@
 #include "event_listener.h"
 #include <string>
 
+std::string compressType2String(const rocksdb::CompressionType type) {
+  std::map<rocksdb::CompressionType, std::string>compression_type_string_map = {
+      {rocksdb::kNoCompression, "no"},
+      {rocksdb::kSnappyCompression, "snappy"},
+      {rocksdb::kZlibCompression, "zlib"},
+      {rocksdb::kBZip2Compression, "zip2"},
+      {rocksdb::kLZ4Compression, "lz4"},
+      {rocksdb::kLZ4HCCompression, "lz4hc"},
+      {rocksdb::kXpressCompression, "xpress"},
+      {rocksdb::kZSTD, "std"},
+      {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
+      {rocksdb::kDisableCompressionOption, "disable"}
+  };
+  auto iter = compression_type_string_map.find(type);
+  if (iter == compression_type_string_map.end()) {
+    return "unknown";
+  }
+  return iter->second;
+}
+
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
-            << ", reason: " << static_cast<int>(ci.compaction_reason)
-            << ", compression: " << static_cast<char>(ci.compression)
+            << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
+            << ", output compression type: " << compressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
             << ", input bytes: " << ci.stats.total_input_bytes
             << ", output bytes:" << ci.stats.total_output_bytes
-            << ", is_maunal:" << ci.stats.is_manual_compaction
+            << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes":"no")
             << ", elapsed(micro): " << ci.stats.elapsed_micros;
   storage_->IncrCompactionCount(1);
   storage_->CheckDBSizeLimit();

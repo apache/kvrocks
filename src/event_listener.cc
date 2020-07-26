@@ -1,7 +1,23 @@
 #include "event_listener.h"
 #include <string>
 
-std::string compressType2String(const rocksdb::CompressionType type) {
+const std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
+  std::vector<std::string> file_created_reason = { "flush", "compaction", "recovery", "misc"};
+  if (static_cast<size_t>(reason) < file_created_reason.size()) {
+    return file_created_reason[static_cast<size_t>(reason)];
+  }
+  return "unknown";
+}
+
+const std::string stallConditionType2String(const rocksdb::WriteStallCondition type) {
+  std::vector<std::string> stall_condition_strings = {"normal", "delay", "stop"};
+  if (static_cast<size_t>(type) < stall_condition_strings.size()) {
+    return stall_condition_strings[static_cast<size_t>(type)];
+  }
+  return "unknown";
+}
+
+const std::string compressType2String(const rocksdb::CompressionType type) {
   std::map<rocksdb::CompressionType, std::string>compression_type_string_map = {
       {rocksdb::kNoCompression, "no"},
       {rocksdb::kSnappyCompression, "snappy"},
@@ -80,9 +96,17 @@ void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &inf
 }
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
-  const char *stall_condition_strings[] = {"normal", "delay", "stop"};
   LOG(WARNING) << "[event_listener/stall_cond_changed] column family: " << info.cf_name
                << " write stall condition was changed, from "
-               << stall_condition_strings[static_cast<int>(info.condition.prev)]
-               << " to " << stall_condition_strings[static_cast<int>(info.condition.cur)];
+               << stallConditionType2String(info.condition.prev)
+               << " to " << stallConditionType2String(info.condition.cur);
+}
+
+void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) {
+  LOG(INFO) << "[event_listener/table_file_created] column family: " << info.cf_name
+            << ", file path: " << info.file_path
+            << ", file size: " << info.file_size
+            << ", job id: " << info.job_id
+            << ", reason: "  << fileCreatedReason2String(info.reason)
+            << ", status: " << info.status.ToString();
 }

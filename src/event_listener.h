@@ -15,6 +15,7 @@ class EventListener : public rocksdb::EventListener {
   void OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) override;
   void OnTableFileDeleted(const rocksdb::TableFileDeletionInfo& info) override;
   void OnStallConditionsChanged(const rocksdb::WriteStallInfo& info) override;
+  void OnTableFileCreated(const rocksdb::TableFileCreationInfo& info) override;
  private:
   Engine::Storage *storage_ = nullptr;
 };

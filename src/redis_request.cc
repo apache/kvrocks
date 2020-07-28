@@ -18,11 +18,18 @@ const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
 Status Request::Tokenize(evbuffer *input) {
   char *line;
   size_t len;
+  size_t pipeline_size = 0;
   while (true) {
     switch (state_) {
       case ArrayLen:
         line = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line || len <= 0) return Status::OK();
+        if (!line || len <= 0) {
+          if (pipeline_size > 128) {
+            LOG(INFO) << "Large pipeline detected: " << pipeline_size;
+          }
+          return Status::OK();
+        }
+        pipeline_size++;
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] == '*') {
           try {

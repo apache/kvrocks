@@ -45,7 +45,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   for (const auto &iter : props) {
     if (maxFilesToCompaction == 0) return;
     // don't compact the SST created in 1 hour
-    if ( iter.second->creation_time < now-3600) continue;
+    if ( iter.second->creation_time < static_cast<uint64_t>(now-3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
         total_keys = std::atoi(property_iter.second.data());

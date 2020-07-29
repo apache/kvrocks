@@ -1,3 +1,8 @@
+* Version 1.1.24 (@2020-07-29)
+	- FIX: typo and compression type output
+	- ADD: table create file event listener
+	- ADD: large pipeline log
+
 * Version 1.1.23 (@2020-07-23)
 	- FIX: compact pub/sub once per day
 	- FIX: FindKeyRangeWithPrefix stuck when there is more than one namespace and current namespace is empty

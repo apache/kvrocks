@@ -348,6 +348,17 @@ int StringMatchLen(const char *pattern, int patternLen,
   return 0;
 }
 
+std::string StringToHex(const std::string &input) {
+  static const char hex_digits[] = "0123456789ABCDEF";
+  std::string output;
+  output.reserve(input.length() * 2);
+  for (unsigned char c : input) {
+    output.push_back(hex_digits[c >> 4]);
+    output.push_back(hex_digits[c & 15]);
+  }
+  return output;
+}
+
 void BytesToHuman(char *buf, size_t size, uint64_t n) {
   double d;
 

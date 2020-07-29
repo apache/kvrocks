@@ -94,7 +94,8 @@ void FeedSlaveThread::loop() {
       for (const auto &bulk_str : batch_list) {
         auto s = Util::SockSend(conn_->GetFD(), bulk_str);
         if (!s.IsOK()) {
-          LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg();
+          LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg() << ". batch: 0x"
+                     << Util::StringToHex(data);
           Stop();
           return;
         }
@@ -493,7 +494,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           if (bulk_string != "ping") {
             auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
             if (!s.IsOK()) {
-              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg();
+              LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg() << ". batch: 0x"
+                         << Util::StringToHex(bulk_string);
               return CBState::RESTART;
             }
             self->ParseWriteBatch(bulk_string);

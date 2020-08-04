@@ -86,7 +86,7 @@ class CommandNamespace : public Commander {
           namespaces.emplace_back(iter->second);  // namespace
           namespaces.emplace_back(iter->first);   // token
         }
-        *output = Redis::MultiBulkString(namespaces);
+        *output = Redis::MultiBulkString(namespaces, false);
       } else {
         std::string token;
         auto s = config->GetNamespace(args_[2], &token);
@@ -1166,14 +1166,15 @@ class CommandHMGet : public Commander {
       fields.emplace_back(Slice(args_[i]));
     }
     std::vector<std::string> values;
-    rocksdb::Status s = hash_db.MGet(args_[1], fields, &values);
+    std::vector<rocksdb::Status> statuses;
+    rocksdb::Status s = hash_db.MGet(args_[1], fields, &values, &statuses);
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
     }
-    *output = Redis::MultiBulkString(values);
+    *output = Redis::MultiBulkString(values, statuses);
     return Status::OK();
   }
 };
@@ -1236,7 +1237,7 @@ class CommandHVals : public Commander {
     for (const auto fv : field_values) {
       values.emplace_back(fv.value);
     }
-    *output = Redis::MultiBulkString(values);
+    *output = Redis::MultiBulkString(values, false);
     return Status::OK();
   }
 };
@@ -1555,7 +1556,7 @@ class CommandLRange : public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(elems);
+    *output = Redis::MultiBulkString(elems, false);
     return Status::OK();
   }
 
@@ -1737,7 +1738,7 @@ class CommandSMembers : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 };
@@ -1777,7 +1778,7 @@ class CommandSPop : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 
@@ -1805,7 +1806,7 @@ class CommandSRandMember : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 
@@ -1842,7 +1843,7 @@ class CommandSDiff : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 };
@@ -1861,7 +1862,7 @@ class CommandSUnion : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 };
@@ -1880,7 +1881,7 @@ class CommandSInter : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 };
@@ -2196,7 +2197,7 @@ class CommandZRangeByLex : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members);
+    *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
 
@@ -3682,7 +3683,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
         fvs.emplace_back(values[i]);
       }
     }
-    list.emplace_back(Redis::MultiBulkString(fvs));
+    list.emplace_back(Redis::MultiBulkString(fvs, false));
     return Redis::Array(list);
   }
 

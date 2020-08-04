@@ -25,9 +25,9 @@ std::string MultiLen(int64_t len) {
   return "*"+std::to_string(len)+"\r\n";
 }
 
-std::string MultiBulkString(std::vector<std::string> values) {
+std::string MultiBulkString(std::vector<std::string> values, bool output_nil_for_empty_string) {
   for (size_t i = 0; i < values.size(); i++) {
-    if (values[i].empty()) {
+    if (values[i].empty() && output_nil_for_empty_string) {
       values[i] = NilString();
     }  else {
       values[i] = BulkString(values[i]);

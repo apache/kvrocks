@@ -45,6 +45,7 @@ class Hash : public SubKeyScanner {
                        const std::string &field_prefix,
                        std::vector<std::string> *fields,
                        std::vector<std::string> *values = nullptr);
+
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
 };

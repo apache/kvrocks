@@ -110,6 +110,15 @@ TEST_F(RedisStringTest, IncrBy) {
   string->Del(key_);
 }
 
+TEST_F(RedisStringTest, GetEmptyValue) {
+  const std::string key = "empty_value_key";
+  auto s = string->Set(key, "");
+  EXPECT_TRUE(s.ok());
+  std::string value;
+  s = string->Get(key, &value);
+  EXPECT_TRUE(s.ok() && value.empty());
+}
+
 TEST_F(RedisStringTest, GetSet) {
   int ttl;
   int64_t now;

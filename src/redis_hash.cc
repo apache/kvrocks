@@ -127,9 +127,11 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, flo
 }
 
 rocksdb::Status Hash::MGet(const Slice &user_key,
-                                const std::vector<Slice> &fields,
-                                std::vector<std::string> *values) {
+                           const std::vector<Slice> &fields,
+                           std::vector<std::string> *values,
+                           std::vector<rocksdb::Status> *statuses) {
   values->clear();
+  statuses->clear();
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -149,6 +151,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key,
     auto s = db_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     values->emplace_back(value);
+    statuses->emplace_back(s);
   }
   return rocksdb::Status::OK();
 }

@@ -238,7 +238,7 @@ class CommandGet : public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value, false);
     return Status::OK();
   }
 };
@@ -354,9 +354,17 @@ class CommandMGet : public Commander {
       keys.emplace_back(args_[i]);
     }
     std::vector<std::string> values;
+    std::vector<std::string> list;
     // always return OK
-    string_db.MGet(keys, &values);
-    *output = Redis::MultiBulkString(values);
+    auto statuses = string_db.MGet(keys, &values);
+    for (size_t i = 0; i < statuses.size(); i++) {
+      if (!statuses[i].ok()) {
+        list.emplace_back(NilString());
+      } else {
+        list.emplace_back(BulkString(values[i], false));
+      }
+    }
+    *output = Array(list);
     return Status::OK();
   }
 };

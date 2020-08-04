@@ -13,8 +13,8 @@ std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
 std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
-std::string BulkString(const std::string &data) {
-  if (!data.empty()) {
+std::string BulkString(const std::string &data, bool output_nil_for_empty_string) {
+  if (!data.empty() || !output_nil_for_empty_string) {
     return "$" + std::to_string(data.length()) + CRLF + data + CRLF;
   }
   return NilString();

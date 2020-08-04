@@ -303,7 +303,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
   if (!s.ok()) return s;
 
   if (index < 0) index += metadata.size;
-  if (index < 0 || index >= static_cast<int>(metadata.size)) return rocksdb::Status::OK();
+  if (index < 0 || index >= static_cast<int>(metadata.size)) return rocksdb::Status::NotFound();
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);

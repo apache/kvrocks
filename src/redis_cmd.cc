@@ -363,8 +363,9 @@ class CommandMGet : public Commander {
     }
     std::vector<std::string> values;
     // always return OK
-    string_db.MGet(keys, &values);
-    *output = Redis::MultiBulkString(values);
+    std::vector<std::string> result;
+    auto statuses = string_db.MGet(keys, &values);
+    *output = Redis::MultiBulkString(values, statuses);
     return Status::OK();
   }
 };

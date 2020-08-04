@@ -9,6 +9,13 @@ def test_get_and_set():
     assert(ret == True)
     value = conn.get(key)
     assert(value == "bar")
+
+    ret = conn.set(key, "")
+    if ret != True:
+        raise ValueError('ret illegal')
+    value = conn.get(key)
+    if value != "":
+        raise ValueError('ret illegal')
     ret = conn.delete(key)
     assert(ret == 1)
 
@@ -164,6 +171,16 @@ def test_mset_and_mget():
     vals = conn.mget(keys)
     for i, k in enumerate(keys):
         assert(kvs[k] == vals[i])
+
+    kvs = {'kkk-%s' % i :'' for i in range(10)}
+    ret = conn.mset(**kvs)
+    if ret != True:
+        raise ValueError('ret illegal')
+    keys = kvs.keys()
+    vals = conn.mget(keys)
+    for i, k in enumerate(keys):
+        if kvs[k] != vals[i]:
+            raise ValueError('value mismatch')
     for i, k in enumerate(keys):
         ret = conn.delete(k)
         assert(ret == True)

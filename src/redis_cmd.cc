@@ -89,8 +89,12 @@ class CommandNamespace : public Commander {
         *output = Redis::MultiBulkString(namespaces);
       } else {
         std::string token;
-        config->GetNamespace(args_[2], &token);
-        *output = Redis::BulkString(token);
+        auto s = config->GetNamespace(args_[2], &token);
+        if (s.IsNotFound()) {
+          *output = Redis::NilString();
+        } else {
+          *output = Redis::BulkString(token);
+        }
       }
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->SetNamespace(args_[2], args_[3]);
@@ -272,7 +276,11 @@ class CommandGetSet : public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::BulkString(old_value);
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(old_value);
+    }
     return Status::OK();
   }
 };
@@ -1588,7 +1596,11 @@ class CommandLIndex : public Commander {
     if (!s.ok() && !s.IsNotFound()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::BulkString(elem);
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(elem);
+    }
     return Status::OK();
   }
 

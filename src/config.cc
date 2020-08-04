@@ -473,10 +473,15 @@ Status Config::Rewrite() {
   return Status::OK();
 }
 
-void Config::GetNamespace(const std::string &ns, std::string *token) {
+Status Config::GetNamespace(const std::string &ns, std::string *token) {
+  token->clear();
   for (const auto &iter : tokens) {
-    if (iter.second == ns) *token = iter.first;
+    if (iter.second == ns) {
+      *token = iter.first;
+      return Status::OK();
+    }
   }
+  return Status(Status::NotFound);
 }
 
 Status Config::SetNamespace(const std::string &ns, const std::string &token) {

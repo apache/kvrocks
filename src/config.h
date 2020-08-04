@@ -118,7 +118,7 @@ struct Config{
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);
   void ClearMaster();
-  void GetNamespace(const std::string &ns, std::string *token);
+  Status GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);
   Status SetNamespace(const std::string &ns, const std::string &token);
   Status DelNamespace(const std::string &ns);

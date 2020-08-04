@@ -93,7 +93,9 @@ rocksdb::Status String::GetSet(const std::string &user_key, const std::string &n
   Metadata metadata(kRedisString, false);
   metadata.Encode(&raw_value);
   raw_value.append(new_value);
-  return updateRawValue(ns_key, raw_value);
+  auto write_status = updateRawValue(ns_key, raw_value);
+  // prev status was used to tell whether old value was empty or not
+  return !write_status.ok() ? write_status : s;
 }
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {

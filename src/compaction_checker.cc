@@ -61,10 +61,10 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       }
     }
 
+    if (start_key.empty() || stop_key.empty()) continue;
     // pick the file which was created more than 1 week
     if ((iter.second->creation_time < static_cast<uint64_t>(now-forceCompactSeconds))
         || (iter.second->file_creation_time < static_cast<uint64_t>(now-forceCompactSeconds))) {
-      if (start_key.empty() || stop_key.empty()) continue;
       LOG(INFO) << "[compaction checker] Going to compact the key in file(created more than 2 days): " << iter.first;
       auto s = storage_->Compact(&start_key, &stop_key);
       LOG(INFO) << "[compaction checker] Compact the key in file(created more than 2 days): " << iter.first
@@ -73,15 +73,14 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     }
     // pick the file which has highest delete ratio
     double delete_ratio = static_cast<double>(deleted_keys)/static_cast<double>(total_keys);
-    if (total_keys != 0 && !start_key.empty() && !stop_key.empty()
-        && delete_ratio > best_delete_ratio) {
+    if (total_keys != 0 && delete_ratio > best_delete_ratio) {
       best_delete_ratio = delete_ratio;
       best_filename = iter.first;
       best_start_key = std::move(start_key);
       best_stop_key = std::move(stop_key);
     }
   }
-  if (best_delete_ratio > 0.1) {
+  if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
     LOG(INFO) << "[compaction checker] Going to compact the key in file: " << best_filename
               << ", delete ratio: " << best_delete_ratio;
     storage_->Compact(&best_start_key, &best_stop_key);

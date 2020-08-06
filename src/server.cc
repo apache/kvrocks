@@ -7,6 +7,7 @@
 #include <utility>
 #include <memory>
 #include <glog/logging.h>
+#include <rocksdb/convenience.h>
 
 #include "util.h"
 #include "worker.h"
@@ -118,6 +119,7 @@ void Server::Stop() {
   for (const auto slave_thread : slave_threads_) slave_thread->Stop();
   slave_threads_mu_.unlock();
   cleanupExitedSlaves();
+  rocksdb::CancelAllBackgroundWork(storage_->GetDB());
   task_runner_.Stop();
   if (slotsmgrt_sender_thread_ != nullptr) {
     slotsmgrt_sender_thread_->Stop();

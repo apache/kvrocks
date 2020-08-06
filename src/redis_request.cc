@@ -98,7 +98,7 @@ bool Request::inCommandWhitelist(const std::string &command) {
   return false;
 }
 
-bool Request::turnOnProfilingIfNeed(const std::string &cmd) {
+bool Request::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;
   if (!config->profiling_sample_all_commands &&
@@ -189,7 +189,7 @@ void Request::ExecuteCommands(Connection *conn) {
     conn->SetLastCmd(cmd_name);
     svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();
-    bool is_profiling = turnOnProfilingIfNeed(cmd_name);
+    bool is_profiling = isProfilingEnabled(cmd_name);
     svr_->IncrExecutingCommandNum();
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
     svr_->DecrExecutingCommandNum();

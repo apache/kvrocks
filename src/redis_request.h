@@ -37,7 +37,7 @@ class Request {
 
   Server *svr_;
   bool inCommandWhitelist(const std::string &command);
-  bool turnOnProfilingIfNeed(const std::string &cmd);
+  bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
 };
 

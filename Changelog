@@ -1,3 +1,8 @@
+* Version 1.1.25 (@2020-08-07)
+	- FIX: should not output nil when member or value is empty
+	- ADD: add wal data in replication write batch error log
+	- FIX: shutdown asap (cancel backgroud compaction, etc...)
+
 * Version 1.1.24 (@2020-07-29)
 	- FIX: typo and compression type output
 	- ADD: table create file event listener

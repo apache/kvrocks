@@ -630,7 +630,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
-            if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name)) {
+            if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name, f_crc)) {
               skip_cnt.fetch_add(1);
               uint32_t cur_skip_cnt = skip_cnt.load();
               uint32_t cur_fetch_cnt = fetch_cnt.load();

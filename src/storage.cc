@@ -11,9 +11,11 @@
 #include <rocksdb/sst_file_manager.h>
 #include <rocksdb/utilities/table_properties_collectors.h>
 #include <rocksdb/rate_limiter.h>
+#include <rocksdb/env.h>
 
 #include "config.h"
 #include "redis_db.h"
+#include "rocksdb_crc32c.h"
 #include "redis_metadata.h"
 #include "redis_slot.h"
 #include "event_listener.h"
@@ -668,9 +670,34 @@ Status Storage::BackupManager::SwapTmpFile(Storage *storage,
   return Status::OK();
 }
 
-bool Storage::BackupManager::FileExists(Storage *storage, const std::string &rel_path) {
-  auto s = storage->backup_env_->FileExists(storage->config_->backup_dir + "/" + rel_path);
-  return s.ok();
+bool Storage::BackupManager::FileExists(Storage *storage, const std::string &rel_path, uint32_t crc) {
+  auto file_path = storage->config_->backup_dir + "/" + rel_path;
+  auto s = storage->backup_env_->FileExists(file_path);
+  if (!s.ok()) return false;
+
+  std::unique_ptr<rocksdb::SequentialFile> src_file;
+  const rocksdb::EnvOptions soptions;
+  s = storage->GetDB()->GetEnv()->NewSequentialFile(file_path, &src_file, soptions);
+  if (!s.ok()) return false;
+
+  uint64_t size;
+  s = storage->GetDB()->GetEnv()->GetFileSize(file_path, &size);
+  if (!s.ok()) return false;
+  std::unique_ptr<rocksdb::SequentialFileWrapper> src_reader;
+  src_reader.reset(new rocksdb::SequentialFileWrapper(src_file.get()));
+
+  char buffer[4096];
+  Slice slice;
+  uint32_t tmp_crc = 0;
+  while (size > 0) {
+    size_t bytes_to_read = std::min(sizeof(buffer), static_cast<size_t>(size));
+    s = src_reader->Read(bytes_to_read, &slice, buffer);
+    if (!s.ok()) return false;
+    if (slice.size() == 0) return false;
+    tmp_crc = rocksdb::crc32c::Extend(0, slice.ToString().c_str(), slice.size());
+    size -= slice.size();
+  }
+  return crc == tmp_crc;
 }
 
 void Storage::PurgeBackupIfNeed(uint32_t next_backup_id) {

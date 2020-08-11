@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <iostream>
 #include <memory>
+#include <algorithm>
 #include <event2/buffer.h>
 #include <glog/logging.h>
 #include <rocksdb/filter_policy.h>

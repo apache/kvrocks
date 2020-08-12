@@ -72,7 +72,7 @@ endif
 
 PROG=kvrocks
 
-all: $(PROG) kvrocks2redis kvrocksrestore
+all: $(PROG) kvrocks2redis
 	@echo ""
 	@printf $(MAKECOLOR)"Hint: It's a good idea to run 'make test' ;)"$(ENDCOLOR)
 	@echo ""

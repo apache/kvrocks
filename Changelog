@@ -1,3 +1,6 @@
+* Version 1.1.26 (@2020-08-12)
+	- FIX: refetch and override existing backup sst file if crc mismatch
+
 * Version 1.1.25 (@2020-08-07)
 	- FIX: should not output nil when member or value is empty
 	- ADD: add wal data in replication write batch error log

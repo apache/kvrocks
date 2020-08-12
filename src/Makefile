@@ -1,13 +1,20 @@
 # kvrocks Makefile
 CXX= g++
 CXXFLAGS= -std=c++11 -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -DNDEBUG=1
-LDFLAGS= -pthread
 FINAL_CXXFLAGS+= $(CXXFLAGS) $(DEBUG)
 DEBUG= -g -ggdb
 
 INSTALL_DIR= /usr/local
 BIN_DIR= $(INSTALL_DIR)/bin
 INSTALL= /usr/bin/install
+
+uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+ifeq ($(uname_S),Darwin)
+# Darwin
+	LDFLAGS+= -pthread
+else
+	LDFLAGS+= -lunwind -pthread
+endif
 
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 detect_platform := $(shell sh -c '../build_detect_platform make_config.mk')

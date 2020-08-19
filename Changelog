@@ -1,3 +1,6 @@
+* Version 1.1.27 (@2020-08-19)
+	- FIX: bitcount return wrong number (cause by typo)
+
 * Version 1.1.26 (@2020-08-12)
 	- FIX: refetch and override existing backup sst file if crc mismatch
 

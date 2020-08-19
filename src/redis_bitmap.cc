@@ -198,7 +198,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
     if (i == start_index) j = start % kBitmapSegmentBytes;
     for (; j < value.size(); j++) {
       if (i == stop_index && j > (stop % kBitmapSegmentBytes)) break;
-      *cnt += kNum2Bits[static_cast<int>(value[j])];
+      *cnt += kNum2Bits[static_cast<uint8_t>(value[j])];
     }
   }
   return rocksdb::Status::OK();

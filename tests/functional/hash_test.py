@@ -35,7 +35,7 @@ def test_hincrbyfloat():
     conn = get_redis_conn()
     for i in range(1, 10):
         ret = conn.hincrbyfloat(key, "f1", 1.234)
-        assert(ret == i*1.234)
+        assert(is_double_eq(ret, i*1.234))
     ret = conn.delete(key)
     assert(ret == 1)
     # TODO(linty): not number of overflow case

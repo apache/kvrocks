@@ -12,3 +12,9 @@ def assert_raise(exception_cls, callable, *args, **kwargs):
     except Exception as e:
         assert False, 'assert_raises %s but raised: %s' % (exception_cls, e)
     assert False, 'assert_raises %s but nothing raise' % (exception_cls)
+
+def is_double_eq(d1, d2):
+    if d1 > d2:
+        return d1-d2 < 0.0001
+    else:
+        return d2-d1 < 0.0001

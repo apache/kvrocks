@@ -36,7 +36,7 @@ def test_geodist():
     if not ret == 2:
         raise ValueError('ret is not 2: ' + ret)
     ret = conn.execute_command("geodist", key, field1, field2, 'mi')
-    if not ret == "103.318225":
+    if not is_double_eq(float(ret), 103.318225) :
         raise ValueError('ret is not 103.318225: ' + ret)
 
     ret = conn.delete(key)
@@ -57,7 +57,8 @@ def test_geopos():
     if not ret == 2:
         raise ValueError('ret is not 2: ' + ret)
     ret = conn.execute_command("geopos", key, field1, field2)
-    if not ret == [['13.361389', '38.115556'], ['15.087267', '37.502668']]:
+
+    if not ret == [['13.361389338970184', '38.115556395496299'], ['15.087267458438873', '37.50266842333162']]:
         raise ValueError('ret is not correct: ' + ret)
 
     ret = conn.delete(key)
@@ -78,7 +79,9 @@ def test_georadius():
     if not ret == 2:
         raise ValueError('ret is not 2: ' + ret)
     ret = conn.execute_command("georadius", key, field2_long, field2_lat, 200, "km", "WITHDIST", "WITHCOORD")
-    if not ret == [[field1, '166.274248', ['13.361389', '38.115556']], [field2, '0.000150', ['15.087267', '37.502668']]]:
+    print(ret)
+    if not ret == [[field1, '166.27424828631862', ['13.361389338970184', '38.115556395496299']],
+                   [field2, '0.00015038910532546101', ['15.087267458438873', '37.50266842333162']]]:
         raise ValueError('ret is not correct: ' + ret)
 
     ret = conn.delete(key)
@@ -99,8 +102,9 @@ def test_georadiusbymember():
     if not ret == 2:
         raise ValueError('ret is not 2: ' + ret)
     ret = conn.execute_command("georadiusbymember", key, field2, 200, "km", "WITHDIST", "WITHCOORD")
-    if not ret == [[field1, '166.274152', ['13.361389', '38.115556']], [field2, '0.000000', ['15.087267', '37.502668']]]:
-        raise ValueError('ret is not correct: ' + ret)
+    if ret != [[field1, '166.27415156960032', ['13.361389338970184', '38.115556395496299']],
+               [field2, '0', ['15.087267458438873', '37.50266842333162']]]:
+        raise ValueError('ret is not correct: ' + ' '.join(ret))
 
     ret = conn.delete(key)
     if not ret == 1:

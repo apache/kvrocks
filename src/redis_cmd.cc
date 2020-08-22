@@ -572,7 +572,7 @@ class CommandIncrByFloat : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrByFloat(args_[1], increment_, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
-    *output = Redis::BulkString(std::to_string(ret));
+    *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
   }
 
@@ -1148,7 +1148,7 @@ class CommandHIncrByFloat : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::BulkString(std::to_string(ret));
+    *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
   }
 
@@ -2041,7 +2041,7 @@ class CommandZIncrBy : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::BulkString(std::to_string(score));
+    *output = Redis::BulkString(Util::Float2String(score));
     return Status::OK();
   }
 
@@ -2100,7 +2100,7 @@ class CommandZPop : public Commander {
     output->append(Redis::MultiLen(memeber_scores.size() * 2));
     for (const auto ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
-      output->append(Redis::BulkString(std::to_string(ms.score)));
+      output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
     return Status::OK();
   }
@@ -2153,7 +2153,7 @@ class CommandZRange : public Commander {
     for (const auto ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_)
-        output->append(Redis::BulkString(std::to_string(ms.score)));
+        output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
     return Status::OK();
   }
@@ -2257,7 +2257,7 @@ class CommandZRangeByScore : public Commander {
     for (const auto ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_)
-        output->append(Redis::BulkString(std::to_string(ms.score)));
+        output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
     return Status::OK();
   }
@@ -2415,7 +2415,7 @@ class CommandZScore : public Commander {
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
-      *output = Redis::BulkString(std::to_string(score));
+      *output = Redis::BulkString(Util::Float2String(score));
     }
     return Status::OK();
   }
@@ -2444,7 +2444,7 @@ class CommandZMScore : public Commander {
         if (iter == mscores.end()) {
           values.emplace_back("");
         } else {
-          values.emplace_back(std::to_string(iter->second));
+          values.emplace_back(Util::Float2String(iter->second));
         }
       }
     }
@@ -2650,7 +2650,7 @@ class CommandGeoDist : public CommandGeoBase {
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
-      *output = Redis::BulkString(std::to_string(GetDistanceByUnit(distance)));
+      *output = Redis::BulkString(Util::Float2String(GetDistanceByUnit(distance)));
     }
     return Status::OK();
   }
@@ -2704,8 +2704,8 @@ class CommandGeoPos : public Commander {
       if (iter == geo_points.end()) {
         list.emplace_back(Redis::NilString());
       } else {
-        list.emplace_back(Redis::MultiBulkString({std::to_string(iter->second.longitude),
-                                                  std::to_string(iter->second.latitude)}));
+        list.emplace_back(Redis::MultiBulkString({Util::Float2String(iter->second.longitude),
+                                                  Util::Float2String(iter->second.latitude)}));
       }
     }
     *output = Redis::Array(list);
@@ -2813,14 +2813,14 @@ class CommandGeoRadius : public CommandGeoBase {
         std::vector<std::string> one;
         one.emplace_back(Redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(Redis::BulkString(std::to_string(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(Redis::BulkString(Util::Float2String(GetDistanceByUnit(geo_point.dist))));
         }
         if (with_hash_) {
-          one.emplace_back(Redis::BulkString(std::to_string(geo_point.score)));
+          one.emplace_back(Redis::BulkString(Util::Float2String(geo_point.score)));
         }
         if (with_coord_) {
-          one.emplace_back(Redis::MultiBulkString({std::to_string(geo_point.longitude),
-                                                   std::to_string(geo_point.latitude)}));
+          one.emplace_back(Redis::MultiBulkString({Util::Float2String(geo_point.longitude),
+                                                   Util::Float2String(geo_point.latitude)}));
         }
         list.emplace_back(Redis::Array(one));
       }
@@ -3772,7 +3772,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     }
     std::vector<std::string> score_strings;
     for (const auto &score : scores) {
-      score_strings.emplace_back(std::to_string(score));
+      score_strings.emplace_back(Util::Float2String(score));
     }
     *output = GenerateOutput(members, score_strings);
     return Status::OK();

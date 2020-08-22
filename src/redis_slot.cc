@@ -492,7 +492,7 @@ Status Slot::generateMigrateCommandComplexKV(const Slice &key, const Metadata &m
       }
       case kRedisZSet: {
         auto score = DecodeDouble(iter->value().ToString().data());
-        list.emplace_back(std::to_string(score));
+        list.emplace_back(Util::Float2String(score));
         list.emplace_back(ikey.GetSubKey().ToString());
         break;
       }

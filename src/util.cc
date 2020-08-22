@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <math.h>
 #include <string>
 #include <algorithm>
 #include <event2/util.h>
@@ -57,6 +58,16 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
   setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
   setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
   return Status::OK();
+}
+
+const std::string Float2String(double d) {
+  if (isinf(d)) {
+    return d > 0 ? "inf" : "-inf";
+  }
+
+  char buf[128];
+  snprintf(buf, sizeof(buf), "%.17g", d);
+  return buf;
 }
 
 Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {

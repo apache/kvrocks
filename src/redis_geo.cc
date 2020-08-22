@@ -1,6 +1,7 @@
 #include "redis_geo.h"
 
 #include <algorithm>
+#include "util.h"
 
 namespace Redis {
 

@@ -172,7 +172,7 @@ def test_incr_by_float():
     key = "test_incr_by_float"
     conn = get_redis_conn()
     ret = conn.incrbyfloat(key, 1.11)
-    assert(ret == 1.11) 
+    assert(is_double_eq(ret, 1.11))
     ret = conn.incrbyfloat(key, -1.11)
     assert(ret == 0) 
     ret = conn.delete(key)

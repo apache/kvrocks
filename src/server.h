@@ -116,6 +116,7 @@ class Server {
   void cron();
   void delConnContext(ConnContext *c);
   void updateCachedTime();
+  Status dynamicResizeBlockAndSST();
 
   bool stop_ = false;
   bool is_loading_ = false;

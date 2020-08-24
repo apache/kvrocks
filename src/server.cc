@@ -16,6 +16,7 @@
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "compaction_checker.h"
+#include "config.h"
 
 std::atomic<int>Server::unix_time_ = {0};
 
@@ -480,6 +481,11 @@ void Server::cron() {
       Status s = AsyncPurgeOldBackups();
       LOG(INFO) << "[server] Schedule to purge old backups, result: " << s.Msg();
     }
+    // check every 30 minutes
+    if (counter != 0 && counter % 18000 == 0) {
+      Status s = dynamicResizeBlockAndSST();
+      LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
+    }
     cleanupExitedSlaves();
     counter++;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -870,6 +876,51 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     svr->db_mu_.unlock();
   };
   return task_runner_.Publish(task);
+}
+
+Status Server::dynamicResizeBlockAndSST() {
+  auto total_size = storage_->GetTotalSize(kDefaultNamespace);
+  uint64_t total_keys = 0, estimate_keys = 0;
+  for (const auto &cf_handle : *storage_->GetCFHandles()) {
+    storage_->GetDB()->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    total_keys += estimate_keys;
+  }
+  if (total_size == 0 || total_keys == 0) {
+    return Status::OK();
+  }
+  auto average_kv_size = total_size / total_keys;
+  int target_file_size_base = 0;
+  if (average_kv_size > 512 * KiB) {
+    target_file_size_base = 1024;
+  } else if (average_kv_size > 256 * KiB) {
+    target_file_size_base = 512;
+  } else if (average_kv_size > 32 * KiB) {
+    target_file_size_base = 256;
+  } else if (average_kv_size > 1 * KiB) {
+    target_file_size_base = 128;
+  } else if (average_kv_size > 128) {
+    target_file_size_base = 64;
+  } else {
+    target_file_size_base = 16;
+  }
+  if (target_file_size_base == config_->RocksDB.target_file_size_base) {
+    return Status::OK();
+  }
+  auto s = storage_->SetOption("target_file_size_base", std::to_string(target_file_size_base * MiB));
+  LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from "
+            << config_->RocksDB.target_file_size_base
+            << " to " << target_file_size_base
+            << ", average_kv_size: " << average_kv_size
+            << ", total_size: " << total_size
+            << ", total_keys: " << total_keys
+            << ", result: " << s.Msg();
+  if (!s.IsOK()) {
+    return s;
+  }
+  config_->RocksDB.target_file_size_base = target_file_size_base;
+  s = config_->Rewrite();
+  LOG(INFO) << "[server] rewrite config, result: " << s.Msg();
+  return Status::OK();
 }
 
 void Server::GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats) {

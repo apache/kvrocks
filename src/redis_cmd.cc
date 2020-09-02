@@ -2975,7 +2975,7 @@ class CommandSortedintExists : public Commander {
     std::vector<uint64_t> ids;
     try {
       for (unsigned int i = 2; i < args_.size(); i++) {
-        ids.emplace_back(std::stoi(args_[i]));
+        ids.emplace_back(std::stoull(args_[i]));
       }
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);

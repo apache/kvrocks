@@ -103,7 +103,7 @@ Config::Config() {
       {"rocksdb.max_open_files", false, new IntField(&RocksDB.max_open_files, 4096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&RocksDB.write_buffer_size, 64, 0, 4096)},
       {"rocksdb.max_write_buffer_number", false, new IntField(&RocksDB.max_write_buffer_number, 4, 0, 256)},
-      {"rocksdb.target_file_size_base", true, new IntField(&RocksDB.target_file_size_base, 256, 1, 1024)},
+      {"rocksdb.target_file_size_base", true, new IntField(&RocksDB.target_file_size_base, 128, 1, 1024)},
       {"rocksdb.max_background_compactions", false, new IntField(&RocksDB.max_background_compactions, 2, 0, 32)},
       {"rocksdb.max_background_flushes", true, new IntField(&RocksDB.max_background_flushes, 2, 0, 32)},
       {"rocksdb.max_sub_compactions", false, new IntField(&RocksDB.max_sub_compactions, 1, 0, 16)},

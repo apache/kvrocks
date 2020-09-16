@@ -3060,6 +3060,15 @@ class CommandInfo : public Commander {
   }
 };
 
+class CommandRole : public Commander {
+ public:
+  CommandRole() : Commander("role", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr->GetRoleInfo(output);
+    return Status::OK();
+  }
+};
+
 class CommandCompact : public Commander {
  public:
   CommandCompact() : Commander("compact", 1, false) {}
@@ -4308,6 +4317,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("ping",      CommandPing),
     ADD_CMD("select",    CommandSelect),
     ADD_CMD("info",      CommandInfo),
+    ADD_CMD("role",      CommandRole),
     ADD_CMD("config",    CommandConfig),
     ADD_CMD("namespace", CommandNamespace),
     ADD_CMD("keys",      CommandKeys),

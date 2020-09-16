@@ -626,6 +626,47 @@ void Server::GetReplicationInfo(std::string *info) {
   *info = string_stream.str();
 }
 
+void Server::GetRoleInfo(std::string *info) {
+  if (IsSlave()) {
+    std::vector<std::string> roles;
+    roles.emplace_back("slave");
+    roles.emplace_back(master_host_);
+    roles.emplace_back(std::to_string(master_port_));
+    auto state = GetReplicationState();
+    if (state == kReplConnected) {
+      roles.emplace_back("connected");
+    } else if (state == kReplFetchMeta || state == kReplFetchSST) {
+      roles.emplace_back("sync");
+    } else {
+      roles.emplace_back("connecting");
+    }
+    roles.emplace_back(std::to_string(storage_->LatestSeq()));
+    *info = Redis::MultiBulkString(roles);
+  } else {
+    std::vector<std::string> list;
+    slave_threads_mu_.lock();
+    for (const auto &slave : slave_threads_) {
+      if (slave->IsStopped()) continue;
+      list.emplace_back(Redis::MultiBulkString({
+                                                   slave->GetConn()->GetIP(),
+                                                   std::to_string(slave->GetConn()->GetListeningPort()),
+                                                   std::to_string(slave->GetCurrentReplSeq()),
+                                               }));
+    }
+    slave_threads_mu_.unlock();
+    auto multi_len = 2;
+    if (list.size() > 0) {
+      multi_len = 3;
+    }
+    info->append(Redis::MultiLen(multi_len));
+    info->append(Redis::BulkString("master"));
+    info->append(Redis::BulkString(std::to_string(storage_->LatestSeq())));
+    if (list.size() > 0) {
+      info->append(Redis::Array(list));
+    }
+  }
+}
+
 int Server::GetUnixTime() {
   if (unix_time_.load() == 0) {
     time_t ret = time(nullptr);

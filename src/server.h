@@ -79,6 +79,7 @@ class Server {
   void GetRocksDBInfo(std::string *info);
   void GetClientsInfo(std::string *info);
   void GetReplicationInfo(std::string *info);
+  void GetRoleInfo(std::string *info);
   void GetCommandsStatsInfo(std::string *info);
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
   std::string GetRocksDBStatsJson();

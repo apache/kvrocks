@@ -1233,11 +1233,11 @@ class CommandHVals : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    std::vector<std::string> values;
+    
+    *output = "*" + std::to_string(field_values.size()) + CRLF;
     for (const auto fv : field_values) {
-      values.emplace_back(fv.value);
+      *output += Redis::BulkString(fv.value);
     }
-    *output = Redis::MultiBulkString(values, false);
     return Status::OK();
   }
 };

@@ -48,7 +48,14 @@ std::string MultiBulkString(std::vector<std::string> values, const std::vector<r
   return Array(values);
 }
 std::string Array(std::vector<std::string> list) {
-  return std::accumulate(list.begin(), list.end(), "*" + std::to_string(list.size()) + CRLF);
+  std::string::size_type n = std::accumulate( 
+    list.begin(), list.end(), std::string::size_type( 0 ),
+    [] ( std::string::size_type n, const std::string &s ) { return ( n += s.size() ); });
+  
+  std::string result = "*" + std::to_string(list.size()) + CRLF;
+  result.reserve(n);
+  return std::accumulate(list.begin(), list.end(), result, [](std::string &dest, std::string const &item) -> std::string& {dest += item; return dest;});
+
 }
 
 }  // namespace Redis

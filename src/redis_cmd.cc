@@ -1233,7 +1233,6 @@ class CommandHVals : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    
     *output = "*" + std::to_string(field_values.size()) + CRLF;
     for (const auto fv : field_values) {
       *output += Redis::BulkString(fv.value);

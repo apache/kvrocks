@@ -57,8 +57,11 @@ uint32_t GetSlotNumFromKey(const std::string &key) {
 std::string GetTagFromKey(const std::string &key) {
   auto left_pos = key.find("{");
   if (left_pos == std::string::npos) return std::string();
-  auto right_pos = key.find("}");
-  if (right_pos == std::string::npos || right_pos < left_pos) return std::string();
+  auto right_pos = key.find("}", left_pos + 1);
+  // Note that we hash the whole key if there is nothing between {}.
+  if (right_pos == std::string::npos || right_pos <= left_pos + 1) {
+    return std::string();
+  }
 
   return key.substr(left_pos + 1, right_pos - left_pos - 1);
 }

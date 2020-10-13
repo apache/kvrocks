@@ -2,9 +2,25 @@
 
 #include <string>
 #include <vector>
+#include <limits>
 
 #include "redis_db.h"
 #include "redis_metadata.h"
+
+typedef struct SortedintRangeSpec {
+  uint64_t min, max;
+  bool minex, maxex; /* are min or max exclusive */
+  int offset, count;
+  bool reversed;
+  SortedintRangeSpec() {
+    min = std::numeric_limits<uint64_t>::lowest();
+    max = std::numeric_limits<uint64_t>::max();
+    minex = maxex = false;
+    offset = -1;
+    count = -1;
+    reversed = false;
+  }
+} SortedintRangeSpec;
 
 namespace Redis {
 
@@ -21,6 +37,11 @@ class Sortedint : public Database {
                         uint64_t limit,
                         bool reversed,
                         std::vector<uint64_t> *ids);
+  rocksdb::Status RangeByValue(const Slice &user_key,
+                               SortedintRangeSpec spec,
+                               std::vector<uint64_t> *ids,
+                               int *size);
+  static Status ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec);
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, SortedintMetadata *metadata);

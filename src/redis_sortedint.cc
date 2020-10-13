@@ -131,6 +131,66 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
+                                        SortedintRangeSpec spec,
+                                        std::vector<uint64_t> *ids,
+                                        int *size) {
+  if (size) *size = 0;
+  if (ids) ids->clear();
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  SortedintMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  std::string start_buf, start_key, prefix_key;
+  PutFixed64(&start_buf, spec.reversed ? spec.max : spec.min);
+  InternalKey(ns_key, start_buf, metadata.version).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version).Encode(&prefix_key);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+
+  int pos = 0;
+  auto iter = db_->NewIterator(read_options);
+  iter->Seek(start_key);
+  // when using reverse range, we should use the `SeekForPrev` to put the iter to the right position in those cases:
+  //    a. the key with the max score was the maximum key in DB and the iter would be invalid, try to seek the prev key
+  //    b. there's some key after the key with max score and the iter would be valid, but the current key may be:
+  //        b1. the prefix was the same with start key, don't skip it (the sortedint key has existed)
+  //        b2. the prefix was not the same with start key, try to seek the prev key
+  // Note: the DB key was composed by `NS|key|version|id`, so SeekForPrev(`NS|key|version|id`)
+  // may skip the current id if exists, so do SeekForPrev if prefix was not the same with start key
+  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+  uint64_t id;
+  for (;
+      iter->Valid() && iter->key().starts_with(prefix_key);
+      !spec.reversed ? iter->Next() : iter->Prev()) {
+    InternalKey ikey(iter->key());
+    Slice sub_key = ikey.GetSubKey();
+    GetFixed64(&sub_key, &id);
+    if (spec.reversed) {
+      if ((spec.minex && id == spec.min) || id < spec.min) break;
+      if ((spec.maxex && id == spec.max) || id > spec.max) continue;
+    } else {
+      if ((spec.minex && id == spec.min) || id < spec.min) continue;
+      if ((spec.maxex && id == spec.max) || id > spec.max) break;
+    }
+    if (spec.offset >= 0 && pos++ < spec.offset) continue;
+    if (ids) ids->emplace_back(id);
+    if (size) *size += 1;
+    if (spec.count > 0 && ids && ids->size() >= static_cast<unsigned>(spec.count)) break;
+  }
+  delete iter;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Sortedint::MExist(const Slice &user_key, std::vector<uint64_t> ids, std::vector<int> *exists) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -156,5 +216,44 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, std::vector<uint64_t> i
     }
   }
   return rocksdb::Status::OK();
+}
+
+Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec) {
+  const char *sptr = nullptr;
+
+  if (min == "+inf" || max == "-inf") {
+    return Status(Status::NotOK, "min > max");
+  }
+
+  if (min == "-inf") {
+    spec->min = std::numeric_limits<uint64_t>::lowest();
+  } else {
+    sptr = min.data();
+    if (!min.empty() && min[0] == '(') {
+      spec->minex = true;
+      sptr++;
+    }
+    try {
+      spec->min = std::stoull(sptr);
+    } catch (const std::exception &e) {
+      return Status(Status::NotOK, "the min isn't integer");
+    }
+  }
+
+  if (max == "+inf") {
+    spec->max = std::numeric_limits<uint64_t>::max();
+  } else {
+    sptr = max.data();
+    if (!max.empty() && max[0] == '(') {
+      spec->maxex = true;
+      sptr++;
+    }
+    try {
+      spec->max = std::stoull(sptr);
+    } catch (const std::exception &e) {
+      return Status(Status::NotOK, "the max isn't integer");
+    }
+  }
+  return Status::OK();
 }
 }  // namespace Redis

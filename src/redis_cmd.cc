@@ -3044,6 +3044,60 @@ class CommandSortedintRevRange : public CommandSortedintRange {
   CommandSortedintRevRange() : CommandSortedintRange(true) { name_ = "sirevrange"; }
 };
 
+class CommandSortedintRangeByValue : public Commander {
+ public:
+  explicit CommandSortedintRangeByValue(bool reversed = false) : Commander("sirangebyvalue", -4, false) {
+    spec_.reversed = reversed;
+  }
+
+  Status Parse(const std::vector<std::string> &args) override {
+    Status s;
+    if (spec_.reversed) {
+      s = Redis::Sortedint::ParseRangeSpec(args[3], args[2], &spec_);
+    } else {
+      s = Redis::Sortedint::ParseRangeSpec(args[2], args[3], &spec_);
+    }
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
+    if (args.size() == 7) {
+      if (Util::ToLower(args[4]) != "limit") {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+      try {
+        spec_.offset = std::stoi(args[5]);
+        spec_.count = std::stoi(args[6]);
+      } catch (const std::exception &e) {
+        return Status(Status::RedisParseErr, errValueNotInterger);
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
+    std::vector<uint64_t> ids;
+    int size;
+    rocksdb::Status s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    output->append(Redis::MultiLen(ids.size()));
+    for (const auto id : ids) {
+      output->append(Redis::BulkString(std::to_string(id)));
+    }
+    return Status::OK();
+  }
+
+ private:
+  SortedintRangeSpec spec_;
+};
+
+class CommandSortedintRevRangeByValue : public CommandSortedintRangeByValue {
+ public:
+  CommandSortedintRevRangeByValue() : CommandSortedintRangeByValue(true) { name_ = "sirevrangebyvalue"; }
+};
+
 class CommandInfo : public Commander {
  public:
   CommandInfo() : Commander("info", -1, false) {}
@@ -4466,12 +4520,14 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("pubsub",       CommandPubSub),
 
     // Sortedint command
-    ADD_CMD("siadd",      CommandSortedintAdd),
-    ADD_CMD("sirem",      CommandSortedintRem),
-    ADD_CMD("sicard",     CommandSortedintCard),
-    ADD_CMD("siexists",   CommandSortedintExists),
-    ADD_CMD("sirange",    CommandSortedintRange),
-    ADD_CMD("sirevrange", CommandSortedintRevRange),
+    ADD_CMD("siadd",             CommandSortedintAdd),
+    ADD_CMD("sirem",             CommandSortedintRem),
+    ADD_CMD("sicard",            CommandSortedintCard),
+    ADD_CMD("siexists",          CommandSortedintExists),
+    ADD_CMD("sirange",           CommandSortedintRange),
+    ADD_CMD("sirevrange",        CommandSortedintRevRange),
+    ADD_CMD("sirangebyvalue",    CommandSortedintRangeByValue),
+    ADD_CMD("sirevrangebyvalue", CommandSortedintRevRangeByValue),
 
     // Codis Slot command
     ADD_CMD("slotsinfo",              CommandSlotsInfo),

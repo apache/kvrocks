@@ -71,6 +71,44 @@ def test_sirevrange():
         raise ValueError('ret illegal')
 
 
+def test_sirangebyvalue():
+    conn = get_redis_conn()
+    key = "test_sirangebyvalue"
+    ret = conn.execute_command("siadd", key, 1, 2, 3, 4, 60, 231, 9999)
+    assert (ret == 7)
+    ret = conn.execute_command("sirangebyvalue", key, 0, 4)
+    assert (ret == ['1', '2', '3', '4'])
+    ret = conn.execute_command("sirangebyvalue", key, 0, '(4')
+    assert (ret == ['1', '2', '3'])
+    ret = conn.execute_command("sirangebyvalue", key, '(1', 4)
+    assert (ret == ['2', '3', '4'])
+    ret = conn.execute_command("sirangebyvalue", key, '-inf', '+inf')
+    assert (ret == ['1', '2', '3', '4', '60', '231', '9999'])
+
+    ret = conn.delete(key)
+    assert(ret == 1)
+
+
+def test_sirevrangebyvalue():
+    conn = get_redis_conn()
+    key = "test_sirevrangebyvalue"
+    ret = conn.delete(key)
+    ret = conn.execute_command("siadd", key, 1, 2, 3, 4, 60, 231, 9999)
+    assert (ret == 7)
+    ret = conn.execute_command("sirevrangebyvalue", key, 9999, 60)
+    assert (ret == ['9999', '231', '60'])
+    ret = conn.execute_command("sirevrangebyvalue", key, '(9999', 60)
+    assert (ret == ['231', '60'])
+    ret = conn.execute_command("sirevrangebyvalue", key, 9999, '(60')
+    assert (ret == ['9999', '231'])
+    ret = conn.execute_command("sirevrangebyvalue", key, '+inf', '-inf')
+    assert (ret == ['9999', '231', '60', '4', '3', '2', '1'])
+
+    ret = conn.delete(key)
+    if not ret == 1:
+        raise ValueError('ret illegal')
+
+
 def test_siexists():
     conn = get_redis_conn()
     key = "test_siexists"

@@ -162,14 +162,16 @@
 
 ## Sortedint Commands
 
-| Command      | Supported OR Not | Desc                                      |
-| ------------ | ---------------- | ----------------------------------------- |
-| sicard       | √                | like scard                                |
-| siadd        | √                | like sadd, but member is int              |
-| sirem        | √                | like srem, but member is int              |
-| sirange      | √                | sirange key offset count cursor since_id  |
-| sirevrange   | √                | sirevrange key offset count cursor max_id |
-| siexists     | √                | siexists key member1 (member2 ...)        |
+| Command            | Supported OR Not | Desc                                               |
+| -----------------  | ---------------- | -------------------------------------------------  |
+| sicard             | √                | like scard                                         |
+| siadd              | √                | like sadd, but member is int                       |
+| sirem              | √                | like srem, but member is int                       |
+| sirange            | √                | sirange key offset count cursor since_id           |
+| sirevrange         | √                | sirevrange key offset count cursor max_id          |
+| siexists           | √                | siexists key member1 (member2 ...)                 |
+| sirangebyvalue     | √                | sirangebyvalue key min max (LIMIT offset count)    |
+| sirevrangebyvalue  | √                | sirevrangebyvalue key max min (LIMIT offset count) |
 
 ## Administrator Commands
 

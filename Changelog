@@ -1,3 +1,8 @@
+* Version 1.1.31 (@2020-10-21)
+	- MOD: improve the multi-bulk string function performance
+	- FIX: hash tag calculation error
+	- ADD: support sirangebyvalue, sirevrangebyvalue command
+
 * Version 1.1.30 (@2020-09-16)
 	- ADD: support role command
 

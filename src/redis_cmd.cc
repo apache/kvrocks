@@ -3007,7 +3007,7 @@ class CommandSortedintRange : public Commander {
       offset_ = std::stoi(args[2]);
       limit_ = std::stoi(args[3]);
       if (args.size() == 6) {
-        if (args[4] != "cursor") {
+        if (Util::ToLower(args[4]) != "cursor") {
           return Status(Status::RedisParseErr, errInvalidSyntax);
         }
         cursor_id_ = std::stoull(args[5]);

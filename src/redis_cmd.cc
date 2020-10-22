@@ -1173,8 +1173,10 @@ class CommandHMGet : public Commander {
     }
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
+      *output = Redis::MultiBulkString(values);
+    } else {
+      *output = Redis::MultiBulkString(values, statuses);
     }
-    *output = Redis::MultiBulkString(values, statuses);
     return Status::OK();
   }
 };

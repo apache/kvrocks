@@ -1,3 +1,7 @@
+* Version 1.1.32 (@2020-10-28)
+	- FIX: hmget should not output empty string when hash key doesn't exist
+	- FIX: disable compaction_checker_range when value is empty string
+
 * Version 1.1.31 (@2020-10-21)
 	- MOD: improve the multi-bulk string function performance
 	- FIX: hash tag calculation error

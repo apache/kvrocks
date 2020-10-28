@@ -151,6 +151,11 @@ void Config::initFieldValidator() {
       }},
       {"compaction-checker-range", [this](const std::string& k, const std::string& v)->Status {
         std::vector<std::string> args;
+        if (v.empty()) {
+          compaction_checker_range.Start = -1;
+          compaction_checker_range.Stop = -1;
+          return Status::OK();
+        }
         Util::Split(v, "-", &args);
         if (args.size() != 2) {
           return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");

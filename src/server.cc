@@ -944,22 +944,38 @@ Status Server::dynamicResizeBlockAndSST() {
   } else {
     target_file_size_base = 16;
   }
-  if (target_file_size_base == config_->RocksDB.target_file_size_base) {
+  if (target_file_size_base == config_->RocksDB.target_file_size_base
+      && target_file_size_base == config_->RocksDB.write_buffer_size) {
     return Status::OK();
   }
-  auto s = storage_->SetOption("target_file_size_base", std::to_string(target_file_size_base * MiB));
-  LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from "
-            << config_->RocksDB.target_file_size_base
-            << " to " << target_file_size_base
-            << ", average_kv_size: " << average_kv_size
-            << ", total_size: " << total_size
-            << ", total_keys: " << total_keys
-            << ", result: " << s.Msg();
-  if (!s.IsOK()) {
-    return s;
+  if (target_file_size_base != config_->RocksDB.target_file_size_base) {
+    auto s = storage_->SetOption("target_file_size_base", std::to_string(target_file_size_base * MiB));
+    LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from "
+              << config_->RocksDB.target_file_size_base
+              << " to " << target_file_size_base
+              << ", average_kv_size: " << average_kv_size
+              << ", total_size: " << total_size
+              << ", total_keys: " << total_keys
+              << ", result: " << s.Msg();
+    if (!s.IsOK()) {
+      return s;
+    }
+    config_->RocksDB.target_file_size_base = target_file_size_base;
   }
-  config_->RocksDB.target_file_size_base = target_file_size_base;
-  s = config_->Rewrite();
+  if (target_file_size_base != config_->RocksDB.write_buffer_size) {
+    auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
+    LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "
+              << config_->RocksDB.write_buffer_size
+              << " to " << target_file_size_base
+              << ", average_kv_size: " << average_kv_size
+              << ", total_size: " << total_size
+              << ", total_keys: " << total_keys
+              << ", result: " << s.Msg();
+    if (!s.IsOK()) {
+      return s;
+    }
+  }
+  auto s = config_->Rewrite();
   LOG(INFO) << "[server] rewrite config, result: " << s.Msg();
   return Status::OK();
 }

@@ -1,3 +1,6 @@
+* Version 1.1.33 (@2020-11-10)
+	- ADD: dynamic resize rocksdb.write_buffer_size
+
 * Version 1.1.32 (@2020-10-28)
 	- FIX: hmget should not output empty string when hash key doesn't exist
 	- FIX: disable compaction_checker_range when value is empty string

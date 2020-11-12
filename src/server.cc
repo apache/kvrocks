@@ -667,6 +667,19 @@ void Server::GetRoleInfo(std::string *info) {
   }
 }
 
+std::string Server::GetLastRandomKeyCursor() {
+  std::string cursor;
+  last_random_key_cursor_mu_.lock();
+  cursor = last_random_key_cursor_;
+  last_random_key_cursor_mu_.unlock();
+  return cursor;
+}
+void Server::SetLastRandomKeyCursor(const std::string &cursor) {
+  last_random_key_cursor_mu_.lock();
+  last_random_key_cursor_ = cursor;
+  last_random_key_cursor_mu_.unlock();
+}
+
 int Server::GetUnixTime() {
   if (unix_time_.load() == 0) {
     time_t ret = time(nullptr);

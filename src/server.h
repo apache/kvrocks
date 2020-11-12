@@ -69,8 +69,8 @@ class Server {
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
   Status WakeupBlockingConns(const std::string &key, size_t n_conns);
 
-  std::string GetLastRandomKeyCursor() { return last_random_key_cursor_; }
-  void SetLastRandomKeyCursor(const std::string &cursor) { last_random_key_cursor_ = cursor; }
+  std::string GetLastRandomKeyCursor();
+  void SetLastRandomKeyCursor(const std::string &cursor);
 
   static int GetUnixTime();
   void GetStatsInfo(std::string *info);
@@ -127,6 +127,7 @@ class Server {
   uint32_t master_port_ = 0;
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
+  std::mutex last_random_key_cursor_mu_;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};

@@ -1,3 +1,6 @@
+* Version 1.1.34 (@2020-11-12)
+	- FIX: segmentation fault
+
 * Version 1.1.33 (@2020-11-10)
 	- ADD: dynamic resize rocksdb.write_buffer_size
 

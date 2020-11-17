@@ -80,7 +80,7 @@ Status Server::Start() {
     Util::ThreadSetName("compaction-checker");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
-      if (++counter % 600 == 0  // check every minute
+      if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
         auto local_time = std::localtime(&now);
@@ -846,6 +846,9 @@ void Server::ReclaimOldDBPtr() {
 }
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
+  if (is_loading_) {
+    return Status(Status::NotOK, "loading in-progress");
+  }
   db_mu_.lock();
   if (db_compacting_) {
     db_mu_.unlock();

@@ -1,3 +1,6 @@
+* Version 1.1.36 (@2020-11-17)
+	- FIX: core (dynamicResizeBlockAndSST may use closed db and cf)
+
 * Version 1.1.35 (@2020-11-17)
 	- FIX: core (compact may use closed db and cf)
 

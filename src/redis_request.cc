@@ -204,6 +204,7 @@ void Request::ExecuteCommands(Connection *conn) {
       continue;
     }
     if (!reply.empty()) conn->Reply(reply);
+    reply.clear();
   }
   commands_.clear();
 }

@@ -1,3 +1,6 @@
+* Version 1.1.38 (@2020-11-20)
+	- FIX: replication dead loop (some seq might be lost in the middle of wal , seems like a bug in rocksdb)
+
 * Version 1.1.37 (@2020-11-18)
 	- FIX: old pipeline cmd response should be cleared
 

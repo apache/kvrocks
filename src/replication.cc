@@ -65,6 +65,10 @@ void FeedSlaveThread::checkLivenessIfNeed() {
 }
 
 void FeedSlaveThread::loop() {
+  // is_first_repl_batch was used to fix that replication may be stuck in a dead loop
+  // when some seqs might be lost in the middle of the WAL log, so forced to replicate
+  // first batch here to work around this issue instead of waiting for enough batch size.
+  bool is_first_repl_batch = true;
   uint32_t yield_milliseconds = 2000;
   std::vector<std::string> batch_list;
   while (!IsStopped()) {
@@ -90,7 +94,7 @@ void FeedSlaveThread::loop() {
     batch_list.emplace_back(Redis::BulkString(data));
     // feed the bulks data to slave in batch mode iff the lag was far from the master
     auto latest_seq = srv_->storage_->LatestSeq();
-    if (latest_seq - batch.sequence <= 20 || batch_list.size() >= 20) {
+    if (is_first_repl_batch || latest_seq - batch.sequence <= 20 || batch_list.size() >= 20) {
       for (const auto &bulk_str : batch_list) {
         auto s = Util::SockSend(conn_->GetFD(), bulk_str);
         if (!s.IsOK()) {
@@ -100,6 +104,7 @@ void FeedSlaveThread::loop() {
           return;
         }
       }
+      is_first_repl_batch = false;
       batch_list.clear();
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();

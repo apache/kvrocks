@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
   LOG(INFO) << "Success restored!" << std::endl;
   delete backup_engine;
 
-  hup_handler = [] {
+  hup_handler = [&backup_engine] {
     LOG(INFO) << "Bye Bye";
   };
   return 0;

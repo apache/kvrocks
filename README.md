@@ -39,13 +39,13 @@ kvrocks has the following key features:
 
 ```shell
 # Centos/Redhat
-sudo yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which
+sudo yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which gtest-devel
 
 # Ubuntu
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool which
+sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool which libgtest-dev
 
 # MACOSX
-brew install snappy
+brew install snappy googletest
 ```
 
 ```shell

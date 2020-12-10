@@ -301,17 +301,16 @@ Status Storage::RestoreFromBackup() {
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to restore: " << s.ToString();
-    return Status(Status::DBBackupErr, s.ToString());
+  } else {
+    LOG(INFO) << "[storage] Restore from backup";
   }
-  LOG(INFO) << "[storage] Restore from backup";
-
-  // Reopen DB
+  // Reopen DB （should always try to reopen db even if restore failed , replication sst file crc check may use it）
   auto s2 = Open();
   if (!s2.IsOK()) {
     LOG(ERROR) << "[storage] Failed to reopen db: " << s2.Msg();
     return Status(Status::DBOpenErr, s2.Msg());
   }
-  return Status::OK();
+  return s.ok() ? Status::OK() : Status(Status::DBBackupErr, s.ToString());
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
@@ -678,6 +677,8 @@ Status Storage::BackupManager::SwapTmpFile(Storage *storage,
 }
 
 bool Storage::BackupManager::FileExists(Storage *storage, const std::string &rel_path, uint32_t crc) {
+  if (storage->IsClosing()) return false;
+
   auto file_path = storage->config_->backup_dir + "/" + rel_path;
   auto s = storage->backup_env_->FileExists(file_path);
   if (!s.ok()) return false;

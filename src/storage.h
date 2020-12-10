@@ -61,7 +61,7 @@ class Storage {
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
-  bool IsClosing();
+  bool IsClosing() { return db_closing_; }
   Status IncrDBRefs();
   Status DecrDBRefs();
   const std::string GetName() {return config_->db_name; }

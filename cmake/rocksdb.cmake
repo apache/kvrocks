@@ -40,6 +40,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DWITH_TESTS=OFF
                  -DWITH_SNAPPY=ON
                  -DWITH_TOOLS=OFF
+                 -DWITH_GFLAGS=OFF
                  -DUSE_RTTI=ON
                  -DWITH_JEMALLOC=ON
       LOG_DOWNLOAD 1

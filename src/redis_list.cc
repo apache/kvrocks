@@ -428,6 +428,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
                                                       std::to_string(stop)});
   batch.PutLogData(log_data.Encode());
   uint64_t left_index = metadata.head + start;
+  uint64_t right_index = metadata.head + stop + 1;
   for (uint64_t i = metadata.head; i < left_index; i++) {
     PutFixed64(&buf, i);
     std::string sub_key;
@@ -436,8 +437,9 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
     metadata.head++;
     trim_cnt++;
   }
-  uint64_t right_index = metadata.head + stop + 1;
-  for (uint64_t i = right_index; i < metadata.tail; i++) {
+  auto tail = metadata.tail;
+  for (uint64_t i = right_index; i < tail; i++) {
+    PutFixed64(&buf, i);
     std::string sub_key;
     InternalKey(ns_key, buf, metadata.version).Encode(&sub_key);
     batch.Delete(sub_key);

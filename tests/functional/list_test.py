@@ -129,23 +129,35 @@ def test_lrange():
 def test_ltrim():
     key = "test_ltrim"
     conn = get_redis_conn()
-    elems = ["one", "two", "three"]
+    elems = ["one", "two", "three", "four", "five"]
     ret = conn.rpush(key, *elems)
     assert(ret == len(elems))
     ret = conn.ltrim(key, 0, 2000)
     assert(ret)
     ret = conn.llen(key)
-    assert(ret == len(elems))
+    if not ret == len(elems):
+        raise ValueError('ret illegal')
+    ret = conn.ltrim(key, 1, 3)
+    if not ret == 1:
+        raise ValueError('ret illegal')
+    ret = conn.lrange(key, 0, -1)
+    if not ret == elems[1:4]:
+        raise ValueError('ret illegal')
     ret = conn.ltrim(key, 1, -1)
-    assert(ret)
+    if not ret == 1:
+        raise ValueError('ret illegal')
     ret = conn.lrange(key, 0, -1)
-    assert(ret == elems[1:])
+    if not ret == elems[2:4]:
+        raise ValueError('ret illegal')
     ret = conn.ltrim(key, -100, 0)
-    assert(ret)
+    if not ret == 1:
+        raise ValueError('ret illegal')
     ret = conn.lrange(key, 0, -1)
-    assert(ret == [elems[1]])
+    if not ret == [elems[2]]:
+        raise ValueError('ret illegal')
     ret = conn.ltrim(key, 100, 0)
-    assert(ret)
+    if not ret == 1:
+        raise ValueError('ret illegal')
     ret = conn.lrange(key, 0, -1)
     assert(ret == [])
 

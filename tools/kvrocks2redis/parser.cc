@@ -213,6 +213,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
               firstSeen_ = false;
             }
             break;
+          case kRedisCmdLRem:
+            // lrem will be parsed in deletecf, so ignore this putcf
+            break;
           default:command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
         }
         break;

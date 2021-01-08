@@ -1,8 +1,12 @@
+* Version 1.2.0 (@2021-01-08)
+	- MOD: revert rocksdb to v6.2.2
+
 * Version 1.1.40 (@2020-12-18)
 	- FIX: ltrim right index (typo)
 
 * Version 1.1.39 (@2020-12-10)
 	- FIX: core ( replication sst file crc check may use closed db )
+	- MOD: upgrade rocksdb to v6.14.6
 
 * Version 1.1.38 (@2020-11-20)
 	- FIX: replication dead loop (some seq might be lost in the middle of wal , seems like a bug in rocksdb)

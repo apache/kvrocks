@@ -77,7 +77,7 @@ make test
 ## Try kvrocks using Docker
 
 ```
-$ docker run -it -p 6666:6666 hulkdev/kvrocks
+$ docker run -it -p 6666:6666 bitleak/kvrocks
 $ redis-cli -p 6666
 
 127.0.0.1:6666> get a

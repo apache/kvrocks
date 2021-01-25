@@ -37,9 +37,9 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   // the live files was too few, Hard code to 1 here.
   if (props.size() <= 1) return;
 
-  size_t maxFilesToCompaction = 1;
-  if (props.size()/720 > maxFilesToCompaction) {
-    maxFilesToCompaction = props.size()/720;
+  size_t maxFilesToCompact = 1;
+  if (props.size()/360 > maxFilesToCompact) {
+    maxFilesToCompact = props.size()/360;
   }
   int64_t now, forceCompactSeconds = 2 * 24 * 3600;
   rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -48,7 +48,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   int64_t total_keys = 0, deleted_keys = 0;
   rocksdb::Slice start_key, stop_key, best_start_key, best_stop_key;
   for (const auto &iter : props) {
-    if (maxFilesToCompaction == 0) return;
+    if (maxFilesToCompact == 0) return;
     // don't compact the SST created in 1 hour
     if ( iter.second->creation_time < static_cast<uint64_t>(now-3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
@@ -67,7 +67,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     }
 
     if (start_key.empty() || stop_key.empty()) continue;
-    // pick the file which was created more than 1 week
+    // pick the file which was created more than 2 days
     if ((iter.second->creation_time < static_cast<uint64_t>(now-forceCompactSeconds))
         || (iter.second->file_creation_time < static_cast<uint64_t>(now-forceCompactSeconds))) {
       // the db is closing, don't use DB and cf_handles
@@ -77,7 +77,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       storage_->DecrDBRefs();
       LOG(INFO) << "[compaction checker] Compact the key in file(created more than 2 days): " << iter.first
                 << " finished, result: " << s.ToString();
-      maxFilesToCompaction--;
+      maxFilesToCompact--;
     }
     // pick the file which has highest delete ratio
     double delete_ratio = static_cast<double>(deleted_keys)/static_cast<double>(total_keys);

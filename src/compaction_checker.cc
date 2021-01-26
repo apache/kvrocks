@@ -50,7 +50,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   for (const auto &iter : props) {
     if (maxFilesToCompact == 0) return;
     // don't compact the SST created in 1 hour
-    if ( iter.second->creation_time < static_cast<uint64_t>(now-3600)) continue;
+    if ( iter.second->file_creation_time > static_cast<uint64_t>(now-3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
         total_keys = std::atoi(property_iter.second.data());
@@ -68,8 +68,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
 
     if (start_key.empty() || stop_key.empty()) continue;
     // pick the file which was created more than 2 days
-    if ((iter.second->creation_time < static_cast<uint64_t>(now-forceCompactSeconds))
-        || (iter.second->file_creation_time < static_cast<uint64_t>(now-forceCompactSeconds))) {
+    if (iter.second->file_creation_time < static_cast<uint64_t>(now-forceCompactSeconds)) {
       // the db is closing, don't use DB and cf_handles
       if (!storage_->IncrDBRefs().IsOK()) return;
       LOG(INFO) << "[compaction checker] Going to compact the key in file(created more than 2 days): " << iter.first;

@@ -33,6 +33,7 @@
 namespace Redis {
 
 const char *errInvalidSyntax = "syntax error";
+const char *errInvalidExpireTime = "invalid expire time";
 const char *errWrongNumOfArguments = "wrong number of arguments";
 const char *errValueNotInterger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
@@ -399,9 +400,11 @@ class CommandSet : public Commander {
       } else if (opt == "ex") {
         if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
         ttl_ = atoi(args_[++i].c_str());
+        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "px") {
         if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
         auto ttl_ms = atol(args[++i].c_str());
+        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (ttl_ms > 0 && ttl_ms < 1000) {
           // round up the pttl to second
           ttl_ = 1;
@@ -448,6 +451,36 @@ class CommandSetEX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     try {
       ttl_ = std::stoi(args[2]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.SetEX(args_[1], args_[3], ttl_);
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  int ttl_ = 0;
+};
+
+class CommandPSetEX : public Commander {
+ public:
+  CommandPSetEX() : Commander("psetex", 4, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      auto ttl_ms = std::stol(args[2]);
+      if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      if (ttl_ms > 0 && ttl_ms < 1000) {
+        ttl_ = 1;
+      } else {
+        ttl_ = ttl_ms / 1000;
+      }
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
@@ -4411,6 +4444,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("append",      CommandAppend),
     ADD_CMD("set",         CommandSet),
     ADD_CMD("setex",       CommandSetEX),
+    ADD_CMD("psetex",      CommandPSetEX),
     ADD_CMD("setnx",       CommandSetNX),
     ADD_CMD("mset",        CommandMSet),
     ADD_CMD("incrby",      CommandIncrBy),

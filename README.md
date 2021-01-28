@@ -1,6 +1,6 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="200" height="200"/>
 
-# kvrocks  ![image](https://travis-ci.org/bitleak/kvrocks.svg?branch=master) [![LICENSE](https://img.shields.io/github/license/bitleak/kvrocks.svg)](https://github.com/bitleak/kvrocks/blob/master/LICENSE)
+# kvrocks  ![image](https://travis-ci.org/bitleak/kvrocks.svg?branch=master) [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/bitleak/kvrocks/blob/master/LICENSE)
 
 kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 

@@ -88,7 +88,7 @@ endif
 
 lint:
 	cd ..; ./cpplint.sh
-#	cd ..; ./cppcheck.sh
+	cd ..; ./cppcheck.sh
 
 $(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)

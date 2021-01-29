@@ -1,5 +1,5 @@
 #!/bin/bash
-CHECK_TYPES="warning,performance,portability,information,missingInclude"
+CHECK_TYPES="warning,portability,information,missingInclude"
 STANDARD=c++11
 ERROR_EXITCODE=1
 LANG=c++

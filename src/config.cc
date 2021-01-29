@@ -82,6 +82,7 @@ Config::Config() {
       {"db-name", true, new StringField(&db_name, "changeme.name")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", true, new StringField(&backup_dir, "")},
+      {"log-dir", true, new StringField(&log_dir, "")},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
@@ -191,6 +192,7 @@ void Config::initFieldCallback() {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
         if (backup_dir.empty()) backup_dir = dir + "/backup";
+        if (log_dir.empty()) log_dir = dir;
         return Status::OK();
       }},
       {"port", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
@@ -364,6 +366,7 @@ Status Config::finish() {
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
+  if (log_dir.empty()) log_dir = dir;
   if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
   std::vector<std::string> createDirs = {dir, backup_dir};
   for (const auto &name : createDirs) {

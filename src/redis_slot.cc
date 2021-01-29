@@ -305,11 +305,16 @@ Status Slot::MigrateOneKey(int sock_fd, const rocksdb::Slice &key) {
   size_t line_len;
   std::string restore_command;
   switch (metadata.Type()) {
-    case kRedisString:
-      restore_command =
-          Redis::MultiBulkString({"setex", key.ToString(), std::to_string(metadata.expire),
-                                  bytes.substr(5, bytes.size() - 5)});
+    case kRedisString: {
+      std::vector<std::string> commands = {"set", key.ToString(),
+                                           bytes.substr(5, bytes.size() - 5)};
+      if (metadata.expire > 0) {
+        commands.emplace_back("EX");
+        commands.emplace_back(std::to_string(metadata.expire));
+      }
+      restore_command = Redis::MultiBulkString(commands);
       break;
+    }
     case kRedisList:
     case kRedisZSet:
     case kRedisBitmap:

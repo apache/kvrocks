@@ -1,0 +1,54 @@
+name: kvrocks ci actions  # don't edit while the badge was depend on this
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  lint-build-test:
+    name: Lint/Build
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get install -y cppcheck
+          sudo pip install --upgrade pip
+          sudo pip install cpplint==1.5.0
+          sudo pip install nose
+          sudo pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6
+          sudo apt-get install -y tar libsnappy-dev
+          mkdir build
+
+      - name: Lint
+        run: |
+          make lint
+
+      - name: Build
+        run: |
+          make -j4
+          cp src/kvrocks build/kvrocks
+
+      - name: Unit Test
+        run: |
+          wget https://github.com/google/googletest/archive/release-1.8.1.tar.gz
+          tar -zxvf release-1.8.1.tar.gz
+          cd googletest-release-1.8.1/
+          cmake CMakeLists.txt
+          make
+          sudo make install
+          cd -
+
+      - name: Functional Test
+        run: |
+          sh tests/scripts/setup-env.sh ./build
+          cd tests/functional && nosetests -v

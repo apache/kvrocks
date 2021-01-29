@@ -43,7 +43,7 @@ rocksdb::Status List::push(const Slice &user_key,
   batch.PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok() && !create_if_missing && s.IsNotFound()) {
+  if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
   uint64_t index = left ? metadata.head - 1 : metadata.tail;

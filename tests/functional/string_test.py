@@ -101,13 +101,13 @@ def test_setex():
 def test_psetex():
     key = "test_psetex"
     conn = get_redis_conn()
-    ret = conn.psetex(key, "bar", 1000*1024)
+    ret = conn.psetex(key, 1000*1024, "bar")
     assert(ret == True)
     ret = conn.ttl(key)
     assert(ret >= 1023 and ret <= 1025)
     ret = conn.delete(key)
     assert(ret == 1)
-    assert_raise(redis.RedisError, conn.psetex, "foo", "bar", "invalid")
+    assert_raise(redis.RedisError, conn.psetex, "foo", "invalid", "bar")
 
 def test_setnx():
     key = "test_setnx"

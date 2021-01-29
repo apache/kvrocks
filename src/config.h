@@ -69,6 +69,7 @@ struct Config{
   std::string dir;
   std::string db_dir;
   std::string backup_dir;
+  std::string log_dir;
   std::string pidfile;
   std::string db_name;
   std::string masterauth;

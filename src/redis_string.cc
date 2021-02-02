@@ -290,13 +290,18 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
   }
 
   int exists;
+  std::vector<Slice> keys;
+  for (StringPair pair : pairs) {
+    keys.emplace_back(pair.key);
+  }
+  if (Exists(keys, &exists).ok() && exists > 0) {
+    return rocksdb::Status::OK();
+  }
+
   std::string ns_key;
   for (StringPair pair : pairs) {
     AppendNamespacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    if (Exists({pair.key}, &exists).ok() && exists == 1) {
-      return rocksdb::Status::OK();
-    }
     std::string bytes;
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;

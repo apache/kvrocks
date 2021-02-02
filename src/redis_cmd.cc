@@ -621,7 +621,7 @@ class CommandDel : public Commander {
 };
 
 Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
-  long long offset_arg = 0;
+  int64_t offset_arg = 0;
   try {
     offset_arg = std::stoll(arg);
   } catch (std::exception &e) {

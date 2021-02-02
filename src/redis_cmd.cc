@@ -537,6 +537,31 @@ class CommandSetNX : public Commander {
   }
 };
 
+class CommandMSetNX : public Commander {
+ public:
+  CommandMSetNX() : Commander("msetnx", -3, true) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 1) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    std::vector<StringPair> kvs;
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    for (size_t i = 1; i < args_.size(); i+=2) {
+      kvs.emplace_back(StringPair{args_[i], args_[i+1]});
+    }
+    rocksdb::Status s = string_db.MSetNX(kvs, 0, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
 class CommandIncr : public Commander {
  public:
   CommandIncr() : Commander("incr", 2, true) {}
@@ -4446,6 +4471,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("setex",       CommandSetEX),
     ADD_CMD("psetex",      CommandPSetEX),
     ADD_CMD("setnx",       CommandSetNX),
+    ADD_CMD("msetnx",      CommandMSetNX),
     ADD_CMD("mset",        CommandMSet),
     ADD_CMD("incrby",      CommandIncrBy),
     ADD_CMD("incrbyfloat", CommandIncrByFloat),

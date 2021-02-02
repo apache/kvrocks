@@ -27,7 +27,7 @@ class String : public Database {
   rocksdb::Status SetXX(const std::string &user_key, const std::string &value, int ttl, int *ret);
   rocksdb::Status SetRange(const std::string &user_key, int offset, const std::string &value, int *ret);
   rocksdb::Status IncrBy(const std::string &user_key, int64_t increment, int64_t *ret);
-  rocksdb::Status IncrByFloat(const std::string &user_key, float increment, float *ret);
+  rocksdb::Status IncrByFloat(const std::string &user_key, double increment, double *ret);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, int ttl = 0);
   rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret);

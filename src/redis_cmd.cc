@@ -3535,6 +3535,15 @@ class CommandClient : public Commander {
       return Status::OK();
     }
     if ((subcommand_ == "setname") && args.size() == 3) {
+      // Check if the charset is ok. We need to do this otherwise
+      // CLIENT LIST format will break. You should always be able to
+      // split by space to get the different fields.
+      for (auto ch : args[2]) {
+        if (ch < '!' || ch > '~') {
+          return Status(Status::RedisInvalidCmd,
+                  "ERR Client names cannot contain spaces, newlines or special characters");
+        }
+      }
       conn_name_ = args[2];
       return Status::OK();
     }

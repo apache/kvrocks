@@ -153,6 +153,12 @@ rocksdb::Status String::SetRange(const std::string &user_key, int offset, const 
   if (!s.ok() && !s.IsNotFound()) return s;
 
   if (s.IsNotFound()) {
+    // Return 0 directly instead of storing an empty key
+    // when set nothing on a non-existing string.
+    if (value.empty()) {
+      *ret = 0;
+      return rocksdb::Status::OK();
+    }
     Metadata metadata(kRedisString, false);
     metadata.Encode(&raw_value);
   }

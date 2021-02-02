@@ -14,6 +14,7 @@
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
 const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
+const size_t PROTO_MULTI_MAX_SIZE = 1024 * 1024L;
 
 Status Request::Tokenize(evbuffer *input) {
   char *line;
@@ -36,13 +37,17 @@ Status Request::Tokenize(evbuffer *input) {
             multi_bulk_len_ = std::stoull(std::string(line + 1, len-1));
           } catch (std::exception &e) {
             free(line);
-            return Status(Status::NotOK, "Protocol error: expect integer");
+            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+          }
+          if (multi_bulk_len_ > PROTO_MULTI_MAX_SIZE) {
+            free(line);
+            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
           state_ = BulkLen;
         } else {
           if (len > PROTO_INLINE_MAX_SIZE) {
             free(line);
-            return Status(Status::NotOK, "Protocol error: too big inline request");
+            return Status(Status::NotOK, "Protocol error: invalid bulk length");
           }
           Util::Split(std::string(line, len), " \t", &tokens_);
           commands_.push_back(std::move(tokens_));
@@ -56,17 +61,17 @@ Status Request::Tokenize(evbuffer *input) {
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] != '$') {
           free(line);
-          return Status(Status::NotOK, "Protocol error: expect '$'");
+          return Status(Status::NotOK, "Protocol error: expected '$'");
         }
         try {
           bulk_len_ = std::stoull(std::string(line + 1, len-1));
         } catch (std::exception &e) {
           free(line);
-          return Status(Status::NotOK, "Protocol error: expect integer");
+          return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }
         if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
           free(line);
-          return Status(Status::NotOK, "Protocol error: too big bulk string");
+          return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }
         free(line);
         state_ = BulkData;

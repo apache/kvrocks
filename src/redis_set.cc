@@ -202,8 +202,15 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
 }
 
 rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {
+  RedisType type;
+  rocksdb::Status s = Type(dst, &type);
+  if (!s.ok()) return s;
+  if (type != kRedisNone && type != kRedisSet) {
+    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+  }
+
   std::vector<Slice> members{member};
-  rocksdb::Status s = Remove(src, members, ret);
+  s = Remove(src, members, ret);
   if (!s.ok() || *ret == 0) {
     return s;
   }

@@ -2,6 +2,7 @@
 #include <utility>
 #include <string>
 #include <limits>
+#include <cmath>
 
 namespace Redis {
 
@@ -196,11 +197,15 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
 
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
   int64_t n = 0;
+  std::size_t idx = 0;
   if (!value.empty()) {
     try {
-      n = std::stoll(value);
+      n = std::stoll(value, &idx);
     } catch(std::exception &e) {
       return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
+    }
+    if (isspace(value[0]) || idx != value.size()) {
+      return rocksdb::Status::InvalidArgument("value is not an integer");
     }
   }
   if ((increment < 0 && n <= 0 && increment < (LLONG_MIN-n))
@@ -229,20 +234,22 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   }
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
   double n = 0;
+  std::size_t idx;
   if (!value.empty()) {
     try {
-      n = std::stod(value);
+      n = std::stod(value, &idx);
     } catch(std::exception &e) {
-      return rocksdb::Status::InvalidArgument("value is not an integer");
+      return rocksdb::Status::InvalidArgument("value is not an float");
+    }
+    if (isspace(value[0]) || idx != value.size()) {
+      return rocksdb::Status::InvalidArgument("value is not an float");
     }
   }
-  auto min = std::numeric_limits<double>::min();
-  auto max = std::numeric_limits<double>::max();
-  if ((increment < 0 && n < 0 && increment < (min - n))
-      || (increment > 0 && n > 0 && increment > (max - n))) {
-    return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
-  }
+
   n += increment;
+  if (std::isinf(n) || std::isnan(n)) {
+    return rocksdb::Status::InvalidArgument("increment would produce NaN or Infinity");
+  }
   *ret = n;
 
   raw_value = raw_value.substr(0, STRING_HDR_SIZE);

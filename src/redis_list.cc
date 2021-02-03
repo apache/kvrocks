@@ -244,6 +244,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   }
   if (pivot_index == (metadata.head - 1)) {
     delete iter;
+    *ret = -1;
     return rocksdb::Status::NotFound();
   }
 
@@ -391,7 +392,14 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
 }
 
 rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
-  rocksdb::Status s = Pop(src, elem, false);
+  RedisType type;
+  rocksdb::Status s = Type(dst, &type);
+  if (!s.ok()) return s;
+  if (type != kRedisNone && type != kRedisList) {
+    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+  }
+
+  s = Pop(src, elem, false);
   if (!s.ok()) return s;
 
   int ret;
@@ -413,7 +421,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = static_cast<int>(metadata.size) > -1 * stop ? metadata.size + stop : metadata.size;
+  if (stop < 0) stop = static_cast<int>(metadata.size) >= -1 * stop ? metadata.size + stop : -1;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start > stop) {

@@ -233,7 +233,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
     metadata.Encode(&raw_value);
   }
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
-  float n = 0;
+  double n = 0;
   std::size_t idx;
   if (!value.empty()) {
     try {

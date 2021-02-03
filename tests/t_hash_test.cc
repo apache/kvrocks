@@ -123,7 +123,7 @@ TEST_F(RedisHashTest, HIncrInvalid) {
 }
 
 TEST_F(RedisHashTest, HIncrByFloat) {
-  float value;
+  double value;
   Slice field("hash-incrbyfloat-invalid-field");
   for (int i = 0; i < 32; i++) {
     rocksdb::Status s = hash->IncrByFloat(key_, field, 1.2, &value);

@@ -38,6 +38,12 @@ def test_hincrbyfloat():
         assert(is_double_eq(ret, i*1.234))
     ret = conn.delete(key)
     assert(ret == 1)
+    ret = conn.hincrbyfloat(key, "fi", 1.11)
+    assert(is_double_eq(ret, 1.11))
+    ret = conn.hincrbyfloat(key, "fi", -1.11)
+    assert(is_double_eq(ret, 0.0))
+    ret = conn.delete(key)
+    assert(ret == 1)
     # TODO(linty): not number of overflow case
     assert_raise(redis.RedisError, conn.hincrbyfloat, key, "f1", "invalid")
 

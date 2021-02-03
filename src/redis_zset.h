@@ -14,14 +14,19 @@ enum AggregateMethod {
   kAggregateMax
 };
 
+const double kMinScore = (std::numeric_limits<float>::is_iec559 ?
+      -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::lowest());
+const double kMaxScore = (std::numeric_limits<float>::is_iec559 ?
+      std::numeric_limits<double>::infinity() : std::numeric_limits<double>::max());
+
 typedef struct ZRangeSpec {
   double min, max;
   bool minex, maxex; /* are min or max exclusive */
   int offset, count;
   bool removed, reversed;
   ZRangeSpec() {
-    min = std::numeric_limits<double>::lowest();
-    max = std::numeric_limits<double>::max();
+    min = kMinScore;
+    max = kMaxScore;
     minex = maxex = false;
     offset = -1; count = -1;
     removed = reversed = false;

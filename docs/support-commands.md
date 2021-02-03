@@ -112,7 +112,7 @@
 | zscan            | √                |             |
 | zscore           | √                |             |
 | zmscore          | √                |multi zscore |
-| zunionscore      | √                |             |
+| zunionstore      | √                |             |
 
 ## Key Commands
 

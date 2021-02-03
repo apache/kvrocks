@@ -80,7 +80,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, float increment, float *ret) {
+rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret) {
   bool exists = false;
   float old_value = 0;
 
@@ -100,15 +100,15 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, flo
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       try {
-        old_value = std::stof(value_bytes);
+        old_value = std::stod(value_bytes);
       } catch (std::exception &e) {
         return rocksdb::Status::InvalidArgument(e.what());
       }
       exists = true;
     }
   }
-  if ((increment < 0 && old_value < 0 && increment < (std::numeric_limits<float>::lowest()-old_value))
-      || (increment > 0 && old_value > 0 && increment > (std::numeric_limits<float>::max()-old_value))) {
+  if ((increment < 0 && old_value < 0 && increment < (std::numeric_limits<double>::lowest()-old_value))
+      || (increment > 0 && old_value > 0 && increment > (std::numeric_limits<double>::max()-old_value))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
 

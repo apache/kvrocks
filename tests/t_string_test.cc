@@ -68,8 +68,8 @@ TEST_F(RedisStringTest, MGetAndMSet) {
 }
 
 TEST_F(RedisStringTest, IncrByFloat) {
-  float f;
-  float max_float = std::numeric_limits<float>::max();
+  double f;
+  double max_float = std::numeric_limits<double>::max();
   string->IncrByFloat(key_, 1.0, &f);
   EXPECT_EQ(1.0, f);
   string->IncrByFloat(key_, max_float-1, &f);

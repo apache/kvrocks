@@ -618,7 +618,7 @@ class CommandIncrByFloat : public Commander {
   CommandIncrByFloat() : Commander("incrbyfloat", 3, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      increment_ = std::stof(args[2]);
+      increment_ = std::stod(args[2]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
@@ -626,7 +626,7 @@ class CommandIncrByFloat : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    float ret;
+    double ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrByFloat(args_[1], increment_, &ret);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
@@ -635,7 +635,7 @@ class CommandIncrByFloat : public Commander {
   }
 
  private:
-  float increment_ = 0;
+  double increment_ = 0;
 };
 
 class CommandDecrBy : public Commander {
@@ -1199,14 +1199,14 @@ class CommandHIncrByFloat : public Commander {
   CommandHIncrByFloat() : Commander("hincrbyfloat", 4, true) {}
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      increment_ = std::stof(args[3]);
+      increment_ = std::stod(args[3]);
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    float ret;
+    double ret;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
@@ -1217,7 +1217,7 @@ class CommandHIncrByFloat : public Commander {
   }
 
  private:
-  float increment_ = 0;
+  double increment_ = 0;
 };
 
 class CommandHMGet : public Commander {

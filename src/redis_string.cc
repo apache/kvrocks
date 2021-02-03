@@ -215,7 +215,7 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::IncrByFloat(const std::string &user_key, float increment, float *ret) {
+rocksdb::Status String::IncrByFloat(const std::string &user_key, double increment, double *ret) {
   std::string ns_key, value;
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -228,18 +228,18 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, float increment
     metadata.Encode(&raw_value);
   }
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
-  float n = 0;
+  double n = 0;
   if (!value.empty()) {
     try {
-      n = std::stof(value);
+      n = std::stod(value);
     } catch(std::exception &e) {
       return rocksdb::Status::InvalidArgument("value is not an integer");
     }
   }
-  auto float_min = std::numeric_limits<float>::min();
-  auto float_max = std::numeric_limits<float>::max();
-  if ((increment < 0 && n < 0 && increment < (float_min-n))
-      || (increment > 0 && n > 0 && increment > (float_max-n))) {
+  auto min = std::numeric_limits<double>::min();
+  auto max = std::numeric_limits<double>::max();
+  if ((increment < 0 && n < 0 && increment < (min - n))
+      || (increment > 0 && n > 0 && increment > (max - n))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
   n += increment;

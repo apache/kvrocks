@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <chrono>
 #include <thread>
 #include <utility>
@@ -2019,6 +2020,9 @@ class CommandZAdd : public Commander {
     try {
       for (unsigned i = 2; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
+        if (std::isnan(score)) {
+          return Status(Status::RedisParseErr, "ERR score is not a valid float");
+        }
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
@@ -2554,7 +2558,10 @@ class CommandZUnionStore : public Commander {
           try {
             keys_weights_[j].weight = std::stod(args[i + j + 1]);
           } catch (const std::exception &e) {
-            return Status(Status::RedisParseErr, "value is not an double or out of range");
+            return Status(Status::RedisParseErr, "weight is not an double or out of range");
+          }
+          if (std::isnan(keys_weights_[j].weight)) {
+            return Status(Status::RedisParseErr, "weight is not an double or out of range");
           }
           j++;
         }

@@ -3270,16 +3270,21 @@ class CommandPublish : public Commander {
   }
 };
 
+void SubscribeCommmandReply(std::string *output, std::string name, std::string sub_name, int num) {
+  output->append(Redis::MultiLen(3));
+  output->append(Redis::BulkString(name));
+  output->append(sub_name.empty() ? Redis::NilString() : Redis::BulkString(sub_name));
+  output->append(Redis::Integer(num));
+}
+
 class CommandSubscribe : public Commander {
  public:
-  CommandSubscribe() : Commander("subcribe", -2, false) {}
+  CommandSubscribe() : Commander("subscribe", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
-      output->append(Redis::MultiLen(3));
-      output->append(Redis::BulkString("subscribe"));
-      output->append(Redis::BulkString(args_[i]));
-      output->append(Redis::Integer(conn->SubscriptionsCount()));
+      SubscribeCommmandReply(output, "subscribe", args_[i],
+        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3287,12 +3292,18 @@ class CommandSubscribe : public Commander {
 
 class CommandUnSubscribe : public Commander {
  public:
-  CommandUnSubscribe() : Commander("unsubcribe", -1, false) {}
+  CommandUnSubscribe() : Commander("unsubscribe", -1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (args_.size() > 1) {
-      conn->UnSubscribeChannel(args_[1]);
-    } else {
+    if (args_.size() == 1) {
       conn->UnSubscribeAll();
+      SubscribeCommmandReply(output, "unsubscribe", "",
+        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+    } else {
+      for (unsigned i = 1; i < args_.size(); i++) {
+        conn->UnSubscribeChannel(args_[i]);
+        SubscribeCommmandReply(output, "unsubscribe", args_[i],
+          conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      }
     }
     return Status::OK();
   }
@@ -3300,14 +3311,12 @@ class CommandUnSubscribe : public Commander {
 
 class CommandPSubscribe : public Commander {
  public:
-  CommandPSubscribe() : Commander("psubcribe", -2, false) {}
+  CommandPSubscribe() : Commander("psubscribe", -2, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
-      output->append(Redis::MultiLen(3));
-      output->append(Redis::BulkString("psubscribe"));
-      output->append(Redis::BulkString(args_[i]));
-      output->append(Redis::Integer(conn->PSubscriptionsCount()));
+      SubscribeCommmandReply(output, "psubscribe", args_[i],
+        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3315,12 +3324,18 @@ class CommandPSubscribe : public Commander {
 
 class CommandPUnSubscribe : public Commander {
  public:
-  CommandPUnSubscribe() : Commander("punsubcribe", -1, false) {}
+  CommandPUnSubscribe() : Commander("punsubscribe", -1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (args_.size() > 1) {
-      conn->PUnSubscribeChannel(args_[1]);
+    if (args_.size() == 1) {
+      conn->PUnSubscribeAll();;
+      SubscribeCommmandReply(output, "punsubscribe", "",
+        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     } else {
-      conn->PUnSubscribeAll();
+      for (unsigned i = 1; i < args_.size(); i++) {
+        conn->PUnSubscribeChannel(args_[i]);
+        SubscribeCommmandReply(output, "punsubscribe", args_[i],
+          conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      }
     }
     return Status::OK();
   }

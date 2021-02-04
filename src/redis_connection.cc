@@ -185,10 +185,10 @@ void Connection::PSubscribeChannel(const std::string &pattern) {
 }
 
 void Connection::PUnSubscribeChannel(const std::string &pattern) {
-  auto iter = subscribe_channels_.begin();
-  for (; iter != subscribe_channels_.end(); iter++) {
+  auto iter = subcribe_patterns_.begin();
+  for (; iter != subcribe_patterns_.end(); iter++) {
     if (*iter == pattern) {
-      subscribe_channels_.erase(iter);
+      subcribe_patterns_.erase(iter);
       owner_->svr_->PUnSubscribeChannel(pattern, this);
       return;
     }

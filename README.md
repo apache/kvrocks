@@ -157,4 +157,4 @@ latency: 99.9% < 10ms
 
 ## License
 
-kvrocks is under the MIT license. See the LICENSE file for details.
+kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.

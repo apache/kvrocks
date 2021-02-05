@@ -3295,9 +3295,8 @@ class CommandUnSubscribe : public Commander {
   CommandUnSubscribe() : Commander("unsubscribe", -1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnSubscribeAll();
-      SubscribeCommmandReply(output, "unsubscribe", "",
-        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      conn->UnSubscribeAll(std::bind(SubscribeCommmandReply, output, "unsubscribe",
+        std::placeholders::_1, std::placeholders::_2));
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
@@ -3327,9 +3326,8 @@ class CommandPUnSubscribe : public Commander {
   CommandPUnSubscribe() : Commander("punsubscribe", -1, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnSubscribeAll();;
-      SubscribeCommmandReply(output, "punsubscribe", "",
-        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      conn->PUnSubscribeAll(std::bind(SubscribeCommmandReply, output, "punsubscribe",
+        std::placeholders::_1, std::placeholders::_2));
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);

@@ -164,10 +164,19 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
   }
 }
 
-void Connection::UnSubscribeAll() {
-  if (subscribe_channels_.empty()) return;
+void Connection::UnSubscribeAll(unsubscribe_callback reply) {
+  if (subscribe_channels_.empty()) {
+    if (reply != nullptr) reply("", subcribe_patterns_.size());
+    return;
+  }
+  int removed = 0;
   for (const auto &chan : subscribe_channels_) {
     owner_->svr_->UnSubscribeChannel(chan, this);
+    removed++;
+    if (reply != nullptr) {
+      reply(chan, static_cast<int>(subscribe_channels_.size() -
+                                   removed + subcribe_patterns_.size()));
+    }
   }
   subscribe_channels_.clear();
 }
@@ -195,10 +204,20 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
   }
 }
 
-void Connection::PUnSubscribeAll() {
-  if (subcribe_patterns_.empty()) return;
+void Connection::PUnSubscribeAll(unsubscribe_callback reply) {
+  if (subcribe_patterns_.empty()) {
+    if (reply != nullptr) reply("", subscribe_channels_.size());
+    return;
+  }
+
+  int removed = 0;
   for (const auto &pattern : subcribe_patterns_) {
     owner_->svr_->PUnSubscribeChannel(pattern, this);
+    removed++;
+    if (reply != nullptr) {
+      reply(pattern, static_cast<int>(subcribe_patterns_.size() -
+                                      removed + subscribe_channels_.size()));
+    }
   }
   subcribe_patterns_.clear();
 }

@@ -23,7 +23,7 @@ def psubscribe(pattern, master=True):
     p.psubscribe(pattern)
 
     for item in p.listen():
-        if item['type'] == "message":
+        if item['type'] == "pmessage":
             assert (item['data'] == "a")
             p.punsubscribe()
             break

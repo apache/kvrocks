@@ -1,6 +1,6 @@
 [Unit]
 Description=kvrocks SSD key-value database
-Documentation=https://github.com/meitu/kvrocks
+Documentation=https://github.com/bitleak/kvrocks
 After=network.target
 
 [Service]

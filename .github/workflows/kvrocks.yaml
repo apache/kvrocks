@@ -44,9 +44,8 @@ jobs:
           tar -zxvf release-1.8.1.tar.gz
           cd googletest-release-1.8.1/
           cmake CMakeLists.txt
-          make
-          sudo make install
-          cd -
+          make && sudo make install && cd -
+          make test
 
       - name: Functional Test
         run: |

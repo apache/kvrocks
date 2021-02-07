@@ -3729,6 +3729,37 @@ class CommandQuit : public Commander {
   }
 };
 
+class CommandDebug : public Commander {
+ public:
+  CommandDebug() : Commander("debug", -2, false) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    if ((subcommand_ == "sleep") && args.size() == 3) {
+      double second = 0.0;
+      try {
+        second = std::stod(args[2]);
+      } catch (const std::exception &e) {
+        return Status(Status::RedisParseErr, "ERR invalid debug sleep time");
+      }
+      microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
+      return Status::OK();
+    }
+    return Status(Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>");
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (subcommand_ == "sleep") {
+      usleep(microsecond_);
+    }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
+  uint64_t microsecond_ = 0;
+};
+
 class CommandScanBase : public Commander {
  public:
   explicit CommandScanBase(const std::string &name, int arity, bool is_write = false)
@@ -4460,6 +4491,7 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("quit",      CommandQuit),
     ADD_CMD("scan",      CommandScan),
     ADD_CMD("randomkey", CommandRandomKey),
+    ADD_CMD("debug",     CommandDebug),
 
     // key command
     ADD_CMD("ttl",       CommandTTL),

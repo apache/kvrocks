@@ -50,4 +50,10 @@ jobs:
       - name: Functional Test
         run: |
           sh tests/scripts/setup-env.sh ./build
-          cd tests/functional && nosetests -v
+          cd tests/functional && nosetests -v && cd -
+
+      - name: Redis Tcl Test
+        run: |
+          sudo apt-get install tcl8.5
+          cd tests/tcl && sh runtest && cd -
+        

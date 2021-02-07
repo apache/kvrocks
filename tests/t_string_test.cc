@@ -74,17 +74,17 @@ TEST_F(RedisStringTest, IncrByFloat) {
   EXPECT_EQ(1.0, f);
   string->IncrByFloat(key_, max_float-1, &f);
   EXPECT_EQ(max_float, f);
-  rocksdb::Status s = string->IncrByFloat(key_, 1.2, &f);
-  EXPECT_TRUE(s.IsInvalidArgument());
+  string->IncrByFloat(key_, 1.2, &f);
+  EXPECT_EQ(max_float, f);
   string->IncrByFloat(key_, -1*max_float, &f);
   EXPECT_EQ(0, f);
   string->IncrByFloat(key_, -1*max_float, &f);
   EXPECT_EQ(-1*max_float, f);
-  s = string->IncrByFloat(key_, -1.2, &f);
-  EXPECT_TRUE(s.IsInvalidArgument());
+  string->IncrByFloat(key_, -1.2, &f);
+  EXPECT_EQ(-1*max_float, f);
   // key hold value is not the number
   string->Set(key_, "abc");
-  s = string->IncrByFloat(key_, 1.2, &f);
+  rocksdb::Status s = string->IncrByFloat(key_, 1.2, &f);
   EXPECT_TRUE(s.IsInvalidArgument());
   string->Del(key_);
 }

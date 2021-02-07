@@ -95,7 +95,7 @@ Config::Config() {
       {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
       {"profiling-sample-record-threshold-ms",
        false, new IntField(&profiling_sample_record_threshold_ms, 100, 0, INT_MAX)},
-      {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, 0, INT_MAX)},
+      {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX)},
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
       /* rocksdb options */

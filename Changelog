@@ -16,14 +16,14 @@ Improvements
 
 Behavior changes
   - The UNSUBSCRIBE and PUNSUBSCRIBE commands have the same reply as Redis (#174)
-  - The same message format as Redis for pattern subscribers when publish message (#175)
-    Message foromat is from 'message channel message' to 'pmessage pattern channel message'
+  - The same message format as Redis for pattern subscribers when publishing message (#175)
+    Message format is from 'message channel message' to 'pmessage pattern channel message'
 
 Bug fixes
-  - Fix skipping some SST files when pick compaction files (#154)
+  - Fix skipping some SST files when picking compaction files (#154)
   - Handle negative expire time in set command to avoid deleting keys (#156)
-  - List type command doesn't rewrite other types data (#157)
-  - Only set positive expire time when migrate key (#160)
+  - List type command doesn't rewrite other types of data (#157)
+  - Only set positive expire time when migrating key (#160)
   - Don't store an empty key for setrange command (#161)
   - Fix SETBIT/GETBIT bit offset out of range (#164)
   - Fix INCRBY/INCRBYFLOAT command operates on wrong value and precision check (#167)
@@ -35,7 +35,7 @@ Bug fixes
   - Fix ZREMRANGEBYRANK command corrupts the size of zset (#172)
   - SUBSCRIBE and PSUBSCRIBE commands return the sum of subscription and psubscription (#174)
   - Fix PUNSUBSCRIBE command doesn't take effort (#174)
-  - Allow to set slowlog-log-slower-than to -1 to disable the slowlog (#178)
+  - Allow setting slowlog-log-slower-than to -1 to disable the slowlog (#178)
 
 * Version 1.2.0 (@2021-01-08)
 	- MOD: revert rocksdb to v6.2.2

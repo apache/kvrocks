@@ -21,8 +21,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get install -y cppcheck
           sudo pip install --upgrade pip
+          sudo pip install --upgrade setuptools
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
           sudo pip install cpplint==1.5.0
           sudo pip install nose
           sudo pip install git+https://github.com/andymccurdy/redis-py.git@2.10.6

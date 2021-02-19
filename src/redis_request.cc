@@ -28,7 +28,10 @@ Status Request::Tokenize(evbuffer *input) {
           if (pipeline_size > 128) {
             LOG(INFO) << "Large pipeline detected: " << pipeline_size;
           }
-          if (line) continue;
+          if (line) {
+            free(line);
+            continue;
+          }
           return Status::OK();
         }
         pipeline_size++;

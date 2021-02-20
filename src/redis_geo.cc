@@ -174,7 +174,7 @@ rocksdb::Status Geo::MGet(const Slice &user_key,
 }
 
 std::string Geo::EncodeGeoHash(double longitude, double latitude) {
-  const static std::string geoalphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
+  const std::string geoalphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
   /* The internal format we use for geocoding is a bit different
              * than the standard, since we use as initial latitude range
              * -85,85, while the normal geohashing algorithm uses -90,90.

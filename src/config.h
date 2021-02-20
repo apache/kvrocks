@@ -106,6 +106,7 @@ struct Config{
     int target_file_size_base;
     int WAL_ttl_seconds;
     int WAL_size_limit_MB;
+    int max_total_wal_size;
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
     int compression;

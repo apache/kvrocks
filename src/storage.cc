@@ -90,6 +90,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->keep_log_file_num = 12;
   options->WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
   options->WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
+  options->max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
   options->listeners.emplace_back(new EventListener(this));
   options->dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));

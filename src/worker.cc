@@ -70,9 +70,15 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                << " from port: " << worker->svr_->GetConfig()->port << " thread #"
                << worker->tid_;
   }
-  int enable = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<void*>(&enable), sizeof(enable)) < 0) {
-    LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << evutil_socket_geterror(fd);
+  auto s = Util::SockSetTcpKeepalive(fd, 1);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << s.Msg();
+    evutil_closesocket(fd);
+    return;
+  }
+  s = Util::SockSetTcpNoDelay(fd, 1);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[worker] Failed to set tcp-nodelay, err:" << s.Msg();
     evutil_closesocket(fd);
     return;
   }

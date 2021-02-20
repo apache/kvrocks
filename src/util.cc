@@ -70,6 +70,20 @@ const std::string Float2String(double d) {
   return buf;
 }
 
+Status SockSetTcpNoDelay(int fd, int val) {
+  if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
+    return Status(Status::NotOK, strerror(errno));
+  }
+  return Status::OK();
+}
+
+Status SockSetTcpKeepalive(int fd, int val) {
+  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1) {
+    return Status(Status::NotOK, strerror(errno));
+  }
+  return Status::OK();
+}
+
 Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
@@ -107,8 +121,8 @@ Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeo
       *fd = -1;
       return Status(Status::NotOK, strerror(errno));
     }
-    setsockopt(*fd, SOL_SOCKET, SO_KEEPALIVE, nullptr, 0);
-    setsockopt(*fd, IPPROTO_TCP, TCP_NODELAY, nullptr, 0);
+    SockSetTcpNoDelay(*fd, 1);
+    SockSetTcpNoDelay(*fd, 1);
   }
   if (timeout > 0) {
     struct timeval tv;

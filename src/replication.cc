@@ -717,9 +717,10 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
     char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
+      std::string msg(line);
       free(line);
       evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("_fetch_file got err: ")+line);
+      return Status(Status::NotOK, msg);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);

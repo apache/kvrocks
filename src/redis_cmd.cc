@@ -3238,6 +3238,22 @@ class CommandBGSave: public Commander {
   }
 };
 
+class CommandFlushBackup : public Commander {
+ public:
+  CommandFlushBackup() : Commander("flushbackup", 1, false) {}
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error(errAdministorPermissionRequired);
+      return Status::OK();
+    }
+    Status s = svr->AsyncPurgeOldBackups(0, 0);
+    if (!s.IsOK()) return s;
+    *output = Redis::SimpleString("OK");
+    LOG(INFO) << "flushbackup was triggered by manual with executed success";
+    return Status::OK();
+  }
+};
+
 class CommandDBSize : public Commander {
  public:
   CommandDBSize() : Commander("dbsize", -1, false) {}
@@ -4678,6 +4694,7 @@ std::map<std::string, CommanderFactory> command_table = {
     // internal management cmd
     ADD_CMD("compact", CommandCompact),
     ADD_CMD("bgsave",  CommandBGSave),
+    ADD_CMD("flushbackup",  CommandFlushBackup),
     ADD_CMD("slaveof", CommandSlaveOf),
     ADD_CMD("stats",   CommandStats),
 };

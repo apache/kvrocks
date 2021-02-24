@@ -322,7 +322,8 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
   if (backup_infos.size() > num_backups_to_keep) {
     uint32_t num_backups_to_purge = static_cast<uint32_t>(backup_infos.size()) - num_backups_to_keep;
     for (uint32_t i = 0; i < num_backups_to_purge; i++) {
-      // we should't purge the backup if the backup is not expired (for replication stability)
+      // the backup should not be purged if it's not yet expired,
+      // while multi slaves may create more replications than the `num_backups_to_keep`
       if (backup_max_keep_hours != 0 && backup_infos[i].timestamp + backup_max_keep_hours * 3600 >= now) {
         num_backups_to_purge--;
         break;

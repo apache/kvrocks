@@ -315,22 +315,29 @@ Status Storage::RestoreFromBackup() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
+  time_t now = time(nullptr);
   std::vector<rocksdb::BackupInfo> backup_infos;
   backup_mu_.lock();
   backup_->GetBackupInfo(&backup_infos);
   if (backup_infos.size() > num_backups_to_keep) {
     uint32_t num_backups_to_purge = static_cast<uint32_t>(backup_infos.size()) - num_backups_to_keep;
-    LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
     for (uint32_t i = 0; i < num_backups_to_purge; i++) {
+      // we should't purge the backup if the backup is not expired (for replication stability)
+      if (backup_max_keep_hours != 0 && backup_infos[i].timestamp + backup_max_keep_hours * 3600 >= now) {
+        num_backups_to_purge--;
+        break;
+      }
       LOG(INFO) << "[storage] The old backup(id: "
                 << backup_infos[i].backup_id << ") would be purged, "
                 << " created at: " << backup_infos[i].timestamp
                 << ", size: " << backup_infos[i].size
                 << ", num files: " << backup_infos[i].number_files;
     }
-
-    auto s = backup_->PurgeOldBackups(num_backups_to_keep);
-    LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
+    if (num_backups_to_purge > 0) {
+      LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
+      auto s = backup_->PurgeOldBackups(backup_infos.size() - num_backups_to_purge);
+      LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
+    }
   }
 
   if (backup_max_keep_hours == 0) {
@@ -339,7 +346,6 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
   }
   backup_infos.clear();
   backup_->GetBackupInfo(&backup_infos);
-  time_t now = time(nullptr);
   for (uint32_t i = 0; i < backup_infos.size(); i++) {
     if (backup_infos[i].timestamp + backup_max_keep_hours*3600 >= now) break;
     LOG(INFO) << "[storage] The old backup(id:"

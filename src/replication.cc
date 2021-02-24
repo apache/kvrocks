@@ -705,21 +705,22 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
 
   const auto fetch_command = Redis::MultiBulkString({"_fetch_file", path});
   auto s = Util::SockSend(sock_fd, fetch_command);
-  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command err: "+s.Msg());
+  if (!s.IsOK()) return Status(Status::NotOK, "send fetch command: "+s.Msg());
 
   evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
     if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
       evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("read size line err: ")+strerror(errno));
+      return Status(Status::NotOK, std::string("read size: ")+strerror(errno));
     }
     char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) continue;
     if (*line == '-') {
+      std::string msg(line);
       free(line);
       evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("_fetch_file got err: ")+line);
+      return Status(Status::NotOK, msg);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
     free(line);
@@ -750,13 +751,15 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         evbuffer_free(evbuf);
-        return Status(Status::NotOK, std::string("read sst file data, err: ")+strerror(errno));
+        return Status(Status::NotOK, std::string("read sst file: ")+strerror(errno));
       }
     }
   }
   if (crc != tmp_crc) {
     evbuffer_free(evbuf);
-    return Status(Status::NotOK, "CRC mismatch");
+    char err_buf[64];
+    snprintf(err_buf, sizeof(err_buf), "CRC mismatched, %u was expected but got %u", crc, tmp_crc);
+    return Status(Status::NotOK, err_buf);
   }
   evbuffer_free(evbuf);
   // File is OK, rename to formal name

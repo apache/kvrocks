@@ -29,16 +29,16 @@ kvrocks has the following key features:
 
 ***Tickets a pull reqeust to let us known that you're using kvrocks and add your logo to README***
 
-## Build and run
+## Building kvrocks
 
 #### requirements
 
 * g++ (required by c++11, version >= 4.8)
-* autoconf automake libtool
+* autoconf automake libtool snappy
 
 #### Build
 
-***NOTE: You shoud install the snappy first:***
+***NOTE: You should install the snappy first:***
 
 ```shell
 # Centos/Redhat
@@ -51,21 +51,23 @@ sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool which 
 brew install snappy googletest
 ```
 
+It is as simple as:
+
 ```shell
 $ git clone --recursive https://github.com/bitleak/kvrocks.git
 $ cd kvrocks
 $ make -j4
 ```
 
-#### run
+### Running kvrocks
 
 ```shell
 $ ./src/kvrocks -c kvrocks.conf
 ```
 
-### TEST
+### Running test cases
 
-***NOTE: You shoud install the googletest first***
+***NOTE: You should install the googletest first***
 
 ```shell
 make test
@@ -87,7 +89,7 @@ $ redis-cli -p 6666
 (nil)
 ```
 
-##  Namspace
+##  Namespace
 
 namespace was used to isolate data between users. unlike all the redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` was regraded as admin token, only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgave`, etc… 
 
@@ -118,7 +120,7 @@ OK
 * [design complex kv on rocksdb](https://github.com/bitleak/kvrocks/blob/master/docs/metadata-design.md)
 * [replication design](https://github.com/bitleak/kvrocks/blob/master/docs/replication-design.md)
 
-## Migrate Tools
+## Migrate tools
 
 * migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which developed by vipshop
 * migrate from kvrocks to redis. use `kvrocks2redis` in build dir

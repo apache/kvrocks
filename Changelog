@@ -1,4 +1,6 @@
-## Version 1.3.1
+# Version 999.999.999
+
+# Version 1.3.1
 
 New features
   - Support to set max total wal size for rocksdb (#191)
@@ -12,7 +14,7 @@ Bug fixes
   - Check whether replication port is in use (#192)
   - Fix using the line as error msg which has freed (#193)
 
-## Version 1.3.0
+# Version 1.3.0
 
 License
   - Change the license from MIT to BSD-3-Clause

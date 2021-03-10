@@ -70,7 +70,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                << " from port: " << worker->svr_->GetConfig()->port << " thread #"
                << worker->tid_;
   }
-  auto s = Util::SockSetTcpKeepalive(fd, 1);
+  auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
     LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << s.Msg();
     evutil_closesocket(fd);

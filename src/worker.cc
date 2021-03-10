@@ -21,8 +21,8 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) 
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
-  int port = repl ? config->repl_port : config->port;
-  auto binds = repl ? config->repl_binds : config->binds;
+  int port = config->port;
+  auto binds = config->binds;
   for (const auto &bind : binds) {
     Status s = listen(bind, port, config->backlog);
     if (!s.IsOK()) {
@@ -61,15 +61,9 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
 void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                            sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  if (worker->IsRepl()) {
-    DLOG(INFO) << "[worker] New connection: fd=" << fd
-               << " from port: " << worker->svr_->GetConfig()->repl_port << " thread #"
-               << worker->tid_;
-  } else {
-    DLOG(INFO) << "[worker] New connection: fd=" << fd
-               << " from port: " << worker->svr_->GetConfig()->port << " thread #"
-               << worker->tid_;
-  }
+  DLOG(INFO) << "[worker] New connection: fd=" << fd
+              << " from port: " << worker->svr_->GetConfig()->port << " thread #"
+              << worker->tid_;
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
     LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << s.Msg();
@@ -86,7 +80,7 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
   bufferevent *bev = bufferevent_socket_new(base,
                                             fd,
-                                            BEV_OPT_CLOSE_ON_FREE | evThreadSafeFlags);
+                                            evThreadSafeFlags);
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);

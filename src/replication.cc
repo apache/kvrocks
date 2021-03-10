@@ -548,7 +548,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       }
       self->storage_->PurgeBackupIfNeed(self->fullsync_meta_id_);
       self->fullsync_state_ = kFetchMetaSize;
-      LOG(INFO) << "[replication] Success to fetch meta id: " << self->fullsync_meta_id_;
+      LOG(INFO) << "[replication] Succeed fetching meta id: " << self->fullsync_meta_id_;
     case kFetchMetaSize:
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
@@ -564,7 +564,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         return CBState::RESTART;
       }
       self->fullsync_state_ = kFetchMetaContent;
-      LOG(INFO) << "[replication] Success to fetch meta size: " << self->fullsync_filesize_;
+      LOG(INFO) << "[replication] Succeed fetching meta size: " << self->fullsync_filesize_;
     case kFetchMetaContent:
       if (evbuffer_get_length(input) < self->fullsync_filesize_) {
         return CBState::AGAIN;
@@ -628,6 +628,8 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             close(sock_fd);
             return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
+          std::vector<std::string> paths;
+          std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
             if (this->stop_flag_) {
               return Status(Status::NotOK, "replication thread was stopped");
@@ -644,20 +646,31 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
                         << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
               continue;
             }
+            paths.push_back(f_name);
+            crcs.push_back(f_crc);
+          }
+          unsigned files_count = files.size();
+          fetch_file_callback fn = [&fetch_cnt, &skip_cnt, files_count]
+                                (const std::string fetch_file, const uint32_t fetch_crc) {
             fetch_cnt.fetch_add(1);
             uint32_t cur_skip_cnt = skip_cnt.load();
             uint32_t cur_fetch_cnt = fetch_cnt.load();
-            LOG(INFO) << "[fetch] " << f_name << " " << f_crc
-                       << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
-                       << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
-            s = this->fetchFile(sock_fd, f_name, f_crc);
-            if (!s.IsOK()) {
-              close(sock_fd);
-              return Status(Status::NotOK, "fetch file err: " + s.Msg());
+            LOG(INFO) << "[fetch] " << "Fetched " << fetch_file << ", crc32: " << fetch_crc
+                      << ", skip count: " << cur_skip_cnt << ", fetch count: " << cur_fetch_cnt
+                      << ", progress: " << cur_skip_cnt+cur_fetch_cnt << "/" << files_count;
+          };
+          // For master using old version, it only supports to fetch a single file by one
+          // command, so we need to fetch all files by multiple command interactions.
+          if (srv_->GetConfig()->master_use_repl_port) {
+            for (unsigned i = 0; i < paths.size(); i++) {
+              s = this->fetchFiles(sock_fd, {paths[i]}, {crcs[i]}, fn);
+              if (!s.IsOK()) break;
             }
+          } else {
+            s = this->fetchFiles(sock_fd, paths, crcs, fn);
           }
           close(sock_fd);
-          return Status::OK();
+          return s;
         }));
   }
 
@@ -698,28 +711,22 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   return Status::OK();
 }
 
-
-Status ReplicationThread::fetchFile(int sock_fd, std::string path,
-                                    uint32_t crc) {
+Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
+                std::string path, uint32_t crc, fetch_file_callback fn) {
   size_t line_len, file_size;
 
-  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", path});
-  auto s = Util::SockSend(sock_fd, fetch_command);
-  if (!s.IsOK()) return Status(Status::NotOK, "send fetch command: "+s.Msg());
-
-  evbuffer *evbuf = evbuffer_new();
   // Read file size line
   while (true) {
-    if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-      evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("read size: ")+strerror(errno));
-    }
     char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-    if (!line) continue;
+    if (!line) {
+      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
+        return Status(Status::NotOK, std::string("read size: ")+strerror(errno));
+      }
+      continue;
+    }
     if (*line == '-') {
       std::string msg(line);
       free(line);
-      evbuffer_free(evbuf);
       return Status(Status::NotOK, msg);
     }
     file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
@@ -730,40 +737,68 @@ Status ReplicationThread::fetchFile(int sock_fd, std::string path,
   // Write to tmp file
   auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
   if (!tmp_file) {
-    evbuffer_free(evbuf);
     return Status(Status::NotOK, "unable to create tmp file");
   }
 
-  size_t seen_bytes = 0;
+  size_t remain = file_size;
   uint32_t tmp_crc = 0;
-  char data[1024];
-  while (seen_bytes < file_size) {
+  char data[16*1024];
+  while (remain != 0) {
     if (evbuffer_get_length(evbuf) > 0) {
-      auto data_len = evbuffer_remove(evbuf, data, 1024);
+      auto data_len = evbuffer_remove(evbuf, data, remain > 16*1024 ? 16*1024 : remain);
       if (data_len == 0) continue;
       if (data_len < 0) {
-        evbuffer_free(evbuf);
         return Status(Status::NotOK, "read sst file data error");
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
-      seen_bytes += data_len;
+      remain -= data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        evbuffer_free(evbuf);
         return Status(Status::NotOK, std::string("read sst file: ")+strerror(errno));
       }
     }
   }
   if (crc != tmp_crc) {
-    evbuffer_free(evbuf);
     char err_buf[64];
     snprintf(err_buf, sizeof(err_buf), "CRC mismatched, %u was expected but got %u", crc, tmp_crc);
     return Status(Status::NotOK, err_buf);
   }
-  evbuffer_free(evbuf);
   // File is OK, rename to formal name
-  return Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
+  auto s = Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
+  if (!s.IsOK()) return s;
+
+  // Call fetch file callback function
+  fn(path, crc);
+  return Status::OK();
+}
+
+Status ReplicationThread::fetchFiles(int sock_fd, const std::vector<std::string> &paths,
+                          const std::vector<uint32_t> &crcs, fetch_file_callback fn) {
+  std::string paths_str;
+  for (auto path : paths) {
+    paths_str += path;
+    paths_str.push_back(',');
+  }
+  paths_str.pop_back();
+
+  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", paths_str});
+  auto s = Util::SockSend(sock_fd, fetch_command);
+  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: "+s.Msg());
+
+  evbuffer *evbuf = evbuffer_new();
+  for (unsigned i = 0; i < paths.size(); i++) {
+    DLOG(INFO) << "[fetch] Start to fetch file " << paths[i];
+    s = fetchFile(sock_fd, evbuf, paths[i], crcs[i], fn);
+    if (!s.IsOK()) {
+      s = Status(Status::NotOK, "fetch file err: " + s.Msg());
+      LOG(WARNING) << "[fetch] Fail to fetch file " << paths[i] << ", err: " << s.Msg();
+      break;
+    }
+    DLOG(INFO) << "[fetch] Succeed fetching file " << paths[i];
+  }
+  evbuffer_free(evbuf);
+  return s;
 }
 
 // Check if stop_flag_ is set, when do, tear down replication

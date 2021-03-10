@@ -44,6 +44,8 @@ Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);
 Status SockReadLine(int fd, std::string *data);
+Status SockSendFile(int out_fd, int in_fd, size_t size);
+Status SockSetBlocking(int fd, int blocking);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 bool IsPortInUse(int port);
 

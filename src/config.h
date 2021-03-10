@@ -44,7 +44,6 @@ struct Config{
   Config();
   ~Config();
   int port = 6666;
-  int repl_port = 66667;
   int workers = 0;
   int repl_workers = 1;
   int timeout = 0;
@@ -64,8 +63,8 @@ struct Config{
   int max_replication_mb = 0;
   int max_io_mb = 0;
   bool codis_enabled = false;
+  bool master_use_repl_port = false;
   std::vector<std::string> binds;
-  std::vector<std::string> repl_binds;
   std::string dir;
   std::string db_dir;
   std::string backup_dir;
@@ -128,7 +127,6 @@ struct Config{
  private:
   std::string path_;
   std::string binds_;
-  std::string repl_binds_;
   std::string slaveof_;
   std::string compact_cron_;
   std::string bgsave_cron_;

@@ -628,7 +628,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             close(sock_fd);
             return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
-          std::vector<std::string> paths;
+          std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
             if (this->stop_flag_) {
@@ -646,7 +646,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
                         << ", progress: " << cur_skip_cnt+cur_fetch_cnt<< "/" << files.size();
               continue;
             }
-            paths.push_back(f_name);
+            fetch_files.push_back(f_name);
             crcs.push_back(f_crc);
           }
           unsigned files_count = files.size();
@@ -662,12 +662,12 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           // For master using old version, it only supports to fetch a single file by one
           // command, so we need to fetch all files by multiple command interactions.
           if (srv_->GetConfig()->master_use_repl_port) {
-            for (unsigned i = 0; i < paths.size(); i++) {
-              s = this->fetchFiles(sock_fd, {paths[i]}, {crcs[i]}, fn);
+            for (unsigned i = 0; i < fetch_files.size(); i++) {
+              s = this->fetchFiles(sock_fd, {fetch_files[i]}, {crcs[i]}, fn);
               if (!s.IsOK()) break;
             }
           } else {
-            s = this->fetchFiles(sock_fd, paths, crcs, fn);
+            if (!fetch_files.empty()) s = this->fetchFiles(sock_fd, fetch_files, crcs, fn);
           }
           close(sock_fd);
           return s;
@@ -712,7 +712,7 @@ Status ReplicationThread::sendAuth(int sock_fd) {
 }
 
 Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
-                std::string path, uint32_t crc, fetch_file_callback fn) {
+                std::string file, uint32_t crc, fetch_file_callback fn) {
   size_t line_len, file_size;
 
   // Read file size line
@@ -735,7 +735,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
   }
 
   // Write to tmp file
-  auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, path);
+  auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, file);
   if (!tmp_file) {
     return Status(Status::NotOK, "unable to create tmp file");
   }
@@ -765,37 +765,37 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
     return Status(Status::NotOK, err_buf);
   }
   // File is OK, rename to formal name
-  auto s = Engine::Storage::BackupManager::SwapTmpFile(storage_, path);
+  auto s = Engine::Storage::BackupManager::SwapTmpFile(storage_, file);
   if (!s.IsOK()) return s;
 
   // Call fetch file callback function
-  fn(path, crc);
+  fn(file, crc);
   return Status::OK();
 }
 
-Status ReplicationThread::fetchFiles(int sock_fd, const std::vector<std::string> &paths,
+Status ReplicationThread::fetchFiles(int sock_fd, const std::vector<std::string> &files,
                           const std::vector<uint32_t> &crcs, fetch_file_callback fn) {
-  std::string paths_str;
-  for (auto path : paths) {
-    paths_str += path;
-    paths_str.push_back(',');
+  std::string files_str;
+  for (auto file : files) {
+    files_str += file;
+    files_str.push_back(',');
   }
-  paths_str.pop_back();
+  files_str.pop_back();
 
-  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", paths_str});
+  const auto fetch_command = Redis::MultiBulkString({"_fetch_file", files_str});
   auto s = Util::SockSend(sock_fd, fetch_command);
   if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: "+s.Msg());
 
   evbuffer *evbuf = evbuffer_new();
-  for (unsigned i = 0; i < paths.size(); i++) {
-    DLOG(INFO) << "[fetch] Start to fetch file " << paths[i];
-    s = fetchFile(sock_fd, evbuf, paths[i], crcs[i], fn);
+  for (unsigned i = 0; i < files.size(); i++) {
+    DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
+    s = fetchFile(sock_fd, evbuf, files[i], crcs[i], fn);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
-      LOG(WARNING) << "[fetch] Fail to fetch file " << paths[i] << ", err: " << s.Msg();
+      LOG(WARNING) << "[fetch] Fail to fetch file " << files[i] << ", err: " << s.Msg();
       break;
     }
-    DLOG(INFO) << "[fetch] Succeed fetching file " << paths[i];
+    DLOG(INFO) << "[fetch] Succeed fetching file " << files[i];
   }
   evbuffer_free(evbuf);
   return s;

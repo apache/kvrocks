@@ -4106,13 +4106,13 @@ class CommandFetchFile : public Commander {
   CommandFetchFile() : Commander("_fetch_file", 2, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    paths_sts_ = args[1];
+    files_str_ = args[1];
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<std::string> paths;
-    Util::Split(paths_sts_, ",", &paths);
+    std::vector<std::string> files;
+    Util::Split(files_str_, ",", &files);
 
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
@@ -4121,11 +4121,11 @@ class CommandFetchFile : public Commander {
     conn->NeedNotClose();  // Feed-replica-file thread will close the replica fd
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
-    std::thread t = std::thread([svr, repl_fd, ip, paths]() {
+    std::thread t = std::thread([svr, repl_fd, ip, files]() {
       Util::ThreadSetName("feed-replica-file");
       svr->IncrFetchFileThread();
 
-      for (auto path : paths) {
+      for (auto file : files) {
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /
@@ -4133,16 +4133,16 @@ class CommandFetchFile : public Commander {
         }
         auto start = std::chrono::high_resolution_clock::now();
         auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_,
-                                                      path, &file_size);
+                                                      file, &file_size);
         if (fd < 0) break;
 
         // Send file size and content
         if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
             Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
-          LOG(INFO) << "[replication] Succeed sending file " << path << " to "
+          LOG(INFO) << "[replication] Succeed sending file " << file << " to "
                     << ip;
         } else {
-          LOG(WARNING) << "[replication] Fail to send file " << path << " to "
+          LOG(WARNING) << "[replication] Fail to send file " << file << " to "
                        << ip << ", error: " << strerror(errno);
         }
         close(fd);
@@ -4169,7 +4169,7 @@ class CommandFetchFile : public Commander {
   }
 
  private:
-  std::string paths_sts_;
+  std::string files_str_;
 };
 
 class CommandDBName : public Commander {
@@ -4778,7 +4778,7 @@ std::map<std::string, CommanderFactory> command_table = {
 };
 
 Status LookupCommand(const std::string &cmd_name,
-                     std::unique_ptr<Commander> *cmd, bool is_repl) {
+                     std::unique_ptr<Commander> *cmd) {
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
   auto cmd_factory = command_table.find(Util::ToLower(cmd_name));
   if (cmd_factory == command_table.end()) {

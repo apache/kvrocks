@@ -40,7 +40,7 @@ start_server {tags {"repl"}} {
             r slaveof [srv -1 host] [srv -1 port]
             s role
         } {slave}
-        after 1000
+
         wait_for_sync r
         test {Sync should have transferred keys from master} {
             after 100
@@ -51,7 +51,7 @@ start_server {tags {"repl"}} {
             assert_equal [r -1 zrange myzset 0 -1 WITHSCORES] [r ZRANGE myzset 0 -1 WITHSCORES]
             assert_equal [r -1 smembers myset] [r smembers myset]
         }
-        after 10000
+
         test {The link status should be up} {
             s master_link_status
         } {up}

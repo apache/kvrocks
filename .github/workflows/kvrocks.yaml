@@ -3,10 +3,10 @@ name: kvrocks ci actions  # don't edit while the badge was depend on this
 on:
   push:
     branches:
-      - master
+      - unstable
   pull_request:
     branches:
-      - master
+      - unstable
 
 jobs:
   lint-build-test:

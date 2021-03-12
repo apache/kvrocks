@@ -15,6 +15,9 @@
 #include <event2/util.h>
 #include <event2/buffer.h>
 #include <glog/logging.h>
+#ifdef __linux__
+#include <sys/sendfile.h>
+#endif
 
 
 #include "util.h"
@@ -178,6 +181,73 @@ Status SockSend(int fd, const std::string &data) {
       return Status(Status::NotOK, strerror(errno));
     }
     n += nwritten;
+  }
+  return Status::OK();
+}
+
+// Implements SockSendFileCore to transfer data between file descriptors and
+// avoid transferring data to and from user space.
+//
+// The function prototype is just like sendfile(2) on Linux. in_fd is a file
+// descriptor opened for reading and out_fd is a descriptor opened for writing.
+// offset specifies where to start reading data from in_fd. count is the number
+// of bytes to copy between the file descriptors.
+//
+// The return value is the number of bytes written to out_fd, if the transfer
+// was successful. On error, -1 is returned, and errno is set appropriately.
+ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
+#if defined(__linux__)
+    return sendfile(out_fd, in_fd, &offset, count);
+
+#elif defined(__APPLE__)
+    off_t len = count;
+    if (sendfile(in_fd, out_fd, offset, &len, NULL, 0) == -1)
+      return -1;
+    else
+      return (ssize_t)len;
+
+#endif
+    errno = ENOSYS;
+    return -1;
+}
+
+// Send file by sendfile actually according to different operation systems,
+// please note that, the out socket fd should be in blocking mode.
+Status SockSendFile(int out_fd, int in_fd, size_t size) {
+  ssize_t nwritten = 0;
+  off_t  offset = 0;
+  while (size != 0) {
+    size_t n = size <= 16*1024 ? size : 16*1024;
+    nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
+    if (nwritten == -1) {
+      if (errno == EINTR)
+        continue;
+      else
+        return Status(Status::NotOK, strerror(errno));
+    }
+    size -= nwritten;
+    offset += nwritten;
+  }
+  return Status::OK();
+}
+
+Status SockSetBlocking(int fd, int blocking) {
+  int flags;
+  // Old flags
+  if ((flags = fcntl(fd, F_GETFL)) == -1) {
+    return Status(Status::NotOK,
+           std::string("fcntl(F_GETFL): ") + strerror(errno));
+  }
+
+  // New flags
+  if (blocking)
+    flags &= ~O_NONBLOCK;
+  else
+    flags |= O_NONBLOCK;
+
+  if (fcntl(fd, F_SETFL, flags) == -1) {
+    return Status(Status::NotOK,
+           std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
   }
   return Status::OK();
 }

@@ -34,18 +34,9 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
-  // zero means the replication rate is unlimited(NIC max bandwidth)
-  uint64_t max_replication_bytes = 0;
-  if (config_->max_replication_mb > 0) {
-    max_replication_bytes = (config_->max_replication_mb*MiB)/config_->repl_workers;
-  }
-  for (int i = 0; i < config->repl_workers; i++) {
-    auto repl_worker = new Worker(this, config, true);
-    repl_worker->SetReplicationRateLimit(max_replication_bytes);
-    worker_threads_.emplace_back(new WorkerThread(repl_worker));
-  }
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
+  fetch_file_threads_num_ = 0;
   time(&start_time_);
 }
 
@@ -150,9 +141,12 @@ Status Server::AddMaster(std::string host, uint32_t port) {
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
   }
-  // we use port + 1 as repl port, so incr the slaveof port here
+
+  // For master using old version, it uses replication thread to implement
+  // replication, and uses 'listen-port + 1' as thread listening port.
+  if (GetConfig()->master_use_repl_port) port += 1;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(host, port+1, this, config_->masterauth));
+      new ReplicationThread(host, port, this, config_->masterauth));
   auto s = replication_thread_->Start(
       [this]() {
         this->is_loading_ = true;

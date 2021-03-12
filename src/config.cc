@@ -63,7 +63,6 @@ Config::Config() {
   std::vector<FieldWrapper> fields = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "127.0.0.1")},
-      {"repl-bind", true, new StringField(&repl_binds_, "127.0.0.1")},
       {"port", true, new IntField(&port, 6666, 1, 65535)},
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"repl-workers", true, new IntField(&repl_workers, 4, 1, 256)},
@@ -73,6 +72,7 @@ Config::Config() {
       {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 64)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
       {"codis-enabled", true, new YesNoField(&codis_enabled, false)},
+      {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
       {"requirepass", false, new StringField(&requirepass, "")},
       {"masterauth", false, new StringField(&masterauth, "")},
       {"slaveof", true, new StringField(&slaveof_, "")},
@@ -196,21 +196,11 @@ void Config::initFieldCallback() {
         if (log_dir.empty()) log_dir = dir;
         return Status::OK();
       }},
-      {"port", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
-        repl_port = port + 1;
-        return Status::OK();
-      }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {
         trimRocksDBPrefix(k);
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         binds = std::move(args);
-        return Status::OK();
-      }},
-      {"repl-bind", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
-        repl_binds = std::move(args);
         return Status::OK();
       }},
       {"slaveof", [this](Server* srv, const std::string &k, const std::string& v)->Status {
@@ -249,11 +239,6 @@ void Config::initFieldCallback() {
       {"max-db-size", [](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         srv->storage_->CheckDBSizeLimit();
-        return Status::OK();
-      }},
-      {"max-replication-mb", [this](Server* srv, const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        srv->SetReplicationRateLimit(static_cast<uint64_t>(max_replication_mb));
         return Status::OK();
       }},
       {"max-io-mb", [this](Server* srv, const std::string &k, const std::string& v)->Status {

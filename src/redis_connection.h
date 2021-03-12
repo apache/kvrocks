@@ -19,6 +19,7 @@ class Connection {
     kSlave           = 1 << 4,
     kMonitor         = 1 << 5,
     kCloseAfterReply = 1 << 6,
+    kCloseAsync      = 1 << 7,
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);
@@ -69,6 +70,10 @@ class Connection {
   std::string GetNamespace() { return ns_; }
   void SetNamespace(std::string ns) { ns_ = std::move(ns); }
 
+  void NeedClose() { need_close_ = true; }
+  void NeedNotClose() { need_close_ = false; }
+  bool IsNeedClose() { return need_close_; }
+
   Worker *Owner() { return owner_; }
   int GetFD() { return bufferevent_getfd(bev_); }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
@@ -87,6 +92,7 @@ class Connection {
   std::string addr_;
   int listening_port_ = 0;
   bool is_admin_ = false;
+  bool need_close_ = true;
   std::string last_cmd_;
   time_t create_time_;
   time_t last_interaction_;

@@ -31,6 +31,7 @@ set ::all_tests {
     unit/introspection
     unit/limits
     unit/geo
+    integration/replication
 }
 
 # Index to the next test to run in the ::all_tests list.

@@ -4058,22 +4058,45 @@ class CommandFetchMeta : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint64_t file_size;
-    rocksdb::BackupID meta_id;
-    int fd;
-    auto s = Engine::Storage::BackupManager::OpenLatestMeta(
-        svr->storage_, &fd, &meta_id, &file_size);
-    if (!s.IsOK()) {
-      LOG(ERROR) << "Failed to open latest meta, err: " << s.Msg();
-      return Status(Status::DBBackupFileErr, "can't create db backup");
-    }
-    // Send the meta ID
-    conn->Reply(std::to_string(meta_id) + CRLF);
-    // Send meta file size
-    conn->Reply(std::to_string(file_size) + CRLF);
-    // Send meta content
-    conn->SendFile(fd);
+    int repl_fd = conn->GetFD();
+    std::string ip = conn->GetIP();
+
+    Util::SockSetBlocking(repl_fd, 1);
+    conn->NeedNotClose();
+    conn->EnableFlag(Redis::Connection::kCloseAsync);
     svr->stats_.IncrFullSyncCounter();
+
+    // Feed-replica-meta thread
+    std::thread t = std::thread([svr, repl_fd, ip]() {
+      Util::ThreadSetName("feed-replica-meta");
+      int fd;
+      uint64_t file_size;
+      rocksdb::BackupID meta_id;
+      auto s = Engine::Storage::BackupManager::OpenLatestMeta(
+          svr->storage_, &fd, &meta_id, &file_size);
+      if (!s.IsOK()) {
+        const char *message = "-ERR can't create db backup";
+        write(repl_fd, message, strlen(message));
+        LOG(ERROR) << "[replication] Failed to open latest meta, err: "
+                   << s.Msg();
+        close(repl_fd);
+        return;
+      }
+      // Send the meta ID, meta file size and content
+      if (Util::SockSend(repl_fd, std::to_string(meta_id)+CRLF).IsOK() &&
+          Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
+          Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
+        LOG(INFO) << "[replication] Succeed sending backup meta " << meta_id
+                  << " to " << ip;
+      } else {
+        LOG(WARNING) << "[replication] Fail to send backup meta" << meta_id
+                     << ip << ", error: " << strerror(errno);
+      }
+      close(fd);
+      close(repl_fd);
+    });
+    t.detach();
+
     return Status::OK();
   }
 };
@@ -4083,22 +4106,70 @@ class CommandFetchFile : public Commander {
   CommandFetchFile() : Commander("_fetch_file", 2, false) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    path_ = args[1];
+    files_str_ = args[1];
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint64_t file_size = 0;
-    auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_, path_,
-                                                           &file_size);
-    if (fd < 0) return Status(Status::DBBackupFileErr);
-    conn->Reply(std::to_string(file_size) + CRLF);
-    conn->SendFile(fd);
+    std::vector<std::string> files;
+    Util::Split(files_str_, ",", &files);
+
+    int repl_fd = conn->GetFD();
+    std::string ip = conn->GetIP();
+
+    Util::SockSetBlocking(repl_fd, 1);
+    conn->NeedNotClose();  // Feed-replica-file thread will close the replica fd
+    conn->EnableFlag(Redis::Connection::kCloseAsync);
+
+    std::thread t = std::thread([svr, repl_fd, ip, files]() {
+      Util::ThreadSetName("feed-replica-file");
+      svr->IncrFetchFileThread();
+
+      for (auto file : files) {
+        uint64_t file_size = 0, max_replication_bytes = 0;
+        if (svr->GetConfig()->max_replication_mb > 0) {
+          max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /
+                                   svr->GetFetchFileThreadNum();
+        }
+        auto start = std::chrono::high_resolution_clock::now();
+        auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_,
+                                                      file, &file_size);
+        if (fd < 0) break;
+
+        // Send file size and content
+        if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
+            Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
+          LOG(INFO) << "[replication] Succeed sending file " << file << " to "
+                    << ip;
+        } else {
+          LOG(WARNING) << "[replication] Fail to send file " << file << " to "
+                       << ip << ", error: " << strerror(errno);
+        }
+        close(fd);
+
+        // Sleep if the speed of sending file is more than replication speed limit
+        auto end = std::chrono::high_resolution_clock::now();
+        uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>
+                  (end - start).count();
+        uint64_t shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
+                                max_replication_bytes * (1000 * 1000));
+        if (max_replication_bytes > 0 && duration < shortest) {
+          LOG(INFO) << "[replication] Need to sleep "
+                     << (shortest - duration) / 1000
+                     << " ms since of sending files too quickly";
+          usleep(shortest - duration);
+        }
+      }
+      svr->DecrFetchFileThread();
+      close(repl_fd);
+    });
+    t.detach();
+
     return Status::OK();
   }
 
  private:
-  std::string path_;
+  std::string files_str_;
 };
 
 class CommandDBName : public Commander {
@@ -4697,12 +4768,8 @@ std::map<std::string, CommanderFactory> command_table = {
     ADD_CMD("flushbackup",  CommandFlushBackup),
     ADD_CMD("slaveof", CommandSlaveOf),
     ADD_CMD("stats",   CommandStats),
-};
 
-// Replication related commands, which are received by workers listening on
-// `repl-port`
-std::map<std::string, CommanderFactory> repl_command_table = {
-    ADD_CMD("auth",        CommandAuth),
+    // Replicaion commands
     ADD_CMD("replconf",    CommandReplConf),
     ADD_CMD("psync",       CommandPSync),
     ADD_CMD("_fetch_meta", CommandFetchMeta),
@@ -4711,21 +4778,13 @@ std::map<std::string, CommanderFactory> repl_command_table = {
 };
 
 Status LookupCommand(const std::string &cmd_name,
-                     std::unique_ptr<Commander> *cmd, bool is_repl) {
+                     std::unique_ptr<Commander> *cmd) {
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
-  if (is_repl) {
-    auto cmd_factory = repl_command_table.find(Util::ToLower(cmd_name));
-    if (cmd_factory == repl_command_table.end()) {
-      return Status(Status::RedisUnknownCmd);
-    }
-    *cmd = cmd_factory->second();
-  } else {
-    auto cmd_factory = command_table.find(Util::ToLower(cmd_name));
-    if (cmd_factory == command_table.end()) {
-      return Status(Status::RedisUnknownCmd);
-    }
-    *cmd = cmd_factory->second();
+  auto cmd_factory = command_table.find(Util::ToLower(cmd_name));
+  if (cmd_factory == command_table.end()) {
+    return Status(Status::RedisUnknownCmd);
   }
+  *cmd = cmd_factory->second();
   return Status::OK();
 }
 
@@ -4736,9 +4795,6 @@ bool IsCommandExists(const std::string &cmd) {
 void GetCommandList(std::vector<std::string> *cmds) {
   cmds->clear();
   for (const auto &cmd : command_table) {
-    cmds->emplace_back(cmd.first);
-  }
-  for (const auto &cmd : repl_command_table) {
     cmds->emplace_back(cmd.first);
   }
 }

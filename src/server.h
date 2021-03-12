@@ -54,6 +54,9 @@ class Server {
   void cleanupExitedSlaves();
   bool IsSlave() { return !master_host_.empty(); }
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
+  void IncrFetchFileThread() { fetch_file_threads_num_++; }
+  void DecrFetchFileThread() { fetch_file_threads_num_--; }
+  int GetFetchFileThreadNum() { return fetch_file_threads_num_; }
 
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
@@ -139,6 +142,7 @@ class Server {
   // slave
   std::mutex slave_threads_mu_;
   std::list<FeedSlaveThread *> slave_threads_;
+  std::atomic<int> fetch_file_threads_num_;
 
   std::mutex db_mu_;
   bool db_compacting_ = false;

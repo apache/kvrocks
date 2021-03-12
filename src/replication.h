@@ -27,6 +27,7 @@ enum ReplState {
   kReplError,
 };
 
+typedef std::function<void(const std::string, const uint32_t)> fetch_file_callback;
 
 class FeedSlaveThread {
  public:
@@ -162,7 +163,10 @@ class ReplicationThread {
 
   // Synchronized-Blocking ops
   Status sendAuth(int sock_fd);
-  Status fetchFile(int sock_fd, std::string path, uint32_t crc);
+  Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string file,
+                  uint32_t crc, fetch_file_callback fn);
+  Status fetchFiles(int sock_fd, const std::vector<std::string> &files,
+                  const std::vector<uint32_t> &crcs, fetch_file_callback fn);
   Status parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
 

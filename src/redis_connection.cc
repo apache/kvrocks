@@ -12,10 +12,13 @@ Connection::Connection(bufferevent *bev, Worker *owner)
   time(&now);
   create_time_ = now;
   last_interaction_ = now;
+  need_close_ = true;
 }
 
 Connection::~Connection() {
+  int fd = bufferevent_getfd(bev_);
   if (bev_) { bufferevent_free(bev_); }
+  if (need_close_) close(fd);
   // unscribe all channels and patterns if exists
   UnSubscribeAll();
   PUnSubscribeAll();
@@ -59,11 +62,15 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
     return;
   }
   conn->req_.ExecuteCommands(conn);
+  if (conn->IsFlagEnabled(kCloseAsync)) {
+    conn->Close();
+  }
 }
 
 void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
-  if (conn->IsFlagEnabled(kCloseAfterReply)) {
+  if (conn->IsFlagEnabled(kCloseAfterReply) ||
+      conn->IsFlagEnabled(kCloseAsync)) {
     conn->Close();
   }
 }

@@ -290,11 +290,6 @@ int main(int argc, char* argv[]) {
               << config.port << "] is already in use" << std::endl;
     exit(1);
   }
-  if (Util::IsPortInUse(config.repl_port)) {
-    std::cout << "Failed to start the server, the specified replication port["
-              << config.repl_port << "] is already in use" << std::endl;
-    exit(1);
-  }
   bool is_supervised = isSupervisedMode(config.supervised_mode);
   if (config.daemonize && !is_supervised) daemonize();
   s = createPidFile(config.pidfile);

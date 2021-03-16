@@ -31,7 +31,10 @@ class Database {
                        std::vector<std::string> *keys);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   void AppendNamespacePrefix(const Slice &user_key, std::string *output);
-  rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix, std::string *begin, std::string *end);
+  rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix,
+                                         std::string *begin,
+                                         std::string *end,
+                                         rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
 
  protected:
   Engine::Storage *storage_;

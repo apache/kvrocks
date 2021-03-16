@@ -472,16 +472,15 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   ComposeNamespaceKey(ns, "", &prefix);
 
   Redis::Database db(this, ns);
-  auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
-  if (!s.ok()) {
-    return 0;
-  }
   uint64_t size, total_size = 0;
-  rocksdb::Range r(begin_key, end_key);
   uint8_t include_both = rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES |
       rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
     if (cf_handle == GetCFHandle(kPubSubColumnFamilyName)) continue;
+    auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key, cf_handle);
+    if (!s.ok()) continue;
+
+    rocksdb::Range r(begin_key, end_key);
     db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);
     total_size += size;
   }

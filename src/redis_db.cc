@@ -358,7 +358,13 @@ void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output)
   ComposeNamespaceKey(namespace_, user_key, output);
 }
 
-rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std::string *begin, std::string *end) {
+rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
+                                                 std::string *begin,
+                                                 std::string *end,
+                                                 rocksdb::ColumnFamilyHandle *cf_handle) {
+  if (cf_handle == nullptr) {
+    cf_handle = metadata_cf_handle_;
+  }
   begin->clear();
   end->clear();
 
@@ -366,7 +372,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, std:
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  auto iter = db_->NewIterator(read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     delete iter;

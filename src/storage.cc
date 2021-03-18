@@ -624,6 +624,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     // Replicas can share checkpiont to replication if the checkpoint existing
     // time is less half of WAL ttl.
     int64_t can_shared_time = storage->config_->RocksDB.WAL_ttl_seconds / 2;
+    if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
     if (std::time(nullptr) - storage->GetCheckpointCreateTime() > can_shared_time) {
       LOG(WARNING) << "Can't use current checkpoint, waiting next checkpoint";

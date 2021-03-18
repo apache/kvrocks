@@ -642,7 +642,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 }
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
-    const std::string &dir, std::vector<std::string> &valid_files) {
+    const std::string &dir, std::vector<std::string> valid_files) {
   if (!storage->backup_env_->FileExists(dir).ok()) {
     return Status::OK();
   }
@@ -679,7 +679,7 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
 }
 
 int Storage::ReplDataManager::OpenDataFile(Storage *storage,
-            const std::string &repl_file,uint64_t *file_size) {
+            const std::string &repl_file, uint64_t *file_size) {
   std::string abs_path = storage->config_->checkpoint_dir + "/" + repl_file;
   auto s = storage->backup_env_->FileExists(abs_path);
   if (!s.ok()) {

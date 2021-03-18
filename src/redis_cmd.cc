@@ -4076,7 +4076,7 @@ class CommandFetchMeta : public Commander {
         const char *message = "-ERR can't create db checkpoint";
         write(repl_fd, message, strlen(message));
         LOG(WARNING) << "[replication] Failed to get full data file info,"
-                   << " error: " << s.Msg();
+                     << " error: " << s.Msg();
         close(repl_fd);
         return;
       }

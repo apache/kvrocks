@@ -508,7 +508,7 @@ void Server::cron() {
       time_t access_time = storage_->GetCheckpointAccessTime();
 
       if (storage_->ExistCheckpoint()) {
-        // TODO: support to config the alive time of checkpoint
+        // TODO(shooterit): support to config the alive time of checkpoint
         if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());

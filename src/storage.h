@@ -92,7 +92,7 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file,
                             uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage,
-      const std::string &dir, std::vector<std::string> &valid_files);
+      const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
       std::atomic<time_t> create_time;
       std::atomic<time_t> access_time;

@@ -277,7 +277,7 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
-  // Clean synced checkpoint fronm old master because replica starts to flow new master
+  // Clean synced checkpoint fronm old master because replica starts to follow new master
   auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();
@@ -654,7 +654,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 }
 
 Status ReplicationThread::parallelFetchFile(const std::string &dir,
-            std::vector<std::pair<std::string, uint32_t>> &files) {
+        const std::vector<std::pair<std::string, uint32_t>> &files) {
   size_t concurrency = 1;
   if (files.size() > 20) {
     // Use 4 threads to download files in parallel

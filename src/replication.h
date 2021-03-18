@@ -170,7 +170,7 @@ class ReplicationThread {
                   const std::vector<uint32_t> &crcs,
                   fetch_file_callback fn);
   Status parallelFetchFile(const std::string &dir,
-                  std::vector<std::pair<std::string, uint32_t>> &files);
+                  const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
 
   static void EventTimerCB(int, int16_t, void *ctx);

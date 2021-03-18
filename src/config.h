@@ -68,6 +68,8 @@ struct Config{
   std::string dir;
   std::string db_dir;
   std::string backup_dir;
+  std::string checkpoint_dir;
+  std::string sync_checkpoint_dir;
   std::string log_dir;
   std::string pidfile;
   std::string db_name;

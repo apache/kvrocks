@@ -277,6 +277,12 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
+  // Clean synced checkpoint fronm old master because replica starts to flow new master
+  auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
+  if (!s.ok()) {
+    LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();
+  }
+
   // cleanup the old backups, so we can start replication in a clean state
   storage_->PurgeOldBackups(0, 0);
 
@@ -532,6 +538,11 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
   auto input = bufferevent_get_input(bev);
   switch (self->fullsync_state_) {
     case kFetchMetaID:
+      // New version master only sends meta file content
+      if (!self->srv_->GetConfig()->master_use_repl_port) {
+        self->fullsync_state_ = kFetchMetaContent;
+        return CBState::AGAIN;
+      }
       line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
@@ -566,17 +577,51 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       self->fullsync_state_ = kFetchMetaContent;
       LOG(INFO) << "[replication] Succeed fetching meta size: " << self->fullsync_filesize_;
     case kFetchMetaContent:
-      if (evbuffer_get_length(input) < self->fullsync_filesize_) {
-        return CBState::AGAIN;
+      std::string target_dir;
+      Engine::Storage::ReplDataManager::MetaInfo meta;
+      // Master using old version
+      if (self->srv_->GetConfig()->master_use_repl_port) {
+        if (evbuffer_get_length(input) < self->fullsync_filesize_) {
+          return CBState::AGAIN;
+        }
+        meta = Engine::Storage::ReplDataManager::ParseMetaAndSave(
+                    self->storage_, self->fullsync_meta_id_, input);
+        target_dir = self->srv_->GetConfig()->backup_dir;
+      } else {
+        // Master using new version
+        line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+        if (!line) return CBState::AGAIN;
+        if (line[0] == '-') {
+          LOG(ERROR) << "[replication] Failed to fetch meta info: " << line;
+          free(line);
+          return CBState::RESTART;
+        }
+        std::vector<std::string> need_files;
+        Util::Split(std::string(line), ",", &need_files);
+        for (auto f : need_files) {
+          meta.files.emplace_back(f, 0);
+        }
+        target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
+        // Clean invaild files of checkpoint
+        auto s = Engine::Storage::ReplDataManager::CleanInvalidFiles(
+            self->storage_, target_dir, need_files);
+        if (!s.IsOK()) {
+          LOG(WARNING) << "[replication] Fail to clean up invalid files of old checkpoint,"
+                       << " error: " << s.Msg();
+          LOG(WARNING) << "[replication] Try to clean all checkpoint files";
+          auto s = rocksdb::DestroyDB(target_dir, rocksdb::Options());
+          if (!s.ok()) {
+            LOG(WARNING) << "[replication] Fail to clean all checkpoint files, error: "
+                         << s.ToString();
+          }
+        }
       }
-      auto meta = Engine::Storage::BackupManager::ParseMetaAndSave(
-          self->storage_, self->fullsync_meta_id_, input);
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = kFetchMetaID;
 
-      LOG(INFO) << "[replication] Succeeded fetching meta file, fetching files in parallel";
+      LOG(INFO) << "[replication] Succeeded fetching full data files info, fetching files in parallel";
       self->repl_state_ = kReplFetchSST;
-      auto s = self->parallelFetchFile(meta.files);
+      auto s = self->parallelFetchFile(target_dir, meta.files);
       if (!s.IsOK()) {
         LOG(ERROR) << "[replication] Failed to parallel fetch files while " + s.Msg();
         return CBState::RESTART;
@@ -585,7 +630,12 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
 
       // Restore DB from backup
       self->pre_fullsync_cb_();
-      s = self->storage_->RestoreFromBackup();
+      // For old version, master uses rocksdb backup to implement data snapshot
+      if (self->srv_->GetConfig()->master_use_repl_port) {
+        s = self->storage_->RestoreFromBackup();
+      } else {
+        s = self->storage_->RestoreFromCheckpoint();
+      }
       if (!s.IsOK()) {
         LOG(ERROR) << "[replication] Failed to restore backup while " + s.Msg() + ", restart fullsync";
         return CBState::RESTART;
@@ -603,7 +653,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
   return CBState::QUIT;
 }
 
-Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::string, uint32_t>> &files) {
+Status ReplicationThread::parallelFetchFile(const std::string &dir,
+            std::vector<std::pair<std::string, uint32_t>> &files) {
   size_t concurrency = 1;
   if (files.size() > 20) {
     // Use 4 threads to download files in parallel
@@ -614,7 +665,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
   std::vector<std::future<Status>> results;
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(std::async(
-        std::launch::async, [this, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
+        std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
             return Status(Status::NotOK, "replication thread was stopped");
           }
@@ -637,7 +688,7 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
             // Don't fetch existing files
-            if (Engine::Storage::BackupManager::FileExists(this->storage_, f_name, f_crc)) {
+            if (Engine::Storage::ReplDataManager::FileExists(this->storage_, dir, f_name, f_crc)) {
               skip_cnt.fetch_add(1);
               uint32_t cur_skip_cnt = skip_cnt.load();
               uint32_t cur_fetch_cnt = fetch_cnt.load();
@@ -663,11 +714,13 @@ Status ReplicationThread::parallelFetchFile(const std::vector<std::pair<std::str
           // command, so we need to fetch all files by multiple command interactions.
           if (srv_->GetConfig()->master_use_repl_port) {
             for (unsigned i = 0; i < fetch_files.size(); i++) {
-              s = this->fetchFiles(sock_fd, {fetch_files[i]}, {crcs[i]}, fn);
+              s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
               if (!s.IsOK()) break;
             }
           } else {
-            if (!fetch_files.empty()) s = this->fetchFiles(sock_fd, fetch_files, crcs, fn);
+            if (!fetch_files.empty()) {
+              s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn);
+            }
           }
           close(sock_fd);
           return s;
@@ -711,8 +764,9 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   return Status::OK();
 }
 
-Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
-                std::string file, uint32_t crc, fetch_file_callback fn) {
+Status ReplicationThread::fetchFile(int sock_fd,  evbuffer *evbuf,
+                          const std::string &dir, std::string file,
+                          uint32_t crc, fetch_file_callback fn) {
   size_t line_len, file_size;
 
   // Read file size line
@@ -735,7 +789,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
   }
 
   // Write to tmp file
-  auto tmp_file = Engine::Storage::BackupManager::NewTmpFile(storage_, file);
+  auto tmp_file = Engine::Storage::ReplDataManager::NewTmpFile(storage_, dir, file);
   if (!tmp_file) {
     return Status(Status::NotOK, "unable to create tmp file");
   }
@@ -759,13 +813,14 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
       }
     }
   }
-  if (crc != tmp_crc) {
+  // Verify file crc checksum if crc is not 0
+  if (crc && crc != tmp_crc) {
     char err_buf[64];
     snprintf(err_buf, sizeof(err_buf), "CRC mismatched, %u was expected but got %u", crc, tmp_crc);
     return Status(Status::NotOK, err_buf);
   }
   // File is OK, rename to formal name
-  auto s = Engine::Storage::BackupManager::SwapTmpFile(storage_, file);
+  auto s = Engine::Storage::ReplDataManager::SwapTmpFile(storage_, dir, file);
   if (!s.IsOK()) return s;
 
   // Call fetch file callback function
@@ -773,8 +828,9 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf,
   return Status::OK();
 }
 
-Status ReplicationThread::fetchFiles(int sock_fd, const std::vector<std::string> &files,
-                          const std::vector<uint32_t> &crcs, fetch_file_callback fn) {
+Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir,
+            const std::vector<std::string> &files, const std::vector<uint32_t> &crcs,
+            fetch_file_callback fn) {
   std::string files_str;
   for (auto file : files) {
     files_str += file;
@@ -789,7 +845,7 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::vector<std::string>
   evbuffer *evbuf = evbuffer_new();
   for (unsigned i = 0; i < files.size(); i++) {
     DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
-    s = fetchFile(sock_fd, evbuf, files[i], crcs[i], fn);
+    s = fetchFile(sock_fd, evbuf, dir, files[i], crcs[i], fn);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
       LOG(WARNING) << "[fetch] Fail to fetch file " << files[i] << ", err: " << s.Msg();

@@ -44,6 +44,8 @@ Storage::Storage(Config *config)
       lock_mgr_(16) {
   InitCRC32Table();
   Metadata::InitVersionCounter();
+  SetCheckpointCreateTime(0);
+  SetCheckpointAccessTime(0);
 }
 
 Storage::~Storage() {
@@ -665,7 +667,7 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
   Status ret;
   invalid_files.resize(it - invalid_files.begin());
   for (it = invalid_files.begin(); it != invalid_files.end(); ++it) {
-    auto s = storage->backup_env_->DeleteFile(dir + *it);
+    auto s = storage->backup_env_->DeleteFile(dir + "/" + *it);
     if (!s.ok()) {
       ret = Status(Status::NotOK, s.ToString());
       LOG(INFO) << "[storage] Fail to delete invalid file "

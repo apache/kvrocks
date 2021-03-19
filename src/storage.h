@@ -94,6 +94,7 @@ class Storage {
     static Status CleanInvalidFiles(Storage *storage,
       const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
+      std::atomic<bool>   is_creating;
       std::atomic<time_t> create_time;
       std::atomic<time_t> access_time;
     };
@@ -118,6 +119,8 @@ class Storage {
   };
 
   bool ExistCheckpoint() { return backup_env_->FileExists(config_->checkpoint_dir).ok(); }
+  void SetCreatingCheckpoint(bool yes_or_no)  { checkpoint_info_.is_creating = yes_or_no; }
+  bool IsCreatingCheckpoint() { return checkpoint_info_.is_creating; }
   void SetCheckpointCreateTime(time_t t)  { checkpoint_info_.create_time = t; }
   time_t GetCheckpointCreateTime()  { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t)  { checkpoint_info_.access_time = t; }

@@ -507,7 +507,10 @@ void Server::cron() {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
-      if (storage_->ExistCheckpoint()) {
+      // Maybe creating checkpoint costs much time if target dir is on another
+      // disk partition, so when we want to clean up checkpoint, we should guarantee
+      // that kvrocks is not creating checkpoint even if there is a checkpoint.
+      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
         // TODO(shooterit): support to config the alive time of checkpoint
         if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {

@@ -44,6 +44,7 @@ Storage::Storage(Config *config)
       lock_mgr_(16) {
   InitCRC32Table();
   Metadata::InitVersionCounter();
+  SetCreatingCheckpoint(false);
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
 }
@@ -608,14 +609,14 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
       LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
     }
-
-    // Set checkpoint time
-    storage->SetCheckpointCreateTime(std::time(nullptr));
-    storage->SetCheckpointAccessTime(std::time(nullptr));
+    std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
 
     // Create checkpoint of rocksdb
-    std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
+    storage->SetCreatingCheckpoint(true);
     s = checkpoint->CreateCheckpoint(data_files_dir);
+    storage->SetCheckpointCreateTime(std::time(nullptr));
+    storage->SetCheckpointAccessTime(std::time(nullptr));
+    storage->SetCreatingCheckpoint(false);
     if (!s.ok()) {
       LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());

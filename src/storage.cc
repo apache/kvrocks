@@ -617,7 +617,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
     s = checkpoint->CreateCheckpoint(data_files_dir);
     if (!s.ok()) {
-      LOG(WARNING) << "ail to create checkpoint, error:" << s.ToString();
+      LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
     }
   } else {

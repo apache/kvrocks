@@ -37,7 +37,6 @@ class Storage {
 
   Status Open(bool read_only);
   Status Open();
-  Status Reopen();
   Status OpenForReadOnly();
   void CloseDB();
   void InitOptions(rocksdb::Options *options);

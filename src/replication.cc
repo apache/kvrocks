@@ -277,7 +277,7 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
-  // Clean synced checkpoint fronm old master because replica starts to follow new master
+  // Clean synced checkpoint from old master because replica starts to follow new master
   auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();

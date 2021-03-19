@@ -318,17 +318,6 @@ Status Storage::RestoreFromBackup() {
   return s.ok() ? Status::OK() : Status(Status::DBBackupErr, s.ToString());
 }
 
-Status Storage::Reopen() {
-  auto s = Open();
-  if (!s.IsOK()) {
-    LOG(ERROR) << "[storage] Fail to reopen db, error: " << s.Msg();
-    LOG(ERROR) << "[storage] Exiting...";
-    exit(1);
-  }
-  LOG(INFO) << "[storage] Succeed reopening db";
-  return Status::OK();
-}
-
 Status Storage::RestoreFromCheckpoint() {
   std::string dir = config_->sync_checkpoint_dir;
   std::string tmp_dir = config_->db_dir + ".tmp";
@@ -345,14 +334,14 @@ Status Storage::RestoreFromCheckpoint() {
   // But only try best effort to make data safe
   auto s = backup_env_->RenameFile(config_->db_dir, tmp_dir);
   if (!s.ok()) {
-    Reopen();
+    if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
     return Status(Status::NotOK, "Fail to rename db dir, error: " + s.ToString());
   }
 
   // Rename checkpoint dir to db dir
   if (!(s = backup_env_->RenameFile(dir, config_->db_dir)).ok()) {
     backup_env_->RenameFile(tmp_dir, config_->db_dir);
-    Reopen();
+    if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
     return Status(Status::NotOK, "Fail to rename checkpoint dir, error: " + s.ToString());
   }
 
@@ -362,7 +351,7 @@ Status Storage::RestoreFromCheckpoint() {
     LOG(WARNING) << "[storage] Fail to open master checkpoint, error: " << s2.Msg();
     rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
     backup_env_->RenameFile(tmp_dir, config_->db_dir);
-    Reopen();
+    if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
     return Status(Status::DBOpenErr,
               "Fail to open master checkpoint, error: " + s2.Msg());
   }

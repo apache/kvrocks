@@ -606,12 +606,12 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         auto s = Engine::Storage::ReplDataManager::CleanInvalidFiles(
             self->storage_, target_dir, need_files);
         if (!s.IsOK()) {
-          LOG(WARNING) << "[replication] Fail to clean up invalid files of old checkpoint,"
+          LOG(WARNING) << "[replication] Failed to clean up invalid files of the old checkpoint,"
                        << " error: " << s.Msg();
           LOG(WARNING) << "[replication] Try to clean all checkpoint files";
           auto s = rocksdb::DestroyDB(target_dir, rocksdb::Options());
           if (!s.ok()) {
-            LOG(WARNING) << "[replication] Fail to clean all checkpoint files, error: "
+            LOG(WARNING) << "[replication] Failed to clean all checkpoint files, error: "
                          << s.ToString();
           }
         }

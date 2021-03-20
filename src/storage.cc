@@ -589,6 +589,7 @@ Status Storage::DecrDBRefs() {
 
 Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::string *files) {
   std::string data_files_dir = storage->config_->checkpoint_dir;
+  std::unique_lock<std::mutex> ulm(storage->checkpoint_mu_);
 
   // Create checkpoint if not exist
   if (!storage->backup_env_->FileExists(data_files_dir).ok()) {
@@ -607,9 +608,10 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     storage->SetCheckpointAccessTime(std::time(nullptr));
     storage->SetCreatingCheckpoint(false);
     if (!s.ok()) {
-      LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
+      LOG(WARNING) << "[storage] Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
     }
+    LOG(INFO) << "[storage] Create checkpoint successfully";
   } else {
     // Replicas can share checkpiont to replication if the checkpoint existing
     // time is less half of WAL ttl.
@@ -617,10 +619,12 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
     if (std::time(nullptr) - storage->GetCheckpointCreateTime() > can_shared_time) {
-      LOG(WARNING) << "Can't use current checkpoint, waiting next checkpoint";
-      return Status(Status::NotOK, "Can't use current checkpoint, waiting next checkpoint");
+      LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
+      return Status(Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint");
     }
+    LOG(INFO) << "[storage] Use current existing checkpoint";
   }
+  ulm.unlock();
 
   // Get checkpoint file list
   std::vector<std::string> result;

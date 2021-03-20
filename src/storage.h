@@ -133,6 +133,7 @@ class Storage {
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter_;
   ReplDataManager::CheckpointInfo checkpoint_info_;
+  std::mutex checkpoint_mu_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;

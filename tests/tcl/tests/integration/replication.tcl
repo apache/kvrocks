@@ -118,7 +118,6 @@ start_server {tags {"repl"}} {
                 } else {
                      fail "Slaves can't sync with master"
                 }
-                after 50000
                 # Only 2 full sync
                 assert_equal 2 [s sync_full]
             }

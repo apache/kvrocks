@@ -122,6 +122,5 @@ start_server {tags {"repl"}} {
                 assert_equal 2 [s sync_full]
             }
         }
-
     }
 }

@@ -501,6 +501,26 @@ void Server::cron() {
       Status s = dynamicResizeBlockAndSST();
       LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
     }
+
+    // No replica uses this checkpoint, we can remove it.
+    if (counter != 0 && counter % 10 == 0) {
+      time_t create_time = storage_->GetCheckpointCreateTime();
+      time_t access_time = storage_->GetCheckpointAccessTime();
+
+      // Maybe creating checkpoint costs much time if target dir is on another
+      // disk partition, so when we want to clean up checkpoint, we should guarantee
+      // that kvrocks is not creating checkpoint even if there is a checkpoint.
+      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
+        // TODO(shooterit): support to config the alive time of checkpoint
+        if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
+            (std::time(nullptr) - create_time > 24 * 60 * 60)) {
+          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
+          if (!s.ok()) {
+            LOG(WARNING) << "Fail to clean checkpoint, error: " << s.ToString();
+          }
+        }
+      }
+    }
     cleanupExitedSlaves();
     counter++;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

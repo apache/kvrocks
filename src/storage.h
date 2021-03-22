@@ -47,6 +47,7 @@ class Storage {
   Status CreateBackup();
   Status DestroyBackup();
   Status RestoreFromBackup();
+  Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status WriteBatch(std::string &&raw_batch);
@@ -82,15 +83,20 @@ class Storage {
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
 
-  class BackupManager {
+  // Full replication data files manager
+  class ReplDataManager {
    public:
     // Master side
-    static Status OpenLatestMeta(Storage *storage,
-                                 int *fd,
-                                 rocksdb::BackupID *meta_id,
-                                 uint64_t *file_size);
-    static int OpenDataFile(Storage *storage, const std::string &rel_path,
+    static Status GetFullReplDataInfo(Storage *storage, std::string *files);
+    static int OpenDataFile(Storage *storage, const std::string &rel_file,
                             uint64_t *file_size);
+    static Status CleanInvalidFiles(Storage *storage,
+      const std::string &dir, std::vector<std::string> valid_files);
+    struct CheckpointInfo {
+      std::atomic<bool>   is_creating;
+      std::atomic<time_t> create_time;
+      std::atomic<time_t> access_time;
+    };
 
     // Slave side
     struct MetaInfo {
@@ -104,10 +110,20 @@ class Storage {
                                      rocksdb::BackupID meta_id,
                                      evbuffer *evbuf);
     static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
-        Storage *storage, const std::string &rel_path);
-    static Status SwapTmpFile(Storage *storage, const std::string &rel_path);
-    static bool FileExists(Storage *storage, const std::string &rel_path, uint32_t crc);
+        Storage *storage, const std::string &dir, const std::string &repl_file);
+    static Status SwapTmpFile(Storage *storage, const std::string &dir,
+        const std::string &repl_file);
+    static bool FileExists(Storage *storage, const std::string &dir,
+        const std::string &repl_file, uint32_t crc);
   };
+
+  bool ExistCheckpoint() { return backup_env_->FileExists(config_->checkpoint_dir).ok(); }
+  void SetCreatingCheckpoint(bool yes_or_no)  { checkpoint_info_.is_creating = yes_or_no; }
+  bool IsCreatingCheckpoint() { return checkpoint_info_.is_creating; }
+  void SetCheckpointCreateTime(time_t t)  { checkpoint_info_.create_time = t; }
+  time_t GetCheckpointCreateTime()  { return checkpoint_info_.create_time; }
+  void SetCheckpointAccessTime(time_t t)  { checkpoint_info_.access_time = t; }
+  time_t GetCheckpointAccessTime()  { return checkpoint_info_.access_time; }
 
  private:
   rocksdb::DB *db_ = nullptr;
@@ -116,6 +132,8 @@ class Storage {
   rocksdb::Env *backup_env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter_;
+  ReplDataManager::CheckpointInfo checkpoint_info_;
+  std::mutex checkpoint_mu_;
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;

@@ -194,6 +194,8 @@ void Config::initFieldCallback() {
         db_dir = dir + "/db";
         if (backup_dir.empty()) backup_dir = dir + "/backup";
         if (log_dir.empty()) log_dir = dir;
+        checkpoint_dir = dir + "/checkpoint";
+        sync_checkpoint_dir = dir + "/sync_checkpoint";
         return Status::OK();
       }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {

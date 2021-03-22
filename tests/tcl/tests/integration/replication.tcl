@@ -30,9 +30,7 @@ start_server {tags {"repl"}} {
     start_server {} {
         test {Second server should have role master at first} {
             # Can't statify partial replication
-            for {set i 0} {$i < 1000} {incr i} {
-                r set $i $i
-            }
+            populate 100 "" 10
             s role
         } {master}
 
@@ -91,6 +89,38 @@ start_server {tags {"repl"}} {
             lassign $res role master_host master_port slave_state slave_offset
             assert {$role eq {slave}}
             assert {$slave_state eq {connected}}
+        }
+    }
+}
+
+start_server {tags {"repl"}} {
+    set A [srv 0 client]
+    populate 100 "" 10
+
+    start_server {} {
+        set B [srv 0 client]
+        populate 100 "" 10
+
+        start_server {} {
+            set C [srv 0 client]
+            set C_host [srv 0 host]
+            set C_port [srv 0 port]
+            populate 50 "" 10
+
+            test {Multi slaves full sync with master at the same time} {
+                $A slaveof $C_host $C_port
+                $B slaveof $C_host $C_port
+
+                # Wait for finishing full replication
+                wait_for_condition 500 100 {
+                    [string match {*connected*} [$A role]] &&
+                    [string match {*connected*} [$B role]]
+                } else {
+                     fail "Slaves can't sync with master"
+                }
+                # Only 2 full sync
+                assert_equal 2 [s sync_full]
+            }
         }
     }
 }

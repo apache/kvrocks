@@ -4068,31 +4068,26 @@ class CommandFetchMeta : public Commander {
 
     // Feed-replica-meta thread
     std::thread t = std::thread([svr, repl_fd, ip]() {
-      Util::ThreadSetName("feed-replica-meta");
-      int fd;
-      uint64_t file_size;
-      rocksdb::BackupID meta_id;
-      auto s = Engine::Storage::BackupManager::OpenLatestMeta(
-          svr->storage_, &fd, &meta_id, &file_size);
+      Util::ThreadSetName("feed-replica-data-info");
+      std::string files;
+      auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(
+          svr->storage_, &files);
       if (!s.IsOK()) {
-        const char *message = "-ERR can't create db backup";
+        const char *message = "-ERR can't create db checkpoint";
         write(repl_fd, message, strlen(message));
-        LOG(ERROR) << "[replication] Failed to open latest meta, err: "
-                   << s.Msg();
+        LOG(WARNING) << "[replication] Failed to get full data file info,"
+                     << " error: " << s.Msg();
         close(repl_fd);
         return;
       }
-      // Send the meta ID, meta file size and content
-      if (Util::SockSend(repl_fd, std::to_string(meta_id)+CRLF).IsOK() &&
-          Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
-          Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
-        LOG(INFO) << "[replication] Succeed sending backup meta " << meta_id
-                  << " to " << ip;
+      // Send full data file info
+      if (Util::SockSend(repl_fd, files+CRLF).IsOK()) {
+        LOG(INFO) << "[replication] Succeed sending full data file info to " << ip;
       } else {
-        LOG(WARNING) << "[replication] Fail to send backup meta" << meta_id
+        LOG(WARNING) << "[replication] Fail to send full data file info "
                      << ip << ", error: " << strerror(errno);
       }
-      close(fd);
+      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
       close(repl_fd);
     });
     t.detach();
@@ -4132,7 +4127,7 @@ class CommandFetchFile : public Commander {
                                    svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = Engine::Storage::BackupManager::OpenDataFile(svr->storage_,
+        auto fd = Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
                                                       file, &file_size);
         if (fd < 0) break;
 
@@ -4160,6 +4155,7 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
+      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
       svr->DecrFetchFileThread();
       close(repl_fd);
     });

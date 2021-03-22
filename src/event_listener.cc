@@ -28,7 +28,7 @@ const std::string compressType2String(const rocksdb::CompressionType type) {
       {rocksdb::kLZ4Compression, "lz4"},
       {rocksdb::kLZ4HCCompression, "lz4hc"},
       {rocksdb::kXpressCompression, "xpress"},
-      {rocksdb::kZSTD, "std"},
+      {rocksdb::kZSTD, "zstd"},
       {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
       {rocksdb::kDisableCompressionOption, "disable"}
   };

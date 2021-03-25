@@ -603,7 +603,8 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
     // Create checkpoint of rocksdb
     storage->SetCreatingCheckpoint(true);
-    s = checkpoint->CreateCheckpoint(data_files_dir);
+    s = checkpoint->CreateCheckpoint(data_files_dir,
+          storage->config_->RocksDB.write_buffer_size*MiB);
     storage->SetCheckpointCreateTime(std::time(nullptr));
     storage->SetCheckpointAccessTime(std::time(nullptr));
     storage->SetCreatingCheckpoint(false);

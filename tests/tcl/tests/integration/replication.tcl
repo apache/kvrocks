@@ -9,6 +9,7 @@ start_server {tags {"repl"}} {
 
         test {Set instance A as slave of B} {
             $A slaveof $B_host $B_port
+            after 1000
             wait_for_condition 50 100 {
                 [lindex [$A role] 0] eq {slave} &&
                 [string match {*master_link_status:up*} [$A info replication]]
@@ -39,6 +40,7 @@ start_server {tags {"repl"}} {
             s role
         } {slave}
 
+        after 1000
         wait_for_sync r
         test {Sync should have transferred keys from master} {
             after 100
@@ -110,6 +112,7 @@ start_server {tags {"repl"}} {
             test {Multi slaves full sync with master at the same time} {
                 $A slaveof $C_host $C_port
                 $B slaveof $C_host $C_port
+                after 1000
 
                 # Wait for finishing full replication
                 wait_for_condition 500 100 {

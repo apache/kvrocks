@@ -523,6 +523,9 @@ void Server::cron() {
     }
     cleanupExitedSlaves();
     counter++;
+    stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);
+    stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
+    stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
@@ -728,8 +731,14 @@ void Server::GetStatsInfo(std::string *info) {
   string_stream << "# Stats\r\n";
   string_stream << "total_connections_received:" << total_clients_ <<"\r\n";
   string_stream << "total_commands_processed:" << stats_.total_calls <<"\r\n";
+  string_stream << "instantaneous_ops_per_sec:" << \
+  stats_.GetInstantaneousMetric(STATS_METRIC_COMMAND) <<"\r\n";
   string_stream << "total_net_input_bytes:" << stats_.in_bytes <<"\r\n";
   string_stream << "total_net_output_bytes:" << stats_.out_bytes <<"\r\n";
+  string_stream << "instantaneous_input_kbps:" << \
+  static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_INPUT)/1024) <<"\r\n";
+  string_stream << "instantaneous_output_kbps:" << \
+  static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT)/1024) <<"\r\n";
   string_stream << "sync_full:" << stats_.fullsync_counter <<"\r\n";
   string_stream << "sync_partial_ok:" << stats_.psync_ok_counter <<"\r\n";
   string_stream << "sync_partial_err:" << stats_.psync_err_counter <<"\r\n";

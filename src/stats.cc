@@ -1,4 +1,18 @@
 #include "stats.h"
+#include <chrono>
+
+Stats::Stats() {
+  for (int i = 0; i < STATS_METRIC_COUNT; i++) {
+    struct inst_metric im;
+    im.last_sample_time = 0;
+    im.last_sample_count = 0;
+    im.idx = 0;
+    for (int j = 0; j < STATS_METRIC_SAMPLES; j++) {
+      im.samples[j] = 0;
+    }
+    inst_metrics.push_back(im);
+  }
+}
 
 #if defined(__APPLE__)
 #include <mach/task.h>
@@ -31,7 +45,7 @@ int64_t Stats::GetMemoryRSS() {
   close(fd);
 
   char *start = buf;
-  count = 23; /* RSS is the 24th field in /proc/<pid>/stat */
+  count = 23;    // RSS is the 24th field in /proc/<pid>/stat
   while (start && count--) {
     start = strchr(start, ' ');
     if (start) start++;
@@ -52,4 +66,28 @@ void Stats::IncrCalls(const std::string &command_name) {
 
 void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
   commands_stats[command_name].latency.fetch_add(latency, std::memory_order_relaxed);
+}
+
+uint64_t Stats::GetTimeStamp(void) {
+  auto tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+  auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+  return ts.count();
+}
+
+void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
+  uint64_t t = GetTimeStamp() - inst_metrics[metric].last_sample_time;
+  uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
+  uint64_t ops_sec = t > 0 ? (ops*1000/t) : 0;
+  inst_metrics[metric].samples[inst_metrics[metric].idx] = ops_sec;
+  inst_metrics[metric].idx++;
+  inst_metrics[metric].idx %= STATS_METRIC_SAMPLES;
+  inst_metrics[metric].last_sample_time = GetTimeStamp();
+  inst_metrics[metric].last_sample_count = current_reading;
+}
+
+uint64_t Stats::GetInstantaneousMetric(int metric) {
+  uint64_t sum = 0;
+  for (int j = 0; j < STATS_METRIC_SAMPLES; j++)
+      sum += inst_metrics[metric].samples[j];
+  return sum / STATS_METRIC_SAMPLES;
 }

@@ -516,7 +516,9 @@ void Server::cron() {
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
-            LOG(WARNING) << "Fail to clean checkpoint, error: " << s.ToString();
+            LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
+          } else {
+            LOG(INFO) << "[server] Clean checkpoint successfully";
           }
         }
       }

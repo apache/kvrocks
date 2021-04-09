@@ -35,6 +35,11 @@ typedef struct {
   size_t subscribe_num;
 } ChannelSubscribeNum;
 
+enum SlowLog {
+  kSlowLogMaxArgc = 32,
+  kSlowLogMaxString = 128,
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);

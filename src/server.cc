@@ -1056,7 +1056,20 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint
   int64_t threshold = config_->slowlog_log_slower_than;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
   auto entry = new SlowEntry();
-  entry->args = *args;
+  size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
+  for (size_t i = 0; i < argc; i++) {
+    if (argc != args->size() && i == argc-1) {
+      entry->args.emplace_back("... (" +
+        std::to_string(args->size()-argc+1) + " more arguments)");
+      break;
+    }
+    if (args->data()[i].length() <= kSlowLogMaxString) {
+      entry->args.emplace_back(args->data()[i]);
+    } else {
+      entry->args.emplace_back(args->data()[i].substr(0, kSlowLogMaxString) + "... (" +
+          std::to_string(args->data()[i].length() - kSlowLogMaxString) + " more bytes)");
+    }
+  }
   entry->duration = duration;
   slow_log_.PushEntry(entry);
 }

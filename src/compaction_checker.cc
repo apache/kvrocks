@@ -2,14 +2,10 @@
 #include <glog/logging.h>
 #include "storage.h"
 
-void CompactionChecker::CompactPubsubAndSlotFiles() {
+void CompactionChecker::CompactPubsubFiles() {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   std::vector<std::string> cf_names = {Engine::kPubSubColumnFamilyName};
-  if (storage_->CodisEnabled()) {
-    cf_names.emplace_back(Engine::kSlotColumnFamilyName);
-    cf_names.emplace_back(Engine::kSlotMetadataColumnFamilyName);
-  }
   for (const auto &cf_name : cf_names) {
     // the db is closing, don't use DB and cf_handles
     if (!storage_->IncrDBRefs().IsOK()) return;

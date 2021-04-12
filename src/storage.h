@@ -27,8 +27,6 @@ extern const char *kPubSubColumnFamilyName;
 extern const char *kZSetScoreColumnFamilyName;
 extern const char *kMetadataColumnFamilyName;
 extern const char *kSubkeyColumnFamilyName;
-extern const char *kSlotMetadataColumnFamilyName;
-extern const char *kSlotColumnFamilyName;
 
 class Storage {
  public:
@@ -78,7 +76,6 @@ class Storage {
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
   uint64_t GetCompactionCount() { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
-  bool CodisEnabled() { return config_->codis_enabled; }
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

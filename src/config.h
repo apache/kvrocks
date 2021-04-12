@@ -62,7 +62,6 @@ struct Config{
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
-  bool codis_enabled = false;
   bool master_use_repl_port = false;
   std::vector<std::string> binds;
   std::string dir;

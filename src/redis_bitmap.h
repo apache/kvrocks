@@ -6,11 +6,6 @@
 #include <string>
 #include <vector>
 
-typedef struct {
-  uint32_t index;
-  Slice value;
-} BitmapPair;
-
 namespace Redis {
 
 class Bitmap : public Database {

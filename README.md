@@ -1,20 +1,20 @@
-<img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="200" height="200"/>
+<img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
-# kvrocks  ![image](https://github.com/bitleak/kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/bitleak/kvrocks/blob/master/LICENSE)
+# ![image](https://github.com/bitleak/kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/bitleak/kvrocks)](https://github.com/bitleak/kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/bitleak/kvrocks)](https://github.com/bitleak/kvrocks/stargazers)
 
 - [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-lnuch2bb-h5Dyv0d4MIQ_Q3b1pYP4HQ)
 
-kvrocks is an open-source key-value database. which is based on rocksdb and compatible with Redis protocol.  Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
+Kvrocks is an open-source key-value database which is based on rocksdb and compatible with Redis protocol. Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
-kvrocks has the following key features:
+Kvrocks has the following key features:
 
 - Redis protocol, user can use redis client to visit the kvrocks
 - Namespace, similar to redis db but use token per namespace
 - Replication, async replication using binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
 
-> Thanks for @smartlee and the trip.com designer(@范世丽) contributes the kvrocks logo for us
+> Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
 ## Who uses kvrocks 
 
@@ -161,4 +161,4 @@ latency: 99.9% < 10ms
 
 ## License
 
-kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.
+Kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.

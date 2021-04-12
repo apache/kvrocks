@@ -137,7 +137,7 @@ OK
 
  #### 1. Commands QPS
 
-> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
+> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
 
 latency: 99.9% < 10ms
 
@@ -145,7 +145,7 @@ latency: 99.9% < 10ms
 
 #### 2.  QPS on different payload
 
-> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns
+> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
 
 latency: 99.9% < 10ms
 
@@ -153,7 +153,7 @@ latency: 99.9% < 10ms
 
 #### 3. QPS on different workers
 
-> kvorkcs: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
+> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
 
 latency: 99.9% < 10ms
 

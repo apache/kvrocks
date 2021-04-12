@@ -483,30 +483,4 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
 
   return Status::OK();
 }
-
-void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
-  log_data_.Decode(blob);
-}
-
-rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key,
-                                           const Slice &value) {
-  std::string ns, user_key;
-  std::vector<std::string> command_args;
-  if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key);
-    put_keys_.emplace_back(user_key);
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const Slice &key) {
-  std::string ns, user_key;
-  std::vector<std::string> command_args;
-  if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key);
-    delete_keys_.emplace_back(user_key);
-  }
-  return rocksdb::Status::OK();
-}
-
 }  // namespace Redis

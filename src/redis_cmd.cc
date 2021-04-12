@@ -743,26 +743,6 @@ class CommandSetBit : public Commander {
   bool bit_ = false;
 };
 
-class CommandMSetBit : public Commander {
- public:
-  CommandMSetBit() : Commander("msetbit", -4, true) {}
-
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    std::vector<BitmapPair> kvs;
-    uint32_t index;
-    for (size_t i = 2; i < args_.size(); i += 2) {
-      Status s = getBitOffsetFromArgument(args_[i], &index);
-      if (!s.IsOK()) return s;
-      kvs.emplace_back(BitmapPair{index, args_[i + 1]});
-    }
-    rocksdb::Status s = bitmap_db.MSetBit(args_[1], kvs);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
-    *output = Redis::SimpleString("OK");
-    return Status::OK();
-  }
-};
-
 class CommandBitCount : public Commander {
  public:
   CommandBitCount() : Commander("bitcount", -2, false) {}
@@ -4245,7 +4225,6 @@ std::map<std::string, CommanderFactory> command_table = {
     // bit command
     ADD_CMD("getbit",   CommandGetBit),
     ADD_CMD("setbit",   CommandSetBit),
-    ADD_CMD("msetbit",  CommandMSetBit),
     ADD_CMD("bitcount", CommandBitCount),
     ADD_CMD("bitpos",   CommandBitPos),
 

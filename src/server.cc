@@ -47,7 +47,6 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
-  delete slotsmgrt_sender_thread_;
 }
 
 Status Server::Start() {
@@ -87,17 +86,13 @@ Status Server::Start() {
         // compact once per day
         if (now != 0 && last_compact_date != now/86400) {
           last_compact_date = now/86400;
-          compaction_checker.CompactPubsubAndSlotFiles();
+          compaction_checker.CompactPubsubFiles();
         }
       }
       usleep(100000);
     }
   });
 
-  if (config_->codis_enabled) {
-    slotsmgrt_sender_thread_ = new Redis::SlotsMgrtSenderThread(storage_);
-    slotsmgrt_sender_thread_->Start();
-  }
   return Status::OK();
 }
 
@@ -113,9 +108,6 @@ void Server::Stop() {
   cleanupExitedSlaves();
   rocksdb::CancelAllBackgroundWork(storage_->GetDB());
   task_runner_.Stop();
-  if (slotsmgrt_sender_thread_ != nullptr) {
-    slotsmgrt_sender_thread_->Stop();
-  }
 }
 
 void Server::Join() {
@@ -124,9 +116,6 @@ void Server::Join() {
   }
   task_runner_.Join();
   if (cron_thread_.joinable()) cron_thread_.join();
-  if (slotsmgrt_sender_thread_ != nullptr) {
-    slotsmgrt_sender_thread_->Join();
-  }
   if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 

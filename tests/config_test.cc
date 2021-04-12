@@ -71,7 +71,6 @@ TEST(Config, GetAndSet) {
       {"workers", "8"},
       {"repl-workers", "8"},
       {"tcp-backlog", "500"},
-      {"codis-enabled", "yes"},
       {"slaveof", "no one"},
       {"db-name", "test_dbname"},
       {"dir", "test_dir"},

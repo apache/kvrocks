@@ -19,7 +19,6 @@
 #include "redis_db.h"
 #include "rocksdb_crc32c.h"
 #include "redis_metadata.h"
-#include "redis_slot.h"
 #include "event_listener.h"
 #include "compact_filter.h"
 #include "table_properties_collector.h"
@@ -30,19 +29,15 @@ const char *kPubSubColumnFamilyName = "pubsub";
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
-const char *kSlotMetadataColumnFamilyName = "slot_metadata";
-const char *kSlotColumnFamilyName = "slot";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
-using Redis::WriteBatchExtractor;
 
 Storage::Storage(Config *config)
     : backup_env_(rocksdb::Env::Default()),
       config_(config),
       lock_mgr_(16) {
-  InitCRC32Table();
   Metadata::InitVersionCounter();
   SetCreatingCheckpoint(false);
   SetCheckpointCreateTime(0);
@@ -137,10 +132,6 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                          kZSetScoreColumnFamilyName,
                                          kPubSubColumnFamilyName};
-    if (config_->codis_enabled) {
-      cf_names.emplace_back(kSlotMetadataColumnFamilyName);
-      cf_names.emplace_back(kSlotColumnFamilyName);
-    }
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -212,36 +203,6 @@ Status Storage::Open(bool read_only) {
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
-  if (!config_->codis_enabled && column_families.size() != old_column_families.size()) {
-    return Status(Status::NotOK, "the db enabled codis mode at first open, please set codis-enabled 'yes'");
-  }
-  if (config_->codis_enabled && column_families.size() == old_column_families.size()) {
-    return Status(Status::NotOK, "the db disabled codis mode at first open, please set codis-enabled 'no'");
-  }
-  if (config_->codis_enabled) {
-    rocksdb::BlockBasedTableOptions slot_metadata_table_opts;
-    slot_metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-    slot_metadata_table_opts.block_cache =
-        rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
-    slot_metadata_table_opts.cache_index_and_filter_blocks = true;
-    slot_metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
-    rocksdb::ColumnFamilyOptions slot_metadata_opts(options);
-    slot_metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slot_metadata_table_opts));
-
-    rocksdb::BlockBasedTableOptions slotkey_table_opts;
-    slotkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-    slotkey_table_opts.block_cache =
-        rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
-    slotkey_table_opts.cache_index_and_filter_blocks = true;
-    slotkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
-    rocksdb::ColumnFamilyOptions slotkey_opts(options);
-    slotkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(slotkey_table_opts));
-    slotkey_opts.compaction_filter_factory = std::make_shared<SlotKeyFilterFactory>(this);
-    slotkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
-
-    column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotMetadataColumnFamilyName, slot_metadata_opts));
-    column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kSlotColumnFamilyName, slotkey_opts));
-  }
 
   auto start = std::chrono::high_resolution_clock::now();
   if (read_only) {
@@ -425,14 +386,6 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   if (reach_db_size_limit_) {
     return rocksdb::Status::SpaceLimit();
   }
-  if (config_->codis_enabled) {
-    WriteBatchExtractor write_batch_extractor;
-    auto s = updates->Iterate(&write_batch_extractor);
-    if (!s.ok()) return s;
-
-    Redis::Slot slot_db(this);
-    slot_db.UpdateKeys(*write_batch_extractor.GetPutKeys(), *write_batch_extractor.GetDeleteKeys(), updates);
-  }
 
   auto s = db_->Write(options, updates);
   if (!s.ok()) return s;
@@ -445,15 +398,6 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
                                 const rocksdb::Slice &key) {
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
-  if (config_->codis_enabled && cf_handle == GetCFHandle("metadata")) {
-    std::vector<std::string> delete_keys;
-    std::string ns, user_key;
-    ExtractNamespaceKey(key, &ns, &user_key);
-    delete_keys.emplace_back(user_key);
-    Redis::Slot slot_db(this);
-    auto s = slot_db.UpdateKeys({}, delete_keys, &batch);
-    if (!s.ok()) return s;
-  }
   return db_->Write(options, &batch);
 }
 
@@ -465,13 +409,6 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
   s = Delete(rocksdb::WriteOptions(), GetCFHandle("metadata"), last_key);
   if (!s.ok()) {
     return s;
-  }
-  if (config_->codis_enabled) {
-    // currently only flushall and flushdb use deleterange , so we can delete all codis slot data
-    // please do not use Storage::DeleteRange in other scenario
-    Redis::Slot slot_db(this);
-    auto s = slot_db.DeleteAll();
-    if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
 }
@@ -495,10 +432,6 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[2];
   } else if (name == kPubSubColumnFamilyName) {
     return cf_handles_[3];
-  } else if (name == kSlotMetadataColumnFamilyName) {
-    return cf_handles_[4];
-  } else if (name == kSlotColumnFamilyName) {
-    return cf_handles_[5];
   }
   return cf_handles_[0];
 }

@@ -78,6 +78,7 @@ class Storage {
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
   uint64_t GetCompactionCount() { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
+  bool IsClusterEnabled() { return config_->cluster_enabled; }
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

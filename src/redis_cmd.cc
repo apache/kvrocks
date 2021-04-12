@@ -32,6 +32,8 @@
 
 namespace Redis {
 
+const std::string kCursorPrefix = "_";
+
 const char *errInvalidSyntax = "syntax error";
 const char *errInvalidExpireTime = "invalid expire time";
 const char *errWrongNumOfArguments = "wrong number of arguments";
@@ -221,6 +223,31 @@ class CommandConfig : public Commander {
     } else {
       *output = Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
     }
+    return Status::OK();
+  }
+};
+
+class CommandCluster : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error(errAdministorPermissionRequired);
+      return Status::OK();
+    }
+
+    std::string sub_command = Util::ToLower(args_[1]);
+    if (sub_command == "keyslot" && args_.size() != 3) {
+      *output = Redis::Error(errWrongNumOfArguments);
+      return Status::OK();
+    }
+
+    if (args_.size() == 3 && sub_command == "keyslot") {
+      auto slot_id = GetSlotNumFromKey(args_[2]);
+      *output = Redis::Integer(slot_id);
+    } else {
+      *output = Redis::Error("CLUSTER subcommand must be KEYSLOT");
+    }
+
     return Status::OK();
   }
 };
@@ -3709,6 +3736,8 @@ class CommandScanBase : public Commander {
     cursor = param;
     if (cursor == "0") {
       cursor = std::string();
+    } else {
+      cursor = cursor.find(kCursorPrefix) == 0 ? cursor.substr(kCursorPrefix.size()) : cursor;
     }
   }
 
@@ -3801,15 +3830,29 @@ class CommandScan : public CommandScanBase {
     }
     return Commander::Parse(args);
   }
+  std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
+    std::vector<std::string> list;
+    if (!end_cursor.empty()) {
+      end_cursor = kCursorPrefix + end_cursor;
+      list.emplace_back(Redis::BulkString(end_cursor));
+    } else {
+      list.emplace_back(Redis::BulkString("0"));
+    }
+
+    list.emplace_back(Redis::MultiBulkString(keys));
+
+    return Redis::Array(list);
+  }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> keys;
-    auto s = redis_db.Scan(cursor, limit, prefix, &keys);
+    std::string end_cursor;
+    auto s = redis_db.Scan(cursor, limit, prefix, &keys, &end_cursor);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
 
-    *output = GenerateOutput(keys);
+    *output = GenerateOutput(keys, end_cursor);
     return Status::OK();
   }
 };
@@ -4223,6 +4266,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("flushbackup", 1, "read-only", 0, 0, 0, CommandFlushBackup),
     ADD_CMD("slaveof", 3, "read-only", 0, 0, 0, CommandSlaveOf),
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
+
+    ADD_CMD("cluster", -2, "read-only", 0, 0, 0, CommandCluster),
 
     ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),
     ADD_CMD("psync", 2, "read-only replication", 0, 0, 0, CommandPSync),

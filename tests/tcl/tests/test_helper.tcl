@@ -33,6 +33,7 @@ set ::all_tests {
     unit/geo
     unit/command
     unit/config
+    unit/cluster
     integration/replication
 }
 

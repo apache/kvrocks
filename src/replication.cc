@@ -215,6 +215,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     LOG(ERROR) << "[replication] Failed to start state machine, err: " << strerror(errno);
   }
   handler_idx_ = 0;
+  repl_->incr_state_ = Incr_batch_size;
   if (getHandlerEventType(0) == WRITE) {
     SetWriteCB(bev, EvCallback, this);
   } else {

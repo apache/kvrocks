@@ -90,7 +90,7 @@ $ redis-cli -p 6666
 
 ##  Namespace
 
-namespace was used to isolate data between users. unlike all the redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` was regraded as admin token, only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgave`, etc… 
+namespace was used to isolate data between users. unlike all the redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` was regraded as admin token, only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc…
 
 ```
 # add token
@@ -121,7 +121,7 @@ OK
 
 ## Migrate tools
 
-* migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which developed by vipshop
+* migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by vipshop
 * migrate from kvrocks to redis. use `kvrocks2redis` in build dir
 
 ## Performance
@@ -143,7 +143,7 @@ latency: 99.9% < 10ms
 
 ![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-commands.png)
 
-#### 2.  QPS on different payload
+#### 2.  QPS on different payloads
 
 > kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
 

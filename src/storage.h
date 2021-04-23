@@ -109,6 +109,9 @@ class Storage {
     static bool FileExists(Storage *storage, const std::string &rel_path, uint32_t crc);
   };
 
+  void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
+  bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
+
  private:
   rocksdb::DB *db_ = nullptr;
   std::mutex backup_mu_;
@@ -126,6 +129,7 @@ class Storage {
   std::mutex db_mu_;
   int db_refs_ = 0;
   bool db_closing_ = true;
+  bool db_in_retryable_io_error_ = false;
 };
 
 }  // namespace Engine

@@ -87,6 +87,9 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
       // Should not arrive here
       break;
   }
+  if (status->IsNoSpace() && status->severity() < rocksdb::Status::kFatalError) {
+    storage_->SetDBInRetryableIOError(true);
+  }
   LOG(ERROR) << "[event_listener/background_error] reason: " << reason_str
              << ", status: " << status->ToString();
 }

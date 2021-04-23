@@ -231,11 +231,8 @@ Status Storage::OpenForReadOnly() {
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
-
   std::lock_guard<std::mutex> lg(backup_mu_);
 
-  // To compatiable with old version, we can't use backup dir because
-  // kvrocks may save master backup into here for replication.
   std::string tmpdir = config_->backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
@@ -355,9 +352,6 @@ Status Storage::RestoreFromCheckpoint() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  // Curretly we only support one backup
-  if (num_backups_to_keep > 0) num_backups_to_keep = 1;
-
   time_t now = time(nullptr);
   std::lock_guard<std::mutex> lg(backup_mu_);
 

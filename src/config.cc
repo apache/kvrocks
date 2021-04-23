@@ -69,7 +69,7 @@ Config::Config() {
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
-      {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 64)},
+      {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
       {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
       {"requirepass", false, new StringField(&requirepass, "")},
@@ -195,6 +195,7 @@ void Config::initFieldCallback() {
         if (log_dir.empty()) log_dir = dir;
         checkpoint_dir = dir + "/checkpoint";
         sync_checkpoint_dir = dir + "/sync_checkpoint";
+        backup_sync_dir = dir + "/backup_for_sync";
         return Status::OK();
       }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {
@@ -357,7 +358,7 @@ Status Config::finish() {
   if (backup_dir.empty()) backup_dir = dir + "/backup";
   if (log_dir.empty()) log_dir = dir;
   if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
-  std::vector<std::string> createDirs = {dir, backup_dir};
+  std::vector<std::string> createDirs = {dir};
   for (const auto &name : createDirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);
     if (!s.ok()) return Status(Status::NotOK, s.ToString());

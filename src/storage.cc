@@ -42,6 +42,7 @@ Storage::Storage(Config *config)
   SetCreatingCheckpoint(false);
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
+  backup_creating_time_ = std::time(nullptr);
 }
 
 Storage::~Storage() {
@@ -217,12 +218,6 @@ Status Storage::Open(bool read_only) {
     return Status(Status::DBOpenErr, s.ToString());
   }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
-  if (!read_only) {
-    // open backup engine
-    rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
-    s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
-    if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
-  }
   return Status::OK();
 }
 
@@ -236,16 +231,42 @@ Status Storage::OpenForReadOnly() {
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
-  auto tm = std::time(nullptr);
-  char time_str[25];
-  if (!std::strftime(time_str, sizeof(time_str), "%c", std::localtime(&tm))) {
-    return Status(Status::DBBackupErr, "Fail to format local time_str");
+  std::lock_guard<std::mutex> lg(backup_mu_);
+
+  std::string tmpdir = config_->backup_dir + ".tmp";
+  // Maybe there is a dirty tmp checkpoint, try to clean it
+  rocksdb::DestroyDB(tmpdir, rocksdb::Options());
+
+  // 1) Create checkpoint of rocksdb for backup
+  rocksdb::Checkpoint* checkpoint = NULL;
+  rocksdb::Status s = rocksdb::Checkpoint::Create(db_, &checkpoint);
+  if (!s.ok()) {
+    LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
+    return Status(Status::NotOK, s.ToString());
   }
-  backup_mu_.lock();
-  rocksdb::Env::Default()->CreateDirIfMissing(config_->backup_dir);
-  auto s = backup_->CreateNewBackupWithMetadata(db_, time_str);
-  backup_mu_.unlock();
-  if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
+  std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
+  s = checkpoint->CreateCheckpoint(tmpdir, config_->RocksDB.write_buffer_size*MiB);
+  if (!s.ok()) {
+    LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
+    return Status(Status::DBBackupErr, s.ToString());
+  }
+
+  // 2) Rename tmp backup to real backup dir
+  if (!(s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options())).ok()) {
+    LOG(WARNING) << "[storage] Fail to clean old backup, error:" << s.ToString();
+    return Status(Status::NotOK, s.ToString());
+  }
+  if (!(s = backup_env_->RenameFile(tmpdir, config_->backup_dir)).ok()) {
+    LOG(WARNING) << "[storage] Fail to rename tmp backup, error:" << s.ToString();
+    // Just try best effort
+    if (!(s = rocksdb::DestroyDB(tmpdir, rocksdb::Options())).ok()) {
+      LOG(WARNING) << "[storage] Fail to clean tmp backup, error:" << s.ToString();
+    }
+    return Status(Status::NotOK, s.ToString());
+  }
+  // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
+  backup_creating_time_ = std::time(nullptr);
+
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
 }
@@ -259,7 +280,7 @@ Status Storage::DestroyBackup() {
 Status Storage::RestoreFromBackup() {
   // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
-  rocksdb::BackupableDBOptions bk_option(config_->backup_dir);
+  rocksdb::BackupableDBOptions bk_option(config_->backup_sync_dir);
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
   CloseDB();
@@ -276,6 +297,12 @@ Status Storage::RestoreFromBackup() {
     LOG(ERROR) << "[storage] Failed to reopen db: " << s2.Msg();
     return Status(Status::DBOpenErr, s2.Msg());
   }
+
+  // Clean up backup engine
+  backup_->PurgeOldBackups(0);
+  DestroyBackup();
+  backup_ = nullptr;
+
   return s.ok() ? Status::OK() : Status(Status::DBBackupErr, s.ToString());
 }
 
@@ -326,47 +353,24 @@ Status Storage::RestoreFromCheckpoint() {
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = time(nullptr);
-  std::vector<rocksdb::BackupInfo> backup_infos;
-  backup_mu_.lock();
-  backup_->GetBackupInfo(&backup_infos);
-  if (backup_infos.size() > num_backups_to_keep) {
-    uint32_t num_backups_to_purge = static_cast<uint32_t>(backup_infos.size()) - num_backups_to_keep;
-    for (uint32_t i = 0; i < num_backups_to_purge; i++) {
-      // the backup should not be purged if it's not yet expired,
-      // while multi slaves may create more replications than the `num_backups_to_keep`
-      if (backup_max_keep_hours != 0 && backup_infos[i].timestamp + backup_max_keep_hours * 3600 >= now) {
-        num_backups_to_purge--;
-        break;
-      }
-      LOG(INFO) << "[storage] The old backup(id: "
-                << backup_infos[i].backup_id << ") would be purged, "
-                << " created at: " << backup_infos[i].timestamp
-                << ", size: " << backup_infos[i].size
-                << ", num files: " << backup_infos[i].number_files;
-    }
-    if (num_backups_to_purge > 0) {
-      LOG(INFO) << "[storage] Going to purge " << num_backups_to_purge << " old backups";
-      auto s = backup_->PurgeOldBackups(backup_infos.size() - num_backups_to_purge);
-      LOG(INFO) << "[storage] Purge old backups, result: " << s.ToString();
-    }
-  }
+  std::lock_guard<std::mutex> lg(backup_mu_);
 
-  if (backup_max_keep_hours == 0) {
-    backup_mu_.unlock();
-    return;
+  // Return if there is no backup
+  auto s = backup_env_->FileExists(config_->backup_dir);
+  if (!s.ok()) return;
+
+  // No backup is needed to keep or the backup is expired, we will clean it.
+  if (num_backups_to_keep == 0 || (backup_max_keep_hours != 0 &&
+        backup_creating_time_ + backup_max_keep_hours*3600 < now)) {
+    s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options());
+    if (s.ok()) {
+      LOG(INFO) << "[storage] Succeeded cleaning old backup that was born at "
+                << backup_creating_time_;
+    } else {
+      LOG(INFO) << "[storage] Failed cleaning old backup that was born at "
+                << backup_creating_time_;
+    }
   }
-  backup_infos.clear();
-  backup_->GetBackupInfo(&backup_infos);
-  for (uint32_t i = 0; i < backup_infos.size(); i++) {
-    if (backup_infos[i].timestamp + backup_max_keep_hours*3600 >= now) break;
-    LOG(INFO) << "[storage] The old backup(id:"
-              << backup_infos[i].backup_id << ") would be purged because expired"
-              << ", created at: " << backup_infos[i].timestamp
-              << ", size: " << backup_infos[i].size
-              << ", num files: " << backup_infos[i].number_files;
-    backup_->DeleteBackup(backup_infos[i].backup_id);
-  }
-  backup_mu_.unlock();
 }
 
 Status Storage::GetWALIter(
@@ -634,7 +638,7 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
   DLOG(INFO) << "[meta] id: " << meta_id;
 
   // Save the meta to tmp file
-  auto wf = NewTmpFile(storage, storage->config_->backup_dir, meta_file);
+  auto wf = NewTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
   auto data = evbuffer_pullup(evbuf, -1);
   wf->Append(rocksdb::Slice(reinterpret_cast<char *>(data),
                             evbuffer_get_length(evbuf)));
@@ -675,7 +679,7 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
     meta.files.emplace_back(filename, crc32);
     free(line);
   }
-  SwapTmpFile(storage, storage->config_->backup_dir, meta_file);
+  SwapTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
   return meta;
 }
 
@@ -761,15 +765,6 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
     size -= slice.size();
   }
   return crc == tmp_crc;
-}
-
-void Storage::PurgeBackupIfNeed(uint32_t next_backup_id) {
-  std::vector<rocksdb::BackupInfo> backup_infos;
-  backup_->GetBackupInfo(&backup_infos);
-  size_t num_backup = backup_infos.size();
-  if (num_backup > 0 && backup_infos[num_backup-1].backup_id != next_backup_id-1)  {
-    PurgeOldBackups(0, 0);
-  }
 }
 
 }  // namespace Engine

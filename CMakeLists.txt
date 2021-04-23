@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(kvrocks
-        VERSION 999.999.999
+        VERSION 2.0.0
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
         LANGUAGES CXX)
 

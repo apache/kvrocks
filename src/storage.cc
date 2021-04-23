@@ -52,6 +52,8 @@ Storage::~Storage() {
 }
 
 void Storage::CloseDB() {
+  if (db_ == nullptr) return;
+
   db_->SyncWAL();
   // prevent to destroy the cloumn family while the compact filter was using
   db_mu_.lock();
@@ -64,6 +66,7 @@ void Storage::CloseDB() {
   db_mu_.unlock();
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   delete db_;
+  db_ = nullptr;
 }
 
 void Storage::InitOptions(rocksdb::Options *options) {
@@ -322,6 +325,30 @@ Status Storage::RestoreFromCheckpoint() {
     LOG(WARNING) << "[storage] Fail to destroy " << tmp_dir << ", error:" << s.ToString();
   }
   return Status::OK();
+}
+
+void Storage::EmptyDB() {
+  // Clean old backups and checkpoints
+  PurgeOldBackups(0, 0);
+  rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
+
+  // Close and destory db
+  CloseDB();
+  auto s = rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
+  if (!s.ok()) {
+    LOG(ERROR) << "[storage] Failed to destroy db, error: " << s.ToString();
+  }
+
+  // Reopen db, it is empty if succeeded destroying db
+  auto s2 = Open();
+  if (!s2.IsOK()) {
+    LOG(ERROR) << "[storage] Failed to destroy db, error: " << s2.Msg();
+  }
+  if (s.ok() && s2.IsOK()) {
+    LOG(INFO) << "[sorage] Succeeded emptying db";
+  } else {
+    LOG(INFO) << "[sorage] Failed to empty db";
+  }
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {

@@ -88,6 +88,7 @@ Config::Config() {
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
       {"supervised", true, new EnumField(&supervised_mode, supervised_mode_enum, SUPERVISED_NONE)},
       {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
+      {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
       {"slave-read-only", false, new YesNoField(&slave_readonly, true)},
       {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},

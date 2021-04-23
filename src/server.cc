@@ -38,6 +38,8 @@ Server::Server(Engine::Storage *storage, Config *config) :
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
   fetch_file_threads_num_ = 0;
   time(&start_time_);
+  stop_ = false;
+  is_loading_ = false;
 }
 
 Server::~Server() {
@@ -876,7 +878,7 @@ void Server::ReclaimOldDBPtr() {
   task_runner_.Purge();
   LOG(INFO) << "Waiting for excuting command...";
   while (excuting_command_num_ != 0) {
-    usleep(200000);
+    usleep(1000);  // 1 ms
   }
 }
 

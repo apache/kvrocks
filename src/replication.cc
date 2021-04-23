@@ -619,8 +619,16 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       }
       assert(evbuffer_get_length(input) == 0);
       self->fullsync_state_ = kFetchMetaID;
-
       LOG(INFO) << "[replication] Succeeded fetching full data files info, fetching files in parallel";
+
+      // If 'slave-empty-db-before-fullsync' is yes, we call 'pre_fullsync_cb_'
+      // just like reloading database. And we don't want slave to occupy too much
+      // disk space, so we just empty entire database rudely.
+      if (self->srv_->GetConfig()->slave_empty_db_before_fullsync) {
+        self->pre_fullsync_cb_();
+        self->storage_->EmptyDB();
+      }
+
       self->repl_state_ = kReplFetchSST;
       auto s = self->parallelFetchFile(target_dir, meta.files);
       if (!s.IsOK()) {
@@ -630,7 +638,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       LOG(INFO) << "[replication] Succeeded fetching files in parallel, restoring the backup";
 
       // Restore DB from backup
-      self->pre_fullsync_cb_();
+      // We already call 'pre_fullsync_cb_' if 'slave-empty-db-before-fullsync' is yes
+      if (!self->srv_->GetConfig()->slave_empty_db_before_fullsync) self->pre_fullsync_cb_();
       // For old version, master uses rocksdb backup to implement data snapshot
       if (self->srv_->GetConfig()->master_use_repl_port) {
         s = self->storage_->RestoreFromBackup();

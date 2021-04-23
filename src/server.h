@@ -125,8 +125,8 @@ class Server {
   void updateCachedTime();
   Status dynamicResizeBlockAndSST();
 
-  bool stop_ = false;
-  bool is_loading_ = false;
+  std::atomic<bool> stop_;
+  std::atomic<bool> is_loading_;
   time_t start_time_ = 0;
   std::mutex slaveof_mu_;
   std::string master_host_;

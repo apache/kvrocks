@@ -37,6 +37,7 @@ class Storage {
   Status Open();
   Status OpenForReadOnly();
   void CloseDB();
+  void EmptyDB();
   void InitOptions(rocksdb::Options *options);
   Status SetColumnFamilyOption(const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);

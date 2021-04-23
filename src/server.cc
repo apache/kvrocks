@@ -512,6 +512,15 @@ void Server::cron() {
         }
       }
     }
+    // check if DB need to be resumed every minute
+    // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
+    // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
+    // so manual trigger resume every minute after no space error to resume db under this scenario.
+    if (is_loading_ == false && counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
+      storage_->GetDB()->Resume();
+      LOG(INFO) << "[server] Schedule to resume DB after no space error";
+      storage_->SetDBInRetryableIOError(false);
+    }
     cleanupExitedSlaves();
     counter++;
     stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);

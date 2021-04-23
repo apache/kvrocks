@@ -121,6 +121,8 @@ class Storage {
   time_t GetCheckpointCreateTime()  { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t)  { checkpoint_info_.access_time = t; }
   time_t GetCheckpointAccessTime()  { return checkpoint_info_.access_time; }
+  void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
+  bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 
  private:
   rocksdb::DB *db_ = nullptr;
@@ -141,6 +143,7 @@ class Storage {
   std::mutex db_mu_;
   int db_refs_ = 0;
   bool db_closing_ = true;
+  bool db_in_retryable_io_error_ = false;
 };
 
 }  // namespace Engine

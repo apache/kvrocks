@@ -483,7 +483,6 @@ void Server::cron() {
     // check every minutes
     if (is_loading_ == false && counter != 0 && counter % 600 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
-      LOG(INFO) << "[server] Schedule to purge old backups, result: " << s.Msg();
     }
     // check every 30 minutes
     if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {

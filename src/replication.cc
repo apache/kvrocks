@@ -558,7 +558,6 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         LOG(ERROR) << "[replication] Invalid meta id received";
         return CBState::RESTART;
       }
-      self->storage_->PurgeBackupIfNeed(self->fullsync_meta_id_);
       self->fullsync_state_ = kFetchMetaSize;
       LOG(INFO) << "[replication] Succeed fetching meta id: " << self->fullsync_meta_id_;
     case kFetchMetaSize:
@@ -587,7 +586,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         }
         meta = Engine::Storage::ReplDataManager::ParseMetaAndSave(
                     self->storage_, self->fullsync_meta_id_, input);
-        target_dir = self->srv_->GetConfig()->backup_dir;
+        target_dir = self->srv_->GetConfig()->backup_sync_dir;
       } else {
         // Master using new version
         line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);

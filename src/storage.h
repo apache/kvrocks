@@ -56,7 +56,6 @@ class Storage {
                          const rocksdb::Slice &key);
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
-  void PurgeBackupIfNeed(uint32_t next_backup_id);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
@@ -125,6 +124,7 @@ class Storage {
  private:
   rocksdb::DB *db_ = nullptr;
   std::mutex backup_mu_;
+  time_t backup_creating_time_;
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *backup_env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;

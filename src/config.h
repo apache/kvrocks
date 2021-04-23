@@ -51,7 +51,7 @@ struct Config{
   int backlog = 511;
   int maxclients = 10000;
   int max_backup_to_keep = 1;
-  int max_backup_keep_hours = 168;
+  int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
   bool daemonize = false;
@@ -67,6 +67,7 @@ struct Config{
   std::string dir;
   std::string db_dir;
   std::string backup_dir;
+  std::string backup_sync_dir;
   std::string checkpoint_dir;
   std::string sync_checkpoint_dir;
   std::string log_dir;

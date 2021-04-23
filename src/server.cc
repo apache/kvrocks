@@ -507,6 +507,40 @@ void Server::cron() {
       Status s = dynamicResizeBlockAndSST();
       LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
     }
+<<<<<<< HEAD
+=======
+
+    // No replica uses this checkpoint, we can remove it.
+    if (counter != 0 && counter % 10 == 0) {
+      time_t create_time = storage_->GetCheckpointCreateTime();
+      time_t access_time = storage_->GetCheckpointAccessTime();
+
+      // Maybe creating checkpoint costs much time if target dir is on another
+      // disk partition, so when we want to clean up checkpoint, we should guarantee
+      // that kvrocks is not creating checkpoint even if there is a checkpoint.
+      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
+        // TODO(shooterit): support to config the alive time of checkpoint
+        if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
+            (std::time(nullptr) - create_time > 24 * 60 * 60)) {
+          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
+          if (!s.ok()) {
+            LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
+          } else {
+            LOG(INFO) << "[server] Clean checkpoint successfully";
+          }
+        }
+      }
+    }
+    // check if DB need to be resumed every minute
+    // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
+    // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
+    // so manual trigger resume every minute after no space error to resume db under this scenario.
+    if (is_loading_ == false && counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
+      storage_->GetDB()->Resume();
+      LOG(INFO) << "[server] Schedule to resume DB after no space error";
+      storage_->SetDBInRetryableIOError(false);
+    }
+>>>>>>> 55c1753... Fix can't auto resume after no space error  (#229)
     cleanupExitedSlaves();
     counter++;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

@@ -58,6 +58,7 @@ struct Config{
   int supervised_mode = SUPERVISED_NONE;
   bool slave_readonly = true;
   bool slave_serve_stale_data = true;
+  bool slave_empty_db_before_fullsync = false;
   int slave_priority = 100;
   int max_db_size = 0;
   int max_replication_mb = 0;

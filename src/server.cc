@@ -743,7 +743,11 @@ void Server::GetStatsInfo(std::string *info) {
   string_stream << "sync_full:" << stats_.fullsync_counter <<"\r\n";
   string_stream << "sync_partial_ok:" << stats_.psync_ok_counter <<"\r\n";
   string_stream << "sync_partial_err:" << stats_.psync_err_counter <<"\r\n";
-  string_stream << "pubsub_channels:" << pubsub_channels_.size() <<"\r\n";
+  {
+    std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
+    string_stream << "pubsub_channels:" << pubsub_channels_.size() <<"\r\n";
+    string_stream << "pubsub_patterns:" << pubsub_patterns_.size() <<"\r\n";
+  }
   *info = string_stream.str();
 }
 

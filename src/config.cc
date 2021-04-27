@@ -265,8 +265,8 @@ void Config::initFieldCallback() {
       }},
       {"rocksdb.level0_slowdown_writes_trigger", [this](Server* srv,
                                                         const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
         RocksDB.level0_stop_writes_trigger = RocksDB.level0_slowdown_writes_trigger * 2;
+        if (!srv) return Status::OK();
         srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
         return srv->storage_->SetColumnFamilyOption("level0_stop_writes_trigger",
                                                     std::to_string(RocksDB.level0_stop_writes_trigger));

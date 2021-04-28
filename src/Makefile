@@ -122,7 +122,7 @@ unittest: $(UNITTEST_OBJS)
 	$(KVROCKS_LD) -o unittest $(UNITTEST_OBJS) $(FINAL_LIBS) $(LDFLAGS) -lgtest
 
 test: unittest
-	- ./unittest
+	./unittest
 
 %.o: %.cc
 	$(KVROCKS_CXX) -c $< -o $@

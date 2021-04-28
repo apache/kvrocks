@@ -12,7 +12,7 @@ TEST(Config, GetAndSet) {
   std::map<std::string, std::string> mutable_cases = {
       {"timeout" , "1000"},
       {"maxclients" , "2000"},
-      {"max-backup-to-keep" , "32"},
+      {"max-backup-to-keep" , "1"},
       {"max-backup-keep-hours" , "4000"},
       {"requirepass" , "mytest_requirepass"},
       {"masterauth" , "mytest_masterauth"},
@@ -41,6 +41,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.stats_dump_period_sec" , "600"},
       {"rocksdb.compaction_readahead_size" , "1024"},
       {"rocksdb.level0_slowdown_writes_trigger" , "50"},
+      {"rocksdb.level0_stop_writes_trigger", "100"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

@@ -121,6 +121,8 @@ Config::Config() {
       {"rocksdb.compaction_readahead_size", false, new IntField(&RocksDB.compaction_readahead_size, 2*MiB, 0, 64*MiB)},
       {"rocksdb.level0_slowdown_writes_trigger",
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
+      {"rocksdb.level0_stop_writes_trigger",
+       false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -188,6 +190,10 @@ void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server* srv,  const std::string &k, const std::string& v)->Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetDBOption(trimRocksDBPrefix(k), v);
+  };
+  auto set_cf_option_cb = [](Server* srv,  const std::string &k, const std::string& v)->Status {
+    if (!srv) return Status::OK();  // srv is nullptr when load config from file
+    return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
   };
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
@@ -271,18 +277,6 @@ void Config::initFieldCallback() {
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
                                                     std::to_string(RocksDB.write_buffer_size * MiB));
       }},
-      {"rocksdb.max_write_buffer_number", [](Server* srv, const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-      }},
-      {"rocksdb.level0_slowdown_writes_trigger", [this](Server* srv,
-                                                        const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        RocksDB.level0_stop_writes_trigger = RocksDB.level0_slowdown_writes_trigger * 2;
-        srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-        return srv->storage_->SetColumnFamilyOption("level0_stop_writes_trigger",
-                                                    std::to_string(RocksDB.level0_stop_writes_trigger));
-      }},
       {"rocksdb.disable_auto_compactions", [](Server* srv,
                                                         const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
@@ -300,6 +294,10 @@ void Config::initFieldCallback() {
       {"rocksdb.max_background_compactions", set_db_option_cb},
       {"rocksdb.max_background_flushes", set_db_option_cb},
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
+
+      {"rocksdb.max_write_buffer_number", set_cf_option_cb},
+      {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
+      {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
   };
   for (const auto& iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

@@ -3258,12 +3258,17 @@ class CommandDBSize : public Commander {
 
 class CommandPublish : public Commander {
  public:
-  CommandPublish() : Commander("publish", 3, true) {}
+  // mark is_write as false here because slave should be able to execute publish command
+  CommandPublish() : Commander("publish", 3, false) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::PubSub pubsub_db(svr->storage_);
-    auto s = pubsub_db.Publish(args_[1], args_[2]);
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+    if (!svr->IsSlave()) {
+      // Compromise: can't replicate message to sub-replicas in a cascading-like structure.
+      // Replication is rely on wal seq, increase the seq on slave will break the replication, hence the compromise
+      Redis::PubSub pubsub_db(svr->storage_);
+      auto s = pubsub_db.Publish(args_[1], args_[2]);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
     }
 
     int receivers = svr->PublishMessage(args_[1], args_[2]);

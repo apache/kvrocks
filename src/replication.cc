@@ -32,9 +32,7 @@ Status FeedSlaveThread::Start() {
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      // force feed slave thread was scheduled after making the fd blocking,
-      // and write "+OK\r\n" response to psync command
-      usleep(10000);
+      write(conn_->GetFD(), "+OK\r\n", 5);
       this->loop();
     });
   } catch (const std::system_error &e) {
@@ -463,7 +461,8 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
-    LOG(INFO) << "[replication] Failed to psync, switch to fullsync";
+    LOG(INFO) << "[replication] Failed to psync, error: " << line
+              << ", switch to fullsync";
     free(line);
     return CBState::QUIT;
   } else {

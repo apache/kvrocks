@@ -451,11 +451,11 @@ int Server::DecrMonitorClientNum() {
 }
 
 int Server::IncrExecutingCommandNum() {
-  return excuting_command_num_.fetch_add(1, std::memory_order_relaxed);
+  return excuting_command_num_.fetch_add(1, std::memory_order_seq_cst);
 }
 
 int Server::DecrExecutingCommandNum() {
-  return excuting_command_num_.fetch_sub(1, std::memory_order_relaxed);
+  return excuting_command_num_.fetch_sub(1, std::memory_order_seq_cst);
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {

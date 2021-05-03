@@ -482,10 +482,18 @@ void Server::cron() {
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
     }
-    // check every minutes
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0) {
+    // check every 10s
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
+
+      // Purge backup if needed, it will cost much disk space if we keep backup and full sync
+      // checkpoints at the same time
+      if (config_->purge_backup_on_fullsync &&
+          (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
+        AsyncPurgeOldBackups(0, 0);
+      }
     }
+
     // check every 30 minutes
     if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
       Status s = dynamicResizeBlockAndSST();
@@ -493,14 +501,11 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (counter != 0 && counter % 10 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
-      // Maybe creating checkpoint costs much time if target dir is on another
-      // disk partition, so when we want to clean up checkpoint, we should guarantee
-      // that kvrocks is not creating checkpoint even if there is a checkpoint.
-      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
+      if (storage_->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
         if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {

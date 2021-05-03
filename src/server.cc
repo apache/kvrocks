@@ -178,18 +178,9 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
     delete t;
     return s;
   }
-  int flags;
-  if ((flags = fcntl(conn->GetFD(), F_GETFL)) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
-  }
-  flags &= ~O_NONBLOCK;
-  if (fcntl(conn->GetFD(), F_SETFL, flags) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
-  }
 
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> lg(slave_threads_mu_);
   slave_threads_.emplace_back(t);
-  slave_threads_mu_.unlock();
   return Status::OK();
 }
 

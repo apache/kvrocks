@@ -3486,15 +3486,25 @@ class CommandPSync : public Commander {
       *output = "sequence out of range, please use fullsync";
       return Status(Status::RedisExecErr, *output);
     }
+
+    // Server would spawn a new thread to sync the batch, and connection would
+    // be took over, so should never trigger any event in worker thread.
+    conn->Detach();
+    conn->EnableFlag(Redis::Connection::kSlave);
+    Util::SockSetBlocking(conn->GetFD(), 1);
+
     svr->stats_.IncrPSyncOKCounter();
     Status s = svr->AddSlave(conn, next_repl_seq);
-    if (!s.IsOK()) return s;
-    LOG(INFO) << "New slave: "  << conn->GetAddr() << " was added, start increment syncing";
-    conn->EnableFlag(Redis::Connection::kSlave);
-    // server would spawn a new thread to sync the batch,
-    // and connection would be took over, so should never trigger any event in worker thread
-    conn->Detach();
-    write(conn->GetFD(), "+OK\r\n", 5);
+    if (!s.IsOK()) {
+      std::string err = "-ERR " + s.Msg() + "\r\n";
+      write(conn->GetFD(), err.c_str(), err.length());
+      conn->EnableFlag(Redis::Connection::kCloseAsync);
+      LOG(WARNING) << "Failed to add salve: "  << conn->GetAddr()
+                   << " to start increment syncing";
+    } else {
+      LOG(INFO) << "New slave: "  << conn->GetAddr()
+                << " was added, start increment syncing";
+    }
     return Status::OK();
   }
 

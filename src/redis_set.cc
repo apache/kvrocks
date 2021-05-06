@@ -308,7 +308,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
       member_counters[member]++;
     }
   }
-  for (const auto iter : member_counters) {
+  for (const auto &iter : member_counters) {
     if (iter.second == keys.size()) {  // all the sets contain this member
       members->emplace_back(iter.first);
     }

@@ -832,7 +832,7 @@ class CommandObject : public Commander {
         return Status(Status::RedisExecErr, s.ToString());
       }
       output->append(Redis::MultiLen(infos.size()));
-      for (const auto info : infos) {
+      for (const auto &info : infos) {
         output->append(Redis::BulkString(info));
       }
     } else {
@@ -1261,7 +1261,7 @@ class CommandHKeys : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> keys;
-    for (const auto fv : field_values) {
+    for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
     *output = Redis::MultiBulkString(keys);
@@ -1280,7 +1280,7 @@ class CommandHVals : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = "*" + std::to_string(field_values.size()) + CRLF;
-    for (const auto fv : field_values) {
+    for (const auto &fv : field_values) {
       *output += Redis::BulkString(fv.value);
     }
     return Status::OK();
@@ -1298,7 +1298,7 @@ class CommandHGetAll : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
-    for (const auto fv : field_values) {
+    for (const auto &fv : field_values) {
       *output += Redis::BulkString(fv.field);
       *output += Redis::BulkString(fv.value);
     }
@@ -2146,7 +2146,7 @@ class CommandZPop : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     output->append(Redis::MultiLen(memeber_scores.size() * 2));
-    for (const auto ms : memeber_scores) {
+    for (const auto &ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
       output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
@@ -2198,7 +2198,7 @@ class CommandZRange : public Commander {
     } else {
       output->append(Redis::MultiLen(memeber_scores.size() * 2));
     }
-    for (const auto ms : memeber_scores) {
+    for (const auto &ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_)
         output->append(Redis::BulkString(Util::Float2String(ms.score)));
@@ -2302,7 +2302,7 @@ class CommandZRangeByScore : public Commander {
     } else {
       output->append(Redis::MultiLen(memeber_scores.size() * 2));
     }
-    for (const auto ms : memeber_scores) {
+    for (const auto &ms : memeber_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_)
         output->append(Redis::BulkString(Util::Float2String(ms.score)));
@@ -3379,7 +3379,7 @@ class CommandPubSub : public Commander {
       std::vector<ChannelSubscribeNum> channel_subscribe_nums;
       srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
       output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
-      for (const auto chan_subscribe_num : channel_subscribe_nums) {
+      for (const auto &chan_subscribe_num : channel_subscribe_nums) {
         output->append(Redis::BulkString(chan_subscribe_num.channel));
         output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
       }

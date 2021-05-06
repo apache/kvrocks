@@ -299,6 +299,7 @@ int main(int argc, char* argv[]) {
   }
 
   LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
+  Redis::PopulateCommands();
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {

@@ -39,7 +39,6 @@ Storage::Storage(Config *config)
       config_(config),
       lock_mgr_(16) {
   Metadata::InitVersionCounter();
-  SetCreatingCheckpoint(false);
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
   backup_creating_time_ = std::time(nullptr);
@@ -566,12 +565,10 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
 
     // Create checkpoint of rocksdb
-    storage->SetCreatingCheckpoint(true);
     s = checkpoint->CreateCheckpoint(data_files_dir,
           storage->config_->RocksDB.write_buffer_size*MiB);
     storage->SetCheckpointCreateTime(std::time(nullptr));
     storage->SetCheckpointAccessTime(std::time(nullptr));
-    storage->SetCreatingCheckpoint(false);
     if (!s.ok()) {
       LOG(WARNING) << "[storage] Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
@@ -601,6 +598,15 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   }
   files->pop_back();
   return Status::OK();
+}
+
+bool Storage::ExistCheckpoint(void) {
+  std::lock_guard<std::mutex> lg(checkpoint_mu_);
+  return backup_env_->FileExists(config_->checkpoint_dir).ok();
+}
+
+bool Storage::ExistSyncCheckpoint(void) {
+  return backup_env_->FileExists(config_->sync_checkpoint_dir).ok();
 }
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,

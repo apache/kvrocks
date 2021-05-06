@@ -64,6 +64,7 @@ struct Config{
   int max_replication_mb = 0;
   int max_io_mb = 0;
   bool master_use_repl_port = false;
+  bool purge_backup_on_fullsync = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;

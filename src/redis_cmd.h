@@ -52,6 +52,7 @@ class Commander {
   bool is_write_;
 };
 
+void PopulateCommands();
 bool IsCommandExists(const std::string &cmd);
 void GetCommandList(std::vector<std::string> *cmds);
 Status LookupCommand(const std::string &cmd_name,

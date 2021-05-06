@@ -114,9 +114,8 @@ class Storage {
         const std::string &repl_file, uint32_t crc);
   };
 
-  bool ExistCheckpoint() { return backup_env_->FileExists(config_->checkpoint_dir).ok(); }
-  void SetCreatingCheckpoint(bool yes_or_no)  { checkpoint_info_.is_creating = yes_or_no; }
-  bool IsCreatingCheckpoint() { return checkpoint_info_.is_creating; }
+  bool ExistCheckpoint(void);
+  bool ExistSyncCheckpoint(void);
   void SetCheckpointCreateTime(time_t t)  { checkpoint_info_.create_time = t; }
   time_t GetCheckpointCreateTime()  { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t)  { checkpoint_info_.access_time = t; }

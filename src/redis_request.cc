@@ -200,6 +200,14 @@ void Request::ExecuteCommands(Connection *conn) {
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = isProfilingEnabled(cmd_name);
     svr_->IncrExecutingCommandNum();
+    // Need to check again, because we set loading firstly and then check
+    // excuting_command_num_, there may be some commands when loading is 1
+    // and excuting_command_num_ is 0, these commands may access storage DB.
+    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+      svr_->DecrExecutingCommandNum();
+      conn->Reply(Redis::Error("ERR restoring the db from backup"));
+      break;
+    }
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
     svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();

@@ -24,13 +24,13 @@ class Connection;
 
 class Commander {
  public:
-  // @name: cmd name
-  // @sidecar: whether cmd will be executed in sidecar thread, eg. psync.
-  explicit Commander(std::string name, int arity, bool is_write = false)
-      : name_(std::move(name)), arity_(arity), is_write_(is_write) {}
-  std::string Name() { return name_; }
-  int GetArity() { return arity_; }
-  bool IsWrite() { return is_write_; }
+  explicit Commander() {}
+  std::string Name() const { return name_; }
+  void SetName(std::string name) { name_ = std::move(name); }
+  int GetArity() const { return arity_; }
+  void SetArity(int arity) { arity_ = arity; }
+  bool IsWrite() const { return is_write_; }
+  void SetIsWrite(bool is_write) { is_write_ = is_write; }
 
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   const std::vector<std::string>* Args() {

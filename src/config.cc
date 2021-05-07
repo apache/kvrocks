@@ -227,6 +227,8 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"profiling-sample-commands", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+
         std::vector<std::string> cmds;
         Util::Split(v, ",", &cmds);
         profiling_sample_all_commands = false;
@@ -235,7 +237,7 @@ void Config::initFieldCallback() {
           if (cmd == "*") {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
-          } else if (Redis::IsCommandExists(cmd)) {
+          } else if (srv->IsCommandExists(cmd)) {
             profiling_sample_commands.insert(cmd);
           }
         }

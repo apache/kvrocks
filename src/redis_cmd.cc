@@ -4201,39 +4201,12 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("_db_name", 1, false, 0, 0, 0, CommandDBName),
 };
 
-std::map<std::string, CommandAttributes*> commands;
-
-void PopulateCommands() {
-  int num = sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
-  for (int i = 0; i < num; i++) {
-    auto commandAttributes = new(CommandAttributes);
-    *commandAttributes = redisCommandTable[i];
-    commands[redisCommandTable[i].name] = commandAttributes;
-  }
+CommandAttributes * GetCommandTable() {
+  return redisCommandTable;
 }
 
-Status LookupAndCreateCommand(const std::string &cmd_name,
-                              std::unique_ptr<Commander> *cmd) {
-  if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
-  auto cmd_iter = commands.find(Util::ToLower(cmd_name));
-  if (cmd_iter == commands.end()) {
-    return Status(Status::RedisUnknownCmd);
-  }
-  auto redisCmd = cmd_iter->second;
-  *cmd = redisCmd->factory();
-  (*cmd)->SetAttributes(redisCmd);
-  return Status::OK();
+int GetCommandNum() {
+  return sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
 }
 
-bool IsCommandExists(const std::string &cmd) {
-  return commands.find(cmd) != commands.end();
-}
-
-void GetCommandList(std::vector<std::string> *cmds) {
-  cmds->clear();
-  int num = sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
-  for (int i = 0; i < num; i++) {
-    cmds->emplace_back(redisCommandTable[i].name);
-  }
-}
 }  // namespace Redis

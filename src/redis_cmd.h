@@ -57,9 +57,6 @@ struct CommandAttributes {
   CommanderFactory factory;
 };
 
-void PopulateCommands();
-bool IsCommandExists(const std::string &cmd);
-void GetCommandList(std::vector<std::string> *cmds);
-Status LookupAndCreateCommand(const std::string &cmd_name,
-                              std::unique_ptr<Commander> *cmd);
+int GetCommandNum();
+CommandAttributes *GetCommandTable();
 }  // namespace Redis

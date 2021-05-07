@@ -149,6 +149,7 @@ void Request::ExecuteCommands(Connection *conn) {
   Config *config = svr_->GetConfig();
   std::string reply, password;
   password = conn->IsRepl() ? config->masterauth : config->requirepass;
+
   for (auto &cmd_tokens : commands_) {
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
     if (conn->GetNamespace().empty()) {
@@ -161,7 +162,8 @@ void Request::ExecuteCommands(Connection *conn) {
         conn->SetNamespace(kDefaultNamespace);
       }
     }
-    auto s = LookupAndCreateCommand(cmd_tokens.front(), &conn->current_cmd_);
+
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &conn->current_cmd_);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR unknown command"));
       continue;
@@ -196,6 +198,7 @@ void Request::ExecuteCommands(Connection *conn) {
                                "and slave-serve-stale-data is set to 'no'."));
       continue;
     }
+
     conn->SetLastCmd(cmd_name);
     svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();

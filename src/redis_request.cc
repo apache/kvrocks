@@ -161,7 +161,7 @@ void Request::ExecuteCommands(Connection *conn) {
         conn->SetNamespace(kDefaultNamespace);
       }
     }
-    auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_);
+    auto s = LookupAndCreateCommand(cmd_tokens.front(), &conn->current_cmd_);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR unknown command"));
       continue;

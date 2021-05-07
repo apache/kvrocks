@@ -38,6 +38,18 @@ const char *errWrongNumOfArguments = "wrong number of arguments";
 const char *errValueNotInterger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
 
+std::string Commander::Name() {
+  return this->attributes_->name;
+}
+
+int Commander::GetArity() const {
+  return this->attributes_->arity;
+}
+
+bool Commander::IsWrite() const {
+  return this->attributes_->is_write;
+}
+
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -2712,7 +2724,7 @@ class CommandGeoRadius : public CommandGeoBase {
         } catch (const std::exception &e) {
           return Status(Status::RedisParseErr, "ERR count is not a valid int");
         }
-      } else if (is_write_ && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
+      } else if (IsWrite() && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
           && i + 1 < args_.size()) {
         store_key_ = args_[i + 1];
         if (Util::ToLower(args_[i]) == "storedist") {
@@ -3037,7 +3049,7 @@ class CommandSortedintRangeByValue : public Commander {
 
 class CommandSortedintRevRangeByValue : public CommandSortedintRangeByValue {
  public:
-  CommandSortedintRevRangeByValue() : CommandSortedintRangeByValue(true) { name_ = "sirevrangebyvalue"; }
+  CommandSortedintRevRangeByValue() : CommandSortedintRangeByValue(true) {}
 };
 
 class CommandInfo : public Commander {
@@ -4213,12 +4225,14 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("_db_name", 1, false, 0, 0, 0, CommandDBName),
 };
 
-std::map<std::string, CommandAttributes> commands;
+std::map<std::string, CommandAttributes*> commands;
 
 void PopulateCommands() {
   int num = sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
   for (int i = 0; i < num; i++) {
-    commands[redisCommandTable[i].name] = redisCommandTable[i];
+    auto commandAttributes = new(CommandAttributes);
+    *commandAttributes = redisCommandTable[i];
+    commands[redisCommandTable[i].name] = commandAttributes;
   }
 }
 
@@ -4230,10 +4244,8 @@ Status LookupAndCreateCommand(const std::string &cmd_name,
     return Status(Status::RedisUnknownCmd);
   }
   auto redisCmd = cmd_iter->second;
-  *cmd = redisCmd.factory();
-  (*cmd)->SetArity(redisCmd.arity);
-  (*cmd)->SetIsWrite(redisCmd.is_write);
-  (*cmd)->SetName(redisCmd.name);
+  *cmd = redisCmd->factory();
+  (*cmd)->SetAttributes(redisCmd);
   return Status::OK();
 }
 

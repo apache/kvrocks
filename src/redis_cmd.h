@@ -21,16 +21,15 @@ class Server;
 namespace Redis {
 
 class Connection;
+struct CommandAttributes;
 
 class Commander {
  public:
-  std::string Name() const { return name_; }
-  void SetName(std::string name) { name_ = std::move(name); }
-  int GetArity() const { return arity_; }
-  void SetArity(int arity) { arity_ = arity; }
-  bool IsWrite() const { return is_write_; }
-  void SetIsWrite(bool is_write) { is_write_ = is_write; }
+  std::string Name();
+  int GetArity() const;
+  bool IsWrite() const;
 
+  void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   const std::vector<std::string>* Args() {
     return &args_;
@@ -46,9 +45,7 @@ class Commander {
 
  protected:
   std::vector<std::string> args_;
-  std::string name_;
-  int arity_;
-  bool is_write_;
+  const CommandAttributes *attributes_;
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;

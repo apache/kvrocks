@@ -4032,21 +4032,7 @@ class CommandDBName : public Commander {
   return std::unique_ptr<Commander>(new fn()); \
 }}
 
-using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
-
-struct redisCommand {
-  std::string name;
-  int arity;
-  bool is_write;
-  int first_key;
-  int last_key;
-  int key_step;
-  CommanderFactory factory;
-};
-
-std::map<std::string, redisCommand> commands;
-
-redisCommand redisCommandTable[] = {
+CommandAttributes redisCommandTable[] = {
     ADD_CMD("auth", 2, false, 0, 0, 0, CommandAuth),
     ADD_CMD("ping", 1, false, 0, 0, 0, CommandPing),
     ADD_CMD("select", 2, false, 0, 0, 0, CommandSelect),
@@ -4227,21 +4213,23 @@ redisCommand redisCommandTable[] = {
     ADD_CMD("_db_name", 1, false, 0, 0, 0, CommandDBName),
 };
 
+std::map<std::string, CommandAttributes> commands;
+
 void PopulateCommands() {
-  int num = sizeof(redisCommandTable)/sizeof(struct redisCommand);
+  int num = sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
   for (int i = 0; i < num; i++) {
     commands[redisCommandTable[i].name] = redisCommandTable[i];
   }
 }
 
-Status LookupCommand(const std::string &cmd_name,
-                     std::unique_ptr<Commander> *cmd) {
+Status LookupAndCreateCommand(const std::string &cmd_name,
+                              std::unique_ptr<Commander> *cmd) {
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
-  auto cmd_factory = commands.find(Util::ToLower(cmd_name));
-  if (cmd_factory == commands.end()) {
+  auto cmd_iter = commands.find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands.end()) {
     return Status(Status::RedisUnknownCmd);
   }
-  auto redisCmd = cmd_factory->second;
+  auto redisCmd = cmd_iter->second;
   *cmd = redisCmd.factory();
   (*cmd)->SetArity(redisCmd.arity);
   (*cmd)->SetIsWrite(redisCmd.is_write);
@@ -4255,7 +4243,7 @@ bool IsCommandExists(const std::string &cmd) {
 
 void GetCommandList(std::vector<std::string> *cmds) {
   cmds->clear();
-  int num = sizeof(redisCommandTable)/sizeof(struct redisCommand);
+  int num = sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
   for (int i = 0; i < num; i++) {
     cmds->emplace_back(redisCommandTable[i].name);
   }

@@ -51,9 +51,21 @@ class Commander {
   bool is_write_;
 };
 
+using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
+
+struct CommandAttributes {
+  std::string name;
+  int arity;
+  bool is_write;
+  int first_key;
+  int last_key;
+  int key_step;
+  CommanderFactory factory;
+};
+
 void PopulateCommands();
 bool IsCommandExists(const std::string &cmd);
 void GetCommandList(std::vector<std::string> *cmds);
-Status LookupCommand(const std::string &cmd_name,
-                     std::unique_ptr<Commander> *cmd);
+Status LookupAndCreateCommand(const std::string &cmd_name,
+                              std::unique_ptr<Commander> *cmd);
 }  // namespace Redis

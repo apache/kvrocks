@@ -38,18 +38,6 @@ const char *errWrongNumOfArguments = "wrong number of arguments";
 const char *errValueNotInterger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
 
-std::string Commander::Name() {
-  return this->attributes_->name;
-}
-
-int Commander::GetArity() const {
-  return this->attributes_->arity;
-}
-
-bool Commander::IsWrite() const {
-  return this->attributes_->is_write;
-}
-
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1408,7 +1396,7 @@ class CommandBPop : public Commander {
       conn_->Reply(Redis::MultiBulkString({last_key, elem}));
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));
-      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->Name()
+      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->GetAttributes()->name
                  << ", err: " << s.ToString();
     }
     return s;
@@ -1420,7 +1408,7 @@ class CommandBPop : public Commander {
     // if pop fail ,currently we compromised to close bpop request
     if (s.IsNotFound()) {
       self->conn_->Reply(Redis::NilString());
-      LOG(ERROR) << "[BPOP] Failed to execute redis command: " << self->conn_->current_cmd_->Name()
+      LOG(ERROR) << "[BPOP] Failed to execute redis command: " << self->conn_->current_cmd_->GetAttributes()->name
                  << ", err: another concurrent pop request must have stole the data before this bpop request"
                  << " or bpop is in a pipeline cmd list(cmd before bpop replyed trigger this writecb)";
     }
@@ -2724,7 +2712,7 @@ class CommandGeoRadius : public CommandGeoBase {
         } catch (const std::exception &e) {
           return Status(Status::RedisParseErr, "ERR count is not a valid int");
         }
-      } else if (IsWrite() && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
+      } else if (attributes_->is_write && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
           && i + 1 < args_.size()) {
         store_key_ = args_[i + 1];
         if (Util::ToLower(args_[i]) == "storedist") {
@@ -4066,7 +4054,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("randomkey", 1, false, 0, 0, 0, CommandRandomKey),
     ADD_CMD("debug", -2, false, 0, 0, 0, CommandDebug),
 
-    // key command
     ADD_CMD("ttl", 2, false, 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, false, 1, 1, 1, CommandPTTL),
     ADD_CMD("type", 2, false, 1, 1, 1, CommandType),
@@ -4079,7 +4066,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("pexpireat", 3, true, 1, 1, 1, CommandPExpireAt),
     ADD_CMD("del", -2, true, 1, -1, 1, CommandDel),
 
-    // string command
     ADD_CMD("get", 2, false, 1, 1, 1, CommandGet),
     ADD_CMD("strlen", 2, false, 1, 1, 1, CommandStrlen),
     ADD_CMD("getset", 3, true, 1, 1, 1, CommandGetSet),
@@ -4099,13 +4085,11 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("decrby", 3, true, 1, 1, 1, CommandDecrBy),
     ADD_CMD("decr", 2, true, 1, 1, 1, CommandDecr),
 
-    // bit command
     ADD_CMD("getbit", 3, false, 1, 1, 1, CommandGetBit),
     ADD_CMD("setbit", 4, true, 1, 1, 1, CommandSetBit),
     ADD_CMD("bitcount", -2, false, 1, 1, 1, CommandBitCount),
     ADD_CMD("bitpos", -3, false, 1, 1, 1, CommandBitPos),
 
-    // hash command
     ADD_CMD("hget", 3, false, 1, 1, 1, CommandHGet),
     ADD_CMD("hincrby", 4, true, 1, 1, 1, CommandHIncrBy),
     ADD_CMD("hincrbyfloat", 4, true, 1, 1, 1, CommandHIncrByFloat),
@@ -4122,7 +4106,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hgetall", 2, false, 1, 1, 1, CommandHGetAll),
     ADD_CMD("hscan", -3, false, 1, 1, 1, CommandHScan),
 
-    // list command
     ADD_CMD("lpush", -3, true, 1, 1, 1, CommandLPush),
     ADD_CMD("rpush", -3, true, 1, 1, 1, CommandRPush),
     ADD_CMD("lpushx", -3, true, 1, 1, 1, CommandLPushX),
@@ -4140,7 +4123,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("lset", 4, true, 1, 1, 1, CommandLSet),
     ADD_CMD("rpoplpush", 3, true, 1, 2, 1, CommandRPopLPUSH),
 
-    // set command
     ADD_CMD("sadd", -3, true, 1, 1, 1, CommandSAdd),
     ADD_CMD("srem", -3, true, 1, 1, 1, CommandSRem),
     ADD_CMD("scard", 2, false, 1, 1, 1, CommandSCard),
@@ -4157,7 +4139,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("sinterstore", -3, false, 1, -1, 1, CommandSInterStore),
     ADD_CMD("sscan", -3, false, 1, 1, 1, CommandSScan),
 
-    // zset command
     ADD_CMD("zadd", -4, true, 1, 1, 1, CommandZAdd),
     ADD_CMD("zcard", 2, false, 1, 1, 1, CommandZCard),
     ADD_CMD("zcount", 4, false, 1, 1, 1, CommandZCount),
@@ -4182,7 +4163,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("zscan", -3, false, 1, 1, 1, CommandZScan),
     ADD_CMD("zunionstore", -4, true, 1, 1, 1, CommandZUnionStore),
 
-    // geo command
     ADD_CMD("geoadd", -5, true, 1, 1, 1, CommandGeoAdd),
     ADD_CMD("geodist", -4, false, 1, 1, 1, CommandGeoDist),
     ADD_CMD("geohash", -3, false, 1, 1, 1, CommandGeoHash),
@@ -4192,7 +4172,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("georadius_ro", -6, false, 1, 1, 1, CommandGeoRadiusReadonly),
     ADD_CMD("georadiusbymember_ro", -5, false, 1, 1, 1, CommandGeoRadiusByMemberReadonly),
 
-    // pub/sub command
     ADD_CMD("publish", 3, false, 0, 0, 0, CommandPublish),
     ADD_CMD("subscribe", -2, false, 0, 0, 0, CommandSubscribe),
     ADD_CMD("unsubscribe", -1, false, 0, 0, 0, CommandUnSubscribe),
@@ -4200,7 +4179,6 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("punsubscribe", -1, false, 0, 0, 0, CommandPUnSubscribe),
     ADD_CMD("pubsub", -2, false, 0, 0, 0, CommandPubSub),
 
-    // Sortedint command
     ADD_CMD("siadd", -3, true, 1, 1, 1, CommandSortedintAdd),
     ADD_CMD("sirem", -3, true, 1, 1, 1, CommandSortedintRem),
     ADD_CMD("sicard", 2, false, 1, 1, 1, CommandSortedintCard),
@@ -4210,14 +4188,12 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("sirangebyvalue", -4, false, 1, 1, 1, CommandSortedintRangeByValue),
     ADD_CMD("sirevrangebyvalue", -4, false, 1, 1, 1, CommandSortedintRevRangeByValue),
 
-    // internal management cmd
     ADD_CMD("compact", 1, false, 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, false, 0, 0, 0, CommandBGSave),
     ADD_CMD("flushbackup", 1, false, 0, 0, 0, CommandFlushBackup),
     ADD_CMD("slaveof", 3, false, 0, 0, 0, CommandSlaveOf),
     ADD_CMD("stats", 1, false, 0, 0, 0, CommandStats),
 
-    // Replicaion commands
     ADD_CMD("replconf", -3, false, 0, 0, 0, CommandReplConf),
     ADD_CMD("psync", 2, false, 0, 0, 0, CommandPSync),
     ADD_CMD("_fetch_meta", 1, false, 0, 0, 0, CommandFetchMeta),

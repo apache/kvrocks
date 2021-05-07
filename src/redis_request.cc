@@ -166,11 +166,13 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error("ERR unknown command"));
       continue;
     }
-    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+    const auto attributes = conn->current_cmd_->GetAttributes();
+    auto cmd_name = attributes->name;
+    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;
     }
-    int arity = conn->current_cmd_->GetArity();
+    int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity)
         || (arity < 0 && tokens < -arity)) {
@@ -183,11 +185,10 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error(s.Msg()));
       continue;
     }
-    if (config->slave_readonly && svr_->IsSlave() && conn->current_cmd_->IsWrite()) {
+    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
-    auto cmd_name = conn->current_cmd_->Name();
     if (!config->slave_serve_stale_data && svr_->IsSlave()
         && cmd_name != "info" && cmd_name != "slaveof"
         && svr_->GetReplicationState() != kReplConnected) {

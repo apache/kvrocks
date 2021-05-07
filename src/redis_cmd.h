@@ -24,7 +24,6 @@ class Connection;
 
 class Commander {
  public:
-  explicit Commander() {}
   std::string Name() const { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
   int GetArity() const { return arity_; }

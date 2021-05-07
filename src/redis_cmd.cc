@@ -2839,7 +2839,6 @@ class CommandGeoRadiusByMemberReadonly : public CommandGeoRadiusByMember {
 
 class CommandSortedintAdd : public Commander {
  public:
-
   Status Parse(const std::vector<std::string> &args) override {
     try {
       for (unsigned i = 2; i < args.size(); i++) {
@@ -3656,7 +3655,6 @@ class CommandDebug : public Commander {
 
 class CommandScanBase : public Commander {
  public:
-  explicit CommandScanBase(){}
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {
     if (type == "match") {
       prefix = std::move(value);
@@ -3706,8 +3704,7 @@ class CommandScanBase : public Commander {
 
 class CommandSubkeyScanBase : public CommandScanBase {
  public:
-  explicit CommandSubkeyScanBase()
-      : CommandScanBase() {}
+  CommandSubkeyScanBase(): CommandScanBase() {}
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 == 0) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);

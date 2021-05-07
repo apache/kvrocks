@@ -25,11 +25,8 @@ struct CommandAttributes;
 
 class Commander {
  public:
-  std::string Name();
-  int GetArity() const;
-  bool IsWrite() const;
-
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
+  const CommandAttributes* GetAttributes() { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   const std::vector<std::string>* Args() {
     return &args_;

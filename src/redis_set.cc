@@ -168,10 +168,14 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (pop) LockGuard guard(storage_->GetLockManager(), ns_key);
+  if (pop) storage_->GetLockManager()->Lock(ns_key);
+
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (!s.ok()) {
+    if (pop) storage_->GetLockManager()->UnLock(ns_key);
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
 
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisSet);
@@ -197,8 +201,10 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
+    s = storage_->Write(rocksdb::WriteOptions(), &batch);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  if (pop) storage_->GetLockManager()->UnLock(ns_key);
+  return s;
 }
 
 rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {

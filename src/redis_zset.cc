@@ -168,14 +168,20 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
 
   bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
   bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
-  if (removed) LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  if (removed) storage_->GetLockManager()->Lock(ns_key);
+
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
+  if (!s.ok()) {
+    if (removed) storage_->GetLockManager()->Unlock(ns_key);
+    return s.IsNotFound()? rocksdb::Status::OK():s;
+  }
   if (start < 0) start += metadata.size;
   if (stop < 0) stop += metadata.size;
   if (start < 0) start = 0;
   if (stop < 0 || start > stop) {
+    if (removed) storage_->GetLockManager()->Unlock(ns_key);
     return rocksdb::Status::OK();
   }
 
@@ -224,9 +230,10 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
-    return storage_->Write(rocksdb::WriteOptions(), &batch);
+    s = storage_->Write(rocksdb::WriteOptions(), &batch);
   }
-  return rocksdb::Status::OK();
+  if (removed) storage_->GetLockManager()->Unlock(ns_key);
+  return s;
 }
 
 rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
@@ -239,10 +246,14 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (spec.removed) LockGuard guard(storage_->GetLockManager(), ns_key);
+  if (spec.removed) storage_->GetLockManager()->Lock(ns_key);
+
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
+  if (!s.ok()) {
+    if (spec.removed) storage_->GetLockManager()->Unlock(ns_key);
+    return s.IsNotFound()? rocksdb::Status::OK():s;
+  }
 
   std::string start_score_bytes;
   PutDouble(&start_score_bytes, spec.reversed ? spec.max : spec.min);
@@ -304,9 +315,11 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
-    return storage_->Write(rocksdb::WriteOptions(), &batch);
+    s = storage_->Write(rocksdb::WriteOptions(), &batch);
   }
-  return rocksdb::Status::OK();
+
+  if (spec.removed) storage_->GetLockManager()->Unlock(ns_key);
+  return s;
 }
 
 rocksdb::Status ZSet::RangeByLex(const Slice &user_key,

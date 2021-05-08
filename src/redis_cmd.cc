@@ -318,7 +318,7 @@ class CommandGetRange: public Commander {
     if (start_ > stop_) {
       *output = Redis::NilString();
     } else {
-      *output = Redis::BulkString(value.substr(start_, stop_+1));
+      *output = Redis::BulkString(value.substr(start_, stop_ - start_ + 1));
     }
     return Status::OK();
   }

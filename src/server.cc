@@ -22,12 +22,11 @@ std::atomic<int>Server::unix_time_ = {0};
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
+  populateCommands();
   // init commands stats here to prevent concurrent insert, and cause core
-  std::vector<std::string> commands;
-  Redis::GetCommandList(&commands);
-  for (const auto &cmd : commands) {
-    stats_.commands_stats[cmd].calls = 0;
-    stats_.commands_stats[cmd].latency = 0;
+  for (const auto &iter : commands_) {
+    stats_.commands_stats[iter.first].calls = 0;
+    stats_.commands_stats[iter.first].latency = 0;
   }
 
   for (int i = 0; i < config->workers; i++) {
@@ -48,6 +47,9 @@ Server::~Server() {
   }
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
+  }
+  for (const auto &iter : commands_) {
+    delete iter.second;
   }
 }
 
@@ -1132,4 +1134,30 @@ ReplState Server::GetReplicationState() {
     return replication_thread_->State();
   }
   return kReplConnecting;
+}
+
+Status Server::LookupAndCreateCommand(const std::string &cmd_name,
+                              std::unique_ptr<Redis::Commander> *cmd) {
+  if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
+  auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands_.end()) {
+    return Status(Status::RedisUnknownCmd);
+  }
+  auto redisCmd = cmd_iter->second;
+  *cmd = redisCmd->factory();
+  (*cmd)->SetAttributes(redisCmd);
+  return Status::OK();
+}
+
+void Server::populateCommands() {
+  Redis::CommandAttributes* commandTable = Redis::GetCommandTable();
+  for (int i = 0; i < Redis::GetCommandNum(); i++) {
+    auto commandAttributes = new(Redis::CommandAttributes);
+    *commandAttributes = commandTable[i];
+    commands_[commandTable[i].name] = commandAttributes;
+  }
+}
+
+bool Server::IsCommandExists(const std::string &name) {
+  return commands_.find(name) != commands_.end();
 }

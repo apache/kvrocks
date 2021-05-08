@@ -207,7 +207,7 @@ void Request::ExecuteCommands(Connection *conn) {
     // Need to check again, because we set loading firstly and then check
     // excuting_command_num_, there may be some commands when loading is 1
     // and excuting_command_num_ is 0, these commands may access storage DB.
-    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
       svr_->DecrExecutingCommandNum();
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;

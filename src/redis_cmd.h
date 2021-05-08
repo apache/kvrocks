@@ -21,17 +21,12 @@ class Server;
 namespace Redis {
 
 class Connection;
+struct CommandAttributes;
 
 class Commander {
  public:
-  // @name: cmd name
-  // @sidecar: whether cmd will be executed in sidecar thread, eg. psync.
-  explicit Commander(std::string name, int arity, bool is_write = false)
-      : name_(std::move(name)), arity_(arity), is_write_(is_write) {}
-  std::string Name() { return name_; }
-  int GetArity() { return arity_; }
-  bool IsWrite() { return is_write_; }
-
+  void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
+  const CommandAttributes* GetAttributes() { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   const std::vector<std::string>* Args() {
     return &args_;
@@ -47,14 +42,21 @@ class Commander {
 
  protected:
   std::vector<std::string> args_;
-  std::string name_;
-  int arity_;
-  bool is_write_;
+  const CommandAttributes *attributes_;
 };
 
-void PopulateCommands();
-bool IsCommandExists(const std::string &cmd);
-void GetCommandList(std::vector<std::string> *cmds);
-Status LookupCommand(const std::string &cmd_name,
-                     std::unique_ptr<Commander> *cmd);
+using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
+
+struct CommandAttributes {
+  std::string name;
+  int arity;
+  bool is_write;
+  int first_key;
+  int last_key;
+  int key_step;
+  CommanderFactory factory;
+};
+
+int GetCommandNum();
+CommandAttributes *GetCommandTable();
 }  // namespace Redis

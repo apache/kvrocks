@@ -1,6 +1,6 @@
 # kvrocks Makefile
 CXX= g++
-CXXFLAGS= -O2 -std=c++11 -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -DNDEBUG=1 -Wno-unused-result
+CXXFLAGS= -O2 -std=c++11 -Wall -Wpedantic -Wsign-compare -Wreturn-type -fsanitize=thread -DNDEBUG=1 -Wno-unused-result
 LDFLAGS= -pthread -ldl
 FINAL_CXXFLAGS+= $(CXXFLAGS) $(DEBUG)
 DEBUG= -g -ggdb

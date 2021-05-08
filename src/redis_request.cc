@@ -149,6 +149,7 @@ void Request::ExecuteCommands(Connection *conn) {
   Config *config = svr_->GetConfig();
   std::string reply, password;
   password = conn->IsRepl() ? config->masterauth : config->requirepass;
+
   for (auto &cmd_tokens : commands_) {
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
     if (conn->GetNamespace().empty()) {
@@ -161,16 +162,19 @@ void Request::ExecuteCommands(Connection *conn) {
         conn->SetNamespace(kDefaultNamespace);
       }
     }
-    auto s = LookupCommand(cmd_tokens.front(), &conn->current_cmd_);
+
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &conn->current_cmd_);
     if (!s.IsOK()) {
       conn->Reply(Redis::Error("ERR unknown command"));
       continue;
     }
-    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+    const auto attributes = conn->current_cmd_->GetAttributes();
+    auto cmd_name = attributes->name;
+    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;
     }
-    int arity = conn->current_cmd_->GetArity();
+    int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity)
         || (arity < 0 && tokens < -arity)) {
@@ -183,11 +187,10 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error(s.Msg()));
       continue;
     }
-    if (config->slave_readonly && svr_->IsSlave() && conn->current_cmd_->IsWrite()) {
+    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
-    auto cmd_name = conn->current_cmd_->Name();
     if (!config->slave_serve_stale_data && svr_->IsSlave()
         && cmd_name != "info" && cmd_name != "slaveof"
         && svr_->GetReplicationState() != kReplConnected) {
@@ -195,6 +198,7 @@ void Request::ExecuteCommands(Connection *conn) {
                                "and slave-serve-stale-data is set to 'no'."));
       continue;
     }
+
     conn->SetLastCmd(cmd_name);
     svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();
@@ -203,7 +207,7 @@ void Request::ExecuteCommands(Connection *conn) {
     // Need to check again, because we set loading firstly and then check
     // excuting_command_num_, there may be some commands when loading is 1
     // and excuting_command_num_ is 0, these commands may access storage DB.
-    if (svr_->IsLoading() && !inCommandWhitelist(conn->current_cmd_->Name())) {
+    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
       svr_->DecrExecutingCommandNum();
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;

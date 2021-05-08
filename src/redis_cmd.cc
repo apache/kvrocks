@@ -3653,6 +3653,44 @@ class CommandDebug : public Commander {
   uint64_t microsecond_ = 0;
 };
 
+class CommandCommand : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_.size() == 1) {
+      svr->GetCommandsInfo(output);
+    } else {
+      std::string sub_command = Util::ToLower(args_[1]);
+      if ((sub_command == "count" && args_.size() != 2) ||
+          (sub_command == "getkeys" && args_.size() < 3) ||
+          (sub_command == "info" && args_.size() < 3)) {
+        *output = Redis::Error(errWrongNumOfArguments);
+        return Status::OK();
+      }
+      if (sub_command == "count") {
+        *output = Redis::Integer(GetCommandNum());
+      } else if (sub_command == "info") {
+        svr->GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
+      } else if (sub_command == "getkeys") {
+        std::vector<int> keys_indexes;
+        auto s = svr->GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
+        if (!s.IsOK()) return s;
+        if (keys_indexes.size() == 0) {
+          *output = Redis::Error("Invalid arguments specified for command");
+          return Status::OK();
+        }
+        std::vector<std::string> keys;
+        for (const auto &key_index : keys_indexes) {
+          keys.emplace_back(args_[key_index + 2]);
+        }
+        *output = Redis::MultiBulkString(keys);
+      } else {
+        *output = Redis::Error("Command subcommand must be one of COUNT, GETKEYS, INFO");
+      }
+    }
+    return Status::OK();
+  }
+};
+
 class CommandScanBase : public Commander {
  public:
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {
@@ -4053,6 +4091,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("scan", -2, false, 0, 0, 0, CommandScan),
     ADD_CMD("randomkey", 1, false, 0, 0, 0, CommandRandomKey),
     ADD_CMD("debug", -2, false, 0, 0, 0, CommandDebug),
+    ADD_CMD("command", -1, false, 0, 0, 0, CommandCommand),
 
     ADD_CMD("ttl", 2, false, 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, false, 1, 1, 1, CommandPTTL),

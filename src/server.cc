@@ -1163,3 +1163,62 @@ void Server::populateCommands() {
 bool Server::IsCommandExists(const std::string &name) {
   return commands_.find(name) != commands_.end();
 }
+
+std::string Server::GetCommandInfo(const Redis::CommandAttributes* command_attributes) {
+  std::string command, command_flags;
+  command.append(Redis::MultiLen(6));
+  command.append(Redis::BulkString(command_attributes->name));
+  command.append(Redis::Integer(command_attributes->arity));
+  command_flags.append(Redis::MultiLen(1));
+  command_flags.append(Redis::BulkString(command_attributes->is_write ? "write" : "readonly"));
+  command.append(command_flags);
+  command.append(Redis::Integer(command_attributes->first_key));
+  command.append(Redis::Integer(command_attributes->last_key));
+  command.append(Redis::Integer(command_attributes->key_step));
+  return command;
+}
+
+void Server::GetCommandsInfo(std::string *info) {
+  info->append(Redis::MultiLen(commands_.size()));
+  for (const auto &iter : commands_) {
+    auto command_attribute = iter.second;
+    auto command_info = GetCommandInfo(command_attribute);
+    info->append(command_info);
+  }
+}
+
+void Server::GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
+  info->append(Redis::MultiLen(cmd_names.size()));
+  for (const auto &cmd_name : cmd_names) {
+    auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+    if (cmd_iter == commands_.end()) {
+      info->append(Redis::NilString());
+    } else {
+      auto command_attribute = cmd_iter->second;
+      auto command_info = GetCommandInfo(command_attribute);
+      info->append(command_info);
+    }
+  }
+}
+
+Status Server::GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
+  auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands_.end()) {
+    return Status(Status::RedisUnknownCmd, "Invalid command specified");
+  }
+  auto command_attribute = cmd_iter->second;
+  if (command_attribute->first_key == 0) {
+    return Status(Status::NotOK, "The command has no key arguments");
+  }
+  if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
+    return Status(Status::NotOK, "Invalid number of arguments specified for command");
+  }
+  auto last = command_attribute->last_key;
+  if (last < 0) last = argc + last;
+
+  for (int j = command_attribute->first_key; j <= last; j += command_attribute->key_step) {
+    keys_indexes->emplace_back(j);
+  }
+  return Status::OK();
+}
+

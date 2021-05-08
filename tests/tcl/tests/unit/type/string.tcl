@@ -430,6 +430,7 @@ start_server {tags {"string"}} {
     test "GETRANGE against string value" {
         r set mykey "Hello World"
         assert_equal "Hell" [r getrange mykey 0 3]
+        assert_equal "ll" [r getrange mykey 2 3]
         assert_equal "Hello World" [r getrange mykey 0 -1]
         assert_equal "orld" [r getrange mykey -4 -1]
         assert_equal "" [r getrange mykey 5 3]

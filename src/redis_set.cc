@@ -2,6 +2,7 @@
 
 #include <map>
 #include <iostream>
+#include <memory>
 
 namespace Redis {
 

@@ -12,7 +12,7 @@ class LockManager {
 
   unsigned Size();
   void Lock(const rocksdb::Slice &key);
-  void UnLock(const rocksdb::Slice &key);
+  void Unlock(const rocksdb::Slice &key);
 
  private:
   int hash_power_;
@@ -29,7 +29,7 @@ class LockGuard {
     lock_mgr->Lock(key_);
   }
   ~LockGuard() {
-    lock_mgr_->UnLock(key_);
+    lock_mgr_->Unlock(key_);
   }
  private:
   LockManager *lock_mgr_ = nullptr;

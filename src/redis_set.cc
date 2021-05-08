@@ -173,7 +173,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) {
-    if (pop) storage_->GetLockManager()->UnLock(ns_key);
+    if (pop) storage_->GetLockManager()->Unlock(ns_key);
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
@@ -203,7 +203,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     batch.Put(metadata_cf_handle_, ns_key, bytes);
     s = storage_->Write(rocksdb::WriteOptions(), &batch);
   }
-  if (pop) storage_->GetLockManager()->UnLock(ns_key);
+  if (pop) storage_->GetLockManager()->Unlock(ns_key);
   return s;
 }
 

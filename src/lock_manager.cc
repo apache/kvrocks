@@ -28,6 +28,6 @@ void LockManager::Lock(const rocksdb::Slice &key) {
   mutex_pool_[hash(key)]->lock();
 }
 
-void LockManager::UnLock(const rocksdb::Slice &key) {
+void LockManager::Unlock(const rocksdb::Slice &key) {
   mutex_pool_[hash(key)]->unlock();
 }

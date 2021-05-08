@@ -7,6 +7,6 @@ TEST(LockManager, LockKey) {
   std::vector<rocksdb::Slice> keys = {"abc", "123", "456", "abc", "123"};
   for (const auto key : keys) {
     locks.Lock(key);
-    locks.UnLock(key);
+    locks.Unlock(key);
   }
 }

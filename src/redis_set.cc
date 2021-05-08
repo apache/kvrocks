@@ -168,7 +168,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (pop) LockGuard guard(storage_->GetLockManager(), ns_key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

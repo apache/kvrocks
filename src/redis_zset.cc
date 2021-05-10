@@ -4,6 +4,7 @@
 #include <map>
 #include <limits>
 #include <cmath>
+#include <memory>
 
 namespace Redis {
 
@@ -168,7 +169,9 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
 
   bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
   bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
-  if (removed) LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  std::unique_ptr<LockGuard> lock_guard;
+  if (removed) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -239,7 +242,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (spec.removed) LockGuard guard(storage_->GetLockManager(), ns_key);
+  std::unique_ptr<LockGuard> lock_guard;
+  if (spec.removed) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;

@@ -83,7 +83,8 @@ Status Server::Start() {
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
-        auto local_time = std::localtime(&now);
+        std::tm *local_time;
+        localtime_r(&now, local_time);
         if (local_time->tm_hour >= config_->compaction_checker_range.Start
         && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
@@ -484,7 +485,8 @@ void Server::cron() {
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
-      auto now = std::localtime(&t);
+      std::tm *now;
+      localtime_r(&t, now);
       // disable compaction cron when the compaction checker was enabled
       if (!config_->compaction_checker_range.Enabled()
           && config_->compact_cron.IsEnabled()

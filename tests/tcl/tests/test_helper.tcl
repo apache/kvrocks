@@ -31,6 +31,7 @@ set ::all_tests {
     unit/introspection
     unit/limits
     unit/geo
+    unit/command
     integration/replication
 }
 

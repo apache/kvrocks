@@ -1178,7 +1178,7 @@ std::string Server::GetCommandInfo(const Redis::CommandAttributes* command_attri
   return command;
 }
 
-void Server::GetCommandsInfo(std::string *info) {
+void Server::GetAllCommandsInfo(std::string *info) {
   info->append(Redis::MultiLen(commands_.size()));
   for (const auto &iter : commands_) {
     auto command_attribute = iter.second;

@@ -3657,7 +3657,7 @@ class CommandCommand : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      svr->GetCommandsInfo(output);
+      svr->GetAllCommandsInfo(output);
     } else {
       std::string sub_command = Util::ToLower(args_[1]);
       if ((sub_command == "count" && args_.size() != 2) ||

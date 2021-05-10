@@ -1,5 +1,5 @@
 start_server {tags {"command"}} {
-    test {COMMAND count} {
+    test {the total commands count is 155} {
         r command count
     } {155}
 
@@ -14,15 +14,9 @@ start_server {tags {"command"}} {
         assert_equal [lindex $e 5] 1
     }
 
-    test {COMMAND} {
-        set e [lindex [r command] 16]
+    test {COMMAND - command entry length check} {
+        set e [lindex [r command] 0]
         assert_equal [llength $e] 6
-        assert_equal [lindex $e 0] decr
-        assert_equal [lindex $e 1] 2
-        assert_equal [lindex $e 2] {write}
-        assert_equal [lindex $e 3] 1
-        assert_equal [lindex $e 4] 1
-        assert_equal [lindex $e 5] 1
     }
 
     test {COMMAND getkeys} {

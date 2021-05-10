@@ -359,7 +359,7 @@ void WorkerThread::Start() {
       } else {
         Util::ThreadSetName("worker");
       }
-      this->worker_->Run(t_.get_id());
+      this->worker_->Run(std::this_thread::get_id());
     });
   } catch (const std::system_error &e) {
     LOG(ERROR) << "[worker] Failed to start worker thread, err: " << e.what();

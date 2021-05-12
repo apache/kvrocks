@@ -11,6 +11,6 @@ then
     echo "You need tcl 8.5 or newer in order to run the Redis test"
     exit 1
 fi
-cp ../../src/kvrocks redis-server
+cp ../../output/kvrocks redis-server
 $TCLSH tests/test_helper.tcl "${@}"
 rm ./redis-server

@@ -582,21 +582,24 @@ proc restart_server {level wait_ready rotate_logs} {
     set pid [spawn_server $config_file $stdout $stderr]
 
     # check that the server actually started
-    wait_server_started $config_file $stdout $pid
+    # wait_server_started $config_file $stdout $pid
 
     # update the pid in the servers list
     dict set srv "pid" $pid
     # re-set $srv in the servers list
     lset ::servers end+$level $srv
 
-    if {$wait_ready} {
-        while 1 {
-            # check that the server actually started and is ready for connections
-            if {[count_message_lines $stdout "Ready to accept"] > $prev_ready_count} {
-                break
-            }
-            after 10
-        }
-    }
+    # if {$wait_ready} {
+    #     while 1 {
+    #         # check that the server actually started and is ready for connections
+    #         if {[count_message_lines $stdout "Ready to accept"] > $prev_ready_count} {
+    #             break
+    #         }
+    #         after 10
+    #     }
+    # }
+
+    # Just sleep 1s to make sure that kvrocks started
+    after 1000
     reconnect $level
 }

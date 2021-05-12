@@ -6,6 +6,7 @@
 #include <future>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
@@ -280,6 +281,8 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();
+  } else {
+    LOG(WARNING) << "Clean old synced checkpoint successfully";
   }
 
   // cleanup the old backups, so we can start replication in a clean state
@@ -601,7 +604,11 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
           meta.files.emplace_back(f, 0);
         }
         target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
-        // Clean invaild files of checkpoint
+        // Clean invaild files of checkpoint, "CURRENT" file must be invalid
+        // because we identify one file by its file number but only "CURRENT"
+        // file doesn't have number.
+        auto iter = std::find(need_files.begin(), need_files.end(), "CURRENT");
+        if (iter != need_files.end()) need_files.erase(iter);
         auto s = Engine::Storage::ReplDataManager::CleanInvalidFiles(
             self->storage_, target_dir, need_files);
         if (!s.IsOK()) {

@@ -496,7 +496,7 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (counter != 0 && counter % 100 == 0) {
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 

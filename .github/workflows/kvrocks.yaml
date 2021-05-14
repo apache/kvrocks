@@ -51,4 +51,23 @@ jobs:
         run: |
           sudo apt-get install tcl8.5
           cd tests/tcl && sh runtest && cd -
-        
+  
+  Compile on macOS:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2.3.4
+
+      - name: Install Dependencies
+        run: |
+          brew install snappy googletest
+          mkdir build
+
+      - name: Build
+        run: |
+          make -j4
+          cp src/kvrocks build/kvrocks
+
+      - name: Redis Tcl Test
+        run:
+          cd tests/tcl && sh runtest && cd -

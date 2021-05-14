@@ -52,7 +52,7 @@ jobs:
           sudo apt-get install tcl8.5
           cd tests/tcl && sh runtest && cd -
   
-  Compile on macOS:
+  compile-on-macOS:
     runs-on: macos-latest
     steps:
       - name: Checkout Code Base
@@ -60,7 +60,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install snappy googletest
+          brew install snappy
           mkdir build
 
       - name: Build

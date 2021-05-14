@@ -77,10 +77,10 @@ Status Server::Start() {
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
-        std::tm *local_time;
-        localtime_r(&now, local_time);
-        if (local_time->tm_hour >= config_->compaction_checker_range.Start
-        && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
+        std::tm local_time{};
+        localtime_r(&now, &local_time);
+        if (local_time.tm_hour >= config_->compaction_checker_range.Start
+        && local_time.tm_hour <= config_->compaction_checker_range.Stop) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
                                                Engine::kSubkeyColumnFamilyName,
                                                Engine::kZSetScoreColumnFamilyName};
@@ -463,16 +463,16 @@ void Server::cron() {
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
-      std::tm *now;
-      localtime_r(&t, now);
+      std::tm now{};
+      localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
       if (!config_->compaction_checker_range.Enabled()
           && config_->compact_cron.IsEnabled()
-          && config_->compact_cron.IsTimeMatch(now)) {
+          && config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
-      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(now)) {
+      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
         Status s = AsyncBgsaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }

@@ -60,7 +60,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install snappy googletest gcc autoconf
+          brew install snappy googletest gcc autoconf automake libtool
           mkdir build
 
       - name: Build

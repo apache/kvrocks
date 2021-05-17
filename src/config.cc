@@ -214,6 +214,9 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"slaveof", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (v.empty()) {
+          return Status::OK();
+        }
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
@@ -342,9 +345,6 @@ Status Config::parseConfigFromString(std::string input) {
     }
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
-    if (field->callback) {
-      return field->callback(nullptr, kv[0], kv[1]);
-    }
   }
   if (!strncasecmp(kv[0].data(), "namespace.", 10)) {
     tokens[kv[1]] = kv[0].substr(10, kv[0].size()-10);
@@ -389,6 +389,14 @@ Status Config::Load(const std::string &path) {
   } else {
     std::cout << "Warn: no config file specified, using the default config. "
                     "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
+  }
+  for (const auto &iter : fields_) {
+    if (iter.second->callback) {
+      auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
+      if (!s.IsOK()) {
+        return Status(Status::NotOK, s.Msg()+" in key '"+iter.first+"'");
+      }
+    }
   }
   return finish();
 }

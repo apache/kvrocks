@@ -368,23 +368,28 @@ Status Config::finish() {
   return Status::OK();
 }
 
-Status Config::Load(std::string path) {
-  path_ = std::move(path);
-  std::ifstream file(path_);
-  if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+Status Config::Load(const std::string &path) {
+  if (!path.empty()) {
+    path_ = path;
+    std::ifstream file(path_);
+    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
 
-  std::string line;
-  int line_num = 1;
-  while (!file.eof()) {
-    std::getline(file, line);
-    Status s = parseConfigFromString(line);
-    if (!s.IsOK()) {
-      file.close();
-      return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+    std::string line;
+    int line_num = 1;
+    while (!file.eof()) {
+      std::getline(file, line);
+      Status s = parseConfigFromString(line);
+      if (!s.IsOK()) {
+        file.close();
+        return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+      }
+      line_num++;
     }
-    line_num++;
+    file.close();
+  } else {
+    std::cout << "Warn: no config file specified, using the default config. "
+                    "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
-  file.close();
   return finish();
 }
 
@@ -418,6 +423,9 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 }
 
 Status Config::Rewrite() {
+  if (path_.empty()) {
+    return Status(Status::NotOK, "the server is running without a config file");
+  }
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {

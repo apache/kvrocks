@@ -2,6 +2,7 @@
 
 #include <map>
 #include <iostream>
+#include <memory>
 
 namespace Redis {
 
@@ -168,7 +169,9 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (pop) LockGuard guard(storage_->GetLockManager(), ns_key);
+  std::unique_ptr<LockGuard> lock_guard;
+  if (pop) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
+
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -308,7 +311,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
       member_counters[member]++;
     }
   }
-  for (const auto iter : member_counters) {
+  for (const auto &iter : member_counters) {
     if (iter.second == keys.size()) {  // all the sets contain this member
       members->emplace_back(iter.first);
     }

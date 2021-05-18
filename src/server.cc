@@ -22,12 +22,11 @@ std::atomic<int>Server::unix_time_ = {0};
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
+  populateCommands();
   // init commands stats here to prevent concurrent insert, and cause core
-  std::vector<std::string> commands;
-  Redis::GetCommandList(&commands);
-  for (const auto &cmd : commands) {
-    stats_.commands_stats[cmd].calls = 0;
-    stats_.commands_stats[cmd].latency = 0;
+  for (const auto &iter : commands_) {
+    stats_.commands_stats[iter.first].calls = 0;
+    stats_.commands_stats[iter.first].latency = 0;
   }
 
   for (int i = 0; i < config->workers; i++) {
@@ -48,6 +47,9 @@ Server::~Server() {
   }
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
+  }
+  for (const auto &iter : commands_) {
+    delete iter.second;
   }
 }
 
@@ -75,9 +77,10 @@ Status Server::Start() {
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
-        auto local_time = std::localtime(&now);
-        if (local_time->tm_hour >= config_->compaction_checker_range.Start
-        && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
+        std::tm local_time{};
+        localtime_r(&now, &local_time);
+        if (local_time.tm_hour >= config_->compaction_checker_range.Start
+        && local_time.tm_hour <= config_->compaction_checker_range.Stop) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
                                                Engine::kSubkeyColumnFamilyName,
                                                Engine::kZSetScoreColumnFamilyName};
@@ -178,18 +181,9 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
     delete t;
     return s;
   }
-  int flags;
-  if ((flags = fcntl(conn->GetFD(), F_GETFL)) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
-  }
-  flags &= ~O_NONBLOCK;
-  if (fcntl(conn->GetFD(), F_SETFL, flags) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
-  }
 
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> lg(slave_threads_mu_);
   slave_threads_.emplace_back(t);
-  slave_threads_mu_.unlock();
   return Status::OK();
 }
 
@@ -451,11 +445,11 @@ int Server::DecrMonitorClientNum() {
 }
 
 int Server::IncrExecutingCommandNum() {
-  return excuting_command_num_.fetch_add(1, std::memory_order_relaxed);
+  return excuting_command_num_.fetch_add(1, std::memory_order_seq_cst);
 }
 
 int Server::DecrExecutingCommandNum() {
-  return excuting_command_num_.fetch_sub(1, std::memory_order_relaxed);
+  return excuting_command_num_.fetch_sub(1, std::memory_order_seq_cst);
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {
@@ -469,23 +463,32 @@ void Server::cron() {
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
-      auto now = std::localtime(&t);
+      std::tm now{};
+      localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
       if (!config_->compaction_checker_range.Enabled()
           && config_->compact_cron.IsEnabled()
-          && config_->compact_cron.IsTimeMatch(now)) {
+          && config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
-      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(now)) {
+      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
         Status s = AsyncBgsaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
     }
-    // check every minutes
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0) {
+    // check every 10s
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
+
+      // Purge backup if needed, it will cost much disk space if we keep backup and full sync
+      // checkpoints at the same time
+      if (config_->purge_backup_on_fullsync &&
+          (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
+        AsyncPurgeOldBackups(0, 0);
+      }
     }
+
     // check every 30 minutes
     if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
       Status s = dynamicResizeBlockAndSST();
@@ -493,14 +496,11 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (counter != 0 && counter % 10 == 0) {
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
-      // Maybe creating checkpoint costs much time if target dir is on another
-      // disk partition, so when we want to clean up checkpoint, we should guarantee
-      // that kvrocks is not creating checkpoint even if there is a checkpoint.
-      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
+      if (storage_->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
         if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {
@@ -1137,3 +1137,88 @@ ReplState Server::GetReplicationState() {
   }
   return kReplConnecting;
 }
+
+Status Server::LookupAndCreateCommand(const std::string &cmd_name,
+                              std::unique_ptr<Redis::Commander> *cmd) {
+  if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
+  auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands_.end()) {
+    return Status(Status::RedisUnknownCmd);
+  }
+  auto redisCmd = cmd_iter->second;
+  *cmd = redisCmd->factory();
+  (*cmd)->SetAttributes(redisCmd);
+  return Status::OK();
+}
+
+void Server::populateCommands() {
+  Redis::CommandAttributes* commandTable = Redis::GetCommandTable();
+  for (int i = 0; i < Redis::GetCommandNum(); i++) {
+    auto commandAttributes = new(Redis::CommandAttributes);
+    *commandAttributes = commandTable[i];
+    commands_[commandTable[i].name] = commandAttributes;
+  }
+}
+
+bool Server::IsCommandExists(const std::string &name) {
+  return commands_.find(name) != commands_.end();
+}
+
+std::string Server::GetCommandInfo(const Redis::CommandAttributes* command_attributes) {
+  std::string command, command_flags;
+  command.append(Redis::MultiLen(6));
+  command.append(Redis::BulkString(command_attributes->name));
+  command.append(Redis::Integer(command_attributes->arity));
+  command_flags.append(Redis::MultiLen(1));
+  command_flags.append(Redis::BulkString(command_attributes->is_write ? "write" : "readonly"));
+  command.append(command_flags);
+  command.append(Redis::Integer(command_attributes->first_key));
+  command.append(Redis::Integer(command_attributes->last_key));
+  command.append(Redis::Integer(command_attributes->key_step));
+  return command;
+}
+
+void Server::GetAllCommandsInfo(std::string *info) {
+  info->append(Redis::MultiLen(commands_.size()));
+  for (const auto &iter : commands_) {
+    auto command_attribute = iter.second;
+    auto command_info = GetCommandInfo(command_attribute);
+    info->append(command_info);
+  }
+}
+
+void Server::GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
+  info->append(Redis::MultiLen(cmd_names.size()));
+  for (const auto &cmd_name : cmd_names) {
+    auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+    if (cmd_iter == commands_.end()) {
+      info->append(Redis::NilString());
+    } else {
+      auto command_attribute = cmd_iter->second;
+      auto command_info = GetCommandInfo(command_attribute);
+      info->append(command_info);
+    }
+  }
+}
+
+Status Server::GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
+  auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands_.end()) {
+    return Status(Status::RedisUnknownCmd, "Invalid command specified");
+  }
+  auto command_attribute = cmd_iter->second;
+  if (command_attribute->first_key == 0) {
+    return Status(Status::NotOK, "The command has no key arguments");
+  }
+  if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
+    return Status(Status::NotOK, "Invalid number of arguments specified for command");
+  }
+  auto last = command_attribute->last_key;
+  if (last < 0) last = argc + last;
+
+  for (int j = command_attribute->first_key; j <= last; j += command_attribute->key_step) {
+    keys_indexes->emplace_back(j);
+  }
+  return Status::OK();
+}
+

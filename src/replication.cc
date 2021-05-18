@@ -6,6 +6,7 @@
 #include <future>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
@@ -32,9 +33,7 @@ Status FeedSlaveThread::Start() {
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      // force feed slave thread was scheduled after making the fd blocking,
-      // and write "+OK\r\n" response to psync command
-      usleep(10000);
+      write(conn_->GetFD(), "+OK\r\n", 5);
       this->loop();
     });
   } catch (const std::system_error &e) {
@@ -282,6 +281,8 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb,
   auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();
+  } else {
+    LOG(WARNING) << "Clean old synced checkpoint successfully";
   }
 
   // cleanup the old backups, so we can start replication in a clean state
@@ -463,7 +464,8 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
-    LOG(INFO) << "[replication] Failed to psync, switch to fullsync";
+    LOG(INFO) << "[replication] Failed to psync, error: " << line
+              << ", switch to fullsync";
     free(line);
     return CBState::QUIT;
   } else {
@@ -602,7 +604,11 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
           meta.files.emplace_back(f, 0);
         }
         target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
-        // Clean invaild files of checkpoint
+        // Clean invaild files of checkpoint, "CURRENT" file must be invalid
+        // because we identify one file by its file number but only "CURRENT"
+        // file doesn't have number.
+        auto iter = std::find(need_files.begin(), need_files.end(), "CURRENT");
+        if (iter != need_files.end()) need_files.erase(iter);
         auto s = Engine::Storage::ReplDataManager::CleanInvalidFiles(
             self->storage_, target_dir, need_files);
         if (!s.IsOK()) {

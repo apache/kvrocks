@@ -301,7 +301,7 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
 std::string Worker::GetClientsStr() {
   std::unique_lock<std::mutex> lock(conns_mu_);
   std::string output;
-  for (const auto iter : conns_) {
+  for (const auto &iter : conns_) {
     Redis::Connection *conn = iter.second;
     output.append(conn->ToString());
   }
@@ -310,7 +310,7 @@ std::string Worker::GetClientsStr() {
 
 void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed) {
   conns_mu_.lock();
-  for (const auto iter : conns_) {
+  for (const auto &iter : conns_) {
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
     if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
@@ -346,7 +346,7 @@ void Worker::KickoutIdleClients(int timeout) {
   last_iter_conn_fd = iter->first;
   conns_mu_.unlock();
 
-  for (const auto conn : to_be_killed_conns) {
+  for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
   }
 }
@@ -359,7 +359,7 @@ void WorkerThread::Start() {
       } else {
         Util::ThreadSetName("worker");
       }
-      this->worker_->Run(t_.get_id());
+      this->worker_->Run(std::this_thread::get_id());
     });
   } catch (const std::system_error &e) {
     LOG(ERROR) << "[worker] Failed to start worker thread, err: " << e.what();

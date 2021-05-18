@@ -64,6 +64,7 @@ struct Config{
   int max_replication_mb = 0;
   int max_io_mb = 0;
   bool master_use_repl_port = false;
+  bool purge_backup_on_fullsync = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
@@ -117,7 +118,7 @@ struct Config{
 
  public:
   Status Rewrite();
-  Status Load(std::string path);
+  Status Load(const std::string &path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);

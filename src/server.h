@@ -50,6 +50,13 @@ class Server {
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
+  void populateCommands();
+  bool IsCommandExists(const std::string &name);
+  Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
+  void GetAllCommandsInfo(std::string *info);
+  void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
+  std::string GetCommandInfo(const Redis::CommandAttributes* command_attributes);
+  Status GetKeysFromCommand(const std::string &name, int argc, std::vector<int> *keys_indexes);
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
@@ -134,6 +141,7 @@ class Server {
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
+  std::map<std::string, Redis::CommandAttributes*> commands_;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};

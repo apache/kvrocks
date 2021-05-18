@@ -118,7 +118,7 @@ struct Config{
 
  public:
   Status Rewrite();
-  Status Load(std::string path);
+  Status Load(const std::string &path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);

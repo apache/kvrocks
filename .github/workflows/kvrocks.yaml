@@ -3,8 +3,7 @@ name: kvrocks ci actions  # don't edit while the badge was depend on this
 on: [push, pull_request]
 
 jobs:
-  lint-build-test:
-    name: Lint/Build
+  lint-build-test-on-ubuntu:
     strategy:
       matrix:
         os: [ubuntu-18.04]
@@ -47,4 +46,28 @@ jobs:
         run: |
           sudo apt-get install tcl8.5
           cd tests/tcl && sh runtest && cd -
-        
+
+  build-test-on-macos-latest:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 64
+
+      - name: Install Dependencies
+        run: |
+          brew install snappy gcc autoconf automake libtool
+          mkdir build
+
+      - name: Build
+        run: |
+          make -j4
+          cp src/kvrocks build/kvrocks
+
+      - name: Unit Test
+        run: make test
+
+      - name: Redis Tcl Test
+        run:
+          cd tests/tcl && sh runtest && cd -

@@ -7,11 +7,6 @@
 #include <atomic>
 #include <rocksdb/env.h>
 
-// 52 bit for microseconds and 11 bit for counter
-const int VersionCounterBits = 11;
-
-static std::atomic<uint64_t> version_counter_ = {0};
-
 InternalKey::InternalKey(Slice input) {
   uint32_t key_size;
   uint8_t namespace_size;

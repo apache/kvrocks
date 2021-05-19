@@ -268,7 +268,7 @@ void ReplSemiSyncMaster::RemoveSlave(FeedSlaveThread* slave_thread_ptr) {
   }
 }
 
-int ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
+bool ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
   std::unique_lock<std::mutex> lock(LOCK_binlog_);
 
   if (!config_->semi_sync_test) {
@@ -281,12 +281,12 @@ int ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
 
   if (!GetSemiSyncEnabled() || !is_on()) {
     // do something
-    return 0;
+    return false;
   }
 
   if (trx_wait_binlog_pos <= wait_file_pos_) {
     // LOG(WARNING) << "Commit data sequence is less than response sequence";
-    return 0;
+    return false;
   }
 
   bool insert_result = node_manager_->insert_waiting_node(trx_wait_binlog_pos);
@@ -296,6 +296,7 @@ int ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
   auto trx_node = node_manager_->find_waiting_node(trx_wait_binlog_pos);
   if (trx_node == nullptr) {
     LOG(ERROR) << "Data in wait list is lost";
+    return false;
   }
   // auto s = node_manager_->cond.wait_for(lock, std::chrono::seconds(10));
   trx_node->waiters++;
@@ -307,11 +308,11 @@ int ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
   }
   if (max_handle_sequence_.load() < trx_wait_binlog_pos) max_handle_sequence_ = trx_wait_binlog_pos;
 
-  if (trx_wait_binlog_pos && node_manager_ && trx_node && trx_node->waiters == 0) {
+  if (trx_node->waiters == 0) {
     node_manager_->clear_waiting_nodes(trx_wait_binlog_pos);
   }
 
-  return 0;
+  return true;
 }
 
 void ReplSemiSyncMaster::HandleAck(int server_id, uint64_t log_file_pos) {

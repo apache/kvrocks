@@ -99,6 +99,7 @@ Config::Config() {
       {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX)},
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
+      {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"semi-sync-test", false, new YesNoField(&semi_sync_test, false)},
       {"semi-sync-enable", false, new YesNoField(&semi_sync_enable, false)},
       {"semi-sync-wait-for-slave-count", false, new IntField(&semi_sync_wait_for_slave_count, 1, 1, INT_MAX)},
@@ -125,6 +126,8 @@ Config::Config() {
       {"rocksdb.compaction_readahead_size", false, new IntField(&RocksDB.compaction_readahead_size, 2*MiB, 0, 64*MiB)},
       {"rocksdb.level0_slowdown_writes_trigger",
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
+      {"rocksdb.level0_stop_writes_trigger",
+       false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -193,6 +196,10 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetDBOption(trimRocksDBPrefix(k), v);
   };
+  auto set_cf_option_cb = [](Server* srv,  const std::string &k, const std::string& v)->Status {
+    if (!srv) return Status::OK();  // srv is nullptr when load config from file
+    return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+  };
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
@@ -211,6 +218,9 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"slaveof", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (v.empty()) {
+          return Status::OK();
+        }
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
@@ -224,6 +234,8 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"profiling-sample-commands", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+
         std::vector<std::string> cmds;
         Util::Split(v, ",", &cmds);
         profiling_sample_all_commands = false;
@@ -232,7 +244,7 @@ void Config::initFieldCallback() {
           if (cmd == "*") {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
-          } else if (Redis::IsCommandExists(cmd)) {
+          } else if (srv->IsCommandExists(cmd)) {
             profiling_sample_commands.insert(cmd);
           }
         }
@@ -263,18 +275,6 @@ void Config::initFieldCallback() {
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
                                                     std::to_string(RocksDB.write_buffer_size * MiB));
       }},
-      {"rocksdb.max_write_buffer_number", [](Server* srv, const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-      }},
-      {"rocksdb.level0_slowdown_writes_trigger", [this](Server* srv,
-                                                        const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        RocksDB.level0_stop_writes_trigger = RocksDB.level0_slowdown_writes_trigger * 2;
-        srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-        return srv->storage_->SetColumnFamilyOption("level0_stop_writes_trigger",
-                                                    std::to_string(RocksDB.level0_stop_writes_trigger));
-      }},
       {"rocksdb.disable_auto_compactions", [](Server* srv,
                                                         const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
@@ -292,6 +292,10 @@ void Config::initFieldCallback() {
       {"rocksdb.max_background_compactions", set_db_option_cb},
       {"rocksdb.max_background_flushes", set_db_option_cb},
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
+
+      {"rocksdb.max_write_buffer_number", set_cf_option_cb},
+      {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
+      {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
       {"semi-sync-enable", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!ReplSemiSyncMaster::GetInstance().InitDone()) return Status::OK();
@@ -369,9 +373,6 @@ Status Config::parseConfigFromString(std::string input) {
     }
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
-    if (field->callback) {
-      return field->callback(nullptr, kv[0], kv[1]);
-    }
   }
   if (!strncasecmp(kv[0].data(), "namespace.", 10)) {
     tokens[kv[1]] = kv[0].substr(10, kv[0].size()-10);
@@ -395,23 +396,36 @@ Status Config::finish() {
   return Status::OK();
 }
 
-Status Config::Load(std::string path) {
-  path_ = std::move(path);
-  std::ifstream file(path_);
-  if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+Status Config::Load(const std::string &path) {
+  if (!path.empty()) {
+    path_ = path;
+    std::ifstream file(path_);
+    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
 
-  std::string line;
-  int line_num = 1;
-  while (!file.eof()) {
-    std::getline(file, line);
-    Status s = parseConfigFromString(line);
-    if (!s.IsOK()) {
-      file.close();
-      return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+    std::string line;
+    int line_num = 1;
+    while (!file.eof()) {
+      std::getline(file, line);
+      Status s = parseConfigFromString(line);
+      if (!s.IsOK()) {
+        file.close();
+        return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+      }
+      line_num++;
     }
-    line_num++;
+    file.close();
+  } else {
+    std::cout << "Warn: no config file specified, using the default config. "
+                    "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
-  file.close();
+  for (const auto &iter : fields_) {
+    if (iter.second->callback) {
+      auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
+      if (!s.IsOK()) {
+        return Status(Status::NotOK, s.Msg()+" in key '"+iter.first+"'");
+      }
+    }
+  }
   return finish();
 }
 
@@ -445,6 +459,9 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 }
 
 Status Config::Rewrite() {
+  if (path_.empty()) {
+    return Status(Status::NotOK, "the server is running without a config file");
+  }
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {

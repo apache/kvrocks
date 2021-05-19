@@ -30,7 +30,7 @@ const char *kDefaultConfPath = "../kvrocks.conf";
 std::function<void()> hup_handler;
 
 struct Options {
-  std::string conf_file = kDefaultConfPath;
+  std::string conf_file;
   bool show_usage = false;
 };
 

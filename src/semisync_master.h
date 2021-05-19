@@ -83,7 +83,7 @@ class ReplSemiSyncMaster {
   int DisableMaster();
   void AddSlave(FeedSlaveThread* slave_thread_ptr);
   void RemoveSlave(FeedSlaveThread* slave_thread_ptr);
-  int CommitTrx(uint64_t trx_wait_binlog_pos);
+  bool CommitTrx(uint64_t trx_wait_binlog_pos);
   void HandleAck(int server_id, uint64_t log_file_pos);
   bool SetWaitSlaveCount(uint new_value);
   uint64_t GetMaxHandleSequence() {

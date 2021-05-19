@@ -1,3 +1,31 @@
+# Version 2.0.1
+
+New features
+  - Support COMMAND command (#251)
+  - Support to purge backups on fullsync to reduce disk space usage (#245)
+
+Bugfixes
+  - Fix uninitialized Rocksdb.level0_stop_writes_trigger (#236)
+  - Fix condition race for ReclaimOldDBPtr (#246)
+  - Fix data race for accessing database in some commands (#253) (#261)
+    In spop, zremrangebylex, zremrangebyscore commands, the lock guard
+    for accessing the database may not work actually.
+  - Fix returning wrong string range in GETRANGE command (#254)
+  - Fix skipping wrong CURRENT file when full synchronization (#260)
+    Resuming broken transfer based files may be not available if replicas
+    skip transfered wrong CURRENT file of RocksDB.
+
+Improvements
+  - Replicas can execute publish command (#238)
+  - Optimizations for avoiding unnecessary data copy (#239) (#247)
+  - Allow to run the kvrocks without assigning the config file (#264)
+
+Dependencies
+  - Upgrade the jemalloc version to the special commit (#265)
+    To be able to compile on macOS, upgrade jemalloc to the production
+    test commit which mentioned in jemalloc/jemalloc#2060.
+
+
 # Version 2.0.0
 
 New features
@@ -23,7 +51,7 @@ Cluster
 Bugfixes
   - Fix kvrocks can't auto resume after no space error (#229)
 
-Dependences
+Dependencies
   - Upgrade rocksdb to latest tag v6.19.3 (#226)
 
 

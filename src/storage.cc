@@ -22,6 +22,7 @@
 #include "event_listener.h"
 #include "compact_filter.h"
 #include "table_properties_collector.h"
+#include "semisync_master.h"
 
 namespace Engine {
 
@@ -34,6 +35,11 @@ const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
+void StorageHandler::after_commit(Observable subject, ObserverEvent const& event) {
+  const AfterCommitEvent* ev = dynamic_cast<const AfterCommitEvent*>(&event);
+  ReplSemiSyncMaster::GetInstance().CommitTrx(ev->sequenceNumber);
+}
+
 Storage::Storage(Config *config)
     : backup_env_(rocksdb::Env::Default()),
       config_(config),
@@ -43,6 +49,11 @@ Storage::Storage(Config *config)
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
   backup_creating_time_ = std::time(nullptr);
+
+  ReplSemiSyncMaster& instance = ReplSemiSyncMaster::GetInstance();
+  instance.Initalize(config);
+  // RegisterObserver(*handler);
+  RegisterObserver(handler.get());
 }
 
 Storage::~Storage() {
@@ -421,6 +432,15 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   auto s = db_->Write(options, updates);
   if (!s.ok()) return s;
 
+  if (updates->Count() != 0) {
+  std::string t = updates->Data();
+  uint64_t seq;
+  memcpy(&seq, t.data(), sizeof(seq));
+  AfterCommitEvent ev;
+  ev.sequenceNumber = seq;
+  NotifyObservers(ev);
+  }
+
   return s;
 }
 
@@ -429,7 +449,17 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
                                 const rocksdb::Slice &key) {
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
-  return db_->Write(options, &batch);
+  auto status = db_->Write(options, &batch);
+  if (batch.Count() != 0) {
+  std::string t = batch.Data();
+  uint64_t seq;
+  memcpy(&seq, t.data(), sizeof(seq));
+  AfterCommitEvent ev;
+  ev.sequenceNumber = seq;
+  NotifyObservers(ev);
+  }
+
+  return status;
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {

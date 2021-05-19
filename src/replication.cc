@@ -16,6 +16,50 @@
 #include "util.h"
 #include "status.h"
 #include "server.h"
+#include "semisync_master.h"
+
+thread_local bool REP_SEMI_SYNC_SLAVE = false;
+
+const std::unique_ptr<FeedSlaveHandler> FeedSlaveThread::handler_
+  = std::unique_ptr<FeedSlaveHandler>(new FeedSlaveHandler());
+
+const std::unique_ptr<FeedStatusHandler> FeedSlaveThread::handler2_
+  = std::unique_ptr<FeedStatusHandler>(new FeedStatusHandler());
+
+void FeedSlaveHandler::transmit_start(Observable subject, ObserverEvent const& event) {
+  if (REP_SEMI_SYNC_SLAVE) return;
+
+  REP_SEMI_SYNC_SLAVE = true;
+  const TransmitStartEvent* ev = dynamic_cast<const TransmitStartEvent*>(&event);
+
+  ReplSemiSyncMaster& repl_semisync = ReplSemiSyncMaster::GetInstance();
+  repl_semisync.AddSlave(ev->thread_ptr);
+
+  repl_semisync.HandleAck(ev->conn_fd, ev->thread_ptr->GetCurrentReplSeq());
+}
+
+void FeedSlaveHandler::before_send(Observable subject, ObserverEvent const& event) {}
+
+void FeedSlaveHandler::after_send(Observable subject, ObserverEvent const& event) {
+  const AfterSendEvent* ev = dynamic_cast<const AfterSendEvent*>(&event);
+  ReplSemiSyncMaster::GetInstance().HandleAck(ev->conn_fd, ev->sequenceNumber);
+}
+
+void FeedSlaveHandler::transmit_end(Observable subject, ObserverEvent const& event) {
+  if (!REP_SEMI_SYNC_SLAVE) return;
+
+  REP_SEMI_SYNC_SLAVE = false;
+  ReplSemiSyncMaster& repl_semisync = ReplSemiSyncMaster::GetInstance();
+  const TransmitEndEvent* ev = dynamic_cast<const TransmitEndEvent*>(&event);
+  repl_semisync.RemoveSlave(ev->thread_ptr);
+}
+
+void FeedStatusHandler::sync_status_change(Observable subject, ObserverEvent const& event) {
+  const SyncStatusChangeEvent* ev = dynamic_cast<const SyncStatusChangeEvent*>(&event);
+  ReplSemiSyncMaster& repl_semisync = ReplSemiSyncMaster::GetInstance();
+  repl_semisync.HandleAck(ev->conn_fd, ev->lastSequenceNumberEnd);
+}
+
 
 FeedSlaveThread::~FeedSlaveThread() {
   delete conn_;
@@ -32,6 +76,12 @@ Status FeedSlaveThread::Start() {
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
+
+      TransmitStartEvent ev;
+      ev.conn_fd = conn_->GetFD();
+      ev.thread_ptr = this;
+      NotifyObservers(ev);
+
       // force feed slave thread was scheduled after making the fd blocking,
       // and write "+OK\r\n" response to psync command
       usleep(10000);
@@ -47,6 +97,21 @@ Status FeedSlaveThread::Start() {
 void FeedSlaveThread::Stop() {
   stop_ = true;
   LOG(WARNING) << "Slave thread was terminated, would stop feeding the slave: " << conn_->GetAddr();
+
+  TransmitEndEvent ev;
+  ev.thread_ptr = this;
+  NotifyObservers(ev);
+}
+
+void FeedSlaveThread::Pause(const uint32_t& micro_time_out) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  cv_.wait_for(lock, std::chrono::microseconds(micro_time_out));
+}
+
+void FeedSlaveThread::Wakeup() {
+  mutex_.lock();
+  cv_.notify_all();
+  mutex_.unlock();
 }
 
 void FeedSlaveThread::Join() {
@@ -77,7 +142,7 @@ void FeedSlaveThread::loop() {
       if (!srv_->storage_->WALHasNewData(next_repl_seq_)
           || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
         iter_ = nullptr;
-        usleep(yield_milliseconds);
+        Pause(yield_milliseconds);
         checkLivenessIfNeed();
         continue;
       }
@@ -108,8 +173,15 @@ void FeedSlaveThread::loop() {
       batch_list.clear();
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
+
+    // notify
+    AfterSendEvent ev;
+    ev.conn_fd = conn_->GetFD();
+    ev.sequenceNumber = batch.sequence;
+    NotifyObservers(ev);
+
     while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
-      usleep(yield_milliseconds);
+      Pause(yield_milliseconds);
       checkLivenessIfNeed();
     }
     iter_->Next();

@@ -83,6 +83,8 @@ struct Config{
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
+  std::string rename_command_;
+  std::string rename_command_new_name_;
 
   // profiling
   int profiling_sample_ratio = 0;

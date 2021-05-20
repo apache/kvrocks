@@ -99,6 +99,7 @@ Config::Config() {
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
+      {"rename-command", true, new StringField(&rename_command_, "")},
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
@@ -230,8 +231,6 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"profiling-sample-commands", [this](Server* srv, const std::string &k, const std::string& v)->Status {
-        if (!srv) return Status::OK();
-
         std::vector<std::string> cmds;
         Util::Split(v, ",", &cmds);
         profiling_sample_all_commands = false;
@@ -240,7 +239,8 @@ void Config::initFieldCallback() {
           if (cmd == "*") {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
-          } else if (srv->IsCommandExists(cmd)) {
+          } else if (Redis::IsCommandExists(cmd)) {
+            // profiling_sample_commands use command's original name, regardless of rename-command config's new name
             profiling_sample_commands.insert(cmd);
           }
         }
@@ -264,6 +264,27 @@ void Config::initFieldCallback() {
       {"profiling-sample-record-max-len", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
+        return Status::OK();
+      }},
+      {"rename-command", [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+        if (v.empty()) {
+          return Status::OK();
+        }
+        std::vector<std::string> args;
+        Util::Split(v, " \t", &args);
+        if (args.size() != 2 || args[0] == args[1]) {
+          return Status(Status::NotOK, "invalid rename-command format");
+        }
+        if (!Redis::IsCommandExists(args[0])) {
+          return Status(Status::NotOK, "No such command in rename-command");
+        }
+        rename_command_ = Util::ToLower(args[0]);
+        if (args[1] != "\"\"") {
+          if (Redis::IsCommandExists(args[1])) {
+            return Status(Status::NotOK, "Target command name already exists");
+          }
+          rename_command_new_name_ = Util::ToLower(args[1]);
+        }
         return Status::OK();
       }},
       {"rocksdb.write_buffer_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {

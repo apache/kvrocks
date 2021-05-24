@@ -273,7 +273,7 @@ void Config::initFieldCallback() {
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         if (args.size() != 2 || args[0] == args[1]) {
-          return Status(Status::NotOK, "invalid rename-command format");
+          return Status(Status::NotOK, "Invalid rename-command format");
         }
         if (!Redis::IsCommandExists(args[0])) {
           return Status(Status::NotOK, "No such command in rename-command");

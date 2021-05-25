@@ -4230,7 +4230,10 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("_db_name", 1, false, 0, 0, 0, CommandDBName),
 };
 
+// Command table after rename-command directive
 std::map<std::string, CommandAttributes *> commands;
+// Original Command table before rename-command directive
+std::map<std::string, CommandAttributes *> original_commands;
 
 int GetCommandNum() {
   return sizeof(redisCommandTable) / sizeof(struct CommandAttributes);
@@ -4240,10 +4243,15 @@ std::map<std::string, CommandAttributes *> *GetCommands() {
   return &commands;
 }
 
+std::map<std::string, CommandAttributes *> *GetOriginalCommands() {
+  return &original_commands;
+}
+
 void PopulateCommands() {
   for (int i = 0; i < GetCommandNum(); i++) {
-    commands[redisCommandTable[i].name] = &redisCommandTable[i];
+    original_commands[redisCommandTable[i].name] = &redisCommandTable[i];
   }
+  commands = original_commands;
 }
 
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
@@ -4261,8 +4269,8 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes) {
 }
 
 void GetAllCommandsInfo(std::string *info) {
-  info->append(Redis::MultiLen(commands.size()));
-  for (const auto &iter : commands) {
+  info->append(Redis::MultiLen(original_commands.size()));
+  for (const auto &iter : original_commands) {
     auto command_attribute = iter.second;
     auto command_info = GetCommandInfo(command_attribute);
     info->append(command_info);
@@ -4272,8 +4280,8 @@ void GetAllCommandsInfo(std::string *info) {
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
   info->append(Redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
-    auto cmd_iter = commands.find(Util::ToLower(cmd_name));
-    if (cmd_iter == commands.end()) {
+    auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
+    if (cmd_iter == original_commands.end()) {
       info->append(Redis::NilString());
     } else {
       auto command_attribute = cmd_iter->second;
@@ -4284,8 +4292,8 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 }
 
 Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
-  auto cmd_iter = commands.find(Util::ToLower(cmd_name));
-  if (cmd_iter == commands.end()) {
+  auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
+  if (cmd_iter == original_commands.end()) {
     return Status(Status::RedisUnknownCmd, "Invalid command specified");
   }
   auto command_attribute = cmd_iter->second;
@@ -4305,7 +4313,7 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
 }
 
 bool IsCommandExists(const std::string &name) {
-  return commands.find(Util::ToLower(name)) != commands.end();
+  return original_commands.find(Util::ToLower(name)) != original_commands.end();
 }
 
 }  // namespace Redis

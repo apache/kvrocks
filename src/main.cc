@@ -275,9 +275,6 @@ int main(int argc, char* argv[]) {
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts.show_usage) usage(argv[0]);
 
-  /* Command table -- we initialize it here as it is part of the
-   * initial configuration, since command names may be changed via
-   * redis.conf using the rename-command directive. */
   Redis::PopulateCommands();
 
   Config config;

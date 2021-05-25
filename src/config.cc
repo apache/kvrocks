@@ -176,6 +176,27 @@ void Config::initFieldValidator() {
         compaction_checker_range.Stop = stop;
         return Status::OK();
       }},
+      {"rename-command", [](const std::string &k, const std::string &v) -> Status {
+        std::vector<std::string> args;
+        Util::Split(v, " \t", &args);
+        if (args.size() != 2 || args[0] == args[1]) {
+          return Status(Status::NotOK, "Invalid rename-command format");
+        }
+        auto commands = Redis::GetCommands();
+        auto cmd_iter = commands->find(Util::ToLower(args[0]));
+        if (cmd_iter == commands->end()) {
+          return Status(Status::NotOK, "No such command in rename-command");
+        }
+        if (args[1] != "\"\"") {
+          auto new_command_name = Util::ToLower(args[1]);
+          if (commands->find(new_command_name) != commands->end()) {
+            return Status(Status::NotOK, "Target command name already exists");
+          }
+          (*commands)[new_command_name] = cmd_iter->second;
+        }
+        commands->erase(cmd_iter);
+        return Status::OK();
+      }},
   };
   for (const auto& iter : validators) {
     auto field_iter = fields_.find(iter.first);
@@ -240,7 +261,7 @@ void Config::initFieldCallback() {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
           } else if (Redis::IsCommandExists(cmd)) {
-            // profiling_sample_commands use command's original name, regardless of rename-command config's new name
+            // profiling_sample_commands use command's original name, regardless of rename-command directive
             profiling_sample_commands.insert(cmd);
           }
         }
@@ -264,27 +285,6 @@ void Config::initFieldCallback() {
       {"profiling-sample-record-max-len", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
-        return Status::OK();
-      }},
-      {"rename-command", [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-        if (v.empty()) {
-          return Status::OK();
-        }
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
-        if (args.size() != 2 || args[0] == args[1]) {
-          return Status(Status::NotOK, "Invalid rename-command format");
-        }
-        if (!Redis::IsCommandExists(args[0])) {
-          return Status(Status::NotOK, "No such command in rename-command");
-        }
-        rename_command_ = Util::ToLower(args[0]);
-        if (args[1] != "\"\"") {
-          if (Redis::IsCommandExists(args[1])) {
-            return Status(Status::NotOK, "Target command name already exists");
-          }
-          rename_command_new_name_ = Util::ToLower(args[1]);
-        }
         return Status::OK();
       }},
       {"rocksdb.write_buffer_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {

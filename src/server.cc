@@ -22,9 +22,9 @@ std::atomic<int>Server::unix_time_ = {0};
 
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
-  populateCommands();
   // init commands stats here to prevent concurrent insert, and cause core
-  for (const auto &iter : commands_) {
+  auto commands = Redis::GetOriginalCommands();
+  for (const auto &iter : *commands) {
     stats_.commands_stats[iter.first].calls = 0;
     stats_.commands_stats[iter.first].latency = 0;
   }
@@ -47,9 +47,6 @@ Server::~Server() {
   }
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
-  }
-  for (const auto &iter : commands_) {
-    delete iter.second;
   }
 }
 
@@ -1140,26 +1137,15 @@ ReplState Server::GetReplicationState() {
 
 Status Server::LookupAndCreateCommand(const std::string &cmd_name,
                                       std::unique_ptr<Redis::Commander> *cmd) {
+  auto commands = Redis::GetCommands();
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
-  auto cmd_iter = commands_.find(Util::ToLower(cmd_name));
-  if (cmd_iter == commands_.end()) {
+  auto cmd_iter = commands->find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands->end()) {
     return Status(Status::RedisUnknownCmd);
   }
   auto redisCmd = cmd_iter->second;
   *cmd = redisCmd->factory();
   (*cmd)->SetAttributes(redisCmd);
   return Status::OK();
-}
-
-void Server::populateCommands() {
-  auto original_commands = Redis::GetCommands();
-  commands_ = *original_commands;
-  if (config_->rename_command_.empty()) return;
-  auto cmd_iter = commands_.find(config_->rename_command_);
-  if (cmd_iter == commands_.end()) return;
-  if (!config_->rename_command_new_name_.empty()) {
-    commands_[config_->rename_command_new_name_] = cmd_iter->second;
-  }
-  commands_.erase(cmd_iter);
 }
 

@@ -50,7 +50,6 @@ class Server {
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
-  void populateCommands();
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
 
 
@@ -137,7 +136,6 @@ class Server {
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
-  std::map<std::string, Redis::CommandAttributes*> commands_;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};

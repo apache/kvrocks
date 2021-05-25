@@ -59,6 +59,7 @@ struct CommandAttributes {
 
 int GetCommandNum();
 std::map<std::string, CommandAttributes *> *GetCommands();
+std::map<std::string, CommandAttributes *> *GetOriginalCommands();
 void PopulateCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);

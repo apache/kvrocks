@@ -1012,20 +1012,6 @@ class CommandHGet : public Commander {
   }
 };
 
-class CommandHSet : public Commander {
- public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = hash_db.Set(args_[1], args_[2], args_[3], &ret);
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
-    }
-    *output = Redis::Integer(ret);
-    return Status::OK();
-  }
-};
-
 class CommandHSetNX : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1193,7 +1179,11 @@ class CommandHMSet : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::SimpleString("OK");
+    if (GetAttributes()->name == "hset") {
+      *output = Redis::Integer(ret);
+    } else {
+      *output = Redis::SimpleString("OK");
+    }
     return Status::OK();
   }
 };
@@ -4132,7 +4122,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hget", 3, false, 1, 1, 1, CommandHGet),
     ADD_CMD("hincrby", 4, true, 1, 1, 1, CommandHIncrBy),
     ADD_CMD("hincrbyfloat", 4, true, 1, 1, 1, CommandHIncrByFloat),
-    ADD_CMD("hset", 4, true, 1, 1, 1, CommandHSet),
+    ADD_CMD("hset", -4, true, 1, 1, 1, CommandHMSet),
     ADD_CMD("hsetnx", 4, true, 1, 1, 1, CommandHSetNX),
     ADD_CMD("hdel", -3, true, 1, 1, 1, CommandHDel),
     ADD_CMD("hstrlen", 3, false, 1, 1, 1, CommandHStrlen),

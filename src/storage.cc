@@ -777,11 +777,11 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
 
   std::unique_ptr<rocksdb::SequentialFile> src_file;
   const rocksdb::EnvOptions soptions;
-  s = storage->GetDB()->GetEnv()->NewSequentialFile(file_path, &src_file, soptions);
+  s = storage->env_->NewSequentialFile(file_path, &src_file, soptions);
   if (!s.ok()) return false;
 
   uint64_t size;
-  s = storage->GetDB()->GetEnv()->GetFileSize(file_path, &size);
+  s = storage->env_->GetFileSize(file_path, &size);
   if (!s.ok()) return false;
   std::unique_ptr<rocksdb::SequentialFileWrapper> src_reader;
   src_reader.reset(new rocksdb::SequentialFileWrapper(src_file.get()));

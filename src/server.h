@@ -155,7 +155,8 @@ class Server {
   std::list<FeedSlaveThread *> slave_threads_;
   std::atomic<int> fetch_file_threads_num_;
 
-  std::mutex db_mu_;
+  // Some jobs to operate DB should be unique
+  std::mutex db_job_mu_;
   bool db_compacting_ = false;
   bool db_bgsave_ = false;
   std::map<std::string, DBScanInfo> db_scan_infos_;

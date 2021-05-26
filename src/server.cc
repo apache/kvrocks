@@ -898,13 +898,11 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   if (is_loading_) {
     return Status(Status::NotOK, "loading in-progress");
   }
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   if (db_compacting_) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "compact in-progress");
   }
   db_compacting_ = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
@@ -914,9 +912,8 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     if (!begin_key.empty()) begin = new Slice(begin_key);
     if (!end_key.empty()) end = new Slice(end_key);
     svr->storage_->Compact(begin, end);
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_compacting_ = false;
-    svr->db_mu_.unlock();
     delete begin;
     delete end;
   };
@@ -924,22 +921,19 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 }
 
 Status Server::AsyncBgsaveDB() {
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   if (db_bgsave_) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "bgsave in-progress");
   }
   db_bgsave_ = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
     svr->storage_->CreateBackup();
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_bgsave_ = false;
-    svr->db_mu_.unlock();
   };
   return task_runner_.Publish(task);
 }
@@ -955,17 +949,15 @@ Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backu
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   auto iter = db_scan_infos_.find(ns);
   if (iter == db_scan_infos_.end()) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
   if (db_scan_infos_[ns].is_scanning) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "scanning the db now");
   }
   db_scan_infos_[ns].is_scanning = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
@@ -975,11 +967,10 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_scan_infos_[ns].key_num_stats = stats;
     time(&svr->db_scan_infos_[ns].last_scan_time);
     svr->db_scan_infos_[ns].is_scanning = false;
-    svr->db_mu_.unlock();
   };
   return task_runner_.Publish(task);
 }

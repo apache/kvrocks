@@ -3647,7 +3647,7 @@ class CommandCommand : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      svr->GetAllCommandsInfo(output);
+      GetAllCommandsInfo(output);
     } else {
       std::string sub_command = Util::ToLower(args_[1]);
       if ((sub_command == "count" && args_.size() != 2) ||
@@ -3659,10 +3659,10 @@ class CommandCommand : public Commander {
       if (sub_command == "count") {
         *output = Redis::Integer(GetCommandNum());
       } else if (sub_command == "info") {
-        svr->GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
+        GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
         std::vector<int> keys_indexes;
-        auto s = svr->GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
+        auto s = GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
         if (!s.IsOK()) return s;
         if (keys_indexes.size() == 0) {
           *output = Redis::Error("Invalid arguments specified for command");
@@ -4230,12 +4230,90 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("_db_name", 1, false, 0, 0, 0, CommandDBName),
 };
 
-CommandAttributes * GetCommandTable() {
-  return redisCommandTable;
-}
+// Command table after rename-command directive
+std::map<std::string, CommandAttributes *> commands;
+// Original Command table before rename-command directive
+std::map<std::string, CommandAttributes *> original_commands;
 
 int GetCommandNum() {
-  return sizeof(redisCommandTable)/sizeof(struct CommandAttributes);
+  return sizeof(redisCommandTable) / sizeof(struct CommandAttributes);
+}
+
+std::map<std::string, CommandAttributes *> *GetCommands() {
+  return &commands;
+}
+
+std::map<std::string, CommandAttributes *> *GetOriginalCommands() {
+  return &original_commands;
+}
+
+void PopulateCommands() {
+  for (int i = 0; i < GetCommandNum(); i++) {
+    original_commands[redisCommandTable[i].name] = &redisCommandTable[i];
+  }
+  commands = original_commands;
+}
+
+std::string GetCommandInfo(const CommandAttributes *command_attributes) {
+  std::string command, command_flags;
+  command.append(Redis::MultiLen(6));
+  command.append(Redis::BulkString(command_attributes->name));
+  command.append(Redis::Integer(command_attributes->arity));
+  command_flags.append(Redis::MultiLen(1));
+  command_flags.append(Redis::BulkString(command_attributes->is_write ? "write" : "readonly"));
+  command.append(command_flags);
+  command.append(Redis::Integer(command_attributes->first_key));
+  command.append(Redis::Integer(command_attributes->last_key));
+  command.append(Redis::Integer(command_attributes->key_step));
+  return command;
+}
+
+void GetAllCommandsInfo(std::string *info) {
+  info->append(Redis::MultiLen(original_commands.size()));
+  for (const auto &iter : original_commands) {
+    auto command_attribute = iter.second;
+    auto command_info = GetCommandInfo(command_attribute);
+    info->append(command_info);
+  }
+}
+
+void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
+  info->append(Redis::MultiLen(cmd_names.size()));
+  for (const auto &cmd_name : cmd_names) {
+    auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
+    if (cmd_iter == original_commands.end()) {
+      info->append(Redis::NilString());
+    } else {
+      auto command_attribute = cmd_iter->second;
+      auto command_info = GetCommandInfo(command_attribute);
+      info->append(command_info);
+    }
+  }
+}
+
+Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
+  auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
+  if (cmd_iter == original_commands.end()) {
+    return Status(Status::RedisUnknownCmd, "Invalid command specified");
+  }
+  auto command_attribute = cmd_iter->second;
+  if (command_attribute->first_key == 0) {
+    return Status(Status::NotOK, "The command has no key arguments");
+  }
+  if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
+    return Status(Status::NotOK, "Invalid number of arguments specified for command");
+  }
+  auto last = command_attribute->last_key;
+  if (last < 0) last = argc + last;
+
+  for (int j = command_attribute->first_key; j <= last; j += command_attribute->key_step) {
+    keys_indexes->emplace_back(j);
+  }
+  return Status::OK();
+}
+
+bool IsCommandExists(const std::string &name) {
+  return original_commands.find(Util::ToLower(name)) != original_commands.end();
 }
 
 }  // namespace Redis

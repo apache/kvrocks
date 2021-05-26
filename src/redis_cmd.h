@@ -58,5 +58,12 @@ struct CommandAttributes {
 };
 
 int GetCommandNum();
-CommandAttributes *GetCommandTable();
+std::map<std::string, CommandAttributes *> *GetCommands();
+std::map<std::string, CommandAttributes *> *GetOriginalCommands();
+void PopulateCommands();
+void GetAllCommandsInfo(std::string *info);
+void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
+std::string GetCommandInfo(const CommandAttributes *command_attributes);
+Status GetKeysFromCommand(const std::string &name, int argc, std::vector<int> *keys_indexes);
+bool IsCommandExists(const std::string &name);
 }  // namespace Redis

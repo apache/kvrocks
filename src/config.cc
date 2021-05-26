@@ -179,7 +179,7 @@ void Config::initFieldValidator() {
       {"rename-command", [](const std::string &k, const std::string &v) -> Status {
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
-        if (args.size() != 2 || args[0] == args[1]) {
+        if (args.size() != 2) {
           return Status(Status::NotOK, "Invalid rename-command format");
         }
         auto commands = Redis::GetCommands();

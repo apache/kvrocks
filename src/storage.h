@@ -128,7 +128,7 @@ class Storage {
   std::mutex backup_mu_;
   time_t backup_creating_time_;
   rocksdb::BackupEngine *backup_ = nullptr;
-  rocksdb::Env *backup_env_;
+  rocksdb::Env *env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter_;
   ReplDataManager::CheckpointInfo checkpoint_info_;

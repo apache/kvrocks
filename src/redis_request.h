@@ -36,7 +36,6 @@ class Request {
   std::vector<CommandTokens> commands_;
 
   Server *svr_;
-  bool inCommandWhitelist(const std::string &command);
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
 };

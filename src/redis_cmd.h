@@ -23,6 +23,17 @@ namespace Redis {
 class Connection;
 struct CommandAttributes;
 
+enum CommandFlags {
+  kCmdWrite         = (1ULL<<0),  // "write" flag
+  kCmdReadOnly      = (1ULL<<1),  // "read-only" flag
+  kCmdReplication   = (1ULL<<2),  // "replication" flag
+  kCmdPubSub        = (1ULL<<3),  // "pub-sub" flag
+  kCmdScript        = (1ULL<<4),  // "script" flag
+  kCmdLoading       = (1ULL<<5),  // "ok-loading" flag
+  kCmdTransaction   = (1ULL<<6),  // "transaction" flag
+  kCmdExclusive     = (1ULL<<7),  // "exclusive" flag
+};
+
 class Commander {
  public:
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
@@ -50,16 +61,22 @@ using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 struct CommandAttributes {
   std::string name;
   int arity;
-  bool is_write;
+  std::string description;
+  uint64_t flags;
   int first_key;
   int last_key;
   int key_step;
   CommanderFactory factory;
+
+  bool is_write() const { return (flags & kCmdWrite) != 0; }
+  bool is_ok_loading() const { return (flags & kCmdLoading) != 0; }
+  bool is_exclusive() const { return (flags & kCmdExclusive) != 0; }
 };
 
 int GetCommandNum();
 std::map<std::string, CommandAttributes *> *GetCommands();
 std::map<std::string, CommandAttributes *> *GetOriginalCommands();
+void InitCommandsTable();
 void PopulateCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);

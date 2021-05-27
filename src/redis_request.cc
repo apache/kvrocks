@@ -99,14 +99,6 @@ Status Request::Tokenize(evbuffer *input) {
   }
 }
 
-bool Request::inCommandWhitelist(const std::string &command) {
-  std::vector<std::string> whitelist = {"auth"};
-  for (const auto &allow_command : whitelist) {
-    if (allow_command == command) return true;
-  }
-  return false;
-}
-
 bool Request::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;
@@ -170,7 +162,7 @@ void Request::ExecuteCommands(Connection *conn) {
     }
     const auto attributes = conn->current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
-    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
+    if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;
     }
@@ -187,7 +179,7 @@ void Request::ExecuteCommands(Connection *conn) {
       conn->Reply(Redis::Error(s.Msg()));
       continue;
     }
-    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write) {
+    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
       conn->Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
@@ -207,7 +199,7 @@ void Request::ExecuteCommands(Connection *conn) {
     // Need to check again, because we set loading firstly and then check
     // excuting_command_num_, there may be some commands when loading is 1
     // and excuting_command_num_ is 0, these commands may access storage DB.
-    if (svr_->IsLoading() && !inCommandWhitelist(cmd_name)) {
+    if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
       svr_->DecrExecutingCommandNum();
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;

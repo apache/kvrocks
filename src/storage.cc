@@ -224,7 +224,6 @@ Status Storage::OpenForReadOnly() {
   return Open(true);
 }
 
-// Only called in task runner, so we needn't use mutex to access db
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(backup_mu_);

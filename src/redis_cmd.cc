@@ -4123,7 +4123,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hget", 3, "read-only", 1, 1, 1, CommandHGet),
     ADD_CMD("hincrby", 4, "write", 1, 1, 1, CommandHIncrBy),
     ADD_CMD("hincrbyfloat", 4, "write", 1, 1, 1, CommandHIncrByFloat),
-    ADD_CMD("hset", 4, "write", 1, 1, 1, CommandHMSet),
+    ADD_CMD("hset", -4, "write", 1, 1, 1, CommandHMSet),
     ADD_CMD("hsetnx", 4, "write", 1, 1, 1, CommandHSetNX),
     ADD_CMD("hdel", -3, "write", 1, 1, 1, CommandHDel),
     ADD_CMD("hstrlen", 3, "read-only", 1, 1, 1, CommandHStrlen),

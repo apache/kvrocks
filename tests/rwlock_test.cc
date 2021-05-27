@@ -69,3 +69,69 @@ TEST(ReadWriteLock, unique_ptr_for_WriteLockGuard) {
   }
   ASSERT_EQ(100000000, val);
 }
+
+TEST(ReadWriteLock, ReadLockGuard_Concurrency) {
+  RWLock::ReadWriteLock rwlock;
+
+  std::time_t start = std::time(nullptr);
+  std::thread ths[5];
+  for(int i = 0; i < 5; i++) {
+    ths[i] = std::thread([&rwlock]() {
+      auto ptr = std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(rwlock));
+      sleep(1);
+    });
+  }
+
+  for (int i = 0; i < 5; i++) {
+    ths[i].join();
+  }
+
+  std::time_t end = std::time(nullptr);
+  ASSERT_LE(end-start, 2);
+}
+
+TEST(ReadWriteLock, WriteLockGuard_Exclusive) {
+  RWLock::ReadWriteLock rwlock;
+
+  std::time_t start = std::time(nullptr);
+  std::thread ths[5];
+  for(int i = 0; i < 5; i++) {
+    ths[i] = std::thread([&rwlock]() {
+      auto ptr = std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(rwlock));
+      sleep(1);
+    });
+  }
+
+  for (int i = 0; i < 5; i++) {
+    ths[i].join();
+  }
+
+  std::time_t end = std::time(nullptr);
+  ASSERT_GT(end-start, 4);
+}
+
+TEST(ReadWriteLock, WriteLockGurad_First) {
+  RWLock::ReadWriteLock rwlock;
+  int val = 0;
+
+  std::thread ths[6];
+  for(int i = 0; i < 6; i++) {
+    if ((i % 2) == 0) {
+      ths[i] = std::thread([&rwlock, &val]() {
+        auto ptr = std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(rwlock));
+        sleep(1);  // The second write lock thread will get right to process
+        val++;
+      });
+    } else {
+      ths[i] = std::thread([&rwlock, &val]() {
+        usleep(1000);  // To avoid it is the first to run, just sleep 100ms
+        auto ptr = std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(rwlock));
+        ASSERT_EQ(val, 3);
+      });
+    }
+  }
+
+  for (int i = 0; i < 6; i++) {
+    ths[i].join();
+  }
+}

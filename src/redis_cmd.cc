@@ -2702,7 +2702,8 @@ class CommandGeoRadius : public CommandGeoBase {
         } catch (const std::exception &e) {
           return Status(Status::RedisParseErr, "ERR count is not a valid int");
         }
-      } else if (attributes_->is_write() && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
+      } else if (attributes_->is_write()
+          && (Util::ToLower(args_[i]) == "store" || Util::ToLower(args_[i]) == "storedist")
           && i + 1 < args_.size()) {
         store_key_ = args_[i + 1];
         if (Util::ToLower(args_[i]) == "storedist") {

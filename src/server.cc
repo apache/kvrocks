@@ -671,10 +671,10 @@ void Server::GetReplicationSyncInfo(std::string *info) {
   std::ostringstream string_stream;
   bool semi_sync_enabled = repl_semisync.GetSemiSyncEnabled();
   string_stream << "# Sync\r\n";
-  string_stream << "type:" << (semi_sync_enabled && repl_semisync.is_on() ? "semi-sync" : "async") << "\r\n";
+  string_stream << "type:" << (semi_sync_enabled && repl_semisync.IsOn() ? "semi-sync" : "async") << "\r\n";
   if (semi_sync_enabled) {
     string_stream << "wait_for_slave_count:" <<
-      (repl_semisync.is_on() ? config_->semi_sync_wait_for_slave_count : 0) << "\r\n";
+      (repl_semisync.IsOn() ? config_->semi_sync_wait_for_slave_count : 0) << "\r\n";
   }
   *info = string_stream.str();
 }

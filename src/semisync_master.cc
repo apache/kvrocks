@@ -1,5 +1,6 @@
 #include "semisync_master.h"
 
+#define SEMISYNC_WAIT_TIMEOUT 10
 
 WaitingNodeManager::WaitingNodeManager() {}
 
@@ -10,7 +11,7 @@ WaitingNodeManager::~WaitingNodeManager() {
   waiting_node_list_.clear();
 }
 
-bool WaitingNodeManager::insert_waiting_node(uint64_t log_file_pos) {
+bool WaitingNodeManager::InsertWaitingNode(uint64_t log_file_pos) {
   WaitingNode *ins_node = new WaitingNode();
   ins_node->log_pos = log_file_pos;
 
@@ -29,7 +30,7 @@ bool WaitingNodeManager::insert_waiting_node(uint64_t log_file_pos) {
   if (is_insert) {
     waiting_node_list_.emplace(ins_node);
   } else {
-    LOG(WARNING) << "unknown error to write the same sequence data (" << log_file_pos << ")";
+    LOG(WARNING) << "[semisync] Unknown error to write the same sequence data (" << log_file_pos << ")";
     delete ins_node;
     return false;
   }
@@ -37,14 +38,13 @@ bool WaitingNodeManager::insert_waiting_node(uint64_t log_file_pos) {
   return true;
 }
 
-void WaitingNodeManager::clear_waiting_nodes(uint64_t ack_log_file_pos) {
+void WaitingNodeManager::ClearWaitingNodes(uint64_t ack_log_file_pos) {
   auto iter = waiting_node_list_.begin();
   while (iter != waiting_node_list_.end()) {
     auto& item = *iter;
     if (item->log_pos> ack_log_file_pos) break;
 
     if (item->waiters != 0) {
-      // LOG(WARNING) << "some data (" << item->log_pos_ << ") is still waiting for ack";
       iter++;
       continue;
     }
@@ -53,7 +53,7 @@ void WaitingNodeManager::clear_waiting_nodes(uint64_t ack_log_file_pos) {
 }
 
 // Return the first item whose sequence is greater then or equal to log_file_pos
-WaitingNode* WaitingNodeManager::find_waiting_node(uint64_t log_file_pos) {
+WaitingNode* WaitingNodeManager::FindWaitingNode(uint64_t log_file_pos) {
   auto iter = waiting_node_list_.begin();
   while (iter != waiting_node_list_.end()) {
     if ((*iter)->log_pos >= log_file_pos) return *iter;
@@ -66,7 +66,7 @@ WaitingNode* WaitingNodeManager::find_waiting_node(uint64_t log_file_pos) {
     return *waiting_node_list_.begin();
 }
 
-int WaitingNodeManager::signal_waiting_nodes_up_to(uint64_t log_file_pos) {
+int WaitingNodeManager::SignalWaitingNodesUpTo(uint64_t log_file_pos) {
   auto iter = waiting_node_list_.begin();
   int ret_num = 0;
   while (iter != waiting_node_list_.end()) {
@@ -80,7 +80,7 @@ int WaitingNodeManager::signal_waiting_nodes_up_to(uint64_t log_file_pos) {
   return ret_num;
 }
 
-int WaitingNodeManager::signal_waiting_nodes_all() {
+int WaitingNodeManager::SignalWaitingNodesAll() {
   auto iter = waiting_node_list_.begin();
   int ret_num = 0;
   while (iter != waiting_node_list_.end()) {
@@ -128,7 +128,6 @@ void AckContainer::RemoveAll(uint64_t log_file_pos) {
 
 const AckInfo* AckContainer::Insert(int server_id, uint64_t log_file_pos) {
   if (log_file_pos < greatest_return_ack_.log_pos) {
-    // LOG(ERROR) << "Received incorrect data sequence number from ack";
     return nullptr;
   }
 
@@ -192,7 +191,7 @@ int ReplSemiSyncMaster::EnableMaster() {
       node_manager_ = new WaitingNodeManager();
 
     if (node_manager_ != nullptr) {
-      set_semi_sync_enabled(true);
+      setSemiSyncEnabled(true);
     } else {
       result = -1;
     }
@@ -211,14 +210,14 @@ int ReplSemiSyncMaster::DisableMaster() {
   std::lock_guard<std::mutex> lock(LOCK_binlog_);
 
   if (GetSemiSyncEnabled()) {
-    switch_off();
+    switchOff();
 
     if (node_manager_) {
       delete node_manager_;
       node_manager_ = nullptr;
     }
 
-    set_semi_sync_enabled(false);
+    setSemiSyncEnabled(false);
     ack_container_.Clear();
   }
 
@@ -235,7 +234,7 @@ int ReplSemiSyncMaster::Initalize(Config* config) {
   config_ = config;
   bool set_result = SetWaitSlaveCount(config_->semi_sync_wait_for_slave_count);
   if (!set_result) {
-    LOG(ERROR) << "failed to initialize the semi sync master";
+    LOG(ERROR) << "[semisync] Failed to initialize the semi sync master";
   }
   if (config_->semi_sync_enable)
     result = EnableMaster();
@@ -248,7 +247,7 @@ int ReplSemiSyncMaster::Initalize(Config* config) {
 void ReplSemiSyncMaster::AddSlave(FeedSlaveThread* slave_thread_ptr) {
   std::lock_guard<std::mutex> lock(LOCK_binlog_);
   if (slave_thread_ptr == nullptr && slave_thread_ptr->GetConn() == nullptr) {
-    LOG(ERROR) << "failed to add slave as semi sync one";
+    LOG(ERROR) << "[semisync] Failed to add slave as semi sync one";
   }
   rpl_semi_sync_master_clients_++;
   slave_threads_.emplace_back(slave_thread_ptr);
@@ -258,13 +257,13 @@ void ReplSemiSyncMaster::RemoveSlave(FeedSlaveThread* slave_thread_ptr) {
   std::lock_guard<std::mutex> lock(LOCK_binlog_);
   rpl_semi_sync_master_clients_--;
   if (slave_thread_ptr == nullptr && slave_thread_ptr->GetConn() == nullptr) {
-    LOG(ERROR) << "failed to remove semi sync slave";
+    LOG(ERROR) << "[semisync] Failed to remove semi sync slave";
   }
   slave_threads_.remove(slave_thread_ptr);
-  if (!GetSemiSyncEnabled() || !is_on()) return;
+  if (!GetSemiSyncEnabled() || !IsOn()) return;
 
   if (rpl_semi_sync_master_clients_ == semi_sync_wait_for_slave_count_ - 1) {
-    switch_off();
+    switchOff();
   }
 }
 
@@ -272,44 +271,38 @@ bool ReplSemiSyncMaster::CommitTrx(uint64_t trx_wait_binlog_pos) {
   std::unique_lock<std::mutex> lock(LOCK_binlog_);
 
   if (!config_->semi_sync_test) {
-  auto slave_iter = slave_threads_.begin();
-  while (slave_iter != slave_threads_.end()) {
-    (*slave_iter)->Wakeup();
-    slave_iter++;
-  }
+    for (auto& slave_thread : slave_threads_) {
+      slave_thread->Wakeup();
+    }
   }
 
-  if (!GetSemiSyncEnabled() || !is_on()) {
-    // do something
-    return false;
-  }
+  if (!GetSemiSyncEnabled() || !IsOn()) return false;
 
   if (trx_wait_binlog_pos <= wait_file_pos_) {
-    // LOG(WARNING) << "Commit data sequence is less than response sequence";
     return false;
   }
 
-  bool insert_result = node_manager_->insert_waiting_node(trx_wait_binlog_pos);
+  bool insert_result = node_manager_->InsertWaitingNode(trx_wait_binlog_pos);
   if (!insert_result) {
-    LOG(ERROR) << "Failed to insert log sequence to wait list";
+    LOG(ERROR) << "[semisync] Failed to insert log sequence to wait list";
   }
-  auto trx_node = node_manager_->find_waiting_node(trx_wait_binlog_pos);
+  auto trx_node = node_manager_->FindWaitingNode(trx_wait_binlog_pos);
   if (trx_node == nullptr) {
-    LOG(ERROR) << "Data in wait list is lost";
+    LOG(ERROR) << "[semisync] Data in wait list is lost";
     return false;
   }
-  // auto s = node_manager_->cond.wait_for(lock, std::chrono::seconds(10));
+
   trx_node->waiters++;
-  auto s = trx_node->cond.wait_for(lock, std::chrono::seconds(10));
+  auto s = trx_node->cond.wait_for(lock, std::chrono::seconds(SEMISYNC_WAIT_TIMEOUT));
   trx_node->waiters--;
   if (std::cv_status::timeout == s) {
-    LOG(ERROR) << "Semi sync waits 10s, switch all the slaves to async";
-    switch_off();
+    LOG(ERROR) << "[semisync] Semi sync waits 10s, switch all the slaves to async";
+    switchOff();
   }
   if (max_handle_sequence_.load() < trx_wait_binlog_pos) max_handle_sequence_ = trx_wait_binlog_pos;
 
   if (trx_node->waiters == 0) {
-    node_manager_->clear_waiting_nodes(trx_wait_binlog_pos);
+    node_manager_->ClearWaitingNodes(trx_wait_binlog_pos);
   }
 
   return true;
@@ -328,23 +321,20 @@ void ReplSemiSyncMaster::HandleAck(int server_id, uint64_t log_file_pos) {
 }
 
 void ReplSemiSyncMaster::reportReplyBinlog(uint64_t log_file_pos) {
-  if (!GetSemiSyncEnabled()) {
-    // do something
-    return;
+  if (!GetSemiSyncEnabled()) return;
+
+  if (!IsOn()) {
+    trySwitchOn(log_file_pos);
   }
 
-  if (!is_on()) {
-    try_switch_on(log_file_pos);
-  }
-
-  node_manager_->signal_waiting_nodes_up_to(log_file_pos);
+  node_manager_->SignalWaitingNodesUpTo(log_file_pos);
   if (log_file_pos > wait_file_pos_) wait_file_pos_ = log_file_pos;
 }
 
 bool ReplSemiSyncMaster::SetWaitSlaveCount(uint new_value) {
   const AckInfo *ackinfo = nullptr;
   std::lock_guard<std::mutex> lock(LOCK_binlog_);
-  LOG(INFO) << "try to set slave count " << new_value;
+  LOG(INFO) << "[semisync] Try to set slave count " << new_value;
 
   bool resize_result = ack_container_.Resize(new_value, &ackinfo);
   if (resize_result) {
@@ -354,12 +344,12 @@ bool ReplSemiSyncMaster::SetWaitSlaveCount(uint new_value) {
     semi_sync_wait_for_slave_count_ = new_value;
   }
 
-  LOG(INFO) << "finish setting slave count";
+  LOG(INFO) << "[semisync] Finish setting slave count";
 
   return resize_result;
 }
 
-void ReplSemiSyncMaster::try_switch_on(uint64_t log_file_pos) {
+void ReplSemiSyncMaster::trySwitchOn(uint64_t log_file_pos) {
   if (semi_sync_enabled_) {
     if (log_file_pos > max_handle_sequence_) {
       state_ = true;
@@ -367,11 +357,12 @@ void ReplSemiSyncMaster::try_switch_on(uint64_t log_file_pos) {
   }
 }
 
-void ReplSemiSyncMaster::switch_off() {
+void ReplSemiSyncMaster::switchOff() {
   state_ = false;
   wait_file_pos_ = 0;
+  max_handle_sequence_ = 0;
 
-  node_manager_->signal_waiting_nodes_all();
+  node_manager_->SignalWaitingNodesAll();
 }
 
 // semisync_master.cc

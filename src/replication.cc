@@ -27,7 +27,7 @@ const std::unique_ptr<FeedSlaveHandler> FeedSlaveThread::handler_
 const std::unique_ptr<FeedStatusHandler> FeedSlaveThread::handler2_
   = std::unique_ptr<FeedStatusHandler>(new FeedStatusHandler());
 
-void FeedSlaveHandler::transmit_start(Observable subject, ObserverEvent const& event) {
+void FeedSlaveHandler::transmitStart(Observable subject, ObserverEvent const& event) {
   if (REP_SEMI_SYNC_SLAVE) return;
 
   REP_SEMI_SYNC_SLAVE = true;
@@ -39,14 +39,14 @@ void FeedSlaveHandler::transmit_start(Observable subject, ObserverEvent const& e
   repl_semisync.HandleAck(ev->conn_fd, ev->thread_ptr->GetCurrentReplSeq());
 }
 
-void FeedSlaveHandler::before_send(Observable subject, ObserverEvent const& event) {}
+void FeedSlaveHandler::beforeSend(Observable subject, ObserverEvent const& event) {}
 
-void FeedSlaveHandler::after_send(Observable subject, ObserverEvent const& event) {
+void FeedSlaveHandler::afterSend(Observable subject, ObserverEvent const& event) {
   const AfterSendEvent* ev = dynamic_cast<const AfterSendEvent*>(&event);
   ReplSemiSyncMaster::GetInstance().HandleAck(ev->conn_fd, ev->sequenceNumber);
 }
 
-void FeedSlaveHandler::transmit_end(Observable subject, ObserverEvent const& event) {
+void FeedSlaveHandler::transmitEnd(Observable subject, ObserverEvent const& event) {
   if (!REP_SEMI_SYNC_SLAVE) return;
 
   REP_SEMI_SYNC_SLAVE = false;
@@ -79,14 +79,13 @@ Status FeedSlaveThread::Start() {
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
       write(conn_->GetFD(), "+OK\r\n", 5);
 
-      TransmitStartEvent ev;
-      ev.conn_fd = conn_->GetFD();
-      ev.thread_ptr = this;
+      TransmitStartEvent ev(conn_->GetFD(), this);
       NotifyObservers(ev);
 
       this->loop();
     });
   } catch (const std::system_error &e) {
+    if (!IsStopped()) Stop();
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
     return Status(Status::NotOK, e.what());
   }
@@ -97,19 +96,22 @@ void FeedSlaveThread::Stop() {
   stop_ = true;
   LOG(WARNING) << "Slave thread was terminated, would stop feeding the slave: " << conn_->GetAddr();
 
-  TransmitEndEvent ev;
-  ev.thread_ptr = this;
+  TransmitEndEvent ev(this);
   NotifyObservers(ev);
 }
 
 void FeedSlaveThread::Pause(const uint32_t& micro_time_out) {
   std::unique_lock<std::mutex> lock(mutex_);
+  pause_ = true;
   cv_.wait_for(lock, std::chrono::microseconds(micro_time_out));
 }
 
 void FeedSlaveThread::Wakeup() {
   mutex_.lock();
-  cv_.notify_all();
+  if (pause_) {
+    cv_.notify_all();
+    pause_ = false;
+  }
   mutex_.unlock();
 }
 
@@ -174,9 +176,7 @@ void FeedSlaveThread::loop() {
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
 
     // notify
-    AfterSendEvent ev;
-    ev.conn_fd = conn_->GetFD();
-    ev.sequenceNumber = batch.sequence;
+    AfterSendEvent ev(conn_->GetFD(), batch.sequence);
     NotifyObservers(ev);
 
     while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {

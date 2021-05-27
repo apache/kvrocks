@@ -35,7 +35,7 @@ const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
-void StorageHandler::after_commit(Observable subject, ObserverEvent const& event) {
+void StorageHandler::afterCommit(Observable subject, ObserverEvent const& event) {
   const AfterCommitEvent* ev = dynamic_cast<const AfterCommitEvent*>(&event);
   ReplSemiSyncMaster::GetInstance().CommitTrx(ev->sequenceNumber);
 }
@@ -51,7 +51,6 @@ Storage::Storage(Config *config)
 
   ReplSemiSyncMaster& instance = ReplSemiSyncMaster::GetInstance();
   instance.Initalize(config);
-  // RegisterObserver(*handler);
   RegisterObserver(handler.get());
 }
 
@@ -431,13 +430,12 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   auto s = db_->Write(options, updates);
   if (!s.ok()) return s;
 
-  if (updates->Count() != 0) {
-  std::string t = updates->Data();
-  uint64_t seq;
-  memcpy(&seq, t.data(), sizeof(seq));
-  AfterCommitEvent ev;
-  ev.sequenceNumber = seq;
-  NotifyObservers(ev);
+  if (updates->Count() != 0 && ReplSemiSyncMaster::GetInstance().GetSemiSyncEnabled()) {
+    std::string t = updates->Data();
+    uint64_t seq;
+    memcpy(&seq, t.data(), sizeof(seq));
+    AfterCommitEvent ev(seq);
+    NotifyObservers(ev);
   }
 
   return s;
@@ -449,13 +447,12 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
   auto status = db_->Write(options, &batch);
-  if (batch.Count() != 0) {
-  std::string t = batch.Data();
-  uint64_t seq;
-  memcpy(&seq, t.data(), sizeof(seq));
-  AfterCommitEvent ev;
-  ev.sequenceNumber = seq;
-  NotifyObservers(ev);
+  if (batch.Count() != 0 && ReplSemiSyncMaster::GetInstance().GetSemiSyncEnabled()) {
+    std::string t = batch.Data();
+    uint64_t seq;
+    memcpy(&seq, t.data(), sizeof(seq));
+    AfterCommitEvent ev(seq);
+    NotifyObservers(ev);
   }
 
   return status;

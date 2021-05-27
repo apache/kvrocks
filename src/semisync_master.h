@@ -21,7 +21,7 @@ struct WaitingNode {
 };
 
 struct WaitingNodeComparator {
-  bool operator()(struct WaitingNode* left, struct WaitingNode* right) {
+  bool operator()(struct WaitingNode* left, struct WaitingNode* right) const {
     if (left->log_pos == right->log_pos) return false;
 
     return left->log_pos < right->log_pos;
@@ -39,11 +39,11 @@ class WaitingNodeManager {
  public:
   WaitingNodeManager();
   ~WaitingNodeManager();
-  bool insert_waiting_node(uint64_t log_file_pos);
-  void clear_waiting_nodes(uint64_t ack_log_file_pos);
-  WaitingNode* find_waiting_node(uint64_t log_file_pos);
-  int signal_waiting_nodes_up_to(uint64_t log_file_pos);
-  int signal_waiting_nodes_all();
+  bool InsertWaitingNode(uint64_t log_file_pos);
+  void ClearWaitingNodes(uint64_t ack_log_file_pos);
+  WaitingNode* FindWaitingNode(uint64_t log_file_pos);
+  int SignalWaitingNodesUpTo(uint64_t log_file_pos);
+  int SignalWaitingNodesAll();
 
  private:
   std::set<WaitingNode*, WaitingNodeComparator> waiting_node_list_;
@@ -78,7 +78,7 @@ class ReplSemiSyncMaster {
   bool InitDone() { return init_done_.load(); }
   int Initalize(Config* config);
   bool GetSemiSyncEnabled() { return semi_sync_enabled_; }
-  bool is_on() { return (state_); }
+  bool IsOn() { return (state_); }
   int EnableMaster();
   int DisableMaster();
   void AddSlave(FeedSlaveThread* slave_thread_ptr);
@@ -86,9 +86,6 @@ class ReplSemiSyncMaster {
   bool CommitTrx(uint64_t trx_wait_binlog_pos);
   void HandleAck(int server_id, uint64_t log_file_pos);
   bool SetWaitSlaveCount(uint new_value);
-  uint64_t GetMaxHandleSequence() {
-    return max_handle_sequence_;
-  }
 
  private:
   ReplSemiSyncMaster() {}
@@ -105,9 +102,9 @@ class ReplSemiSyncMaster {
   std::atomic<bool> semi_sync_enabled_ = {false};        /* semi-sync is enabled on the master */
   std::atomic<uint64_t> max_handle_sequence_ = {0};
 
-  void set_semi_sync_enabled(bool enabled) { semi_sync_enabled_ = enabled; }
-  void switch_off();
-  void try_switch_on(uint64_t log_file_pos);
+  void setSemiSyncEnabled(bool enabled) { semi_sync_enabled_ = enabled; }
+  void switchOff();
+  void trySwitchOn(uint64_t log_file_pos);
   void reportReplyBinlog(uint64_t log_file_pos);
 };
 

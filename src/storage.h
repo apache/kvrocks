@@ -31,20 +31,19 @@ extern const char *kSubkeyColumnFamilyName;
 
 class AfterCommitEvent : public ObserverEvent {
  public:
-  AfterCommitEvent() : ObserverEvent() {}
-  explicit AfterCommitEvent(const ObserverEvent&) {}
-  uint64_t sequenceNumber = 0;
+  explicit AfterCommitEvent(uint64_t commit_seq) : ObserverEvent(), sequenceNumber(commit_seq) {}
+  uint64_t sequenceNumber;
 };
 
 class StorageHandler : public EventHandler {
  public:
   StorageHandler() : EventHandler() {
     registerEventHandler<AfterCommitEvent>(
-      std::bind(&StorageHandler::after_commit, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(&StorageHandler::afterCommit, this, std::placeholders::_1, std::placeholders::_2));
   }
 
  private:
-  void after_commit(Observable subject, ObserverEvent const& event);
+  void afterCommit(Observable subject, ObserverEvent const& event);
 };
 
 class Storage : public Observable {

@@ -306,7 +306,7 @@ void Config::initFieldCallback() {
         else
           result = ReplSemiSyncMaster::GetInstance().DisableMaster();
         if (result != 0)
-          return Status(Status::NotOK, "failed to set semi sync enable");
+          return Status(Status::NotOK, "Failed to enable semi sync");
         else
           return Status::OK();
       }},
@@ -318,7 +318,7 @@ void Config::initFieldCallback() {
         if (set_result)
           return Status::OK();
         else
-          return Status(Status::NotOK, "failed to set semi sync slave count");
+          return Status(Status::NotOK, "Failed to set the semi sync slave count");
       }},
   };
   for (const auto& iter : callbacks) {

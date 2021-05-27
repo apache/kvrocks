@@ -34,24 +34,27 @@ class FeedSlaveThread;
 
 class TransmitStartEvent : public ObserverEvent {
  public:
-  TransmitStartEvent() : ObserverEvent() {}
-  int conn_fd = 0;
-  FeedSlaveThread* thread_ptr = nullptr;
+  explicit TransmitStartEvent(int fd, FeedSlaveThread* target_thread) :
+    ObserverEvent(), conn_fd(fd), thread_ptr(target_thread) {}
+  int conn_fd;
+  FeedSlaveThread* thread_ptr;
 };
 
 class BeforeSendEvent : public ObserverEvent {};
 
 class AfterSendEvent : public ObserverEvent {
  public:
-  AfterSendEvent() : ObserverEvent() {}
-  int conn_fd = 0;
-  uint64_t sequenceNumber = 0;
+  explicit AfterSendEvent(int fd, uint64_t sequence) :
+    ObserverEvent(), conn_fd(fd), sequenceNumber(sequence) {}
+  int conn_fd;
+  uint64_t sequenceNumber;
 };
 
 class TransmitEndEvent : public ObserverEvent {
  public:
-  TransmitEndEvent() : ObserverEvent() {}
-  FeedSlaveThread* thread_ptr = nullptr;
+  explicit TransmitEndEvent(FeedSlaveThread* target_thread) :
+    ObserverEvent(), thread_ptr(target_thread) {}
+  FeedSlaveThread* thread_ptr;
 };
 
 class SyncStatusChangeEvent : public ObserverEvent {
@@ -65,20 +68,20 @@ class FeedSlaveHandler : public EventHandler {
  public:
   FeedSlaveHandler() : EventHandler() {
     registerEventHandler<TransmitStartEvent>(
-      std::bind(&FeedSlaveHandler::transmit_start, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(&FeedSlaveHandler::transmitStart, this, std::placeholders::_1, std::placeholders::_2));
     registerEventHandler<BeforeSendEvent>(
-      std::bind(&FeedSlaveHandler::before_send, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(&FeedSlaveHandler::beforeSend, this, std::placeholders::_1, std::placeholders::_2));
     registerEventHandler<AfterSendEvent>(
-      std::bind(&FeedSlaveHandler::after_send, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(&FeedSlaveHandler::afterSend, this, std::placeholders::_1, std::placeholders::_2));
     registerEventHandler<TransmitEndEvent>(
-      std::bind(&FeedSlaveHandler::transmit_end, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(&FeedSlaveHandler::transmitEnd, this, std::placeholders::_1, std::placeholders::_2));
   }
 
  private:
-  void transmit_start(Observable subject, ObserverEvent const& event);
-  void before_send(Observable subject, ObserverEvent const& event);
-  void after_send(Observable subject, ObserverEvent const& event);
-  void transmit_end(Observable subject, ObserverEvent const& event);
+  void transmitStart(Observable subject, ObserverEvent const& event);
+  void beforeSend(Observable subject, ObserverEvent const& event);
+  void afterSend(Observable subject, ObserverEvent const& event);
+  void transmitEnd(Observable subject, ObserverEvent const& event);
 };
 
 class FeedStatusHandler : public EventHandler {
@@ -96,8 +99,6 @@ class FeedSlaveThread : public Observable {
  public:
   explicit FeedSlaveThread(Server *srv, Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
       : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq) {
-        // RegisterObserver(*handler_);
-        // RegisterObserver(*handler2_);
         RegisterObserver(handler_.get());
         RegisterObserver(handler2_.get());
       }
@@ -117,6 +118,7 @@ class FeedSlaveThread : public Observable {
   static const std::unique_ptr<FeedStatusHandler> handler2_;
   uint64_t interval = 0;
   bool stop_ = false;
+  bool pause_ = false;
   Server *srv_ = nullptr;
   Redis::Connection *conn_ = nullptr;
   rocksdb::SequenceNumber next_repl_seq_ = 0;

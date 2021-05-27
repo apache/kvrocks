@@ -30,31 +30,31 @@ TEST_F(SemiSyncMasterTest, WaitingNodeManager) {
   uint64_t pos3 = 1700;
   uint64_t pos4 = 1400; 
 
-  node_manager->insert_waiting_node(pos1);
-  auto* waiting_node = node_manager->find_waiting_node(pos1);
+  node_manager->InsertWaitingNode(pos1);
+  auto* waiting_node = node_manager->FindWaitingNode(pos1);
   ASSERT_TRUE(waiting_node != nullptr);
   EXPECT_EQ(waiting_node->log_pos, pos1);
 
-  node_manager->insert_waiting_node(pos2);
-  node_manager->insert_waiting_node(pos3);
-  node_manager->insert_waiting_node(pos4);
-  int ret_num = node_manager->signal_waiting_nodes_up_to(1500);
+  node_manager->InsertWaitingNode(pos2);
+  node_manager->InsertWaitingNode(pos3);
+  node_manager->InsertWaitingNode(pos4);
+  int ret_num = node_manager->SignalWaitingNodesUpTo(1500);
   EXPECT_EQ(ret_num, 2);
 
-  ret_num = node_manager->signal_waiting_nodes_all();
+  ret_num = node_manager->SignalWaitingNodesAll();
   EXPECT_EQ(ret_num, 4);
 
-  node_manager->clear_waiting_nodes(1500);
-  auto* r1 = node_manager->find_waiting_node(pos1);
+  node_manager->ClearWaitingNodes(1500);
+  auto* r1 = node_manager->FindWaitingNode(pos1);
   EXPECT_TRUE(r1 != nullptr);
   EXPECT_EQ(r1->log_pos, pos3);
-  auto* r2 = node_manager->find_waiting_node(pos2);
+  auto* r2 = node_manager->FindWaitingNode(pos2);
   EXPECT_TRUE(r2 != nullptr);
   EXPECT_EQ(r2->log_pos, pos2);
-  auto* r3 = node_manager->find_waiting_node(pos3);
+  auto* r3 = node_manager->FindWaitingNode(pos3);
   EXPECT_TRUE(r3 != nullptr);
   EXPECT_EQ(r3->log_pos, pos3);
-  auto* r4 = node_manager->find_waiting_node(pos4);
+  auto* r4 = node_manager->FindWaitingNode(pos4);
   EXPECT_TRUE(r4 != nullptr);
   EXPECT_EQ(r4->log_pos, pos3);
 }

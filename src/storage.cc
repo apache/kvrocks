@@ -14,6 +14,7 @@
 #include <rocksdb/rate_limiter.h>
 #include <rocksdb/env.h>
 #include <rocksdb/utilities/checkpoint.h>
+#include <rocksdb/convenience.h>
 
 #include "config.h"
 #include "redis_db.h"
@@ -52,18 +53,12 @@ Storage::~Storage() {
 }
 
 void Storage::CloseDB() {
+  auto guard = WriteLockGuard();
   if (db_ == nullptr) return;
 
-  db_->SyncWAL();
-  // prevent to destroy the cloumn family while the compact filter was using
-  db_mu_.lock();
   db_closing_ = true;
-  while (db_refs_ != 0) {
-    db_mu_.unlock();
-    usleep(10000);
-    db_mu_.lock();
-  }
-  db_mu_.unlock();
+  db_->SyncWAL();
+  rocksdb::CancelAllBackgroundWork(db_, true);
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   delete db_;
   db_ = nullptr;
@@ -151,10 +146,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
 }
 
 Status Storage::Open(bool read_only) {
-  db_mu_.lock();
+  auto guard = WriteLockGuard();
   db_closing_ = false;
-  db_refs_ = 0;
-  db_mu_.unlock();
 
   bool cache_index_and_filter_blocks = config_->RocksDB.cache_index_and_filter_blocks;
   size_t block_size = static_cast<size_t>(config_->RocksDB.block_size);
@@ -231,6 +224,7 @@ Status Storage::OpenForReadOnly() {
   return Open(true);
 }
 
+// Only called in task runner, so we needn't use mutex to access db
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(backup_mu_);
@@ -285,7 +279,6 @@ Status Storage::RestoreFromBackup() {
   rocksdb::BackupableDBOptions bk_option(config_->backup_sync_dir);
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
-  CloseDB();
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
@@ -315,9 +308,6 @@ Status Storage::RestoreFromCheckpoint() {
   // Clean old backups and checkpoints because server will work on the new db
   PurgeOldBackups(0, 0);
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
-
-  // Close db
-  CloseDB();
 
   // Rename db dir to tmp, so we can restore if replica fails to load
   // the checkpoint from master.
@@ -358,8 +348,6 @@ void Storage::EmptyDB() {
   PurgeOldBackups(0, 0);
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
 
-  // Close and destory db
-  CloseDB();
   auto s = rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to destroy db, error: " << s.ToString();
@@ -528,29 +516,18 @@ void Storage::SetIORateLimit(uint64_t max_io_mb) {
 
 rocksdb::DB *Storage::GetDB() { return db_; }
 
-Status Storage::IncrDBRefs() {
-  db_mu_.lock();
-  if (db_closing_) {
-    db_mu_.unlock();
-    return Status(Status::NotOK, "db is closing");
-  }
-  db_refs_++;
-  db_mu_.unlock();
-  return Status::OK();
+std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() {
+  return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(db_rw_lock_));
 }
 
-Status Storage::DecrDBRefs() {
-  db_mu_.lock();
-  if (db_refs_ == 0) {
-    db_mu_.unlock();
-    return Status(Status::NotOK, "db refs was zero");
-  }
-  db_refs_--;
-  db_mu_.unlock();
-  return Status::OK();
+std::unique_ptr<RWLock::WriteLock> Storage::WriteLockGuard() {
+  return std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(db_rw_lock_));
 }
 
 Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::string *files) {
+  auto guard = storage->ReadLockGuard();
+  if (storage->IsClosing()) return Status(Status::NotOK, "DB is closing");
+
   std::string data_files_dir = storage->config_->checkpoint_dir;
   std::unique_lock<std::mutex> ulm(storage->checkpoint_mu_);
 

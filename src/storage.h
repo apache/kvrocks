@@ -14,6 +14,7 @@
 #include "status.h"
 #include "lock_manager.h"
 #include "config.h"
+#include "rw_lock.h"
 
 enum ColumnFamilyID{
   kColumnFamilyIDDefault,
@@ -61,8 +62,6 @@ class Storage {
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() { return db_closing_; }
-  Status IncrDBRefs();
-  Status DecrDBRefs();
   const std::string GetName() {return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *>* GetCFHandles() { return &cf_handles_; }
@@ -71,6 +70,9 @@ class Storage {
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
   Status CheckDBSizeLimit();
   void SetIORateLimit(uint64_t max_io_mb);
+
+  std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
+  std::unique_ptr<RWLock::WriteLock> WriteLockGuard();
 
   uint64_t GetFlushCount() { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
@@ -140,10 +142,10 @@ class Storage {
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
 
-  std::mutex db_mu_;
-  int db_refs_ = 0;
+  RWLock::ReadWriteLock db_rw_lock_;
   bool db_closing_ = true;
-  bool db_in_retryable_io_error_ = false;
+
+  std::atomic<bool> db_in_retryable_io_error_{false};
 };
 
 }  // namespace Engine

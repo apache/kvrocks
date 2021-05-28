@@ -1,5 +1,6 @@
 #include <chrono>
 #include <utility>
+#include <memory>
 #include <glog/logging.h>
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>

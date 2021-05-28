@@ -135,8 +135,13 @@ start_server {tags {"repl"} overrides {max-replication-mb 1 rocksdb.compression 
     populate 1024 "" 10240
     r set a b
     r compact
+    after 1000
     # Wait for finishing compaction
-    after 3000
+    wait_for_condition 100 100 {
+        [s is_compacting] eq no
+    } else {
+        fail "Failed to compact DB"
+    }
 
     start_server {} {
         test {resume broken transfer based files} {

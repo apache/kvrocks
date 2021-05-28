@@ -50,8 +50,6 @@ K2RDIR= ../tools/kvrocks2redis
 KVROCKS2REDIS_OBJS= $(SHARED_OBJS) $(K2RDIR)/main.o $(K2RDIR)/config.o $(K2RDIR)/parser.o \
 					$(K2RDIR)/redis_writer.o $(K2RDIR)/sync.o $(K2RDIR)/util.o $(K2RDIR)/writer.o
 
-KVROCKSRESTOREDIR= ../tools/kvrocksrestore
-KVROCKSRESTORE_OBJS= $(KVROCKSRESTOREDIR)/main.o
 
 KVROCKS_CXX=$(QUIET_CXX)$(CXX) $(FINAL_CXXFLAGS)
 KVROCKS_LD=$(QUIET_LINK)$(CXX) $(FINAL_CXXFLAGS)
@@ -72,7 +70,7 @@ endif
 
 PROG=kvrocks
 
-all: $(PROG) kvrocks2redis kvrocksrestore
+all: $(PROG) kvrocks2redis
 	@echo ""
 	@printf $(MAKECOLOR)"Hint: It's a good idea to run 'make test' ;)"$(ENDCOLOR)
 	@echo ""
@@ -115,9 +113,6 @@ $(JEMALLOC):
 kvrocks2redis: $(PROG) $(KVROCKS2REDIS_OBJS)
 	$(KVROCKS_LD) -o kvrocks2redis $(KVROCKS2REDIS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
 
-kvrocksrestore: $(PROG) $(KVROCKSRESTORE_OBJS)
-	$(KVROCKS_LD) -o kvrocksrestore $(KVROCKSRESTORE_OBJS) $(FINAL_LIBS) $(LDFLAGS)
-
 unittest: $(UNITTEST_OBJS)
 	$(KVROCKS_LD) -o unittest $(UNITTEST_OBJS) $(FINAL_LIBS) $(LDFLAGS) -lgtest
 
@@ -131,7 +126,6 @@ clean:
 	- rm -rf *.o $(PROG) Makefile.dep make_config.mk
 	- rm -rf ../tests/*.o unittest
 	- rm -rf $(K2RDIR)/*.o kvrocks2redis
-	- rm -rf $(KVROCKSRESTORE_DIR)/*.o kvrocksrestore
 
 distclean: clean
 	- make -C $(ROCKSDB_PATH)/ clean

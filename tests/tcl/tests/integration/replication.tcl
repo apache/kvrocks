@@ -41,8 +41,7 @@ start_server {tags {"repl"}} {
             s role
         } {slave}
 
-        after 1000
-        wait_for_sync r
+        after 3000
         test {Sync should have transferred keys from master} {
             after 100
             assert_equal [r -1 get mykey] [r get mykey]

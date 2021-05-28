@@ -94,7 +94,7 @@ class Server {
   std::string GetRocksDBStatsJson();
   ReplState GetReplicationState();
 
-  void ReclaimOldDBPtr();
+  void PrepareRestoreDB();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);

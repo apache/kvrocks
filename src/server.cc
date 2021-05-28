@@ -50,6 +50,18 @@ Server::~Server() {
   }
 }
 
+// Kvrocks threads list:
+// - Work-thread: process client's connections and requests
+// - Task-runner: one thread pool, handle some jobs that may freeze server if run directly
+// - Cron-thread: server's crontab, clean backups, resize sst and memtable size
+// - Compaction-checker: active compaction according to collected statistics
+// - Replication-thread: replicate incremental stream from master if in slave role, there
+//   are some dynamic threads to fetch files when full sync.
+//     - fetch-file-thread: fetch SST files from master
+// - Feed-slave-thread: feed data to slaves if having slaves, but there also are some dynamic
+//   threads when full sync, TODO(@shooterit) we should manage this threads uniformly.
+//     - feed-replica-data-info: generate checkpoint and send files list when full sync
+//     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port));
@@ -71,6 +83,13 @@ Status Server::Start() {
     Util::ThreadSetName("compaction-checker");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
+      // Sleep first
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      // To guarantee accessing DB safely
+      auto guard = storage_->ReadLockGuard();
+      if (storage_->IsClosing()) continue;
+
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
@@ -91,7 +110,6 @@ Status Server::Start() {
           compaction_checker.CompactPubsubFiles();
         }
       }
-      usleep(100000);
     }
   });
 
@@ -104,11 +122,8 @@ void Server::Stop() {
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }
-  slave_threads_mu_.lock();
-  for (const auto slave_thread : slave_threads_) slave_thread->Stop();
-  slave_threads_mu_.unlock();
-  cleanupExitedSlaves();
-  rocksdb::CancelAllBackgroundWork(storage_->GetDB());
+  DisconnectSlaves();
+  rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
   task_runner_.Stop();
 }
 
@@ -141,7 +156,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
   auto s = replication_thread_->Start(
       [this]() {
         this->is_loading_ = true;
-        ReclaimOldDBPtr();
+        PrepareRestoreDB();
       },
       [this]() {
         this->is_loading_ = false;
@@ -456,6 +471,13 @@ std::atomic<uint64_t> *Server::GetClientID() {
 void Server::cron() {
   uint64_t counter = 0;
   while (!stop_) {
+    // Sleep first
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // To guarantee accessing DB safely
+    auto guard = storage_->ReadLockGuard();
+    if (storage_->IsClosing()) continue;
+
     updateCachedTime();
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
@@ -524,7 +546,6 @@ void Server::cron() {
     stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);
     stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
     stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
@@ -874,21 +895,32 @@ std::string Server::GetRocksDBStatsJson() {
   return output;
 }
 
-/*
- * Reclaim the old db ptr before restore the db from backup,
- * as restore db would delete the db and column families.
- */
-void Server::ReclaimOldDBPtr() {
+// This function is called by replication thread when finished fetching
+// all files from its master.
+// Before restoring the db from backup or checkpoint, we should
+// guarantee other threads don't acess DB and its column families,
+// then close db.
+void Server::PrepareRestoreDB() {
+  // Stop freeding slaves thread
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
+
+  // Stop task runner
   LOG(INFO) << "Stopping the task runner and clear task queue...";
   task_runner_.Stop();
   task_runner_.Join();
   task_runner_.Purge();
+
+  // To guarantee work theads don't access DB
   LOG(INFO) << "Waiting for excuting command...";
   while (excuting_command_num_ != 0) {
     usleep(1000);  // 1 ms
   }
+
+  // Cron thread, compaction checker thread, full synchronization thread
+  // may always run in the backgroud, we need to close db, so they don't
+  // actually work.
+  storage_->CloseDB();
 }
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
@@ -973,8 +1005,6 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 }
 
 Status Server::dynamicResizeBlockAndSST() {
-  // the db is closing, don't use DB and cf_handles
-  if (!storage_->IncrDBRefs().IsOK()) return Status(Status::NotOK, "loading in-progress");
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
@@ -982,7 +1012,6 @@ Status Server::dynamicResizeBlockAndSST() {
     total_keys += estimate_keys;
   }
   if (total_size == 0 || total_keys == 0) {
-    storage_->DecrDBRefs();
     return Status::OK();
   }
   auto average_kv_size = total_size / total_keys;
@@ -1002,7 +1031,6 @@ Status Server::dynamicResizeBlockAndSST() {
   }
   if (target_file_size_base == config_->RocksDB.target_file_size_base
       && target_file_size_base == config_->RocksDB.write_buffer_size) {
-    storage_->DecrDBRefs();
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
@@ -1015,12 +1043,10 @@ Status Server::dynamicResizeBlockAndSST() {
               << ", total_keys: " << total_keys
               << ", result: " << s.Msg();
     if (!s.IsOK()) {
-      storage_->DecrDBRefs();
       return s;
     }
     config_->RocksDB.target_file_size_base = target_file_size_base;
   }
-  storage_->DecrDBRefs();
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "

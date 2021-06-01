@@ -155,7 +155,6 @@ Status Server::AddMaster(std::string host, uint32_t port) {
       new ReplicationThread(host, port, this, config_->masterauth));
   auto s = replication_thread_->Start(
       [this]() {
-        this->is_loading_ = true;
         PrepareRestoreDB();
       },
       [this]() {
@@ -456,12 +455,12 @@ int Server::DecrMonitorClientNum() {
   return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
-int Server::IncrExecutingCommandNum() {
-  return excuting_command_num_.fetch_add(1, std::memory_order_seq_cst);
+std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
+  return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(works_concurrency_rw_lock_));
 }
 
-int Server::DecrExecutingCommandNum() {
-  return excuting_command_num_.fetch_sub(1, std::memory_order_seq_cst);
+std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
+  return std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(works_concurrency_rw_lock_));
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {
@@ -911,15 +910,19 @@ void Server::PrepareRestoreDB() {
   task_runner_.Join();
   task_runner_.Purge();
 
-  // To guarantee work theads don't access DB
-  LOG(INFO) << "Waiting for excuting command...";
-  while (excuting_command_num_ != 0) {
-    usleep(1000);  // 1 ms
+  // To guarantee work theads don't access DB, we should relase 'ExclusivityGuard'
+  // ASAP to avoid user can't recieve respones for long time, becasue the following
+  // 'CloseDB' may cost much time to acquire DB mutex.
+  LOG(INFO) << "Waiting workers for finishing executing commands...";
+  {
+    auto exclusivity = WorkExclusivityGuard();
+    is_loading_ = true;
   }
 
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the backgroud, we need to close db, so they don't
   // actually work.
+  LOG(INFO) << "Waiting for closing DB...";
   storage_->CloseDB();
 }
 

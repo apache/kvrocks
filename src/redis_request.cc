@@ -1,5 +1,6 @@
 #include <chrono>
 #include <utility>
+#include <memory>
 #include <glog/logging.h>
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>
@@ -162,6 +163,19 @@ void Request::ExecuteCommands(Connection *conn) {
     }
     const auto attributes = conn->current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
+
+    std::unique_ptr<RWLock::ReadLock>  concurrency;  // Allow concurrency
+    std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
+    // If the command need to process exclusively, we need to get 'ExclusivityGuard'
+    // that can guarantee other threads can't come into critical zone, such as DEBUG,
+    // MULTI, LUA (in the immediate future). Otherwise, we just use 'ConcurrencyGuard'
+    // to allow all workers to execute commands at the same time.
+    if (attributes->is_exclusive()) {
+      exclusivity = svr_->WorkExclusivityGuard();
+    } else {
+      concurrency = svr_->WorkConcurrencyGuard();
+    }
+
     if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
       conn->Reply(Redis::Error("ERR restoring the db from backup"));
       break;
@@ -195,17 +209,7 @@ void Request::ExecuteCommands(Connection *conn) {
     svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = isProfilingEnabled(cmd_name);
-    svr_->IncrExecutingCommandNum();
-    // Need to check again, because we set loading firstly and then check
-    // excuting_command_num_, there may be some commands when loading is 1
-    // and excuting_command_num_ is 0, these commands may access storage DB.
-    if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
-      svr_->DecrExecutingCommandNum();
-      conn->Reply(Redis::Error("ERR restoring the db from backup"));
-      break;
-    }
     s = conn->current_cmd_->Execute(svr_, conn, &reply);
-    svr_->DecrExecutingCommandNum();
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
     if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);

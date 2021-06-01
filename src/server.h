@@ -16,6 +16,7 @@
 #include "redis_metadata.h"
 #include "log_collector.h"
 #include "worker.h"
+#include "rw_lock.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -106,8 +107,6 @@ class Server {
   int IncrClientNum();
   int IncrMonitorClientNum();
   int DecrMonitorClientNum();
-  int IncrExecutingCommandNum();
-  int DecrExecutingCommandNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
@@ -116,6 +115,9 @@ class Server {
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
+
+  std::unique_ptr<RWLock::ReadLock> WorkConcurrencyGuard();
+  std::unique_ptr<RWLock::WriteLock> WorkExclusivityGuard();
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -166,6 +168,7 @@ class Server {
   std::mutex blocking_keys_mu_;
 
   // threads
+  RWLock::ReadWriteLock works_concurrency_rw_lock_;
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;

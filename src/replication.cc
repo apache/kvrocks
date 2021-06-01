@@ -214,6 +214,12 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     // in ConnEventCB. the error here is something fatal.
     LOG(ERROR) << "[replication] Failed to start state machine, err: " << strerror(errno);
   }
+
+  auto s = Util::SockSetTcpKeepalive(bufferevent_getfd(bev), 120);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[replication] Failed to set tcp-keepalive, err:" << s.Msg();
+  }
+
   handler_idx_ = 0;
   repl_->incr_state_ = Incr_batch_size;
   if (getHandlerEventType(0) == WRITE) {

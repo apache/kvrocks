@@ -1,5 +1,5 @@
 start_server {tags {"command"}} {
-    test {kvrocks has 159 commands currently} {
+    test {kvrocks has 158 commands currently} {
         r command count
     } {158}
 

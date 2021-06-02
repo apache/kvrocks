@@ -3643,10 +3643,6 @@ class CommandClient : public Commander {
 class CommandMonitor : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    if (conn->IsInExec()) {
-      *output = Redis::Error("ERR MONITOR isn't allowed in MULTI");
-      return Status::OK();
-    }
     conn->Owner()->BecomeMonitorConn(conn);
     *output = Redis::SimpleString("OK");
     return Status::OK();
@@ -4139,7 +4135,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("slowlog", -2, "read-only", 0, 0, 0, CommandSlowlog),
     ADD_CMD("perflog", -2, "read-only", 0, 0, 0, CommandPerfLog),
     ADD_CMD("client", -2, "read-only", 0, 0, 0, CommandClient),
-    ADD_CMD("monitor", 1, "read-only", 0, 0, 0, CommandMonitor),
+    ADD_CMD("monitor", 1, "read-only no-multi", 0, 0, 0, CommandMonitor),
     ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
     ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
     ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
@@ -4266,10 +4262,10 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
 
     ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub", 0, 0, 0, CommandPUnSubscribe),
+    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandSubscribe),
+    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandUnSubscribe),
+    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandPSubscribe),
+    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandPUnSubscribe),
     ADD_CMD("pubsub", -2, "read-only pub-sub", 0, 0, 0, CommandPubSub),
 
     ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),

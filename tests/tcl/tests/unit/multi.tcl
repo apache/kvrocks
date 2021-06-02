@@ -72,19 +72,10 @@ start_server {tags {"multi"}} {
     test {If EXEC aborts if commands are not allowed in MULTI-EXEC} {
         r multi
         r set foo1 bar1
-        catch {r _db_name}
+        catch {r monitor}
         r set foo2 bar2
         catch {r exec} e
         assert_match {EXECABORT*} $e
         r ping
     } {PONG}
-
-    test {Cant monitor in MULTI} {
-        r multi
-        r set foo1 bar1
-        r monitor
-        r set foo2 bar2
-        catch {r exec} e
-        assert_match {*MONITOR isn't allowed in MULTI*} $e
-    }
 }

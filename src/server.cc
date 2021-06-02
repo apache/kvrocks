@@ -505,9 +505,9 @@ void Server::cron() {
       LOG(INFO) << "[server] Schedule to purge old backups, result: " << s.Msg();
     }
     // check every 30 minutes
-    if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
-      Status s = dynamicResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
+    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
+      Status s = autoResizeBlockAndSST();
+      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
     }
     // check if DB need to be resumed every minute
     // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
@@ -967,9 +967,13 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   return task_runner_.Publish(task);
 }
 
+<<<<<<< HEAD
 Status Server::dynamicResizeBlockAndSST() {
   // the db is closing, don't use DB and cf_handles
   if (!storage_->IncrDBRefs().IsOK()) return Status(Status::NotOK, "loading in-progress");
+=======
+Status Server::autoResizeBlockAndSST() {
+>>>>>>> 0790616 (Support the auto-resize-block-and-sst config directive (#289))
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
@@ -1017,9 +1021,10 @@ Status Server::dynamicResizeBlockAndSST() {
   }
   storage_->DecrDBRefs();
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
+    auto old_write_buffer_size = config_->RocksDB.write_buffer_size;
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "
-              << config_->RocksDB.write_buffer_size
+              << old_write_buffer_size
               << " to " << target_file_size_base
               << ", average_kv_size: " << average_kv_size
               << ", total_size: " << total_size

@@ -508,9 +508,9 @@ void Server::cron() {
     }
 
     // check every 30 minutes
-    if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
-      Status s = dynamicResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
+    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
+      Status s = autoResizeBlockAndSST();
+      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
     }
 
     // No replica uses this checkpoint, we can remove it.
@@ -1007,7 +1007,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   return task_runner_.Publish(task);
 }
 
-Status Server::dynamicResizeBlockAndSST() {
+Status Server::autoResizeBlockAndSST() {
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {

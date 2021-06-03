@@ -1387,6 +1387,12 @@ class CommandBPop : public Commander {
     if (s.ok() || !s.IsNotFound()) {
       return Status::OK();  // error has already output in TryPopFromList
     }
+
+    if (conn->IsInExec()) {
+      *output = Redis::MultiLen(-1);
+      return Status::OK();  // No blocking in mult-exec
+    }
+
     for (const auto &key : keys_) {
       svr_->AddBlockingKey(key, conn_);
     }
@@ -3081,6 +3087,59 @@ class CommandRole : public Commander {
   }
 };
 
+class CommandMulti : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (conn->IsFlagEnabled(Connection::kMultiExec)) {
+      *output = Redis::Error("ERR MULTI calls can not be nested");
+      return Status::OK();
+    }
+    conn->ResetMultiExec();
+    // Client starts into MULTI-EXEC
+    conn->EnableFlag(Connection::kMultiExec);
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandDiscard : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (conn->IsFlagEnabled(Connection::kMultiExec) == false) {
+      *output = Redis::Error("ERR DISCARD without MULTI");
+      return Status::OK();
+    }
+    conn->ResetMultiExec();
+    *output = Redis::SimpleString("OK");
+
+    return Status::OK();
+  }
+};
+
+class CommandExec : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (conn->IsFlagEnabled(Connection::kMultiExec) == false) {
+      *output = Redis::Error("ERR EXEC without MULTI");
+      return Status::OK();
+    }
+
+    if (conn->IsMultiError()) {
+      conn->ResetMultiExec();
+      *output = Redis::Error("EXECABORT Transaction discarded");
+      return Status::OK();
+    }
+
+    // Reply multi length first
+    conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands().size()));
+    // Execute multi-exec commands
+    conn->SetInExec();
+    conn->ExecuteCommands(conn->GetMultiExecCommands());
+    conn->ResetMultiExec();
+    return Status::OK();
+  }
+};
+
 class CommandCompact : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4120,7 +4179,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("slowlog", -2, "read-only", 0, 0, 0, CommandSlowlog),
     ADD_CMD("perflog", -2, "read-only", 0, 0, 0, CommandPerfLog),
     ADD_CMD("client", -2, "read-only", 0, 0, 0, CommandClient),
-    ADD_CMD("monitor", 1, "read-only", 0, 0, 0, CommandMonitor),
+    ADD_CMD("monitor", 1, "read-only no-multi", 0, 0, 0, CommandMonitor),
     ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
     ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
     ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
@@ -4247,11 +4306,15 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
 
     ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub", 0, 0, 0, CommandPUnSubscribe),
+    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandSubscribe),
+    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandUnSubscribe),
+    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandPSubscribe),
+    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandPUnSubscribe),
     ADD_CMD("pubsub", -2, "read-only pub-sub", 0, 0, 0, CommandPubSub),
+
+    ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
+    ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
+    ADD_CMD("exec", 1, "exclusive multi", 0, 0, 0, CommandExec),
 
     ADD_CMD("siadd", -3, "write", 1, 1, 1, CommandSortedintAdd),
     ADD_CMD("sirem", -3, "write", 1, 1, 1, CommandSortedintRem),
@@ -4271,10 +4334,10 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("cluster", -2, "read-only", 0, 0, 0, CommandCluster),
 
     ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", 2, "read-only replication", 0, 0, 0, CommandPSync),
-    ADD_CMD("_fetch_meta", 1, "read-only replication", 0, 0, 0, CommandFetchMeta),
-    ADD_CMD("_fetch_file", 2, "read-only replication", 0, 0, 0, CommandFetchFile),
-    ADD_CMD("_db_name", 1, "read-only replication", 0, 0, 0, CommandDBName),
+    ADD_CMD("psync", 2, "read-only replication no-multi", 0, 0, 0, CommandPSync),
+    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi", 0, 0, 0, CommandFetchMeta),
+    ADD_CMD("_fetch_file", 2, "read-only replication no-multi", 0, 0, 0, CommandFetchFile),
+    ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
 };
 
 // Command table after rename-command directive
@@ -4313,6 +4376,8 @@ void InitCommandsTable() {
       if (flag == "pub-sub") redisCommandTable[i].flags |= kCmdPubSub;
       if (flag == "ok-loading") redisCommandTable[i].flags |= kCmdLoading;
       if (flag == "exclusive") redisCommandTable[i].flags |= kCmdExclusive;
+      if (flag == "multi") redisCommandTable[i].flags |= kCmdMulti;
+      if (flag == "no-multi") redisCommandTable[i].flags |= kCmdNoMulti;
     }
   }
 }

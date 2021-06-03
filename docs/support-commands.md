@@ -160,6 +160,16 @@
 | subscribe    | √                |      |
 | unsubscribe  | √                |      |
 
+## Transaction Commands
+
+| Command   | Supported OR Not | Desc |
+| --------- | ---------------- | ---- |
+| multi     | √                |      |
+| exec      | √                |      |
+| discard   | √                |      |
+| watch     | X                |      |
+| unwatch   | X                |      |
+
 ## Sortedint Commands
 
 | Command            | Supported OR Not | Desc                                               |

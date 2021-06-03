@@ -30,8 +30,9 @@ enum CommandFlags {
   kCmdPubSub        = (1ULL<<3),  // "pub-sub" flag
   kCmdScript        = (1ULL<<4),  // "script" flag
   kCmdLoading       = (1ULL<<5),  // "ok-loading" flag
-  kCmdTransaction   = (1ULL<<6),  // "transaction" flag
+  kCmdMulti         = (1ULL<<6),  // "multi" flag
   kCmdExclusive     = (1ULL<<7),  // "exclusive" flag
+  kCmdNoMulti       = (1ULL<<8),  // "no-multi" flag
 };
 
 class Commander {
@@ -71,6 +72,8 @@ struct CommandAttributes {
   bool is_write() const { return (flags & kCmdWrite) != 0; }
   bool is_ok_loading() const { return (flags & kCmdLoading) != 0; }
   bool is_exclusive() const { return (flags & kCmdExclusive) != 0; }
+  bool is_multi() const { return (flags & kCmdMulti) != 0; }
+  bool is_no_multi() const { return (flags & kCmdNoMulti) != 0; }
 };
 
 int GetCommandNum();

@@ -128,7 +128,7 @@ class Server {
   void cron();
   void delConnContext(ConnContext *c);
   void updateCachedTime();
-  Status dynamicResizeBlockAndSST();
+  Status autoResizeBlockAndSST();
 
   std::atomic<bool> stop_;
   std::atomic<bool> is_loading_;

@@ -508,9 +508,9 @@ void Server::cron() {
     }
 
     // check every 30 minutes
-    if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
-      Status s = dynamicResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
+    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
+      Status s = autoResizeBlockAndSST();
+      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
     }
 
     // No replica uses this checkpoint, we can remove it.
@@ -1007,7 +1007,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   return task_runner_.Publish(task);
 }
 
-Status Server::dynamicResizeBlockAndSST() {
+Status Server::autoResizeBlockAndSST() {
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
@@ -1019,21 +1019,29 @@ Status Server::dynamicResizeBlockAndSST() {
   }
   auto average_kv_size = total_size / total_keys;
   int target_file_size_base = 0;
+  int block_size = 0;
   if (average_kv_size > 512 * KiB) {
     target_file_size_base = 1024;
+    block_size = 1 * MiB;
   } else if (average_kv_size > 256 * KiB) {
     target_file_size_base = 512;
+    block_size = 512 * KiB;
   } else if (average_kv_size > 32 * KiB) {
     target_file_size_base = 256;
+    block_size = 256 * KiB;
   } else if (average_kv_size > 1 * KiB) {
     target_file_size_base = 128;
+    block_size = 32 * KiB;
   } else if (average_kv_size > 128) {
     target_file_size_base = 64;
+    block_size = 8 * KiB;
   } else {
     target_file_size_base = 16;
+    block_size = 2 * KiB;
   }
   if (target_file_size_base == config_->RocksDB.target_file_size_base
-      && target_file_size_base == config_->RocksDB.write_buffer_size) {
+      && target_file_size_base == config_->RocksDB.write_buffer_size
+      && block_size == config_->RocksDB.block_size) {
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
@@ -1051,9 +1059,10 @@ Status Server::dynamicResizeBlockAndSST() {
     config_->RocksDB.target_file_size_base = target_file_size_base;
   }
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
+    auto old_write_buffer_size = config_->RocksDB.write_buffer_size;
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "
-              << config_->RocksDB.write_buffer_size
+              << old_write_buffer_size
               << " to " << target_file_size_base
               << ", average_kv_size: " << average_kv_size
               << ", total_size: " << total_size
@@ -1062,6 +1071,20 @@ Status Server::dynamicResizeBlockAndSST() {
     if (!s.IsOK()) {
       return s;
     }
+  }
+  if (block_size != config_->RocksDB.block_size) {
+    auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
+    LOG(INFO) << "[server] Resize rocksdb.block_size from "
+              << config_->RocksDB.block_size
+              << " to " << block_size
+              << ", average_kv_size: " << average_kv_size
+              << ", total_size: " << total_size
+              << ", total_keys: " << total_keys
+              << ", result: " << s.Msg();
+    if (!s.IsOK()) {
+      return s;
+    }
+    config_->RocksDB.block_size = block_size;
   }
   auto s = config_->Rewrite();
   LOG(INFO) << "[server] rewrite config, result: " << s.Msg();

@@ -66,6 +66,7 @@ struct Config{
   bool cluster_enabled = false;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
+  bool auto_resize_block_and_sst = true;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;

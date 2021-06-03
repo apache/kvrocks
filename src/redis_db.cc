@@ -274,7 +274,6 @@ rocksdb::Status Database::Scan(const std::string &cursor,
     if (slot_id > slot_start + HASH_SLOTS_MAX_ITERATIONS) {
       if (keys->empty()) {
         if (iter->Valid()) {
-
           ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsClusterEnabled());
 
           auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
@@ -433,7 +432,6 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
 }
 
 void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output) {
-
   ComposeNamespaceKey(namespace_, user_key, output, storage_->IsClusterEnabled());
 }
 

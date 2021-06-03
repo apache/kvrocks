@@ -1019,21 +1019,29 @@ Status Server::autoResizeBlockAndSST() {
   }
   auto average_kv_size = total_size / total_keys;
   int target_file_size_base = 0;
+  int block_size = 0;
   if (average_kv_size > 512 * KiB) {
     target_file_size_base = 1024;
+    block_size = 1 * MiB;
   } else if (average_kv_size > 256 * KiB) {
     target_file_size_base = 512;
+    block_size = 512 * KiB;
   } else if (average_kv_size > 32 * KiB) {
     target_file_size_base = 256;
+    block_size = 256 * KiB;
   } else if (average_kv_size > 1 * KiB) {
     target_file_size_base = 128;
+    block_size = 32 * KiB;
   } else if (average_kv_size > 128) {
     target_file_size_base = 64;
+    block_size = 8 * KiB;
   } else {
     target_file_size_base = 16;
+    block_size = 2 * KiB;
   }
   if (target_file_size_base == config_->RocksDB.target_file_size_base
-      && target_file_size_base == config_->RocksDB.write_buffer_size) {
+      && target_file_size_base == config_->RocksDB.write_buffer_size
+      && block_size == config_->RocksDB.block_size) {
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
@@ -1063,6 +1071,20 @@ Status Server::autoResizeBlockAndSST() {
     if (!s.IsOK()) {
       return s;
     }
+  }
+  if (block_size != config_->RocksDB.block_size) {
+    auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
+    LOG(INFO) << "[server] Resize rocksdb.block_size from "
+              << config_->RocksDB.block_size
+              << " to " << block_size
+              << ", average_kv_size: " << average_kv_size
+              << ", total_size: " << total_size
+              << ", total_keys: " << total_keys
+              << ", result: " << s.Msg();
+    if (!s.IsOK()) {
+      return s;
+    }
+    config_->RocksDB.block_size = block_size;
   }
   auto s = config_->Rewrite();
   LOG(INFO) << "[server] rewrite config, result: " << s.Msg();

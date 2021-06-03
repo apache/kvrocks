@@ -161,7 +161,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
   // Don't use multi get to prevent large range query, and take too much memory
   std::string sub_key, value;
   for (int i = start_index; i <= stop_index; i++) {
-    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsClusterEnabled()).Encode(&sub_key);
+    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version,
+                  storage_->IsClusterEnabled()).Encode(&sub_key);
     s = db_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
@@ -215,7 +216,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int s
   // Don't use multi get to prevent large range query, and take too much memory
   std::string sub_key, value;
   for (int i = start_index; i <= stop_index; i++) {
-    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsClusterEnabled()).Encode(&sub_key);
+    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version,
+                  storage_->IsClusterEnabled()).Encode(&sub_key);
     s = db_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {

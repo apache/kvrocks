@@ -280,7 +280,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
           if (res.first == prefix.end()) {
             keys->emplace_back(user_key);
           }
-          
+
           end_cursor->append(user_key);
         }
       } else {

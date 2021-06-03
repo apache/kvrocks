@@ -1,5 +1,5 @@
-#include "redis_db.h"
 #include "redis_slot.h"
+#include "redis_db.h"
 #include <ctime>
 #include "server.h"
 #include "util.h"

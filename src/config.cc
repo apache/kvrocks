@@ -71,7 +71,7 @@ Config::Config() {
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
       {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
-      {"cluster-enabled", true, new YesNoField(&cluster_enabled, true)},
+      {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
       {"requirepass", false, new StringField(&requirepass, "")},
       {"masterauth", false, new StringField(&masterauth, "")},

@@ -14,7 +14,6 @@
 #include "task_runner.h"
 #include "replication.h"
 #include "redis_metadata.h"
-#include "redis_slot.h"
 #include "log_collector.h"
 #include "worker.h"
 #include "rw_lock.h"

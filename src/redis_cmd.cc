@@ -23,6 +23,7 @@
 #include "redis_geo.h"
 #include "redis_pubsub.h"
 #include "redis_sortedint.h"
+#include "redis_slot.h"
 #include "replication.h"
 #include "util.h"
 #include "storage.h"

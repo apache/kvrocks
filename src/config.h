@@ -64,6 +64,8 @@ struct Config{
   int max_replication_mb = 0;
   int max_io_mb = 0;
   bool codis_enabled = false;
+  bool auto_resize_block_and_sst = true;
+
   std::vector<std::string> binds;
   std::vector<std::string> repl_binds;
   std::string dir;

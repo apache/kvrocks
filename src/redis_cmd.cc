@@ -32,7 +32,7 @@
 
 namespace Redis {
 
-const std::string kCursorPrefix = "_";
+const char *kCursorPrefix = "_";
 
 const char *errInvalidSyntax = "syntax error";
 const char *errInvalidExpireTime = "invalid expire time";
@@ -3737,7 +3737,7 @@ class CommandScanBase : public Commander {
     if (cursor == "0") {
       cursor = std::string();
     } else {
-      cursor = cursor.find(kCursorPrefix) == 0 ? cursor.substr(kCursorPrefix.size()) : cursor;
+      cursor = cursor.find(kCursorPrefix) == 0 ? cursor.substr(strlen(kCursorPrefix)) : cursor;
     }
   }
 

@@ -967,13 +967,10 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   return task_runner_.Publish(task);
 }
 
-<<<<<<< HEAD
-Status Server::dynamicResizeBlockAndSST() {
+Status Server::autoResizeBlockAndSST() {
   // the db is closing, don't use DB and cf_handles
   if (!storage_->IncrDBRefs().IsOK()) return Status(Status::NotOK, "loading in-progress");
-=======
-Status Server::autoResizeBlockAndSST() {
->>>>>>> 0790616 (Support the auto-resize-block-and-sst config directive (#289))
+
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {

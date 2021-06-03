@@ -24,6 +24,7 @@ set ::all_tests {
     unit/type/set
     unit/type/zset
     unit/type/hash
+    unit/multi
     unit/expire
     unit/quit
     unit/slowlog

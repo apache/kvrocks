@@ -142,7 +142,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   uint16_t slot_id = 0;
   std::string ns_prefix, ns, user_key, value;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {
-    if (storage_->IsClusterEnabled()) {
+    if (storage_->IsSlotIdEncoded()) {
       ComposeNamespaceKey(namespace_, "", &ns_prefix);
       if (!prefix.empty()) {
         PutFixed16(&ns_prefix, slot_id);
@@ -182,12 +182,12 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
         }
       }
       if (keys) {
-        ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsClusterEnabled());
+        ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());
         keys->emplace_back(user_key);
       }
     }
 
-    if (!storage_->IsClusterEnabled()) break;
+    if (!storage_->IsSlotIdEncoded()) break;
     if (prefix.empty()) break;
     if (++slot_id >= HASH_SLOTS_SIZE) break;
 
@@ -219,7 +219,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
-  if (storage_->IsClusterEnabled()) {
+  if (storage_->IsSlotIdEncoded()) {
     slot_start = cursor.empty() ? 0 : GetSlotNumFromKey(cursor);
     ComposeNamespaceKey(namespace_, "", &ns_prefix);
     if (!prefix.empty()) {
@@ -251,12 +251,12 @@ rocksdb::Status Database::Scan(const std::string &cursor,
       value = iter->value().ToString();
       metadata.Decode(value);
       if (metadata.Expired()) continue;
-      ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsClusterEnabled());
+      ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);
       cnt++;
     }
 
-    if (!storage_->IsClusterEnabled() || prefix.empty()) {
+    if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty()) {
           end_cursor->append(user_key);
       }
@@ -275,7 +275,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
     if (slot_id > slot_start + HASH_SLOTS_MAX_ITERATIONS) {
       if (keys->empty()) {
         if (iter->Valid()) {
-          ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsClusterEnabled());
+          ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());
 
           auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
           if (res.first == prefix.end()) {
@@ -433,7 +433,7 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
 }
 
 void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output) {
-  ComposeNamespaceKey(namespace_, user_key, output, storage_->IsClusterEnabled());
+  ComposeNamespaceKey(namespace_, user_key, output, storage_->IsSlotIdEncoded());
 }
 
 rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
@@ -502,14 +502,14 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   auto iter = db_->NewIterator(read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
-    InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsClusterEnabled()).Encode(&match_prefix_key);
+    InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
   } else {
-    InternalKey(ns_key, "", metadata.version, storage_->IsClusterEnabled()).Encode(&match_prefix_key);
+    InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
   }
 
   std::string start_key;
   if (!cursor.empty()) {
-    InternalKey(ns_key, cursor, metadata.version, storage_->IsClusterEnabled()).Encode(&start_key);
+    InternalKey(ns_key, cursor, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   } else {
     start_key = match_prefix_key;
   }
@@ -522,7 +522,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
     if (!iter->key().starts_with(match_prefix_key)) {
       break;
     }
-    InternalKey ikey(iter->key(), storage_->IsClusterEnabled());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
       values->emplace_back(iter->value().ToString());

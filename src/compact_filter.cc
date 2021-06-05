@@ -15,7 +15,7 @@ bool MetadataFilter::Filter(int level,
   std::string ns, user_key, bytes = value.ToString();
   Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(bytes);
-  // user_key outputed below contain extra slotid-prefix in cluster mode
+  // user_key outputed below contain extra slotid-prefix if encoding slot id
   ExtractNamespaceKey(key, &ns, &user_key);
   if (!s.ok()) {
     LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
@@ -39,7 +39,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
   // storage close the would delete the column familiy handler and DB
   if (!db || cf_handles->size() < 2)  return false;
 
-  ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsClusterEnabled());
+  ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;
@@ -88,7 +88,7 @@ bool SubKeyFilter::Filter(int level,
                                   const Slice &value,
                                   std::string *new_value,
                                   bool *modified) const {
-  InternalKey ikey(key, stor_->IsClusterEnabled());
+  InternalKey ikey(key, stor_->IsSlotIdEncoded());
   bool result = IsKeyExpired(ikey, value);
   DLOG(INFO) << "[compact_filter/subkey] "
              << "namespace: " << ikey.GetNamespace().ToString()

@@ -45,13 +45,13 @@ struct KeyNumStats {
   uint64_t avg_ttl = 0;
 };
 
-void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool cluster_enabled = false);
-void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool cluster_enabled = false);
+void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded = false);
+void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded = false);
 
 class InternalKey {
  public:
-  explicit InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool cluster_enabled = false);
-  explicit InternalKey(Slice input, bool cluster_enabled = false);
+  explicit InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded = false);
+  explicit InternalKey(Slice input, bool slot_id_encoded = false);
   ~InternalKey();
 
   Slice GetNamespace() const;
@@ -69,7 +69,7 @@ class InternalKey {
   char *buf_;
   char prealloc_[256];
   uint16_t slotid_;
-  bool cluster_enabled_;
+  bool slot_id_encoded_;
 };
 
 class Metadata {

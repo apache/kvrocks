@@ -69,7 +69,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   read_options.snapshot = ss.GetSnapShot();
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
   std::string sub_key, value;
-  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsClusterEnabled()).Encode(&sub_key);
+  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   s = db_->Get(read_options, sub_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
@@ -95,7 +95,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
 
   std::string sub_key, value;
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
-  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsClusterEnabled()).Encode(&sub_key);
+  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
@@ -162,7 +162,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
   std::string sub_key, value;
   for (int i = start_index; i <= stop_index; i++) {
     InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version,
-                  storage_->IsClusterEnabled()).Encode(&sub_key);
+                  storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
@@ -217,7 +217,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int s
   std::string sub_key, value;
   for (int i = start_index; i <= stop_index; i++) {
     InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version,
-                  storage_->IsClusterEnabled()).Encode(&sub_key);
+                  storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {

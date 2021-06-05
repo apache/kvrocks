@@ -63,7 +63,7 @@ struct Config{
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
-  bool cluster_enabled = false;
+  bool slot_id_encoded = false;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;

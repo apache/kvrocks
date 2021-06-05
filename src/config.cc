@@ -71,7 +71,7 @@ Config::Config() {
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
       {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
-      {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
+      {"slot-id-encoded", true, new YesNoField(&slot_id_encoded, true)},
       {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
       {"requirepass", false, new StringField(&requirepass, "")},
       {"masterauth", false, new StringField(&masterauth, "")},
@@ -379,8 +379,8 @@ Status Config::finish() {
   if (requirepass.empty() && !tokens.empty()) {
     return Status(Status::NotOK, "requirepass empty wasn't allowed while the namespace exists");
   }
-  if (cluster_enabled && !tokens.empty()) {
-    return Status(Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists");
+  if (slot_id_encoded && !tokens.empty()) {
+    return Status(Status::NotOK, "encoding slot id wasn't allowed while the namespace exists");
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
@@ -547,8 +547,8 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbidden to add namespace when requirepass was empty");
   }
-  if (cluster_enabled) {
-    return Status(Status::NotOK, "forbidden to add namespace when cluster mode was enabled");
+  if (slot_id_encoded) {
+    return Status(Status::NotOK, "forbidden to add namespace if encoding slot id");
   }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;

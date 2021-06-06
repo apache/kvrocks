@@ -31,6 +31,8 @@ const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 
+const char *kEncodingMarkColumnFamilyName = "slot_id_encoded"
+
 const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
@@ -130,6 +132,9 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                          kZSetScoreColumnFamilyName,
                                          kPubSubColumnFamilyName};
+    if (config_->slot_id_encoded) {
+      cf_names.emplace_back(kEncodingMarkColumnFamilyName);
+    }
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -199,7 +204,16 @@ Status Storage::Open(bool read_only) {
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
-
+  if (!config_->slot_id_encoded && column_families.size() != old_column_families.size()) {
+    return Status(Status::NotOK, "the db enabled slot-id-encoded at first open, please set slot-id-encoded 'yes'");
+  }
+  if (config_->slot_id_encoded && column_families.size() == old_column_families.size()) {
+    return Status(Status::NotOK, "the db disabled slot-id-encoded at first open, please set slot-id-encoded 'no'");
+  }
+  if (config_->slot_id_encoded) {
+    rocksdb::ColumnFamilyOptions opts(options);
+    column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kEncodingMarkColumnFamilyName, opts));
+  }
   auto start = std::chrono::high_resolution_clock::now();
   if (read_only) {
     s = rocksdb::DB::OpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_, &db_);

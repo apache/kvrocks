@@ -31,7 +31,7 @@ const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 
-const char *kEncodingMarkColumnFamilyName = "slot_id_encoded"
+const char *kEncodingMarkColumnFamilyName = "slot_id_encoded";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 

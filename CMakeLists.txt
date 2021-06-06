@@ -315,7 +315,9 @@ add_executable(unittest
         tests/task_runner_test.cc
         tests/t_bitmap_test.cc
         tests/compact_test.cc
-        tests/log_collector_test.cc src/config_type.h)
+        tests/log_collector_test.cc
+        src/config_type.h
+        tests/util_test.cc)
 
 add_dependencies(unittest glog rocksdb snappy jemalloc)
 target_compile_features(unittest PRIVATE cxx_std_11)

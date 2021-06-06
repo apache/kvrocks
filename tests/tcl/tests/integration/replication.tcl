@@ -1,6 +1,6 @@
 start_server {tags {"repl"}} {
     set A [srv 0 client]
-    set A_host [srv 0 host]
+    set A_host "localhost"
     set A_port [srv 0 port]
     start_server {} {
         set B [srv 0 client]

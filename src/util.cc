@@ -5,8 +5,10 @@
 #include <sys/uio.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <poll.h>
 #include <errno.h>
+#include <netdb.h>
 #include <pthread.h>
 #include <fcntl.h>
 #include <math.h>
@@ -38,18 +40,54 @@
 #define AE_HUP 8
 
 namespace Util {
+Status Host2IP(const std::string &host, char *ip, size_t maxlen) {
+  addrinfo hints, *servinfo = nullptr, *p;
+  char portstr[6];  /* strlen("65535") + 1; */
+  int rv;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  if ((rv = getaddrinfo(host.c_str(), portstr, &hints, &servinfo)) != 0) {
+    return Status(Status::NotOK, gai_strerror(rv));
+  }
+  for (p = servinfo; p != nullptr; p = p->ai_next) {
+    if (p->ai_protocol == IPPROTO_IPV6 || p->ai_family != AF_INET) continue;
+    auto sockaddr = reinterpret_cast<struct sockaddr_in *>(p->ai_addr);
+    inet_ntop(AF_INET, &(sockaddr->sin_addr), ip, maxlen);
+    freeaddrinfo(servinfo);
+    return Status::OK();
+  }
+  freeaddrinfo(servinfo);
+  return Status(Status::NotOK, "no route for the host");
+}
+
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port) {
+  char ip[16];
   sockaddr_in sin{};
+
   sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr(host.c_str());
+  Status s = Host2IP(host, ip, sizeof(ip)/sizeof(ip[0]));
+  if (s.IsOK()) {
+    sin.sin_addr.s_addr = inet_addr(ip);
+  } else {
+    sin.sin_addr.s_addr = inet_addr(host.c_str());
+  }
   sin.sin_port = htons(port);
   return sin;
 }
 
 Status SockConnect(std::string host, uint32_t port, int *fd) {
+  char ip[16];
   sockaddr_in sin{};
+
   sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr(host.c_str());
+  Status s = Host2IP(host, ip, sizeof(ip)/sizeof(ip[0]));
+  if (s.IsOK()) {
+    sin.sin_addr.s_addr = inet_addr(ip);
+  } else {
+    sin.sin_addr.s_addr = inet_addr(host.c_str());
+  }
   sin.sin_port = htons(port);
   *fd = socket(AF_INET, SOCK_STREAM, 0);
   auto rv = connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));

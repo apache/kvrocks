@@ -547,9 +547,6 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbidden to add namespace when requirepass was empty");
   }
-  if (slot_id_encoded) {
-    return Status(Status::NotOK, "forbidden to add namespace if encoding slot id");
-  }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;
   if (tokens.find(token) != tokens.end()) {

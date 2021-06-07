@@ -201,22 +201,18 @@ LOOP_LABEL:
 }
 
 void ReplicationThread::CallbacksStateMachine::Start() {
+  int cfd;
+
   if (handlers_.empty()) {
     return;
   }
-  auto sockaddr_inet = Util::NewSockaddrInet(repl_->host_, repl_->port_);
-  auto bev = bufferevent_socket_new(repl_->base_, -1, BEV_OPT_CLOSE_ON_FREE);
-  if (bufferevent_socket_connect(bev,
-                                 reinterpret_cast<sockaddr *>(&sockaddr_inet),
-                                 sizeof(sockaddr_inet)) != 0) {
-    // NOTE: Connection error will not appear here, network err will be reported
-    // in ConnEventCB. the error here is something fatal.
-    LOG(ERROR) << "[replication] Failed to start state machine, err: " << strerror(errno);
-  }
-
-  auto s = Util::SockSetTcpKeepalive(bufferevent_getfd(bev), 120);
+  Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd);
   if (!s.IsOK()) {
-    LOG(ERROR) << "[replication] Failed to set tcp-keepalive, err:" << s.Msg();
+    LOG(ERROR) << "[replication] Failed to connect the master, err:" << s.Msg();
+  }
+  auto bev = bufferevent_socket_new(repl_->base_, cfd, BEV_OPT_CLOSE_ON_FREE);
+  if (bev == nullptr) {
+    LOG(ERROR) << "[replication] Failed to create the event socket";
   }
 
   handler_idx_ = 0;

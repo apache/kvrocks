@@ -5,6 +5,7 @@
 #include <limits>
 #include <cmath>
 #include <memory>
+#include <set>
 
 namespace Redis {
 
@@ -28,8 +29,24 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
   std::string member_key;
-  for (size_t i = 0; i < mscores->size(); i++) {
+  std::set<std::string> added_member_keys;
+  for (int i = static_cast<int>(mscores->size()-1); i >= 0; i--) {
     InternalKey(ns_key, (*mscores)[i].member, metadata.version).Encode(&member_key);
+
+    // Fix the corner case that adds the same member which may add the score
+    // column family many times and cause problems in the ZRANGE command.
+    //
+    // For example, we add members with `ZADD mykey 1 a 2 a` and `ZRANGE mykey 0 1`
+    // return only one member(`a`) was expected but got the member `a` twice now.
+    //
+    // The root cause of this issue was the score key  was composed by member and score,
+    // so the last one can't overwrite the previous when the score was different.
+    // A simple workaround was add those members with reversed order and skip the member if has added.
+    if (added_member_keys.find(member_key) != added_member_keys.end()) {
+      continue;
+    }
+    added_member_keys.insert(member_key);
+
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);

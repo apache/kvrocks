@@ -141,5 +141,5 @@ start_server {tags {"keyspace"}} {
 
             incr index
         }
-    } {}
+    }
 }

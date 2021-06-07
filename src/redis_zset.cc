@@ -32,7 +32,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
   std::set<std::string> added_member_keys;
   for (int i = static_cast<int>(mscores->size()-1); i >= 0; i--) {
     InternalKey(ns_key, (*mscores)[i].member, metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&member_key)).Encode(&member_key);
+                storage_->IsSlotIdEncoded()).Encode(&member_key);
 
     // Fix the corner case that adds the same member which may add the score
     // column family many times and cause problems in the ZRANGE command.

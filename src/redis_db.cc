@@ -163,7 +163,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
     for (; iter->Valid(); iter->Next()) {
-      if (!prefix.empty() && !iter->key().starts_with(ns_prefix)) {
+      if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
         break;
       }
       Metadata metadata(kRedisNone, false);

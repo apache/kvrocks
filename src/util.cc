@@ -44,7 +44,7 @@ Status SockConnect(std::string host, uint32_t port, int *fd) {
   char portstr[6];  /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
 
-  snprintf(portstr, sizeof(portstr), "%d", port);
+  snprintf(portstr, sizeof(portstr), "%u", port);
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;

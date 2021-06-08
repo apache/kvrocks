@@ -1,23 +1,25 @@
 # KVRocks源码概览
 # 整体流程
 
-1. 加载 KVRocks 配置(解析配置文件，构建 `Config` )
-2. 初始化存储引擎 `Engine::Storage`， 并打开
-3. 初始化服务器`Server`
-4. 运行`Server`, 执行 `Server::Start()` 和 `Server::Join()`
+1. 加载 KVRocks 配置(解析配置文件，构建 `Config` 对象)
+2. 初始化并打开存储引擎 `Engine::Storage`
+3. 初始化服务器 `Server`
+4. 运行 `Server`，执行 `Server::Start()` 和 `Server::Join()`
 5. 接收中断信号，终止 `Server`
-    调用路径：中断信号处理函数 `signal_handler` ->  `hup_handler` -> `Server::Stop()`
+   
+   调用路径: 中断信号处理函数 `signal_handler` ->  `hup_handler` -> `Server::Stop()`
 
 # 存储引擎 
 
-涉及到的文件：
+涉及到的文件:
 
 - storage.h, storage.cc
 
 ## Engine::Storage
 
-封装底层存储引擎（目前使用的是 `RocksDB` ）的接口, 为 Server 提供磁盘存储接口。
-涉及到的 `RocksDB` 类如下：
+封装底层存储引擎（目前使用的是 `RocksDB` ）的接口, 为 Server 提供数据存储接口。
+涉及到的 `RocksDB` 类如下: 
+
 - `rocksdb::DB`
 - `rocksdb::BackupEngine`
 - `rocksdb::Env`
@@ -29,34 +31,39 @@
 
 1. 创建需要的 `ColumnFamily`
 2. 配置每个 `ColumnFamily`
-3. 调用 rocksdb::DB::Open() 打开 RocksDB，并统计用时
+3. 调用 `rocksdb::DB::Open()` 打开 RocksDB，并统计用时
 4. 调用 `rocksdb::BackupEngine::Open()` 打开 `BackupEngine`
 
 # 服务器
 
-涉及到的文件：
+涉及到的文件: 
+
 - server.h, server.cc
 - redis_cmd.cc
 - worker.h, worker.cc
 
 ## Server 初始化
 
-1. 调用 Redis 命名空间的 GetCommandList 函数，并初始化命令统计
-2. 创建 Worker 和 WorkerThread, 工作线程（可以配置数目），用于处理请求
-3. 构建复制 Worker（用于主从同步），可以配置数目，也可以设置限速
+1. 调用 `Redis::GetCommandList` 函数获得命令表，并初始化命令统计
+2. 创建 `Worker` 和 `WorkerThread`， 工作线程（可以配置数目），用于处理请求
+3. 构建主从复制 Worker （用于主从同步），可以配置数目，也可以设置限速
 
 ## Server::Start()
-1. 启动 工作线程 和 复制线程, `WorkerThread.Start()`
-2. 启动 `TaskRunner`, 用于处理异步任务 `Task`
+
+1. 启动 工作线程 和 复制线程， `WorkerThread.Start()`
+2. 启动 `TaskRunner`， 用于处理异步任务 `Task`
 3. 构建并启动一个 Cron 线程
 4. 构建并启动一个 `CompactionChecker` 线程，定时手动进行 `RocksDB` 的Compaction  
 
 # 线程模型
 
+KVRocks 包括 Worker 线程、TaskRunner 线程池、Cron 周期线程、CompactionChecker 线程、主从复制线程。
+
 ## Worker线程
 
 ### Worker
-`KVRocks` 使用 `libevent` 库进行事件处理
+
+`KVRocks` 使用 `libevent` 库进行事件处理。
 
 涉及到的文件:
 
@@ -74,12 +81,12 @@
 - 检查超时的 client，从 `Worker` 维护的相关数据结构中踢出
 
 `Worker::Run()` :
-- `event_base_dispatch` 启动 `event_base` 的事件循环, 处理就绪的事件
+- `event_base_dispatch` 启动 `event_base` 的事件循环， 处理就绪的事件
 
 `Worker::newConnection()` :
 - 获取 `bufferevent`
 - 创建 `Redis::Connection(bev, worker)`
-- 设置 `bufferevent` 的读、写、事件三种回调函数，分别为：`Redis::Connection::OnRead()`、`Redis::Connection::OnWrite()`、`Redis::Connection::OnEvent()`
+- 设置 `bufferevent` 的读、写、事件三种回调函数，分别为: `Redis::Connection::OnRead()`、`Redis::Connection::OnWrite()`、`Redis::Connection::OnEvent()`
 - 将 `Redis::Connection` 添加到此 `Worker` 的 `map<int, Redis::Connection*> conns_` 中
 - 设置复制 `Worker` 的限速
 
@@ -99,9 +106,10 @@
 ### Redis::Connection
 
 涉及到的文件:
+
 - redis_connection.h, redis_connection.cc
 
-将客户端的连接抽象为`Connection`，并将一系列操作封装其中，内部使用 `libevent` 的 `eventbuffer` 做数据的读取和写入。
+将客户端的连接抽象为 `Connection`，并将一系列操作封装其中，内部使用 `libevent` 的 `eventbuffer` 做数据的读取和写入。
 
 bufferevent
 
@@ -111,99 +119,103 @@ bufferevent
 - 连接关闭、连接超时或者连接发生错误时，则会调用事件回调
 
 `Connection::OnRead()`: 读取数据，查找对应命令列表，然后执行
-- 调用 Connection::Input(), 读取 bufferevent 中的内容
-- 使用 Request::Tokenize 解析，当前 Connection 中维护了 Request req_ 变量
-- 使用 Request::ExecuteCommands，执行命令
+- 调用 `Connection::Input()`， 读取 bufferevent 中的内容
+- 调用 `Request::Tokenize` 将命令解析成 Token 保存在 `Request` 内部
+- 调用 `Connection::ExecuteCommands`，执行命令
 
 `Connection::OnWrite()`: 回复客户端完毕
-- Connection::Close()，内部调用 `Worker::FreeConnection`
+- `Connection::Close()`，内部调用 `Worker::FreeConnection`
 
 `Connection::OnEvent()`: 处理出错、连接关闭、超时情况
+
+`Connection::ExecuteCommands()`:
+- 调用 `Server::LookupAndCreateCommand` 查找命令表获得命令
+- 判断命令是否合法
+- 如果命令合法，判断命令的参数是否合法
+    - 数目是否合法
+    - 参数类型（等其他方面是否合法），调用每个命令的 Parse 函数（每个命令都会重写基类 `Commander` 的 `Parse` 函数）
+- 调用当前命令的 `Execute` 函数执行当前命令，获得回复字符串
+- 统计命令的执行时间
+- 处理 `monitor` 命令的逻辑: 调用 `Server::FeedMonitorConns`，将当前命令发送给 Monitor 客户端连接
+- `Connection::Reply()`: 调用 `Redis::Reply()` 将响应写入 `bufferevent` 回复给客户端
 
 ### Redis::Request
 
 涉及到的文件:
+
 - redis_request.h, redis_request.cc
 
-主要用来解析 eventbuffer 中的数据, 解析成 Redis 命令，并执行
+主要用来解析 eventbuffer 中的数据， 解析成 Redis 命令，并执行
 
-`Request::Tokenize()`：
+`Request::Tokenize()`: 
 
-将客户端传来的数据（从 `eventbuffer` 中）读出，分隔成 Token
-
-`Request::ExecuteCommands()`：
-- 调用 `LookupCommand()` 查找命令表
-- 判断命令是否合法
-- 如果命令合法，判断命令的参数是否合法
-    - 数目是否合法
-    - 参数类型（等其他方面是否合法），调用每个命令的Parse，每个命令都会重写基类Commander的Parse
-- 调用当前命令的 Execute, 执行当前命令, 获得回复字符串
-- 统计命令的执行时间
-- 处理 `monitor` 命令的逻辑: 调用 `Server::FeedMonitorConns`，将当前命令发送给 Monitor 客户端连接
-- `Connection::Reply()`: 调用 `Redis::Reply()` 将响应写入 `bufferevent` 回复给客户端
-- 清空当前 `Request` 的 Token Vector
+将客户端传来的数据从 `eventbuffer` 中读出，分隔成 Token
 
 ## TaskRunner 线程池
 
-涉及到的文件：
+涉及到的文件:
 
 - task_runner.h, task_runner.cc
 
-是一个线程池，有任务队列，用来存储异步的任务(Task)，当前异步的任务有：
+是一个线程池，有任务队列，用来存储异步的任务( Task )，当前异步的任务有:
 
-- `Server::AsyncCompactDB()`: 被 `compact` 命令、`Server::cron` 创建任务
-- `Server::AsyncBgsaveDB()`: 被 `bgsave` 命令、`Server::cron` 调用
-- `Server::AsyncPurgeOldBackups()`: 被 `flushbackup` 命令、`Server::cron` 调用
-- `Server::AsyncScanDBSize()`: 被 `dbsize` 命令
+- `Server::AsyncCompactDB()`: `compact` 命令、`Server::cron` 调用
+- `Server::AsyncBgsaveDB()`: `bgsave` 命令、`Server::cron` 调用
+- `Server::AsyncPurgeOldBackups()`:  `flushbackup` 命令、`Server::cron` 调用
+- `Server::AsyncScanDBSize()`:  `dbsize` 命令调用
 
-可以发现这些都是比较耗时的任务, 为了不阻塞其他请求
+可以发现这些都是比较耗时的任务， 为了不阻塞其他请求。
 
 TaskRunner::Start():
 - 创建线程执行 TaskRunner::run
-- TaskRunner::run: 无限循环, 执行队列中的 Task
+- TaskRunner::run 无限循环， 执行队列中的 Task
 
-## Cron 周期函数
+## Cron 周期线程
 
-相关文件：
+相关文件:
 - server.h, server.cc
 
-Server的周期函数，执行一些定时任务(100ms是一个时钟嘀嗒)：
-- CompactionDB 周期 (每20s) 
-- BgsaveDB 周期 (每20s) 
-- PurgeOldBackups 周期 (每1min) 
-- 动态改变RocksDB的参数 target_file_size_base 和 write_buffer_size 的大小周期（每30min）
+Server的周期函数，执行一些定时任务(100ms是一个时钟嘀嗒):
+- `AsyncCompactDB` 周期 20s 
+- `AsyncBgsaveDB` 周期 20s
+- `AsyncPurgeOldBackups` 周期 1min
+- `autoResizeBlockAndSST` 动态改变RocksDB的参数 `target_file_size_base` 和 `write_buffer_size` 的大小，周期 30min
 - `Server::cleanupExitedSlaves()`
 
 ## CompactionChecker 清理线程
 
-相关文件：
+相关文件:
 - compaction_checker.h, compaction_checker.cc
 
-每 1min 检查一次, `CompactionChecker` 中 `CompactPubsubAndSlotFiles` 和
-`PickCompactionFiles`
+每 1min 检查一次， `CompactionChecker` 中有 `CompactPubsubAndSlotFiles` 和
+`PickCompactionFiles` 两个函数:
+- `CompactPubsubAndSlotFiles`: 清理 pubsub 相关的 ColumnFamily
+- `PickCompactionFiles`: 获取 SST 文件的 `TableProperties`，其中包含了 SST 的属性: 
 
-获取 `TableProperties`, `TableProperties` 包含了SST的属性: 
+    1. key 的总数目 
+    2. 删除 key 的数目 
+    3. 起始 key 
+    4. 终止 key
+    
+    对满足以下条件的 SST 文件进行手动 Compaction:
 
-1. 总key的数目 
-2. 删除key的数目 
-3. 起始key 
-4. 终止key
+    1. 创建超过两天的 SST 文件  
+    2. 删除key占比多的 SST 文件
 
-对满足以下条件的SST文件进行手动Compaction: 
+获取 SST 属性
 
-1. 创建超过两天的SST文件  
-2. 删除key占比多的SST文件
+`CompactOnExpiredCollector` 通过继承 `rocksdb::TablePropertiesCollector` 实现自定义 SST 属性，然后实现相应的工厂类 `CompactOnExpiredTableCollectorFactory`，将工厂类通过 `rocksdb::ColumnFamilyOptions` 传递给存储引擎。
 
-## 复制线程
+## 主从复制线程
 
-执行主从复制相关的逻辑，见：[metadata-design](./metadata-design.md)
+执行主从复制相关的逻辑，具体见: [replication-design](./replication-design.md)
 
 # 命令执行
 
 ## 编码
 
-见：[replication-design](./replication-design.md)
+将Redis相关命令编码成KV数据，具体见: [metadata-design](./metadata-design.md)
 
 ## 实现
 
-按照编码，使用 redis_xx.h 中定义的数据结构，构造编码后的KV数据，然后使用 `Engine::Storage` 提供封装的接口将最终KV数据保存
+按照编码规则，使用 redis_xx.h 中定义的数据结构，构造编码后的KV数据，最后使用存储引擎 `Engine::Storage` 封装的接口将最终KV数据保存。

@@ -1,4 +1,3 @@
-# Kvrocks 源码概览
 # 整体流程
 
 1. 加载 Kvrocks 配置(解析配置文件，构建 `Config` 对象)

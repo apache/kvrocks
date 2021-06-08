@@ -209,7 +209,7 @@ Server的周期函数，执行一些定时任务(100ms是一个时钟嘀嗒):
 
 执行主从复制相关的逻辑，具体见: [replication-design](./replication-design.md)
 
-# 命令执行
+# 命令实现
 
 ## 编码
 

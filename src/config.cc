@@ -379,9 +379,6 @@ Status Config::finish() {
   if (requirepass.empty() && !tokens.empty()) {
     return Status(Status::NotOK, "requirepass empty wasn't allowed while the namespace exists");
   }
-  if (slot_id_encoded && !tokens.empty()) {
-    return Status(Status::NotOK, "encoding slot id wasn't allowed while the namespace exists");
-  }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
   if (log_dir.empty()) log_dir = dir;

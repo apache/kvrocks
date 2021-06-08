@@ -99,6 +99,8 @@ target_sources(kvrocks PRIVATE
         src/task_runner.h
         src/encoding.h
         src/encoding.cc
+        src/redis_slot.h
+        src/redis_slot.cc
         src/redis_metadata.h
         src/redis_metadata.cc
         src/redis_string.h
@@ -189,6 +191,8 @@ target_sources(kvrocks2redis PRIVATE
         src/task_runner.h
         src/encoding.h
         src/encoding.cc
+        src/redis_slot.h
+        src/redis_slot.cc
         src/redis_metadata.h
         src/redis_metadata.cc
         src/redis_string.h
@@ -253,6 +257,8 @@ add_executable(unittest
         src/config.h
         src/worker.cc
         src/worker.h
+        src/redis_slot.cc
+        src/redis_slot.h
         src/redis_connection.cc
         src/redis_connection.h
         src/redis_pubsub.cc

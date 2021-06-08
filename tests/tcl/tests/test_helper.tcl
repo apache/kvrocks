@@ -24,6 +24,7 @@ set ::all_tests {
     unit/type/set
     unit/type/zset
     unit/type/hash
+    unit/type/sint
     unit/multi
     unit/expire
     unit/quit
@@ -34,6 +35,7 @@ set ::all_tests {
     unit/geo
     unit/command
     unit/config
+    unit/cluster
     integration/replication
 }
 

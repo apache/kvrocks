@@ -36,14 +36,14 @@ TEST(Compact, Filter) {
   auto iter = db->NewIterator(read_options, storage_->GetCFHandle("metadata"));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     std::string user_key, user_ns;
-    ExtractNamespaceKey(iter->key(), &user_ns, &user_key);
+    ExtractNamespaceKey(iter->key(), &user_ns, &user_key, storage_->IsSlotIdEncoded());
     EXPECT_EQ(user_key, live_hash_key);
   }
   delete iter;
 
   iter = db->NewIterator(read_options, storage_->GetCFHandle("subkey"));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    InternalKey ikey(iter->key());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
   delete iter;
@@ -61,7 +61,7 @@ TEST(Compact, Filter) {
 
   iter = db->NewIterator(read_options, storage_->GetCFHandle("default"));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    InternalKey ikey(iter->key());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
   delete iter;

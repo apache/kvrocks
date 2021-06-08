@@ -1,7 +1,7 @@
-# KVRocks源码概览
+# Kvrocks 源码概览
 # 整体流程
 
-1. 加载 KVRocks 配置(解析配置文件，构建 `Config` 对象)
+1. 加载 Kvrocks 配置(解析配置文件，构建 `Config` 对象)
 2. 初始化并打开存储引擎 `Engine::Storage`
 3. 初始化服务器 `Server`
 4. 运行 `Server`，执行 `Server::Start()` 和 `Server::Join()`
@@ -57,13 +57,13 @@
 
 # 线程模型
 
-KVRocks 包括 Worker 线程、TaskRunner 线程池、Cron 周期线程、CompactionChecker 线程、主从复制线程。
+Kvrocks 包括 Worker 线程、TaskRunner 线程池、Cron 周期线程、CompactionChecker 线程、主从复制线程。
 
 ## Worker线程
 
 ### Worker
 
-`KVRocks` 使用 `libevent` 库进行事件处理。
+Kvrocks 使用 `libevent` 库进行事件处理。
 
 涉及到的文件:
 

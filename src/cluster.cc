@@ -58,7 +58,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
       return Status(Status::NotOK, "Invalid version of cluster");
     }
     // The same version, it is not needed to update
-    if (version_ == version) return Status::OK(); 
+    if (version_ == version) return Status::OK();
   }
 
   ClusterNodes nodes;
@@ -78,7 +78,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   // Update replicas info and size
   for (auto &n : nodes_) {
-    if(n.second->role_ == kClusterSlave) {
+    if (n.second->role_ == kClusterSlave) {
       if (nodes_.find(n.second->master_id_) != nodes.end()) {
         nodes_[n.second->master_id_]->replicas.push_back(n.first);
       }
@@ -369,7 +369,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
 
   int slot = -1;
   for (auto i : keys_indexes) {
-    if (i >= (int)cmd_tokens.size()) break;
+    if (i >= static_cast<int>(cmd_tokens.size())) break;
     int cur_slot = GetSlotNumFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {

@@ -4139,7 +4139,7 @@ class CommandCluster : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
-    
+
     if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "version" ||
          subcommand_ == "slots" || subcommand_ == "info")) return Status::OK();
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
@@ -4186,7 +4186,7 @@ class CommandCluster : public Commander {
       Status s = svr->cluster_->GetSlotsInfo(&infos);
       if (s.IsOK()) {
         output->append(Redis::MultiLen(infos.size()));
-        for(const auto &info : infos) {
+        for (const auto &info : infos) {
           output->append(Redis::MultiLen(info.nodes.size()+2));
           output->append(Redis::Integer(info.start));
           output->append(Redis::Integer(info.end));

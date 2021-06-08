@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Settings
-BIN_PATH="../../output/"
+BIN_PATH="../../src/"
 HOST=127.0.0.1
 PORT=30000
 NODES=6

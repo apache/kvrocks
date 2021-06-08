@@ -55,7 +55,7 @@ class Cluster {
   Status SetNodeId(std::string node_id);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
-  uint64_t GetVersion() { return version_; };
+  uint64_t GetVersion() { return version_; }
   bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens);

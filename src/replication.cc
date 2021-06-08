@@ -209,10 +209,12 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd);
   if (!s.IsOK()) {
     LOG(ERROR) << "[replication] Failed to connect the master, err:" << s.Msg();
+    return;
   }
   auto bev = bufferevent_socket_new(repl_->base_, cfd, BEV_OPT_CLOSE_ON_FREE);
   if (bev == nullptr) {
     LOG(ERROR) << "[replication] Failed to create the event socket";
+    return;
   }
 
   handler_idx_ = 0;

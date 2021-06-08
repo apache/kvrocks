@@ -199,7 +199,6 @@ Status Storage::Open(bool read_only) {
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
-
   auto start = std::chrono::high_resolution_clock::now();
   if (read_only) {
     s = rocksdb::DB::OpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_, &db_);

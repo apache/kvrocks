@@ -265,5 +265,5 @@ start_server {tags {"scan network"}} {
 
             incr index
         }
-    } {}
+    }
 }

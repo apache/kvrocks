@@ -378,7 +378,6 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
     }
   }
   if (slot == -1) return Status::OK();
-  assert(IsValidSlot(slot) == true);
 
   if (slots_nodes_[slot] == nullptr) {
     return Status(Status::ClusterDown, "CLUSTERDOWN Hash slot not served");

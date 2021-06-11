@@ -10,6 +10,7 @@ TEST(Compact, Filter) {
   Config config;
   config.db_dir = "compactdb";
   config.backup_dir = "compactdb/backup";
+  config.slot_id_encoded = false;
 
   auto storage_ = new Engine::Storage(&config);
   Status s = storage_->Open();

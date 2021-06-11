@@ -164,7 +164,7 @@ Status Storage::Open(bool read_only) {
   metadata_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
-  metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>();
+  metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
   metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   metadata_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
@@ -467,7 +467,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
     return sst_file_manager_->GetTotalSize();
   }
   std::string prefix, begin_key, end_key;
-  ComposeNamespaceKey(ns, "", &prefix);
+  ComposeNamespaceKey(ns, "", &prefix, false);
 
   Redis::Database db(this, ns);
   uint64_t size, total_size = 0;

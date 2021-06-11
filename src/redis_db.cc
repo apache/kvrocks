@@ -143,7 +143,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   std::string ns_prefix, ns, user_key, value;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {
     if (storage_->IsSlotIdEncoded()) {
-      ComposeNamespaceKey(namespace_, "", &ns_prefix);
+      ComposeNamespaceKey(namespace_, "", &ns_prefix, false);
       if (!prefix.empty()) {
         PutFixed16(&ns_prefix, slot_id);
         ns_prefix.append(prefix);
@@ -191,7 +191,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
     if (prefix.empty()) break;
     if (++slot_id >= HASH_SLOTS_SIZE) break;
 
-    ComposeNamespaceKey(namespace_, "", &ns_prefix);
+    ComposeNamespaceKey(namespace_, "", &ns_prefix, false);
     PutFixed16(&ns_prefix, slot_id);
     ns_prefix.append(prefix);
   }
@@ -221,7 +221,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
     slot_start = cursor.empty() ? 0 : GetSlotNumFromKey(cursor);
-    ComposeNamespaceKey(namespace_, "", &ns_prefix);
+    ComposeNamespaceKey(namespace_, "", &ns_prefix, false);
     if (!prefix.empty()) {
       PutFixed16(&ns_prefix, slot_start);
       ns_prefix.append(prefix);
@@ -290,7 +290,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
       break;
     }
 
-    ComposeNamespaceKey(namespace_, "", &ns_prefix);
+    ComposeNamespaceKey(namespace_, "", &ns_prefix, false);
     PutFixed16(&ns_prefix, slot_id);
     ns_prefix.append(prefix);
     iter->Seek(ns_prefix);
@@ -324,7 +324,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 
 rocksdb::Status Database::FlushDB() {
   std::string prefix, begin_key, end_key;
-  ComposeNamespaceKey(namespace_, "", &prefix);
+  ComposeNamespaceKey(namespace_, "", &prefix, false);
   auto s = FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
   if (!s.ok()) {
     return rocksdb::Status::OK();

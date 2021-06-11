@@ -15,8 +15,7 @@ bool MetadataFilter::Filter(int level,
   std::string ns, user_key, bytes = value.ToString();
   Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(bytes);
-  // user_key outputed below contain extra slotid-prefix if encoding slot id
-  ExtractNamespaceKey(key, &ns, &user_key);
+  ExtractNamespaceKey(key, &ns, &user_key, stor_->IsSlotIdEncoded());
   if (!s.ok()) {
     LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
                  << ", namespace: " << ns

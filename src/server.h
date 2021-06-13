@@ -9,6 +9,10 @@
 #include <vector>
 #include <memory>
 
+extern "C" {
+#include <lua.h>
+}
+
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
@@ -121,6 +125,10 @@ class Server {
                   bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
+  lua_State *Lua() { return lua_; }
+  void SetCurrentConnection(Redis::Connection *conn) { curr_connection_ = conn; }
+  Redis::Connection *GetCurrentConnection() { return curr_connection_; }
+
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
@@ -148,6 +156,9 @@ class Server {
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
+
+  lua_State *lua_;
+  Redis::Connection *curr_connection_ = nullptr;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};
@@ -185,3 +196,8 @@ class Server {
   std::vector<WorkerThread *> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };
+
+extern Server *srv;
+
+Server *GetServer();
+

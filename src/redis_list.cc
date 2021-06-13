@@ -108,7 +108,7 @@ rocksdb::Status List::Pop(const Slice &user_key, std::string *elem, bool left) {
 /*
  * LRem would remove which value is equal to elem, and count limit the remove number and direction
  * Caution: The LRem timing complexity is O(N), don't use it on a long list
- * The simplified description of LRem Algothrim follows those steps:
+ * The simplified description of LRem Algorithm follows those steps:
  * 1. find out all the index of elems to delete
  * 2. determine to move the remain elems from the left or right by the length of moving elems
  * 3. move the remain elems with overlay

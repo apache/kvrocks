@@ -27,6 +27,10 @@ extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
 }
 
+Server *GetServer() {
+    return nullptr;
+}
+
 static void usage(const char *program) {
   std::cout << program << " sync kvrocks to redis\n"
             << "\t-c config file, default is " << kDefaultConfPath << "\n"

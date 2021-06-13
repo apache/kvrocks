@@ -13,3 +13,6 @@
 [submodule "external/jemalloc"]
 	path = external/jemalloc
 	url = https://github.com/jemalloc/jemalloc.git
+[submodule "external/lua"]
+	path = external/lua
+	url = https://github.com/KvrocksLabs/lua.git

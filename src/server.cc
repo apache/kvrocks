@@ -17,6 +17,7 @@
 #include "redis_connection.h"
 #include "compaction_checker.h"
 #include "config.h"
+#include "scripting.h"
 
 std::atomic<int>Server::unix_time_ = {0};
 
@@ -38,6 +39,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
+  lua_ = Lua::CreateState();
   fetch_file_threads_num_ = 0;
   time(&start_time_);
   stop_ = false;

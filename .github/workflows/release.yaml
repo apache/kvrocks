@@ -8,8 +8,8 @@ on:
 env:
   FPM_OPTS: "-s dir --prefix '/www/kvrocks' -n kvrocks --epoch 7 \
           --config-files /www/kvrocks/conf/kvrocks.conf --iteration release \
-          --verbose --category 'bitleak/projects' --description 'kvrocks' \
-          --url 'https://github.com/bitleak' --license 'BSD'"
+          --verbose --category 'kvrocks/projects' --description 'kvrocks' \
+          --url 'https://github.com/KvrocksLabs' --license 'BSD'"
 
 jobs:
   release-deb-packages-and-docker-image:
@@ -62,10 +62,10 @@ jobs:
 
       - name: Build And Push Docker Image
         run: |
-          docker build -t bitleak/kvrocks:$RELEASE_TAG .
-          docker tag bitleak/kvrocks:$RELEASE_TAG bitleak/kvrocks:latest
-          docker push bitleak/kvrocks:$RELEASE_TAG
-          docker push bitleak/kvrocks:latest
+          docker build -t kvrocks/kvrocks:$RELEASE_TAG .
+          docker tag kvrocks/kvrocks:$RELEASE_TAG kvrocks/kvrocks:latest
+          docker push kvrocks/kvrocks:$RELEASE_TAG
+          docker push kvrocks/kvrocks:latest
 
   release-rpm-packages:
     name: Release Rpm Packages

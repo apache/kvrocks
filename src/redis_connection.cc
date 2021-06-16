@@ -309,11 +309,14 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
     // If the command need to process exclusively, we need to get 'ExclusivityGuard'
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
-    // MULTI, LUA (in the immediate future). Otherwise, we just use 'ConcurrencyGuard'
-    // to allow all workers to execute commands at the same time.
+    // CLUSTER subcommand, MULTI, LUA (in the immediate future).
+    // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute
+    // commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
-    } else if (attributes->is_exclusive()) {
+    } else if (attributes->is_exclusive() ||
+        (config->cluster_enable_ && cmd_name == "cluster" && cmd_tokens.size() >= 2
+         && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
@@ -339,19 +342,6 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       Reply(Redis::Error(s.Msg()));
       continue;
     }
-    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("READONLY You can't write against a read only slave."));
-      continue;
-    }
-    if (!config->slave_serve_stale_data && svr_->IsSlave()
-        && cmd_name != "info" && cmd_name != "slaveof"
-        && svr_->GetReplicationState() != kReplConnected) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("MASTERDOWN Link with MASTER is down "
-                               "and slave-serve-stale-data is set to 'no'."));
-      continue;
-    }
 
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->is_no_multi()) {
       std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
@@ -360,10 +350,31 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       continue;
     }
 
+    if (config->cluster_enable_) {
+      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens);
+      if (!s.IsOK()) {
+        if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+        Reply(Redis::Error(s.Msg()));
+        continue;;
+      }
+    }
+
     // We don't execute commands, but queue them, ant then execute in EXEC command
     if (IsFlagEnabled(Connection::kMultiExec) && !in_exec_ && !attributes->is_multi()) {
       multi_cmds_.emplace_back(cmd_tokens);
       Reply(Redis::SimpleString("QUEUED"));
+      continue;
+    }
+
+    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
+      Reply(Redis::Error("READONLY You can't write against a read only slave."));
+      continue;
+    }
+    if (!config->slave_serve_stale_data && svr_->IsSlave()
+        && cmd_name != "info" && cmd_name != "slaveof"
+        && svr_->GetReplicationState() != kReplConnected) {
+      Reply(Redis::Error("MASTERDOWN Link with MASTER is down "
+                               "and slave-serve-stale-data is set to 'no'."));
       continue;
     }
 

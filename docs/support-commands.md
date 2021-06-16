@@ -183,6 +183,15 @@
 | sirangebyvalue     | √                | sirangebyvalue key min max (LIMIT offset count)    |
 | sirevrangebyvalue  | √                | sirevrangebyvalue key max min (LIMIT offset count) |
 
+## Cluster Subcommands
+
+| Subcommand   | Supported OR Not | Desc |
+| ------------ | ---------------- | ---- |
+| info         | √                |      |
+| nodes        | √                |      |
+| slots        | √                |      |
+| keyslot      | √                |      |
+
 ## Server Commands
 
 | Command      | Supported OR Not | Desc |

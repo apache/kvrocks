@@ -17,6 +17,7 @@
 #include "log_collector.h"
 #include "worker.h"
 #include "rw_lock.h"
+#include "cluster.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -121,6 +122,7 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
+  Cluster *cluster_;
   static std::atomic<int> unix_time_;
 
  private:

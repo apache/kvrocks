@@ -309,12 +309,13 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
     // If the command need to process exclusively, we need to get 'ExclusivityGuard'
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
-    // CLUSTER subcommand, MULTI, LUA (in the immediate future).
+    // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute
     // commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
+        (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
         (config->cluster_enable_ && cmd_name == "cluster" && cmd_tokens.size() >= 2
          && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();

@@ -1,6 +1,6 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
-# ![image](https://github.com/bitleak/kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/bitleak/kvrocks)](https://github.com/bitleak/kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/bitleak/kvrocks)](https://github.com/bitleak/kvrocks/stargazers)
+# ![image](https://github.com/kvrockslabs/kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/kvrockslabs/kvrocks)](https://github.com/kvrockslabs/kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/kvrockslabs/kvrocks)](https://github.com/kvrockslabs/kvrocks/stargazers)
 
 - [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
@@ -56,7 +56,7 @@ brew install snappy googletest
 It is as simple as:
 
 ```shell
-$ git clone --recursive https://github.com/bitleak/kvrocks.git
+$ git clone --recursive https://github.com/kvrockslabs/kvrocks.git
 $ cd kvrocks
 $ make -j4
 ```
@@ -84,7 +84,7 @@ make test
 ## Try kvrocks using Docker
 
 ```
-$ docker run -it -p 6666:6666 bitleak/kvrocks
+$ docker run -it -p 6666:6666 kvrocks/kvrocks
 $ redis-cli -p 6666
 
 127.0.0.1:6666> get a
@@ -118,9 +118,9 @@ OK
 
 ## DOCs
 
-* [supported commands](https://github.com/bitleak/kvrocks/blob/master/docs/support-commands.md)
-* [design complex kv on rocksdb](https://github.com/bitleak/kvrocks/blob/master/docs/metadata-design.md)
-* [replication design](https://github.com/bitleak/kvrocks/blob/master/docs/replication-design.md)
+* [supported commands](https://github.com/kvrockslabs/kvrocks/blob/master/docs/support-commands.md)
+* [design complex kv on rocksdb](https://github.com/kvrockslabs/kvrocks/blob/master/docs/metadata-design.md)
+* [replication design](https://github.com/kvrockslabs/kvrocks/blob/master/docs/replication-design.md)
 
 ## Migrate tools
 
@@ -144,7 +144,7 @@ OK
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-commands.png)
+![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-commands.png)
 
 #### 2.  QPS on different payloads
 
@@ -152,7 +152,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-values.png)
+![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -160,7 +160,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/bitleak/kvrocks/master/docs/images/chart-threads.png)
+![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-threads.png)
 
 ## License
 

@@ -30,6 +30,7 @@
 #include "worker.h"
 #include "server.h"
 #include "log_collector.h"
+#include "cluster.h"
 
 namespace Redis {
 
@@ -224,31 +225,6 @@ class CommandConfig : public Commander {
     } else {
       *output = Redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
     }
-    return Status::OK();
-  }
-};
-
-class CommandCluster : public Commander {
- public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!conn->IsAdmin()) {
-      *output = Redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
-    }
-
-    std::string sub_command = Util::ToLower(args_[1]);
-    if (sub_command == "keyslot" && args_.size() != 3) {
-      *output = Redis::Error(errWrongNumOfArguments);
-      return Status::OK();
-    }
-
-    if (args_.size() == 3 && sub_command == "keyslot") {
-      auto slot_id = GetSlotNumFromKey(args_[2]);
-      *output = Redis::Integer(slot_id);
-    } else {
-      *output = Redis::Error("CLUSTER subcommand must be KEYSLOT");
-    }
-
     return Status::OK();
   }
 };
@@ -4159,6 +4135,110 @@ class CommandDBName : public Commander {
   }
 };
 
+class CommandCluster : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+
+    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "version" ||
+         subcommand_ == "slots" || subcommand_ == "info")) return Status::OK();
+    if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
+    if (subcommand_ == "setnodeid" && args_.size() == 3 &&
+        args_[2].size() == kClusetNodeIdLen) return Status::OK();
+    if (subcommand_ == "setnodes" && args_.size() >= 4) {
+      nodes_str_ = args_[2];
+      set_version_ = atoll(args_[3].c_str());
+      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
+      if (args_.size() == 4) return Status::OK();
+      if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
+        force_ = true;
+        return Status::OK();
+      }
+      return Status(Status::RedisParseErr, "Invalid setnodes options");
+    }
+    return Status(Status::RedisParseErr,
+      "CLUSTER command, CLUSTER VERSION|INFO|NODES|SLOTS|KEYSLOT|SETNODEID|SETNODES");
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (svr->GetConfig()->cluster_enable_ == false) {
+      *output = Redis::Error("Cluster mode is not enabled");
+      return Status::OK();
+    }
+
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error(errAdministorPermissionRequired);
+      return Status::OK();
+    }
+
+    if (subcommand_ == "keyslot") {
+      auto slot_id = GetSlotNumFromKey(args_[2]);
+      *output = Redis::Integer(slot_id);
+    } else if (subcommand_ == "setnodes") {
+      Status s = svr->cluster_->SetClusterNodes(nodes_str_, set_version_, force_);
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else if (subcommand_ == "slots") {
+      std::vector<SlotInfo> infos;
+      Status s = svr->cluster_->GetSlotsInfo(&infos);
+      if (s.IsOK()) {
+        output->append(Redis::MultiLen(infos.size()));
+        for (const auto &info : infos) {
+          output->append(Redis::MultiLen(info.nodes.size()+2));
+          output->append(Redis::Integer(info.start));
+          output->append(Redis::Integer(info.end));
+          for (const auto &n : info.nodes) {
+            output->append(Redis::MultiLen(3));
+            output->append(Redis::BulkString(n.host));
+            output->append(Redis::Integer(n.port));
+            output->append(Redis::BulkString(n.id));
+          }
+        }
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else if (subcommand_ == "nodes") {
+      std::string nodes_desc;
+      Status s = svr->cluster_->GetClusterNodes(&nodes_desc);
+      if (s.IsOK()) {
+        *output = Redis::BulkString(nodes_desc);
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else if (subcommand_ == "info") {
+      std::string cluster_info;
+      Status s = svr->cluster_->GetClusterInfo(&cluster_info);
+      if (s.IsOK()) {
+        *output = Redis::BulkString(cluster_info);
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else if (subcommand_ == "setnodeid") {
+      Status s = svr->cluster_->SetNodeId(args_[2]);
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else if (subcommand_ == "version") {
+      int64_t v = svr->cluster_->GetVersion();
+      *output = Redis::BulkString(std::to_string(v));
+    } else {
+      *output = Redis::Error("Invalid cluster command options");
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
+  std::string nodes_str_;
+  uint64_t set_version_ = 0;
+  bool force_ = false;
+};
+
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \
 {name, arity, description, 0, first_key, last_key, key_step, []() -> std::unique_ptr<Commander> { \
   return std::unique_ptr<Commander>(new fn()); \
@@ -4325,13 +4405,13 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRangeByValue),
     ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
 
+    ADD_CMD("cluster", -2, "cluster", 0, 0, 0, CommandCluster),
+
     ADD_CMD("compact", 1, "read-only", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only", 0, 0, 0, CommandBGSave),
     ADD_CMD("flushbackup", 1, "read-only", 0, 0, 0, CommandFlushBackup),
     ADD_CMD("slaveof", 3, "read-only", 0, 0, 0, CommandSlaveOf),
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
-
-    ADD_CMD("cluster", -2, "read-only", 0, 0, 0, CommandCluster),
 
     ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),
     ADD_CMD("psync", 2, "read-only replication no-multi", 0, 0, 0, CommandPSync),

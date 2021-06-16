@@ -35,8 +35,8 @@ set ::all_tests {
     unit/geo
     unit/command
     unit/config
-    unit/cluster
     integration/replication
+    integration/cluster
 }
 
 # Index to the next test to run in the ::all_tests list.

@@ -71,6 +71,8 @@ endif()
 target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer)
 target_link_libraries(kvrocks ${EXTERNAL_LIBS})
 target_sources(kvrocks PRIVATE
+        src/cluster.cc
+        src/cluster.h
         src/redis_db.cc
         src/redis_db.h
         src/redis_connection.cc
@@ -166,6 +168,8 @@ if(CMAKE_THREAD_LIBS_INIT)
 endif()
 target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS})
 target_sources(kvrocks2redis PRIVATE
+        src/cluster.h
+        src/cluster.cc
         src/redis_db.cc
         src/redis_db.h
         src/compact_filter.cc
@@ -251,6 +255,8 @@ target_sources(kvrocks2redis PRIVATE
         tools/kvrocks2redis/parser.h)
 
 add_executable(unittest
+        src/cluster.h
+        src/cluster.cc
         src/server.cc
         src/server.h
         src/config.cc
@@ -313,6 +319,7 @@ add_executable(unittest
         tests/t_zset_test.cc
         tests/t_geo_test.cc
         tests/t_metadata_test.cc
+        tests/cluster_test.cc
         tests/string_reply_test.cc
         tests/string_util_test.cc
         tests/rwlock_test.cc

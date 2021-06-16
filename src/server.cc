@@ -29,6 +29,9 @@ Server::Server(Engine::Storage *storage, Config *config) :
     stats_.commands_stats[iter.first].latency = 0;
   }
 
+  // Init cluster
+  cluster_ = new Cluster(config_->binds, config_->port);
+
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));

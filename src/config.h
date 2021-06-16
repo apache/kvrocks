@@ -85,6 +85,7 @@ struct Config{
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
+  bool cluster_enable_ = false;
 
   // profiling
   int profiling_sample_ratio = 0;

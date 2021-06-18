@@ -429,7 +429,6 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   }
   if (start < 0) start = 0;
 
-  std::string buf;
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisList,
                              std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),
@@ -438,6 +437,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   uint64_t left_index = metadata.head + start;
   uint64_t right_index = metadata.head + stop + 1;
   for (uint64_t i = metadata.head; i < left_index; i++) {
+    std::string buf;
     PutFixed64(&buf, i);
     std::string sub_key;
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
@@ -447,6 +447,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   }
   auto tail = metadata.tail;
   for (uint64_t i = right_index; i < tail; i++) {
+    std::string buf;
     PutFixed64(&buf, i);
     std::string sub_key;
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);

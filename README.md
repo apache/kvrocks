@@ -165,3 +165,7 @@ latency: 99.9% < 10ms
 ## License
 
 Kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.
+
+## 微信公众号
+
+<img src="docs/images/wechat_account.jpg" alt="微信公众号" />

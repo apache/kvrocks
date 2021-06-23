@@ -324,7 +324,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     }
 
     if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
-      Reply(Redis::Error("ERR restoring the db from backup"));
+      Reply(Redis::Error("LOADING kvrocks is restoring the db from backup"));
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       continue;
     }

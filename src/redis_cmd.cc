@@ -4140,24 +4140,11 @@ class CommandCluster : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "version" ||
-         subcommand_ == "slots" || subcommand_ == "info")) return Status::OK();
+    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots"
+          || subcommand_ == "info")) return Status::OK();
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
-    if (subcommand_ == "setnodeid" && args_.size() == 3 &&
-        args_[2].size() == kClusetNodeIdLen) return Status::OK();
-    if (subcommand_ == "setnodes" && args_.size() >= 4) {
-      nodes_str_ = args_[2];
-      set_version_ = atoll(args_[3].c_str());
-      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
-      if (args_.size() == 4) return Status::OK();
-      if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
-        force_ = true;
-        return Status::OK();
-      }
-      return Status(Status::RedisParseErr, "Invalid setnodes options");
-    }
     return Status(Status::RedisParseErr,
-      "CLUSTER command, CLUSTER VERSION|INFO|NODES|SLOTS|KEYSLOT|SETNODEID|SETNODES");
+      "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT");
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4174,13 +4161,6 @@ class CommandCluster : public Commander {
     if (subcommand_ == "keyslot") {
       auto slot_id = GetSlotNumFromKey(args_[2]);
       *output = Redis::Integer(slot_id);
-    } else if (subcommand_ == "setnodes") {
-      Status s = svr->cluster_->SetClusterNodes(nodes_str_, set_version_, force_);
-      if (s.IsOK()) {
-        *output = Redis::SimpleString("OK");
-      } else {
-        *output = Redis::Error(s.Msg());
-      }
     } else if (subcommand_ == "slots") {
       std::vector<SlotInfo> infos;
       Status s = svr->cluster_->GetSlotsInfo(&infos);
@@ -4213,6 +4193,57 @@ class CommandCluster : public Commander {
       Status s = svr->cluster_->GetClusterInfo(&cluster_info);
       if (s.IsOK()) {
         *output = Redis::BulkString(cluster_info);
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
+    } else {
+      *output = Redis::Error("Invalid cluster command options");
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
+};
+
+class CommandClusterX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+
+    if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
+    if (subcommand_ == "setnodeid" && args_.size() == 3 &&
+        args_[2].size() == kClusetNodeIdLen) return Status::OK();
+    if (subcommand_ == "setnodes" && args_.size() >= 4) {
+      nodes_str_ = args_[2];
+      set_version_ = atoll(args_[3].c_str());
+      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
+      if (args_.size() == 4) return Status::OK();
+      if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
+        force_ = true;
+        return Status::OK();
+      }
+      return Status(Status::RedisParseErr, "Invalid setnodes options");
+    }
+    return Status(Status::RedisParseErr,
+      "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES");
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (svr->GetConfig()->cluster_enable_ == false) {
+      *output = Redis::Error("Cluster mode is not enabled");
+      return Status::OK();
+    }
+
+    if (!conn->IsAdmin()) {
+      *output = Redis::Error(errAdministorPermissionRequired);
+      return Status::OK();
+    }
+
+    if (subcommand_ == "setnodes") {
+      Status s = svr->cluster_->SetClusterNodes(nodes_str_, set_version_, force_);
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
       } else {
         *output = Redis::Error(s.Msg());
       }
@@ -4406,6 +4437,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
 
     ADD_CMD("cluster", -2, "cluster", 0, 0, 0, CommandCluster),
+    ADD_CMD("clusterx", -2, "cluster", 0, 0, 0, CommandClusterX),
 
     ADD_CMD("compact", 1, "read-only", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only", 0, 0, 0, CommandBGSave),

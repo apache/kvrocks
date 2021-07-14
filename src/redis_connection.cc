@@ -316,7 +316,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
         (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-        (config->cluster_enable_ && cmd_name == "cluster" && cmd_tokens.size() >= 2
+        (config->cluster_enable_ && cmd_name == "clusterx" && cmd_tokens.size() >= 2
          && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
     } else {

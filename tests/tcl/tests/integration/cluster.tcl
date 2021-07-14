@@ -18,7 +18,7 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
 
 start_server {tags {"cluster"} overrides {cluster-enable yes}} {
     set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
-    r cluster SETNODEID $nodeid
+    r clusterx SETNODEID $nodeid
 
     test {basic function of cluster} {
         # Cluster is not initialized
@@ -28,8 +28,8 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
         # Set cluster nodes info
         set port [srv port]
         set nodes_str "$nodeid 127.0.0.1 $port master - 0-100"
-        r cluster setnodes $nodes_str 2
-        assert_equal 2 [r cluster version]
+        r clusterx setnodes $nodes_str 2
+        assert_equal 2 [r clusterx version]
 
         # Get and check cluster nodes info
         set output_nodes [r cluster nodes]
@@ -48,8 +48,8 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
         # Set cluster nodes info
         set port [srv port]
         set nodes_str "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 $port master - 0-200"
-        r cluster setnodes $nodes_str 1 force
-        assert_equal 1 [r cluster version]
+        r clusterx setnodes $nodes_str 1 force
+        assert_equal 1 [r clusterx version]
 
         set output_nodes [r cluster nodes]
         assert_equal "0-200\n" [lindex [split $output_nodes " "] 8]
@@ -59,19 +59,19 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
         catch {[r cluster no-subcommand]} err
         assert_match "*CLUSTER*" $err 
  
-        catch {[r cluster version a]} err
+        catch {[r clusterx version a]} err
         assert_match "*CLUSTER*" $err 
 
         catch {[r cluster nodes a]} err
         assert_match "*CLUSTER*" $err 
 
-        catch {[r cluster setnodeid a]} err
+        catch {[r clusterx setnodeid a]} err
         assert_match "*CLUSTER*" $err 
 
-        catch {[r cluster setnodes a]} err
+        catch {[r clusterx setnodes a]} err
         assert_match "*CLUSTER*" $err 
 
-        catch {[r cluster setnodes a -1]} err
+        catch {[r clusterx setnodes a -1]} err
         assert_match "*Invalid version*" $err 
     }
 }
@@ -83,8 +83,8 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
         set port [srv port]
         set cluster_nodes "$nodeid $host $port master -"
         set cluster_nodes "${cluster_nodes} 0-1 2 4-8191 8192 8193 10000 10002-11002 16381 16382-16383"
-        r cluster setnodes "$cluster_nodes" 1
-        r cluster setnodeid $nodeid
+        r clusterx setnodes "$cluster_nodes" 1
+        r clusterx setnodeid $nodeid
         set ret [r cluster slots]
         assert_equal 5 [llength $ret]
 
@@ -137,10 +137,10 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
                 set cluster_nodes  "$cluster_nodes\n$node3_id $node3_host $node3_port slave $node2_id"
 
                 # node0 doesn't serve any slot, just like a router
-                $r0 cluster setnodes $cluster_nodes 1
-                $r1 cluster setnodes $cluster_nodes 1
-                $r2 cluster setnodes $cluster_nodes 1
-                $r3 cluster setnodes $cluster_nodes 1
+                $r0 clusterx setnodes $cluster_nodes 1
+                $r1 clusterx setnodes $cluster_nodes 1
+                $r2 clusterx setnodes $cluster_nodes 1
+                $r3 clusterx setnodes $cluster_nodes 1
 
                 test {cluster info command} {
                     set ret [$r1 cluster info]

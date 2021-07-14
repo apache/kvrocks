@@ -49,8 +49,8 @@ then
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak
         $BIN_PATH/kvrocks -c ${conf_file}
         sleep 0.5
-        redis-cli -h 127.0.0.1 -p $PORT cluster setnodeid ${node_id[$index]}
-        redis-cli -h 127.0.0.1 -p $PORT cluster setnodes "${cluster_nodes}" 1
+        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
+        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
         if [ `expr $index % 2` == 1 ]
         then
             redis-cli -h 127.0.0.1 -p $PORT slaveof 127.0.0.1 $((PORT-1))

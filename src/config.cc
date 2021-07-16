@@ -71,7 +71,6 @@ Config::Config() {
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
       {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
-      {"slot-id-encoded", true, new YesNoField(&slot_id_encoded, false)},
       {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
       {"requirepass", false, new StringField(&requirepass, "")},
       {"masterauth", false, new StringField(&masterauth, "")},
@@ -102,7 +101,7 @@ Config::Config() {
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new StringField(&rename_command_, "")},
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
-      {"cluster-enable", true, new YesNoField(&cluster_enable_, false)},
+      {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
@@ -229,6 +228,10 @@ void Config::initFieldCallback() {
         checkpoint_dir = dir + "/checkpoint";
         sync_checkpoint_dir = dir + "/sync_checkpoint";
         backup_sync_dir = dir + "/backup_for_sync";
+        return Status::OK();
+      }},
+      {"cluster-enabled", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (cluster_enabled) slot_id_encoded = true;
         return Status::OK();
       }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {

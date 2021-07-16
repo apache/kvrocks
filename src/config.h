@@ -63,7 +63,6 @@ struct Config{
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
-  bool slot_id_encoded = false;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;
@@ -85,7 +84,9 @@ struct Config{
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
-  bool cluster_enable_ = false;
+
+  bool slot_id_encoded = false;
+  bool cluster_enabled = false;
 
   // profiling
   int profiling_sample_ratio = 0;

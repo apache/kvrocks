@@ -7,7 +7,7 @@ start_server {tags {"disable-cluster"}} {
     }
 }
 
-start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
     test {CLUSTER KEYSLOT} {
         set slot_table_len [llength $::CRC16_SLOT_TABLE]
         for {set i 0} {$i < $slot_table_len} {incr i} {
@@ -16,7 +16,7 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
     }
 }
 
-start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
     set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
     r clusterx SETNODEID $nodeid
 
@@ -76,7 +76,7 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
     }
 }
 
-start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
     test {cluster slots and nodes about complex topology} {
         set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
         set host [srv host]
@@ -96,22 +96,22 @@ start_server {tags {"cluster"} overrides {cluster-enable yes}} {
     }
 }
 
-start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
     set r0 [srv 0 client]
     set node0_host [srv host]
     set node0_port [srv port]
     set node0_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
-    start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+    start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
         set r1 [srv 0 client]
         set node1_host [srv host]
         set node1_port [srv port]
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
-        start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+        start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
             set r2 [srv 0 client]
             set node2_host [srv host]
             set node2_port [srv port]
             set node2_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx02"
-            start_server {tags {"cluster"} overrides {cluster-enable yes}} {
+            start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                 set r3 [srv 0 client]
                 set node3_host [srv host]
                 set node3_port [srv port]

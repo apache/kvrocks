@@ -4148,7 +4148,7 @@ class CommandCluster : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enable_ == false) {
+    if (svr->GetConfig()->cluster_enabled == false) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }
@@ -4230,7 +4230,7 @@ class CommandClusterX : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enable_ == false) {
+    if (svr->GetConfig()->cluster_enabled == false) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }

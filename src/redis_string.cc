@@ -22,12 +22,12 @@ std::vector<rocksdb::Status> String::getRawValues(
     metadata.Decode((*raw_values)[i]);
     if (metadata.Expired()) {
       (*raw_values)[i].clear();
-      statuses[i] = rocksdb::Status::NotFound("the key was expired");
+      statuses[i] = rocksdb::Status::NotFound(kErrMsgKeyExpired);
       continue;
     }
     if (metadata.Type() != kRedisString && metadata.size > 0) {
       (*raw_values)[i].clear();
-      statuses[i] = rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+      statuses[i] = rocksdb::Status::InvalidArgument(kErrMsgWrongType);
       continue;
     }
   }
@@ -47,10 +47,10 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   metadata.Decode(*raw_value);
   if (metadata.Expired()) {
     raw_value->clear();
-    return rocksdb::Status::NotFound("the key was expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata.Type() != kRedisString && metadata.size > 0) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   return rocksdb::Status::OK();
 }

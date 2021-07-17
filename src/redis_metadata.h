@@ -36,8 +36,8 @@ const std::vector<std::string> RedisTypeNames = {
     "list", "set", "zset", "bitmap", "sortedint"
 };
 
-const std::string kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
-const std::string kErrMsgKeyExpired = "the key was expired";
+const char kErrMsgWrongType[] = "WRONGTYPE Operation against a key holding the wrong kind of value";
+const char kErrMsgKeyExpired[] = "the key was expired";
 
 using rocksdb::Slice;
 

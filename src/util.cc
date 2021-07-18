@@ -157,7 +157,6 @@ Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeo
       return Status(Status::NotOK, strerror(errno));
     }
     SockSetTcpNoDelay(*fd, 1);
-    SockSetTcpNoDelay(*fd, 1);
   }
   if (timeout > 0) {
     struct timeval tv;

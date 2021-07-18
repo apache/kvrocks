@@ -399,7 +399,7 @@ rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string 
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisList) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
 
   s = Pop(src, elem, false);

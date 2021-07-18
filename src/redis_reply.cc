@@ -39,7 +39,7 @@ std::string MultiBulkString(std::vector<std::string> values, bool output_nil_for
 
 std::string MultiBulkString(std::vector<std::string> values, const std::vector<rocksdb::Status> &statuses) {
   for (size_t i = 0; i < values.size(); i++) {
-    if (i < statuses.size() && statuses[i].IsNotFound()) {
+    if (i < statuses.size() && !statuses[i].ok()) {
       values[i] = NilString();
     } else {
       values[i] = BulkString(values[i]);

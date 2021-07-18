@@ -6,6 +6,34 @@
 
 namespace Redis {
 
+std::vector<rocksdb::Status> String::getRawValues(
+    const std::vector<Slice> &keys,
+    std::vector<std::string> *raw_values) {
+  raw_values->clear();
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  std::vector<rocksdb::ColumnFamilyHandle*> cfs(keys.size(), metadata_cf_handle_);
+  auto statuses = db_->MultiGet(read_options, cfs, keys, raw_values);
+  for (size_t i = 0; i < keys.size(); i++) {
+    if (!statuses[i].ok()) continue;
+    Metadata metadata(kRedisNone, false);
+    metadata.Decode((*raw_values)[i]);
+    if (metadata.Expired()) {
+      (*raw_values)[i].clear();
+      statuses[i] = rocksdb::Status::NotFound(kErrMsgKeyExpired);
+      continue;
+    }
+    if (metadata.Type() != kRedisString && metadata.size > 0) {
+      (*raw_values)[i].clear();
+      statuses[i] = rocksdb::Status::InvalidArgument(kErrMsgWrongType);
+      continue;
+    }
+  }
+  return statuses;
+}
+
 rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
   raw_value->clear();
 
@@ -19,21 +47,31 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   metadata.Decode(*raw_value);
   if (metadata.Expired()) {
     raw_value->clear();
-    return rocksdb::Status::NotFound("the key was expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata.Type() != kRedisString && metadata.size > 0) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status String::getValue(const std::string &ns_key, std::string *value) {
   value->clear();
+
   std::string raw_value;
   auto s = getRawValue(ns_key, &raw_value);
   if (!s.ok()) return s;
   *value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
   return rocksdb::Status::OK();
+}
+
+std::vector<rocksdb::Status> String::getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values) {
+  auto statuses = getRawValues(ns_keys, values);
+  for (size_t i = 0; i < ns_keys.size(); i++) {
+    if (!statuses[i].ok()) continue;
+    (*values)[i] = (*values)[i].substr(STRING_HDR_SIZE, (*values)[i].size()-STRING_HDR_SIZE);
+  }
+  return statuses;
 }
 
 rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::string &raw_value) {
@@ -63,15 +101,22 @@ rocksdb::Status String::Append(const std::string &user_key, const std::string &v
 }
 
 std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
-  std::string ns_key;
-  std::string value;
-  std::vector<rocksdb::Status> statuses;
-  for (size_t i = 0; i < keys.size(); i++) {
-    AppendNamespacePrefix(keys[i], &ns_key);
-    statuses.emplace_back(getValue(ns_key, &value));
-    values->emplace_back(value);
+  std::vector<std::string> ns_keys;
+  ns_keys.reserve(keys.size());
+  for (const auto &key : keys) {
+    std::string ns_key;
+    AppendNamespacePrefix(key, &ns_key);
+    ns_keys.emplace_back(ns_key);
   }
-  return statuses;
+  std::vector<Slice> slice_keys;
+  slice_keys.reserve(ns_keys.size());
+  // don't use range-based for loop here, coz the slice member
+  // would refer the address instead of copy the value, and use
+  // range-based for loop may cause all members refer to the same addr
+  for (size_t i = 0; i < ns_keys.size(); i++) {
+    slice_keys.emplace_back(ns_keys[i]);
+  }
+  return getValues(slice_keys, values);
 }
 
 rocksdb::Status String::Get(const std::string &user_key, std::string *value) {

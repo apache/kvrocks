@@ -34,7 +34,9 @@ class String : public Database {
 
  private:
   rocksdb::Status getValue(const std::string &ns_key, std::string *value);
+  std::vector<rocksdb::Status> getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values);
   rocksdb::Status getRawValue(const std::string &ns_key, std::string *raw_value);
+  std::vector<rocksdb::Status> getRawValues(const std::vector<Slice> &keys, std::vector<std::string> *raw_values);
   rocksdb::Status updateRawValue(const std::string &ns_key, const std::string &raw_value);
 };
 

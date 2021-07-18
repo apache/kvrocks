@@ -36,12 +36,12 @@ rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadat
 
   if (metadata->Expired()) {
     metadata->Decode(old_metadata);
-    return rocksdb::Status::NotFound("the key was Expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata->Type() == kRedisString) return s;
   if (metadata->Type() != kRedisBitmap && metadata->size > 0) {
     metadata->Decode(old_metadata);
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   if (metadata->size == 0) {
     metadata->Decode(old_metadata);

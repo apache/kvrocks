@@ -36,6 +36,9 @@ const std::vector<std::string> RedisTypeNames = {
     "list", "set", "zset", "bitmap", "sortedint"
 };
 
+const char kErrMsgWrongType[] = "WRONGTYPE Operation against a key holding the wrong kind of value";
+const char kErrMsgKeyExpired[] = "the key was expired";
+
 using rocksdb::Slice;
 
 struct KeyNumStats {

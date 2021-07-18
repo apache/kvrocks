@@ -23,11 +23,11 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
 
   if (metadata->Expired()) {
     metadata->Decode(old_metadata);
-    return rocksdb::Status::NotFound("the key was Expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata->Type() != type && (metadata->size > 0 || metadata->Type() == kRedisString)) {
     metadata->Decode(old_metadata);
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   if (metadata->size == 0) {
     metadata->Decode(old_metadata);
@@ -60,7 +60,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   if (!s.ok()) return s;
   metadata.Decode(value);
   if (metadata.Expired()) {
-    return rocksdb::Status::NotFound("the key was expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
@@ -91,7 +91,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
   if (metadata.Expired()) {
-    return rocksdb::Status::NotFound("the key was expired");
+    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
 }

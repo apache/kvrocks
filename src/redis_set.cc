@@ -209,7 +209,7 @@ rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &membe
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisSet) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
 
   std::vector<Slice> members{member};

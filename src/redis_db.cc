@@ -387,7 +387,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
   // while we limit the namespace last char shouldn't be larger than 128.
   std::string next_prefix = prefix;
   auto prefix_size = prefix.size();
-  next_prefix[prefix_size - 1] ++;
+  next_prefix[prefix_size - 1]++;
   iter->SeekForPrev(next_prefix);
   int max_prev_limit = 128;  // prevent unpredicted long while loop
   int i = 0;

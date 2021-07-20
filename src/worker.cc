@@ -234,6 +234,7 @@ Status Worker::Reply(int fd, const std::string &reply) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
+    iter->second->SetLastInteraction();
     Redis::Reply(iter->second->Output(), reply);
     return Status::OK();
   }

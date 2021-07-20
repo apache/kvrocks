@@ -1,4 +1,5 @@
 #include "redis_hash.h"
+#include <utility>
 #include <limits>
 #include <cmath>
 #include <iostream>

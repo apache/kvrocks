@@ -4321,7 +4321,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("setex", 4, "write", 1, 1, 1, CommandSetEX),
     ADD_CMD("psetex", 4, "write", 1, 1, 1, CommandPSetEX),
     ADD_CMD("setnx", 3, "write", 1, 1, 1, CommandSetNX),
-    ADD_CMD("msetnx", -3, "write", 1, -1, 2, CommandMSetNX),
+    ADD_CMD("msetnx", -3, "write exclusive", 1, -1, 2, CommandMSetNX),
     ADD_CMD("mset", -3, "write", 1, -1, 2, CommandMSet),
     ADD_CMD("incrby", 3, "write", 1, 1, 1, CommandIncrBy),
     ADD_CMD("incrbyfloat", 3, "write", 1, 1, 1, CommandIncrByFloat),

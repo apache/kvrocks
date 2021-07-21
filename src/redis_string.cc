@@ -309,6 +309,9 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
   for (StringPair pair : pairs) {
     AppendNamespacePrefix(pair.key, &ns_key);
     LockGuard guard(storage_->GetLockManager(), ns_key);
+    if (Exists({pair.key}, &exists).ok() && exists == 1) {
+      return rocksdb::Status::OK();
+    }
     std::string bytes;
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;

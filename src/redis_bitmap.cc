@@ -106,6 +106,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     size_t expand_size;
     if (byte_index >= value.size() * 2) {
       expand_size = byte_index - value.size() + 1;
+    } else if (value.size() * 2 > kBitmapSegmentBytes) {
+       expand_size = kBitmapSegmentBytes - value.size();
     } else {
       expand_size = value.size();
     }

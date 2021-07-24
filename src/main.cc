@@ -30,7 +30,7 @@ const char *kDefaultConfPath = "../kvrocks.conf";
 std::function<void()> hup_handler;
 
 struct Options {
-  std::string conf_file = kDefaultConfPath;
+  std::string conf_file;
   bool show_usage = false;
 };
 
@@ -274,6 +274,9 @@ int main(int argc, char* argv[]) {
   std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts.show_usage) usage(argv[0]);
+
+  Redis::InitCommandsTable();
+  Redis::PopulateCommands();
 
   Config config;
   Status s = config.Load(opts.conf_file);

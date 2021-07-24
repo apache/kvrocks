@@ -63,6 +63,8 @@ struct Config{
   int max_replication_mb = 0;
   int max_io_mb = 0;
   bool master_use_repl_port = false;
+  bool purge_backup_on_fullsync = false;
+  bool auto_resize_block_and_sst = true;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
@@ -81,6 +83,9 @@ struct Config{
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
+
+  bool slot_id_encoded = false;
+  bool cluster_enabled = false;
 
   // profiling
   int profiling_sample_ratio = 0;
@@ -116,7 +121,7 @@ struct Config{
 
  public:
   Status Rewrite();
-  Status Load(std::string path);
+  Status Load(const std::string &path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);
@@ -135,6 +140,7 @@ struct Config{
   std::string compaction_checker_range_;
   std::string profiling_sample_commands_;
   std::map<std::string, ConfigField*> fields_;
+  std::string rename_command_;
 
   void initFieldValidator();
   void initFieldCallback();

@@ -24,12 +24,14 @@ std::atomic<int>Server::unix_time_ = {0};
 Server::Server(Engine::Storage *storage, Config *config) :
   storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
-  std::vector<std::string> commands;
-  Redis::GetCommandList(&commands);
-  for (const auto &cmd : commands) {
-    stats_.commands_stats[cmd].calls = 0;
-    stats_.commands_stats[cmd].latency = 0;
+  auto commands = Redis::GetOriginalCommands();
+  for (const auto &iter : *commands) {
+    stats_.commands_stats[iter.first].calls = 0;
+    stats_.commands_stats[iter.first].latency = 0;
   }
+
+  // Init cluster
+  cluster_ = new Cluster(config_->binds, config_->port);
 
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
@@ -52,6 +54,18 @@ Server::~Server() {
   }
 }
 
+// Kvrocks threads list:
+// - Work-thread: process client's connections and requests
+// - Task-runner: one thread pool, handle some jobs that may freeze server if run directly
+// - Cron-thread: server's crontab, clean backups, resize sst and memtable size
+// - Compaction-checker: active compaction according to collected statistics
+// - Replication-thread: replicate incremental stream from master if in slave role, there
+//   are some dynamic threads to fetch files when full sync.
+//     - fetch-file-thread: fetch SST files from master
+// - Feed-slave-thread: feed data to slaves if having slaves, but there also are some dynamic
+//   threads when full sync, TODO(@shooterit) we should manage this threads uniformly.
+//     - feed-replica-data-info: generate checkpoint and send files list when full sync
+//     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port));
@@ -73,12 +87,20 @@ Status Server::Start() {
     Util::ThreadSetName("compaction-checker");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
+      // Sleep first
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      // To guarantee accessing DB safely
+      auto guard = storage_->ReadLockGuard();
+      if (storage_->IsClosing()) continue;
+
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
         auto now = std::time(nullptr);
-        auto local_time = std::localtime(&now);
-        if (local_time->tm_hour >= config_->compaction_checker_range.Start
-        && local_time->tm_hour <= config_->compaction_checker_range.Stop) {
+        std::tm local_time{};
+        localtime_r(&now, &local_time);
+        if (local_time.tm_hour >= config_->compaction_checker_range.Start
+        && local_time.tm_hour <= config_->compaction_checker_range.Stop) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
                                                Engine::kSubkeyColumnFamilyName,
                                                Engine::kZSetScoreColumnFamilyName};
@@ -92,7 +114,6 @@ Status Server::Start() {
           compaction_checker.CompactPubsubFiles();
         }
       }
-      usleep(100000);
     }
   });
 
@@ -105,11 +126,8 @@ void Server::Stop() {
   for (const auto worker : worker_threads_) {
     worker->Stop();
   }
-  slave_threads_mu_.lock();
-  for (const auto slave_thread : slave_threads_) slave_thread->Stop();
-  slave_threads_mu_.unlock();
-  cleanupExitedSlaves();
-  rocksdb::CancelAllBackgroundWork(storage_->GetDB());
+  DisconnectSlaves();
+  rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
   task_runner_.Stop();
 }
 
@@ -141,8 +159,7 @@ Status Server::AddMaster(std::string host, uint32_t port) {
       new ReplicationThread(host, port, this, config_->masterauth));
   auto s = replication_thread_->Start(
       [this]() {
-        this->is_loading_ = true;
-        ReclaimOldDBPtr();
+        PrepareRestoreDB();
       },
       [this]() {
         this->is_loading_ = false;
@@ -179,18 +196,9 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
     delete t;
     return s;
   }
-  int flags;
-  if ((flags = fcntl(conn->GetFD(), F_GETFL)) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
-  }
-  flags &= ~O_NONBLOCK;
-  if (fcntl(conn->GetFD(), F_SETFL, flags) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
-  }
 
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> lg(slave_threads_mu_);
   slave_threads_.emplace_back(t);
-  slave_threads_mu_.unlock();
   return Status::OK();
 }
 
@@ -451,12 +459,12 @@ int Server::DecrMonitorClientNum() {
   return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
-int Server::IncrExecutingCommandNum() {
-  return excuting_command_num_.fetch_add(1, std::memory_order_relaxed);
+std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
+  return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(works_concurrency_rw_lock_));
 }
 
-int Server::DecrExecutingCommandNum() {
-  return excuting_command_num_.fetch_sub(1, std::memory_order_relaxed);
+std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
+  return std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(works_concurrency_rw_lock_));
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {
@@ -466,42 +474,55 @@ std::atomic<uint64_t> *Server::GetClientID() {
 void Server::cron() {
   uint64_t counter = 0;
   while (!stop_) {
+    // Sleep first
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // To guarantee accessing DB safely
+    auto guard = storage_->ReadLockGuard();
+    if (storage_->IsClosing()) continue;
+
     updateCachedTime();
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
-      auto now = std::localtime(&t);
+      std::tm now{};
+      localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
       if (!config_->compaction_checker_range.Enabled()
           && config_->compact_cron.IsEnabled()
-          && config_->compact_cron.IsTimeMatch(now)) {
+          && config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
-      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(now)) {
+      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
         Status s = AsyncBgsaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
     }
-    // check every minutes
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0) {
+    // check every 10s
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
+
+      // Purge backup if needed, it will cost much disk space if we keep backup and full sync
+      // checkpoints at the same time
+      if (config_->purge_backup_on_fullsync &&
+          (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
+        AsyncPurgeOldBackups(0, 0);
+      }
     }
+
     // check every 30 minutes
-    if (is_loading_ == false && counter != 0 && counter % 18000 == 0) {
-      Status s = dynamicResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to dynamic resize block and sst, result: " << s.Msg();
+    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
+      Status s = autoResizeBlockAndSST();
+      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (counter != 0 && counter % 10 == 0) {
+    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
-      // Maybe creating checkpoint costs much time if target dir is on another
-      // disk partition, so when we want to clean up checkpoint, we should guarantee
-      // that kvrocks is not creating checkpoint even if there is a checkpoint.
-      if (storage_->ExistCheckpoint() && storage_->IsCreatingCheckpoint() == false) {
+      if (storage_->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
         if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
             (std::time(nullptr) - create_time > 24 * 60 * 60)) {
@@ -528,7 +549,6 @@ void Server::cron() {
     stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);
     stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
     stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
@@ -878,34 +898,47 @@ std::string Server::GetRocksDBStatsJson() {
   return output;
 }
 
-/*
- * Reclaim the old db ptr before restore the db from backup,
- * as restore db would delete the db and column families.
- */
-void Server::ReclaimOldDBPtr() {
+// This function is called by replication thread when finished fetching
+// all files from its master.
+// Before restoring the db from backup or checkpoint, we should
+// guarantee other threads don't acess DB and its column families,
+// then close db.
+void Server::PrepareRestoreDB() {
+  // Stop freeding slaves thread
   LOG(INFO) << "Disconnecting slaves...";
   DisconnectSlaves();
+
+  // Stop task runner
   LOG(INFO) << "Stopping the task runner and clear task queue...";
   task_runner_.Stop();
   task_runner_.Join();
   task_runner_.Purge();
-  LOG(INFO) << "Waiting for excuting command...";
-  while (excuting_command_num_ != 0) {
-    usleep(1000);  // 1 ms
+
+  // To guarantee work theads don't access DB, we should relase 'ExclusivityGuard'
+  // ASAP to avoid user can't recieve respones for long time, becasue the following
+  // 'CloseDB' may cost much time to acquire DB mutex.
+  LOG(INFO) << "Waiting workers for finishing executing commands...";
+  {
+    auto exclusivity = WorkExclusivityGuard();
+    is_loading_ = true;
   }
+
+  // Cron thread, compaction checker thread, full synchronization thread
+  // may always run in the backgroud, we need to close db, so they don't
+  // actually work.
+  LOG(INFO) << "Waiting for closing DB...";
+  storage_->CloseDB();
 }
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
   if (is_loading_) {
     return Status(Status::NotOK, "loading in-progress");
   }
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   if (db_compacting_) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "compact in-progress");
   }
   db_compacting_ = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
@@ -915,9 +948,8 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     if (!begin_key.empty()) begin = new Slice(begin_key);
     if (!end_key.empty()) end = new Slice(end_key);
     svr->storage_->Compact(begin, end);
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_compacting_ = false;
-    svr->db_mu_.unlock();
     delete begin;
     delete end;
   };
@@ -925,22 +957,19 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 }
 
 Status Server::AsyncBgsaveDB() {
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   if (db_bgsave_) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "bgsave in-progress");
   }
   db_bgsave_ = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
     svr->storage_->CreateBackup();
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_bgsave_ = false;
-    svr->db_mu_.unlock();
   };
   return task_runner_.Publish(task);
 }
@@ -956,17 +985,15 @@ Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backu
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
-  db_mu_.lock();
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   auto iter = db_scan_infos_.find(ns);
   if (iter == db_scan_infos_.end()) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
   if (db_scan_infos_[ns].is_scanning) {
-    db_mu_.unlock();
     return Status(Status::NotOK, "scanning the db now");
   }
   db_scan_infos_[ns].is_scanning = true;
-  db_mu_.unlock();
 
   Task task;
   task.arg = this;
@@ -976,18 +1003,15 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 
-    svr->db_mu_.lock();
+    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
     svr->db_scan_infos_[ns].key_num_stats = stats;
     time(&svr->db_scan_infos_[ns].last_scan_time);
     svr->db_scan_infos_[ns].is_scanning = false;
-    svr->db_mu_.unlock();
   };
   return task_runner_.Publish(task);
 }
 
-Status Server::dynamicResizeBlockAndSST() {
-  // the db is closing, don't use DB and cf_handles
-  if (!storage_->IncrDBRefs().IsOK()) return Status(Status::NotOK, "loading in-progress");
+Status Server::autoResizeBlockAndSST() {
   auto total_size = storage_->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
@@ -995,27 +1019,33 @@ Status Server::dynamicResizeBlockAndSST() {
     total_keys += estimate_keys;
   }
   if (total_size == 0 || total_keys == 0) {
-    storage_->DecrDBRefs();
     return Status::OK();
   }
   auto average_kv_size = total_size / total_keys;
   int target_file_size_base = 0;
+  int block_size = 0;
   if (average_kv_size > 512 * KiB) {
     target_file_size_base = 1024;
+    block_size = 1 * MiB;
   } else if (average_kv_size > 256 * KiB) {
     target_file_size_base = 512;
+    block_size = 512 * KiB;
   } else if (average_kv_size > 32 * KiB) {
     target_file_size_base = 256;
+    block_size = 256 * KiB;
   } else if (average_kv_size > 1 * KiB) {
     target_file_size_base = 128;
+    block_size = 32 * KiB;
   } else if (average_kv_size > 128) {
     target_file_size_base = 64;
+    block_size = 8 * KiB;
   } else {
     target_file_size_base = 16;
+    block_size = 2 * KiB;
   }
   if (target_file_size_base == config_->RocksDB.target_file_size_base
-      && target_file_size_base == config_->RocksDB.write_buffer_size) {
-    storage_->DecrDBRefs();
+      && target_file_size_base == config_->RocksDB.write_buffer_size
+      && block_size == config_->RocksDB.block_size) {
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
@@ -1028,16 +1058,15 @@ Status Server::dynamicResizeBlockAndSST() {
               << ", total_keys: " << total_keys
               << ", result: " << s.Msg();
     if (!s.IsOK()) {
-      storage_->DecrDBRefs();
       return s;
     }
     config_->RocksDB.target_file_size_base = target_file_size_base;
   }
-  storage_->DecrDBRefs();
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
+    auto old_write_buffer_size = config_->RocksDB.write_buffer_size;
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "
-              << config_->RocksDB.write_buffer_size
+              << old_write_buffer_size
               << " to " << target_file_size_base
               << ", average_kv_size: " << average_kv_size
               << ", total_size: " << total_size
@@ -1046,6 +1075,20 @@ Status Server::dynamicResizeBlockAndSST() {
     if (!s.IsOK()) {
       return s;
     }
+  }
+  if (block_size != config_->RocksDB.block_size) {
+    auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
+    LOG(INFO) << "[server] Resize rocksdb.block_size from "
+              << config_->RocksDB.block_size
+              << " to " << block_size
+              << ", average_kv_size: " << average_kv_size
+              << ", total_size: " << total_size
+              << ", total_keys: " << total_keys
+              << ", result: " << s.Msg();
+    if (!s.IsOK()) {
+      return s;
+    }
+    config_->RocksDB.block_size = block_size;
   }
   auto s = config_->Rewrite();
   LOG(INFO) << "[server] rewrite config, result: " << s.Msg();
@@ -1138,3 +1181,18 @@ ReplState Server::GetReplicationState() {
   }
   return kReplConnecting;
 }
+
+Status Server::LookupAndCreateCommand(const std::string &cmd_name,
+                                      std::unique_ptr<Redis::Commander> *cmd) {
+  auto commands = Redis::GetCommands();
+  if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
+  auto cmd_iter = commands->find(Util::ToLower(cmd_name));
+  if (cmd_iter == commands->end()) {
+    return Status(Status::RedisUnknownCmd);
+  }
+  auto redisCmd = cmd_iter->second;
+  *cmd = redisCmd->factory();
+  (*cmd)->SetAttributes(redisCmd);
+  return Status::OK();
+}
+

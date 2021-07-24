@@ -100,6 +100,10 @@ Config::Config() {
       {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX)},
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
+      {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
+      {"rename-command", true, new StringField(&rename_command_, "")},
+      {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
+      {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
@@ -176,6 +180,27 @@ void Config::initFieldValidator() {
         compaction_checker_range.Stop = stop;
         return Status::OK();
       }},
+      {"rename-command", [](const std::string &k, const std::string &v) -> Status {
+        std::vector<std::string> args;
+        Util::Split(v, " \t", &args);
+        if (args.size() != 2) {
+          return Status(Status::NotOK, "Invalid rename-command format");
+        }
+        auto commands = Redis::GetCommands();
+        auto cmd_iter = commands->find(Util::ToLower(args[0]));
+        if (cmd_iter == commands->end()) {
+          return Status(Status::NotOK, "No such command in rename-command");
+        }
+        if (args[1] != "\"\"") {
+          auto new_command_name = Util::ToLower(args[1]);
+          if (commands->find(new_command_name) != commands->end()) {
+            return Status(Status::NotOK, "Target command name already exists");
+          }
+          (*commands)[new_command_name] = cmd_iter->second;
+        }
+        commands->erase(cmd_iter);
+        return Status::OK();
+      }},
   };
   for (const auto& iter : validators) {
     auto field_iter = fields_.find(iter.first);
@@ -207,6 +232,10 @@ void Config::initFieldCallback() {
         backup_sync_dir = dir + "/backup_for_sync";
         return Status::OK();
       }},
+      {"cluster-enabled", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (cluster_enabled) slot_id_encoded = true;
+        return Status::OK();
+      }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {
         trimRocksDBPrefix(k);
         std::vector<std::string> args;
@@ -215,6 +244,9 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"slaveof", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (v.empty()) {
+          return Status::OK();
+        }
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
@@ -237,6 +269,7 @@ void Config::initFieldCallback() {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
           } else if (Redis::IsCommandExists(cmd)) {
+            // profiling_sample_commands use command's original name, regardless of rename-command directive
             profiling_sample_commands.insert(cmd);
           }
         }
@@ -341,9 +374,6 @@ Status Config::parseConfigFromString(std::string input) {
     }
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
-    if (field->callback) {
-      return field->callback(nullptr, kv[0], kv[1]);
-    }
   }
   if (!strncasecmp(kv[0].data(), "namespace.", 10)) {
     tokens[kv[1]] = kv[0].substr(10, kv[0].size()-10);
@@ -367,23 +397,36 @@ Status Config::finish() {
   return Status::OK();
 }
 
-Status Config::Load(std::string path) {
-  path_ = std::move(path);
-  std::ifstream file(path_);
-  if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+Status Config::Load(const std::string &path) {
+  if (!path.empty()) {
+    path_ = path;
+    std::ifstream file(path_);
+    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
 
-  std::string line;
-  int line_num = 1;
-  while (!file.eof()) {
-    std::getline(file, line);
-    Status s = parseConfigFromString(line);
-    if (!s.IsOK()) {
-      file.close();
-      return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+    std::string line;
+    int line_num = 1;
+    while (!file.eof()) {
+      std::getline(file, line);
+      Status s = parseConfigFromString(line);
+      if (!s.IsOK()) {
+        file.close();
+        return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+      }
+      line_num++;
     }
-    line_num++;
+    file.close();
+  } else {
+    std::cout << "Warn: no config file specified, using the default config. "
+                    "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
-  file.close();
+  for (const auto &iter : fields_) {
+    if (iter.second->callback) {
+      auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
+      if (!s.IsOK()) {
+        return Status(Status::NotOK, s.Msg()+" in key '"+iter.first+"'");
+      }
+    }
+  }
   return finish();
 }
 
@@ -417,6 +460,9 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 }
 
 Status Config::Rewrite() {
+  if (path_.empty()) {
+    return Status(Status::NotOK, "the server is running without a config file");
+  }
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {

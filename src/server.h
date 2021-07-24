@@ -16,6 +16,8 @@
 #include "storage.h"
 #include "task_runner.h"
 #include "worker.h"
+#include "rw_lock.h"
+#include "cluster.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -50,6 +52,8 @@ class Server {
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
+  Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
+
 
   Status AddMaster(std::string host, uint32_t port);
   Status RemoveMaster();
@@ -92,7 +96,7 @@ class Server {
   std::string GetRocksDBStatsJson();
   ReplState GetReplicationState();
 
-  void ReclaimOldDBPtr();
+  void PrepareRestoreDB();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
@@ -104,8 +108,6 @@ class Server {
   int IncrClientNum();
   int IncrMonitorClientNum();
   int DecrMonitorClientNum();
-  int IncrExecutingCommandNum();
-  int DecrExecutingCommandNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
@@ -115,15 +117,19 @@ class Server {
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
   void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
 
+  std::unique_ptr<RWLock::ReadLock> WorkConcurrencyGuard();
+  std::unique_ptr<RWLock::WriteLock> WorkExclusivityGuard();
+
   Stats stats_;
   Engine::Storage *storage_;
+  Cluster *cluster_;
   static std::atomic<int> unix_time_;
 
  private:
   void cron();
   void delConnContext(ConnContext *c);
   void updateCachedTime();
-  Status dynamicResizeBlockAndSST();
+  Status autoResizeBlockAndSST();
 
   std::atomic<bool> stop_;
   std::atomic<bool> is_loading_;
@@ -147,7 +153,8 @@ class Server {
   std::list<FeedSlaveThread *> slave_threads_;
   std::atomic<int> fetch_file_threads_num_;
 
-  std::mutex db_mu_;
+  // Some jobs to operate DB should be unique
+  std::mutex db_job_mu_;
   bool db_compacting_ = false;
   bool db_bgsave_ = false;
   std::map<std::string, DBScanInfo> db_scan_infos_;
@@ -163,6 +170,7 @@ class Server {
   std::mutex blocking_keys_mu_;
 
   // threads
+  RWLock::ReadWriteLock works_concurrency_rw_lock_;
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;

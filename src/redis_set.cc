@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <map>
+#include <memory>
 
 namespace Redis {
 
@@ -21,7 +22,7 @@ rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &m
   batch.PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     batch.Put(sub_key, Slice());
   }
   metadata.size = static_cast<uint32_t>(members.size());
@@ -48,7 +49,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   batch.PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch.Put(sub_key, Slice());
@@ -79,7 +80,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   WriteBatchLogData log_data(kRedisSet);
   batch.PutLogData(log_data.Encode());
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch.Delete(sub_key);
@@ -121,7 +122,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix;
-  InternalKey(ns_key, "", metadata.version).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
@@ -130,7 +131,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
-    InternalKey ikey(iter->key());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
   }
   delete iter;
@@ -151,7 +152,7 @@ rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *r
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key;
-  InternalKey(ns_key, member, metadata.version).Encode(&sub_key);
+  InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   std::string value;
   s = db_->Get(read_options, sub_key, &value);
   if (s.ok()) {
@@ -168,7 +169,9 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  if (pop) LockGuard guard(storage_->GetLockManager(), ns_key);
+  std::unique_ptr<LockGuard> lock_guard;
+  if (pop) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
+
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -182,11 +185,11 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options);
   std::string prefix;
-  InternalKey(ns_key, "", metadata.version).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
-    InternalKey ikey(iter->key());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
     if (pop) batch.Delete(iter->key());
     if (++n >= count) break;
@@ -206,7 +209,7 @@ rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &membe
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisSet) {
-    return rocksdb::Status::InvalidArgument("WRONGTYPE Operation against a key holding the wrong kind of value");
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
 
   std::vector<Slice> members{member};
@@ -308,7 +311,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
       member_counters[member]++;
     }
   }
-  for (const auto iter : member_counters) {
+  for (const auto &iter : member_counters) {
     if (iter.second == keys.size()) {  // all the sets contain this member
       members->emplace_back(iter.first);
     }

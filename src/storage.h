@@ -17,7 +17,7 @@
 #include "rw_lock.h"
 #include "status.h"
 
-enum ColumnFamilyID{
+enum ColumnFamilyID {
   kColumnFamilyIDDefault,
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,

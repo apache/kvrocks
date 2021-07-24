@@ -14,6 +14,9 @@
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
 
+// 52 bit for microseconds and 11 bit for counter
+const int VersionCounterBits = 11;
+
 static std::atomic<uint64_t> version_counter_ = {0};
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {

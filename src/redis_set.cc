@@ -1,7 +1,7 @@
 #include "redis_set.h"
 
-#include <map>
 #include <iostream>
+#include <map>
 
 namespace Redis {
 

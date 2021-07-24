@@ -1,21 +1,23 @@
+#include "config.h"
+
 #include <fcntl.h>
-#include <string.h>
-#include <strings.h>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <utility>
-#include <limits>
 #include <glog/logging.h>
 #include <rocksdb/env.h>
+#include <string.h>
+#include <strings.h>
 
-#include "config.h"
-#include "util.h"
-#include "status.h"
+#include <fstream>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <utility>
+#include <vector>
+
 #include "cron.h"
-#include "server.h"
 #include "log_collector.h"
+#include "server.h"
+#include "status.h"
+#include "util.h"
 
 const char *kDefaultNamespace = "__namespace";
 configEnum compression_type_enum[] = {

@@ -1,19 +1,20 @@
 #pragma once
 
+#include <event2/bufferevent.h>
 #include <inttypes.h>
-#include <utility>
-#include <memory>
-#include <string>
-#include <vector>
-#include <atomic>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/utilities/backupable_db.h>
-#include <event2/bufferevent.h>
 
-#include "status.h"
-#include "lock_manager.h"
+#include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "config.h"
+#include "lock_manager.h"
+#include "status.h"
 
 enum ColumnFamilyID{
   kColumnFamilyIDDefault,

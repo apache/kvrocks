@@ -1,34 +1,36 @@
+#include "redis_cmd.h"
+
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <glog/logging.h>
 #include <sys/socket.h>
+
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <chrono>
+#include <cmath>
+#include <memory>
 #include <thread>
 #include <utility>
-#include <memory>
-#include <glog/logging.h>
 
-#include "redis_db.h"
-#include "redis_cmd.h"
-#include "redis_hash.h"
+#include "log_collector.h"
 #include "redis_bitmap.h"
-#include "redis_list.h"
-#include "redis_request.h"
 #include "redis_connection.h"
+#include "redis_db.h"
+#include "redis_geo.h"
+#include "redis_hash.h"
+#include "redis_list.h"
+#include "redis_pubsub.h"
+#include "redis_request.h"
 #include "redis_set.h"
+#include "redis_sortedint.h"
 #include "redis_string.h"
 #include "redis_zset.h"
-#include "redis_geo.h"
-#include "redis_pubsub.h"
-#include "redis_sortedint.h"
 #include "replication.h"
-#include "util.h"
-#include "storage.h"
-#include "worker.h"
 #include "server.h"
-#include "log_collector.h"
+#include "storage.h"
+#include "util.h"
+#include "worker.h"
 
 namespace Redis {
 

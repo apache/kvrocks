@@ -3,18 +3,18 @@
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
-#include <map>
 #include <list>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
+#include "log_collector.h"
+#include "redis_metadata.h"
+#include "replication.h"
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
-#include "replication.h"
-#include "redis_metadata.h"
-#include "log_collector.h"
 #include "worker.h"
 
 struct DBScanInfo {

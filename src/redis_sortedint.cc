@@ -1,8 +1,8 @@
 #include "redis_sortedint.h"
 
-#include <map>
 #include <iostream>
 #include <limits>
+#include <map>
 
 namespace Redis {
 

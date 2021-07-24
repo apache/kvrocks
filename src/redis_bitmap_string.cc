@@ -1,6 +1,8 @@
 #include "redis_bitmap_string.h"
-#include <vector>
+
 #include <glog/logging.h>
+
+#include <vector>
 
 #include "redis_string.h"
 

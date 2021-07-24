@@ -1,8 +1,9 @@
 #include "redis_connection.h"
 
 #include <glog/logging.h>
-#include "worker.h"
+
 #include "server.h"
+#include "worker.h"
 
 namespace Redis {
 

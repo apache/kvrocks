@@ -1,6 +1,7 @@
 #include "task_runner.h"
 
 #include <thread>
+
 #include "util.h"
 
 Status TaskRunner::Publish(Task task) {

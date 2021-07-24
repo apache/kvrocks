@@ -1,21 +1,22 @@
 #include "replication.h"
 
-#include <signal.h>
 #include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <future>
-#include <string>
-#include <thread>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
 #include <glog/logging.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+
+#include <future>
+#include <string>
+#include <thread>
 
 #include "redis_reply.h"
 #include "rocksdb_crc32c.h"
-#include "util.h"
-#include "status.h"
 #include "server.h"
+#include "status.h"
+#include "util.h"
 
 FeedSlaveThread::~FeedSlaveThread() {
   delete conn_;

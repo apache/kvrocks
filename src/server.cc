@@ -1,22 +1,23 @@
 #include "server.h"
 
 #include <fcntl.h>
-#include <sys/statvfs.h>
-#include <sys/utsname.h>
-#include <sys/resource.h>
-#include <utility>
-#include <memory>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
+#include <sys/resource.h>
+#include <sys/statvfs.h>
+#include <sys/utsname.h>
 
-#include "util.h"
-#include "worker.h"
-#include "version.h"
-#include "redis_db.h"
-#include "redis_request.h"
-#include "redis_connection.h"
+#include <memory>
+#include <utility>
+
 #include "compaction_checker.h"
 #include "config.h"
+#include "redis_connection.h"
+#include "redis_db.h"
+#include "redis_request.h"
+#include "util.h"
+#include "version.h"
+#include "worker.h"
 
 std::atomic<int>Server::unix_time_ = {0};
 

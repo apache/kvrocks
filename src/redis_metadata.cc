@@ -1,12 +1,13 @@
 #include "redis_metadata.h"
-#include <time.h>
+
+#include <rocksdb/env.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <time.h>
 
-#include <vector>
-#include <cstdlib>
 #include <atomic>
-#include <rocksdb/env.h>
+#include <cstdlib>
+#include <vector>
 
 #include "util.h"
 

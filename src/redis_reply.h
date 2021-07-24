@@ -1,9 +1,10 @@
 #pragma once
 
-#include <string>
-#include <vector>
 #include <event2/buffer.h>
 #include <rocksdb/status.h>
+
+#include <string>
+#include <vector>
 
 #define CRLF "\r\n"
 

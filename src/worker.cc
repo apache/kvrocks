@@ -1,15 +1,16 @@
 #include "worker.h"
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <list>
-#include <cctype>
-#include <utility>
-#include <algorithm>
 #include <glog/logging.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
-#include "redis_request.h"
+#include <algorithm>
+#include <cctype>
+#include <list>
+#include <utility>
+
 #include "redis_connection.h"
+#include "redis_request.h"
 #include "server.h"
 #include "util.h"
 

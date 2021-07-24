@@ -1,27 +1,27 @@
 #define __STDC_FORMAT_MACROS
-#include <unistd.h>
+#include <errno.h>
+#include <event2/buffer.h>
+#include <event2/util.h>
+#include <fcntl.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <poll.h>
-#include <errno.h>
-#include <pthread.h>
-#include <fcntl.h>
-#include <math.h>
-#include <string>
+#include <unistd.h>
+
 #include <algorithm>
-#include <event2/util.h>
-#include <event2/buffer.h>
-#include <glog/logging.h>
+#include <string>
 #ifdef __linux__
 #include <sys/sendfile.h>
 #endif
 
-
-#include "util.h"
 #include "status.h"
+#include "util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */

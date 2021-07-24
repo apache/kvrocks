@@ -1,8 +1,9 @@
 #pragma once
 
-#include <unistd.h>
-#include <string>
 #include <rocksdb/slice.h>
+#include <unistd.h>
+
+#include <string>
 
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value);
 bool GetFixed32(rocksdb::Slice *input, uint32_t *value);

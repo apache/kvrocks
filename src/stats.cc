@@ -1,4 +1,5 @@
 #include "stats.h"
+
 #include <chrono>
 
 Stats::Stats() {

@@ -1,8 +1,9 @@
 #include "redis_string.h"
-#include <utility>
-#include <string>
-#include <limits>
+
 #include <cmath>
+#include <limits>
+#include <string>
+#include <utility>
 
 namespace Redis {
 

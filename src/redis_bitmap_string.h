@@ -1,10 +1,10 @@
 #pragma once
 
-#include "redis_db.h"
-#include "redis_metadata.h"
-
 #include <string>
 #include <vector>
+
+#include "redis_db.h"
+#include "redis_metadata.h"
 
 namespace Redis {
 

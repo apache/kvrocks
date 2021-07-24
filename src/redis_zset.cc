@@ -1,9 +1,10 @@
 #include "redis_zset.h"
 
 #include <math.h>
-#include <map>
-#include <limits>
+
 #include <cmath>
+#include <limits>
+#include <map>
 
 namespace Redis {
 

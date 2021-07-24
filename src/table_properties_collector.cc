@@ -1,5 +1,7 @@
 #include "table_properties_collector.h"
+
 #include <utility>
+
 #include "encoding.h"
 #include "redis_metadata.h"
 #include "server.h"

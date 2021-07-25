@@ -223,7 +223,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       continue;
     }
   }
-  if (bev == nullptr) { // failed to connect the master and received the stop signal
+  if (bev == nullptr) {  // failed to connect the master and received the stop signal
     return;
   }
 

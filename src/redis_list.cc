@@ -179,17 +179,17 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     buf.clear();
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-    int cnt = 0;
+    size_t count = 0;
     for (iter->Seek(start_key);
          iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
-      if (iter->value() != elem || cnt >= to_delete_indexes.size()) {
+      if (iter->value() != elem || count >= to_delete_indexes.size()) {
         buf.clear();
         PutFixed64(&buf, reversed ? max_to_delete_index-- : min_to_delete_index++);
         InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
         batch.Put(to_update_key, iter->value());
       } else {
-        cnt++;
+        count++;
       }
     }
 

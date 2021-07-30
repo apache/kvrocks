@@ -50,6 +50,8 @@ class FeedSlaveThread {
   rocksdb::SequenceNumber next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
+  const size_t kMaxDelayUpdates = 16;
+  const size_t kMaxDelayBytes   = 16 * 1024;
 
   void loop();
   void checkLivenessIfNeed();

@@ -115,6 +115,7 @@ void FeedSlaveThread::loop() {
       }
       is_first_repl_batch = false;
       batches_bulk.clear();
+      if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();

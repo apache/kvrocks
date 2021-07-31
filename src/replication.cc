@@ -68,15 +68,16 @@ void FeedSlaveThread::loop() {
   // when some seqs might be lost in the middle of the WAL log, so forced to replicate
   // first batch here to work around this issue instead of waiting for enough batch size.
   bool is_first_repl_batch = true;
-  uint32_t yield_milliseconds = 2000;
-  std::vector<std::string> batch_list;
+  uint32_t yield_microseconds = 2 * 1000;
+  std::string batches_bulk;
+  size_t updates_in_batches = 0;
   while (!IsStopped()) {
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
       if (!srv_->storage_->WALHasNewData(next_repl_seq_)
           || !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
         iter_ = nullptr;
-        usleep(yield_milliseconds);
+        usleep(yield_microseconds);
         checkLivenessIfNeed();
         continue;
       }
@@ -89,26 +90,37 @@ void FeedSlaveThread::loop() {
       Stop();
       return;
     }
-    auto data = batch.writeBatchPtr->Data();
-    batch_list.emplace_back(Redis::BulkString(data));
-    // feed the bulks data to slave in batch mode iff the lag was far from the master
-    auto latest_seq = srv_->storage_->LatestSeq();
-    if (is_first_repl_batch || latest_seq - batch.sequence <= 20 || batch_list.size() >= 20) {
-      for (const auto &bulk_str : batch_list) {
-        auto s = Util::SockSend(conn_->GetFD(), bulk_str);
-        if (!s.IsOK()) {
-          LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg() << ". batch: 0x"
-                     << Util::StringToHex(data);
-          Stop();
-          return;
-        }
+    updates_in_batches += batch.writeBatchPtr->Count();
+    batches_bulk += Redis::BulkString(batch.writeBatchPtr->Data());
+    // 1. We must send the first replication batch, as said above.
+    // 2. To avoid frequently calling 'write' system call to send replication stream,
+    //    we pack multiple bacthes into one big bulk if possible, and only send once.
+    //    But we should send the bulk of batches if its size exceed kMaxDelayBytes,
+    //    16Kb by default. Moreover, we also send if updates count in all bathes is
+    //    more that kMaxDelayUpdates, to void too many delayed updates.
+    // 3. To avoid master don't send replication stream to slave since of packing
+    //    batches strategy, we still send batches if current batch sequence is less
+    //    kMaxDelayUpdates than latest sequence.
+    if (is_first_repl_batch ||
+        batches_bulk.size() >= kMaxDelayBytes ||
+        updates_in_batches >= kMaxDelayUpdates ||
+        srv_->storage_->LatestSeq() - batch.sequence <= kMaxDelayUpdates) {
+      // Send entire bulk which contain multiple batches
+      auto s = Util::SockSend(conn_->GetFD(), batches_bulk);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg()
+                   << ". batches: 0x" << Util::StringToHex(batches_bulk);
+        Stop();
+        return;
       }
       is_first_repl_batch = false;
-      batch_list.clear();
+      batches_bulk.clear();
+      if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
+      updates_in_batches = 0;
     }
     next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
     while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
-      usleep(yield_milliseconds);
+      usleep(yield_microseconds);
       checkLivenessIfNeed();
     }
     iter_->Next();

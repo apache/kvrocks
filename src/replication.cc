@@ -92,7 +92,7 @@ void FeedSlaveThread::loop() {
     }
     updates_in_batches += batch.writeBatchPtr->Count();
     batches_bulk += Redis::BulkString(batch.writeBatchPtr->Data());
-    // 1. we must send the first repl batch, as said above.
+    // 1. We must send the first replication batch, as said above.
     // 2. To avoid frequently calling 'write' system call to send replication stream,
     //    we pack multiple bacthes into one big bulk if possible, and only send once.
     //    But we should send the bulk of batches if its size exceed kMaxDelayBytes,

@@ -205,3 +205,27 @@ start_server {tags {"repl"}} {
         }
     }
 }
+
+start_server {tags {"repl"}} {
+    set slave [srv 0 client]
+    start_server {} {
+        $slave slaveof [srv 0 host] [srv 0 port]
+        test {Master doesn't pause replicating with replicas, #346} {
+            r set a b
+            wait_for_condition 500 100 {
+                [string match {*connected*} [$slave role]]
+            } else {
+                fail "Slaves can't sync with master"
+            }
+            # In #346, we find a bug, if one command contains more than special
+            # number updates, master won't send replication stream to replicas.
+            r hset myhash 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 \
+                          a a b b c c d d e e f f g g h h i i j j k k
+            assert_equal 21 [r hlen myhash]
+
+            after 100
+            assert_equal 1 [$slave hget myhash 1]
+            assert_equal a [$slave hget myhash a]
+        }
+    }
+}

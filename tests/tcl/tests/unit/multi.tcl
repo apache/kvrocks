@@ -78,4 +78,17 @@ start_server {tags {"multi"}} {
         assert_match {EXECABORT*} $e
         r ping
     } {PONG}
+
+    test {MULTI-EXEC used in redis-sentinel for failover} {
+        start_server {} {
+            r multi
+            r slaveof [srv -1 host] [srv -1 port]
+            r config rewrite
+            r client kill type normal
+            r client kill type pubsub
+            r exec
+            reconnect
+            assert_equal "slave" [s role]
+        }
+    }
 }

@@ -49,6 +49,99 @@ start_server {tags {"introspection"}} {
         }
     }
 
+    test {Kill normal client} {
+        set rd [redis_deferring_client]
+        $rd client setname normal
+        assert_equal [$rd read] "OK"
+        assert_match {*normal*} [r client list]
+
+        assert_equal {1} [r client kill skipme yes type normal]
+        assert_equal {1} [r client kill skipme no type normal]
+        reconnect
+        # Now the client should no longer be listed
+        wait_for_condition 50 100 {
+            [string match {*normal*} [r client list]] == 0
+        } else {
+            fail "Killed client still listed in CLIENT LIST after killing."
+        }
+    }
+
+    test {Kill pubsub client} {
+        # subscribe clients
+        set rd [redis_deferring_client]
+        $rd client setname pubsub
+        assert_equal [$rd read] "OK"
+        $rd subscribe foo
+        assert_equal [$rd read] {subscribe foo 1}
+        assert_match {*pubsub*} [r client list]
+
+        # psubscribe clients
+        set rd1 [redis_deferring_client]
+        $rd1 client setname pubsub_patterns
+        assert_equal [$rd1 read] "OK"
+        $rd1 psubscribe bar.*
+        assert_equal [$rd1 read] {psubscribe bar.* 1}
+
+        # normal clients
+        set rd2 [redis_deferring_client]
+        $rd2 client setname normal
+        assert_equal [$rd2 read] "OK"
+
+        assert_equal {2} [r client kill type pubsub]
+        # Now the pubsub client should no longer be listed
+        # but normal client should not be dropped 
+        wait_for_condition 50 100 {
+            [string match {*pubsub*} [r client list]] == 0 &&
+            [string match {*normal*} [r client list]] == 1
+        } else {
+             fail "Killed client still listed in CLIENT LIST after killing."
+        }
+    }
+
+    start_server {} {
+        r slaveof [srv -1 host] [srv -1 port]
+        wait_for_condition 500 100 {
+            [string match {*connected*} [r role]]
+        } else {
+            fail "Slaves can't sync with master"
+        }
+            
+        test {Kill slave client} {
+            set partial_ok [s -1 sync_partial_ok]
+            # Kill slave connection
+            assert_equal {1} [r -1 client kill type slave]
+            # Incr sync_partial_ok since slave reconnects
+            wait_for_condition 50 100 {
+                [expr $partial_ok+1] eq [s -1 sync_partial_ok]
+            } else {
+                fail "Slave should reconnect after disconnecting "
+            }
+        }
+
+        test {Kill master client} {
+            set partial_ok [s -1 sync_partial_ok]
+            # Kill master connection by type
+            assert_equal {1} [r client kill type master]
+            # Incr sync_partial_ok since slave reconnects
+            wait_for_condition 50 100 {
+                [expr $partial_ok+1] eq [s -1 sync_partial_ok]
+            } else {
+                fail "Slave should reconnect after disconnecting "
+            }
+
+            set partial_ok [s -1 sync_partial_ok]
+            # Kill master connection by addr
+            set masteraddr [srv -1 host]:[srv -1 port]
+            assert_equal {OK} [r client kill $masteraddr]
+            # Incr sync_partial_ok since slave reconnects
+            wait_for_condition 50 100 {
+                [expr $partial_ok+1] eq [s -1 sync_partial_ok]
+            } else {
+                fail "Slave should reconnect after disconnecting "
+            }
+        }
+    }
+
     test {DEBUG will freeze server} {
         set rd [redis_deferring_client]
         $rd DEBUG sleep 2.2

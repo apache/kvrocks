@@ -89,6 +89,15 @@ start_server {tags {"multi"}} {
             r exec
             reconnect
             assert_equal "slave" [s role]
+
+            r multi
+            r slaveof no one
+            r config rewrite
+            r client kill type normal
+            r client kill type pubsub
+            r exec
+            reconnect
+            assert_equal "master" [s role]
         }
     }
 }

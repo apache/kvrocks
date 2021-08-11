@@ -41,6 +41,13 @@ enum SlowLog {
   kSlowLogMaxString = 128,
 };
 
+enum ClientType {
+  kTypeNormal     = (1ULL<<0),  // normal client
+  kTypePubsub     = (1ULL<<1),  // pubsub client
+  kTypeMaster     = (1ULL<<2),  // master client
+  kTypeSlave      = (1ULL<<3),  // slave client
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
@@ -55,7 +62,7 @@ class Server {
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
 
 
-  Status AddMaster(std::string host, uint32_t port);
+  Status AddMaster(std::string host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
   Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
@@ -110,7 +117,8 @@ class Server {
   int DecrMonitorClientNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn);
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type,
+                  bool skipme, Redis::Connection *conn);
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }

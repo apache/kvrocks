@@ -67,7 +67,7 @@ Server::~Server() {
 //     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
   if (!config_->master_host.empty()) {
-    Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port));
+    Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
   }
   for (const auto worker : worker_threads_) {
@@ -139,13 +139,18 @@ void Server::Join() {
   if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 
-Status Server::AddMaster(std::string host, uint32_t port) {
+Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
   slaveof_mu_.lock();
-  if (!master_host_.empty() && master_host_ == host && master_port_ == port) {
+
+  // Don't check host and port if 'force_reconnect' argument is set to true
+  if (!force_reconnect &&
+      !master_host_.empty() && master_host_ == host &&
+      master_port_ == port) {
     slaveof_mu_.unlock();
     return Status::OK();
   }
 
+  // Master is changed
   if (!master_host_.empty()) {
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
@@ -1144,22 +1149,37 @@ std::string Server::GetClientsStr() {
   return clients;
 }
 
-void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, bool skipme, Redis::Connection *conn) {
+void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
+                         uint64_t type, bool skipme, Redis::Connection *conn) {
   *killed = 0;
+
+  // Normal clients and pubsub clients
   for (const auto &t : worker_threads_) {
     int64_t killed_in_worker = 0;
-    t->GetWorker()->KillClient(conn, id, addr, skipme, &killed_in_worker);
+    t->GetWorker()->KillClient(conn, id, addr, type, skipme, &killed_in_worker);
     *killed += killed_in_worker;
   }
+
+  // Slave clients
   slave_threads_mu_.lock();
   for (const auto &st : slave_threads_) {
-    if ((!addr.empty() && st->GetConn()->GetAddr() == addr)
-        || (id != 0 && st->GetConn()->GetID() == id)) {
+    if ((type & kTypeSlave) ||
+        (!addr.empty() && st->GetConn()->GetAddr() == addr) ||
+        (id != 0 && st->GetConn()->GetID() == id)) {
       st->Stop();
       (*killed)++;
     }
   }
   slave_threads_mu_.unlock();
+
+  // Master client
+  if (IsSlave() &&
+      (type & kTypeMaster ||
+       (!addr.empty() && addr == master_host_+":"+std::to_string(master_port_)))) {
+    // Stop replication thread and start a new one to replicate
+    AddMaster(master_host_, master_port_, true);
+    (*killed)++;
+  }
 }
 
 void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {

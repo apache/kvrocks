@@ -132,13 +132,26 @@ uint64_t Connection::GetIdleTime() {
   return static_cast<uint64_t>(now-last_interaction_);
 }
 
+// Currently, master connection is not handled in connection
+// but in replication thread.
+//
+// The function will return one of the following:
+//  kTypeSlave  -> Slave
+//  kTypeNormal -> Normal client
+//  kTypePubsub -> Client subscribed to Pub/Sub channels
+uint64_t Connection::GetClientType() {
+  if (IsFlagEnabled(kSlave)) return kTypeSlave;
+  if (!subscribe_channels_.empty() || !subcribe_patterns_.empty()) return kTypePubsub;
+  return kTypeNormal;
+}
+
 std::string Connection::GetFlags() {
   std::string flags;
   if (owner_->IsRepl()) flags.append("R");
   if (IsFlagEnabled(kSlave)) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
   if (IsFlagEnabled(kMonitor)) flags.append("M");
-  if (!subscribe_channels_.empty()) flags.append("P");
+  if (!subscribe_channels_.empty() || !subcribe_patterns_.empty()) flags.append("P");
   if (flags.empty()) flags = "N";
   return flags;
 }
@@ -284,7 +297,8 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
   password = IsRepl() ? config->masterauth : config->requirepass;
 
   for (auto &cmd_tokens : to_process_cmds) {
-    if (IsFlagEnabled(Redis::Connection::kCloseAfterReply)) break;
+    if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
+        !IsFlagEnabled(Connection::kMultiExec)) break;
     if (GetNamespace().empty()) {
       if (!password.empty() && Util::ToLower(cmd_tokens.front()) != "auth") {
         Reply(Redis::Error("NOAUTH Authentication required."));

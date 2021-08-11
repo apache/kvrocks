@@ -3365,7 +3365,7 @@ class CommandSlaveOf : public Commander {
         LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
       }
     } else {
-      s = svr->AddMaster(host_, port_);
+      s = svr->AddMaster(host_, port_, false);
       if (s.IsOK()) {
         *output = Redis::SimpleString("OK");
         LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_
@@ -3591,6 +3591,18 @@ class CommandClient : public Commander {
           } else {
             return Status(Status::RedisParseErr, errInvalidSyntax);
           }
+        } else if (args[i] == "type" && moreargs) {
+          if (args[i+1] == "normal") {
+            kill_type_ |= kTypeNormal;
+          } else if (args[i+1] == "pubsub") {
+            kill_type_ |= kTypePubsub;
+          } else if (args[i+1] == "master") {
+            kill_type_ |= kTypeMaster;
+          } else if (args[i+1] == "replica" || args[i+1] == "slave") {
+            kill_type_ |= kTypeSlave;
+          } else {
+            return Status(Status::RedisParseErr, errInvalidSyntax);
+          }
         } else {
           return Status(Status::RedisParseErr, errInvalidSyntax);
         }
@@ -3619,7 +3631,7 @@ class CommandClient : public Commander {
       return Status::OK();
     } else if (subcommand_ == "kill") {
       int64_t killed = 0;
-      srv->KillClient(&killed, addr_, id_, skipme_, conn);
+      srv->KillClient(&killed, addr_, id_, kill_type_, skipme_, conn);
       if (new_format_) {
         *output = Redis::Integer(killed);
       } else {
@@ -3640,6 +3652,7 @@ class CommandClient : public Commander {
   std::string conn_name_;
   std::string subcommand_;
   bool skipme_ = false;
+  int64_t kill_type_ = 0;
   uint64_t id_ = 0;
   bool new_format_ = true;
 };
@@ -4442,7 +4455,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("compact", 1, "read-only", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only", 0, 0, 0, CommandBGSave),
     ADD_CMD("flushbackup", 1, "read-only", 0, 0, 0, CommandFlushBackup),
-    ADD_CMD("slaveof", 3, "read-only", 0, 0, 0, CommandSlaveOf),
+    ADD_CMD("slaveof", 3, "read-only exclusive", 0, 0, 0, CommandSlaveOf),
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
     ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),

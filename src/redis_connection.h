@@ -65,6 +65,7 @@ class Connection {
   int GetPort() { return port_; }
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() { return listening_port_; }
+  uint64_t GetClientType();
 
   bool IsAdmin() { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }

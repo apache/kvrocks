@@ -309,12 +309,15 @@ std::string Worker::GetClientsStr() {
   return output;
 }
 
-void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, bool skipme, int64_t *killed) {
+void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr,
+                        uint64_t type, bool skipme, int64_t *killed) {
   conns_mu_.lock();
   for (const auto &iter : conns_) {
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
-    if ((!addr.empty() && conn->GetAddr() == addr) || (id != 0 && conn->GetID() == id)) {
+    if ((type & conn->GetClientType()) ||
+        (!addr.empty() && conn->GetAddr() == addr) ||
+        (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection
       if (!conn->IsFlagEnabled(Redis::Connection::kSlave)) {  // don't enable any event in slave connection

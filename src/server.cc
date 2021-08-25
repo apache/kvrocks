@@ -30,7 +30,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
 
   // Init cluster
-  cluster_ = new Cluster(config_->binds, config_->port);
+  cluster_ = new Cluster(this, config_->binds, config_->port);
 
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);

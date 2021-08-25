@@ -3,16 +3,18 @@
 #include <algorithm>
 
 #include "util.h"
+#include "server.h"
 #include "cluster.h"
 #include "redis_cmd.h"
+#include "replication.h"
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port,
     int role, std::string master_id, std::bitset<kClusterSlots> slots):
     id_(id), host_(host), port_(port), role_(role),
     master_id_(master_id), slots_(slots) { }
 
-Cluster::Cluster(std::vector<std::string> binds, int port) :
-    binds_(binds), port_(port), size_(0), version_(-1), myself_(nullptr) {
+Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port) :
+    svr_(svr), binds_(binds), port_(port), size_(0), version_(-1), myself_(nullptr) {
   for (unsigned i = 0; i < kClusterSlots; i++) {
     slots_nodes_[i] = nullptr;
   }
@@ -44,6 +46,10 @@ Status Cluster::SetNodeId(std::string node_id) {
   } else {
     myself_ = nullptr;
   }
+
+  // Set replication relationship
+  if (myself_ != nullptr) SetMasterSlaveRepl();
+
   return Status::OK();
 }
 
@@ -104,7 +110,32 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     myself_ = nodes_[myid_];
   }
 
+  // Set replication relationship
+  if (myself_ != nullptr) SetMasterSlaveRepl();
+
   return Status::OK();
+}
+
+// Set replication relationship by cluster topology setting
+void Cluster::SetMasterSlaveRepl() {
+  assert(myself_ != nullptr);
+  if (myself_->role_ == kClusterMaster) {
+    // Master mode
+    svr_->RemoveMaster();
+    LOG(INFO) << "MASTER MODE enabled by cluster topology setting";
+  } else if (nodes_.find(myself_->master_id_) != nodes_.end()) {
+    // Slave mode and master node is existing
+    std::shared_ptr<ClusterNode> master = nodes_[myself_->master_id_];
+    Status s = svr_->AddMaster(master->host_, master->port_, 0);
+    if (s.IsOK()) {
+      LOG(INFO) << "SLAVE OF " << master->host_ << ":" << master->port_
+                << " enabled by cluster topology setting";
+    } else {
+      LOG(WARNING) << "SLAVE OF " << master->host_ << ":" << master->port_
+                    << " enabled by cluster topology setting, encounter error: "
+                    << s.Msg();
+    }
+  }
 }
 
 Status Cluster::GetClusterInfo(std::string *cluster_infos) {

@@ -118,7 +118,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
 // Set replication relationship by cluster topology setting
 void Cluster::SetMasterSlaveRepl() {
-  assert(myself_ != nullptr);
+  if (svr_ == nullptr) return;
+  if (myself_ == nullptr) return;
+
   if (myself_->role_ == kClusterMaster) {
     // Master mode
     svr_->RemoveMaster();

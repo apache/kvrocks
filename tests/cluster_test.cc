@@ -8,7 +8,7 @@
 
 TEST(Cluster, CluseterSetNodes) {
   Status s;
-  Cluster cluster({"127.0.0.1"}, 3002);
+  Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
 
   const std::string invalid_fields =
     "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
@@ -83,7 +83,7 @@ TEST(Cluster, CluseterGetNodes) {
     "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
     "master - 5461-10922";
-  Cluster cluster({"127.0.0.1"}, 30002);
+  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
 
@@ -123,7 +123,7 @@ TEST(Cluster, CluseterGetSlotInfo) {
     "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
     "master - 5461-10922";
-  Cluster cluster({"127.0.0.1"}, 30002);
+  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
 

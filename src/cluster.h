@@ -47,9 +47,11 @@ struct SlotInfo {
 
 typedef std::unordered_map<std::string, std::shared_ptr<ClusterNode>> ClusterNodes;
 
+class Server;
+
 class Cluster {
  public:
-  explicit Cluster(std::vector<std::string> binds, int port);
+  explicit Cluster(Server *svr, std::vector<std::string> binds, int port);
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
@@ -59,6 +61,7 @@ class Cluster {
   bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens);
+  void SetMasterSlaveRepl();
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
@@ -67,6 +70,7 @@ class Cluster {
   SlotInfo GenSlotNodeInfo(int start, int end, std::shared_ptr<ClusterNode> n);
   Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                     std::unordered_map<int, std::string> *slots_nodes);
+  Server *svr_;
   std::vector<std::string> binds_;
   int port_;
   int size_;

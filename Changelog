@@ -1,3 +1,21 @@
+# Version 2.0.3
+
+Improvements
+  - Use the rocksdb MultiGet interface in the MGET command (#331)
+  - Avoid useless space allocation in SetBit (#338)
+  - Auto set master/replica replication by cluster topology (#356)
+  - Support client kill type subcommands to adapt redis-sentinel (#352) (#361)
+    From 2.0.2, we support MULTI-EXEC, but don't support client kill type $type,
+    so MULTI-EXEC will be rollbacked when failing to parse unknown kill type
+    in client command, and cause redis-sentinel fails to failover.
+
+Bugfixes
+  - Fix SETNX and MSETNX commands can't guarantee atomicity (#337)
+  - Fix the replicas won't reconnect when failing to connect with master (#344)
+  - Fix master pauses synchronizing with replicas (#347)
+  - Fix wrong mater port if enabling master-use-repl-port (#360)
+
+
 # Version 2.0.2
 
 New features

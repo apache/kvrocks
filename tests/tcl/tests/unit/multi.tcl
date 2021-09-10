@@ -81,21 +81,21 @@ start_server {tags {"multi"}} {
 
     test {MULTI-EXEC used in redis-sentinel for failover} {
         start_server {} {
-            r multi
-            r slaveof [srv -1 host] [srv -1 port]
-            r config rewrite
-            r client kill type normal
-            r client kill type pubsub
-            r exec
+            r MULTI
+            r SLAVEOF [srv -1 host] [srv -1 port]
+            r CONFIG REWRITE
+            r CLIENT KILL TYPE normal
+            r CLIENT KILL TYPE PUBSUB
+            r EXEC
             reconnect
             assert_equal "slave" [s role]
 
-            r multi
-            r slaveof no one
-            r config rewrite
-            r client kill type normal
-            r client kill type pubsub
-            r exec
+            r MULTI
+            r SLAVEOF NO ONE
+            r CONFIG REWRITE
+            r CLIENT kill TYPE NORMAL
+            r client KILL type pubsub
+            r EXEC
             reconnect
             assert_equal "master" [s role]
         }

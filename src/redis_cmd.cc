@@ -3575,30 +3575,31 @@ class CommandClient : public Commander {
       new_format_ = true;
       while (i < args.size()) {
         bool moreargs = i < args.size();
-        if (args[i] == "addr" && moreargs) {
+        if (!strcasecmp(args[i].c_str(), "addr") && moreargs) {
           addr_ = args[i+1];
-        } else if (args[i] == "id" && moreargs) {
+        } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
           try {
             id_ = std::stoll(args[i+1]);
           } catch (std::exception &e) {
             return Status(Status::RedisParseErr, errValueNotInterger);
           }
-        } else if (args[i] == "skipme" && moreargs) {
-          if (args[i+1] == "yes") {
+        } else if (!strcasecmp(args[i].c_str(), "skipme") && moreargs) {
+          if (!strcasecmp(args[i+1].c_str(), "yes")) {
             skipme_ = true;
-          } else if (args[i+1] == "no") {
+          } else if (!strcasecmp(args[i+1].c_str(), "no")) {
             skipme_ = false;
           } else {
             return Status(Status::RedisParseErr, errInvalidSyntax);
           }
-        } else if (args[i] == "type" && moreargs) {
-          if (args[i+1] == "normal") {
+        } else if (!strcasecmp(args[i].c_str(), "type") && moreargs) {
+          if (!strcasecmp(args[i+1].c_str(), "normal")) {
             kill_type_ |= kTypeNormal;
-          } else if (args[i+1] == "pubsub") {
+          } else if (!strcasecmp(args[i+1].c_str(), "pubsub")) {
             kill_type_ |= kTypePubsub;
-          } else if (args[i+1] == "master") {
+          } else if (!strcasecmp(args[i+1].c_str(), "master")) {
             kill_type_ |= kTypeMaster;
-          } else if (args[i+1] == "replica" || args[i+1] == "slave") {
+          } else if (!strcasecmp(args[i+1].c_str(), "replica") ||
+                     !strcasecmp(args[i+1].c_str(), "slave")) {
             kill_type_ |= kTypeSlave;
           } else {
             return Status(Status::RedisParseErr, errInvalidSyntax);

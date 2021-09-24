@@ -153,14 +153,13 @@ Status Storage::Open(bool read_only) {
   size_t block_size = static_cast<size_t>(config_->RocksDB.block_size);
   size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
-  bool share_metadata_and_subkey_block_cache = config_->RocksDB.share_metadata_and_subkey_block_cache;
 
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamilies(options);
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  if (share_metadata_and_subkey_block_cache) {
+  if (config_->RocksDB.share_metadata_and_subkey_block_cache) {
     size_t shared_block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
     shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
   }

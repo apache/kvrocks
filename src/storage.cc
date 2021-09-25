@@ -153,15 +153,25 @@ Status Storage::Open(bool read_only) {
   size_t block_size = static_cast<size_t>(config_->RocksDB.block_size);
   size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
+
   rocksdb::Options options;
   InitOptions(&options);
   CreateColumnFamilies(options);
+
+  std::shared_ptr<rocksdb::Cache> shared_block_cache;
+  if (config_->RocksDB.share_metadata_and_subkey_block_cache) {
+    size_t shared_block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
+    shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
+  }
+
   rocksdb::BlockBasedTableOptions metadata_table_opts;
   metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  metadata_table_opts.block_cache = rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
+  metadata_table_opts.block_cache = shared_block_cache ?
+    shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   metadata_table_opts.block_size = block_size;
+
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
@@ -171,7 +181,8 @@ Status Storage::Open(bool read_only) {
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
   subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
-  subkey_table_opts.block_cache = rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
+  subkey_table_opts.block_cache = shared_block_cache ?
+    shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   subkey_table_opts.block_size = block_size;

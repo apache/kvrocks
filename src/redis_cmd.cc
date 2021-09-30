@@ -4391,8 +4391,8 @@ class CommandEval : public Commander {
       ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
       ADD_CMD("lpop", 2, "write", 1, 1, 1, CommandLPop),
       ADD_CMD("rpop", 2, "write", 1, 1, 1, CommandRPop),
-      ADD_CMD("blpop", -3, "write", 1, -2, 1, CommandBLPop),
-      ADD_CMD("brpop", -3, "write", 1, -2, 1, CommandBRPop),
+      ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
+      ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
       ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
       ADD_CMD("linsert", 5, "write", 1, 1, 1, CommandLInsert),
       ADD_CMD("lrange", 4, "read-only", 1, 1, 1, CommandLRange),
@@ -4452,11 +4452,11 @@ class CommandEval : public Commander {
       ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
 
       ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-      ADD_CMD("subscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandSubscribe),
-      ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandUnSubscribe),
-      ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandPSubscribe),
-      ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandPUnSubscribe),
-      ADD_CMD("pubsub", -2, "read-only pub-sub", 0, 0, 0, CommandPubSub),
+      ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandSubscribe),
+      ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandUnSubscribe),
+      ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPSubscribe),
+      ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPUnSubscribe),
+      ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0, CommandPubSub),
 
       ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
       ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
@@ -4474,18 +4474,18 @@ class CommandEval : public Commander {
       ADD_CMD("cluster", -2, "cluster", 0, 0, 0, CommandCluster),
       ADD_CMD("clusterx", -2, "cluster", 0, 0, 0, CommandClusterX),
 
-      ADD_CMD("compact", 1, "read-only", 0, 0, 0, CommandCompact),
-      ADD_CMD("bgsave", 1, "read-only", 0, 0, 0, CommandBGSave),
-      ADD_CMD("flushbackup", 1, "read-only", 0, 0, 0, CommandFlushBackup),
-      ADD_CMD("slaveof", 3, "read-only exclusive", 0, 0, 0, CommandSlaveOf),
+      ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
+      ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
+      ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
+      ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),
       ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
-      ADD_CMD("eval", -3, "exclusive write", 0, 0, 0, CommandEval),
-      ADD_CMD("cluster", -2, "read-only", 0, 0, 0, CommandCluster),
+      ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
+      ADD_CMD("cluster", -2, "read-only no-script", 0, 0, 0, CommandCluster),
 
-      ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),
-      ADD_CMD("psync", 2, "read-only replication no-multi", 0, 0, 0, CommandPSync),
-      ADD_CMD("_fetch_meta", 1, "read-only replication no-multi", 0, 0, 0, CommandFetchMeta),
-      ADD_CMD("_fetch_file", 2, "read-only replication no-multi", 0, 0, 0, CommandFetchFile),
+      ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
+      ADD_CMD("psync", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
+      ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
+      ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
       ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
   };
 
@@ -4527,6 +4527,7 @@ class CommandEval : public Commander {
         if (flag == "exclusive") redisCommandTable[i].flags |= kCmdExclusive;
         if (flag == "multi") redisCommandTable[i].flags |= kCmdMulti;
         if (flag == "no-multi") redisCommandTable[i].flags |= kCmdNoMulti;
+        if (flag == "no-script") redisCommandTable[i].flags |= kCmdNoScript;
       }
     }
   }

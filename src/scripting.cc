@@ -10,6 +10,7 @@
 #include "sha1.h"
 #include "server.h"
 #include "redis_connection.h"
+#include "redis_cmd.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
@@ -33,16 +34,29 @@ namespace Lua {
     lua_pushcfunction(lua, redisCallCommand);
     lua_settable(lua,  -3);
     lua_setglobal(lua, "redis");
-  }
 
-  /* In case the error set into the Lua stack by luaPushError() was generated
-  * by the non-error-trapping version of redis.pcall(), which is redis.call(),
-  * this function will raise the Lua error so that the execution of the
-  * script will be halted. */
-  int luaRaiseError(lua_State *lua) {
-    lua_pushstring(lua, "err");
-    lua_gettable(lua, -2);
-    return lua_error(lua);
+    lua_setglobal(lua, "math");
+
+  /* Add a helper function we use for pcall error reporting.
+  * Note that when the error is in the C function we want to report the
+  * information about the caller, that's what makes sense from the point
+  * of view of the user debugging a script. */
+    {
+      const char *err_func = "local dbg = debug\n"
+                        "function __redis__err__handler(err)\n"
+                        "  local i = dbg.getinfo(2,'nSl')\n"
+                        "  if i and i.what == 'C' then\n"
+                        "    i = dbg.getinfo(3,'nSl')\n"
+                        "  end\n"
+                        "  if i then\n"
+                        "    return i.source .. ':' .. i.currentline .. ': ' .. err\n"
+                        "  else\n"
+                        "    return err\n"
+                        "  end\n"
+                        "end\n";
+      luaL_loadbuffer(lua, err_func, strlen(err_func), "@err_handler_def");
+      lua_pcall(lua, 0, 0, 0);
+    }
   }
 
   Status evalGenericCommand(Redis::Connection *conn,
@@ -139,7 +153,7 @@ namespace Lua {
 
     if (argc == 0) {
       pushError(lua, "Please specify at least one argument for redis.call()");
-      return raise_error ? luaRaiseError(lua) : 1;
+      return raise_error ? raiseError(lua) : 1;
     }
     for (j = 0; j < argc; j++) {
       char dbuf[64];
@@ -155,14 +169,14 @@ namespace Lua {
     }
     if (j != argc) {
       pushError(lua, "Lua redis() command arguments must be strings or integers");
-      return raise_error ? luaRaiseError(lua) : 1;
+      return raise_error ? raiseError(lua) : 1;
     }
 
     auto commands = Redis::GetCommands();
     auto cmd_iter = commands->find(Util::ToLower(args[0]));
     if (cmd_iter == commands->end()) {
       pushError(lua, "Unknown Redis command called from Lua script");
-      return raise_error ? luaRaiseError(lua) : 1;
+      return raise_error ? raiseError(lua) : 1;
     }
     auto redisCmd = cmd_iter->second;
     auto cmd = redisCmd->factory();
@@ -171,7 +185,11 @@ namespace Lua {
     int arity = cmd->GetAttributes()->arity;
     if ((arity > 0 && arity != argc) && (argc < -arity)) {
       pushError(lua, "Wrong number of args calling Redis command From Lua script");
-      return raise_error ? luaRaiseError(lua) : 1;
+      return raise_error ? raiseError(lua) : 1;
+    }
+    if (cmd->GetAttributes()->flags & Redis::kCmdNoScript) {
+      pushError(lua, "This Redis command is not allowed from scripts");
+      return raise_error ? raiseError(lua) : 1;
     }
 
     std::string output;
@@ -365,10 +383,10 @@ const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply) {
  * with a single "err" field set to the error string. Note that this
  * table is never a valid reply by proper commands, since the returned
  * tables are otherwise always indexed by integers, never by strings. */
-void pushError(lua_State *lua, const char *error) {
+void pushError(lua_State *lua, const char *err) {
   lua_newtable(lua);
   lua_pushstring(lua, "err");
-  lua_pushstring(lua, error);
+  lua_pushstring(lua, err);
   lua_settable(lua, -3);
 }
 

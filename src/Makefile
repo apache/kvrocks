@@ -3,6 +3,7 @@ CXX= g++
 CXXFLAGS= -O2 -std=c++11 -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -DNDEBUG=1 -Wno-unused-result
 LDFLAGS= -pthread -ldl
 FINAL_CXXFLAGS+= $(CXXFLAGS) $(DEBUG)
+LUA_CFLAGS+= -O2 -Wall -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC='' $(CFLAGS)
 DEBUG= -g -ggdb
 
 INSTALL_DIR= /usr/local
@@ -114,7 +115,7 @@ $(JEMALLOC):
 		$(MAKE) -C $(JEMALLOC_PATH)/
 
 $(LUA):
-	cd $(LUA_PATH)/src; make all
+	cd $(LUA_PATH)/src; make all CFLAGS="$(LUA_CFLAGS)"
 
 kvrocks2redis: $(PROG) $(KVROCKS2REDIS_OBJS)
 	$(KVROCKS_LD) -o kvrocks2redis $(KVROCKS2REDIS_OBJS) $(FINAL_LIBS) $(LDFLAGS)

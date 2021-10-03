@@ -4329,7 +4329,7 @@ class CommandEval : public Commander {
       ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
       ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
       ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
-      ADD_CMD("randomkey", 1, "read-only", 0, 0, 0, CommandRandomKey),
+      ADD_CMD("randomkey", 1, "read-only no-script", 0, 0, 0, CommandRandomKey),
       ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
       ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
 

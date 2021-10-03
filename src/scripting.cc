@@ -17,12 +17,18 @@
  * This should be the size of the buffer given to doule to string */
 #define MAX_LONG_DOUBLE_CHARS 5*1024
 
+extern "C" {
+LUALIB_API int (luaopen_cjson)(lua_State *L);
+LUALIB_API int (luaopen_struct)(lua_State *L);
+LUALIB_API int (luaopen_cmsgpack)(lua_State *L);
+LUALIB_API int (luaopen_bit)(lua_State *L);
+}
 
 namespace Lua {
   lua_State* CreateState() {
     lua_State *lua = lua_open();
-    loadFuncs(lua);
     loadLibraries(lua);
+    loadFuncs(lua);
     return lua;
   }
 
@@ -33,9 +39,15 @@ namespace Lua {
     lua_pushstring(lua,  "call");
     lua_pushcfunction(lua, redisCallCommand);
     lua_settable(lua,  -3);
+
+    lua_pushstring(lua,  "pcall");
+    lua_pushcfunction(lua, redisPCallCommand);
+    lua_settable(lua,  -3);
     lua_setglobal(lua, "redis");
 
-    lua_setglobal(lua, "math");
+    /* Replace math.random and math.randomseed with our implementations. */
+    lua_getglobal(lua, "math");
+    lua_setglobal(lua,  "math");
 
   /* Add a helper function we use for pcall error reporting.
   * Note that when the error is in the C function we want to report the
@@ -147,6 +159,9 @@ namespace Lua {
     return redisGenericCommand(lua, 1);
   }
 
+  int redisPCallCommand(lua_State *lua) {
+    return redisGenericCommand(lua, 0);
+  }
   int redisGenericCommand(lua_State *lua, int raise_error) {
     int j, argc = lua_gettop(lua);
     std::vector<std::string> args;
@@ -183,7 +198,7 @@ namespace Lua {
     cmd->SetAttributes(redisCmd);
     cmd->SetArgs(args);
     int arity = cmd->GetAttributes()->arity;
-    if ((arity > 0 && arity != argc) && (argc < -arity)) {
+    if (((arity > 0 && argc != arity) || (arity < 0 && argc < -arity))) {
       pushError(lua, "Wrong number of args calling Redis command From Lua script");
       return raise_error ? raiseError(lua) : 1;
     }
@@ -194,8 +209,16 @@ namespace Lua {
 
     std::string output;
     Server *srv = GetServer();
-    // TODO: check error here
-    cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
+    auto s = cmd->Parse(args);
+    if (!s.IsOK()) {
+      pushError(lua, s.Msg().data());
+      return raise_error ? raiseError(lua) : 1;
+    }
+    s = cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
+    if (!s.IsOK()) {
+      pushError(lua, s.Msg().data());
+      return raise_error ? raiseError(lua) : 1;
+    }
     redisProtocolToLuaType(lua, output.data());
     return 1;
   }
@@ -207,10 +230,14 @@ namespace Lua {
       lua_call(lua,  1, 0);
     };
     loadLib(lua, "", luaopen_base);
-    loadLib(lua, "table", luaopen_table);
-    loadLib(lua, "string", luaopen_string);
-    loadLib(lua, "math", luaopen_math);
-    // TODO(@git-hulk): load cjson/msgpack/bit/struct like the Redis
+    loadLib(lua, LUA_TABLIBNAME, luaopen_table);
+    loadLib(lua, LUA_STRLIBNAME, luaopen_string);
+    loadLib(lua, LUA_MATHLIBNAME, luaopen_math);
+    loadLib(lua, LUA_DBLIBNAME, luaopen_debug);
+    loadLib(lua, "cjson", luaopen_cjson);
+    loadLib(lua, "struct", luaopen_struct);
+    loadLib(lua, "cmsgpack", luaopen_cmsgpack);
+    loadLib(lua, "bit", luaopen_bit);
   }
 
 
@@ -398,7 +425,7 @@ std::string luaReplyToRedisReply(lua_State *lua) {
       output = Redis::SimpleString(std::string(lua_tostring(lua, -1), lua_strlen(lua, -1)));
       break;
     case LUA_TBOOLEAN:
-      output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::Integer(0);
+      output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::NilString();
       break;
     case LUA_TNUMBER:
       output = Redis::Integer((int64_t)(lua_tonumber(lua, -1)));
@@ -412,7 +439,6 @@ std::string luaReplyToRedisReply(lua_State *lua) {
       /* Handle error reply. */
       lua_pushstring(lua, "err");
       lua_gettable(lua, -2);
-
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         output = Redis::Error(lua_tostring(lua, -1));
@@ -429,23 +455,26 @@ std::string luaReplyToRedisReply(lua_State *lua) {
         lua_pop(lua, 1);
         return output;
       } else {
-        int j = 1;
+        int j = 1, mbulklen = 0;
         lua_pop(lua, 1); /* Discard the 'ok' field value we popped */
         while (true) {
           lua_pushnumber(lua, j++);
-          lua_gettable(lua, -1);
+          lua_gettable(lua, -2);
           t = lua_type(lua, -1);
           if (t == LUA_TNIL) {
             lua_pop(lua, 1);
             break;
           }
-          std::string ret = luaReplyToRedisReply(lua);
+          mbulklen++;
+          output += luaReplyToRedisReply(lua);
         }
+        output = Redis::MultiLen(mbulklen)+output;
       }
       break;
     default:
       output = Redis::NilString();
   }
+  lua_pop(lua, 1);
   return output;
 }
 

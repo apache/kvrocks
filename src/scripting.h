@@ -20,6 +20,7 @@ lua_State* CreateState();
 void loadFuncs(lua_State *lua);
 void loadLibraries(lua_State *lua);
 int redisCallCommand(lua_State *lua);
+int redisPCallCommand(lua_State *lua);
 int redisGenericCommand(lua_State *lua, int raise_error);
 Status createFunction(lua_State *lua, const std::string &body, std::string *sha);
 Status evalGenericCommand(Redis::Connection *conn,

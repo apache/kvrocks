@@ -41,7 +41,7 @@ const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, 
 const char *redisProtocolToLuaType_Null(lua_State *lua, const char *reply);
 const char *redisProtocolToLuaType_Bool(lua_State *lua, const char *reply, int tf);
 const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply);
-std::string luaReplyToRedisReply(lua_State *lua);
+std::string replyToRedisReply(lua_State *lua);
 void pushError(lua_State *lua, const char *err);
 int raiseError(lua_State *lua);
 void sortArray(lua_State *lua);

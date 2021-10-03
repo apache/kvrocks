@@ -148,7 +148,7 @@ namespace Lua {
       *output = Redis::Error(msg);
       lua_pop(lua, 2);
     } else {
-      *output = luaReplyToRedisReply(lua);
+      *output = replyToRedisReply(lua);
       lua_pop(lua, 1);
     }
 
@@ -487,7 +487,7 @@ void pushError(lua_State *lua, const char *err) {
   lua_settable(lua, -3);
 }
 
-std::string luaReplyToRedisReply(lua_State *lua) {
+std::string replyToRedisReply(lua_State *lua) {
   std::string output;
   int t = lua_type(lua, -1);
   switch (t) {
@@ -536,7 +536,7 @@ std::string luaReplyToRedisReply(lua_State *lua) {
             break;
           }
           mbulklen++;
-          output += luaReplyToRedisReply(lua);
+          output += replyToRedisReply(lua);
         }
         output = Redis::MultiLen(mbulklen)+output;
       }

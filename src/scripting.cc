@@ -218,19 +218,49 @@ namespace Lua {
       pushError(lua, "Wrong number of args calling Redis command From Lua script");
       return raise_error ? raiseError(lua) : 1;
     }
-    if (cmd->GetAttributes()->flags & Redis::kCmdNoScript) {
+    auto attributes = cmd->GetAttributes();
+    if (attributes->flags & Redis::kCmdNoScript) {
       pushError(lua, "This Redis command is not allowed from scripts");
       return raise_error ? raiseError(lua) : 1;
     }
 
-    std::string output;
+    std::string output, cmd_name = Util::ToLower(args[0]);
     Server *srv = GetServer();
-    auto s = cmd->Parse(args);
-    if (!s.IsOK()) {
-      pushError(lua, s.Msg().data());
+    Config *config = srv->GetConfig();
+    Redis::Connection *conn = srv->GetCurrentConnection();
+    if (config->cluster_enabled) {
+      auto s = srv->cluster_->CanExecByMySelf(attributes, args);
+      if (!s.IsOK()) {
+        pushError(lua, s.Msg().c_str());
+        return raise_error ? raiseError(lua) : 1;
+      }
+    }
+    if (config->slave_readonly && srv->IsSlave() && attributes->is_write()) {
+      pushError(lua, "READONLY You can't write against a read only slave.");
       return raise_error ? raiseError(lua) : 1;
     }
+    if (!config->slave_serve_stale_data && srv->IsSlave()
+        && cmd_name != "info" && cmd_name != "slaveof"
+        && srv->GetReplicationState() != kReplConnected) {
+      pushError(lua, "MASTERDOWN Link with MASTER is down "
+                     "and slave-serve-stale-data is set to 'no'.");
+      return raise_error ? raiseError(lua) : 1;
+    }
+    auto s = cmd->Parse(args);
+    if (!s.IsOK()) {
+      pushError(lua, s.Msg().c_str());
+      return raise_error ? raiseError(lua) : 1;
+    }
+    srv->stats_.IncrCalls(cmd_name);
+    auto start = std::chrono::high_resolution_clock::now();
+    bool is_profiling = conn->isProfilingEnabled(cmd_name);
+    auto end = std::chrono::high_resolution_clock::now();
     s = cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
+    uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    if (is_profiling) conn->recordProfilingSampleIfNeed(cmd_name, duration);
+    srv->SlowlogPushEntryIfNeeded(&args, duration);
+    srv->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+    srv->FeedMonitorConns(conn, args);
     if (!s.IsOK()) {
       pushError(lua, s.Msg().data());
       return raise_error ? raiseError(lua) : 1;

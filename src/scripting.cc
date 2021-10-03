@@ -28,6 +28,7 @@ namespace Lua {
   lua_State* CreateState() {
     lua_State *lua = lua_open();
     loadLibraries(lua);
+    removeUnsupportedFunctions(lua);
     loadFuncs(lua);
     return lua;
   }
@@ -35,14 +36,29 @@ namespace Lua {
   void loadFuncs(lua_State *lua) {
     lua_newtable(lua);
 
-    // redis.call
+    /* redis.call */
     lua_pushstring(lua,  "call");
     lua_pushcfunction(lua, redisCallCommand);
     lua_settable(lua,  -3);
 
+    /* redis.pcall */
     lua_pushstring(lua,  "pcall");
     lua_pushcfunction(lua, redisPCallCommand);
     lua_settable(lua,  -3);
+
+    /* redis.sha1hex */
+    lua_pushstring(lua, "sha1hex");
+    lua_pushcfunction(lua, redisSha1hexCommand);
+    lua_settable(lua, -3);
+
+    /* redis.error_reply and redis.status_reply */
+    lua_pushstring(lua, "error_reply");
+    lua_pushcfunction(lua, redisErrorReplyCommand);
+    lua_settable(lua, -3);
+    lua_pushstring(lua, "status_reply");
+    lua_pushcfunction(lua, redisStatusReplyCommand);
+    lua_settable(lua, -3);
+
     lua_setglobal(lua, "redis");
 
     /* Replace math.random and math.randomseed with our implementations. */
@@ -223,6 +239,13 @@ namespace Lua {
     return 1;
   }
 
+  void removeUnsupportedFunctions(lua_State *lua) {
+    lua_pushnil(lua);
+    lua_setglobal(lua, "loadfile");
+    lua_pushnil(lua);
+    lua_setglobal(lua, "dofile");
+  }
+
   void loadLibraries(lua_State *lua) {
     auto loadLib = [] (lua_State *lua, const char *libname, lua_CFunction func) {
       lua_pushcfunction(lua, func);
@@ -240,7 +263,54 @@ namespace Lua {
     loadLib(lua, "bit", luaopen_bit);
   }
 
+  /* Returns a table with a single field 'field' set to the string value
+  * passed as argument. This helper function is handy when returning
+  * a Redis Protocol error or status reply from Lua:
+  *
+  * return redis.error_reply("ERR Some Error")
+  * return redis.status_reply("ERR Some Error")
+  */
+  int redisReturnSingleFieldTable(lua_State *lua, const char *field) {
+    if (lua_gettop(lua) != 1 || lua_type(lua, -1) != LUA_TSTRING) {
+      pushError(lua, "wrong number or type of arguments");
+      return 1;
+    }
 
+    lua_newtable(lua);
+    lua_pushstring(lua, field);
+    lua_pushvalue(lua, -3);
+    lua_settable(lua, -3);
+    return 1;
+  }
+
+  /* redis.error_reply() */
+  int redisErrorReplyCommand(lua_State *lua) {
+    return redisReturnSingleFieldTable(lua, "err");
+  }
+
+  /* redis.status_reply() */
+  int redisStatusReplyCommand(lua_State *lua) {
+    return redisReturnSingleFieldTable(lua, "ok");
+  }
+
+/* This adds redis.sha1hex(string) to Lua scripts using the same hashing
+  * function used for sha1ing lua scripts. */
+  int redisSha1hexCommand(lua_State *lua) {
+    int argc = lua_gettop(lua);
+    char digest[41];
+    size_t len;
+    const char *s;
+
+    if (argc != 1) {
+      lua_pushstring(lua, "wrong number of arguments");
+      return lua_error(lua);
+    }
+
+    s = static_cast<const char *>(lua_tolstring(lua, 1, &len));
+    SHA1Hex(digest, s, len);
+    lua_pushstring(lua, digest);
+    return 1;
+  }
 
 /* ---------------------------------------------------------------------------
  * Utility functions.

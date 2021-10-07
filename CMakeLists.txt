@@ -349,7 +349,10 @@ add_executable(unittest
         tests/task_runner_test.cc
         tests/t_bitmap_test.cc
         tests/compact_test.cc
-        tests/log_collector_test.cc src/config_type.h src/sha1.cc src/sha1.h)
+        tests/log_collector_test.cc
+        src/config_type.h
+        src/sha1.cc
+        src/sha1.h)
 
 add_dependencies(unittest glog rocksdb snappy jemalloc lua)
 target_compile_features(unittest PRIVATE cxx_std_11)

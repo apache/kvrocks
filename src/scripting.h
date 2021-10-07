@@ -32,7 +32,7 @@ Status evalGenericCommand(Redis::Connection *conn,
                           bool evalsha,
                           std::string *output);
 
-const char * redisProtocolToLuaType(lua_State *lua, const char *reply);
+const char *redisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply);
 const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply);
 const char *redisProtocolToLuaType_Status(lua_State *lua, const char *reply);

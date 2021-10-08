@@ -198,6 +198,4 @@ class Server {
 };
 
 extern Server *srv;
-
 Server *GetServer();
-

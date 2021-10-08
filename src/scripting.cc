@@ -37,12 +37,12 @@ namespace Lua {
     lua_newtable(lua);
 
     /* redis.call */
-    lua_pushstring(lua,  "call");
+    lua_pushstring(lua, "call");
     lua_pushcfunction(lua, redisCallCommand);
     lua_settable(lua,  -3);
 
     /* redis.pcall */
-    lua_pushstring(lua,  "pcall");
+    lua_pushstring(lua, "pcall");
     lua_pushcfunction(lua, redisPCallCommand);
     lua_settable(lua,  -3);
 
@@ -63,7 +63,7 @@ namespace Lua {
 
     /* Replace math.random and math.randomseed with our implementations. */
     lua_getglobal(lua, "math");
-    lua_setglobal(lua,  "math");
+    lua_setglobal(lua, "math");
 
   /* Add a helper function we use for pcall error reporting.
   * Note that when the error is in the C function we want to report the
@@ -454,7 +454,7 @@ const char *redisProtocolToLuaType_Error(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, int atype) {
   const char *p = strchr(reply+1, '\r');
-  int64_t  mbulklen;
+  int64_t mbulklen;
   int j = 0;
 
   Util::StringToNum(std::string(reply+1, p-reply-1), &mbulklen);
@@ -681,3 +681,4 @@ Status createFunction(lua_State *lua, const std::string &body, std::string *sha)
 }
 
 }  // namespace Lua
+

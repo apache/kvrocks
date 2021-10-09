@@ -3,6 +3,7 @@ CXX= g++
 CXXFLAGS= -O2 -std=c++11 -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -DNDEBUG=1 -Wno-unused-result
 LDFLAGS= -pthread -ldl
 FINAL_CXXFLAGS+= $(CXXFLAGS) $(DEBUG)
+LUA_CFLAGS+= -O2 -Wall -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC='' $(CFLAGS)
 DEBUG= -g -ggdb
 
 INSTALL_DIR= /usr/local
@@ -23,20 +24,23 @@ JEMALLOC_PATH= $(EXTERNAL_LIBRARY_PATH)/jemalloc
 JEMALLOC= $(JEMALLOC_PATH)/lib/libjemalloc.a
 ROCKSDB_PATH= $(EXTERNAL_LIBRARY_PATH)/rocksdb
 ROCKSDB= $(ROCKSDB_PATH)/librocksdb.a
+LUA_PATH= $(EXTERNAL_LIBRARY_PATH)/lua
+LUA= $(LUA_PATH)/src/liblua.a
 # Include paths to dependencies
 FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include \
 				  -I$(ROCKSDB_PATH)/include \
 				  -I$(LIBEVENT_PATH)/include \
 				  -I$(GLOG_PATH)/src \
+				  -I$(LUA_PATH)/src \
 				  -I.
-FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(JEMALLOC) $(ROCKSDB)
+FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(JEMALLOC) $(ROCKSDB) $(LUA)
 
 SHARED_OBJS= cluster.o compact_filter.o config.o cron.o encoding.o event_listener.o lock_manager.o \
 			   log_collector.o redis_bitmap.o redis_bitmap_string.o redis_cmd.o redis_connection.o redis_db.o \
 			   redis_hash.o redis_list.o redis_metadata.o redis_slot.o redis_pubsub.o redis_reply.o \
 			   redis_request.o redis_set.o redis_string.o redis_zset.o redis_geo.o replication.o \
 			   server.o stats.o storage.o task_runner.o util.o geohash.o worker.o redis_sortedint.o \
-			   compaction_checker.o table_properties_collector.o
+			   compaction_checker.o table_properties_collector.o scripting.o sha1.o
 KVROCKS_OBJS= $(SHARED_OBJS) main.o
 
 UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../tests/compact_test.o \
@@ -88,7 +92,7 @@ lint:
 	cd ..; ./cpplint.sh
 	cd ..; ./cppcheck.sh
 
-$(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(KVROCKS_OBJS)
+$(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(LUA) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
 	
 $(GLOG):
@@ -109,6 +113,9 @@ $(JEMALLOC):
 	cd $(JEMALLOC_PATH); ./autogen.sh; \
 	   	./configure --enable-autogen --disable-libdl --enable-static --with-jemalloc-prefix=""; \
 		$(MAKE) -C $(JEMALLOC_PATH)/
+
+$(LUA):
+	cd $(LUA_PATH)/src; make all CFLAGS="$(LUA_CFLAGS)"
 
 kvrocks2redis: $(PROG) $(KVROCKS2REDIS_OBJS)
 	$(KVROCKS_LD) -o kvrocks2redis $(KVROCKS2REDIS_OBJS) $(FINAL_LIBS) $(LDFLAGS)

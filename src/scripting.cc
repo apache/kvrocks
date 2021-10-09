@@ -39,7 +39,7 @@ namespace Lua {
     /* redis.call */
     lua_pushstring(lua, "call");
     lua_pushcfunction(lua, redisCallCommand);
-    lua_settable(lua,  -3);
+    lua_settable(lua, -3);
 
     /* redis.pcall */
     lua_pushstring(lua, "pcall");

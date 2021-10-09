@@ -17,6 +17,7 @@
 #include "redis_connection.h"
 #include "compaction_checker.h"
 #include "config.h"
+#include "scripting.h"
 
 std::atomic<int>Server::unix_time_ = {0};
 
@@ -38,6 +39,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
+  lua_ = Lua::CreateState();
   fetch_file_threads_num_ = 0;
   time(&start_time_);
   stop_ = false;
@@ -646,12 +648,16 @@ void Server::GetClientsInfo(std::string *info) {
 
 void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
-  char buf[16];
+  char used_memory_rss_human[16], used_memory_lua_human[16];
   int64_t rss = Stats::GetMemoryRSS();
-  Util::BytesToHuman(buf, 16, static_cast<uint64_t>(rss));
+  Util::BytesToHuman(used_memory_rss_human, 16, static_cast<uint64_t>(rss));
+  int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0)*1024;
+  Util::BytesToHuman(used_memory_lua_human, 16, static_cast<uint64_t>(memory_lua));
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss <<"\r\n";
-  string_stream << "used_memory_human:" << buf <<"\r\n";
+  string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
+  string_stream << "used_memory_lua:" << memory_lua << "\r\n";
+  string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
   *info = string_stream.str();
 }
 

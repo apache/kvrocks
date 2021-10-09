@@ -33,6 +33,7 @@ enum CommandFlags {
   kCmdMulti         = (1ULL<<6),  // "multi" flag
   kCmdExclusive     = (1ULL<<7),  // "exclusive" flag
   kCmdNoMulti       = (1ULL<<8),  // "no-multi" flag
+  kCmdNoScript      = (1ULL<<9),  // "noscript" flag
 };
 
 class Commander {

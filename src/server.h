@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 extern "C" {
 #include <lua.h>
@@ -126,6 +127,10 @@ class Server {
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
   lua_State *Lua() { return lua_; }
+  bool ScriptExists(const std::string &sha);
+  void ScriptSet(const std::string &sha, const std::string &body);
+  void ScriptFlush();
+
   void SetCurrentConnection(Redis::Connection *conn) { curr_connection_ = conn; }
   Redis::Connection *GetCurrentConnection() { return curr_connection_; }
 
@@ -158,6 +163,9 @@ class Server {
   std::mutex last_random_key_cursor_mu_;
 
   lua_State *lua_;
+  std::mutex lua_scripts_mu_;
+  std::unordered_map<std::string, std::string> lua_scripts_;
+
   Redis::Connection *curr_connection_ = nullptr;
 
   // client counters

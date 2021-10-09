@@ -4292,15 +4292,60 @@ class CommandEval : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    char funcname[43];
-
-    /* We obtain the script SHA1, then check if this function is already
-     * defined into the Lua state */
-    funcname[0] = 'f';
-    funcname[1] = '_';
-
     return Lua::evalGenericCommand(conn, args_, false, output);
   }
+};
+
+class CommandEvalSHA : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args[1].size() != 40) {
+      return Status(Status::NotOK,  "NOSCRIPT No matching script. Please use EVAL");
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    return Lua::evalGenericCommand(conn, args_, true, output);
+  }
+};
+
+class CommandScript : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = Util::ToLower(args[1]);
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_.size() == 2 && subcommand_ == "flush") {
+      // TODO(@git-hulk): propagating this command is a good idea
+      svr->ScriptFlush();
+    } else if (args_.size() >= 2 && subcommand_ == "exists") {
+      *output = Redis::MultiLen(args_.size()-2);
+      for (size_t j = 2; j < args_.size(); j++) {
+        if (svr->ScriptExists(args_[j])) {
+          *output += Redis::Integer(1);
+        } else {
+          *output += Redis::Integer(0);
+        }
+      }
+    } else if (args_.size() == 3 && subcommand_ == "load") {
+      std::string sha;
+      auto s = Lua::createFunction(svr, args_[2], &sha);
+      if (!s.IsOK()) {
+        return s;
+      }
+      *output = Redis::SimpleString(sha);
+    } else if (args_.size() == 2 && subcommand_ == "kill") {
+    } else {
+      return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
 };
 
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \
@@ -4473,6 +4518,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("clusterx", -2, "cluster no-script", 0, 0, 0, CommandClusterX),
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
+    ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
+    ADD_CMD("script", -2, "write no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),

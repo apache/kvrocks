@@ -148,6 +148,13 @@
 **NOTE : String and Bitmap is different type in kvrocks, so you can't do bit with string, vice versa.**
 
 
+## Script Commands
+
+| Command   | Supported OR Not | Desc |
+| --------- | ---------------- | ---- |
+| eval      | √                |      |
+| evalsha   | √                |      |
+| script    | √                |      |
 
 ## Pub/Sub Commands
 

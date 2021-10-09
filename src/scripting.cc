@@ -111,6 +111,12 @@ namespace Lua {
     funcname[1] = '_';
     if (!evalsha) {
       SHA1Hex(funcname+2, args[1].c_str(), args[1].size());
+    } else {
+      std::string sha = args[1];
+      for (int j = 0; j < 40; j++) {
+        funcname[j+2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j]+('a'-'A') : sha[j];
+      }
+      funcname[42] = '\0';
     }
 
     /* Push the pcall error handler function on the stack. */
@@ -128,7 +134,7 @@ namespace Lua {
         return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
       }
       std::string sha;
-      s = createFunction(lua, args[1], &sha);
+      s = createFunction(srv, args[1], &sha);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
         /* The error is sent to the client by luaCreateFunction()
@@ -651,12 +657,13 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
  *
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
-Status createFunction(lua_State *lua, const std::string &body, std::string *sha) {
+Status createFunction(Server *srv, const std::string &body, std::string *sha) {
   char funcname[43];
 
   funcname[0] = 'f';
   funcname[1] = '_';
   SHA1Hex(funcname+2, body.c_str(), body.size());
+  *sha = funcname+2;
 
   std::string funcdef;
   funcdef += "function ";
@@ -665,6 +672,10 @@ Status createFunction(lua_State *lua, const std::string &body, std::string *sha)
   funcdef += body;
   funcdef += "\nend";
 
+  lua_State *lua = srv->Lua();
+  if (srv->ScriptExists(funcname+2)) {
+    return Status::OK();
+  }
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
@@ -676,7 +687,7 @@ Status createFunction(lua_State *lua, const std::string &body, std::string *sha)
     return Status(Status::NotOK,
                   "Error running script (new function): " + errMsg + "\n");
   }
-  *sha = funcdef.substr(2);
+  srv->ScriptSet(*sha, funcdef);
   return Status::OK();
 }
 

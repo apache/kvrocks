@@ -1222,3 +1222,25 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name,
   return Status::OK();
 }
 
+bool Server::ScriptExists(const std::string &sha) {
+  lua_scripts_mu_.lock();
+  auto iter = lua_scripts_.find(sha);
+  if (iter != lua_scripts_.end()) {
+    lua_scripts_mu_.unlock();
+    return true;
+  }
+  lua_scripts_mu_.unlock();
+  return false;
+}
+
+void Server::ScriptSet(const std::string &sha, const std::string &body) {
+  lua_scripts_mu_.lock();
+  lua_scripts_[sha] = body;
+  lua_scripts_mu_.unlock();
+}
+
+void Server::ScriptFlush() {
+  lua_scripts_mu_.lock();
+  lua_scripts_.clear();
+  lua_scripts_mu_.unlock();
+}

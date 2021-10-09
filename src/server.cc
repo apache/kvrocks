@@ -1054,9 +1054,10 @@ Status Server::autoResizeBlockAndSST() {
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
-    auto s = storage_->SetOption("target_file_size_base", std::to_string(target_file_size_base * MiB));
+    auto old_target_file_size_base = config_->RocksDB.target_file_size_base;
+    auto s = config_->Set(this, "rocksdb.target_file_size_base", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from "
-              << config_->RocksDB.target_file_size_base
+              << old_target_file_size_base
               << " to " << target_file_size_base
               << ", average_kv_size: " << average_kv_size
               << ", total_size: " << total_size
@@ -1065,7 +1066,6 @@ Status Server::autoResizeBlockAndSST() {
     if (!s.IsOK()) {
       return s;
     }
-    config_->RocksDB.target_file_size_base = target_file_size_base;
   }
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
     auto old_write_buffer_size = config_->RocksDB.write_buffer_size;

@@ -34,6 +34,12 @@ struct Options {
   bool show_usage = false;
 };
 
+Server *srv = nullptr;
+
+Server *GetServer() {
+  return srv;
+}
+
 extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
 }
@@ -309,15 +315,15 @@ int main(int argc, char* argv[]) {
     removePidFile(config.pidfile);
     exit(1);
   }
-  Server svr(&storage, &config);
-  hup_handler = [&svr] {
-    if (!svr.IsStopped()) {
+  srv = new Server(&storage, &config);
+  hup_handler = [] {
+    if (!srv->IsStopped()) {
       LOG(INFO) << "Bye Bye";
-      svr.Stop();
+      srv->Stop();
     }
   };
-  svr.Start();
-  svr.Join();
+  srv->Start();
+  srv->Join();
 
   removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();

@@ -18,10 +18,12 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 }
 
 Connection::~Connection() {
-  int fd = bufferevent_getfd(bev_);
-  if (bev_) { bufferevent_free(bev_); }
-  if (need_close_) close(fd);
-  // unscribe all channels and patterns if exists
+  if (bev_) {
+    int fd = bufferevent_getfd(bev_);
+    bufferevent_free(bev_);
+    if (need_close_) close(fd);
+  }
+  // unsubscribe all channels and patterns if exists
   UnSubscribeAll();
   PUnSubscribeAll();
 }
@@ -296,6 +298,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
   std::string reply, password;
   password = IsRepl() ? config->masterauth : config->requirepass;
 
+  svr_->SetCurrentConnection(this);
   for (auto &cmd_tokens : to_process_cmds) {
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
         !IsFlagEnabled(Connection::kMultiExec)) break;

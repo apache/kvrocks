@@ -31,6 +31,7 @@
 #include "server.h"
 #include "log_collector.h"
 #include "cluster.h"
+#include "scripting.h"
 
 namespace Redis {
 
@@ -103,7 +104,7 @@ class CommandNamespace : public Commander {
       Status s = config->SetNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3]
-      << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
+                   << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = config->AddNamespace(args_[2], args_[3]);
       *output = s.IsOK() ? Redis::SimpleString("OK") : Redis::Error(s.Msg());
@@ -148,7 +149,7 @@ class CommandFlushDB : public Commander {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.FlushDB();
     LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace()
-              << " was flushed, addr: " << conn->GetAddr();
+                 << " was flushed, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
@@ -1386,7 +1387,7 @@ class CommandBPop : public Commander {
     std::string last_key, elem;
     rocksdb::Status s;
     for (const auto &key : keys_) {
-     last_key = key;
+      last_key = key;
       s = list_db.Pop(key, &elem, left_);
       if (s.ok() || !s.IsNotFound()) {
         break;
@@ -3227,7 +3228,7 @@ class CommandSubscribe : public Commander {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
       SubscribeCommmandReply(output, "subscribe", args_[i],
-        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+                             conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3238,12 +3239,12 @@ class CommandUnSubscribe : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       conn->UnSubscribeAll(std::bind(SubscribeCommmandReply, output, "unsubscribe",
-        std::placeholders::_1, std::placeholders::_2));
+                                     std::placeholders::_1, std::placeholders::_2));
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
         SubscribeCommmandReply(output, "unsubscribe", args_[i],
-          conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
     }
     return Status::OK();
@@ -3256,7 +3257,7 @@ class CommandPSubscribe : public Commander {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
       SubscribeCommmandReply(output, "psubscribe", args_[i],
-        conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+                             conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3267,12 +3268,12 @@ class CommandPUnSubscribe : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       conn->PUnSubscribeAll(std::bind(SubscribeCommmandReply, output, "punsubscribe",
-        std::placeholders::_1, std::placeholders::_2));
+                                      std::placeholders::_1, std::placeholders::_2));
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);
         SubscribeCommmandReply(output, "punsubscribe", args_[i],
-          conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
     }
     return Status::OK();
@@ -3556,7 +3557,7 @@ class CommandClient : public Commander {
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
           return Status(Status::RedisInvalidCmd,
-                  "ERR Client names cannot contain spaces, newlines or special characters");
+                        "ERR Client names cannot contain spaces, newlines or special characters");
         }
       }
       conn_name_ = args[2];
@@ -3599,7 +3600,7 @@ class CommandClient : public Commander {
           } else if (!strcasecmp(args[i+1].c_str(), "master")) {
             kill_type_ |= kTypeMaster;
           } else if (!strcasecmp(args[i+1].c_str(), "replica") ||
-                     !strcasecmp(args[i+1].c_str(), "slave")) {
+              !strcasecmp(args[i+1].c_str(), "slave")) {
             kill_type_ |= kTypeSlave;
           } else {
             return Status(Status::RedisParseErr, errInvalidSyntax);
@@ -4093,11 +4094,11 @@ class CommandFetchFile : public Commander {
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /
-                                   svr->GetFetchFileThreadNum();
+              svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
         auto fd = Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
-                                                      file, &file_size);
+                                                                 file, &file_size);
         if (fd < 0) break;
 
         // Send file size and content
@@ -4114,13 +4115,13 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>
-                  (end - start).count();
+            (end - start).count();
         uint64_t shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
-                                max_replication_bytes * (1000 * 1000));
+            max_replication_bytes * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep "
-                     << (shortest - duration) / 1000
-                     << " ms since of sending files too quickly";
+                    << (shortest - duration) / 1000
+                    << " ms since of sending files too quickly";
           usleep(shortest - duration);
         }
       }
@@ -4155,10 +4156,10 @@ class CommandCluster : public Commander {
     subcommand_ = Util::ToLower(args[1]);
 
     if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots"
-          || subcommand_ == "info")) return Status::OK();
+        || subcommand_ == "info")) return Status::OK();
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
     return Status(Status::RedisParseErr,
-      "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT");
+                  "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT");
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4240,7 +4241,7 @@ class CommandClusterX : public Commander {
       return Status(Status::RedisParseErr, "Invalid setnodes options");
     }
     return Status(Status::RedisParseErr,
-      "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES");
+                  "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES");
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4284,6 +4285,24 @@ class CommandClusterX : public Commander {
   bool force_ = false;
 };
 
+class CommandEval : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    char funcname[43];
+
+    /* We obtain the script SHA1, then check if this function is already
+     * defined into the Lua state */
+    funcname[0] = 'f';
+    funcname[1] = '_';
+
+    return Lua::evalGenericCommand(conn, args_, false, output);
+  }
+};
+
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \
 {name, arity, description, 0, first_key, last_key, key_step, []() -> std::unique_ptr<Commander> { \
   return std::unique_ptr<Commander>(new fn()); \
@@ -4308,7 +4327,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
     ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
     ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
-    ADD_CMD("randomkey", 1, "read-only", 0, 0, 0, CommandRandomKey),
+    ADD_CMD("randomkey", 1, "read-only no-script", 0, 0, 0, CommandRandomKey),
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
 
@@ -4370,8 +4389,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
     ADD_CMD("lpop", 2, "write", 1, 1, 1, CommandLPop),
     ADD_CMD("rpop", 2, "write", 1, 1, 1, CommandRPop),
-    ADD_CMD("blpop", -3, "write", 1, -2, 1, CommandBLPop),
-    ADD_CMD("brpop", -3, "write", 1, -2, 1, CommandBRPop),
+    ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
+    ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
     ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
     ADD_CMD("linsert", 5, "write", 1, 1, 1, CommandLInsert),
     ADD_CMD("lrange", 4, "read-only", 1, 1, 1, CommandLRange),
@@ -4431,11 +4450,11 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
 
     ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi", 0, 0, 0, CommandPUnSubscribe),
-    ADD_CMD("pubsub", -2, "read-only pub-sub", 0, 0, 0, CommandPubSub),
+    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandSubscribe),
+    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandUnSubscribe),
+    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPSubscribe),
+    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPUnSubscribe),
+    ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0, CommandPubSub),
 
     ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
     ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
@@ -4450,19 +4469,21 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRangeByValue),
     ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
 
-    ADD_CMD("cluster", -2, "cluster", 0, 0, 0, CommandCluster),
-    ADD_CMD("clusterx", -2, "cluster", 0, 0, 0, CommandClusterX),
+    ADD_CMD("cluster", -2, "cluster no-script", 0, 0, 0, CommandCluster),
+    ADD_CMD("clusterx", -2, "cluster no-script", 0, 0, 0, CommandClusterX),
 
-    ADD_CMD("compact", 1, "read-only", 0, 0, 0, CommandCompact),
-    ADD_CMD("bgsave", 1, "read-only", 0, 0, 0, CommandBGSave),
-    ADD_CMD("flushbackup", 1, "read-only", 0, 0, 0, CommandFlushBackup),
-    ADD_CMD("slaveof", 3, "read-only exclusive", 0, 0, 0, CommandSlaveOf),
+    ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
+
+    ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
+    ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
+    ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
+    ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
-    ADD_CMD("replconf", -3, "read-only replication", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", 2, "read-only replication no-multi", 0, 0, 0, CommandPSync),
-    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi", 0, 0, 0, CommandFetchMeta),
-    ADD_CMD("_fetch_file", 2, "read-only replication no-multi", 0, 0, 0, CommandFetchFile),
+    ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
+    ADD_CMD("psync", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
+    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
+    ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
     ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
 };
 
@@ -4504,6 +4525,7 @@ void InitCommandsTable() {
       if (flag == "exclusive") redisCommandTable[i].flags |= kCmdExclusive;
       if (flag == "multi") redisCommandTable[i].flags |= kCmdMulti;
       if (flag == "no-multi") redisCommandTable[i].flags |= kCmdNoMulti;
+      if (flag == "no-script") redisCommandTable[i].flags |= kCmdNoScript;
     }
   }
 }

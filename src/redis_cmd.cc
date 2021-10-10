@@ -4319,8 +4319,9 @@ class CommandScript : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 2 && subcommand_ == "flush") {
-      // TODO(@git-hulk): propagating this command is a good idea
       svr->ScriptFlush();
+      svr->PropagateCommand(args_);
+      *output = Redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size()-2);
       for (size_t j = 2; j < args_.size(); j++) {
@@ -4337,7 +4338,7 @@ class CommandScript : public Commander {
         return s;
       }
       *output = Redis::SimpleString(sha);
-    } else if (args_.size() == 2 && subcommand_ == "kill") {
+      svr->PropagateCommand(args_);
     } else {
       return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
     }

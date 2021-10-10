@@ -21,6 +21,7 @@ enum ColumnFamilyID{
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,
   kColumnFamilyIDPubSub,
+  kColumnFamilyIDPropagate,
 };
 
 namespace Engine {
@@ -28,6 +29,7 @@ extern const char *kPubSubColumnFamilyName;
 extern const char *kZSetScoreColumnFamilyName;
 extern const char *kMetadataColumnFamilyName;
 extern const char *kSubkeyColumnFamilyName;
+extern const char *kPropagateColumnFamilyName;
 
 class Storage {
  public:

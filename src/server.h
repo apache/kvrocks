@@ -131,6 +131,11 @@ class Server {
   void ScriptSet(const std::string &sha, const std::string &body);
   void ScriptFlush();
 
+  Status Propagate(const std::string &key, const std::string &value) const;
+  Status PropagateCommand(const std::vector<std::string> &tokens);
+  Status ReplayCommand(const std::vector<std::string> &tokens);
+  Status replayScriptCommand(const std::vector<std::string> &tokens);
+
   void SetCurrentConnection(Redis::Connection *conn) { curr_connection_ = conn; }
   Redis::Connection *GetCurrentConnection() { return curr_connection_; }
 

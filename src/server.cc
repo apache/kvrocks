@@ -112,7 +112,7 @@ Status Server::Start() {
         // compact once per day
         if (now != 0 && last_compact_date != now/86400) {
           last_compact_date = now/86400;
-          compaction_checker.CompactPubsubFiles();
+          compaction_checker.CompactTransitFiles();
         }
       }
     }
@@ -1242,5 +1242,48 @@ void Server::ScriptSet(const std::string &sha, const std::string &body) {
 void Server::ScriptFlush() {
   lua_scripts_mu_.lock();
   lua_scripts_.clear();
+  Lua::DestroyState(lua_);
+  lua_ = Lua::CreateState();
   lua_scripts_mu_.unlock();
+}
+
+Status Server::Propagate(const std::string &key, const std::string &value) const {
+  rocksdb::WriteBatch batch;
+  auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  batch.Put(propagateCf, key, value);
+  auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
+  std::string value = Redis::MultiLen(tokens.size());
+  for (const auto &iter : tokens) {
+    value += Redis::BulkString(iter);
+  }
+  return Propagate("command", value);
+}
+
+Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {
+  auto subcommand = Util::ToLower(tokens[1]);
+  if (subcommand == "flush") {
+    ScriptFlush();
+    return Status::OK();
+  } else if (subcommand == "load" && tokens.size() == 3) {
+    std::string sha;
+    return Lua::createFunction(this, tokens[2], &sha);
+  }
+  return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
+}
+
+Status Server::ReplayCommand(const std::vector<std::string> &tokens) {
+  if (tokens.empty()) return Status::OK();
+
+  auto command = Util::ToLower(tokens[0]);
+  if (command == "script" && tokens.size() >= 2) {
+    return replayScriptCommand(tokens);
+  }
+  return Status::OK();
 }

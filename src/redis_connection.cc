@@ -357,7 +357,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     s = current_cmd_->Parse(cmd_tokens);
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error(s.Msg()));
+      Reply(Redis::Error("ERR "+s.Msg()));
       continue;
     }
 

@@ -61,6 +61,7 @@ bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);
 std::string StringToHex(const std::string &input);
+void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *tokens);
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);

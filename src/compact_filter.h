@@ -71,20 +71,20 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   Engine::Storage *stor_ = nullptr;
 };
 
-class PubSubFilter : public rocksdb::CompactionFilter {
+class TransitFilter : public rocksdb::CompactionFilter {
  public:
-  const char *Name() const override { return "PubSubFilter"; }
+  const char *Name() const override { return "TransitFilter"; }
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override { return true; }
 };
 
-class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
+class TransitFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  PubSubFilterFactory() = default;
+  TransitFilterFactory() = default;
   const char *Name() const override { return "PubSubFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context &context) override {
-    return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
+    return std::unique_ptr<rocksdb::CompactionFilter>(new TransitFilter());
   }
 };
 }  // namespace Engine

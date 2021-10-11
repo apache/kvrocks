@@ -130,6 +130,8 @@ class Server {
   bool ScriptExists(const std::string &sha);
   void ScriptSet(const std::string &sha, const std::string &body);
   void ScriptFlush();
+  size_t ScriptCount();
+  size_t ScriptMemoryUsage();
 
   Status Propagate(const std::string &key, const std::string &value) const;
   Status PropagateCommand(const std::vector<std::string> &tokens);

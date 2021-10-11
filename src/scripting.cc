@@ -4,6 +4,7 @@
 //
 #include "scripting.h"
 
+#include <math.h>
 #include <string>
 
 #include "util.h"

@@ -28,6 +28,8 @@
  */
 #pragma once
 
+#include <stdint.h>
+
 int32_t redisLrand48();
 void redisSrand48(int32_t seedval);
 

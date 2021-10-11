@@ -533,7 +533,7 @@ void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *t
   }
 
   enum ParserState { stateArrayLen, stateBulkLen, stateBulkData };
-  uint64_t array_len, bulk_len;
+  uint64_t array_len = 0, bulk_len = 0;
   int state = stateArrayLen;
   const char *start = value.data(), *end = start + value.size(), *p;
   while (start != end) {

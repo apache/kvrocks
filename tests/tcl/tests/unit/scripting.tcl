@@ -51,21 +51,40 @@ start_server {tags {"scripting"}} {
         r eval {return redis.call('get',KEYS[1])} 1 mykey
     } {myval}
 
-        test {EVAL - Redis integer -> Lua type conversion} {
-            r set x 0
-            r eval {
-                local foo = redis.pcall('incr',KEYS[1])
-                return {type(foo),foo}
-            } 1 x
-        } {number 1}
+    test {EVALSHA - Can we call a SHA1 if already defined?} {
+        r evalsha fd758d1589d044dd850a6f05d52f2eefd27f033f 1 mykey
+    } {myval}
 
-        test {EVAL - Redis bulk -> Lua type conversion} {
-            r set mykey myval
-            r eval {
-                local foo = redis.pcall('get',KEYS[1])
-                return {type(foo),foo}
-            } 1 mykey
-        } {string myval}
+    test {EVALSHA - Can we call a SHA1 in uppercase?} {
+        r evalsha FD758D1589D044DD850A6F05D52F2EEFD27F033F 1 mykey
+    } {myval}
+
+    test {EVALSHA - Do we get an error on invalid SHA1?} {
+        catch {r evalsha NotValidShaSUM 0} e
+        set _ $e
+    } {ERR NOSCRIPT*}
+
+    test {EVALSHA - Do we get an error on non defined SHA1?} {
+        catch {r evalsha ffd632c7d33e571e9f24556ebed26c3479a87130 0} e
+        set _ $e
+    } {ERR NOSCRIPT*}
+
+    test {EVAL - Redis integer -> Lua type conversion} {
+        r set x 0
+        r eval {
+            local foo = redis.pcall('incr',KEYS[1])
+            return {type(foo),foo}
+        } 1 x
+    } {number 1}
+
+    test {EVAL - Redis bulk -> Lua type conversion} {
+        r set mykey myval
+        r eval {
+            local foo = redis.pcall('get',KEYS[1])
+            return {type(foo),foo}
+        } 1 mykey
+    } {string myval}
+
     test {EVAL - Redis integer -> Lua type conversion} {
         r set x 0
         r eval {
@@ -261,4 +280,76 @@ start_server {tags {"scripting"}} {
         $rd close
         r get x
     } {10000}
+
+    test {SCRIPTING FLUSH - is able to clear the scripts cache?} {
+        r set mykey myval
+        set v [r evalsha fd758d1589d044dd850a6f05d52f2eefd27f033f 1 mykey]
+        assert_equal $v myval
+        set e ""
+        r script flush
+        catch {r evalsha fd758d1589d044dd850a6f05d52f2eefd27f033f 1 mykey} e
+        set e
+    } {ERR NOSCRIPT*}
+
+    test {SCRIPT EXISTS - can detect already defined scripts?} {
+        r eval "return 1+1" 0
+        r script exists a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bd9 a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bda
+    } {1 0}
+
+    test {SCRIPT LOAD - is able to register scripts in the scripting cache} {
+        list \
+            [r script load "return 'loaded'"] \
+            [r evalsha b534286061d4b9e4026607613b95c06c06015ae8 0]
+    } {b534286061d4b9e4026607613b95c06c06015ae8 loaded}
+
+    test {Globals protection reading an undeclared global variable} {
+        catch {r eval {return a} 0} e
+        set e
+    } {*ERR*attempted to access * global*}
+
+    test {Globals protection setting an undeclared global*} {
+        catch {r eval {a=10} 0} e
+        set e
+    } {*ERR*attempted to create global*}
+
+    test {Test an example script DECR_IF_GT} {
+        set decr_if_gt {
+            local current
+
+            current = redis.call('get',KEYS[1])
+            if not current then return nil end
+            if current > ARGV[1] then
+                return redis.call('decr',KEYS[1])
+            else
+                return redis.call('get',KEYS[1])
+            end
+        }
+        r set foo 5
+        set res {}
+        lappend res [r eval $decr_if_gt 1 foo 2]
+        lappend res [r eval $decr_if_gt 1 foo 2]
+        lappend res [r eval $decr_if_gt 1 foo 2]
+        lappend res [r eval $decr_if_gt 1 foo 2]
+        lappend res [r eval $decr_if_gt 1 foo 2]
+        set res
+    } {4 3 2 2 2}
+
+    test {Scripting engine PRNG can be seeded correctly} {
+        set rand1 [r eval {
+            math.randomseed(ARGV[1]); return tostring(math.random())
+        } 0 10]
+        set rand2 [r eval {
+            math.randomseed(ARGV[1]); return tostring(math.random())
+        } 0 10]
+        set rand3 [r eval {
+            math.randomseed(ARGV[1]); return tostring(math.random())
+        } 0 20]
+        assert_equal $rand1 $rand2
+        assert {$rand2 ne $rand3}
+    }
+    test "In the context of Lua the output of random commands gets ordered" {
+        r del myset
+        r sadd myset a b c d e f g h i l m n o p q r s t u v z aa aaa azz
+        r eval {return redis.call('smembers',KEYS[1])} 1 myset
+    } {a aa aaa azz b c d e f g h i l m n o p q r s t u v z}
 }

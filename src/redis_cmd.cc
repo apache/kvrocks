@@ -4325,7 +4325,7 @@ class CommandScript : public Commander {
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size()-2);
       for (size_t j = 2; j < args_.size(); j++) {
-        if (svr->ScriptExists(args_[j])) {
+        if (svr->ScriptExists(args_[j]).IsOK()) {
           *output += Redis::Integer(1);
         } else {
           *output += Redis::Integer(0);
@@ -4520,7 +4520,7 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
     ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
-    ADD_CMD("script", -2, "write no-script", 0, 0, 0, CommandScript),
+    ADD_CMD("script", -2, "exclusive write no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),

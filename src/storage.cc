@@ -200,7 +200,7 @@ Status Storage::Open(bool read_only) {
   pubsub_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
-  pubsub_opts.compaction_filter_factory = std::make_shared<TransitFilterFactory>();
+  pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
   pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
   rocksdb::BlockBasedTableOptions propagate_table_opts;
@@ -449,6 +449,32 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
     return s;
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status Storage::DeleteAll(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
+  std::string begin_key, end_key;
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, cf_handle);
+  iter->SeekToFirst();
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  begin_key = iter->key().ToString();
+  iter->SeekToLast();
+  if (!iter->Valid()) {
+    delete iter;
+    return rocksdb::Status::OK();
+  }
+  end_key = iter->key().ToString();
+  if (!end_key.empty()) {
+    // we need to increase one here since the DeleteRange api
+    // didn't contain the end key.
+    end_key[end_key.size()-1] += 1;
+  }
+  delete iter;
+  return db_->DeleteRange(options, cf_handle, begin_key, end_key);
 }
 
 Status Storage::WriteBatch(std::string &&raw_batch) {

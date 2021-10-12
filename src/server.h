@@ -127,13 +127,12 @@ class Server {
   void SetReplicationRateLimit(uint64_t max_replication_mb);
 
   lua_State *Lua() { return lua_; }
-  bool ScriptExists(const std::string &sha);
+  Status ScriptExists(const std::string &sha);
+  Status ScriptGet(const std::string &sha, std::string *body);
   void ScriptSet(const std::string &sha, const std::string &body);
   void ScriptFlush();
-  size_t ScriptCount();
-  size_t ScriptMemoryUsage();
 
-  Status Propagate(const std::string &key, const std::string &value) const;
+  Status WriteToPropagateCF(const std::string &key, const std::string &value) const;
   Status PropagateCommand(const std::vector<std::string> &tokens);
   Status ReplayCommand(const std::vector<std::string> &tokens);
   Status replayScriptCommand(const std::vector<std::string> &tokens);
@@ -170,8 +169,6 @@ class Server {
   std::mutex last_random_key_cursor_mu_;
 
   lua_State *lua_;
-  std::mutex lua_scripts_mu_;
-  std::unordered_map<std::string, std::string> lua_scripts_;
 
   Redis::Connection *curr_connection_ = nullptr;
 

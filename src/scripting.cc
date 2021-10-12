@@ -138,8 +138,8 @@ namespace Lua {
     if (!evalsha) {
       SHA1Hex(funcname+2, args[1].c_str(), args[1].size());
     } else {
-      std::string sha = args[1];
       for (int j = 0; j < 40; j++) {
+        std::string sha = args[1];
         funcname[j+2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j]+('a'-'A') : sha[j];
       }
       funcname[42] = '\0';
@@ -152,24 +152,26 @@ namespace Lua {
     lua_getglobal(lua, funcname);
     if (lua_isnil(lua, -1)) {
       lua_pop(lua, 1); /* remove the nil from the stack */
-      /* Function not defined... let's define it if we have the
-       * body of the function. If this is an EVALSHA call we can just
-       * return an error. */
+      std::string body;
       if (evalsha) {
-        lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        auto s = srv->ScriptGet(funcname+2, &body);
+        if (!s.IsOK()) {
+          lua_pop(lua, 1); /* remove the error handler from the stack. */
+          return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        }
+      } else {
+        body = args[1];
       }
       std::string sha;
-      s = createFunction(srv, args[1], &sha);
+      s = createFunction(srv, body, &sha);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        /* The error is sent to the client by luaCreateFunction()
-         * itself when it returns NULL. */
         return s;
       }
       /* Now the following is guaranteed to return non nil */
       lua_getglobal(lua, funcname);
     }
+
     /* Populate the argv and keys table accordingly to the arguments that
      * EVAL received. */
     setGlobalArray(lua, "KEYS", std::vector<std::string>(args.begin()+3, args.begin()+3+numkeys));
@@ -771,9 +773,6 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha) {
   funcdef += "\nend";
 
   lua_State *lua = srv->Lua();
-  if (srv->ScriptExists(funcname+2)) {
-    return Status::OK();
-  }
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
@@ -785,7 +784,7 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha) {
     return Status(Status::NotOK,
                   "Error running script (new function): " + errMsg + "\n");
   }
-  srv->ScriptSet(*sha, funcdef);
+  srv->ScriptSet(*sha, body);
   return Status::OK();
 }
 

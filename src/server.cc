@@ -648,21 +648,16 @@ void Server::GetClientsInfo(std::string *info) {
 
 void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
-  char used_memory_rss_human[16], used_memory_lua_human[16], used_memory_scripts_human[16];
+  char used_memory_rss_human[16], used_memory_lua_human[16];
   int64_t rss = Stats::GetMemoryRSS();
   Util::BytesToHuman(used_memory_rss_human, 16, static_cast<uint64_t>(rss));
   int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0)*1024;
   Util::BytesToHuman(used_memory_lua_human, 16, static_cast<uint64_t>(memory_lua));
-  size_t used_memory_scripts = ScriptMemoryUsage();
-  Util::BytesToHuman(used_memory_scripts_human, 16, static_cast<uint64_t>(used_memory_scripts));
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss <<"\r\n";
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
-  string_stream << "number_of_cached_scripts:" << ScriptCount() << "\r\n";
-  string_stream << "used_memory_scripts:" << used_memory_scripts << "\r\n";
-  string_stream << "used_memory_scripts_human:" << used_memory_scripts_human << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1227,49 +1222,33 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name,
   return Status::OK();
 }
 
-bool Server::ScriptExists(const std::string &sha) {
-  lua_scripts_mu_.lock();
-  auto iter = lua_scripts_.find(sha);
-  if (iter != lua_scripts_.end()) {
-    lua_scripts_mu_.unlock();
-    return true;
+Status Server::ScriptExists(const std::string &sha) {
+  std::string body;
+  return ScriptGet(sha, &body);
+}
+
+Status Server::ScriptGet(const std::string &sha, std::string *body) {
+  auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, sha, body);
+  if (!s.ok()) {
+    if (s.IsNotFound()) return Status(Status::NotFound);
+    return Status(Status::NotOK, s.ToString());
   }
-  lua_scripts_mu_.unlock();
-  return false;
+  return Status::OK();
 }
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
-  lua_scripts_mu_.lock();
-  lua_scripts_[sha] = body;
-  lua_scripts_mu_.unlock();
+  WriteToPropagateCF(sha, body);
 }
 
 void Server::ScriptFlush() {
-  lua_scripts_mu_.lock();
-  lua_scripts_.clear();
+  auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  storage_->DeleteAll(rocksdb::WriteOptions(), cf);
   Lua::DestroyState(lua_);
   lua_ = Lua::CreateState();
-  lua_scripts_mu_.unlock();
 }
 
-size_t Server::ScriptCount() {
-  lua_scripts_mu_.lock();
-  size_t count = lua_scripts_.size();
-  lua_scripts_mu_.unlock();
-  return count;
-}
-
-size_t Server::ScriptMemoryUsage() {
-  size_t bytes = 0;
-  lua_scripts_mu_.lock();
-  for (const auto &iter : lua_scripts_) {
-    bytes += iter.first.size() + iter.second.size();
-  }
-  lua_scripts_mu_.unlock();
-  return bytes;
-}
-
-Status Server::Propagate(const std::string &key, const std::string &value) const {
+Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
   rocksdb::WriteBatch batch;
   auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   batch.Put(propagateCf, key, value);
@@ -1285,7 +1264,7 @@ Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return Propagate("command", value);
+  return WriteToPropagateCF("command", value);
 }
 
 Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {
@@ -1294,8 +1273,9 @@ Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {
     ScriptFlush();
     return Status::OK();
   } else if (subcommand == "load" && tokens.size() == 3) {
-    std::string sha;
-    return Lua::createFunction(this, tokens[2], &sha);
+    // no need to replay the script load command, eval/evalsha would load the script from
+    // db if the Lua stack was not exists.
+    return Status::OK();
   }
   return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
 }

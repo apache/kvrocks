@@ -372,13 +372,11 @@ start_server {tags {"repl"}} {
             set sha [$master script load "return 'script loaded'"]
             assert_equal 4167ea82ed9c381c7659f7cf93f394219147e8c4 $sha
             wait_for_ofs_sync $master $slave
-            after 2000 # wait for replaying command
             assert_equal 1 [$master script exists $sha]
             assert_equal 1 [$slave script exists $sha]
 
             $master script flush
             wait_for_ofs_sync $master $slave
-            after 2000 # wait for replaying command
             assert_equal 0 [$slave script exists $sha]
         }
     }

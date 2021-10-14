@@ -32,6 +32,8 @@ const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
 
+const char *kPropagateTypeKey = "lua";
+
 const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;

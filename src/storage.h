@@ -31,6 +31,8 @@ extern const char *kMetadataColumnFamilyName;
 extern const char *kSubkeyColumnFamilyName;
 extern const char *kPropagateColumnFamilyName;
 
+extern const char *kPropagateTypeKey;
+
 class Storage {
  public:
   explicit Storage(Config *config);

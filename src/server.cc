@@ -1228,8 +1228,9 @@ Status Server::ScriptExists(const std::string &sha) {
 }
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) {
+  std::string funcname = "f_" + sha;
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, sha, body);
+  auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, funcname, body);
   if (!s.ok()) {
     if (s.IsNotFound()) return Status(Status::NotFound);
     return Status(Status::NotOK, s.ToString());
@@ -1238,7 +1239,8 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
 }
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
-  WriteToPropagateCF(sha, body);
+  std::string funcname = "f_" + sha;
+  WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {
@@ -1268,7 +1270,7 @@ Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF("command", value);
+  return WriteToPropagateCF(Engine::kPropagateTypeKey, value);
 }
 
 Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {

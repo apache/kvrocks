@@ -32,7 +32,9 @@ const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
 
-const char *kPropagateTypeKey = "lua";
+const char *kPropagateTypeLua = "lua";
+
+const char *kLuaFunctionPrefix = "lua_f_";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 
@@ -453,29 +455,11 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Storage::DeleteAll(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
-  std::string begin_key, end_key;
-  rocksdb::ReadOptions read_options;
-  read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, cf_handle);
-  iter->SeekToFirst();
-  if (!iter->Valid()) {
-    delete iter;
-    return rocksdb::Status::OK();
-  }
-  begin_key = iter->key().ToString();
-  iter->SeekToLast();
-  if (!iter->Valid()) {
-    delete iter;
-    return rocksdb::Status::OK();
-  }
-  end_key = iter->key().ToString();
-  if (!end_key.empty()) {
-    // we need to increase one here since the DeleteRange api
-    // didn't contain the end key.
-    end_key[end_key.size()-1] += 1;
-  }
-  delete iter;
+rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
+  std::string begin_key = kLuaFunctionPrefix, end_key = begin_key;
+  // we need to increase one here since the DeleteRange api
+  // didn't contain the end key.
+  end_key[end_key.size()-1] += 1;
   return db_->DeleteRange(options, cf_handle, begin_key, end_key);
 }
 

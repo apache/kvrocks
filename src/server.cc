@@ -1228,7 +1228,7 @@ Status Server::ScriptExists(const std::string &sha) {
 }
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) {
-  std::string funcname = "f_" + sha;
+  std::string funcname = Engine::kLuaFunctionPrefix + sha;
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, funcname, body);
   if (!s.ok()) {
@@ -1239,7 +1239,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
 }
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
-  std::string funcname = "f_" + sha;
+  std::string funcname = Engine::kLuaFunctionPrefix + sha;
   WriteToPropagateCF(funcname, body);
 }
 
@@ -1250,7 +1250,7 @@ void Server::ScriptReset() {
 
 void Server::ScriptFlush() {
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  storage_->DeleteAll(rocksdb::WriteOptions(), cf);
+  storage_->FlushScripts(rocksdb::WriteOptions(), cf);
   ScriptReset();
 }
 
@@ -1270,7 +1270,7 @@ Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(Engine::kPropagateTypeKey, value);
+  return WriteToPropagateCF(Engine::kPropagateTypeLua, value);
 }
 
 Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {

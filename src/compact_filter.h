@@ -77,7 +77,7 @@ class TransitFilter : public rocksdb::CompactionFilter {
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override {
     // only filter the propagating command here
-    return key == Engine::kPropagateTypeKey;
+    return key == Engine::kPropagateTypeLua;
   }
 };
 

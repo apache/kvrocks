@@ -130,6 +130,7 @@ class Server {
   Status ScriptExists(const std::string &sha);
   Status ScriptGet(const std::string &sha, std::string *body);
   void ScriptSet(const std::string &sha, const std::string &body);
+  void ScriptReset();
   void ScriptFlush();
 
   Status WriteToPropagateCF(const std::string &key, const std::string &value) const;

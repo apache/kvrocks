@@ -1241,11 +1241,15 @@ void Server::ScriptSet(const std::string &sha, const std::string &body) {
   WriteToPropagateCF(sha, body);
 }
 
+void Server::ScriptReset() {
+  Lua::DestroyState(lua_);
+  lua_ = Lua::CreateState();
+}
+
 void Server::ScriptFlush() {
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   storage_->DeleteAll(rocksdb::WriteOptions(), cf);
-  Lua::DestroyState(lua_);
-  lua_ = Lua::CreateState();
+  ScriptReset();
 }
 
 Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
@@ -1270,7 +1274,7 @@ Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
 Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {
   auto subcommand = Util::ToLower(tokens[1]);
   if (subcommand == "flush") {
-    ScriptFlush();
+    ScriptReset();
     return Status::OK();
   } else if (subcommand == "load" && tokens.size() == 3) {
     // no need to replay the script load command, eval/evalsha would load the script from

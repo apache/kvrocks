@@ -4318,9 +4318,15 @@ class CommandScript : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    // There's a little tricky here since the script command was the write type
+    // command but some subcommands like `exists` were readonly, so we want to allow
+    // executing on slave here. Maybe we should find other way to do this.
+    if (svr->IsSlave() && subcommand_ != "exists") {
+      return Status(Status::NotOK, "READONLY You can't write against a read only slave");
+    }
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
-      svr->PropagateCommand(args_);
+      svr->Propagate(Engine::kPropagateTypeLua, args_);
       *output = Redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size()-2);
@@ -4338,7 +4344,6 @@ class CommandScript : public Commander {
         return s;
       }
       *output = Redis::SimpleString(sha);
-      svr->PropagateCommand(args_);
     } else {
       return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
     }
@@ -4520,7 +4525,7 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
     ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
-    ADD_CMD("script", -2, "exclusive write no-script", 0, 0, 0, CommandScript),
+    ADD_CMD("script", -2, "exclusive read-only no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),

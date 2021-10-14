@@ -1265,12 +1265,12 @@ Status Server::WriteToPropagateCF(const std::string &key, const std::string &val
   return Status::OK();
 }
 
-Status Server::PropagateCommand(const std::vector<std::string> &tokens) {
+Status Server::Propagate(const std::string &type, const std::vector<std::string> &tokens) {
   std::string value = Redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(Engine::kPropagateTypeLua, value);
+  return WriteToPropagateCF(type, value);
 }
 
 Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {

@@ -353,3 +353,33 @@ start_server {tags {"scripting"}} {
         r eval {return redis.call('smembers',KEYS[1])} 1 myset
     } {a aa aaa azz b c d e f g h i l m n o p q r s t u v z}
 }
+
+start_server {tags {"repl"}} {
+    start_server {} {
+        set master [srv -1 client]
+        set master_host [srv -1 host]
+        set master_port [srv -1 port]
+        set slave [srv 0 client]
+        test {SCRIPTING: setup slave} {
+            $slave slaveof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+        }
+        test {SCRIPTING: script load on master, read on slave} {
+            set sha [$master script load "return 'script loaded'"]
+            assert_equal 4167ea82ed9c381c7659f7cf93f394219147e8c4 $sha
+            wait_for_ofs_sync $master $slave
+            after 2000 # wait for replaying command
+            assert_equal 1 [$master script exists $sha]
+            assert_equal 1 [$slave script exists $sha]
+
+            $master script flush
+            wait_for_ofs_sync $master $slave
+            after 2000 # wait for replaying command
+            assert_equal 0 [$slave script exists $sha]
+        }
+    }
+}

@@ -522,7 +522,7 @@ std::string replyToRedisReply(lua_State *lua) {
   int t = lua_type(lua, -1);
   switch (t) {
     case LUA_TSTRING:
-      output = Redis::SimpleString(std::string(lua_tostring(lua, -1), lua_strlen(lua, -1)));
+      output = Redis::BulkString(std::string(lua_tostring(lua, -1), lua_strlen(lua, -1)));
       break;
     case LUA_TBOOLEAN:
       output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::NilString();

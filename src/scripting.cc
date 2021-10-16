@@ -227,9 +227,11 @@ namespace Lua {
         snprintf(dbuf, sizeof(dbuf), "%.17g", static_cast<double>(num));
         args.emplace_back(dbuf);
       } else {
-        const char *str = lua_tostring(lua, j+1);
-        if (str == nullptr) break; /* no a string */
-        args.emplace_back(str);
+        const char *obj_s;
+        size_t obj_len;
+        obj_s = lua_tolstring(lua, j+1, &obj_len);
+        if (obj_s == nullptr) break; /* no a string */
+        args.emplace_back(std::string(obj_s, obj_len));
       }
     }
     if (j != argc) {

@@ -154,7 +154,7 @@
 | --------- | ---------------- | ---- |
 | eval      | √                |      |
 | evalsha   | √                |      |
-| script    | √                |      |
+| script    | √                | script kill and debug subcommand are not supported     |
 
 ## Pub/Sub Commands
 

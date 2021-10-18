@@ -32,7 +32,7 @@ const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
 
-const char *kPropagateTypeLua = "lua";
+const char *kPropagateLuaCommand = "lua";
 
 const char *kLuaFunctionPrefix = "lua_f_";
 
@@ -212,7 +212,7 @@ Status Storage::Open(bool read_only) {
   propagate_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions propagate_opts(options);
   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
-  propagate_opts.compaction_filter_factory = std::make_shared<TransitFilterFactory>();
+  propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
   propagate_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;

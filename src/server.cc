@@ -112,7 +112,7 @@ Status Server::Start() {
         // compact once per day
         if (now != 0 && last_compact_date != now/86400) {
           last_compact_date = now/86400;
-          compaction_checker.CompactTransitFiles();
+          compaction_checker.CompactPropagateAndPubSubFiles();
         }
       }
     }
@@ -1265,6 +1265,11 @@ Status Server::WriteToPropagateCF(const std::string &key, const std::string &val
   return Status::OK();
 }
 
+// Generally, we store data into rocksdb and just replicate WAL instead of propagating
+// commands. But sometimes, we need to update inner states or do special operations
+// for specific commands, such as `script flush`.
+// channel: we put the same function commands into one channel to handle uniformly
+// tokens: the serialized commands
 Status Server::Propagate(const std::string &type, const std::vector<std::string> &tokens) {
   std::string value = Redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
@@ -1273,25 +1278,20 @@ Status Server::Propagate(const std::string &type, const std::vector<std::string>
   return WriteToPropagateCF(type, value);
 }
 
-Status Server::replayScriptCommand(const std::vector<std::string> &tokens) {
+Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
   auto subcommand = Util::ToLower(tokens[1]);
   if (subcommand == "flush") {
     ScriptReset();
-    return Status::OK();
-  } else if (subcommand == "load" && tokens.size() == 3) {
-    // no need to replay the script load command, eval/evalsha would load the script from
-    // db if the Lua stack was not exists.
-    return Status::OK();
   }
-  return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
+  return Status::OK();
 }
 
-Status Server::ReplayCommand(const std::vector<std::string> &tokens) {
+Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   if (tokens.empty()) return Status::OK();
 
   auto command = Util::ToLower(tokens[0]);
   if (command == "script" && tokens.size() >= 2) {
-    return replayScriptCommand(tokens);
+    return ExecPropagateScriptCommand(tokens);
   }
   return Status::OK();
 }

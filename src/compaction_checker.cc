@@ -2,7 +2,7 @@
 #include <glog/logging.h>
 #include "storage.h"
 
-void CompactionChecker::CompactTransitFiles() {
+void CompactionChecker::CompactPropagateAndPubSubFiles() {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   std::vector<std::string> cf_names = {Engine::kPubSubColumnFamilyName, Engine::kPropagateColumnFamilyName};

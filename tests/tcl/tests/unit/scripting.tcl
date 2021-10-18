@@ -360,14 +360,10 @@ start_server {tags {"repl"}} {
         set master_host [srv -1 host]
         set master_port [srv -1 port]
         set slave [srv 0 client]
-        test {SCRIPTING: setup slave} {
-            $slave slaveof $master_host $master_port
-            wait_for_condition 50 100 {
-                [s 0 master_link_status] eq {up}
-            } else {
-                fail "Replication not started."
-            }
-        }
+
+        $slave slaveof $master_host $master_port
+        wait_for_sync $slave
+
         test {SCRIPTING: script load on master, read on slave} {
             set sha [$master script load "return 'script loaded'"]
             assert_equal 4167ea82ed9c381c7659f7cf93f394219147e8c4 $sha

@@ -586,10 +586,14 @@ void pushError(lua_State *lua, const char *err) {
 
 std::string replyToRedisReply(lua_State *lua) {
   std::string output;
+  const char *obj_s = nullptr;
+  size_t obj_len;
+
   int t = lua_type(lua, -1);
   switch (t) {
     case LUA_TSTRING:
-      output = Redis::BulkString(std::string(lua_tostring(lua, -1), lua_strlen(lua, -1)));
+      obj_s = lua_tolstring(lua, -1, &obj_len);
+      output = Redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
       output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::NilString();
@@ -618,7 +622,8 @@ std::string replyToRedisReply(lua_State *lua) {
       lua_gettable(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = Redis::SimpleString(lua_tostring(lua, -1));
+        obj_s = lua_tolstring(lua, -1, &obj_len);
+        output = Redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
       } else {

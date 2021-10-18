@@ -31,7 +31,7 @@ extern const char *kMetadataColumnFamilyName;
 extern const char *kSubkeyColumnFamilyName;
 extern const char *kPropagateColumnFamilyName;
 
-extern const char *kPropagateTypeLua;
+extern const char *kPropagateLuaCommand;
 
 extern const char *kLuaFunctionPrefix;
 

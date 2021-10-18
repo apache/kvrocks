@@ -4326,7 +4326,7 @@ class CommandScript : public Commander {
     }
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
-      svr->Propagate(Engine::kPropagateLuaCommand, args_);
+      svr->Propagate(Engine::kPropagateScriptCommand, args_);
       *output = Redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size()-2);

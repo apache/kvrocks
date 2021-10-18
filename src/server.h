@@ -134,7 +134,7 @@ class Server {
   void ScriptFlush();
 
   Status WriteToPropagateCF(const std::string &key, const std::string &value) const;
-  Status Propagate(const std::string &type, const std::vector<std::string> &tokens);
+  Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
 

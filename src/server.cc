@@ -1270,12 +1270,12 @@ Status Server::WriteToPropagateCF(const std::string &key, const std::string &val
 // for specific commands, such as `script flush`.
 // channel: we put the same function commands into one channel to handle uniformly
 // tokens: the serialized commands
-Status Server::Propagate(const std::string &type, const std::vector<std::string> &tokens) {
+Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) {
   std::string value = Redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(type, value);
+  return WriteToPropagateCF(channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {

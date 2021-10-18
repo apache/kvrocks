@@ -922,7 +922,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
       break;
     case kBatchTypePropagate:
-      if (write_batch_handler.Key() == Engine::kPropagateLuaCommand) {
+      if (write_batch_handler.Key() == Engine::kPropagateScriptCommand) {
         std::vector<std::string> tokens;
         Util::TokenizeRedisProtocol(write_batch_handler.Value(), &tokens);
         if (!tokens.empty()) {

@@ -27,6 +27,11 @@ enum ReplState {
   kReplError,
 };
 
+enum WriteBatchType {
+  kBatchTypePublish = 1,
+  kBatchTypePropagate,
+};
+
 typedef std::function<void(const std::string, const uint32_t)> fetch_file_callback;
 
 class FeedSlaveThread {
@@ -187,11 +192,11 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                         const rocksdb::Slice &value) override;
+  WriteBatchType Type() { return type_; }
+  std::string Key() const { return kv_.first; }
+  std::string Value() const { return kv_.second; }
 
-  rocksdb::Slice GetPublishChannel() { return publish_message_.first; }
-  rocksdb::Slice GetPublishValue() { return publish_message_.second; }
-  bool IsPublish() { return is_publish_; }
  private:
-  std::pair<std::string, std::string> publish_message_;
-  bool is_publish_ = false;
+  std::pair<std::string, std::string> kv_;
+  WriteBatchType type_;
 };

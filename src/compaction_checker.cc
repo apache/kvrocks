@@ -2,10 +2,10 @@
 #include <glog/logging.h>
 #include "storage.h"
 
-void CompactionChecker::CompactPubsubFiles() {
+void CompactionChecker::CompactPropagateAndPubSubFiles() {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
-  std::vector<std::string> cf_names = {Engine::kPubSubColumnFamilyName};
+  std::vector<std::string> cf_names = {Engine::kPubSubColumnFamilyName, Engine::kPropagateColumnFamilyName};
   for (const auto &cf_name : cf_names) {
     LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf_name;
     auto cf_handle = storage_->GetCFHandle(cf_name);

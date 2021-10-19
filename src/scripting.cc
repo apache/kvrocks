@@ -4,6 +4,7 @@
 //
 #include "scripting.h"
 
+#include <math.h>
 #include <string>
 
 #include "util.h"
@@ -11,6 +12,7 @@
 #include "server.h"
 #include "redis_connection.h"
 #include "redis_cmd.h"
+#include "rand.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
@@ -30,7 +32,12 @@ namespace Lua {
     loadLibraries(lua);
     removeUnsupportedFunctions(lua);
     loadFuncs(lua);
+    enableGlobalsProtection(lua);
     return lua;
+  }
+
+  void DestroyState(lua_State *lua) {
+    lua_close(lua);
   }
 
   void loadFuncs(lua_State *lua) {
@@ -63,12 +70,21 @@ namespace Lua {
 
     /* Replace math.random and math.randomseed with our implementations. */
     lua_getglobal(lua, "math");
+
+    lua_pushstring(lua, "random");
+    lua_pushcfunction(lua, redisMathRandom);
+    lua_settable(lua, -3);
+
+    lua_pushstring(lua, "randomseed");
+    lua_pushcfunction(lua, redisMathRandomSeed);
+    lua_settable(lua, -3);
+
     lua_setglobal(lua, "math");
 
-  /* Add a helper function we use for pcall error reporting.
-  * Note that when the error is in the C function we want to report the
-  * information about the caller, that's what makes sense from the point
-  * of view of the user debugging a script. */
+    /* Add a helper function we use for pcall error reporting.
+    * Note that when the error is in the C function we want to report the
+    * information about the caller, that's what makes sense from the point
+    * of view of the user debugging a script. */
     {
       const char *err_func = "local dbg = debug\n"
                         "function __redis__err__handler(err)\n"
@@ -85,6 +101,15 @@ namespace Lua {
       luaL_loadbuffer(lua, err_func, strlen(err_func), "@err_handler_def");
       lua_pcall(lua, 0, 0, 0);
     }
+    {
+      const char *compare_func =    "function __redis__compare_helper(a,b)\n"
+                              "  if a == false then a = '' end\n"
+                              "  if b == false then b = '' end\n"
+                              "  return a<b\n"
+                              "end\n";
+      luaL_loadbuffer(lua, compare_func, strlen(compare_func), "@cmp_func_def");
+      lua_pcall(lua, 0, 0, 0);
+    }
   }
 
   Status evalGenericCommand(Redis::Connection *conn,
@@ -93,7 +118,8 @@ namespace Lua {
                             std::string *output) {
     int64_t numkeys = 0;
     char funcname[43];
-    lua_State *lua = conn->GetServer()->Lua();
+    Server *srv = conn->GetServer();
+    lua_State *lua = srv->Lua();
 
     auto s = Util::StringToNum(args[2], &numkeys);
     if (!s.IsOK()) {
@@ -111,6 +137,12 @@ namespace Lua {
     funcname[1] = '_';
     if (!evalsha) {
       SHA1Hex(funcname+2, args[1].c_str(), args[1].size());
+    } else {
+      for (int j = 0; j < 40; j++) {
+        std::string sha = args[1];
+        funcname[j+2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j]+('a'-'A') : sha[j];
+      }
+      funcname[42] = '\0';
     }
 
     /* Push the pcall error handler function on the stack. */
@@ -120,31 +152,33 @@ namespace Lua {
     lua_getglobal(lua, funcname);
     if (lua_isnil(lua, -1)) {
       lua_pop(lua, 1); /* remove the nil from the stack */
-      /* Function not defined... let's define it if we have the
-       * body of the function. If this is an EVALSHA call we can just
-       * return an error. */
+      std::string body;
       if (evalsha) {
-        lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        auto s = srv->ScriptGet(funcname+2, &body);
+        if (!s.IsOK()) {
+          lua_pop(lua, 1); /* remove the error handler from the stack. */
+          return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        }
+      } else {
+        body = args[1];
       }
       std::string sha;
-      s = createFunction(lua, args[1], &sha);
+      s = createFunction(srv, body, &sha);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        /* The error is sent to the client by luaCreateFunction()
-         * itself when it returns NULL. */
         return s;
       }
       /* Now the following is guaranteed to return non nil */
       lua_getglobal(lua, funcname);
     }
+
     /* Populate the argv and keys table accordingly to the arguments that
      * EVAL received. */
     setGlobalArray(lua, "KEYS", std::vector<std::string>(args.begin()+3, args.begin()+3+numkeys));
     setGlobalArray(lua, "ARGV", std::vector<std::string>(args.begin()+3+numkeys, args.end()));
     int err = lua_pcall(lua, 0, 1, -2);
     if (err) {
-      std::string msg = std::string("Error running script (call to ") + funcname + "): "+ lua_tostring(lua, -1);
+      std::string msg = std::string("ERR running script (call to ") + funcname + "): "+ lua_tostring(lua, -1);
       *output = Redis::Error(msg);
       lua_pop(lua, 2);
     } else {
@@ -193,9 +227,11 @@ namespace Lua {
         snprintf(dbuf, sizeof(dbuf), "%.17g", static_cast<double>(num));
         args.emplace_back(dbuf);
       } else {
-        const char *str = lua_tostring(lua, j+1);
-        if (str == nullptr) break; /* no a string */
-        args.emplace_back(str);
+        const char *obj_s;
+        size_t obj_len;
+        obj_s = lua_tolstring(lua, j+1, &obj_len);
+        if (obj_s == nullptr) break; /* no a string */
+        args.emplace_back(std::string(obj_s, obj_len));
       }
     }
     if (j != argc) {
@@ -248,7 +284,7 @@ namespace Lua {
     }
     auto s = cmd->Parse(args);
     if (!s.IsOK()) {
-      pushError(lua, s.Msg().c_str());
+      pushError(lua, s.Msg().data());
       return raise_error ? raiseError(lua) : 1;
     }
     srv->stats_.IncrCalls(cmd_name);
@@ -274,6 +310,37 @@ namespace Lua {
     lua_setglobal(lua, "loadfile");
     lua_pushnil(lua);
     lua_setglobal(lua, "dofile");
+  }
+
+  void enableGlobalsProtection(lua_State *lua) {
+    const char *s[32];
+    int j = 0;
+
+    s[j++] = "local dbg=debug\n";
+    s[j++] = "local mt = {}\n";
+    s[j++] = "setmetatable(_G, mt)\n";
+    s[j++] = "mt.__newindex = function (t, n, v)\n";
+    s[j++] = "  if dbg.getinfo(2) then\n";
+    s[j++] = "    local w = dbg.getinfo(2, \"S\").what\n";
+    s[j++] = "    if w ~= \"main\" and w ~= \"C\" then\n";
+    s[j++] = "      error(\"Script attempted to create global variable '\"..tostring(n)..\"'\", 2)\n";
+    s[j++] = "    end\n";
+    s[j++] = "  end\n";
+    s[j++] = "  rawset(t, n, v)\n";
+    s[j++] = "end\n";
+    s[j++] = "mt.__index = function (t, n)\n";
+    s[j++] = "  if dbg.getinfo(2) and dbg.getinfo(2, \"S\").what ~= \"C\" then\n";
+    s[j++] = "    error(\"Script attempted to access nonexistent global variable '\"..tostring(n)..\"'\", 2)\n";
+    s[j++] = "  end\n";
+    s[j++] = "  return rawget(t, n)\n";
+    s[j++] = "end\n";
+    s[j++] = "debug = nil\n";
+    s[j++] = nullptr;
+
+    std::string code;
+    for (j = 0; s[j] != nullptr; j++) code += s[j];
+    luaL_loadbuffer(lua, code.c_str(), code.size(), "@enable_strict_lua");
+    lua_pcall(lua, 0, 0, 0);
   }
 
   void loadLibraries(lua_State *lua) {
@@ -519,10 +586,14 @@ void pushError(lua_State *lua, const char *err) {
 
 std::string replyToRedisReply(lua_State *lua) {
   std::string output;
+  const char *obj_s = nullptr;
+  size_t obj_len;
+
   int t = lua_type(lua, -1);
   switch (t) {
     case LUA_TSTRING:
-      output = Redis::BulkString(std::string(lua_tostring(lua, -1), lua_strlen(lua, -1)));
+      obj_s = lua_tolstring(lua, -1, &obj_len);
+      output = Redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
       output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::NilString();
@@ -551,7 +622,8 @@ std::string replyToRedisReply(lua_State *lua) {
       lua_gettable(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = Redis::SimpleString(lua_tostring(lua, -1));
+        obj_s = lua_tolstring(lua, -1, &obj_len);
+        output = Redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
       } else {
@@ -628,7 +700,48 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
   lua_setglobal(lua, var.c_str());
 }
 
+/* ---------------------------------------------------------------------------
+ * Redis provided math.random
+ * ------------------------------------------------------------------------- */
 
+/* We replace math.random() with our implementation that is not affected
+ * by specific libc random() implementations and will output the same sequence
+ * (for the same seed) in every arch. */
+
+/* The following implementation is the one shipped with Lua itself but with
+ * rand() replaced by redisLrand48(). */
+int redisMathRandom(lua_State *L) {
+  /* the `%' avoids the (rare) case of r==1, and is needed also because on
+     some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
+  lua_Number r = (lua_Number)(redisLrand48()%REDIS_LRAND48_MAX) /
+      (lua_Number)REDIS_LRAND48_MAX;
+  switch (lua_gettop(L)) {  /* check number of arguments */
+    case 0: {  /* no arguments */
+      lua_pushnumber(L, r);  /* Number between 0 and 1 */
+      break;
+    }
+    case 1: {  /* only upper limit */
+      int u = luaL_checkint(L, 1);
+      luaL_argcheck(L,  1 <= u,  1,  "interval is empty");
+      lua_pushnumber(L, floor(r*u)+1);  /* int between 1 and `u' */
+      break;
+    }
+    case 2: {  /* lower and upper limits */
+      int l = luaL_checkint(L, 1);
+      int u = luaL_checkint(L, 2);
+      luaL_argcheck(L,  l <= u,  2,  "interval is empty");
+      lua_pushnumber(L, floor(r*(u-l+1))+l);  /* int between `l' and `u' */
+      break;
+    }
+    default: return luaL_error(L, "wrong number of arguments");
+  }
+  return 1;
+}
+
+int redisMathRandomSeed(lua_State *L) {
+  redisSrand48(luaL_checkint(L,  1));
+  return 0;
+}
 
 /* ---------------------------------------------------------------------------
  * EVAL and SCRIPT commands implementation
@@ -651,12 +764,13 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
  *
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
-Status createFunction(lua_State *lua, const std::string &body, std::string *sha) {
+Status createFunction(Server *srv, const std::string &body, std::string *sha) {
   char funcname[43];
 
   funcname[0] = 'f';
   funcname[1] = '_';
   SHA1Hex(funcname+2, body.c_str(), body.size());
+  *sha = funcname+2;
 
   std::string funcdef;
   funcdef += "function ";
@@ -665,6 +779,7 @@ Status createFunction(lua_State *lua, const std::string &body, std::string *sha)
   funcdef += body;
   funcdef += "\nend";
 
+  lua_State *lua = srv->Lua();
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
@@ -676,7 +791,8 @@ Status createFunction(lua_State *lua, const std::string &body, std::string *sha)
     return Status(Status::NotOK,
                   "Error running script (new function): " + errMsg + "\n");
   }
-  *sha = funcdef.substr(2);
+  // would store lua function into propagate column family and propagate those scripts to slaves
+  srv->ScriptSet(*sha, body);
   return Status::OK();
 }
 

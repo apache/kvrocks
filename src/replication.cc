@@ -917,11 +917,20 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
 
   status = write_batch.Iterate(&write_batch_handler);
   if (!status.ok()) return status;
-  if (write_batch_handler.IsPublish()) {
-    srv_->PublishMessage(write_batch_handler.GetPublishChannel().ToString(),
-                         write_batch_handler.GetPublishValue().ToString());
+  switch (write_batch_handler.Type()) {
+    case kBatchTypePublish:
+      srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
+      break;
+    case kBatchTypePropagate:
+      if (write_batch_handler.Key() == Engine::kPropagateScriptCommand) {
+        std::vector<std::string> tokens;
+        Util::TokenizeRedisProtocol(write_batch_handler.Value(), &tokens);
+        if (!tokens.empty()) {
+          srv_->ExecPropagatedCommand(tokens);
+        }
+      }
+      break;
   }
-
   return rocksdb::Status::OK();
 }
 
@@ -931,11 +940,14 @@ bool ReplicationThread::isRestoringError(const char *err) {
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {
-  if (column_family_id != kColumnFamilyIDPubSub) {
+  if (column_family_id == kColumnFamilyIDPubSub) {
+    type_ = kBatchTypePublish;
+    kv_ = std::make_pair(key.ToString(), value.ToString());
+    return rocksdb::Status::OK();
+  } else if (column_family_id == kColumnFamilyIDPropagate) {
+    type_ = kBatchTypePropagate;
+    kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
   }
-
-  publish_message_ = std::make_pair(key.ToString(), value.ToString());
-  is_publish_ = true;
   return rocksdb::Status::OK();
 }

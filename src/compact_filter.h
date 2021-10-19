@@ -71,6 +71,27 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
   Engine::Storage *stor_ = nullptr;
 };
 
+class PropagateFilter : public rocksdb::CompactionFilter {
+ public:
+  const char *Name() const override { return "PropagateFilter"; }
+  bool Filter(int level, const Slice &key, const Slice &value,
+              std::string *new_value, bool *modified) const override {
+    // We propagate Lua commands which don't store data,
+    // just in order to implement updating Lua state.
+    return key == Engine::kPropagateScriptCommand;
+  }
+};
+
+class PropagateFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  PropagateFilterFactory() = default;
+  const char *Name() const override { return "PropagateFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(new PropagateFilter());
+  }
+};
+
 class PubSubFilter : public rocksdb::CompactionFilter {
  public:
   const char *Name() const override { return "PubSubFilter"; }

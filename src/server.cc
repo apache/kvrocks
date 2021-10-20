@@ -883,7 +883,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     }
   }
 
-  // In keyspace section, we access DB, so we can't do that when loading
+  // In rocksdb section, we access DB, so we can't do that when loading
   if (!is_loading_ && (all || section == "rocksdb")) {
     std::string rocksdb_info;
     GetRocksDBInfo(&rocksdb_info);

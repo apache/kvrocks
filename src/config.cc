@@ -65,7 +65,6 @@ Config::Config() {
       {"bind", true, new StringField(&binds_, "127.0.0.1")},
       {"port", true, new IntField(&port, 6666, 1, 65535)},
       {"workers", true, new IntField(&workers, 8, 1, 256)},
-      {"repl-workers", true, new IntField(&repl_workers, 4, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},

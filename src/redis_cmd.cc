@@ -48,16 +48,14 @@ class CommandAuth : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
     auto user_password = args_[1];
-    if (!conn->IsRepl()) {
-      auto iter = config->tokens.find(user_password);
-      if (iter != config->tokens.end()) {
-        conn->SetNamespace(iter->second);
-        conn->BecomeUser();
-        *output = Redis::SimpleString("OK");
-        return Status::OK();
-      }
+    auto iter = config->tokens.find(user_password);
+    if (iter != config->tokens.end()) {
+      conn->SetNamespace(iter->second);
+      conn->BecomeUser();
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
     }
-    const auto requirepass = conn->IsRepl() ? config->masterauth : config->requirepass;
+    const auto requirepass = config->requirepass;
     if (!requirepass.empty() && user_password != requirepass) {
       *output = Redis::Error("ERR invaild password");
       return Status::OK();

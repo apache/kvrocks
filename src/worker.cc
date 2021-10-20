@@ -13,7 +13,7 @@
 #include "server.h"
 #include "util.h"
 
-Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), repl_(repl) {
+Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   base_ = event_base_new();
   if (!base_) throw std::exception();
 
@@ -241,36 +241,6 @@ Status Worker::Reply(int fd, const std::string &reply) {
   return Status(Status::NotOK, "connection doesn't exist");
 }
 
-int Worker::SetReplicationRateLimit(uint64_t max_replication_bytes) {
-  auto write_limit = EV_RATE_LIMIT_MAX;
-  if (max_replication_bytes > 0) {
-    write_limit = max_replication_bytes;
-  }
-  struct timeval cfg_tick = {1, 0};
-  auto old_cfg = rate_limit_group_cfg_;
-  rate_limit_group_cfg_ = ev_token_bucket_cfg_new(
-      EV_RATE_LIMIT_MAX, EV_RATE_LIMIT_MAX,
-      write_limit, write_limit,
-      &cfg_tick);
-  if (rate_limit_group_cfg_ == nullptr) {
-    LOG(ERROR) << "[server] ev_token_bucket_cfg_new error";
-    rate_limit_group_cfg_ = old_cfg;
-    return -1;
-  }
-
-  if (rate_limit_group_ != nullptr) {
-    bufferevent_rate_limit_group_set_cfg(rate_limit_group_, rate_limit_group_cfg_);
-  } else {
-    rate_limit_group_ = bufferevent_rate_limit_group_new(base_, rate_limit_group_cfg_);
-  }
-
-  if (old_cfg != nullptr) {
-    ev_token_bucket_cfg_free(old_cfg);
-  }
-
-  return 0;
-}
-
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {
   conns_mu_.lock();
   conns_.erase(conn->GetFD());
@@ -358,11 +328,7 @@ void Worker::KickoutIdleClients(int timeout) {
 void WorkerThread::Start() {
   try {
     t_ = std::thread([this]() {
-      if (this->worker_->IsRepl()) {
-        Util::ThreadSetName("repl-worker");
-      } else {
-        Util::ThreadSetName("worker");
-      }
+      Util::ThreadSetName("worker");
       this->worker_->Run(std::this_thread::get_id());
     });
   } catch (const std::system_error &e) {

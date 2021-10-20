@@ -693,6 +693,7 @@ void Server::GetReplicationInfo(std::string *info) {
     ++idx;
   }
   slave_threads_mu_.unlock();
+  string_stream << "master_repl_offset:" << latest_seq  << "\r\n";
 
   *info = string_stream.str();
 }

@@ -32,8 +32,6 @@ class Worker {
   Status AddConnection(Redis::Connection *c);
   Status EnableWriteEvent(int fd);
   Status Reply(int fd, const std::string &reply);
-  bool IsRepl() { return repl_; }
-  int SetReplicationRateLimit(uint64_t max_replication_bytes);
   void BecomeMonitorConn(Redis::Connection *conn);
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
@@ -61,7 +59,6 @@ class Worker {
   std::map<int, Redis::Connection*> monitor_conns_;
   int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
 
-  bool repl_;
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
 };

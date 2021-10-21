@@ -262,6 +262,8 @@ target_sources(kvrocks2redis PRIVATE
         src/scripting.h
         src/rand.cc
         src/rand.h
+        src/sha1.cc
+        src/sha1.h
         tools/kvrocks2redis/config.cc
         tools/kvrocks2redis/config.h
         tools/kvrocks2redis/main.cc

@@ -1190,18 +1190,6 @@ void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
   }
 }
 
-void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {
-  uint64_t max_rate_per_repl_worker = 0;
-  if (max_replication_mb > 0) {
-    max_rate_per_repl_worker = (max_replication_mb*MiB)/config_->repl_workers;
-  }
-  for (const auto &t : worker_threads_) {
-    if (t->GetWorker()->IsRepl()) {
-      t->GetWorker()->SetReplicationRateLimit(max_rate_per_repl_worker);
-    }
-  }
-}
-
 ReplState Server::GetReplicationState() {
   if (IsSlave() && replication_thread_) {
     return replication_thread_->State();

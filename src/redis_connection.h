@@ -52,7 +52,6 @@ class Connection {
   void EnableFlag(Flag flag);
   void DisableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
-  bool IsRepl();
 
   uint64_t GetID() { return id_; }
   void SetID(uint64_t id) { id_ = id; }

@@ -124,7 +124,6 @@ class Server {
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type,
                   bool skipme, Redis::Connection *conn);
-  void SetReplicationRateLimit(uint64_t max_replication_mb);
 
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);

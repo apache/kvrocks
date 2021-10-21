@@ -149,7 +149,6 @@ uint64_t Connection::GetClientType() {
 
 std::string Connection::GetFlags() {
   std::string flags;
-  if (owner_->IsRepl()) flags.append("R");
   if (IsFlagEnabled(kSlave)) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
   if (IsFlagEnabled(kMonitor)) flags.append("M");
@@ -168,10 +167,6 @@ void Connection::DisableFlag(Flag flag) {
 
 bool Connection::IsFlagEnabled(Flag flag) {
   return (flags_ & flag) > 0;
-}
-
-bool Connection::IsRepl() {
-  return owner_->IsRepl();
 }
 
 void Connection::SubscribeChannel(const std::string &channel) {
@@ -295,8 +290,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
   if (to_process_cmds.empty()) return;
 
   Config *config = svr_->GetConfig();
-  std::string reply, password;
-  password = IsRepl() ? config->masterauth : config->requirepass;
+  std::string reply, password = config->requirepass;
 
   svr_->SetCurrentConnection(this);
   for (auto &cmd_tokens : to_process_cmds) {

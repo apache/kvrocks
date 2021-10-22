@@ -9,7 +9,7 @@ TEST(Config, GetAndSet) {
   Config config;
 
   config.Load(path);
-  Redis::InitAllCommandsTable();
+  Redis::InitCommandsTable();
   Redis::PopulateCommands();
   std::map<std::string, std::string> mutable_cases = {
       {"timeout" , "1000"},

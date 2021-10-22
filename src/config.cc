@@ -267,10 +267,13 @@ void Config::initFieldCallback() {
           if (cmd == "*") {
             profiling_sample_all_commands = true;
             profiling_sample_commands.clear();
-          } else if (Redis::IsCommandExists(cmd)) {
-            // profiling_sample_commands use command's original name, regardless of rename-command directive
-            profiling_sample_commands.insert(cmd);
+            return Status::OK();
           }
+          if (!Redis::IsCommandExists(cmd)) {
+            return Status(Status::NotOK, cmd + " is not Kvrocks supported command");
+          }
+          // profiling_sample_commands use command's original name, regardless of rename-command directive
+          profiling_sample_commands.insert(cmd);
         }
         return Status::OK();
       }},

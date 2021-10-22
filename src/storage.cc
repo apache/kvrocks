@@ -76,7 +76,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options->statistics = rocksdb::CreateDBStatistics();
-  options->stats_dump_period_sec = 0;
+  options->stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
   options->OptimizeLevelStyleCompaction();
   options->max_open_files = config_->RocksDB.max_open_files;
   options->max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);

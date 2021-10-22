@@ -9,6 +9,10 @@ TEST(Config, GetAndSet) {
   Config config;
 
   config.Load(path);
+  // Config.Set need accessing commands, so we should init and populate
+  // the command table here.
+  Redis::InitCommandsTable();
+  Redis::PopulateCommands();
   std::map<std::string, std::string> mutable_cases = {
       {"timeout" , "1000"},
       {"maxclients" , "2000"},

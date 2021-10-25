@@ -2136,8 +2136,19 @@ class CommandZRevRange : public CommandZRange {
 
 class CommandZRangeByLex : public Commander {
  public:
+  explicit CommandZRangeByLex(bool reversed = false) {
+    LOG(ERROR) << "init zrangebylex:" << reversed;
+    spec_.reversed = reversed;
+  }
+
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    Status s;
+    LOG(ERROR) << "parse zrangebylex:" << spec_.reversed;
+    if (spec_.reversed) {
+      s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_);
+    } else {
+      s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    }
     if (!s.IsOK()) {
       return Status(Status::RedisParseErr, s.Msg());
     }
@@ -2261,6 +2272,11 @@ class CommandZRevRank : public CommandZRank {
 class CommandZRevRangeByScore : public CommandZRangeByScore {
  public:
   CommandZRevRangeByScore() : CommandZRangeByScore(true) {}
+};
+
+class CommandZRevRangeByLex : public CommandZRangeByLex {
+ public:
+  CommandZRevRangeByLex() : CommandZRangeByLex(true) {}
 };
 
 class CommandZRem : public Commander {
@@ -4427,6 +4443,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("zrange", -4, "read-only", 1, 1, 1, CommandZRange),
     ADD_CMD("zrevrange", -4, "read-only", 1, 1, 1, CommandZRevRange),
     ADD_CMD("zrangebylex", -4, "read-only", 1, 1, 1, CommandZRangeByLex),
+    ADD_CMD("zrevrangebylex", -4, "read-only", 1, 1, 1, CommandZRevRangeByLex),
     ADD_CMD("zrangebyscore", -4, "read-only", 1, 1, 1, CommandZRangeByScore),
     ADD_CMD("zrank", 3, "read-only", 1, 1, 1, CommandZRank),
     ADD_CMD("zrem", -3, "write", 1, 1, 1, CommandZRem),

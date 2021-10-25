@@ -7,6 +7,8 @@
 #include <memory>
 #include <set>
 
+#include <glog/logging.h>
+
 namespace Redis {
 
 rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
@@ -345,8 +347,15 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  std::string start_member = spec.reversed ? spec.max : spec.min;
+
   std::string start_key, prefix_key;
-  InternalKey(ns_key, spec.min, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  LOG(ERROR) << "old start_key:" << start_key.data();
+
+  InternalKey(ns_key, ";", metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  LOG(ERROR) << "new start_key:" << start_key.data();
+
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
@@ -359,13 +368,33 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
-  for (iter->Seek(start_key);
+  iter->Seek(start_key);
+  LOG(ERROR) << "start_key:" << start_key.data();
+  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+
+  for (;
        iter->Valid() && iter->key().starts_with(prefix_key);
-       iter->Next()) {
+       (!spec.reversed ? iter->Next() : iter->Prev())) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice member = ikey.GetSubKey();
-    if (spec.minex && member == spec.min) continue;  // the min score was exclusive
-    if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+
+    LOG(ERROR) << "get member:" << member.ToString() << " min:" << spec.min << " max:" << spec.max<< " minex" << spec.minex <<  " maxex:" << spec.maxex << " reversed:" << spec.reversed
+        << "maxinf:"<< spec.max_infinite;
+    if (spec.reversed) {
+        if ((spec.minex && member == spec.min) || (!spec.minex && member.ToString() < spec.min)) {
+            LOG(ERROR) << "get brek in min:" << member.ToString() ;
+            break;
+        }      
+        if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)){
+            LOG(ERROR) << "get continue in min:" << member.ToString() ;
+            continue;
+        }
+    } else {
+       if (spec.minex && member == spec.min) continue;  // the min member was exclusive
+       if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string score_bytes = iter->value().ToString();

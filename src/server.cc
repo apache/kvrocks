@@ -112,7 +112,7 @@ Status Server::Start() {
         // compact once per day
         if (now != 0 && last_compact_date != now/86400) {
           last_compact_date = now/86400;
-          compaction_checker.CompactPubsubFiles();
+          compaction_checker.CompactPropagateAndPubSubFiles();
         }
       }
     }
@@ -693,6 +693,7 @@ void Server::GetReplicationInfo(std::string *info) {
     ++idx;
   }
   slave_threads_mu_.unlock();
+  string_stream << "master_repl_offset:" << latest_seq  << "\r\n";
 
   *info = string_stream.str();
 }
@@ -1189,18 +1190,6 @@ void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
   }
 }
 
-void Server::SetReplicationRateLimit(uint64_t max_replication_mb) {
-  uint64_t max_rate_per_repl_worker = 0;
-  if (max_replication_mb > 0) {
-    max_rate_per_repl_worker = (max_replication_mb*MiB)/config_->repl_workers;
-  }
-  for (const auto &t : worker_threads_) {
-    if (t->GetWorker()->IsRepl()) {
-      t->GetWorker()->SetReplicationRateLimit(max_rate_per_repl_worker);
-    }
-  }
-}
-
 ReplState Server::GetReplicationState() {
   if (IsSlave() && replication_thread_) {
     return replication_thread_->State();
@@ -1222,3 +1211,76 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name,
   return Status::OK();
 }
 
+Status Server::ScriptExists(const std::string &sha) {
+  std::string body;
+  return ScriptGet(sha, &body);
+}
+
+Status Server::ScriptGet(const std::string &sha, std::string *body) {
+  std::string funcname = Engine::kLuaFunctionPrefix + sha;
+  auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, funcname, body);
+  if (!s.ok()) {
+    if (s.IsNotFound()) return Status(Status::NotFound);
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+void Server::ScriptSet(const std::string &sha, const std::string &body) {
+  std::string funcname = Engine::kLuaFunctionPrefix + sha;
+  WriteToPropagateCF(funcname, body);
+}
+
+void Server::ScriptReset() {
+  Lua::DestroyState(lua_);
+  lua_ = Lua::CreateState();
+}
+
+void Server::ScriptFlush() {
+  auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  storage_->FlushScripts(rocksdb::WriteOptions(), cf);
+  ScriptReset();
+}
+
+Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
+  rocksdb::WriteBatch batch;
+  auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  batch.Put(propagateCf, key, value);
+  auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+// Generally, we store data into rocksdb and just replicate WAL instead of propagating
+// commands. But sometimes, we need to update inner states or do special operations
+// for specific commands, such as `script flush`.
+// channel: we put the same function commands into one channel to handle uniformly
+// tokens: the serialized commands
+Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) {
+  std::string value = Redis::MultiLen(tokens.size());
+  for (const auto &iter : tokens) {
+    value += Redis::BulkString(iter);
+  }
+  return WriteToPropagateCF(channel, value);
+}
+
+Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
+  auto subcommand = Util::ToLower(tokens[1]);
+  if (subcommand == "flush") {
+    ScriptReset();
+  }
+  return Status::OK();
+}
+
+Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
+  if (tokens.empty()) return Status::OK();
+
+  auto command = Util::ToLower(tokens[0]);
+  if (command == "script" && tokens.size() >= 2) {
+    return ExecPropagateScriptCommand(tokens);
+  }
+  return Status::OK();
+}

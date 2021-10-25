@@ -45,7 +45,6 @@ struct Config{
   ~Config();
   int port = 6666;
   int workers = 0;
-  int repl_workers = 1;
   int timeout = 0;
   int loglevel = 0;
   int backlog = 511;

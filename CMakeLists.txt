@@ -158,7 +158,8 @@ target_sources(kvrocks PRIVATE
         src/scripting.h
         src/sha1.cc
         src/sha1.h
-        )
+        src/rand.cc
+        src/rand.h)
 
 # kvrocks2redis sync tool
 add_executable(kvrocks2redis)
@@ -259,6 +260,10 @@ target_sources(kvrocks2redis PRIVATE
         src/compaction_checker.h
         src/scripting.cc
         src/scripting.h
+        src/rand.cc
+        src/rand.h
+        src/sha1.cc
+        src/sha1.h
         tools/kvrocks2redis/config.cc
         tools/kvrocks2redis/config.h
         tools/kvrocks2redis/main.cc
@@ -352,7 +357,9 @@ add_executable(unittest
         tests/log_collector_test.cc
         src/config_type.h
         src/sha1.cc
-        src/sha1.h)
+        src/sha1.h
+        src/rand.cc
+        src/rand.h)
 
 add_dependencies(unittest glog rocksdb snappy jemalloc lua)
 target_compile_features(unittest PRIVATE cxx_std_11)

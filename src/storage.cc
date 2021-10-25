@@ -30,6 +30,11 @@ const char *kPubSubColumnFamilyName = "pubsub";
 const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
+const char *kPropagateColumnFamilyName = "propagate";
+
+const char *kPropagateScriptCommand = "script";
+
+const char *kLuaFunctionPrefix = "lua_f_";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 
@@ -71,7 +76,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options->statistics = rocksdb::CreateDBStatistics();
-  options->stats_dump_period_sec = 0;
+  options->stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
   options->OptimizeLevelStyleCompaction();
   options->max_open_files = config_->RocksDB.max_open_files;
   options->max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
@@ -129,7 +134,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   if (s.ok()) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                          kZSetScoreColumnFamilyName,
-                                         kPubSubColumnFamilyName};
+                                         kPubSubColumnFamilyName,
+                                         kPropagateColumnFamilyName};
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -201,12 +207,21 @@ Status Storage::Open(bool read_only) {
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
   pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
 
+  rocksdb::BlockBasedTableOptions propagate_table_opts;
+  propagate_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  propagate_table_opts.block_size = block_size;
+  rocksdb::ColumnFamilyOptions propagate_opts(options);
+  propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
+  propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
+  propagate_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPropagateColumnFamilyName, propagate_opts));
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
@@ -440,6 +455,14 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
+  std::string begin_key = kLuaFunctionPrefix, end_key = begin_key;
+  // we need to increase one here since the DeleteRange api
+  // didn't contain the end key.
+  end_key[end_key.size()-1] += 1;
+  return db_->DeleteRange(options, cf_handle, begin_key, end_key);
+}
+
 Status Storage::WriteBatch(std::string &&raw_batch) {
   if (reach_db_size_limit_) {
     return Status(Status::NotOK, "reach space limit");
@@ -459,6 +482,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[2];
   } else if (name == kPubSubColumnFamilyName) {
     return cf_handles_[3];
+  } else if (name == kPropagateColumnFamilyName) {
+    return cf_handles_[4];
   }
   return cf_handles_[0];
 }
@@ -485,7 +510,10 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   uint8_t include_both = rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES |
       rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
-    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName)) continue;
+    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) ||
+        cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
+      continue;
+    }
     auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key, cf_handle);
     if (!s.ok()) continue;
 

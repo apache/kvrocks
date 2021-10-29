@@ -7,8 +7,6 @@
 #include <memory>
 #include <set>
 
-#include <glog/logging.h>
-
 namespace Redis {
 
 rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
@@ -348,14 +346,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
+  std::string start_ns_key = spec.reversed && spec.max_infinite ? PrefixNext(ns_key) : ns_key;
 
   std::string start_key, prefix_key;
-  InternalKey(ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  LOG(ERROR) << "old start_key:" << start_key.data();
-
-  InternalKey(ns_key, ";", metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  LOG(ERROR) << "new start_key:" << start_key.data();
-
+  InternalKey(start_ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
@@ -369,7 +363,6 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
   iter->Seek(start_key);
-  LOG(ERROR) << "start_key:" << start_key.data();
   if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
@@ -379,16 +372,11 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
        (!spec.reversed ? iter->Next() : iter->Prev())) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice member = ikey.GetSubKey();
-
-    LOG(ERROR) << "get member:" << member.ToString() << " min:" << spec.min << " max:" << spec.max<< " minex" << spec.minex <<  " maxex:" << spec.maxex << " reversed:" << spec.reversed
-        << "maxinf:"<< spec.max_infinite;
     if (spec.reversed) {
         if ((spec.minex && member == spec.min) || (!spec.minex && member.ToString() < spec.min)) {
-            LOG(ERROR) << "get brek in min:" << member.ToString() ;
             break;
         }      
         if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)){
-            LOG(ERROR) << "get continue in min:" << member.ToString() ;
             continue;
         }
     } else {

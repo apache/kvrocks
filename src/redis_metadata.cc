@@ -134,6 +134,25 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->append(key.ToString());
 }
 
+std::string PrefixNext(const std::string &key){
+  std::vector<char> key_char(key.length());
+  std::copy(key.begin(),key.end(),key_char.begin());
+  int i = key_char.size()-1;
+  for(;i>=0;i--){
+    key_char[i]++;
+    if(key_char[i] != 0){
+        break;
+    }
+  }
+  if(i == -1){
+      key_char.clear();
+      std::copy(key.begin(),key.end(),key_char.begin());
+      key_char.push_back(0);
+  }
+  return std::string(key_char.begin(),key_char.end());
+}
+
+
 Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
   expire = 0;

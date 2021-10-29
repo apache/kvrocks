@@ -2135,13 +2135,11 @@ class CommandZRevRange : public CommandZRange {
 class CommandZRangeByLex : public Commander {
  public:
   explicit CommandZRangeByLex(bool reversed = false) {
-    LOG(ERROR) << "init zrangebylex:" << reversed;
     spec_.reversed = reversed;
   }
 
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
-    LOG(ERROR) << "parse zrangebylex:" << spec_.reversed;
     if (spec_.reversed) {
       s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {

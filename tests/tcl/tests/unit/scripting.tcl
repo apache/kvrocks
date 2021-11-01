@@ -352,6 +352,17 @@ start_server {tags {"scripting"}} {
         r sadd myset a b c d e f g h i l m n o p q r s t u v z aa aaa azz
         r eval {return redis.call('smembers',KEYS[1])} 1 myset
     } {a aa aaa azz b c d e f g h i l m n o p q r s t u v z}
+
+    test "Make sure redis.log() works" {
+        set v [r eval { return redis.log(redis.LOG_DEBUG, 'debug level'); } 0]
+        assert_equal "" $v
+        set v [r eval { return redis.log(redis.LOG_VERBOSE, 'verbose level'); } 0]
+        assert_equal "" $v
+        set v [r eval { return redis.log(redis.LOG_NOTICE, 'notice level'); } 0]
+        assert_equal "" $v
+        set v [r eval { return redis.log(redis.LOG_WARNING, 'warning level'); } 0]
+        assert_equal "" $v
+    } {}
 }
 
 start_server {tags {"repl"}} {

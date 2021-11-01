@@ -19,6 +19,13 @@
  * This should be the size of the buffer given to doule to string */
 #define MAX_LONG_DOUBLE_CHARS 5*1024
 
+enum {
+  LL_DEBUG = 0,
+  LL_VERBOSE,
+  LL_NOTICE,
+  LL_WARNING,
+};
+
 extern "C" {
 LUALIB_API int (luaopen_cjson)(lua_State *L);
 LUALIB_API int (luaopen_struct)(lua_State *L);
@@ -52,6 +59,27 @@ namespace Lua {
     lua_pushstring(lua, "pcall");
     lua_pushcfunction(lua, redisPCallCommand);
     lua_settable(lua,  -3);
+
+    /* redis.log and log levels. */
+    lua_pushstring(lua, "log");
+    lua_pushcfunction(lua, redisLogCommand);
+    lua_settable(lua, -3);
+
+    lua_pushstring(lua, "LOG_DEBUG");
+    lua_pushnumber(lua, LL_DEBUG);
+    lua_settable(lua, -3);
+
+    lua_pushstring(lua, "LOG_VERBOSE");
+    lua_pushnumber(lua, LL_VERBOSE);
+    lua_settable(lua, -3);
+
+    lua_pushstring(lua, "LOG_NOTICE");
+    lua_pushnumber(lua, LL_NOTICE);
+    lua_settable(lua, -3);
+
+    lua_pushstring(lua, "LOG_WARNING");
+    lua_pushnumber(lua, LL_WARNING);
+    lua_settable(lua, -3);
 
     /* redis.sha1hex */
     lua_pushstring(lua, "sha1hex");
@@ -110,6 +138,54 @@ namespace Lua {
       luaL_loadbuffer(lua, compare_func, strlen(compare_func), "@cmp_func_def");
       lua_pcall(lua, 0, 0, 0);
     }
+  }
+
+
+  int redisLogCommand(lua_State *lua) {
+    int j, level, argc = lua_gettop(lua);
+
+    if (argc < 2) {
+      lua_pushstring(lua, "redis.log() requires two arguments or more.");
+      return lua_error(lua);
+    }
+    if (!lua_isnumber(lua, -argc)) {
+      lua_pushstring(lua, "First argument must be a number (log level).");
+      return lua_error(lua);
+    }
+    level = lua_tonumber(lua, -argc);
+    if (level < LL_DEBUG || level > LL_WARNING) {
+      lua_pushstring(lua, "Invalid debug level.");
+      return lua_error(lua);
+    }
+    if (level < GetServer()->GetConfig()->loglevel) {
+      return 0;
+    }
+
+    std::string log_message;
+    for (j = 1; j < argc; j++) {
+      size_t len;
+      const char *s;
+      s = lua_tolstring(lua, (-argc)+j, &len);
+      if (s) {
+        if (j != 1)  {
+          log_message += " "+std::string(s, len);
+        } else {
+          log_message = std::string(s, len);
+        }
+      }
+    }
+
+    // The min log level was INFO, DEBUG would never take effect
+    switch (level) {
+      case LL_VERBOSE:  // also regard VERBOSE as INFO here since no VERBOSE level
+      case LL_NOTICE:
+        LOG(INFO) << "[Lua] " << log_message;
+        break;
+      case LL_WARNING:
+        LOG(WARNING) << "[Lua] " << log_message;
+        break;
+    }
+    return 0;
   }
 
   Status evalGenericCommand(Redis::Connection *conn,

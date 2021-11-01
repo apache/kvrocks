@@ -29,6 +29,8 @@ int redisSha1hexCommand(lua_State *lua);
 int redisStatusReplyCommand(lua_State *lua);
 int redisErrorReplyCommand(lua_State *lua);
 Status createFunction(Server *srv, const std::string &body, std::string *sha);
+
+int redisLogCommand(lua_State *lua);
 Status evalGenericCommand(Redis::Connection *conn,
                           const std::vector<std::string> &args,
                           bool evalsha,

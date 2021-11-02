@@ -1,3 +1,19 @@
+# Version 2.0.4
+
+New features
+  - Support LUA script commands (#363) (#369)
+    Currently, support EVAL, EVALSHA, and SCRIPT commands, but SCRIPT KILL
+    and DEBUG subcommands are not supported.
+
+Improvements
+  - Allow metadata and subkey CF to share a single block cache (#365) (#373)
+  - Add master_repl_offset in INFO command output (#374)
+
+Bugfixes
+  - Fixed dynamic resize target_file_size_base bug (#368)
+    Before we only apply this strategy to the default CF(i.e. subkey CF)
+
+
 # Version 2.0.3
 
 Improvements

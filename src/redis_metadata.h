@@ -4,9 +4,9 @@
 #include <vector>
 #include <atomic>
 
-#include <rocksdb/status.h>
-
 #include "encoding.h"
+
+#include "rocksdb/status.h"
 
 enum RedisType {
   kRedisNone,

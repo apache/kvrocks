@@ -6,7 +6,10 @@
 
 #include <vector>
 #include <atomic>
-#include <rocksdb/env.h>
+#include <algorithm>
+
+#include "rocksdb/env.h"
+
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
@@ -134,22 +137,22 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->append(key.ToString());
 }
 
-std::string PrefixNext(const std::string &key){
+std::string PrefixNext(const std::string &key) {
   std::vector<char> key_char(key.length());
-  std::copy(key.begin(),key.end(),key_char.begin());
+  std::copy(key.begin(), key.end(), key_char.begin());
   int i = key_char.size()-1;
-  for(;i>=0;i--){
+  for (; i >= 0; i--) {
     key_char[i]++;
-    if(key_char[i] != 0){
+    if (key_char[i] != 0) {
         break;
     }
   }
-  if(i == -1){
+  if (i == -1) {
       key_char.clear();
-      std::copy(key.begin(),key.end(),key_char.begin());
+      std::copy(key.begin(), key.end(), key_char.begin());
       key_char.push_back(0);
   }
-  return std::string(key_char.begin(),key_char.end());
+  return std::string(key_char.begin(), key_char.end());
 }
 
 

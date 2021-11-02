@@ -337,6 +337,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
                                  int *size) {
   if (size) *size = 0;
   if (members) members->clear();
+  if (spec.offset > -1 && spec.count == 0) {
+      return rocksdb::Status::OK();
+  }
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -373,10 +376,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice member = ikey.GetSubKey();
     if (spec.reversed) {
-        if ((spec.minex && member == spec.min) || (!spec.minex && member.ToString() < spec.min)) {
+        if (member.ToString() < spec.min || (spec.minex && member == spec.min)) {
             break;
-        }      
-        if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)){
+        }
+        if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) {
             continue;
         }
     } else {

@@ -4,9 +4,9 @@
 #include <vector>
 #include <atomic>
 
-#include "encoding.h"
-
 #include "rocksdb/status.h"
+
+#include "encoding.h"
 
 enum RedisType {
   kRedisNone,
@@ -50,7 +50,6 @@ struct KeyNumStats {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded);
-std::string PrefixNext(const std::string &key);
 
 class InternalKey {
  public:

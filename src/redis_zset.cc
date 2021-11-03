@@ -349,10 +349,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
-  std::string start_ns_key = spec.reversed && spec.max_infinite ? PrefixNext(ns_key) : ns_key;
-
   std::string start_key, prefix_key;
-  InternalKey(start_ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  std::uint64_t start_version = spec.reversed && spec.max_infinite ? metadata.version + 1 : metadata.version;
+  InternalKey(ns_key, start_member, start_version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
@@ -366,6 +365,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
   iter->Seek(start_key);
+  // see comment in rangebyscore()
   if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }

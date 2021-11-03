@@ -422,17 +422,17 @@ start_server {tags {"zset"}} {
         # test "ZLEXCOUNT advanced" {
         #     create_default_lex_zset
     
-        #     assert_equal 9 [r zlexcount zset - +]
-        #     assert_equal 0 [r zlexcount zset + -]
-        #     assert_equal 0 [r zlexcount zset + \[c]
-        #     assert_equal 0 [r zlexcount zset \[c -]
-        #     assert_equal 8 [r zlexcount zset \[bar +]
-        #     assert_equal 5 [r zlexcount zset \[bar \[foo]
-        #     assert_equal 4 [r zlexcount zset \[bar (foo]
-        #     assert_equal 4 [r zlexcount zset (bar \[foo]
-        #     assert_equal 3 [r zlexcount zset (bar (foo]
-        #     assert_equal 5 [r zlexcount zset - (foo]
-        #     assert_equal 1 [r zlexcount zset (maxstring +]
+            # assert_equal 9 [r zlexcount zset - +]
+            # assert_equal 0 [r zlexcount zset + -]
+            # assert_equal 0 [r zlexcount zset + \[c]
+            # assert_equal 0 [r zlexcount zset \[c -]
+            # assert_equal 8 [r zlexcount zset \[bar +]
+            # assert_equal 5 [r zlexcount zset \[bar \[foo]
+            # assert_equal 4 [r zlexcount zset \[bar (foo]
+            # assert_equal 4 [r zlexcount zset (bar \[foo]
+            # assert_equal 3 [r zlexcount zset (bar (foo]
+            # assert_equal 5 [r zlexcount zset - (foo]
+            # assert_equal 1 [r zlexcount zset (maxstring +]
         # }
 
          test "ZRANGEBYSLEX with LIMIT" {

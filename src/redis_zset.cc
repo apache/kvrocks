@@ -337,6 +337,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
                                  int *size) {
   if (size) *size = 0;
   if (members) members->clear();
+  if (spec.offset > -1 && spec.count == 0) {
+      return rocksdb::Status::OK();
+  }
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -345,8 +348,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  std::string start_member = spec.reversed ? spec.max : spec.min;
   std::string start_key, prefix_key;
-  InternalKey(ns_key, spec.min, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  std::uint64_t start_version = spec.reversed && spec.max_infinite ? metadata.version + 1 : metadata.version;
+  InternalKey(ns_key, start_member, start_version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
@@ -359,13 +364,28 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
-  for (iter->Seek(start_key);
+  iter->Seek(start_key);
+  // see comment in rangebyscore()
+  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+    iter->SeekForPrev(start_key);
+  }
+
+  for (;
        iter->Valid() && iter->key().starts_with(prefix_key);
-       iter->Next()) {
+       (!spec.reversed ? iter->Next() : iter->Prev())) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice member = ikey.GetSubKey();
-    if (spec.minex && member == spec.min) continue;  // the min score was exclusive
-    if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    if (spec.reversed) {
+        if (member.ToString() < spec.min || (spec.minex && member == spec.min)) {
+            break;
+        }
+        if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) {
+            continue;
+        }
+    } else {
+       if (spec.minex && member == spec.min) continue;  // the min member was exclusive
+       if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
+    }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string score_bytes = iter->value().ToString();

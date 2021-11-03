@@ -4,7 +4,7 @@
 #include <vector>
 #include <atomic>
 
-#include "rocksdb/status.h"
+#include <rocksdb/status.h>
 
 #include "encoding.h"
 

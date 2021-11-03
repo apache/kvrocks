@@ -38,13 +38,14 @@ typedef struct ZRangeLexSpec {
   bool minex, maxex; /* are min or max exclusive */
   bool max_infinite; /* are max infinite */
   int offset, count;
-  bool removed;
+  bool removed, reversed;
   ZRangeLexSpec() {
     minex = maxex = false;
     max_infinite = false;
     offset = -1;
     count = -1;
     removed = false;
+    reversed = false;
   }
 } ZRangeLexSpec;
 

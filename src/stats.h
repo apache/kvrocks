@@ -7,12 +7,18 @@
 #include <vector>
 
 enum StatsMetricFlags {
-  STATS_METRIC_COMMAND = 0,  // Number of commands executed
-  STATS_METRIC_NET_INPUT,    // Bytes read to network
-  STATS_METRIC_NET_OUTPUT,   // Bytes read to network
-  STATS_METRIC_COUNT,        // Bytes written to network
-  STATS_METRIC_SAMPLES = 16  // Number of samples per metric
+  STATS_METRIC_COMMAND = 0,      // Number of commands executed
+  STATS_METRIC_NET_INPUT,        // Bytes read to network
+  STATS_METRIC_NET_OUTPUT,       // Bytes written to network
+  STATS_METRIC_ROCKSDB_WRITTEN,  // Number of keys written to the rocksdb
+  STATS_METRIC_ROCKSDB_READ,     // Number of Keys read to the rocksdb
+  STATS_METRIC_ROCKSDB_SEEK,     // Number of calls of seek in rocksdb
+  STATS_METRIC_ROCKSDB_NEXT,     // Number of calls of next in rocksdb
+  STATS_METRIC_ROCKSDB_PREV,     // Number of calls of prev in rocksdb
+  STATS_METRIC_COUNT
 };
+
+const int STATS_METRIC_SAMPLES = 16;  // Number of samples per metric
 
 struct command_stat {
   std::atomic<uint64_t> calls;

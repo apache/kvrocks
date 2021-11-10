@@ -478,15 +478,17 @@ std::atomic<uint64_t> *Server::GetClientID() {
   return &client_id_;
 }
 
-void Server::recordInstantaneousMetric() {
+void Server::recordInstantaneousMetrics() {
   auto rocksdb_stats = storage_->GetDB()->GetDBOptions().statistics;
   stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);
   stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
   stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
-  stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_WRITTEN,
+  stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT,
     rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
-  stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_READ,
+  stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_GET,
     rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_READ));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET,
+    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_MULTIGET_KEYS_READ));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK,
     rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT,
@@ -570,7 +572,7 @@ void Server::cron() {
     }
     cleanupExitedSlaves();
     counter++;
-    recordInstantaneousMetric();
+    recordInstantaneousMetrics();
   }
 }
 
@@ -620,8 +622,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
   string_stream << "flush_count:" << storage_->GetFlushCount()<< "\r\n";
   string_stream << "compaction_count:" << storage_->GetCompactionCount()<< "\r\n";
-  string_stream << "written_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_WRITTEN) << "\r\n";
-  string_stream << "read_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_READ) << "\r\n";
+  string_stream << "written_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
+  string_stream << "read_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
+                                      stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET) << "\r\n";
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";

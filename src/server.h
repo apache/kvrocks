@@ -154,7 +154,7 @@ class Server {
 
  private:
   void cron();
-  void recordInstantaneousMetric();
+  void recordInstantaneousMetrics();
   void delConnContext(ConnContext *c);
   void updateCachedTime();
   Status autoResizeBlockAndSST();

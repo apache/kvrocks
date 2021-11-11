@@ -35,14 +35,14 @@ start_server {tags {"command"}} {
             after 200
         }
         set cmd_qps [s instantaneous_ops_per_sec]
-        set written_qps [s written_per_sec]
-        set read_qps [s read_per_sec]
+        set put_qps [s put_per_sec]
+        set get_qps [s get_per_sec]
         set seek_qps [s seek_per_sec]
         set next_qps [s next_per_sec]
         # Based on the encoding of list, we can calculate the relationship
         # between Rocksdb QPS and Command QPS.
-        assert {[expr abs($cmd_qps - $written_qps)] < 10}
-        assert {[expr abs($cmd_qps - $read_qps)] < 10}
+        assert {[expr abs($cmd_qps - $put_qps)] < 10}
+        assert {[expr abs($cmd_qps - $get_qps)] < 10}
         assert {[expr abs($cmd_qps/2 - $seek_qps)] < 10}
         # prev_per_sec is almost the same as next_per_sec
         assert {[expr abs($cmd_qps - $next_qps)] < 10}

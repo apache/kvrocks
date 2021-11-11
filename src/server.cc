@@ -622,8 +622,8 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
   string_stream << "flush_count:" << storage_->GetFlushCount()<< "\r\n";
   string_stream << "compaction_count:" << storage_->GetCompactionCount()<< "\r\n";
-  string_stream << "written_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
-  string_stream << "read_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
+  string_stream << "put_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
+  string_stream << "get_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
                                       stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET) << "\r\n";
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";

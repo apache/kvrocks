@@ -7,15 +7,15 @@
 #include <vector>
 
 enum StatsMetricFlags {
-  STATS_METRIC_COMMAND = 0,      // Number of commands executed
-  STATS_METRIC_NET_INPUT,        // Bytes read to network
-  STATS_METRIC_NET_OUTPUT,       // Bytes written to network
-  STATS_METRIC_ROCKSDB_PUT,      // Number of calls of Put and Write in rocksdb
-  STATS_METRIC_ROCKSDB_GET,      // Number of calls of get in rocksdb
-  STATS_METRIC_ROCKSDB_MULTIGET, // Number of calls of mulget in rocksdb
-  STATS_METRIC_ROCKSDB_SEEK,     // Number of calls of seek in rocksdb
-  STATS_METRIC_ROCKSDB_NEXT,     // Number of calls of next in rocksdb
-  STATS_METRIC_ROCKSDB_PREV,     // Number of calls of prev in rocksdb
+  STATS_METRIC_COMMAND = 0,       // Number of commands executed
+  STATS_METRIC_NET_INPUT,         // Bytes read to network
+  STATS_METRIC_NET_OUTPUT,        // Bytes written to network
+  STATS_METRIC_ROCKSDB_PUT,       // Number of calls of Put and Write in rocksdb
+  STATS_METRIC_ROCKSDB_GET,       // Number of calls of get in rocksdb
+  STATS_METRIC_ROCKSDB_MULTIGET,  // Number of calls of mulget in rocksdb
+  STATS_METRIC_ROCKSDB_SEEK,      // Number of calls of seek in rocksdb
+  STATS_METRIC_ROCKSDB_NEXT,      // Number of calls of next in rocksdb
+  STATS_METRIC_ROCKSDB_PREV,      // Number of calls of prev in rocksdb
   STATS_METRIC_COUNT
 };
 

@@ -664,6 +664,7 @@ void Server::GetServerInfo(std::string *info) {
 void Server::GetClientsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Clients\r\n";
+  string_stream << "maxclients:" << config_->maxclients << "\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
   string_stream << "monitor_clients:" << monitor_clients_ << "\r\n";
   *info = string_stream.str();

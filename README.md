@@ -99,7 +99,7 @@ namespace was used to isolate data between users. unlike all the redis databases
 
 ```
 # add token
-127.0.0.1:6666>  namespace add ns1 mytoken
+127.0.0.1:6666>  namespace add ns1 my_token
 OK
 
 # update token
@@ -120,11 +120,13 @@ OK
 
 ## DOCs
 
-* [supported commands](https://github.com/kvrockslabs/kvrocks/blob/master/docs/support-commands.md)
+* [supported commands](https://github.com/KvrocksLabs/kvrocks/wiki/Support-Commands)
 * [design complex kv on rocksdb](https://github.com/kvrockslabs/kvrocks/blob/master/docs/metadata-design.md)
 * [replication design](https://github.com/kvrockslabs/kvrocks/blob/master/docs/replication-design.md)
 
-## Migrate tools
+For more informations, can see: [Kvrocks Wiki](https://github.com/KvrocksLabs/kvrocks/wiki)
+
+## Migration Tools
 
 * migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by vipshop
 * migrate from kvrocks to redis. use `kvrocks2redis` in build dir
@@ -136,7 +138,7 @@ OK
 * CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
 * Memory: 32 GiB
 * NET:  Intel Corporation I350 Gigabit Network Connection
-* DISK: 2TB NVMe Intel SSD DC P460
+* DISK: 2TB NVMe Intel SSD DC P4600
 
 >  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
 

@@ -29,6 +29,9 @@ Kvrocks has the following key features:
 <td height = "128" width = "164"><img src="https://imgur.com/MJsoEN7.png" alt="BaishanCloud"></td>
 <td height = "128" width = "164"><img src="docs/images/rgyun_logo.png" alt="Rgyun"></td>
 </tr>
+<tr>
+<td height = "128" width = "164"><img src="docs/images/xueqiu_logo.png" alt="Xueqiu"></td>
+</tr>
 </table>
 
 ***Tickets a pull reqeust to let us known that you're using kvrocks and add your logo to README***

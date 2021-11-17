@@ -47,6 +47,7 @@ class Storage {
   void EmptyDB();
   void InitOptions(rocksdb::Options *options);
   Status SetColumnFamilyOption(const std::string &key, const std::string &value);
+  Status SetColumnFamilyOption(const std::string &cf_name, const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);

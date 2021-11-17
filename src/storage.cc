@@ -115,6 +115,16 @@ Status Storage::SetColumnFamilyOption(const std::string &key, const std::string 
   return Status::OK();
 }
 
+Status Storage::SetColumnFamilyOption(const std::string &cf_name, const std::string &key,
+                                      const std::string &value) {
+  auto cf_handle = GetCFHandle(cf_name);
+  auto s = db_->SetOptions(cf_handle, {{key, value}});
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
 Status Storage::SetOption(const std::string &key, const std::string &value) {
   auto s = db_->SetOptions({{key, value}});
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
@@ -171,7 +181,12 @@ Status Storage::Open(bool read_only) {
   }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts;
-  metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  metadata_table_opts.format_version = 5;
+  metadata_table_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+  metadata_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+  metadata_table_opts.partition_filters = true;
+  metadata_table_opts.optimize_filters_for_memory = true;
+  metadata_table_opts.metadata_block_size = 4096;
   metadata_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
@@ -184,9 +199,21 @@ Status Storage::Open(bool read_only) {
   metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   metadata_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
+  // BlobDB
+  metadata_opts.enable_blob_files = config_->RocksDB.enable_blob_files;
+  metadata_opts.min_blob_size = config_->RocksDB.min_blob_size;
+  metadata_opts.blob_file_size = config_->RocksDB.blob_file_size;
+  metadata_opts.blob_compression_type = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+  metadata_opts.enable_blob_garbage_collection = config_->RocksDB.enable_blob_garbage_collection;
+  metadata_opts.blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100;
 
   rocksdb::BlockBasedTableOptions subkey_table_opts;
-  subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  subkey_table_opts.format_version = 5;
+  subkey_table_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+  subkey_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+  subkey_table_opts.partition_filters = true;
+  subkey_table_opts.optimize_filters_for_memory = true;
+  subkey_table_opts.metadata_block_size = 4096;
   subkey_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
@@ -198,9 +225,20 @@ Status Storage::Open(bool read_only) {
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
+  subkey_opts.enable_blob_files = config_->RocksDB.enable_blob_files;
+  subkey_opts.min_blob_size = config_->RocksDB.min_blob_size;
+  subkey_opts.blob_file_size = config_->RocksDB.blob_file_size;
+  subkey_opts.blob_compression_type = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+  subkey_opts.enable_blob_garbage_collection = config_->RocksDB.enable_blob_garbage_collection;
+  subkey_opts.blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100;
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts;
-  pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+  pubsub_table_opts.format_version = 5;
+  pubsub_table_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+  pubsub_table_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+  pubsub_table_opts.partition_filters = true;
+  pubsub_table_opts.optimize_filters_for_memory = true;
+  pubsub_table_opts.metadata_block_size = 4096;
   pubsub_table_opts.block_size = block_size;
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));

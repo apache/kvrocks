@@ -128,6 +128,11 @@ Config::Config() {
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
       {"rocksdb.level0_stop_writes_trigger",
        false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
+      {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
+      {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
+      {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
+      {"rocksdb.blob_garbage_collection_age_cutoff", false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 128, 0, 100)}
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -317,6 +322,67 @@ void Config::initFieldCallback() {
         if (!srv) return Status::OK();
         return srv->storage_->SetDBOption(trimRocksDBPrefix(k),
                                           std::to_string(RocksDB.max_total_wal_size * MiB));
+      }},
+      {"rocksdb.enable_blob_files", [](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string enable_blob_files = v == "yes" ? "true" : "false";
+        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
+                                                        enable_blob_files);
+        if (s.IsOK()) {
+          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
+                                                   enable_blob_files);
+        }                                        
+        return s;
+      }},
+      {"rocksdb.min_blob_size", [](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k), v);
+        if (s.IsOK()) {
+          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k), v);
+        }                                        
+        return s;
+      }},
+      {"rocksdb.blob_file_size", [](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k), v);
+        if (s.IsOK()) {
+          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k), v);
+        }                                        
+        return s;
+      }},
+      {"rocksdb.enable_blob_garbage_collection", [](Server* srv, const std::string &k,
+                                                    const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
+        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
+                                                        enable_blob_garbage_collection);
+        if (s.IsOK()) {
+          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
+                                                   enable_blob_garbage_collection);
+        }                                        
+        return s;
+      }},
+      {"rocksdb.blob_garbage_collection_age_cutoff", [](Server* srv, const std::string &k,
+                                                    const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        int val;
+        try {
+          val = std::stoi(v);
+        } catch (std::exception &e) {
+          return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
+        }
+        if (val < 0 || val > 100) {
+          return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
+        }
+
+        double cutoff = val / 100;
+        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
+                                                        std::to_string(cutoff));
+        if (s.IsOK()) {
+          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
+                                                   std::to_string(cutoff));
+        }
+        return s;
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

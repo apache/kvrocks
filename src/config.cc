@@ -350,7 +350,7 @@ void Config::initFieldCallback() {
         if (!RocksDB.enable_blob_files) {
           return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
         }
-        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";                               
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
       }},
       {"rocksdb.blob_garbage_collection_age_cutoff", [this](Server* srv, const std::string &k,

@@ -338,7 +338,6 @@ void Config::initFieldCallback() {
       }},
       {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
-        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k), v);
         if (!RocksDB.enable_blob_files) {
           return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
         }

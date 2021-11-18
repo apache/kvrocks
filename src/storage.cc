@@ -184,7 +184,6 @@ Status Storage::Open(bool read_only) {
   db_closing_ = false;
 
   bool cache_index_and_filter_blocks = config_->RocksDB.cache_index_and_filter_blocks;
-  size_t block_size = static_cast<size_t>(config_->RocksDB.block_size);
   size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
 
@@ -243,7 +242,7 @@ Status Storage::Open(bool read_only) {
   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
   propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
   propagate_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
-  SetBlobDB(&propagate_table_opts);
+  SetBlobDB(&propagate_opts);
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched

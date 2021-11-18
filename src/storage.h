@@ -8,6 +8,7 @@
 #include <atomic>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
+#include <rocksdb/table.h>
 #include <rocksdb/utilities/backupable_db.h>
 #include <event2/bufferevent.h>
 
@@ -45,9 +46,10 @@ class Storage {
   Status OpenForReadOnly();
   void CloseDB();
   void EmptyDB();
+  void InitTableOptions(rocksdb::BlockBasedTableOptions *table_options);
+  void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
   void InitOptions(rocksdb::Options *options);
   Status SetColumnFamilyOption(const std::string &key, const std::string &value);
-  Status SetColumnFamilyOption(const std::string &cf_name, const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);

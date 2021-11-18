@@ -327,45 +327,38 @@ void Config::initFieldCallback() {
       {"rocksdb.enable_blob_files", [](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         std::string enable_blob_files = v == "yes" ? "true" : "false";
-        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
-                                                        enable_blob_files);
-        if (s.IsOK()) {
-          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
-                                                   enable_blob_files);
-        }
-        return s;
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_files);
       }},
-      {"rocksdb.min_blob_size", [](Server* srv, const std::string &k, const std::string& v)->Status {
+      {"rocksdb.min_blob_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
+        }
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+      }},
+      {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k), v);
-        if (s.IsOK()) {
-          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k), v);
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
         }
-        return s;
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
       }},
-      {"rocksdb.blob_file_size", [](Server* srv, const std::string &k, const std::string& v)->Status {
+      {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
         if (!srv) return Status::OK();
-        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k), v);
-        if (s.IsOK()) {
-          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k), v);
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
         }
-        return s;
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";                               
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
       }},
-      {"rocksdb.enable_blob_garbage_collection", [](Server* srv, const std::string &k,
-                                                    const std::string& v)->Status {
+      {"rocksdb.blob_garbage_collection_age_cutoff", [this](Server* srv, const std::string &k,
+                                                            const std::string& v)->Status {
         if (!srv) return Status::OK();
-        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
-        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
-                                                        enable_blob_garbage_collection);
-        if (s.IsOK()) {
-          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
-                                                   enable_blob_garbage_collection);
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
         }
-        return s;
-      }},
-      {"rocksdb.blob_garbage_collection_age_cutoff", [](Server* srv, const std::string &k,
-                                                    const std::string& v)->Status {
-        if (!srv) return Status::OK();
         int val;
         try {
           val = std::stoi(v);
@@ -377,13 +370,7 @@ void Config::initFieldCallback() {
         }
 
         double cutoff = val / 100;
-        Status s = srv->storage_->SetColumnFamilyOption(Engine::kMetadataColumnFamilyName, trimRocksDBPrefix(k),
-                                                        std::to_string(cutoff));
-        if (s.IsOK()) {
-          s = srv->storage_->SetColumnFamilyOption(Engine::kSubkeyColumnFamilyName, trimRocksDBPrefix(k),
-                                                   std::to_string(cutoff));
-        }
-        return s;
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

@@ -18,6 +18,9 @@
 #include "log_collector.h"
 
 const char *kDefaultNamespace = "__namespace";
+
+const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
+
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
@@ -227,6 +230,7 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
   };
+
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
@@ -326,20 +330,20 @@ void Config::initFieldCallback() {
       }},
       {"rocksdb.enable_blob_files", [](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
-        std::string enable_blob_files = v == "yes" ? "true" : "false";
+        std::string enable_blob_files = RocksDB.enable_blob_files ? "true" : "false";
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_files);
       }},
       {"rocksdb.min_blob_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.enable_blob_files) {
-          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
+          return Status(Status::NotOK, errNotEnableBlobDB);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
       }},
       {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.enable_blob_files) {
-          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
+          return Status(Status::NotOK, errNotEnableBlobDB);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
       }},
@@ -347,7 +351,7 @@ void Config::initFieldCallback() {
                                                         const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.enable_blob_files) {
-          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
+          return Status(Status::NotOK, errNotEnableBlobDB);
         }
         std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
@@ -356,7 +360,7 @@ void Config::initFieldCallback() {
                                                             const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.enable_blob_files) {
-          return Status(Status::NotOK, "Must set rocksdb.enable_blob_files to yes first.");
+          return Status(Status::NotOK, errNotEnableBlobDB);
         }
         int val;
         try {

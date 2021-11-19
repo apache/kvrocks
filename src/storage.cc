@@ -75,6 +75,9 @@ void Storage::InitTableOptions(rocksdb::BlockBasedTableOptions *table_options) {
   table_options->partition_filters = true;
   table_options->optimize_filters_for_memory = true;
   table_options->metadata_block_size = 4096;
+  table_options->data_block_index_type =
+   rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
+  table_options->data_block_hash_table_util_ratio = 0.75;
   table_options->block_size = static_cast<size_t>(config_->RocksDB.block_size);
 }
 
@@ -209,6 +212,9 @@ Status Storage::Open(bool read_only) {
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
   metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  // Enable whole key bloom filter in memtable
+  metadata_opts.memtable_whole_key_filtering = true;
+  metadata_opts.memtable_prefix_bloom_size_ratio = 0.1;
   metadata_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
   SetBlobDB(&metadata_opts);

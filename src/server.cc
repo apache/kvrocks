@@ -620,7 +620,7 @@ void Server::GetRocksDBInfo(std::string *info) {
                   << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
     string_stream << "memtable_count_limit_slowdown:[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
-    string_stream << "memtable_count_limit_slowdown:[" << cf_handle->GetName() << "]:"
+    string_stream << "memtable_count_limit_stop:[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";

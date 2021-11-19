@@ -599,6 +599,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "# RocksDB\r\n";
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
     uint64_t estimate_keys, block_cache_usage, block_cache_pinned_usage, index_and_filter_cache_usage;
+    std::map<std::string, std::string> cf_stats_map;
     db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
@@ -608,6 +609,19 @@ void Server::GetRocksDBInfo(std::string *info) {
     db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
     string_stream << "index_and_filter_cache_usage:[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
+    db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
+    string_stream << "level0_file_limit_slowdown:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
+    string_stream << "level0_file_limit_stop:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
+    string_stream << "pending_compaction_bytes_slowdown:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "pending_compaction_bytes_stop:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "memtable_count_limit_slowdown:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
+    string_stream << "memtable_count_limit_slowdown:[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";

@@ -328,7 +328,7 @@ void Config::initFieldCallback() {
         return srv->storage_->SetDBOption(trimRocksDBPrefix(k),
                                           std::to_string(RocksDB.max_total_wal_size * MiB));
       }},
-      {"rocksdb.enable_blob_files", [](Server* srv, const std::string &k, const std::string& v)->Status {
+      {"rocksdb.enable_blob_files", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         std::string enable_blob_files = RocksDB.enable_blob_files ? "true" : "false";
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_files);

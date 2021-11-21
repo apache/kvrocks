@@ -537,12 +537,6 @@ void Server::cron() {
       }
     }
 
-    // check every 30 minutes
-    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
-      Status s = autoResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
-    }
-
     // No replica uses this checkpoint, we can remove it.
     if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();

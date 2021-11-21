@@ -47,6 +47,11 @@ TEST(Config, GetAndSet) {
       {"rocksdb.compaction_readahead_size" , "1024"},
       {"rocksdb.level0_slowdown_writes_trigger" , "50"},
       {"rocksdb.level0_stop_writes_trigger", "100"},
+      {"rocksdb.enable_blob_files", "no"},
+      {"rocksdb.min_blob_size", "4096"},
+      {"rocksdb.blob_file_size", "128"},
+      {"rocksdb.enable_blob_garbage_collection", "yes"},
+      {"rocksdb.blob_garbage_collection_age_cutoff", "25"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

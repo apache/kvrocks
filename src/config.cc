@@ -18,6 +18,9 @@
 #include "log_collector.h"
 
 const char *kDefaultNamespace = "__namespace";
+
+const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
+
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
@@ -128,6 +131,12 @@ Config::Config() {
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
       {"rocksdb.level0_stop_writes_trigger",
        false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
+      {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
+      {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
+      {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
+      {"rocksdb.blob_garbage_collection_age_cutoff",
+       false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 128, 0, 100)}
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -221,6 +230,7 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
   };
+
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
@@ -317,6 +327,53 @@ void Config::initFieldCallback() {
         if (!srv) return Status::OK();
         return srv->storage_->SetDBOption(trimRocksDBPrefix(k),
                                           std::to_string(RocksDB.max_total_wal_size * MiB));
+      }},
+      {"rocksdb.enable_blob_files", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string enable_blob_files = RocksDB.enable_blob_files ? "true" : "false";
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_files);
+      }},
+      {"rocksdb.min_blob_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+      }},
+      {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+      }},
+      {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+      }},
+      {"rocksdb.blob_garbage_collection_age_cutoff", [this](Server* srv, const std::string &k,
+                                                            const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        int val;
+        try {
+          val = std::stoi(v);
+        } catch (std::exception &e) {
+          return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
+        }
+        if (val < 0 || val > 100) {
+          return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
+        }
+
+        double cutoff = val / 100;
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

@@ -118,6 +118,11 @@ struct Config{
     int level0_stop_writes_trigger;
     int compression;
     bool disable_auto_compactions;
+    bool enable_blob_files;
+    int min_blob_size;
+    int blob_file_size;
+    bool enable_blob_garbage_collection;
+    int blob_garbage_collection_age_cutoff;
   } RocksDB;
 
  public:

@@ -601,20 +601,20 @@ void Server::GetRocksDBInfo(std::string *info) {
     db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
     string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
-    string_stream << "index_and_filter_cache_usage:[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
+    string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
-    string_stream << "level0_file_limit_slowdown:[" << cf_handle->GetName() << "]:"
+    string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
-    string_stream << "level0_file_limit_stop:[" << cf_handle->GetName() << "]:"
+    string_stream << "level0_file_limit_stop[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
-    string_stream << "pending_compaction_bytes_slowdown:[" << cf_handle->GetName() << "]:"
+    string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
-    string_stream << "pending_compaction_bytes_stop:[" << cf_handle->GetName() << "]:"
+    string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
-    string_stream << "memtable_count_limit_slowdown:[" << cf_handle->GetName() << "]:"
+    string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
-    string_stream << "memtable_count_limit_stop:[" << cf_handle->GetName() << "]:"
+    string_stream << "memtable_count_limit_stop[" << cf_handle->GetName() << "]:"
                   << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";

@@ -129,10 +129,10 @@ OK
 
 For more informations, can see: [Kvrocks Wiki](https://github.com/KvrocksLabs/kvrocks/wiki)
 
-## Migration Tools
-
-* migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by vipshop
-* migrate from kvrocks to redis. use `kvrocks2redis` in build dir
+## Tools
+* Export the Kvrocks monitor metrics, please use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
+* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by vipshop
+* Migrate from kvrocks to redis. use `kvrocks2redis` in build dir
 
 ## Performance
 

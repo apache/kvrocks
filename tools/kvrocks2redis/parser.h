@@ -31,7 +31,7 @@ class Parser {
   explicit Parser(Engine::Storage *storage, Writer *writer)
       : storage_(storage), writer_(writer) {
     lastest_snapshot_ = new LatestSnapShot(storage->GetDB());
-    cluster_enabled_ = storage_->IsClusterEnabled();
+    cluster_enabled_ = storage_->IsSlotIdEncoded();
   }
   ~Parser() {
     delete lastest_snapshot_;

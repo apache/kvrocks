@@ -9,8 +9,8 @@
 #include <string>
 #include <fstream>
 
-#include "redis_reply.h"
-#include "src/util.h"
+#include "../../src/redis_reply.h"
+#include "../../src/util.h"
 
 #include "util.h"
 

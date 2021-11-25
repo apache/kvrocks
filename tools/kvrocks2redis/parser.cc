@@ -5,8 +5,8 @@
 #include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 
-#include "redis_bitmap.h"
-#include "redis_slot.h"
+#include "../../src/redis_bitmap.h"
+#include "parser.h"
 #include "util.h"
 
 Status Parser::ParseFullDB() {

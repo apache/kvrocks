@@ -8,6 +8,7 @@
 #include "../../src/status.h"
 #include "../../src/storage.h"
 #include "../../src/redis_metadata.h"
+#include "../../src/redis_slot.h"
 
 #include "config.h"
 #include "writer.h"

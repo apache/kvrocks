@@ -4,10 +4,10 @@
 #include <map>
 #include <vector>
 
-#include "redis_db.h"
-#include "redis_metadata.h"
-#include "status.h"
-#include "storage.h"
+#include "../../src/redis_db.h"
+#include "../../src/status.h"
+#include "../../src/storage.h"
+#include "../../src/redis_metadata.h"
 
 #include "config.h"
 #include "writer.h"

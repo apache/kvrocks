@@ -5,8 +5,8 @@
 #include <fcntl.h>
 #include <csignal>
 
-#include "src/config.h"
-#include "storage.h"
+#include "../../src/config.h"
+#include "../../src/storage.h"
 
 #include "sync.h"
 #include "redis_writer.h"

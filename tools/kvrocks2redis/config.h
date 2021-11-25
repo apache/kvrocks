@@ -4,7 +4,7 @@
 #include <map>
 #include <vector>
 
-#include "status.h"
+#include "../../src/status.h"
 
 namespace Kvrocks2redis {
 

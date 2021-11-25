@@ -10,9 +10,9 @@
 #include <sstream>
 #include <vector>
 
-#include "src/util.h"
-#include "src/config.h"
-#include "status.h"
+#include "../../src/util.h"
+#include "../../src/status.h"
+#include "../../src/config.h"
 
 namespace Kvrocks2redis {
 

@@ -5,8 +5,8 @@
 #include <assert.h>
 #include <system_error>
 
-#include "redis_reply.h"
-#include "src/util.h"
+#include "../../src/util.h"
+#include "../../src/redis_reply.h"
 
 #include "util.h"
 

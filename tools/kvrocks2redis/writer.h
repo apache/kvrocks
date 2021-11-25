@@ -5,7 +5,7 @@
 #include <fstream>
 #include <vector>
 
-#include "status.h"
+#include "../../src/status.h"
 
 #include "config.h"
 

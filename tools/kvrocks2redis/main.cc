@@ -5,8 +5,8 @@
 #include <fcntl.h>
 #include <csignal>
 
-#include "../../src/config.h"
-#include "../../src/storage.h"
+#include "src/config.h"
+#include "storage.h"
 
 #include "sync.h"
 #include "redis_writer.h"
@@ -14,7 +14,7 @@
 #include "config.h"
 #include "version.h"
 
-const char *kDefaultConfPath = "../kvrocks2redis.conf";
+const char *kDefaultConfPath = "./kvrocks2redis.conf";
 
 std::function<void()> hup_handler;
 
@@ -27,10 +27,6 @@ extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
 }
 
-Server *GetServer() {
-    return nullptr;
-}
-
 static void usage(const char *program) {
   std::cout << program << " sync kvrocks to redis\n"
             << "\t-c config file, default is " << kDefaultConfPath << "\n"
@@ -41,13 +37,16 @@ static void usage(const char *program) {
 static Options parseCommandLineOptions(int argc, char **argv) {
   int ch;
   Options opts;
-  while ((ch = ::getopt(argc, argv, "c:p:hv")) != -1) {
+  while ((ch = ::getopt(argc, argv, "c:h")) != -1) {
     switch (ch) {
-      case 'c': opts.conf_file = optarg;
+      case 'c': {
+        opts.conf_file = optarg;
         break;
-      case 'h': opts.show_usage = true;
+      }
+      case 'h': {
+        opts.show_usage = true;
         break;
-      case 'v': exit(0);
+      }
       default: usage(argv[0]);
     }
   }
@@ -58,7 +57,7 @@ static void initGoogleLog(const Kvrocks2redis::Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->dir;
+  FLAGS_log_dir = config->output_dir;
 }
 
 static Status createPidFile(const std::string &path) {
@@ -126,6 +125,7 @@ int main(int argc, char *argv[]) {
 
   Config kvrocks_config;
   kvrocks_config.db_dir = config.db_dir;
+  kvrocks_config.cluster_enabled = config.cluster_enable;
 
   Engine::Storage storage(&kvrocks_config);
   s = storage.OpenForReadOnly();

@@ -1,6 +1,6 @@
 #include "util.h"
 
-#include "../../src/redis_reply.h"
+#include "redis_reply.h"
 
 std::string Rocksdb2Redis::Command2RESP(const std::vector<std::string> &cmd_args) {
   std::string output;

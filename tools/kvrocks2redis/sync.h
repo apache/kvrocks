@@ -4,10 +4,10 @@
 #include <unistd.h>
 #include <fstream>
 
-#include "../../src/status.h"
-#include "../../src/storage.h"
-#include "../../src/replication.h"
-#include "../../src/server.h"
+#include "replication.h"
+#include "status.h"
+#include "storage.h"
+#include "server.h"
 
 #include "config.h"
 #include "writer.h"

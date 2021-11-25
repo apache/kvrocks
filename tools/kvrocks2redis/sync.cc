@@ -9,8 +9,8 @@
 #include <string>
 #include <fstream>
 
-#include "../../src/redis_reply.h"
-#include "../../src/util.h"
+#include "redis_reply.h"
+#include "src/util.h"
 
 #include "util.h"
 
@@ -27,6 +27,7 @@ Sync::Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2red
 }
 
 Sync::~Sync() {
+  if (sock_fd_) close (sock_fd_);
   if (next_seq_fd_) close(next_seq_fd_);
   writer_->Stop();
 }
@@ -65,6 +66,7 @@ void Sync::Start() {
         LOG(ERROR) << s.Msg();
         break;
       }
+      LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
       s = incrementBatchLoop();
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
@@ -120,22 +122,24 @@ Status Sync::tryPSync() {
       // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
       // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
       auto error_msg =
-          "[kvrocks2redis] CRITICAL - Failed to psync , administrator confirm needed : " + std::string(line);
+          "[kvrocks2redis] CRITICAL - Failed to psync , please remove"
+          " last_next_seq config file, and restart kvrocks2redis, redis reply: "
+           + std::string(line);
       stop_flag_ = true;
       return Status(Status::NotOK, error_msg);
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
+    LOG(INFO) << "[kvrocks2redis] Failed to psync, redis reply: " << std::string(line);
     parseKVFromLocalStorage();
-    LOG(INFO) << "[kvrocks2redis] Failed to psync, switch to parseAllLocalStorage : " << std::string(line);
     // Restart tryPSync
     return tryPSync();
   }
-  LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
   return Status::OK();
 }
 
 Status Sync::incrementBatchLoop() {
+  std::cout << "Start parse increment batch ..." << std::endl;
   char *line = nullptr;
   size_t line_len = 0;
   char *bulk_data = nullptr;
@@ -144,39 +148,41 @@ Status Sync::incrementBatchLoop() {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
       return Status(Status::NotOK,
-                    std::string("[kvrocks2redis] read psync response err: ") + strerror(errno));
+                    std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
     }
-    switch (incr_state_) {
-      case Incr_batch_size:
-        // Read bulk length
-        line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) {
-          usleep(10000);
-          continue;
-        }
-        incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-        free(line);
-        if (incr_bulk_len_ == 0) {
-          return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
-        }
-        incr_state_ = Incr_batch_data;
-      case Incr_batch_data:
-        // Read bulk data (batch data)
-        if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
-          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, incr_bulk_len_ + 2));
-          auto bat = rocksdb::WriteBatch(std::string(bulk_data, incr_bulk_len_));
+    if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
+      // Read bulk length
+      line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      if (!line) {
+        usleep(10000);
+        continue;
+      }
+      incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
+      free(line);
+      if (incr_bulk_len_ == 0) {
+        return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
+      }
+      incr_state_ = Incr_batch_data;
+    }
+
+    if (incr_state_ == IncrementBatchLoopState::Incr_batch_data) {
+      // Read bulk data (batch data)
+      if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
+        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, incr_bulk_len_ + 2));
+        std::string bulk_data_str = std::string(bulk_data, incr_bulk_len_);
+        // Skip the ping packet
+        if (bulk_data_str != "ping") {
+          auto bat = rocksdb::WriteBatch(bulk_data_str);
           int count = bat.Count();
-
-          parser_->ParseWriteBatch(std::string(bulk_data, incr_bulk_len_));
-
+          parser_->ParseWriteBatch(bulk_data_str);
           updateNextSeq(next_seq_ + count);
-
-          evbuffer_drain(evbuf, incr_bulk_len_ + 2);
-          incr_state_ = Incr_batch_size;
-        } else {
-          usleep(10000);
-          continue;
         }
+        evbuffer_drain(evbuf, incr_bulk_len_ + 2);
+        incr_state_ = Incr_batch_size;
+      } else {
+        usleep(10000);
+        continue;
+      }
     }
   }
   return Status::OK();

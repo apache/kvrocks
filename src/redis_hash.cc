@@ -520,6 +520,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
        iter->Next()) {
     FieldValue fv;
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    fv.expire = 0;
     fv.field = ikey.GetSubKey().ToString();
     if (support_field_expire_) {
       ExtractFieldRawValue(iter->value().ToString(), &fv.value, &fv.expire);

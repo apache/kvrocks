@@ -31,6 +31,7 @@ Kvrocks has the following key features:
 </tr>
 <tr>
  <td height = "128" width = "164"><img src="docs/images/xueqiu_logo.png" alt="Xueqiu"></td>
+  <td height = "128" width = "164"><img src="docs/images/U-NEXT_logo.png" alt="U-NEXT"></td>
 </tr>
 </table>
 

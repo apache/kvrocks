@@ -95,6 +95,10 @@ static void daemonize() {
   close(STDERR_FILENO);
 }
 
+Server *GetServer() {
+  return nullptr;
+}
+
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging("kvrocks2redis");
   evthread_use_pthreads();

@@ -79,6 +79,21 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       || ikey.GetVersion() != metadata.version) {
     return true;
   }
+
+  // field expired
+  if (metadata.Type() == kRedisExHash) {
+    Slice input(value);
+    uint32_t field_expire = 0;
+    GetFixed32(&input, &field_expire);
+    int64_t now;
+    rocksdb::Env::Default()->GetCurrentTime(&now);
+    if (field_expire > 0 && field_expire < now) {
+      // Note: We do not update the size in metadata because this accesses the storage and
+      // causes data race, which affects performance.
+      return true;
+    }
+  }
+
   return metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value);
 }
 

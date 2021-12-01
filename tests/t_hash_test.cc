@@ -42,7 +42,7 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   int ret;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
-    fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
+    fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString(), 0});
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);

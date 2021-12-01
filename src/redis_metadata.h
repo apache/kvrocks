@@ -17,6 +17,7 @@ enum RedisType {
   kRedisZSet,
   kRedisBitmap,
   kRedisSortedint,
+  kRedisExHash,  // Extended hash, support field expired
 };
 
 enum RedisCommand {
@@ -38,6 +39,7 @@ const std::vector<std::string> RedisTypeNames = {
 
 const char kErrMsgWrongType[] = "WRONGTYPE Operation against a key holding the wrong kind of value";
 const char kErrMsgKeyExpired[] = "the key was expired";
+const char kErrMsgFieldExpired[] = "the field was expired";
 
 using rocksdb::Slice;
 
@@ -101,6 +103,11 @@ class Metadata {
 class HashMetadata : public Metadata {
  public:
   explicit HashMetadata(bool generate_version = true) : Metadata(kRedisHash, generate_version){}
+};
+
+class ExHashMetadata : public Metadata {
+ public:
+  explicit ExHashMetadata(bool generate_version = true) : Metadata(kRedisExHash, generate_version){}
 };
 
 class SetMetadata : public Metadata {

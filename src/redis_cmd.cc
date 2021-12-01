@@ -1176,7 +1176,7 @@ class CommandHMSet : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     for (unsigned int i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(FieldValue{args_[i], args_[i + 1]});
+      field_values.emplace_back(FieldValue{args_[i], args_[i + 1], 0});
     }
     rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
     if (!s.ok()) {
@@ -1196,7 +1196,7 @@ class CommandHKeys : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1214,7 +1214,7 @@ class CommandHVals : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1242,6 +1242,429 @@ class CommandHGetAll : public Commander {
     }
     return Status::OK();
   }
+};
+
+class CommandExHSetEX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      ttl_ = std::stoi(args[4]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    rocksdb::Status s = hash_db.Set(args_[1], args_[2], args_[3], ttl_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  int ttl_ = 0;
+};
+
+class CommandExHExpire : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      ttl_ = std::stoi(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    int32_t ttl;
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value, &ttl);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
+    if (s.ok()) {
+      s = hash_db.Set(args_[1], args_[2], value, ttl_, &ret);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      *output = Redis::Integer(1);
+    } else {
+      *output = Redis::Integer(0);
+    }
+    return Status::OK();
+  }
+
+ private:
+  int ttl_ = 0;
+};
+
+class CommandExHExpireAt : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      expire_ = std::stoul(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errInvalidExpireTime);
+    }
+    rocksdb::Env::Default()->GetCurrentTime(&now_);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    int32_t ttl;
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value, &ttl);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
+    if (s.ok()) {
+      s = hash_db.Set(args_[1], args_[2], value, expire_-now_, &ret);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      *output = Redis::Integer(1);
+    } else {
+      *output = Redis::Integer(0);
+    }
+    return Status::OK();
+  }
+
+ private:
+  int expire_ = 0;
+  int64_t now_;
+};
+
+class CommandExHTTL : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    int32_t ttl;
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value, &ttl);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ttl);
+    return Status::OK();
+  }
+};
+
+class CommandExHPersist : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    int32_t ttl;
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value, &ttl);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+
+    if (ttl < 0) {
+       *output = Redis::Integer(0);
+    } else {
+      s = hash_db.Set(args_[1], args_[2], value, 0, &ret);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      *output = Redis::Integer(1);
+    }
+
+    return Status::OK();
+  }
+};
+
+class CommandExHSet : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 0) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<FieldValue> field_values;
+    for (unsigned int i = 2; i < args_.size(); i += 2) {
+      field_values.push_back(FieldValue{args_[i], args_[i + 1], 0});
+    }
+    rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandExHGet : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
+    return Status::OK();
+  }
+};
+
+class CommandExHMGet : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<Slice> fields;
+    for (unsigned int i = 2; i < args_.size(); i++) {
+      fields.emplace_back(Slice(args_[i]));
+    }
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    rocksdb::Status s = hash_db.MGet(args_[1], fields, &values, &statuses);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      values.resize(fields.size(), "");
+      *output = Redis::MultiBulkString(values);
+    } else {
+      *output = Redis::MultiBulkString(values, statuses);
+    }
+    return Status::OK();
+  }
+};
+
+class CommandExHSetNX : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandExHDel : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<Slice> fields;
+    for (unsigned int i = 2; i < args_.size(); i++) {
+      fields.emplace_back(Slice(args_[i]));
+    }
+    rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
+class CommandExHExists : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(1);
+    return Status::OK();
+  }
+};
+
+class CommandExHKeys : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<FieldValue> field_values;
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    std::vector<std::string> keys;
+    for (const auto &fv : field_values) {
+      keys.emplace_back(fv.field);
+    }
+    *output = Redis::MultiBulkString(keys);
+    return Status::OK();
+  }
+};
+
+class CommandExHVals : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<FieldValue> field_values;
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = "*" + std::to_string(field_values.size()) + CRLF;
+    for (const auto &fv : field_values) {
+      *output += Redis::BulkString(fv.value);
+    }
+    return Status::OK();
+  }
+};
+
+class CommandExHLen : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // if set exact flag, it will check all fields, which is a time-consuming operation
+    if (args.size() == 3) {
+      if (strcasecmp(args[2].data(), "exact") == 0) {
+        exact_ = true;
+      } else {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    uint32_t count;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    rocksdb::Status s = hash_db.Size(args_[1], &count, exact_);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(count);
+    return Status::OK();
+  }
+
+ private:
+  bool exact_;
+};
+
+class CommandExHStrlen : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::string value;
+    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(static_cast<int>(value.size()));
+    return Status::OK();
+  }
+};
+
+class CommandExHGetAll : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 3) {
+      if (strcasecmp(args[2].data(), "withttl") == 0) {
+        with_ttl_ = true;
+      } else {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<FieldValue> field_values;
+    int64_t now;
+    if (with_ttl_) {
+      rocksdb::Env::Default()->GetCurrentTime(&now);
+    }
+    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    size_t output_size = with_ttl_ ? field_values.size()*3 : field_values.size()*2;
+    *output = "*" + std::to_string(output_size) + CRLF;
+    for (const auto &fv : field_values) {
+      *output += Redis::BulkString(fv.field);
+      *output += Redis::BulkString(fv.value);
+      if (with_ttl_) {
+        int ttl = fv.expire ==  0 ? -1 : fv.expire-now;
+        *output += Redis::BulkString(std::to_string(ttl));
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  bool with_ttl_;
+};
+
+class CommandExHIncrBy : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stoll(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int64_t ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    rocksdb::Status s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int64_t increment_ = 0;
+};
+
+class CommandExHIncrByFloat : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    try {
+      increment_ = std::stod(args[3]);
+    } catch (std::exception &e) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    double ret;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::BulkString(Util::Float2String(ret));
+    return Status::OK();
+  }
+
+ private:
+  double increment_ = 0;
 };
 
 class CommandPush : public Commander {
@@ -3936,6 +4359,23 @@ class CommandHScan : public CommandSubkeyScanBase {
   }
 };
 
+class CommandExHScan : public CommandSubkeyScanBase {
+ public:
+  CommandExHScan() : CommandSubkeyScanBase() {}
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace(), true);
+    std::vector<std::string> fields;
+    std::vector<std::string> values;
+    auto s = hash_db.Scan(key, cursor, limit, prefix, &fields, &values);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = GenerateOutput(fields, values);
+    return Status::OK();
+  }
+};
+
 class CommandSScan : public CommandSubkeyScanBase {
  public:
   CommandSScan() : CommandSubkeyScanBase() {}
@@ -4445,6 +4885,28 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
     ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
     ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
+
+    // Extended Hash
+    ADD_CMD("exhsetex", 5, "write", 0, 0, 0, CommandExHSetEX),
+    ADD_CMD("exhexpire", 4, "write", 0, 0, 0, CommandExHExpire),
+    ADD_CMD("exhexpireat", 4, "write", 0, 0, 0, CommandExHExpireAt),
+    ADD_CMD("exhttl", 3, "read-only", 0, 0, 0, CommandExHTTL),
+    ADD_CMD("exhpersist", 3, "write", 0, 0, 0, CommandExHPersist),
+
+    ADD_CMD("exhset", -4, "write", 1, 1, 1, CommandExHSet),
+    ADD_CMD("exhget", 3, "read-only", 1, 1, 1, CommandExHGet),
+    ADD_CMD("exhmget", -3, "read-only", 1, 1, 1, CommandExHMGet),
+    ADD_CMD("exhsetnx", 4, "write", 1, 1, 1, CommandExHSetNX),
+    ADD_CMD("exhdel", -3, "write", 1, 1, 1, CommandExHDel),
+    ADD_CMD("exhexists", 3, "read-only", 1, 1, 1, CommandExHExists),
+    ADD_CMD("exhscan", -3, "read-only", 1, 1, 1, CommandExHScan),
+    ADD_CMD("exhkeys", 2, "read-only", 1, 1, 1, CommandExHKeys),
+    ADD_CMD("exhvals", 2, "read-only", 1, 1, 1, CommandExHVals),
+    ADD_CMD("exhlen", -2, "read-only", 1, 1, 1, CommandExHLen),
+    ADD_CMD("exhstrlen", 3, "read-only", 1, 1, 1, CommandExHStrlen),
+    ADD_CMD("exhgetall", -2, "read-only", 1, 1, 1, CommandExHGetAll),
+    ADD_CMD("exhincrby", 4, "write", 1, 1, 1, CommandExHIncrBy),
+    ADD_CMD("exhincrbyfloat", 4, "write", 1, 1, 1, CommandExHIncrByFloat),
 
     ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),

@@ -30,5 +30,6 @@ protected:
   std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
+  std::vector<int32_t> ttls_;
 };
 #endif //KVROCKS_TEST_BASE_H

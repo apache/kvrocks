@@ -640,6 +640,68 @@ class CommandDecrBy : public Commander {
   int64_t increment_ = 0;
 };
 
+class CommandCAS : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    bool last_arg;
+    for (size_t i = 4; i < args.size(); i++) {
+      last_arg = (i == args.size()-1);
+      std::string opt = Util::ToLower(args[i]);
+      if (opt == "ex") {
+        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
+        ttl_ = atoi(args_[++i].c_str());
+        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      } else if (opt == "px") {
+        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
+        auto ttl_ms = atol(args[++i].c_str());
+        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+        if (ttl_ms > 0 && ttl_ms < 1000) {
+          // round up the pttl to second
+          ttl_ = 1;
+        } else {
+          ttl_ = static_cast<int>(ttl_ms/1000);
+        }
+      } else {
+        return Status(Status::NotOK, errInvalidSyntax);
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s;
+    int ret = 0;
+    s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int ttl_ = 0;
+};
+
+class CommandCAD : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s;
+    int ret = 0;
+    s = string_db.CAD(args_[1], args_[2], &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  int ttl_ = 0;
+};
+
 class CommandDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4424,6 +4486,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("incr", 2, "write", 1, 1, 1, CommandIncr),
     ADD_CMD("decrby", 3, "write", 1, 1, 1, CommandDecrBy),
     ADD_CMD("decr", 2, "write", 1, 1, 1, CommandDecr),
+    ADD_CMD("cas", -4, "write", 1, 1, 1, CommandCAS),
+    ADD_CMD("cad", 3, "write", 1, 1, 1, CommandCAD),
 
     ADD_CMD("getbit", 3, "read-only", 1, 1, 1, CommandGetBit),
     ADD_CMD("setbit", 4, "write", 1, 1, 1, CommandSetBit),

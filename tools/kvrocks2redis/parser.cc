@@ -1,5 +1,8 @@
-#include <glog/logging.h>
+#include "parser.h"
 
+#include <memory>
+
+#include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 
 #include "../../src/redis_bitmap.h"
@@ -14,14 +17,15 @@ Status Parser::ParseFullDB() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = lastest_snapshot_->GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  std::unique_ptr<rocksdb::Iterator> iter(db_->NewIterator(read_options, metadata_cf_handle_));
+  Status s;
+
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Metadata metadata(kRedisNone);
     metadata.Decode(iter->value().ToString());
     if (metadata.Expired()) {  // ignore the expired key
       continue;
     }
-    Status s;
     if (metadata.Type() == kRedisString) {
       s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
     } else {
@@ -29,16 +33,12 @@ Status Parser::ParseFullDB() {
     }
     if (!s.IsOK()) return s;
   }
-  delete iter;
-  delete lastest_snapshot_;
-  lastest_snapshot_ = nullptr;
-
   return Status::OK();
 }
 
 Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire) {
   std::string op, ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, storage_->IsSlotIdEncoded());
+  ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
   std::string output;
   output = Rocksdb2Redis::Command2RESP(
       {"SET", user_key, value.ToString().substr(5, value.size() - 5)});
@@ -59,8 +59,8 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   std::string ns, prefix_key, user_key, sub_key, value, output;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, storage_->IsSlotIdEncoded());
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
+  InternalKey(ns_key, "", metadata.version, cluster_enabled_).Encode(&prefix_key);
 
   rocksdb::DB *db_ = storage_->GetDB();
   rocksdb::ReadOptions read_options;
@@ -72,15 +72,18 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       break;
     }
     Status s;
-    InternalKey ikey(iter->key(),storage_->IsSlotIdEncoded());
+    InternalKey ikey(iter->key(), cluster_enabled_);
     sub_key = ikey.GetSubKey().ToString();
     value = iter->value().ToString();
     switch (type) {
-      case kRedisHash:output = Rocksdb2Redis::Command2RESP({"HSET", user_key, sub_key, value});
+      case kRedisHash:
+        output = Rocksdb2Redis::Command2RESP({"HSET", user_key, sub_key, value});
         break;
-      case kRedisSet:output = Rocksdb2Redis::Command2RESP({"SADD", user_key, sub_key});
+      case kRedisSet:
+        output = Rocksdb2Redis::Command2RESP({"SADD", user_key, sub_key});
         break;
-      case kRedisList:output = Rocksdb2Redis::Command2RESP({"RPUSH", user_key, value});
+      case kRedisList:
+        output = Rocksdb2Redis::Command2RESP({"RPUSH", user_key, value});
         break;
       case kRedisZSet: {
         double score = DecodeDouble(value.data());
@@ -127,7 +130,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
 
 rocksdb::Status Parser::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
-  WriteBatchExtractor write_batch_extractor(storage_->IsSlotIdEncoded());
+  WriteBatchExtractor write_batch_extractor(cluster_enabled_);
   rocksdb::Status status;
 
   status = write_batch.Iterate(&write_batch_extractor);
@@ -155,7 +158,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   std::string ns, user_key, sub_key;
   std::vector<std::string> command_args;
   if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key, is_slotid_encoded_);
+    ExtractNamespaceKey(key, &ns, &user_key, cluster_enabled_);
+    if (slot_ >= 0) {
+      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    }
     Metadata metadata(kRedisNone);
     metadata.Decode(value.ToString());
     if (metadata.Type() == kRedisString) {
@@ -180,8 +186,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   }
 
   if (column_family_id == kColumnFamilyIDDefault) {
-    InternalKey ikey(key, is_slotid_encoded_);
+    InternalKey ikey(key, cluster_enabled_);
     user_key = ikey.GetKey().ToString();
+    if (slot_ >= 0) {
+      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    }
     sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
     switch (log_data_.GetRedisType()) {
@@ -237,6 +246,12 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         command_args = {"SETBIT", user_key, (*args)[0], bit_value ? "1" : "0"};
         break;
       }
+      case kRedisSortedint: {
+        if (!to_redis_) {
+          command_args = {"SIADD", user_key, std::to_string(DecodeFixed64(sub_key.data()))};
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -255,11 +270,17 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   std::string ns, user_key, sub_key;
   std::vector<std::string> command_args;
   if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key, is_slotid_encoded_);
+    ExtractNamespaceKey(key, &ns, &user_key, cluster_enabled_);
+    if (slot_ >= 0) {
+      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    }
     command_args = {"DEL", user_key};
   } else if (column_family_id == kColumnFamilyIDDefault) {
-    InternalKey ikey(key, is_slotid_encoded_);
+    InternalKey ikey(key, cluster_enabled_);
     user_key = ikey.GetKey().ToString();
+    if (slot_ >= 0) {
+      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    }
     sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
     switch (log_data_.GetRedisType()) {
@@ -301,12 +322,32 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         }
         break;
       }
+      case kRedisSortedint: {
+        if (!to_redis_) {
+          command_args = {"SIREM", user_key, std::to_string(DecodeFixed64(sub_key.data()))};
+        }
+        break;
+      }
       default: break;
     }
   }
 
   if (!command_args.empty()) {
     aof_strings_[ns].emplace_back(Rocksdb2Redis::Command2RESP(command_args));
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id,
+                                                   const Slice& begin_key, const Slice& end_key) {
+  if (slot_ >= 0) return rocksdb::Status::OK();
+  std::string beginns, endns, begin_userkey, end_userkey;
+  ExtractNamespaceKey(begin_key, &beginns, &begin_userkey, cluster_enabled_);
+  ExtractNamespaceKey(end_key, &endns, &end_userkey, cluster_enabled_);
+  if (beginns == endns) {
+    aof_strings_[beginns].emplace_back(Rocksdb2Redis::Command2RESP({"FLUSHDB"}));
+  } else {
+    aof_strings_["flushall"].emplace_back(Rocksdb2Redis::Command2RESP({"FLUSHALL"}));
   }
   return rocksdb::Status::OK();
 }

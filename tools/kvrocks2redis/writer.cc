@@ -58,6 +58,5 @@ Status Writer::OpenAofFile(const std::string &ns, bool truncate) {
 }
 
 std::string Writer::GetAofFilePath(const std::string &ns) {
-  return config_->dir + "/" + ns + "_" + config_->aof_file_name;
+  return config_->output_dir + ns + "_" + config_->aof_file_name;
 }
-

@@ -575,4 +575,84 @@ start_server {tags {"string"}} {
     # test {LCS indexes with match len and minimum match len} {
     #     dict get [r STRALGO LCS IDX KEYS virus1 virus2 WITHMATCHLEN MINMATCHLEN 5] matches
     # } {{{1 222} {13 234} 222}}
+
+    # CAS/CAD
+    test {CAS normal case} {
+        r del cas_key
+
+        set res [r cas cas_key old_value new_value]
+        assert_equal $res -1
+
+        set res [r exists cas_key]
+        assert_equal $res 0
+
+        set res [r set cas_key old_value]
+        assert_equal $res "OK"
+
+        set res [r cas cas_key old_val new_value]
+        assert_equal $res 0
+
+        set res [r cas cas_key old_value new_value]
+        assert_equal $res 1
+    }
+
+    test {CAS wrong key type} {
+        r del a_list_key
+        r lpush a_list_key 123
+
+        catch {r cas a_list_key 123 234} err
+        assert_match {*WRONGTYPE*} $err
+    }
+
+    test {CAS invalid param num} {
+        r del cas_key
+        r set cas_key 123
+
+        catch {r cas cas_key 123} err
+        assert_match {*ERR*wrong*number*of*arguments*} $err
+
+        catch {r cas cas_key 123 234 ex} err
+        assert_match {*ERR*wrong*number*of*arguments*} $err
+    }
+
+    test {CAS expire} {
+        r del cas_key
+        r set cas_key 123
+
+        set res [r cas cas_key 123 234 ex 1]
+        assert_equal $res 1
+
+        set res [r get cas_key]
+        assert_equal $res "234"
+
+        after 2000
+
+        set res [r get cas_key]
+        assert_equal $res ""
+    }
+
+    test {CAD normal case} {
+        set res [r cad cad_key 123]
+        assert_equal $res -1
+
+        r set cad_key 123
+
+        set res [r cad cad_key 234]
+        assert_equal $res 0
+
+        set res [r cad cad_key 123]
+        assert_equal $res 1
+
+        set res [r get cad_key]
+        assert_equal $res ""
+    }
+
+    test {CAD invalid param num} {
+        r set cad_key 123
+        catch {r cad cad_key} err
+        assert_match {*ERR*wrong*number*of*arguments*} $err
+
+        catch {r cad cad_key 123 234} err
+        assert_match {*ERR*wrong*number*of*arguments*} $err
+    }
 }

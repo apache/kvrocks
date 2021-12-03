@@ -372,4 +372,84 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
   *ret = 1;
   return rocksdb::Status::OK();
 }
+
+// Change the value of user_key to a new_value if the current value of the key matches old_value.
+// ret will be:
+//  1 if the operation is successful
+//  -1 if the user_key does not exist
+//  0 if the operation fails
+rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value,
+                            const std::string &new_value, int ttl, int *ret) {
+  *ret = 0;
+
+  std::string ns_key, current_value;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = getValue(ns_key, &current_value);
+
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound()) {
+    *ret = -1;
+    return rocksdb::Status::OK();
+  }
+
+  if (old_value == current_value) {
+    std::string raw_value;
+    uint32_t expire = 0;
+    Metadata metadata(kRedisString, false);
+    if (ttl > 0) {
+      int64_t now;
+      rocksdb::Env::Default()->GetCurrentTime(&now);
+      expire = uint32_t(now) + ttl;
+    }
+    metadata.expire = expire;
+    metadata.Encode(&raw_value);
+    raw_value.append(new_value);
+    auto write_status = updateRawValue(ns_key, raw_value);
+    if (!write_status.ok()) {
+      return s;
+    }
+    *ret = 1;
+  }
+
+  return rocksdb::Status::OK();
+}
+
+// Delete a specified user_key if the current value of the user_key matches a specified value.
+// For ret, same as CAS.
+rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *ret) {
+  *ret = 0;
+
+  std::string ns_key, current_value;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = getValue(ns_key, &current_value);
+
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound()) {
+    *ret = -1;
+    return rocksdb::Status::OK();
+  }
+
+  if (value == current_value) {
+    auto delete_status = storage_->Delete(rocksdb::WriteOptions(),
+                                          storage_->GetCFHandle(Engine::kMetadataColumnFamilyName),
+                                          ns_key);
+    if (!delete_status.ok()) {
+      return s;
+    }
+    *ret = 1;
+  }
+
+  return rocksdb::Status::OK();
+}
+
 }  // namespace Redis

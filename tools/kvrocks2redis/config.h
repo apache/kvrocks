@@ -31,7 +31,7 @@ struct Config {
   std::string kvrocks_host;
   int kvrocks_port = 0;
   std::map<std::string, redis_server> tokens;
-  bool cluster_enable = true;
+  bool cluster_enable = false;
 
  public:
   Status Load(std::string path);

@@ -41,11 +41,25 @@ Status Config::parseConfigFromString(std::string input) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
     daemonize = (i == 1);
-  } else if (size == 2 && args[0] == "dir") {
-    dir = args[1];
-    db_dir = dir + "/db";
-    pidfile = dir + "/kvrocks2redis.pid";
-    next_seq_file_path = dir + "/last_next_seq.txt";
+  } else if (size == 2 && args[0] == "data-dir") {
+    data_dir = args[1];
+    if (data_dir.empty()) {
+      return Status(Status::NotOK, "data_dir is empty");
+    }
+    if (data_dir.back() != '/') {
+      data_dir += "/";
+    }
+    db_dir = data_dir + "db";
+  } else if (size == 2 && args[0] == "output-dir") {
+    output_dir = args[1];
+    if (output_dir.empty()) {
+      return Status(Status::NotOK, "output-dir is empty");
+    }
+    if (output_dir.back() != '/') {
+      output_dir += "/";
+    }
+    pidfile = output_dir + "kvrocks2redis.pid";
+    next_seq_file_path = output_dir + "last_next_seq.txt";
   } else if (size == 2 && args[0] == "loglevel") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (Util::ToLower(args[1]) == kLogLevels[i]) {
@@ -57,14 +71,20 @@ Status Config::parseConfigFromString(std::string input) {
     pidfile = args[1];
   } else if (size >= 3 && args[0] == "kvrocks") {
     kvrocks_host = args[1];
-    // we use port + 1 as repl port, so incr the kvrocks port here
-    kvrocks_port = std::stoi(args[2]) + 1;
+    // In new versions, we don't use extra port to implement replication
+    kvrocks_port = std::stoi(args[2]);
     if (kvrocks_port <= 0 || kvrocks_port >= 65535) {
       return Status(Status::NotOK, "kvrocks port range should be between 0 and 65535");
     }
     if (size == 4) {
       kvrocks_auth = args[3];
     }
+  } else if (size == 2 && args[0] == "cluster-enable") {
+    int i;
+    if ((i = yesnotoi(args[1])) == -1) {
+      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+    }
+    cluster_enable = (i == 1);
   } else if (size >= 3 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size() - 10);
     if (ns.size() > INT8_MAX) {
@@ -102,7 +122,7 @@ Status Config::Load(std::string path) {
     line_num++;
   }
 
-  auto s = rocksdb::Env::Default()->CreateDirIfMissing(dir);
+  auto s = rocksdb::Env::Default()->FileExists(data_dir);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
 
   file.close();
@@ -110,4 +130,3 @@ Status Config::Load(std::string path) {
 }
 
 }  // namespace Kvrocks2redis
-

@@ -15,7 +15,7 @@ class Writer {
   ~Writer();
   virtual Status Write(const std::string &ns, const std::vector<std::string> &aofs);
   virtual Status FlushAll(const std::string &ns);
-  virtual void Stop() {};
+  virtual void Stop() {}
   Status OpenAofFile(const std::string &ns, bool truncate);
   Status GetAofFd(const std::string &ns, bool truncate = false);
   std::string GetAofFilePath(const std::string &ns);

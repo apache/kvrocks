@@ -37,6 +37,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
   lua_ = Lua::CreateState();
@@ -1315,4 +1316,57 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
     return ExecPropagateScriptCommand(tokens);
   }
   return Status::OK();
+}
+
+// AdjustOpenFilesLimit only try best to raise the max open files accordingly to
+// the max clients and rocksdb open file configuration. It also reserves a number
+// of file descriptors(128) for extra operations of persistence, listening sockets,
+// log files and so forth.
+void Server::AdjustOpenFilesLimit() {
+  const int min_reserved_fds = 128;
+  auto rocksdb_max_open_file = static_cast<rlim_t>(config_->RocksDB.max_open_files);
+  auto max_clients = static_cast<rlim_t>(config_->maxclients);
+  auto max_files = max_clients + rocksdb_max_open_file + min_reserved_fds;
+
+  struct rlimit limit;
+  if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
+    return;
+  }
+  rlim_t old_limit = limit.rlim_cur;
+  // Set the max number of files only if the current limit is not enough
+  if (old_limit >= max_files) {
+    return;
+  }
+
+  int setrlimit_error = 0;
+  rlim_t best_limit = max_files;
+  while (best_limit > old_limit) {
+    limit.rlim_cur = best_limit;
+    limit.rlim_max = best_limit;
+    if (setrlimit(RLIMIT_NOFILE, &limit) != -1) break;
+    setrlimit_error = errno;
+
+    rlim_t decr_step = 16;
+    if (best_limit < decr_step) {
+      best_limit = old_limit;
+      break;
+    }
+    best_limit -= decr_step;
+  }
+
+  if (best_limit < old_limit) best_limit = old_limit;
+  if (best_limit < max_files) {
+    if (best_limit <= static_cast<int>(min_reserved_fds)) {
+      LOG(WARNING) << "[server] Your current 'ulimit -n' of " << old_limit << " is not enough for the server to start."
+                   << "Please increase your open file limit to at least " << max_files << ". Exiting.";
+      exit(1);
+    }
+    LOG(WARNING) << "[server] You requested max clients of " << max_clients << " and rocksdb max open files of "
+                 << rocksdb_max_open_file <<" requiring at least " << max_files << " max file descriptors.";
+    LOG(WARNING) << "[server] Server can't set maximum open files to " << max_files
+                 << " because of OS error: " << strerror(setrlimit_error);
+  } else {
+    LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
+                 << " (it's originally set to " << old_limit << ")";
+  }
 }

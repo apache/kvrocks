@@ -1,3 +1,33 @@
+# Version 2.0.5
+
+New features
+  - Implement zrevrangebylex command (#381)
+  - Use some rocksdb new feature (#395)
+    * Support blob db (key-value separation) which requires RocksDB version
+      greater than 6.18
+    * Enable partitioned index/filter for SST and hash index for data block
+    * Enable whole key filter for memtable
+    * Remove dynamic resize block and SST
+    * Only apply compression to SST which level is more than 2
+    Please note that, if your rocksdb version is lower than 6.6.0, it can't
+    reload the data of new version, you should update cautiously.
+  - Implement CAS and CAD commands for string type (#415)
+  - Support to use row cache of RocksDB (#407)
+
+Improvements
+  - Add rocksdb ops statistics into the info command (#387)
+    These statistics can more truly reflect the load of rocksdb.
+  - Add the maxclients to the info command output (#391)
+  - Add write stall/stop stats to info command output (#396)
+  - Make kvrocks2redis work (#404)
+  - Adjust the max open file limit according to the max clients and
+    rocksdb max open files (#418)
+
+Related projects
+  - Kvrocks exporter, a fork of oliver006/redis_exporter to export the kvrocks
+    metrics, https://github.com/KvrocksLabs/kvrocks_exporter
+
+
 # Version 2.0.4
 
 New features

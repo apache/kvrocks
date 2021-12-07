@@ -116,6 +116,9 @@ void Storage::InitOptions(rocksdb::Options *options) {
       options->compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
     }
   }
+  if (config_->RocksDB.row_cache_size) {
+    options->row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
+  }
   options->enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
   options->target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
   options->max_manifest_file_size = 64 * MiB;

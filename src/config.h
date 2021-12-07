@@ -100,6 +100,7 @@ struct Config{
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;
+    int row_cache_size;
     int max_open_files;
     int write_buffer_size;
     int max_write_buffer_number;

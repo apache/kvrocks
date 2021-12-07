@@ -1318,7 +1318,7 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   return Status::OK();
 }
 
-// AdjustOpenFilesLimit only try best to raise the max open files accordingly to
+// AdjustOpenFilesLimit only try best to raise the max open files according to
 // the max clients and rocksdb open file configuration. It also reserves a number
 // of file descriptors(128) for extra operations of persistence, listening sockets,
 // log files and so forth.

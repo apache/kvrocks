@@ -610,7 +610,13 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
       tokens[token] = ns;
-      return Status::OK();
+      auto s = Rewrite();
+      if (!s.IsOK()) {
+        // Need to roll back the old token if fails to rewrite the config
+        tokens.erase(token);
+        tokens[iter.first] = ns;
+      }
+      return s;
     }
   }
   return Status(Status::NotOK, "the namespace was not found");
@@ -631,7 +637,12 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
     }
   }
   tokens[token] = ns;
-  return Status::OK();
+
+  s = Rewrite();
+  if (!s.IsOK()) {
+    tokens.erase(token);
+  }
+  return s;
 }
 
 Status Config::DelNamespace(const std::string &ns) {
@@ -641,7 +652,11 @@ Status Config::DelNamespace(const std::string &ns) {
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
-      return Status::OK();
+      auto s = Rewrite();
+      if (!s.IsOK()) {
+        tokens[iter.first] = ns;
+      }
+      return s;
     }
   }
   return Status(Status::NotOK, "the namespace was not found");

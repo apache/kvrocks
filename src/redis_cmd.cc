@@ -697,9 +697,6 @@ class CommandCAD : public Commander {
     *output = Redis::Integer(ret);
     return Status::OK();
   }
-
- private:
-  int ttl_ = 0;
 };
 
 class CommandDel : public Commander {

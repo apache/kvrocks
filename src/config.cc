@@ -253,7 +253,7 @@ void Config::initFieldCallback() {
         binds = std::move(args);
         return Status::OK();
       }},
-      { "maxclients", [this](Server* srv, const std::string &k, const std::string& v) -> Status {
+      { "maxclients", [](Server* srv, const std::string &k, const std::string& v) -> Status {
         if (!srv) return Status::OK();
         srv->AdjustOpenFilesLimit();
         return Status::OK();

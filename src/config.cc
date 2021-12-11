@@ -538,8 +538,10 @@ Status Config::Rewrite() {
   for (const auto &iter : fields_) {
     new_config[iter.first] = iter.second->ToString();
   }
+
+  std::string namespacePrefix = "namespace.";
   for (const auto &iter : tokens) {
-    new_config["namespace." + iter.second] = iter.first;
+    new_config[namespacePrefix + iter.second] = iter.first;
   }
 
   std::ifstream file(path_);
@@ -556,6 +558,10 @@ Status Config::Rewrite() {
       Util::Split2KV(trim_line, " \t", &kv);
       if (kv.size() != 2) {
         lines.emplace_back(raw_line);
+        continue;
+      }
+      if (Util::HasPrefix(kv[0], namespacePrefix)) {
+        // Ignore namespace fields here since we would always rewrite them
         continue;
       }
       auto iter = new_config.find(Util::ToLower(kv[0]));

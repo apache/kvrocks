@@ -137,7 +137,7 @@ Config::Config() {
       {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
       {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
       {"rocksdb.blob_garbage_collection_age_cutoff",
-       false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 128, 0, 100)}
+       false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100)}
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;

@@ -536,6 +536,11 @@ Status Config::Rewrite() {
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {
+    if (iter.first == "rename-command") {
+      // We should NOT overwrite the rename command since it cannot be rewritten in-flight,
+      // so skip it here to avoid rewriting it as new item.
+      continue;
+    }
     new_config[iter.first] = iter.second->ToString();
   }
 

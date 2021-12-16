@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "status.h"
+#include "chrono"
 
 #if defined(__sun)
 
@@ -65,4 +66,8 @@ void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *t
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);
+uint64_t GetTimeStampMS(void);
+uint64_t GetTimeStampUS(void);
+
+std::string Command2RESP(const std::vector<std::string> &cmd_args);
 }  // namespace Util

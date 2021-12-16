@@ -57,22 +57,22 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 
     test {errors of cluster subcommand} {
         catch {[r cluster no-subcommand]} err
-        assert_match "*CLUSTER*" $err 
- 
+        assert_match "*CLUSTER*" $err
+
         catch {[r clusterx version a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r cluster nodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodeid a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a -1]} err
-        assert_match "*Invalid version*" $err 
+        assert_match "*Invalid version*" $err
     }
 }
 
@@ -161,7 +161,7 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     # Request node3 that doesn't serve slot 0, we will recieve MOVED
                     catch {[$r3 get $slot_0_key]} err
                     assert_match "*MOVED 0*$node1_port*" $err
-                    
+
                     # Request node1 that doesn't serve slot 16383, we will recieve MOVED,
                     # and the MOVED node must be master
                     catch {[$r1 get $slot_16383_key]} err

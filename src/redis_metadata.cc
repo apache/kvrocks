@@ -10,7 +10,6 @@
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
-
 static std::atomic<uint64_t> version_counter_ = {0};
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
@@ -132,6 +131,15 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   }
 
   ns_key->append(key.ToString());
+}
+
+void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
+  output->clear();
+
+  PutFixed8(output, static_cast<uint8_t>(ns.size()));
+  output->append(ns.ToString());
+
+  PutFixed16(output, static_cast<uint16_t>(slotid));
 }
 
 Metadata::Metadata(RedisType type, bool generate_version) {

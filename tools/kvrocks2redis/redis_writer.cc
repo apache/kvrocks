@@ -6,8 +6,7 @@
 
 #include "../../src/util.h"
 #include "../../src/redis_reply.h"
-
-#include "util.h"
+#include "../../src/util.h"
 
 RedisWriter::RedisWriter(Kvrocks2redis::Config *config) : Writer(config) {
   try {
@@ -50,7 +49,7 @@ Status RedisWriter::FlushAll(const std::string &ns) {
   updateNextOffset(ns, 0);
 
   //Warning: this will flush all redis data
-  s = Write(ns, {Rocksdb2Redis::Command2RESP({"FLUSHALL"})});
+  s = Write(ns, {Util::Command2RESP({"FLUSHALL"})});
   if (!s.IsOK()) return s;
 
   return Status::OK();

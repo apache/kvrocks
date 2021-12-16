@@ -35,12 +35,14 @@ FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include \
 				  -I.
 FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(JEMALLOC) $(ROCKSDB) $(LUA)
 
+K2RDIR= ../tools/kvrocks2redis
 SHARED_OBJS= cluster.o compact_filter.o config.o cron.o encoding.o event_listener.o lock_manager.o \
 			   log_collector.o redis_bitmap.o redis_bitmap_string.o redis_cmd.o redis_connection.o redis_db.o \
 			   redis_hash.o redis_list.o redis_metadata.o redis_slot.o redis_pubsub.o redis_reply.o \
 			   redis_request.o redis_set.o redis_string.o redis_zset.o redis_geo.o replication.o \
 			   server.o stats.o storage.o task_runner.o util.o geohash.o worker.o redis_sortedint.o \
-			   compaction_checker.o table_properties_collector.o scripting.o sha1.o rand.o
+			   compaction_checker.o table_properties_collector.o scripting.o sha1.o rand.o \
+			   slot_migrate.o slot_import.o batch_parser.o
 KVROCKS_OBJS= $(SHARED_OBJS) main.o
 
 UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../tests/compact_test.o \
@@ -50,9 +52,9 @@ UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../test
 			   ../tests/task_runner_test.o  ../tests/t_string_test.o ../tests/t_zset_test.o ../tests/t_geo_test.o \
 			    ../tests/t_sortedint_test.o
 
-K2RDIR= ../tools/kvrocks2redis
+# K2RDIR= ../tools/kvrocks2redis
 KVROCKS2REDIS_OBJS= $(SHARED_OBJS) $(K2RDIR)/main.o $(K2RDIR)/config.o $(K2RDIR)/parser.o \
-					$(K2RDIR)/redis_writer.o $(K2RDIR)/sync.o $(K2RDIR)/util.o $(K2RDIR)/writer.o
+					$(K2RDIR)/redis_writer.o $(K2RDIR)/sync.o  $(K2RDIR)/writer.o
 
 
 KVROCKS_CXX=$(QUIET_CXX)$(CXX) $(FINAL_CXXFLAGS)
@@ -94,7 +96,7 @@ lint:
 
 $(PROG): $(GLOG) $(LIBEVENT) $(ROCKSDB) $(LUA) $(KVROCKS_OBJS)
 	$(KVROCKS_LD) -o $(PROG) $(KVROCKS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
-	
+
 $(GLOG):
 	cd $(GLOG_PATH);./autogen.sh; ./configure --disable-shared; \
 		$(MAKE) CXXFLAGS='-fPIC' -C $(GLOG_PATH)/

@@ -36,8 +36,9 @@ set ::all_tests {
     unit/command
     unit/config
     unit/scripting
+    integration/slotmigrate
+    integration/slotimport
     integration/replication
-    integration/cluster
 }
 
 # Index to the next test to run in the ::all_tests list.

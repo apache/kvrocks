@@ -188,6 +188,10 @@ target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS})
 target_sources(kvrocks2redis PRIVATE
         src/cluster.h
         src/cluster.cc
+	src/slot_migrate.h
+	src/slot_migrate.cc
+	src/slot_import.h
+	src/slot_import.cc
         src/redis_db.cc
         src/redis_db.h
         src/compact_filter.cc

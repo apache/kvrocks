@@ -11,11 +11,11 @@ REPLICAS=1
 ENDPORT=$((PORT+NODES))
 
 slots_range=("0-5460" "5461-10992" "10993-16383")
-node_id=("kvrockskvrockskvrockskvrockskvrocksnode1" 
-          "kvrockskvrockskvrockskvrockskvrocksnode2" 
-          "kvrockskvrockskvrockskvrockskvrocksnode3" 
-          "kvrockskvrockskvrockskvrockskvrocksnode4" 
-          "kvrockskvrockskvrockskvrockskvrocksnode5" 
+node_id=("kvrockskvrockskvrockskvrockskvrocksnode1"
+          "kvrockskvrockskvrockskvrockskvrocksnode2"
+          "kvrockskvrockskvrockskvrockskvrocksnode3"
+          "kvrockskvrockskvrockskvrockskvrocksnode4"
+          "kvrockskvrockskvrockskvrockskvrocksnode5"
           "kvrockskvrockskvrockskvrockskvrocksnode6")
 
 if [ "$1" == "start" ]
@@ -35,7 +35,7 @@ then
         fi
         index=$((index+1))
     done
-    cluster_nodes=`echo -e ${cluster_nodes:2}`
+    cluster_nodes=`echo ${cluster_nodes:2}`
 
     index=0
     while [ $((PORT < ENDPORT)) != "0" ]; do
@@ -49,8 +49,8 @@ then
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak
         $BIN_PATH/kvrocks -c ${conf_file}
         sleep 1
-        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
-        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
+        ./redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
+        ./redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
         index=$((index+1))
     done
     exit 0
@@ -61,7 +61,7 @@ then
     while [ $((PORT < ENDPORT)) != "0" ]; do
         PORT=$((PORT+1))
         echo "Stopping $PORT"
-        redis-cli -h 127.0.0.1 -p $PORT shutdown
+        ./redis-cli -h 127.0.0.1 -p $PORT shutdown
     done
     rm -r ./node_*
     exit 0
@@ -73,7 +73,7 @@ then
     while [ 1 ]; do
         clear
         date
-        redis-cli -h 127.0.0.1 -p $PORT cluster nodes
+        ./redis-cli -h 127.0.0.1 -p $PORT cluster nodes
         sleep 1
     done
     exit 0

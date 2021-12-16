@@ -23,6 +23,8 @@ extern "C" {
 #include "worker.h"
 #include "rw_lock.h"
 #include "cluster.h"
+#include "slot_migrate.h"
+#include "slot_import.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -63,6 +65,8 @@ class Server {
   void Join();
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
+  bool IsBlocking() { return is_blocking_; }
+  void SetBlocking(bool flag) { is_blocking_ = flag; }
   Config *GetConfig() { return config_; }
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
 
@@ -109,6 +113,9 @@ class Server {
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
+  void ReclaimOldDBPtr();
+  void WaitRunningCmdsFinish();
+  void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
@@ -151,6 +158,9 @@ class Server {
   Engine::Storage *storage_;
   Cluster *cluster_;
   static std::atomic<int> unix_time_;
+  class SlotMigrate *slot_migrate_;
+  class SlotImport *slot_import_;
+  std::mutex migrate_mutex;
 
  private:
   void cron();
@@ -161,6 +171,7 @@ class Server {
 
   std::atomic<bool> stop_;
   std::atomic<bool> is_loading_;
+  std::atomic<bool> is_blocking_{false};
   time_t start_time_ = 0;
   std::mutex slaveof_mu_;
   std::string master_host_;

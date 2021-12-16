@@ -11,6 +11,7 @@
 #include "rw_lock.h"
 #include "redis_cmd.h"
 #include "redis_slot.h"
+#include "redis_connection.h"
 
 enum {
   kClusterMaster   = 1,
@@ -32,6 +33,7 @@ class ClusterNode {
   std::string slots_info_;
   std::bitset<kClusterSlots> slots_;
   std::vector<std::string> replicas;
+  int importing_slot_ = -1;
 };
 
 struct SlotInfo {
@@ -55,13 +57,21 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
+  Status SetSlot(int slot, std::string node_id);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   uint64_t GetVersion() { return version_; }
   bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
-                         const std::vector<std::string> &cmd_tokens);
+                         const std::vector<std::string> &cmd_tokens,
+                         Redis::Connection *conn);
   void SetMasterSlaveRepl();
+  Status MigrateSlot(std::string dst_node, int slot);
+  Status ImportSlot(Redis::Connection *conn, int slot, int state);
+  Status GetMigrateInfo(int slot, std::vector<std::string> &info);
+  Status GetImportInfo(int slot, std::vector<std::string> &info);
+  Status GetSlotKeys(Redis::Connection *conn, int slot, int count, std::string *output);
+  std::string GetMyId() const { return myid_; }
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
@@ -79,4 +89,6 @@ class Cluster {
   std::shared_ptr<ClusterNode> myself_;
   ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
+
+  std::mutex cluster_mutex_;
 };

@@ -118,6 +118,19 @@ Status Server::Start() {
     }
   });
 
+  if (config_->cluster_enabled) {
+    // Create objects used for slot migration
+    slot_migrate_ = new SlotMigrate(this, config_->migrate_speed,
+                                    config_->pipeline_size, config_->sequence_gap);
+    slot_import_ = new SlotImport(this);
+    // Create migrating thread
+    auto s = slot_migrate_->CreateMigrateHandleThread();
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
+      return Status(Status::NotOK);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -950,6 +963,8 @@ void Server::PrepareRestoreDB() {
   task_runner_.Join();
   task_runner_.Purge();
 
+  WaitNoMigrateProcessing();
+
   // To guarantee work theads don't access DB, we should relase 'ExclusivityGuard'
   // ASAP to avoid user can't recieve respones for long time, becasue the following
   // 'CloseDB' may cost much time to acquire DB mutex.
@@ -964,6 +979,22 @@ void Server::PrepareRestoreDB() {
   // actually work.
   LOG(INFO) << "Waiting for closing DB...";
   storage_->CloseDB();
+}
+
+void Server::WaitRunningCmdsFinish() {
+  LOG(INFO) << "Waiting for excuting command...";
+  while (excuting_command_num_ != 0) {
+    usleep(500);
+  }
+}
+
+void Server::WaitNoMigrateProcessing() {
+  if (config_->slot_id_encoded) {
+    LOG(INFO) << "Waiting until no migration task is running...";
+    while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {
+      usleep(500);
+    }
+  }
 }
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {

@@ -23,6 +23,7 @@
 
 #include "util.h"
 #include "status.h"
+#include "redis_reply.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -617,6 +618,28 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   } else {
     return retval;
   }
+}
+
+uint64_t GetTimeStampMS(void) {
+  auto tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+  auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+  return ts.count();
+}
+
+uint64_t GetTimeStampUS(void) {
+  auto tp = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now());
+  auto ts = std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch());
+  return ts.count();
+}
+
+std::string Command2RESP(const std::vector<std::string> &cmd_args) {
+  std::string output;
+  output.append("*" + std::to_string(cmd_args.size()) + CRLF);
+  for (const auto &arg : cmd_args) {
+    output.append("$" + std::to_string(arg.size()) + CRLF);
+    output.append(arg + CRLF);
+  }
+  return output;
 }
 
 }  // namespace Util

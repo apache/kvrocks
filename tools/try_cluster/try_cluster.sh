@@ -49,8 +49,8 @@ then
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak
         $BIN_PATH/kvrocks -c ${conf_file}
         sleep 1
-        ./redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
-        ./redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
+        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
+        redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
         index=$((index+1))
     done
     exit 0

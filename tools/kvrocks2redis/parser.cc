@@ -54,7 +54,7 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire
 
 Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   RedisType type = metadata.Type();
-  if (type < kRedisHash || type > kRedisBitmap) {
+  if (type < kRedisHash || type > kRedisSortedint) {
     return Status(Status::NotOK, "unknown metadata type: " + std::to_string(type));
   }
 

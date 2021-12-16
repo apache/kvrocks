@@ -2,6 +2,8 @@
 #include "server.h"
 #include <map>
 #include <vector>
+#include <fstream>
+#include <iostream>
 #include <gtest/gtest.h>
 
 TEST(Config, GetAndSet) {
@@ -102,6 +104,28 @@ TEST(Config, GetAndSet) {
     auto s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_FALSE(s.IsOK());
   }
+}
+
+TEST(Config, Rewrite) {
+  const char *path = "test.conf";
+  unlink(path);
+
+  std::ostringstream string_stream;
+  string_stream << "rename-command KEYS KEYS_NEW" << "\n";
+  string_stream << "rename-command GET GET_NEW" << "\n";
+  string_stream << "rename-command SET SET_NEW" << "\n";
+  std::ofstream output_file(path, std::ios::out);
+  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file.close();
+
+  Config config;
+  Redis::PopulateCommands();
+  ASSERT_TRUE(config.Load(path).IsOK());
+  ASSERT_TRUE(config.Rewrite().IsOK());
+  // Need to re-populate the command table since it has renamed by the previous
+  Redis::PopulateCommands();
+  ASSERT_TRUE(config.Load(path).IsOK());
+  unlink(path);
 }
 
 TEST(Namespace, Add) {

@@ -52,3 +52,10 @@ TEST(StringUtil, TokenizeRedisProtocol) {
   Util::TokenizeRedisProtocol("*4\r\n$4\r\nthis\r\n$2\r\nis\r\n$1\r\na\r\n$4\r\ntest\r\n", &array);
   ASSERT_EQ(expected, array);
 }
+
+TEST(StringUtil, HasPrefix) {
+  ASSERT_TRUE(Util::HasPrefix("has_prefix_is_true", "has_prefix"));
+  ASSERT_FALSE(Util::HasPrefix("has_prefix_is_false", "_has_prefix"));
+  ASSERT_TRUE(Util::HasPrefix("has_prefix", "has_prefix"));
+  ASSERT_FALSE(Util::HasPrefix("has", "has_prefix"));
+}

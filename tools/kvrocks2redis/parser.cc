@@ -332,9 +332,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       }
       case kRedisSortedint: {
         std::string sub_key_str=std::to_string(DecodeFixed64(sub_key.data()));
-        std::string cmd_str="SIREM";
-        if (to_redis_) {
-          cmd_str="ZREM";
+        cmd_str = to_redis_ ? "SREM" : "SIREM";
         }
         command_args={cmd_str, user_key, sub_key_str};
         break;

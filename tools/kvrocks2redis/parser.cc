@@ -252,7 +252,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         break;
       }
       case kRedisSortedint: {
-        std::string val=std::to_string(DecodeFixed64(sub_key.data()));
+        std::string val = std::to_string(DecodeFixed64(sub_key.data()));
         if (!to_redis_) {
           command_args = {"SIADD", user_key, val};
         }else{

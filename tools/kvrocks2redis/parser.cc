@@ -96,7 +96,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
         break;
       }
       case kRedisSortedint: {
-        std::string val= std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
+        std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
         output = Rocksdb2Redis::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
@@ -256,7 +256,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         if (!to_redis_) {
           command_args = {"SIADD", user_key, val};
         }else{
-          command_args={"ZADD", user_key, val, val};
+          command_args = {"ZADD", user_key, val, val};
         }
         break;
       }
@@ -331,10 +331,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         break;
       }
       case kRedisSortedint: {
-        std::string sub_key_str=std::to_string(DecodeFixed64(sub_key.data()));
-        cmd_str = to_redis_ ? "SREM" : "SIREM";
-        }
-        command_args={cmd_str, user_key, sub_key_str};
+        std::string sub_key_str = std::to_string(DecodeFixed64(sub_key.data()));
+        std::string cmd_str = to_redis_ ? "ZREM" : "SIREM";
+        command_args = {cmd_str, user_key, sub_key_str};
         break;
       }
       default: break;

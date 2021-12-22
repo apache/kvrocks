@@ -39,7 +39,7 @@ class Database {
                                          rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
   rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   rocksdb::Status GetSlotKeysInfo(int slot, std::map<int,uint64_t> *slotskeys,
-                                  std::vector<std::string> *keys = nullptr, int count = 10);
+                                  std::vector<std::string> *keys, int count);
 
  protected:
   Engine::Storage *storage_;

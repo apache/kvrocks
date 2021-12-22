@@ -18,6 +18,8 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
                         const Slice &value) override;
 
   rocksdb::Status DeleteCF(uint32_t column_family_id, const Slice &key) override;
+  rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
+                                const Slice& begin_key, const Slice& end_key) override;
   std::map<std::string, std::vector<std::string>> *GetAofStrings() { return &aof_strings_; }
  private:
   std::map<std::string, std::vector<std::string>> aof_strings_;

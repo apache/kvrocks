@@ -501,8 +501,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
                 fail "Slot 15 importing is not finished"
             }
 
-            # Check dst server receiving all data when migrate slot snapshot
-            # Check data whether consistent
+            # Check if the data is consistent
             # List key of existing data
             assert {[$r1 llen $slot15_key_1] == $count}
             # String

@@ -341,7 +341,6 @@ namespace Lua {
     Config *config = srv->GetConfig();
     Redis::Connection *conn = srv->GetCurrentConnection();
     if (config->cluster_enabled) {
-      // TODO: Does is need to give 'conn'
       auto s = srv->cluster_->CanExecByMySelf(attributes, args, conn);
       if (!s.IsOK()) {
         pushError(lua, s.Msg().c_str());

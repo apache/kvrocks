@@ -35,7 +35,7 @@ then
         fi
         index=$((index+1))
     done
-    cluster_nodes=`echo ${cluster_nodes:2}`
+    cluster_nodes=`echo -e ${cluster_nodes:2}`
 
     index=0
     while [ $((PORT < ENDPORT)) != "0" ]; do
@@ -61,7 +61,7 @@ then
     while [ $((PORT < ENDPORT)) != "0" ]; do
         PORT=$((PORT+1))
         echo "Stopping $PORT"
-        ./redis-cli -h 127.0.0.1 -p $PORT shutdown
+        redis-cli -h 127.0.0.1 -p $PORT shutdown
     done
     rm -r ./node_*
     exit 0
@@ -73,7 +73,7 @@ then
     while [ 1 ]; do
         clear
         date
-        ./redis-cli -h 127.0.0.1 -p $PORT cluster nodes
+        redis-cli -h 127.0.0.1 -p $PORT cluster nodes
         sleep 1
     done
     exit 0

@@ -54,7 +54,7 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire
 
 Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   RedisType type = metadata.Type();
-  if (type < kRedisHash || type > kRedisBitmap) {
+  if (type < kRedisHash || type > kRedisSortedint) {
     return Status(Status::NotOK, "unknown metadata type: " + std::to_string(type));
   }
 
@@ -93,6 +93,11 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       case kRedisBitmap: {
         int index = std::stoi(sub_key);
         s = Parser::parseBitmapSegment(ns, user_key, index, value);
+        break;
+      }
+      case kRedisSortedint: {
+        std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
+        output = Rocksdb2Redis::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
       default:break;  // should never get here
@@ -247,8 +252,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         break;
       }
       case kRedisSortedint: {
+        std::string val = std::to_string(DecodeFixed64(sub_key.data()));
         if (!to_redis_) {
-          command_args = {"SIADD", user_key, std::to_string(DecodeFixed64(sub_key.data()))};
+          command_args = {"SIADD", user_key, val};
+        } else {
+          command_args = {"ZADD", user_key, val, val};
         }
         break;
       }
@@ -323,9 +331,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         break;
       }
       case kRedisSortedint: {
-        if (!to_redis_) {
-          command_args = {"SIREM", user_key, std::to_string(DecodeFixed64(sub_key.data()))};
-        }
+        std::string sub_key_str = std::to_string(DecodeFixed64(sub_key.data()));
+        std::string cmd_str = to_redis_ ? "ZREM" : "SIREM";
+        command_args = {cmd_str, user_key, sub_key_str};
         break;
       }
       default: break;

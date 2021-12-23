@@ -34,7 +34,11 @@ class Parser {
     lastest_snapshot_ = new LatestSnapShot(storage->GetDB());
     is_slotid_encoded_ = storage_->IsSlotIdEncoded();
   }
-  ~Parser() { delete lastest_snapshot_; }
+  ~Parser() {
+    delete lastest_snapshot_;
+    lastest_snapshot_ = nullptr;
+  }
+
   Status ParseFullDB();
   rocksdb::Status ParseWriteBatch(const std::string &batch_string);
 

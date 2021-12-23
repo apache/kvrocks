@@ -222,3 +222,60 @@ TEST_F(RedisStringTest, SetRange) {
   EXPECT_EQ(16, value.size());
   string->Del(key_);
 }
+
+TEST_F(RedisStringTest, CAS) {
+  int ret;
+  std::string key = "cas_key", value = "cas_value", new_value = "new_value";
+
+  auto status = string->Set(key, value);
+  ASSERT_TRUE(status.ok());
+
+  status = string->CAS("non_exist_key", value, new_value, 10, &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(-1, ret);
+
+  status = string->CAS(key, "cas_value_err", new_value, 10, &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(0, ret);
+
+  status = string->CAS(key, value, new_value, 10, &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(1, ret);
+
+  std::string current_value;
+  status = string->Get(key, &current_value);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(new_value, current_value);
+
+  int ttl;
+  string->TTL(key, &ttl);
+  EXPECT_TRUE(ttl >= 9 && ttl <= 10);
+
+  string->Del(key);
+}
+
+TEST_F(RedisStringTest, CAD) {
+  int ret;
+  std::string key = "cas_key", value = "cas_value";
+
+  auto status = string->Set(key, value);
+  ASSERT_TRUE(status.ok());
+
+  status = string->CAD("non_exist_key", value, &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(-1, ret);
+
+  status = string->CAD(key, "cas_value_err", &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(0, ret);
+
+  status = string->CAD(key, value, &ret);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(1, ret);
+
+  std::string current_value;
+  status = string->Get(key, &current_value);
+  ASSERT_TRUE(status.IsNotFound());
+
+  string->Del(key);
+}

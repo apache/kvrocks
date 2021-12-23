@@ -2,6 +2,8 @@
 #include "server.h"
 #include <map>
 #include <vector>
+#include <fstream>
+#include <iostream>
 #include <gtest/gtest.h>
 
 TEST(Config, GetAndSet) {
@@ -47,6 +49,11 @@ TEST(Config, GetAndSet) {
       {"rocksdb.compaction_readahead_size" , "1024"},
       {"rocksdb.level0_slowdown_writes_trigger" , "50"},
       {"rocksdb.level0_stop_writes_trigger", "100"},
+      {"rocksdb.enable_blob_files", "no"},
+      {"rocksdb.min_blob_size", "4096"},
+      {"rocksdb.blob_file_size", "128"},
+      {"rocksdb.enable_blob_garbage_collection", "yes"},
+      {"rocksdb.blob_garbage_collection_age_cutoff", "25"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {
@@ -91,6 +98,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.cache_index_and_filter_blocks", "no"},
       {"rocksdb.metadata_block_cache_size", "100"},
       {"rocksdb.subkey_block_cache_size", "100"},
+      {"rocksdb.row_cache_size", "100"},
   };
   for (const auto &iter : immutable_cases) {
     auto s = config.Set(nullptr, iter.first, iter.second);
@@ -98,11 +106,38 @@ TEST(Config, GetAndSet) {
   }
 }
 
-TEST(Namespace, Add) {
+TEST(Config, Rewrite) {
+  const char *path = "test.conf";
+  unlink(path);
+
+  std::ostringstream string_stream;
+  string_stream << "rename-command KEYS KEYS_NEW" << "\n";
+  string_stream << "rename-command GET GET_NEW" << "\n";
+  string_stream << "rename-command SET SET_NEW" << "\n";
+  std::ofstream output_file(path, std::ios::out);
+  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file.close();
+
   Config config;
+  Redis::PopulateCommands();
+  ASSERT_TRUE(config.Load(path).IsOK());
+  ASSERT_TRUE(config.Rewrite().IsOK());
+  // Need to re-populate the command table since it has renamed by the previous
+  Redis::PopulateCommands();
+  ASSERT_TRUE(config.Load(path).IsOK());
+  unlink(path);
+}
+
+TEST(Namespace, Add) {
+  const char *path = "test.conf";
+  unlink(path);
+
+  Config config;
+  config.Load(path) ;
   config.slot_id_encoded = false;
   EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
   config.requirepass = "foobared";
+
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for(size_t i = 0; i < namespaces.size(); i++) {
@@ -121,10 +156,15 @@ TEST(Namespace, Add) {
   auto s = config.AddNamespace("n1", "t0");
   EXPECT_FALSE(s.IsOK());
   EXPECT_EQ(s.Msg(), "the namespace has already exists");
+  unlink(path);
 }
 
 TEST(Namespace, Set) {
+  const char *path = "test.conf";
+  unlink(path);
+
   Config config;
+  config.Load(path);
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
@@ -151,10 +191,15 @@ TEST(Namespace, Set) {
     config.GetNamespace(namespaces[i], &token);
     EXPECT_EQ(token, new_tokens[i]);
   }
+  unlink(path);
 }
 
 TEST(Namespace, Delete) {
+  const char *path = "test.conf";
+  unlink(path);
+
   Config config;
+  config.Load(path);
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
@@ -173,30 +218,34 @@ TEST(Namespace, Delete) {
     config.GetNamespace(ns, &token);
     EXPECT_TRUE(token.empty());
   }
+  unlink(path);
 }
 
 TEST(Namespace, RewriteNamespaces) {
   const char *path = "test.conf";
   unlink(path);
   Config config;
+  config.Load(path);
   config.requirepass = "test";
   config.backup_dir = "test";
-  config.Load(path) ;
   config.slot_id_encoded = false;
   std::vector<std::string> namespaces= {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for(size_t i = 0; i < namespaces.size(); i++) {
     EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
   }
-  auto s = config.Rewrite();
-  std::cout << s.Msg() << std::endl;
-  EXPECT_TRUE(s.IsOK());
+  EXPECT_TRUE(config.AddNamespace("to-be-deleted-ns", "to-be-deleted-token").IsOK());
+  EXPECT_TRUE(config.DelNamespace("to-be-deleted-ns").IsOK());
+
   Config new_config;
-  s = new_config.Load(path) ;
+  auto s = new_config.Load(path) ;
   for(size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
     new_config.GetNamespace(namespaces[i], &token);
     EXPECT_EQ(token, tokens[i]);
   }
+
+  std::string token;
+  EXPECT_FALSE(new_config.GetNamespace("to-be-deleted-ns", &token).IsOK());
   unlink(path);
 }

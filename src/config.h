@@ -103,6 +103,7 @@ struct Config{
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;
+    int row_cache_size;
     int max_open_files;
     int write_buffer_size;
     int max_write_buffer_number;
@@ -121,6 +122,11 @@ struct Config{
     int level0_stop_writes_trigger;
     int compression;
     bool disable_auto_compactions;
+    bool enable_blob_files;
+    int min_blob_size;
+    int blob_file_size;
+    bool enable_blob_garbage_collection;
+    int blob_garbage_collection_age_cutoff;
   } RocksDB;
 
  public:

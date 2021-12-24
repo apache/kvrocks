@@ -271,7 +271,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   double max_next_score = 0;
   if (spec.reversed && !spec.maxex) {
       memcpy(&i64, &spec.max, sizeof(spec.max));
-      i64 = i64 > 0 ? i64 + 1 : i64 - 1;
+      i64 = i64 >= 0 ? i64 + 1 : i64 - 1;
       memcpy(&max_next_score, &i64, sizeof(i64));
   }
 

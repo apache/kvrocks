@@ -266,8 +266,17 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
+  // generate next possible score of max
+  int64_t i64 = 0;
+  double max_next_score = 0;
+  if (spec.reversed && !spec.maxex) {
+      memcpy(&i64, &spec.max, sizeof(spec.max));
+      i64 = i64 > 0 ? i64 + 1 : i64 - 1;
+      memcpy(&max_next_score, &i64, sizeof(i64));
+  }
+
   std::string start_score_bytes;
-  PutDouble(&start_score_bytes, spec.reversed ? spec.max : spec.min);
+  PutDouble(&start_score_bytes, spec.reversed ? (spec.maxex ? spec.max : max_next_score) : spec.min);
   std::string start_key, prefix_key;
   InternalKey(ns_key, start_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
@@ -282,17 +291,15 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
-  iter->Seek(start_key);
-  // when using reverse range, we should use the `SeekForPrev` to put the iter to the right position in those cases:
-  //    a. the key with the max score was the maximum key in DB and the iter would be invalid, try to seek the prev key
-  //    b. there's some key after the key with max score and the iter would be valid, but the current key may be:
-  //        b1. the prefix was the same with start key, don't skip it (the zset key has existed)
-  //        b2. the prefix was not the same with start key, try to seek the prev key
-  // Note: the DB key was composed by `NS|key|version|score|member`, so SeekForPrev(`NS|key|version|score`)
-  // may skip the current score if exists, so do SeekForPrev if prefix was not the same with start key
-  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+  if (!spec.reversed) {
+    iter->Seek(start_key);
+  } else {
     iter->SeekForPrev(start_key);
+    if (iter->Valid() && iter->key().starts_with(start_key)) {
+      iter->Prev();
+    }
   }
+
   for (;
       iter->Valid() && iter->key().starts_with(prefix_key);
       !spec.reversed ? iter->Next() : iter->Prev()) {

@@ -383,6 +383,12 @@ start_server {tags {"zset"}} {
             assert_error "*double*" {r zrangebyscore fooz 1 NaN}
         }
 
+        test "ZRANGEBYSCORE for min/max score with multi member" {
+            create_zset mzset {-inf a -inf b -1 c 2 d 3 e +inf f +inf g}
+            assert_equal {a -inf b -inf c -1 d 2 e 3 f inf g inf} [r zrangebyscore mzset -inf +inf WITHSCORES]
+            assert_equal {g inf f inf e 3 d 2 c -1 b -inf a -inf} [r zrevrangebyscore mzset +inf -inf WITHSCORES]
+        }
+
         proc create_default_lex_zset {} {
             create_zset zset {0 alpha 0 bar 0 cool 0 down
                               0 elephant 0 foo 0 great 0 hill

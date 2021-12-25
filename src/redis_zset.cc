@@ -291,8 +291,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   //    b. get max_next_user_score of max_next_inner_score:
   //       for positive max_user_score, max_next_user_score is 'max_user_score + 1'
   //       for negative max_user_score, max_next_user_score is 'max_user_score - 1'
-  //    Note: fortunately, there is no overflow in fact. more details see binary ecoding of double
-  //    binary ecoding of double: https://www.jianshu.com/p/f0537a661a5e
+  //    Note: fortunately, there is no overflow in fact. more details see binary encoding of double
+  //    binary encoding of double: https://www.jianshu.com/p/f0537a661a5e
 
   // generate next possible score of max
   int64_t i64 = 0;

@@ -266,6 +266,34 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
+  // let's get familiar with score first:
+  //    a. score of zset's member is represented by double and it takes up 8 bytes in rocksdb
+  //    b. to make positive double greater than native double in lexicographical order, score
+  //       is required encoding before stored in rocksdb. encoding details see PutDouble()
+  //    c. for convenience, user_score and inner_score respectively represent before and after encoding
+  //
+  // generate next lexicographical ordered inner_score of max:
+  //    a. we can think of inner_score as a fixed 8-byte string. logically, the next lexicographical 
+  //       ordered inner_score of max_inner_score is 'max_inner_score + 1' if we assume no overflow.
+  //       'max_inner_score + 1' means binary increment.
+  //    b. realize binary increment 'max_inner_score + 1'
+  //       use PutDouble() encoding max(max_user_score) to max_inner_score
+  //       memcpy max_inner_score to u64(uint64_t)
+  //       incr u64
+  //       memcpy u64 to max_next_inner_score
+  //    it may not be hard to understand about how to get max_next_inner_score
+  //
+  //  directly generate max_next_user_score of max_next_inner_score:
+  //    a. give a key argument first:
+  //       for positive score, user_score is positively correlated with inner_score in lexicographical order
+  //       for negative score, user_score is negatively correlated with inner_score in lexicographical order
+  //       more details see PutDouble()
+  //    b. get max_next_user_score of max_next_inner_score:
+  //       for positive max_user_score, max_next_user_score is 'max_user_score + 1'
+  //       for negative max_user_score, max_next_user_score is 'max_user_score - 1'
+  //    Note: fortunately, there is no overflow in fact. more details see binary ecoding of double
+  //    binary ecoding of double: https://www.jianshu.com/p/f0537a661a5e
+
   // generate next possible score of max
   int64_t i64 = 0;
   double max_next_score = 0;

@@ -76,8 +76,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           case kRedisCmdLInsert:
             if (firstSeen_) {
               if (args->size() < 4) {
-                LOG(ERROR)
-                    << "Fail to parse write_batch in putcf cmd linsert : args error ,should contain before pivot value ";
+                LOG(ERROR) << "Fail to parse write_batch in putcf cmd linsert : args error, \
+                        should contain before pivot value ";
                 return rocksdb::Status::OK();
               }
               command_args = {"LINSERT", user_key, (*args)[1] == "1" ? "before" : "after", (*args)[2], (*args)[3]};

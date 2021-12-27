@@ -4290,7 +4290,7 @@ class CommandCluster : public Commander {
       }
     } else if (subcommand_ == "migratestatus") {
       std::vector<std::string> migrate_info;
-      Status s = svr->cluster_->GetMigrateInfo(slot_, migrate_info);
+      Status s = svr->cluster_->GetMigrateInfo(slot_, &migrate_info);
       if (s.IsOK()) {
         *output = Redis::MultiBulkString(migrate_info);
       } else {
@@ -4298,7 +4298,7 @@ class CommandCluster : public Commander {
       }
     } else if (subcommand_ == "importstatus") {
       std::vector<std::string> import_info;
-      Status s = svr->cluster_->GetImportInfo(slot_, import_info);
+      Status s = svr->cluster_->GetImportInfo(slot_, &import_info);
       if (s.IsOK()) {
         *output = Redis::MultiBulkString(import_info);
       } else {

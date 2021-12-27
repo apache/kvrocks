@@ -68,8 +68,8 @@ class Cluster {
   void SetMasterSlaveRepl();
   Status MigrateSlot(std::string dst_node, int slot);
   Status ImportSlot(Redis::Connection *conn, int slot, int state);
-  Status GetMigrateInfo(int slot, std::vector<std::string> &info);
-  Status GetImportInfo(int slot, std::vector<std::string> &info);
+  Status GetMigrateInfo(int slot, std::vector<std::string> *info);
+  Status GetImportInfo(int slot, std::vector<std::string> *info);
   Status GetSlotKeys(Redis::Connection *conn, int slot, int count, std::string *output);
   std::string GetMyId() const { return myid_; }
 

@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <map>
 
 #include "util.h"
 #include "server.h"
@@ -237,7 +238,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
   return Status::OK();
 }
 
-Status Cluster::GetMigrateInfo(int slot, std::vector<std::string> &info) {
+Status Cluster::GetMigrateInfo(int slot, std::vector<std::string> *info) {
   if (myself_->role_ != kClusterMaster || svr_->IsSlave()) {
     return Status(Status::NotOK, "Slave can't migrate slot");
   }
@@ -247,7 +248,7 @@ Status Cluster::GetMigrateInfo(int slot, std::vector<std::string> &info) {
   return svr_->slot_migrate_->GetMigrateInfo(info, slot);
 }
 
-Status Cluster::GetImportInfo(int slot, std::vector<std::string> &info) {
+Status Cluster::GetImportInfo(int slot, std::vector<std::string> *info) {
   if (myself_->role_ != kClusterMaster || svr_->IsSlave()) {
     return Status(Status::NotOK, "Slave can't import slot");
   }

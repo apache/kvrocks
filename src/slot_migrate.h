@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <rocksdb/status.h>
 #include <rocksdb/write_batch.h>
 #include <rocksdb/db.h>
@@ -19,7 +20,6 @@
 #include "slot_import.h"
 #include "encoding.h"
 #include "status.h"
-#include "chrono"
 #include "redis_slot.h"
 
 #define CLUSTER_SLOTS HASH_SLOTS_SIZE
@@ -59,7 +59,7 @@ struct SlotMigrateJob {
 
 class SlotMigrate : public Redis::Database {
  public:
-  SlotMigrate(Server *svr, int speed = kMigrateSpeed, int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
+  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed, int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
   ~SlotMigrate() {}
 
   Status CreateMigrateHandleThread(void);
@@ -76,7 +76,7 @@ class SlotMigrate : public Redis::Database {
   int16_t GetMigrateStateMachine() { return state_machine_; }
   int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
   int16_t GetMigratingSlot(void) { return migrate_slot_; }
-  Status GetMigrateInfo(std::vector<std::string> &info, int16_t slot);
+  Status GetMigrateInfo(std::vector<std::string> *info, int16_t slot);
 
  private:
   void StateMachine(void);
@@ -93,16 +93,16 @@ class SlotMigrate : public Redis::Database {
   bool CheckResponseWithCounts(int sock_fd, int total);
 
   bool GetSlotKeyMetadata(const rocksdb::Slice &prefix_key, std::string *bytes);
-  Status MigrateOneKey(rocksdb::Slice key, std::string &restore_cmds);
+  Status MigrateOneKey(rocksdb::Slice key, std::string *restore_cmds);
   bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata,
-                        std::string &bytes, std::string &restore_cmds);
-  bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string &restore_cmds);
+                        const std::string &bytes, std::string *restore_cmds);
+  bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
   bool MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> &iter,
-                        std::vector<std::string> &user_cmd, std::string &restore_cmds);
-  bool SendCmdsPipelineIfNeed(std::string &commands, bool need);
+                        std::vector<std::string> &user_cmd, std::string *restore_cmds);
+  bool SendCmdsPipelineIfNeed(std::string *commands, bool need);
   void MigrateSpeedLimit(void);
-  Status GenerateCmdsFromBatch(rocksdb::BatchResult &batch, std::string &commands);
-  Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> &iter, uint64_t endseq);
+  Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
+  Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t endseq);
   Status SyncWalBeforeForbidSlot(void);
   Status SyncWalAfterForbidSlot(void);
   void MigrateWaitCmmdsFinish(void);

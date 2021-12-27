@@ -1,6 +1,7 @@
 #pragma once
 
-#include <atomic>
+#include <string>
+#include <vector>
 #include <mutex>
 #include <glog/logging.h>
 
@@ -18,7 +19,7 @@ enum ImportStatus{
 
 class SlotImport : public Redis::Database {
  public:
-  SlotImport(Server *svr);
+  explicit SlotImport(Server *svr);
   ~SlotImport() {}
   bool Start(int fd, int slot);
   bool Success(int slot);
@@ -26,7 +27,7 @@ class SlotImport : public Redis::Database {
   void StopForLinkError(int fd);
   int GetSlot();
   int GetStatus();
-  Status GetImportInfo(std::vector<std::string> &info, int slot);
+  Status GetImportInfo(std::vector<std::string> *info, int slot);
 
  private:
   Server *svr_ = nullptr;

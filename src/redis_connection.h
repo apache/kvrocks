@@ -98,7 +98,7 @@ class Connection {
   const std::vector<Redis::CommandTokens> &GetMultiExecCommands() { return multi_cmds_; }
 
   std::unique_ptr<Commander> current_cmd_;
-  std::function<void (int)> close_cb_ = nullptr;
+  std::function<void(int)> close_cb_ = nullptr;
 
  private:
   uint64_t id_ = 0;

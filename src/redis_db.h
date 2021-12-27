@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <map>
 
 #include "redis_metadata.h"
 #include "storage.h"

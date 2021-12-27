@@ -59,7 +59,8 @@ struct SlotMigrateJob {
 
 class SlotMigrate : public Redis::Database {
  public:
-  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed, int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
+  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed,
+                       int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
   ~SlotMigrate() {}
 
   Status CreateMigrateHandleThread(void);
@@ -97,8 +98,10 @@ class SlotMigrate : public Redis::Database {
   bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata,
                         const std::string &bytes, std::string *restore_cmds);
   bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
-  bool MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> &iter,
-                        std::vector<std::string> &user_cmd, std::string *restore_cmds);
+  bool MigrateBitmapKey(const InternalKey &inkey,
+                        std::unique_ptr<rocksdb::Iterator> *iter,
+                        std::vector<std::string> *user_cmd,
+                        std::string *restore_cmds);
   bool SendCmdsPipelineIfNeed(std::string *commands, bool need);
   void MigrateSpeedLimit(void);
   Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);

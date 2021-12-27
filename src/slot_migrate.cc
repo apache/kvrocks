@@ -637,7 +637,7 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
         break;
       }
       case kRedisBitmap: {
-        if (!MigrateBitmapKey(inkey, iter, user_cmd, restore_cmds)) return false;
+        if (!MigrateBitmapKey(inkey, &iter, &user_cmd, restore_cmds)) return false;
         break;
       }
       case kRedisHash: {
@@ -693,11 +693,13 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
   return true;
 }
 
-bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> &iter,
-                                   std::vector<std::string> &user_cmd, std::string *restore_cmds) {
+bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey,
+                                   std::unique_ptr<rocksdb::Iterator> *iter,
+                                   std::vector<std::string> *user_cmd,
+                                   std::string *restore_cmds) {
   uint32_t index, offset;
   std::string index_str = inkey.GetSubKey().ToString();
-  std::string fragment = iter->value().ToString();
+  std::string fragment = (*iter)->value().ToString();
   try {
     index = std::stoi(index_str);
   } catch (std::exception &e) {
@@ -712,11 +714,11 @@ bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<roc
       for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
         if (fragment[byte_idx] & (1 << bit_idx)) {
           offset = (index * 8) + (byte_idx * 8) + bit_idx;
-          user_cmd.emplace_back(std::to_string(offset));
-          user_cmd.emplace_back("1");
-          *restore_cmds += Redis::MultiBulkString(user_cmd, false);
+          user_cmd->emplace_back(std::to_string(offset));
+          user_cmd->emplace_back("1");
+          *restore_cmds += Redis::MultiBulkString(*user_cmd, false);
           current_pipeline_size_++;
-          user_cmd.erase(user_cmd.begin() + 2, user_cmd.end());
+          user_cmd->erase(user_cmd->begin() + 2, user_cmd->end());
         }
       }
 

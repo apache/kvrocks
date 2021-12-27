@@ -40,7 +40,7 @@ Status Parser::ParseFullDB() {
 
 Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire) {
   std::string op, ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
+  ExtractNamespaceKey(ns_key, &ns, &user_key, is_slotid_encoded_);
   std::string output;
   output = Util::Command2RESP(
       {"SET", user_key, value.ToString().substr(5, value.size() - 5)});
@@ -61,8 +61,8 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   std::string ns, prefix_key, user_key, sub_key, value, output;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
-  InternalKey(ns_key, "", metadata.version, cluster_enabled_).Encode(&prefix_key);
+  ExtractNamespaceKey(ns_key, &ns, &user_key, is_slotid_encoded_);
+  InternalKey(ns_key, "", metadata.version, is_slotid_encoded_).Encode(&prefix_key);
 
   rocksdb::DB *db_ = storage_->GetDB();
   rocksdb::ReadOptions read_options;
@@ -74,7 +74,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       break;
     }
     Status s;
-    InternalKey ikey(iter->key(), cluster_enabled_);
+    InternalKey ikey(iter->key(), is_slotid_encoded_);
     sub_key = ikey.GetSubKey().ToString();
     value = iter->value().ToString();
     switch (type) {
@@ -99,7 +99,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       }
       case kRedisSortedint: {
         std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
-        output = Rocksdb2Redis::Command2RESP({"ZADD", user_key, val, val});
+        output = Util::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
       default:break;  // should never get here
@@ -137,7 +137,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
 
 rocksdb::Status Parser::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
-  WriteBatchExtractor write_batch_extractor(cluster_enabled_);
+  WriteBatchExtractor write_batch_extractor(is_slotid_encoded_);
   rocksdb::Status status;
 
   status = write_batch.Iterate(&write_batch_extractor);

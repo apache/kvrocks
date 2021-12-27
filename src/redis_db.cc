@@ -511,7 +511,7 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
 }
 
 rocksdb::Status Database::GetSlotKeysInfo(int slot,
-                                          std::map<int,uint64_t> *slotskeys,
+                                          std::map<int, uint64_t> *slotskeys,
                                           std::vector<std::string> *keys,
                                           int count) {
   const rocksdb::Snapshot *snapshot;

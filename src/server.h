@@ -188,7 +188,11 @@ class Server {
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;
   bool db_compacting_ = false;
-  bool db_bgsave_ = false;
+  bool is_bgsave_in_progress_ = false;
+  int last_bgsave_time_ = -1;
+  std::string last_bgsave_status_ = "ok";
+  int last_bgsave_time_sec_ = -1;
+
   std::map<std::string, DBScanInfo> db_scan_infos_;
 
   LogCollector<SlowEntry> slow_log_;

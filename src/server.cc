@@ -637,7 +637,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
-  string_stream << "is_bgsaving:" << (db_bgsave_ ? "yes" : "no") << "\r\n";
+  string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
   *info = string_stream.str();
 }
@@ -856,6 +856,12 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "persistence") {
     string_stream << "# Persistence\r\n";
     string_stream << "loading:" << is_loading_ <<"\r\n";
+
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_? 1 : 0) << "\r\n";
+    string_stream << "last_bgsave_time:" << last_bgsave_time_ << "\r\n";
+    string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
   }
   if (all || section == "stats") {
     std::string stats_info;
@@ -1003,18 +1009,24 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
 Status Server::AsyncBgsaveDB() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  if (db_bgsave_) {
+  if (is_bgsave_in_progress_) {
     return Status(Status::NotOK, "bgsave in-progress");
   }
-  db_bgsave_ = true;
+  is_bgsave_in_progress_ = true;
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
-    svr->storage_->CreateBackup();
+    auto start_bgsave_time = std::time(nullptr);
+    Status s = svr->storage_->CreateBackup();
+    auto stop_bgsave_time = std::time(nullptr);
+
     std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_bgsave_ = false;
+    svr->is_bgsave_in_progress_ = false;
+    svr->last_bgsave_time_ = static_cast<int>(start_bgsave_time);
+    svr->last_bgsave_status_ = s.IsOK() ? "ok" : "err";
+    svr->last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
   };
   return task_runner_.Publish(task);
 }

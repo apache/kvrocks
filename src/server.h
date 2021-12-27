@@ -158,8 +158,8 @@ class Server {
   Engine::Storage *storage_;
   Cluster *cluster_;
   static std::atomic<int> unix_time_;
-  class SlotMigrate *slot_migrate_;
-  class SlotImport *slot_import_;
+  class SlotMigrate *slot_migrate_ = nullptr;
+  class SlotImport *slot_import_ = nullptr;
   std::mutex migrate_mutex;
 
  private:

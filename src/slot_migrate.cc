@@ -47,10 +47,12 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
     seq_gap_limit_ = seq_gap;
   }
 
+  dst_port_ = -1;
   forbidden_slot_ = -1;
   migrate_slot_ = -1;
   migrate_state_ = kMigrateNone;
   stop_ = false;
+  slot_snapshot_ = nullptr;
 
   if (svr->IsSlave()) {
     StopMigrateTask();

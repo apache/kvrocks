@@ -47,4 +47,21 @@ start_server {tags {"command"}} {
         # prev_per_sec is almost the same as next_per_sec
         assert {[expr abs($cmd_qps - $next_qps)] < 10}
     }
+
+    test {get bgsave information from INFO command} {
+        assert_equal 0 [s bgsave_in_progress]
+        assert_equal -1 [s last_bgsave_time]
+        assert_equal ok [s last_bgsave_status]
+        assert_equal -1 [s last_bgsave_time_sec]
+
+        assert_equal {OK} [r bgsave]
+        after 200
+
+        assert_equal 0 [s bgsave_in_progress]
+        set last_bgsave_time [s last_bgsave_time]
+        assert {$last_bgsave_time > 1640507660}
+        assert_equal ok [s last_bgsave_status]
+        set last_bgsave_time_sec [s last_bgsave_time_sec]
+        assert {$last_bgsave_time_sec < 3 && $last_bgsave_time_sec >= 0}
+    }
 }

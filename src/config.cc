@@ -18,6 +18,9 @@
 #include "log_collector.h"
 
 const char *kDefaultNamespace = "__namespace";
+
+const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
+
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
@@ -127,11 +130,18 @@ Config::Config() {
       {"rocksdb.metadata_block_cache_size", true, new IntField(&RocksDB.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache",
        true, new YesNoField(&RocksDB.share_metadata_and_subkey_block_cache, true)},
+      {"rocksdb.row_cache_size", true, new IntField(&RocksDB.row_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.compaction_readahead_size", false, new IntField(&RocksDB.compaction_readahead_size, 2*MiB, 0, 64*MiB)},
       {"rocksdb.level0_slowdown_writes_trigger",
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
       {"rocksdb.level0_stop_writes_trigger",
        false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
+      {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
+      {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
+      {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
+      {"rocksdb.blob_garbage_collection_age_cutoff",
+       false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100)}
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -225,6 +235,7 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
   };
+
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
@@ -244,6 +255,11 @@ void Config::initFieldCallback() {
         std::vector<std::string> args;
         Util::Split(v, " \t", &args);
         binds = std::move(args);
+        return Status::OK();
+      }},
+      { "maxclients", [](Server* srv, const std::string &k, const std::string& v) -> Status {
+        if (!srv) return Status::OK();
+        srv->AdjustOpenFilesLimit();
         return Status::OK();
       }},
       {"slaveof", [this](Server* srv, const std::string &k, const std::string& v)->Status {
@@ -336,6 +352,53 @@ void Config::initFieldCallback() {
         if (!srv) return Status::OK();
         return srv->storage_->SetDBOption(trimRocksDBPrefix(k),
                                           std::to_string(RocksDB.max_total_wal_size * MiB));
+      }},
+      {"rocksdb.enable_blob_files", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string enable_blob_files = RocksDB.enable_blob_files ? "true" : "false";
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_files);
+      }},
+      {"rocksdb.min_blob_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+      }},
+      {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+      }},
+      {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+      }},
+      {"rocksdb.blob_garbage_collection_age_cutoff", [this](Server* srv, const std::string &k,
+                                                            const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.enable_blob_files) {
+          return Status(Status::NotOK, errNotEnableBlobDB);
+        }
+        int val;
+        try {
+          val = std::stoi(v);
+        } catch (std::exception &e) {
+          return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
+        }
+        if (val < 0 || val > 100) {
+          return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
+        }
+
+        double cutoff = val / 100;
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},
@@ -495,10 +558,17 @@ Status Config::Rewrite() {
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {
+    if (iter.first == "rename-command") {
+      // We should NOT overwrite the rename command since it cannot be rewritten in-flight,
+      // so skip it here to avoid rewriting it as new item.
+      continue;
+    }
     new_config[iter.first] = iter.second->ToString();
   }
+
+  std::string namespacePrefix = "namespace.";
   for (const auto &iter : tokens) {
-    new_config["namespace." + iter.second] = iter.first;
+    new_config[namespacePrefix + iter.second] = iter.first;
   }
 
   std::ifstream file(path_);
@@ -515,6 +585,10 @@ Status Config::Rewrite() {
       Util::Split2KV(trim_line, " \t", &kv);
       if (kv.size() != 2) {
         lines.emplace_back(raw_line);
+        continue;
+      }
+      if (Util::HasPrefix(kv[0], namespacePrefix)) {
+        // Ignore namespace fields here since we would always rewrite them
         continue;
       }
       auto iter = new_config.find(Util::ToLower(kv[0]));
@@ -569,7 +643,13 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
       tokens[token] = ns;
-      return Status::OK();
+      auto s = Rewrite();
+      if (!s.IsOK()) {
+        // Need to roll back the old token if fails to rewrite the config
+        tokens.erase(token);
+        tokens[iter.first] = ns;
+      }
+      return s;
     }
   }
   return Status(Status::NotOK, "the namespace was not found");
@@ -593,7 +673,12 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
     }
   }
   tokens[token] = ns;
-  return Status::OK();
+
+  s = Rewrite();
+  if (!s.IsOK()) {
+    tokens.erase(token);
+  }
+  return s;
 }
 
 Status Config::DelNamespace(const std::string &ns) {
@@ -603,7 +688,11 @@ Status Config::DelNamespace(const std::string &ns) {
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
-      return Status::OK();
+      auto s = Rewrite();
+      if (!s.IsOK()) {
+        tokens[iter.first] = ns;
+      }
+      return s;
     }
   }
   return Status(Status::NotOK, "the namespace was not found");

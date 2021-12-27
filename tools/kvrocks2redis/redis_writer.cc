@@ -1,4 +1,5 @@
 #include "redis_writer.h"
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
@@ -37,7 +38,6 @@ Status RedisWriter::Write(const std::string &ns, const std::vector<std::string> 
   }
 
   return Status::OK();
-
 }
 
 Status RedisWriter::FlushAll(const std::string &ns) {
@@ -97,6 +97,7 @@ void RedisWriter::sync() {
           }
           break;
         }
+        std::string con = std::string(buffer, getted_line_leng);
         s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
         if (!s.IsOK()) {
           LOG(ERROR) << "ERR send data to redis err: " + s.Msg();
@@ -111,6 +112,7 @@ void RedisWriter::sync() {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
           // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
           LOG(ERROR) << "[kvrocks2redis] CRITICAL - redis sync return error , administrator confirm needed : " << line;
+          delete[] buffer;
           Stop();
           return;
         }
@@ -222,5 +224,5 @@ Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::o
 }
 
 std::string RedisWriter::getNextOffsetFilePath(const std::string &ns) {
-  return config_->dir + "/" + ns + "_" + config_->next_offset_file_name;
+  return config_->output_dir + ns + "_" + config_->next_offset_file_name;
 }

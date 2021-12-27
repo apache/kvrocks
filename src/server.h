@@ -69,7 +69,7 @@ class Server {
   void SetBlocking(bool flag) { is_blocking_ = flag; }
   Config *GetConfig() { return config_; }
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
-
+  void AdjustOpenFilesLimit();
 
   Status AddMaster(std::string host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();

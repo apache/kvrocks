@@ -37,6 +37,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
     auto worker = new Worker(this, config);
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
+  AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
   lua_ = Lua::CreateState();
@@ -550,12 +551,6 @@ void Server::cron() {
       }
     }
 
-    // check every 30 minutes
-    if (is_loading_ == false && config_->auto_resize_block_and_sst && counter != 0 && counter % 18000 == 0) {
-      Status s = autoResizeBlockAndSST();
-      LOG(INFO) << "[server] Schedule to auto resize block and sst, result: " << s.Msg();
-    }
-
     // No replica uses this checkpoint, we can remove it.
     if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
@@ -612,6 +607,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "# RocksDB\r\n";
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
     uint64_t estimate_keys, block_cache_usage, block_cache_pinned_usage, index_and_filter_cache_usage;
+    std::map<std::string, std::string> cf_stats_map;
     db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
@@ -619,8 +615,21 @@ void Server::GetRocksDBInfo(std::string *info) {
     db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
     string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
-    string_stream << "index_and_filter_cache_usage:[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
+    string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
+    db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
+    string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
+    string_stream << "level0_file_limit_stop[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
+    string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
+    string_stream << "memtable_count_limit_stop[" << cf_handle->GetName() << "]:"
+                  << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";
@@ -1338,4 +1347,57 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
     return ExecPropagateScriptCommand(tokens);
   }
   return Status::OK();
+}
+
+// AdjustOpenFilesLimit only try best to raise the max open files according to
+// the max clients and rocksdb open file configuration. It also reserves a number
+// of file descriptors(128) for extra operations of persistence, listening sockets,
+// log files and so forth.
+void Server::AdjustOpenFilesLimit() {
+  const int min_reserved_fds = 128;
+  auto rocksdb_max_open_file = static_cast<rlim_t>(config_->RocksDB.max_open_files);
+  auto max_clients = static_cast<rlim_t>(config_->maxclients);
+  auto max_files = max_clients + rocksdb_max_open_file + min_reserved_fds;
+
+  struct rlimit limit;
+  if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
+    return;
+  }
+  rlim_t old_limit = limit.rlim_cur;
+  // Set the max number of files only if the current limit is not enough
+  if (old_limit >= max_files) {
+    return;
+  }
+
+  int setrlimit_error = 0;
+  rlim_t best_limit = max_files;
+  while (best_limit > old_limit) {
+    limit.rlim_cur = best_limit;
+    limit.rlim_max = best_limit;
+    if (setrlimit(RLIMIT_NOFILE, &limit) != -1) break;
+    setrlimit_error = errno;
+
+    rlim_t decr_step = 16;
+    if (best_limit < decr_step) {
+      best_limit = old_limit;
+      break;
+    }
+    best_limit -= decr_step;
+  }
+
+  if (best_limit < old_limit) best_limit = old_limit;
+  if (best_limit < max_files) {
+    if (best_limit <= static_cast<int>(min_reserved_fds)) {
+      LOG(WARNING) << "[server] Your current 'ulimit -n' of " << old_limit << " is not enough for the server to start."
+                   << "Please increase your open file limit to at least " << max_files << ". Exiting.";
+      exit(1);
+    }
+    LOG(WARNING) << "[server] You requested max clients of " << max_clients << " and rocksdb max open files of "
+                 << rocksdb_max_open_file <<" requiring at least " << max_files << " max file descriptors.";
+    LOG(WARNING) << "[server] Server can't set maximum open files to " << max_files
+                 << " because of OS error: " << strerror(setrlimit_error);
+  } else {
+    LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
+                 << " (it's originally set to " << old_limit << ")";
+  }
 }

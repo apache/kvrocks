@@ -273,7 +273,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   //    c. for convenience, user_score and inner_score respectively represent before and after encoding
   //
   // 
-  next lexicographical ordered inner_score of max:
+  // next lexicographical ordered inner_score of max:
   //    a. we can think of inner_score as a fixed 8-byte string. logically, the next lexicographical
   //       ordered inner_score of max_inner_score is 'max_inner_score + 1' if we assume no overflow.
   //       'max_inner_score + 1' means binary increment.

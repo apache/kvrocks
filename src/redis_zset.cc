@@ -272,7 +272,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   //       is required encoding before stored in rocksdb. encoding details see PutDouble()
   //    c. for convenience, user_score and inner_score respectively represent before and after encoding
   //
-  // generate next lexicographical ordered inner_score of max:
+  // 
+  next lexicographical ordered inner_score of max:
   //    a. we can think of inner_score as a fixed 8-byte string. logically, the next lexicographical
   //       ordered inner_score of max_inner_score is 'max_inner_score + 1' if we assume no overflow.
   //       'max_inner_score + 1' means binary increment.
@@ -292,7 +293,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   //       for positive max_user_score, max_next_user_score is 'max_user_score + 1'
   //       for negative max_user_score, max_next_user_score is 'max_user_score - 1'
   // Note: fortunately, there is no overflow in fact. more details see binary encoding of double
-  // binary encoding of double: https://www.jianshu.com/p/f0537a661a5e
+  // binary encoding of double: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 
   // generate next possible score of max
   int64_t i64 = 0;

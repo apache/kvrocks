@@ -73,9 +73,6 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Try migrating slot to node1
             set ret [$r0 clusterx migrate $node1_id 1]
             assert {$ret == "OK"}
-            # Migrating started
-            catch {[$r0 cluster migratestatus 1]} e
-            assert_match {*START*} $e
             after 50
             # Migrating failed
             catch {[$r0 cluster migratestatus 1]} e
@@ -351,11 +348,11 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
         test {MIGRATE - Slot keys are cleared after migration} {
             set slot6_key [lindex $::CRC16_SLOT_TABLE 6]
             assert {[$r0 set $slot6_key "slot6"] == "OK"}
+            # Check key in src server
+            assert {[$r0 get $slot6_key] == "slot6"}
             set ret [$r0 clusterx migrate $node1_id 6]
             assert {$ret == "OK"}
 
-            # Check key in src server
-            assert {[$r0 get $slot6_key] == "slot6"}
             # Migrate slot
             wait_for_condition 50 100 {
                 [string match "*migrating_slot: 6*migrating_state: SUCCESS*" [$r0 cluster migratestatus 6]]

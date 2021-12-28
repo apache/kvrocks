@@ -384,9 +384,15 @@ start_server {tags {"zset"}} {
         }
 
         test "ZRANGEBYSCORE for min/max score with multi member" {
+            # int score
             create_zset mzset {-inf a -inf b -1 c 2 d 3 e +inf f +inf g}
             assert_equal {a -inf b -inf c -1 d 2 e 3 f inf g inf} [r zrangebyscore mzset -inf +inf WITHSCORES]
             assert_equal {g inf f inf e 3 d 2 c -1 b -inf a -inf} [r zrevrangebyscore mzset +inf -inf WITHSCORES]
+
+            # double score
+            create_zset nzset {-1.004 a -1.004 b -1.002 c 1.002 d 1.004 e 1.004 f}
+            assert_equal {a -1.004 b -1.004 c -1.002 d 1.002 e 1.004 f 1.004} [r zrangebyscore nzset -1.004 1.004 WITHSCORES]
+            assert_equal {f 1.004 e 1.004 d 1.002 c -1.002 b -1.004 a -1.004} [r zrevrangebyscore nzset 1.004 -1.004 WITHSCORES]
         }
 
         proc create_default_lex_zset {} {

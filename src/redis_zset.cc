@@ -137,17 +137,24 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   std::string score_bytes;
   double score = min ? kMinScore : kMaxScore;
   PutDouble(&score_bytes, score);
-  std::string start_key, prefix_key;
+  std::string start_key, prefix_key, next_verison_prefix_key;
   InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
+
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_verison_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
@@ -203,16 +210,22 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   std::string score_bytes;
   double score = !reversed ? kMinScore : kMaxScore;
   PutDouble(&score_bytes, score);
-  std::string start_key, prefix_key;
+  std::string start_key, prefix_key, next_verison_prefix_key;
   InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
   int count = 0;
   int removed_subkey = 0;
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_verison_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+
   rocksdb::WriteBatch batch;
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
   iter->Seek(start_key);
@@ -220,6 +233,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
+
   for (;
       iter->Valid() && iter->key().starts_with(prefix_key);
       !reversed ? iter->Next() : iter->Prev()) {
@@ -305,13 +319,18 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
 
   std::string start_score_bytes;
   PutDouble(&start_score_bytes, spec.reversed ? (spec.maxex ? spec.max : max_next_score) : spec.min);
-  std::string start_key, prefix_key;
+  std::string start_key, prefix_key, next_verison_prefix_key;
   InternalKey(ns_key, start_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_verison_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
   int pos = 0;
@@ -384,14 +403,18 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
-  std::string start_key, prefix_key;
-  std::uint64_t start_version = spec.reversed && spec.max_infinite ? metadata.version + 1 : metadata.version;
-  InternalKey(ns_key, start_member, start_version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  std::string start_key, prefix_key, next_version_prefix_key;
+  InternalKey(ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
   int pos = 0;
@@ -399,10 +422,15 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
-  iter->Seek(start_key);
-  // see comment in rangebyscore()
-  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
-    iter->SeekForPrev(start_key);
+
+  if (!spec.reversed) {
+    iter->Seek(start_key);
+  } else {
+    if (spec.max_infinite) {
+      iter->SeekToLast();
+    } else {
+      iter->SeekForPrev(start_key);
+    }
   }
 
   for (;
@@ -539,14 +567,20 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
 
   double target_score = DecodeDouble(score_bytes.data());
-  std::string start_score_bytes, start_key, prefix_key;
+  std::string start_score_bytes, start_key, prefix_key, next_verison_prefix_key;
   double start_score = !reversed ? kMinScore : kMaxScore;
   PutDouble(&start_score_bytes, start_score);
   InternalKey(ns_key, start_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
   int rank = 0;
+  rocksdb::Slice upper_bound(next_verison_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()

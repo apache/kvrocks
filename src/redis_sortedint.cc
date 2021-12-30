@@ -103,7 +103,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  std::string prefix, start_key, start_buf;
+  std::string prefix, next_version_prefix, start_key, start_buf;
   uint64_t start_id = cursor_id;
   if (reversed && cursor_id == 0) {
     start_id = std::numeric_limits<uint64_t>::max();
@@ -111,10 +111,17 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   PutFixed64(&start_buf, start_id);
   InternalKey(ns_key, start_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+
   uint64_t id, pos = 0;
   auto iter = db_->NewIterator(read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
@@ -145,29 +152,29 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  std::string start_buf, start_key, prefix_key;
+  std::string start_buf, start_key, prefix_key, next_version_prefix_key;
   PutFixed64(&start_buf, spec.reversed ? spec.max : spec.min);
   InternalKey(ns_key, start_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
   int pos = 0;
   auto iter = db_->NewIterator(read_options);
-  iter->Seek(start_key);
-  // when using reverse range, we should use the `SeekForPrev` to put the iter to the right position in those cases:
-  //    a. the key with the max score was the maximum key in DB and the iter would be invalid, try to seek the prev key
-  //    b. there's some key after the key with max score and the iter would be valid, but the current key may be:
-  //        b1. the prefix was the same with start key, don't skip it (the sortedint key has existed)
-  //        b2. the prefix was not the same with start key, try to seek the prev key
-  // Note: the DB key was composed by `NS|key|version|id`, so SeekForPrev(`NS|key|version|id`)
-  // may skip the current id if exists, so do SeekForPrev if prefix was not the same with start key
-  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+  if (!spec.reversed) {
+    iter->Seek(start_key);
+  } else {
     iter->SeekForPrev(start_key);
   }
+
   uint64_t id;
   for (;
       iter->Valid() && iter->key().starts_with(prefix_key);

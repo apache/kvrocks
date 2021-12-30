@@ -136,16 +136,23 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   if (!s.ok()) return s;
 
   uint64_t index = count >= 0 ? metadata.head : metadata.tail - 1;
-  std::string buf, start_key, prefix;
+  std::string buf, start_key, prefix, next_version_prefix;
   PutFixed64(&buf, index);
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+
   bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
@@ -225,15 +232,20 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  std::string buf, start_key, prefix;
+  std::string buf, start_key, prefix, next_version_prefix;
   uint64_t pivot_index = metadata.head - 1, new_elem_index;
   PutFixed64(&buf, metadata.head);
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
@@ -340,14 +352,18 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
 
   std::string buf;
   PutFixed64(&buf, metadata.head + start);
-  std::string start_key, prefix;
+  std::string start_key, prefix, next_version_prefix;
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);

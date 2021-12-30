@@ -58,14 +58,18 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     return Status(Status::NotOK, "unknown metadata type: " + std::to_string(type));
   }
 
-  std::string ns, prefix_key, user_key, sub_key, value, output;
+  std::string ns, prefix_key, user_key, sub_key, value, output, next_version_prefix_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
   InternalKey(ns_key, "", metadata.version, cluster_enabled_).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, cluster_enabled_).Encode(&next_version_prefix_key);
 
   rocksdb::DB *db_ = storage_->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = lastest_snapshot_->GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+
   auto iter = db_->NewIterator(read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {

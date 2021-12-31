@@ -31,6 +31,7 @@ const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
 
+const char *kPropagateCompactCommand = "compact";
 const char *kPropagateScriptCommand = "script";
 
 const char *kLuaFunctionPrefix = "lua_f_";

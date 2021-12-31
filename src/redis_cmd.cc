@@ -143,21 +143,59 @@ class CommandKeys : public Commander {
 
 class CommandFlushDB : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+     if (args.size() == 2 && !strcasecmp(args[1].data(), "async")) {
+       sync_ = false;
+     } else if (args.size() == 2 && !strcasecmp(args[1].data(), "sync")) {
+       sync_ = true;
+     } else if (args.size() == 1) {
+       sync_ = true;
+     } else {
+       return Status(Status::RedisParseErr, errInvalidSyntax);
+     }
+    return Commander::Parse(args);
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    std::string ns = conn->GetNamespace();
+    Redis::Database redis(svr->storage_, ns);
     rocksdb::Status s = redis.FlushDB();
-    LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace()
+    LOG(WARNING) << "DB keys in namespce: " << ns
                  << " was flushed, addr: " << conn->GetAddr();
+
+    if (s.ok() && sync_) {
+      Status ss = svr->AsyncCompactNamespace(ns);
+      LOG(WARNING) << "flushdb sync, schedule to compact the namespace:" << ns << ",result: " << ss.Msg();
+      std::vector<std::string> tokens = {"compact", ns};
+      svr->Propagate(Engine::kPropagateCompactCommand, tokens);
+    }
+
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
     return Status(Status::RedisExecErr, s.ToString());
   }
+
+ private:
+  bool sync_ = true;
 };
 
 class CommandFlushAll : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+     if (args.size() == 2 && !strcasecmp(args[1].data(), "async")) {
+       sync_ = false;
+     } else if (args.size() == 2 && !strcasecmp(args[1].data(), "sync")) {
+       sync_ = true;
+     } else if (args.size() == 1) {
+       sync_ = true;
+     } else {
+       return Status(Status::RedisParseErr, errInvalidSyntax);
+     }
+    return Commander::Parse(args);
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
@@ -166,12 +204,23 @@ class CommandFlushAll : public Commander {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.FlushAll();
     LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
+
+    if (s.ok() && sync_) {
+      Status ss = svr->AsyncCompactDB();
+      LOG(WARNING) << "flushsll sync, schedule to compact the db, result: " << ss.Msg();
+      std::vector<std::string> tokens = {"compact"};
+      svr->Propagate(Engine::kPropagateCompactCommand, tokens);
+    }
+
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
     return Status(Status::RedisExecErr, s.ToString());
   }
+
+ private:
+  bool sync_ = true;
 };
 
 class CommandPing : public Commander {
@@ -3192,21 +3241,7 @@ class CommandCompact : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     auto ns = conn->GetNamespace();
-    std::string begin_key, end_key;
-    if (ns != kDefaultNamespace) {
-      Redis::Database redis_db(svr->storage_, conn->GetNamespace());
-      std::string prefix;
-      ComposeNamespaceKey(ns, "", &prefix, false);
-      auto s = redis_db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
-      if (!s.ok()) {
-        if (s.IsNotFound()) {
-          *output = Redis::SimpleString("OK");
-          return Status::OK();
-        }
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-    }
-    Status s = svr->AsyncCompactDB(begin_key, end_key);
+    Status s = (ns == kDefaultNamespace) ? svr->AsyncCompactDB() : svr->AsyncCompactNamespace(ns);
     if (!s.IsOK()) return s;
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "Commpact was triggered by manual with executed success";
@@ -4439,8 +4474,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("config", -2, "read-only", 0, 0, 0, CommandConfig),
     ADD_CMD("namespace", -3, "read-only", 0, 0, 0, CommandNamespace),
     ADD_CMD("keys", 2, "read-only", 0, 0, 0, CommandKeys),
-    ADD_CMD("flushdb", 1, "write", 0, 0, 0, CommandFlushDB),
-    ADD_CMD("flushall", 1, "write", 0, 0, 0, CommandFlushAll),
+    ADD_CMD("flushdb", -1, "write", 0, 0, 0, CommandFlushDB),
+    ADD_CMD("flushall", -1, "write", 0, 0, 0, CommandFlushAll),
     ADD_CMD("dbsize", -1, "read-only", 0, 0, 0, CommandDBSize),
     ADD_CMD("slowlog", -2, "read-only", 0, 0, 0, CommandSlowlog),
     ADD_CMD("perflog", -2, "read-only", 0, 0, 0, CommandPerfLog),

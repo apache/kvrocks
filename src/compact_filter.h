@@ -76,9 +76,11 @@ class PropagateFilter : public rocksdb::CompactionFilter {
   const char *Name() const override { return "PropagateFilter"; }
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override {
-    // We propagate Lua commands which don't store data,
-    // just in order to implement updating Lua state.
-    return key == Engine::kPropagateScriptCommand;
+    // 1. propagate Lua commands which don't store data,
+    //    just in order to implement updating Lua state.
+    // 2. propagate compact commands when master flushall/flushdb sync
+    return key == Engine::kPropagateScriptCommand ||
+            key == Engine::kPropagateCompactCommand;
   }
 };
 

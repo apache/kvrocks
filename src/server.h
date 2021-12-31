@@ -109,6 +109,7 @@ class Server {
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
+  Status AsyncCompactNamespace(const std::string &ns);
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
@@ -136,6 +137,7 @@ class Server {
   Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
+  Status ExecPropagateCompactCommand(const std::vector<std::string> &tokens);
 
   void SetCurrentConnection(Redis::Connection *conn) { curr_connection_ = conn; }
   Redis::Connection *GetCurrentConnection() { return curr_connection_; }

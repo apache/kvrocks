@@ -1007,6 +1007,17 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   return task_runner_.Publish(task);
 }
 
+Status Server::AsyncCompactNamespace(const std::string &ns) {
+  std::string begin_key(ns), end_key(ns);
+
+  char last_char = end_key.back();
+  last_char++;
+  end_key.pop_back();
+  end_key.push_back(last_char);
+
+  return AsyncCompactDB(begin_key, end_key);
+}
+
 Status Server::AsyncBgsaveDB() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   if (is_bgsave_in_progress_) {
@@ -1320,13 +1331,28 @@ Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens
   return Status::OK();
 }
 
+Status Server::ExecPropagateCompactCommand(const std::vector<std::string> &tokens) {
+  if (tokens.size() == 1) {
+    AsyncCompactDB();
+  } else if (tokens.size() == 2) {
+    AsyncCompactNamespace(tokens[1]);
+  } else {
+    AsyncCompactDB(tokens[1], tokens[2]);
+  }
+  LOG(INFO) << "[server] exec propagate compact";
+  return Status::OK();
+}
+
 Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   if (tokens.empty()) return Status::OK();
 
   auto command = Util::ToLower(tokens[0]);
   if (command == "script" && tokens.size() >= 2) {
     return ExecPropagateScriptCommand(tokens);
+  } else if (command == "compact" && tokens.size() <= 3) {
+    return ExecPropagateCompactCommand(tokens);
   }
+
   return Status::OK();
 }
 

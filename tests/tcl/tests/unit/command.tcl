@@ -55,9 +55,12 @@ start_server {tags {"command"}} {
         assert_equal -1 [s last_bgsave_time_sec]
 
         assert_equal {OK} [r bgsave]
-        after 200
+        wait_for_condition 100 500 {
+            [s bgsave_in_progress] == 0
+        } else {
+            fail "Fail to bgsave"
+        }
 
-        assert_equal 0 [s bgsave_in_progress]
         set last_bgsave_time [s last_bgsave_time]
         assert {$last_bgsave_time > 1640507660}
         assert_equal ok [s last_bgsave_status]

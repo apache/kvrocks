@@ -292,7 +292,6 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
 
-  svr_->SetCurrentConnection(this);
   for (auto &cmd_tokens : to_process_cmds) {
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
         !IsFlagEnabled(Connection::kMultiExec)) break;
@@ -330,6 +329,11 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
         (config->cluster_enabled && cmd_name == "clusterx" && cmd_tokens.size() >= 2
          && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
+
+      // When executing lua script commands that have "exclusive" attribute,
+      // we need to know current connection, but we should set current connection
+      // after acquiring the WorkExclusivityGuard to make it thread-safe
+      svr_->SetCurrentConnection(this);
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
     }

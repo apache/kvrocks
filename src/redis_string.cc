@@ -14,10 +14,14 @@ std::vector<rocksdb::Status> String::getRawValues(
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  std::vector<rocksdb::ColumnFamilyHandle*> cfs(keys.size(), metadata_cf_handle_);
-  auto statuses = db_->MultiGet(read_options, cfs, keys, raw_values);
+  raw_values->resize(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(keys.size());
+  db_->MultiGet(read_options, metadata_cf_handle_, keys.size(),
+                keys.data(), pin_values.data(), statuses.data(), false);
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses[i].ok()) continue;
+    (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
     Metadata metadata(kRedisNone, false);
     metadata.Decode((*raw_values)[i]);
     if (metadata.Expired()) {

@@ -30,7 +30,7 @@ start_server {tags {"flushdb and flushall"}} {
                 # check log file of slave
                 if {$flag eq "sync"} {
                     wait_for_condition 50 1000 {
-                        [log_file_matches $dir/PegaDB.INFO "*exec propagate compact*"]
+                        [log_file_matches $dir/kvrocks.INFO "*exec propagate compact*"]
                     } else {
                         fail "Fail to propagate compact to salve when flushall/db sync"
                     }  

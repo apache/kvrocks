@@ -160,7 +160,7 @@ we break the bitmap values into fragments(1KiB, 8192 bits/fragment), and subkey 
 
 ```shell
                      +---------------+
-key|version|index => |     fragment  |
+key|version|index => |    fragment   |
                      +---------------+
 ```
 
@@ -180,7 +180,7 @@ key =>  |  flags   |  expire    |  version  |  size     |
 and the sub keys-values in rocksdb would be:
 
 ```shell
-                      +---------------+
-key|version|id => |         NULL      |
-                      +---------------+
+                  +---------------+
+key|version|id => |      NULL     |
+                  +---------------+
 ```

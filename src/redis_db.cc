@@ -324,7 +324,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 
 rocksdb::Status Database::FlushDB() {
   std::string prefix, begin_key, end_key;
-  ComposeNamespaceKey(namespace_, "", &prefix, false);
+  ComposeNamespacePrefix(namespace_, &prefix);
   auto s = FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
   if (!s.ok()) {
     return rocksdb::Status::OK();

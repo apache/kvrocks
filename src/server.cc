@@ -1008,12 +1008,13 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 }
 
 Status Server::AsyncCompactNamespace(const std::string &ns) {
-  std::string begin_key(ns), end_key(ns);
+  std::string begin_key, end_key;
 
-  char last_char = end_key.back();
-  last_char++;
-  end_key.pop_back();
-  end_key.push_back(last_char);
+  ComposeNamespacePrefix(ns, &begin_key);
+  end_key = begin_key;
+
+  auto size = end_key.size();
+  end_key[size - 1]++;
 
   return AsyncCompactDB(begin_key, end_key);
 }

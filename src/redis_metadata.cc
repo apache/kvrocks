@@ -134,6 +134,13 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->append(key.ToString());
 }
 
+void ComposeNamespacePrefix(const Slice& ns, std::string *ns_prefix) {
+  ns_prefix->clear();
+
+  PutFixed8(ns_prefix, static_cast<uint8_t>(ns.size()));
+  ns_prefix->append(ns.ToString());
+}
+
 Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
   expire = 0;

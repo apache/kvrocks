@@ -1,6 +1,9 @@
 name: run ci without jemalloc
 
 on:
+  schedule:
+    # Daily run this action at 1am
+    - cron: '0 1 * * *'
   pull_request:
     types: [labeled]
 

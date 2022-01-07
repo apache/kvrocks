@@ -373,7 +373,7 @@ Status Storage::RestoreFromCheckpoint() {
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
 
   // Maybe there is no db dir
-  auto s = backup_env_->CreateDirIfMissing(config_->db_dir);
+  auto s = env_->CreateDirIfMissing(config_->db_dir);
   if (!s.ok()) {
     return Status(Status::NotOK, "Fail to create db dir, error: " + s.ToString());
   }

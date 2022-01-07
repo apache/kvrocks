@@ -833,6 +833,11 @@ void Server::GetCommandsStatsInfo(std::string *info) {
   *info = string_stream.str();
 }
 
+// WARNING: we must not access DB(i.e.RocksDB) when server is loading since
+// DB is closed and the pointer is invalid. Server may crash if we access DB
+// during loading.
+// If you add new fields which access DB into INFO command output, make sure
+// this section cant't be shown when loading(i.e. !is_loading_).
 void Server::GetInfo(const std::string &ns, const std::string &section, std::string *info) {
   info->clear();
   std::ostringstream string_stream;
@@ -868,7 +873,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     GetStatsInfo(&stats_info);
     string_stream << stats_info;
   }
-  if (all || section == "replication") {
+
+  // In replication section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "replication")) {
     std::string replication_info;
     GetReplicationInfo(&replication_info);
     string_stream << replication_info;
@@ -889,7 +896,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     GetCommandsStatsInfo(&commands_stats_info);
     string_stream << commands_stats_info;
   }
-  if (all || section == "keyspace") {
+
+  // In keyspace section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "keyspace")) {
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
@@ -913,7 +922,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
       string_stream << "used_disk_percent: " << used_disk_percent << "%\r\n";
     }
   }
-  if (all || section == "rocksdb") {
+
+  // In rocksdb section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "rocksdb")) {
     std::string rocksdb_info;
     GetRocksDBInfo(&rocksdb_info);
     string_stream << rocksdb_info;

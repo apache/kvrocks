@@ -28,7 +28,7 @@ Redis hashmap(dict) is like the hashmap in many programming languages, it is use
 ```shell
         +----------+------------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   |
         +----------+------------+-----------+-----------+
 ```
 
@@ -70,7 +70,7 @@ Redis set can be regarded as a hash, with the value of sub-key always being null
 ```shell
         +----------+------------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   |
         +----------+------------+-----------+-----------+
 ```
 
@@ -91,7 +91,7 @@ Redis list is also organized by metadata and sub keys-values, and sub key is ind
 ```shell
         +----------+------------+-----------+-----------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |  head     |  tail     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   | (8byte)   | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   | (8byte)   | (8byte)   |
         +----------+------------+-----------+-----------+-----------+-----------+
 ```
 
@@ -121,7 +121,7 @@ the metadata of zset is still same with set, like below:
 ```shell
         +----------+------------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   |
         +----------+------------+-----------+-----------+
 ```
 
@@ -150,7 +150,7 @@ Redis bitmap is the most interesting part in kvrocks design, unlike other types,
 ```shell
         +----------+------------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   |
         +----------+------------+-----------+-----------+
 ```
 
@@ -173,7 +173,7 @@ Sortedint is a set with members being type int and sorted in ascending order:
 ```shell
         +----------+------------+-----------+-----------+
 key =>  |  flags   |  expire    |  version  |  size     |
-        | (1byte)  | (4byte)    |  (8byte)  | (8byte)   |
+        | (1byte)  | (4byte)    |  (8byte)  | (4byte)   |
         +----------+------------+-----------+-----------+
 ```
 

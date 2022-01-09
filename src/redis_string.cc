@@ -54,6 +54,9 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata.Type() != kRedisString && metadata.size > 0) {
+    if (metadata.Type() == kRedisBitmap) {
+       return rocksdb::Status::NotSupported(kErrMsgWrongType);
+    }
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   return rocksdb::Status::OK();
@@ -124,11 +127,10 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
 }
 
 rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
-  std::vector<Slice> keys{user_key};
-  std::vector<std::string> values;
-  std::vector<rocksdb::Status> statuses = MGet(keys, &values);
-  *value = std::move(values[0]);
-  return statuses[0];
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  return getValue(ns_key, value);
 }
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {

@@ -62,7 +62,7 @@ jobs:
 
       - name: Build
         run: |
-          make -j4 DISABLE_JEMALLOC=1
+          make -j4
           cp src/kvrocks build/kvrocks
 
       - name: Unit Test

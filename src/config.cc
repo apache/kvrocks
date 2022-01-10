@@ -103,6 +103,7 @@ Config::Config() {
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new StringField(&rename_command_, "")},
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
+      {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},

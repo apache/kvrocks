@@ -2,14 +2,29 @@ start_server {tags {"repl"}} {
     set A [srv 0 client]
     set A_host "localhost"
     set A_port [srv 0 port]
+    populate 100 "" 10
     start_server {} {
         set B [srv 0 client]
         set B_host [srv 0 host]
         set B_port [srv 0 port]
 
         test {Set instance A as slave of B} {
+            $A config set slave-empty-db-before-fullsync yes
+            $A config set fullsync-recv-file-delay 2
             $A slaveof $B_host $B_port
+
+            # in loading status
             after 1000
+            assert_equal {1} [s -1 loading]
+            wait_for_condition 500 100 {
+                [s -1 loading] == 0
+            } else {
+                fail "Fail to load master snapshot"
+            }
+            # reset config
+            after 1000
+            $A config set fullsync-recv-file-delay 0
+            $A config set slave-empty-db-before-fullsync no
 
             wait_for_condition 50 100 {
                 [lindex [$A role] 0] eq {slave} &&

@@ -893,6 +893,11 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir,
       break;
     }
     DLOG(INFO) << "[fetch] Succeed fetching file " << files[i];
+
+    // Just for tests
+    if (srv_->GetConfig()->fullsync_recv_file_delay) {
+      sleep(srv_->GetConfig()->fullsync_recv_file_delay);
+    }
   }
   evbuffer_free(evbuf);
   return s;

@@ -27,13 +27,17 @@ ROCKSDB= $(ROCKSDB_PATH)/librocksdb.a
 LUA_PATH= $(EXTERNAL_LIBRARY_PATH)/lua
 LUA= $(LUA_PATH)/src/liblua.a
 # Include paths to dependencies
-FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include \
-				  -I$(ROCKSDB_PATH)/include \
+FINAL_CXXFLAGS+=  -I$(ROCKSDB_PATH)/include \
 				  -I$(LIBEVENT_PATH)/include \
 				  -I$(GLOG_PATH)/src \
 				  -I$(LUA_PATH)/src \
 				  -I.
-FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(JEMALLOC) $(ROCKSDB) $(LUA)
+FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(ROCKSDB) $(LUA)
+
+ifndef DISABLE_JEMALLOC
+FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include
+FINAL_LIBS+= $(JEMALLOC)
+endif
 
 SHARED_OBJS= cluster.o compact_filter.o config.o cron.o encoding.o event_listener.o lock_manager.o \
 			   log_collector.o redis_bitmap.o redis_bitmap_string.o redis_cmd.o redis_connection.o redis_db.o \
@@ -104,10 +108,16 @@ $(LIBEVENT):
 		./configure --enable-shared=no --disable-openssl; \
 		$(MAKE) -C $(LIBEVENT_PATH)/
 
+ifdef DISABLE_JEMALLOC
+$(ROCKSDB):
+	export ROCKSDB_DISABLE_BZIP=1 ROCKSDB_DISABLE_ZLIB=1 ROCKSDB_DISABLE_LZ4=1; \
+	$(MAKE) USE_RTTI=1 PORTABLE=1 -C $(ROCKSDB_PATH)/ static_lib
+else
 $(ROCKSDB): $(JEMALLOC)
 	export ROCKSDB_DISABLE_BZIP=1 ROCKSDB_DISABLE_ZLIB=1 ROCKSDB_DISABLE_LZ4=1; \
 	export JEMALLOC=1 JEMALLOC_INCLUDE=-I$(JEMALLOC_PATH)/include JEMALLOC_LIB=$(JEMALLOC); \
 	$(MAKE) USE_RTTI=1 PORTABLE=1 -C $(ROCKSDB_PATH)/ static_lib
+endif
 
 $(JEMALLOC):
 	cd $(JEMALLOC_PATH); ./autogen.sh; \

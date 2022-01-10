@@ -7,6 +7,7 @@ if (NOT __ROCKSDB_INCLUDED)
   set(rocksdb_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-prefix)
   # install directory
   set(rocksdb_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-install)
+  set(COMPILE_WITH_JEMALLOC ON)
 
   if (UNIX)
       set(ROCKSDB_EXTRA_COMPILER_FLAGS "-fPIC")
@@ -14,9 +15,15 @@ if (NOT __ROCKSDB_INCLUDED)
 
   set(ROCKSDB_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
   set(ROCKSDB_C_FLAGS "${CMAKE_C_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
-  set(JEMALLOC_ROOT_DIR ${jemalloc_INSTALL})
+  if (NOT DISABLE_JEMALLOC)
+    set(ROCKSDB_DEPENDS "jemalloc snappy")
+    set(JEMALLOC_ROOT_DIR ${jemalloc_INSTALL})
+  else()
+    set(rocksdb_DEPENDS "snappy")
+    set(COMPILE_WITH_JEMALLOC OFF)
+  endif()
   ExternalProject_Add(rocksdb
-      DEPENDS jemalloc snappy
+      DEPENDS ${rocksdb_DEPENDS}
       PREFIX ${rocksdb_PREFIX}
       #GIT_REPOSITORY "https://github.com/facebook/rocksdb"
       #GIT_TAG "v5.15.10"
@@ -42,7 +49,7 @@ if (NOT __ROCKSDB_INCLUDED)
                  -DWITH_TOOLS=OFF
                  -DWITH_GFLAGS=OFF
                  -DUSE_RTTI=ON
-                 -DWITH_JEMALLOC=ON
+                 -DWITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
       LOG_DOWNLOAD 1
       LOG_CONFIGURE 1
       LOG_INSTALL 1

@@ -234,10 +234,10 @@ class CommandGet : public Commander {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Get(args_[1], &value);
-    // The IsNotSupported error means the key type was a bitmap
+    // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
     // to the `max-bitmap-to-string-mb` configuration.
-    if (s.IsNotSupported()) {
+    if (s.IsInvalidArgument()) {
       Config *config = svr->GetConfig();
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());

@@ -85,7 +85,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
 
 // Use this function after careful estimation, and reserve enough memory
 // according to the max size of the bitmap string to prevent OOM.
-rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t &max_btos_size, std::string *value) {
+rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos_size, std::string *value) {
   value->clear();
   std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);

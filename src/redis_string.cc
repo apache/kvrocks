@@ -120,11 +120,9 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
 }
 
 rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
-  std::vector<Slice> keys{user_key};
-  std::vector<std::string> values;
-  std::vector<rocksdb::Status> statuses = MGet(keys, &values);
-  *value = std::move(values[0]);
-  return statuses[0];
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  return getValue(ns_key, value);
 }
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {

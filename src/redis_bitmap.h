@@ -12,6 +12,7 @@ class Bitmap : public Database {
  public:
   Bitmap(Engine::Storage *storage, const std::string &ns): Database(storage, ns) {}
   rocksdb::Status GetBit(const Slice &user_key, uint32_t offset, bool *bit);
+  rocksdb::Status GetString(const Slice &user_key, const uint32_t max_btos_size, std::string *value);
   rocksdb::Status SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(const Slice &user_key, int start, int stop, uint32_t *cnt);
   rocksdb::Status BitPos(const Slice &user_key, bool bit, int start, int stop, bool stop_given, int *pos);

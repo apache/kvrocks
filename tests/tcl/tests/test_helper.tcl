@@ -25,6 +25,7 @@ set ::all_tests {
     unit/type/zset
     unit/type/hash
     unit/type/sint
+    unit/type/bitmap
     unit/multi
     unit/expire
     unit/quit

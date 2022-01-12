@@ -1,5 +1,6 @@
 #include "redis_bitmap.h"
 #include <vector>
+#include <algorithm>
 
 #include "redis_bitmap_string.h"
 
@@ -7,6 +8,9 @@ namespace Redis {
 
 const uint32_t kBitmapSegmentBits = 1024 * 8;
 const uint32_t kBitmapSegmentBytes = 1024;
+
+const char kErrBitmapStringOutOfRange[] = "The size of the bitmap string exceeds the "
+                                          "configuration item max-bitmap-to-string-mb";
 
 uint32_t kNum2Bits[256] = {
     0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
@@ -79,6 +83,63 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   return rocksdb::Status::OK();
 }
 
+// Use this function after careful estimation, and reserve enough memory
+// according to the max size of the bitmap string to prevent OOM.
+rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos_size, std::string *value) {
+  value->clear();
+  std::string ns_key, raw_value;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  BitmapMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  if (!s.ok()) return s;
+  if (metadata.size > max_btos_size) {
+    return rocksdb::Status::Aborted(kErrBitmapStringOutOfRange);
+  }
+  value->assign(metadata.size, 0);
+
+  std::string fragment, prefix_key;
+  fragment.reserve(kBitmapSegmentBytes * 2);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  uint32_t frag_index, valid_size;
+
+  auto iter = db_->NewIterator(read_options);
+  for (iter->Seek(prefix_key);
+       iter->Valid() && iter->key().starts_with(prefix_key);
+       iter->Next()) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    frag_index = std::stoul(ikey.GetSubKey().ToString());
+    fragment = iter->value().ToString();
+    // To be compatible with data written before the commit d603b0e(#338)
+    // and avoid returning extra null char after expansion.
+    valid_size = std::min({fragment.size(),
+                          static_cast<size_t>(kBitmapSegmentBytes),
+                          static_cast<size_t>(metadata.size - frag_index)});
+
+    //  If you setbit bit 0 1, the value is stored as 0x01 in Kvocks but 0x80 in Redis.
+    // So we need to swap bits is to keep the same return value as Redis.
+    for (uint32_t i = 0; i < valid_size; i++) {
+        if (!fragment[i]) continue;
+        fragment[i] = ((fragment[i] & 0x80) >> 7)|\
+                      ((fragment[i] & 0x40) >> 5)|\
+                      ((fragment[i] & 0x20) >> 3)|\
+                      ((fragment[i] & 0x10) >> 1)|\
+                      ((fragment[i] & 0x08) << 1)|\
+                      ((fragment[i] & 0x04) << 3)|\
+                      ((fragment[i] & 0x02) << 5)|\
+                      ((fragment[i] & 0x01) << 7);
+    }
+    value->replace(frag_index, valid_size, fragment.data(), valid_size);
+  }
+  delete iter;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit) {
   std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -101,20 +162,18 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  uint32_t bitmap_size = metadata.size;
+  uint32_t used_size = index + byte_index + 1;
+  uint32_t bitmap_size = std::max(used_size, metadata.size);
   if (byte_index >= value.size()) {  // expand the bitmap
     size_t expand_size;
     if (byte_index >= value.size() * 2) {
       expand_size = byte_index - value.size() + 1;
     } else if (value.size() * 2 > kBitmapSegmentBytes) {
-       expand_size = kBitmapSegmentBytes - value.size();
+      expand_size = kBitmapSegmentBytes - value.size();
     } else {
       expand_size = value.size();
     }
     value.append(expand_size, 0);
-    if (value.size() + index > bitmap_size) {
-      bitmap_size = static_cast<uint32_t>(value.size()) + index;
-    }
   }
   uint32_t bit_offset = offset % 8;
   *old_bit = (value[byte_index] & (1 << bit_offset)) != 0;

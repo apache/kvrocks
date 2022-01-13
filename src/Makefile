@@ -26,7 +26,6 @@ ROCKSDB_PATH= $(EXTERNAL_LIBRARY_PATH)/rocksdb
 ROCKSDB= $(ROCKSDB_PATH)/librocksdb.a
 LUA_PATH= $(EXTERNAL_LIBRARY_PATH)/lua
 LUA= $(LUA_PATH)/src/liblua.a
-REDIS_PATH= $(EXTERNAL_LIBRARY_PATH)/redis
 
 # Include paths to dependencies
 FINAL_CXXFLAGS+=  -I$(ROCKSDB_PATH)/include \
@@ -80,7 +79,7 @@ endif
 
 PROG=kvrocks
 
-all: redistool $(PROG) kvrocks2redis
+all: $(PROG) kvrocks2redis
 	@echo ""
 	@printf $(MAKECOLOR)"Hint: It's a good idea to run 'make test' ;)"$(ENDCOLOR)
 	@echo ""
@@ -129,9 +128,6 @@ $(JEMALLOC):
 $(LUA):
 	cd $(LUA_PATH)/src; make all CFLAGS="$(LUA_CFLAGS)"
 
-redistool:
-	cd $(REDIS_PATH)/src; $(MAKE) redis-cli -C $(REDIS_PATH)/ > /dev/null 2>&1
-
 kvrocks2redis: $(PROG) $(KVROCKS2REDIS_OBJS)
 	$(KVROCKS_LD) -o kvrocks2redis $(KVROCKS2REDIS_OBJS) $(FINAL_LIBS) $(LDFLAGS)
 
@@ -154,7 +150,6 @@ distclean: clean
 	- make -C $(LIBEVENT_PATH)/ clean
 	- make -C $(JEMALLOC_PATH)/ distclean
 	- make -C $(GLOG_PATH)/ distclean
-	- make -C $(REDIS_PATH)/ distclean
 
 install: all
 	@mkdir -p $(INSTALL_DIR)

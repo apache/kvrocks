@@ -44,8 +44,9 @@ jobs:
 
       - name: Redis Tcl Test
         run: |
+          sudo apt-get install redis
           sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
+          cd tests/tcl && sh runtest && sh runtest --single integration/redis-cli && cd -
 
   build-test-on-macos-latest:
     runs-on: macos-latest
@@ -70,4 +71,5 @@ jobs:
 
       - name: Redis Tcl Test
         run:
-          cd tests/tcl && sh runtest && cd -
+          brew install redis
+          cd tests/tcl && sh runtest && sh runtest --single integration/redis-cli && cd -

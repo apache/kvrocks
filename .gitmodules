@@ -22,6 +22,3 @@
 	path = external/lua
 	url = https://github.com/KvrocksLabs/lua.git
     ignore = dirty
-[submodule "external/redis"]
-	path = external/redis
-	url = https://github.com/redis/redis.git

@@ -119,6 +119,7 @@ struct Config{
     int max_total_wal_size;
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
+    int level0_file_num_compaction_trigger;
     int compression;
     bool disable_auto_compactions;
     bool enable_blob_files;

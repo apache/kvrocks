@@ -70,6 +70,6 @@ jobs:
         run: make test
 
       - name: Redis Tcl Test
-        run:
+        run: |
           brew install redis
           cd tests/tcl && sh runtest && sh runtest --single integration/redis-cli && cd -

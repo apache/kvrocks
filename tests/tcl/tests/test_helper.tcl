@@ -39,7 +39,6 @@ set ::all_tests {
     unit/scripting
     integration/replication
     integration/cluster
-    integration/redis-cli
 }
 
 # Index to the next test to run in the ::all_tests list.

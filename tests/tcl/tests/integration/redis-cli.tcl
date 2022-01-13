@@ -1,18 +1,7 @@
 source tests/support/cli.tcl
 
-set ::singledb 1
-
-if {$::singledb} {
-    set ::dbnum 0
-} else {
-    set ::dbnum 9
-}
-
 start_server {tags {"cli"}} {
-    proc open_cli {{opts ""} {infile ""}} {
-        if { $opts == "" } {
-            set opts "-n $::dbnum"
-        }
+    proc open_cli {{opts "-n 9"} {infile ""}} {
         set ::env(TERM) dumb
         set cmdline [rediscli [srv host] [srv port] $opts]
         if {$infile ne ""} {
@@ -33,25 +22,13 @@ start_server {tags {"cli"}} {
     }
 
     proc read_cli {fd} {
-        set ret [read $fd]
-        while {[string length $ret] == 0} {
+        set buf [read $fd]
+        while {[string length $buf] == 0} {
+            # wait some time and try again
             after 10
-            set ret [read $fd]
-        }
-
-        # We may have a short read, try to read some more.
-        set empty_reads 0
-        while {$empty_reads < 5} {
             set buf [read $fd]
-            if {[string length $buf] == 0} {
-                after 10
-                incr empty_reads
-            } else {
-                append ret $buf
-                set empty_reads 0
-            }
         }
-        return $ret
+        set _ $buf
     }
 
     proc write_cli {fd buf} {
@@ -107,23 +84,15 @@ start_server {tags {"cli"}} {
     }
 
     proc run_cli {args} {
-        _run_cli [srv host] [srv port] $::dbnum {} {*}$args
+        _run_cli [srv host] [srv port] 9 {} {*}$args
     }
 
-    proc run_cli_with_input_pipe {mode cmd args} {
-        if {$mode == "x" } {
-            _run_cli [srv host] [srv port] $::dbnum [list pipe $cmd] -x {*}$args
-        } elseif {$mode == "X"} {
-            _run_cli [srv host] [srv port] $::dbnum [list pipe $cmd] -X tag {*}$args
-        }
+    proc run_cli_with_input_pipe {cmd args} {
+        _run_cli [srv host] [srv port] 9 [list pipe $cmd] -x {*}$args
     }
 
-    proc run_cli_with_input_file {mode path args} {
-        if {$mode == "x" } {
-            _run_cli [srv host] [srv port] $::dbnum [list path $path] -x {*}$args
-        } elseif {$mode == "X"} {
-            _run_cli [srv host] [srv port] $::dbnum [list path $path] -X tag {*}$args
-        }
+    proc run_cli_with_input_file {path args} {
+        _run_cli [srv host] [srv port] 9 [list path $path] -x {*}$args
     }
 
     proc run_cli_host_port_db {host port db args} {
@@ -144,9 +113,7 @@ start_server {tags {"cli"}} {
     test_interactive_cli "INFO response should be printed raw" {
         set lines [split [run_command $fd info] "\n"]
         foreach line $lines {
-            if {![regexp {^$|^#|^[^#:]+:} $line]} {
-                fail "Malformed info line: $line"
-            }
+            assert [regexp {^$|^#|^[^#:]+:} $line]
         }
     }
 
@@ -211,22 +178,14 @@ start_server {tags {"cli"}} {
     }
 
     test_tty_cli "Read last argument from pipe" {
-        assert_equal "OK" [run_cli_with_input_pipe x "echo foo" set key]
+        assert_equal "OK" [run_cli_with_input_pipe "echo foo" set key]
         assert_equal "foo\n" [r get key]
-
-        assert_equal "OK" [run_cli_with_input_pipe X "echo foo" set key2 tag]
-        assert_equal "foo\n" [r get key2]
     }
 
     test_tty_cli "Read last argument from file" {
         set tmpfile [write_tmpfile "from file"]
-
-        assert_equal "OK" [run_cli_with_input_file x $tmpfile set key]
+        assert_equal "OK" [run_cli_with_input_file $tmpfile set key]
         assert_equal "from file" [r get key]
-
-        assert_equal "OK" [run_cli_with_input_file X $tmpfile set key2 tag]
-        assert_equal "from file" [r get key2]
-
         file delete $tmpfile
     }
 
@@ -273,20 +232,39 @@ start_server {tags {"cli"}} {
     }
 
     test_nontty_cli "Read last argument from pipe" {
-        assert_equal "OK" [run_cli_with_input_pipe x "echo foo" set key]
+        assert_equal "OK" [run_cli_with_input_pipe "echo foo" set key]
         assert_equal "foo\n" [r get key]
-        assert_equal "OK" [run_cli_with_input_pipe X "echo foo" set key2 tag]
-        assert_equal "foo\n" [r get key2]
     }
 
     test_nontty_cli "Read last argument from file" {
         set tmpfile [write_tmpfile "from file"]
-        assert_equal "OK" [run_cli_with_input_file x $tmpfile set key]
+        assert_equal "OK" [run_cli_with_input_file $tmpfile set key]
         assert_equal "from file" [r get key]
-        assert_equal "OK" [run_cli_with_input_file X $tmpfile set key2 tag]
-        assert_equal "from file" [r get key2]
         file delete $tmpfile
     }
+
+    # proc test_redis_cli_rdb_dump {} {
+    #    r flushdb
+    #    set dir [lindex [r config get dir] 1]
+    #    assert_equal "OK" [r debug populate 100000 key 1000]
+    #    catch {run_cli --rdb "$dir/cli.rdb"} output
+    #    assert_match {*Transfer finished with success*} $output
+    #    file delete "$dir/dump.rdb"
+    #    file rename "$dir/cli.rdb" "$dir/dump.rdb"
+    #    assert_equal "OK" [r set should-not-exist 1]
+    #    assert_equal "OK" [r debug reload nosave]
+    #    assert_equal {} [r get should-not-exist]
+    # }
+
+    # test "Dumping an RDB" {
+    #    # Disk-based master
+    #    assert_match "OK" [r config set repl-diskless-sync no]
+    #    test_redis_cli_rdb_dump
+    #    # Disk-less master
+    #    assert_match "OK" [r config set repl-diskless-sync yes]
+    #    assert_match "OK" [r config set repl-diskless-sync-delay 0]
+    #    test_redis_cli_rdb_dump
+    # }
 
     test "Scan mode" {
         r flushdb
@@ -299,20 +277,10 @@ start_server {tags {"cli"}} {
         # assert_equal {key:2} [run_cli --scan --quoted-pattern {"*:\x32"}]
     }
 
-    test "Options -X with illegal argument" {
-        assert_error "*-x and -X are mutually exclusive*" {run_cli -x -X tag}
-        assert_error "*Unrecognized option or bad number*" {run_cli -X}
-        assert_error "*tag not match*" {run_cli_with_input_pipe X "echo foo" set key wrong_tag}
-    }
-
     test "Piping raw protocol" {
         set cmds [tmpfile "cli_cmds"]
         set cmds_fd [open $cmds "w"]
-        set cmds_count 2101
-        if {!$::singledb} {
-            puts $cmds_fd [formatCommand select 9]
-            incr cmds_count
-        }
+        puts -nonewline $cmds_fd [formatCommand select 9]
         puts -nonewline $cmds_fd [formatCommand del test-counter]
         for {set i 0} {$i < 1000} {incr i} {
             puts -nonewline $cmds_fd [formatCommand incr test-counter]
@@ -326,29 +294,7 @@ start_server {tags {"cli"}} {
         fconfigure $cli_fd -blocking true
         set output [read_cli $cli_fd]
         assert_equal {1000} [r get test-counter]
-        assert_match "*All data transferred*errors: 0*replies: ${cmds_count}*" $output
+        assert_match {*All data transferred*errors: 0*replies: 2102*} $output
         file delete $cmds
     }
-
-    # test "DUMP RESTORE with -x option" {
-    #    set cmdline [rediscli [srv host] [srv port]]
-    #    exec {*}$cmdline DEL set new_set
-    #    exec {*}$cmdline SADD set 1 2 3 4 5 6
-    #    assert_equal 6 [exec {*}$cmdline SCARD set]
-    #    assert_equal "OK" [exec {*}$cmdline -D "" --raw DUMP set | \
-    #                            {*}$cmdline -x RESTORE new_set 0]
-    #    assert_equal 6 [exec {*}$cmdline SCARD new_set]
-    #    assert_equal "1\n2\n3\n4\n5\n6" [exec {*}$cmdline SMEMBERS new_set]
-    # }
-
-    # test "DUMP RESTORE with -X option" {
-    #    set cmdline [rediscli [srv host] [srv port]]
-    #    exec {*}$cmdline DEL zset new_zset
-    #    exec {*}$cmdline ZADD zset 1 a 2 b 3 c
-    #    assert_equal 3 [exec {*}$cmdline ZCARD zset]
-    #    assert_equal "OK" [exec {*}$cmdline -D "" --raw DUMP zset | \
-    #                            {*}$cmdline -X dump_tag RESTORE new_zset 0 dump_tag REPLACE]
-    #    assert_equal 3 [exec {*}$cmdline ZCARD new_zset]
-    #    assert_equal "a\n1\nb\n2\nc\n3" [exec {*}$cmdline ZRANGE new_zset 0 -1 WITHSCORES]
-    # }
 }

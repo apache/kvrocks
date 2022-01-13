@@ -12,8 +12,7 @@ then
     exit 1
 fi
 
-cp ../../src/kvrocks redis-server && cp `which redis-cli` redis-cli
-$TCLSH tests/test_helper.tcl "${@}"
+cp ../../src/kvrocks redis-server && $TCLSH tests/test_helper.tcl "${@}"
 status=$?
-rm -rf ./redis-server ./redis-cli
+rm ./redis-server
 exit $status

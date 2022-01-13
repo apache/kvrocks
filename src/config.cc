@@ -134,6 +134,8 @@ Config::Config() {
        false, new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024)},
       {"rocksdb.level0_stop_writes_trigger",
        false, new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024)},
+      {"rocksdb.level0_file_num_compaction_trigger",
+       false, new IntField(&RocksDB.level0_file_num_compaction_trigger, 4, 1, 1024)},
       {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
       {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
       {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
@@ -393,6 +395,7 @@ void Config::initFieldCallback() {
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
+      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb}
   };
   for (const auto& iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

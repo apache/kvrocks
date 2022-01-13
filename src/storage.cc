@@ -140,6 +140,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
   options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
   options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+  options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
 }
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {

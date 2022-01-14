@@ -3840,6 +3840,14 @@ class CommandCommand : public Commander {
   }
 };
 
+class CommandEcho : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    *output = Redis::BulkString(args_[1]);
+    return Status::OK();
+  }
+};
+
 class CommandScanBase : public Commander {
  public:
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {
@@ -4461,6 +4469,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("randomkey", 1, "read-only no-script", 0, 0, 0, CommandRandomKey),
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
+    ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
 
     ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),

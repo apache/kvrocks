@@ -44,8 +44,13 @@ jobs:
 
       - name: Redis Tcl Test
         run: |
+          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
+          tar -zxvf 6.2.6.tar.gz
+          cd redis-6.2.6/ && make redis-cli && cd -
+          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
           sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
+          cd tests/tcl && sh runtest
+          sh runtest --single integration/redis-cli && cd -
 
   build-test-on-macos-latest:
     runs-on: macos-latest
@@ -69,5 +74,10 @@ jobs:
         run: make test
 
       - name: Redis Tcl Test
-        run:
-          cd tests/tcl && sh runtest && cd -
+        run: |
+          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
+          tar -zxvf 6.2.6.tar.gz
+          cd redis-6.2.6/ && make redis-cli && cd -
+          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
+          cd tests/tcl && sh runtest
+          sh runtest --single integration/redis-cli && cd -

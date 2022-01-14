@@ -114,7 +114,6 @@ void setupSigSegvAction() {
   sigaction(SIGBUS, &act, nullptr);
   sigaction(SIGFPE, &act, nullptr);
   sigaction(SIGILL, &act, nullptr);
-  sigaction(SIGBUS, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
   act.sa_handler = signal_handler;

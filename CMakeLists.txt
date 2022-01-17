@@ -49,7 +49,7 @@ list(APPEND EXTERNAL_INCS PRIVATE ${lua_INCLUDE_DIRS})
 # Add git sha to version.h
 find_package(Git REQUIRED)
 execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_SHA)
-string(STRIP ${GIT_SHA} GIT_SHA)
+string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target

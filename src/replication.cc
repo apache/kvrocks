@@ -629,6 +629,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         for (auto f : need_files) {
           meta.files.emplace_back(f, 0);
         }
+        free(line);
+
         target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
         // Clean invaild files of checkpoint, "CURRENT" file must be invalid
         // because we identify one file by its file number but only "CURRENT"

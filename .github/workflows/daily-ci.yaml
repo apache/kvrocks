@@ -1,4 +1,4 @@
-name: run ci without jemalloc
+name: Daily CI
 
 on:
   schedule:
@@ -29,4 +29,27 @@ jobs:
       - name: Redis Tcl Test
         run: |
           sudo apt-get install tcl8.5
+          cd tests/tcl && sh runtest && cd -
+
+  build-test-on-macos-latest:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 64
+
+      - name: Install Dependencies
+        run: |
+          brew install snappy googletest gcc autoconf automake libtool
+          mkdir build
+      - name: Build
+        run: |
+          make -j4
+          cp src/kvrocks build/kvrocks
+      - name: Unit Test
+        run: make test
+
+      - name: Redis Tcl Test
+        run:
           cd tests/tcl && sh runtest && cd -

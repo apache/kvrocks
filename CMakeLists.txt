@@ -17,6 +17,10 @@ if (REALTIME_LIB)
     list(APPEND EXTERNAL_LIBS PRIVATE rt)
 endif()
 
+if (CMAKE_HOST_APPLE)
+    set(DISABLE_JEMALLOC 1)
+endif ()
+
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
 include(cmake/rocksdb.cmake)

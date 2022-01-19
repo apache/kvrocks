@@ -77,6 +77,36 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 }
 
 start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+    set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
+    r clusterx SETNODEID $nodeid
+
+    test {basic function of cluster v2} {
+        # Cluster is not initialized
+        catch {[r cluster nodes]} err
+        assert_match "*CLUSTERDOWN*not initialized*" $err
+
+        # Set cluster nodes info
+        set port [srv port]
+        set nodes_str "$nodeid 127.0.0.1 $port master -"
+        r clusterx setnodes $nodes_str 2
+        assert_equal 2 [r clusterx version]
+        puts [r cluster nodes]
+
+        # # Get and check cluster nodes info
+        # set output_nodes [r cluster nodes]
+        # set fields [split $output_nodes " "]
+        # assert_equal 9 [llength $fields]
+        # assert_equal "127.0.0.1:$port@[expr $port + 10000]" [lindex $fields 1]
+        # assert_equal "myself,master" [lindex $fields 2]
+        # assert_equal "0-100\n" [lindex $fields 8]
+
+        # # Cluster slot command
+        # set ret [r cluster slots]
+        # assert_equal ${ret} "{0 100 {127.0.0.1 ${port} ${nodeid}}}"
+    }
+}
+
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
     test {cluster slots and nodes about complex topology} {
         set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
         set host [srv host]

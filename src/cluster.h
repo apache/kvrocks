@@ -55,6 +55,7 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
+  Status SetSlot(int slot, std::string node_id, int64_t version);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   uint64_t GetVersion() { return version_; }

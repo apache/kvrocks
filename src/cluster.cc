@@ -30,6 +30,8 @@ bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
     return true;
   } else if (strcasecmp("setnodeid", subcommand.c_str()) == 0) {
     return true;
+  } else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
+    return true;
   }
   return false;
 }
@@ -49,6 +51,47 @@ Status Cluster::SetNodeId(std::string node_id) {
 
   // Set replication relationship
   if (myself_ != nullptr) SetMasterSlaveRepl();
+
+  return Status::OK();
+}
+
+// Set the slot to the node if version is newer than server. It is useful when
+// we scale cluster avoid too many big messages, since we only update one slot
+// distribution and there are 16384 slot in our design.
+Status Cluster::SetSlot(int slot, std::string node_id, int64_t version) {
+  // Parameters check
+  if (version < 0) return Status(Status::NotOK, "Invalid version");
+  if (slot < 0 || slot >= kClusterSlots) {
+    return Status(Status::NotOK, "Invalid slot id");
+  }
+  if (node_id.size() != kClusetNodeIdLen)  {
+    return Status(Status::NotOK, "Invalid node id");
+  }
+
+  // Get the node which we want to assign a slot into it
+  std::shared_ptr<ClusterNode> to_assign_node = nodes_[node_id];
+  if (to_assign_node == nullptr) {
+    return Status(Status::NotOK, "No this node in the cluster");
+  }
+  if (to_assign_node->role_ != kClusterMaster) {
+    return Status(Status::NotOK, "The node is not the master");
+  }
+
+  // Check version
+  if (version <= version_) {
+    return Status(Status::NotOK, "Invalid cluster version");
+  }
+
+  // Update topology
+  //  1. Remove the slot from old node if existing
+  //  2. Add the slot into to-assign node
+  //  3. Update the map of slots to nodes.
+  std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
+  if (old_node != nullptr) {
+    old_node->slots_[slot] = 0;
+  }
+  to_assign_node->slots_[slot] = 1;
+  slots_nodes_[slot] = to_assign_node;
 
   return Status::OK();
 }
@@ -276,7 +319,9 @@ std::string Cluster::GenNodesDescription() {
 
     // Slots
     if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Trim space
-    if (n->role_ == kClusterMaster) node_str.append(" " + n->slots_info_);
+    if (n->role_ == kClusterMaster && n->slots_info_.size() > 0) {
+      node_str.append(" " + n->slots_info_);
+    }
     n->slots_info_.clear();  // Reset
 
     nodes_desc.append(node_str + "\n");

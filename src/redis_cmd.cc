@@ -810,6 +810,7 @@ class CommandBitCount : public Commander {
     *output = Redis::Integer(cnt);
     return Status::OK();
   }
+
  private:
   int start_ = 0, stop_ = -1;
 };

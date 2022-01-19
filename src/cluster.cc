@@ -68,7 +68,7 @@ Status Cluster::SetNodeId(std::string node_id) {
 // updates since of network failure, it is state instead of operation.
 Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   // Parameters check
-  if (new_version <= 0 || version != version_ + 1) {
+  if (new_version <= 0 || new_version != version_ + 1) {
     return Status(Status::NotOK, "Invalid cluster version");
   }
   if (slot < 0 || slot >= kClusterSlots) {
@@ -86,6 +86,9 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   if (to_assign_node->role_ != kClusterMaster) {
     return Status(Status::NotOK, "The node is not the master");
   }
+
+  // Update version
+  version_ = new_version;
 
   // Update topology
   //  1. Remove the slot from old node if existing

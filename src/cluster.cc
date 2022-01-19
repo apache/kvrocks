@@ -37,7 +37,7 @@ bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
 }
 
 Status Cluster::SetNodeId(std::string node_id) {
-  if (node_id.size() != kClusetNodeIdLen) {
+  if (node_id.size() != kClusterNodeIdLen) {
     return Status(Status::ClusterInvalidInfo, "Invalid node id");
   }
 
@@ -71,10 +71,10 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   if (new_version <= 0 || new_version != version_ + 1) {
     return Status(Status::NotOK, "Invalid cluster version");
   }
-  if (slot < 0 || slot >= kClusterSlots) {
+  if (!IsValidSlot(slot)) {
     return Status(Status::NotOK, "Invalid slot id");
   }
-  if (node_id.size() != kClusetNodeIdLen)  {
+  if (node_id.size() != kClusterNodeIdLen)  {
     return Status(Status::NotOK, "Invalid node id");
   }
 
@@ -355,7 +355,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // 1) node id
-    if (fields[0].size() != kClusetNodeIdLen) {
+    if (fields[0].size() != kClusterNodeIdLen) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster node id");
     }
     std::string id = fields[0];
@@ -383,7 +383,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // 5) master id
     std::string master_id = fields[4];
     if ((role == kClusterMaster && master_id != "-") ||
-        (role == kClusterSlave && master_id.size() != kClusetNodeIdLen)) {
+        (role == kClusterSlave && master_id.size() != kClusterNodeIdLen)) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluste node master id");
     }
 

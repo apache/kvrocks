@@ -4316,7 +4316,7 @@ class CommandClusterX : public Commander {
 
     if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
     if (subcommand_ == "setnodeid" && args_.size() == 3 &&
-        args_[2].size() == kClusetNodeIdLen) return Status::OK();
+        args_[2].size() == kClusterNodeIdLen) return Status::OK();
 
     // CLUSTERX SETNODES $ALL_NODES_INFO $VERSION FORCE
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
@@ -4334,13 +4334,13 @@ class CommandClusterX : public Commander {
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
       slot_id_ = atoi(args_[2].c_str());
-      if (slot_id_ < 0 || slot_id_ >= kClusterSlots) {
+      if (!Cluster::IsValidSlot(slot_id_)) {
         return Status(Status::RedisParseErr, "Invalid slot id");
       }
       if (strcasecmp(args_[3].c_str(), "node") != 0) {
         return Status(Status::RedisParseErr, "Invalid setslot options");
       }
-      if (args_[4].size() != kClusetNodeIdLen) {
+      if (args_[4].size() != kClusterNodeIdLen) {
         return Status(Status::RedisParseErr, "Invalid node id");
       }
       set_version_ = atoll(args_[5].c_str());

@@ -117,6 +117,13 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
             r -1 clusterx setslot 1 node $nodeid2 4
             assert_equal [r cluster slots] [r -1 cluster slots]
             assert_equal [r cluster slots] "{0 1 {127.0.0.1 $port2 $nodeid2}} {2 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            # wrong version can't update slot distribution
+            catch {[r clusterx setslot 2 node $nodeid2 6]} err
+            assert_match "*version*" $err
+
+            catch {[r clusterx setslot 2 node $nodeid2 4]} err
+            assert_match "*version*" $err
         }
     }
 }

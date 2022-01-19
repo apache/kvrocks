@@ -55,12 +55,22 @@ Status Cluster::SetNodeId(std::string node_id) {
   return Status::OK();
 }
 
-// Set the slot to the node if version is newer than server. It is useful when
-// we scale cluster avoid too many big messages, since we only update one slot
-// distribution and there are 16384 slot in our design.
-Status Cluster::SetSlot(int slot, std::string node_id, int64_t version) {
+// Set the slot to the node if new version is current version +1. It is useful
+// when we scale cluster avoid too many big messages, since we only update one
+// slot distribution and there are 16384 slot in our design.
+//
+// The reason why the new version MUST be +1 of current version is that,
+// the command changes topology based on specific topology (also means specific
+// version), we must guarantee current topology is exactly expected, otherwise,
+// this update may make topology corrupt, so base topology version is very important.
+// This is different with CLUSTERX SETNODES commands because it uses new version
+// topology to cover current version, it allows kvrocks nodes lost some topology
+// updates since of network failure, it is state instead of operation.
+Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   // Parameters check
-  if (version < 0) return Status(Status::NotOK, "Invalid version");
+  if (new_version <= 0 || version != version_ + 1) {
+    return Status(Status::NotOK, "Invalid cluster version");
+  }
   if (slot < 0 || slot >= kClusterSlots) {
     return Status(Status::NotOK, "Invalid slot id");
   }
@@ -75,11 +85,6 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t version) {
   }
   if (to_assign_node->role_ != kClusterMaster) {
     return Status(Status::NotOK, "The node is not the master");
-  }
-
-  // Check version
-  if (version <= version_) {
-    return Status(Status::NotOK, "Invalid cluster version");
   }
 
   // Update topology

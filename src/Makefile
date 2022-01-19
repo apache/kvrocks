@@ -6,6 +6,9 @@ FINAL_CXXFLAGS+= $(CXXFLAGS) $(DEBUG)
 LUA_CFLAGS+= -O2 -Wall -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC='' $(CFLAGS)
 DEBUG= -g -ggdb
 
+# Operating system
+uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+
 INSTALL_DIR= /usr/local
 BIN_DIR= $(INSTALL_DIR)/bin
 INSTALL= /usr/bin/install
@@ -34,6 +37,13 @@ FINAL_CXXFLAGS+=  -I$(ROCKSDB_PATH)/include \
 				  -I$(LUA_PATH)/src \
 				  -I.
 FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(ROCKSDB) $(LUA)
+
+# Operating system
+ifeq ($(uname_S),Darwin)
+	# Darwin
+	DISABLE_JEMALLOC=1
+else
+endif
 
 ifndef DISABLE_JEMALLOC
 FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include

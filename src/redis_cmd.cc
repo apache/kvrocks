@@ -729,7 +729,7 @@ Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
   } catch (std::exception &e) {
     return Status(Status::RedisParseErr, errValueNotInterger);
   }
-  if (offset_arg < 0 || offset_arg > INT_MAX) {
+  if (offset_arg < 0 || offset_arg > UINT_MAX) {
     return Status(Status::RedisParseErr, "bit offset is out of range");
   }
   *offset = static_cast<uint32_t>(offset_arg);
@@ -788,11 +788,16 @@ class CommandSetBit : public Commander {
 class CommandBitCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      if (args.size() >= 3) start_ = std::stoi(args[2]);
-      if (args.size() >= 4) stop_ = std::stoi(args[3]);
-    } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+    if (args.size() == 3) {
+      return Status(Status::RedisParseErr, errInvalidSyntax);
+    }
+    if (args.size() == 4) {
+      try {
+        start_ = std::stoi(args[2]);
+        stop_ = std::stoi(args[3]);
+      } catch (std::exception &e) {
+        return Status(Status::RedisParseErr, errValueNotInterger);
+      }
     }
     return Commander::Parse(args);
   }
@@ -832,7 +837,7 @@ class CommandBitPos: public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int pos;
+    int64_t pos;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());

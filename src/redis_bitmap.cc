@@ -237,7 +237,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int start, int stop, uin
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int stop, bool stop_given, int *pos) {
+rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int stop, bool stop_given, int64_t *pos) {
   std::string ns_key, raw_value;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -293,17 +293,17 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int start, int s
     for (; j < value.size(); j++) {
       if (i == stop_index && j > (stop % kBitmapSegmentBytes)) break;
       if (bitPosInByte(value[j], bit) != -1) {
-        *pos = static_cast<int>(i * kBitmapSegmentBits + j * 8 + bitPosInByte(value[j], bit));
+        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bitPosInByte(value[j], bit));
         return rocksdb::Status::OK();
       }
     }
     if (!bit && value.size() < kBitmapSegmentBytes) {
-      *pos = static_cast<int>(i * kBitmapSegmentBits + value.size() * 8);
+      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + value.size() * 8);
       return rocksdb::Status::OK();
     }
   }
   // bit was not found
-  *pos = bit ? -1 : static_cast<int>(metadata.size * 8);
+  *pos = bit ? -1 : static_cast<int64_t>(metadata.size * 8);
   return rocksdb::Status::OK();
 }
 

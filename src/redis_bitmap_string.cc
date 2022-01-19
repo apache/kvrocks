@@ -73,7 +73,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
                                      int start,
                                      int stop,
                                      bool stop_given,
-                                     int *pos) {
+                                     int64_t *pos) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   auto strlen = string_value.size();
   /* Convert negative indexes */
@@ -185,10 +185,10 @@ size_t BitmapString::redisPopcount(unsigned char *p, int count) {
  * This function started out as:
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L101
  * */
-int BitmapString::redisBitpos(unsigned char *c, int count, int bit) {
+int64_t BitmapString::redisBitpos(unsigned char *c, int count, int bit) {
   uint64_t *l;
   uint64_t skipval, word = 0, one;
-  int pos = 0; /* Position of bit, to return to the caller. */
+  int64_t pos = 0; /* Position of bit, to return to the caller. */
   uint64_t j;
   int found;
 

@@ -77,32 +77,41 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 }
 
 start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
-    set nodeid "07c37dfeb235213a872192d90877d0cd55635b91"
-    r clusterx SETNODEID $nodeid
+    set nodeid1 "07c37dfeb235213a872192d90877d0cd55635b91"
+    r clusterx SETNODEID $nodeid1
+    set port1 [srv port]
 
-    test {basic function of cluster v2} {
-        # Cluster is not initialized
-        catch {[r cluster nodes]} err
-        assert_match "*CLUSTERDOWN*not initialized*" $err
+    start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+        set nodeid2 "07c37dfeb235213a872192d90877d0cd55635b92"
+        r clusterx SETNODEID $nodeid2
+        set port2 [srv port]
 
-        # Set cluster nodes info
-        set port [srv port]
-        set nodes_str "$nodeid 127.0.0.1 $port master -"
-        r clusterx setnodes $nodes_str 2
-        assert_equal 2 [r clusterx version]
-        puts [r cluster nodes]
+        test {cluster slotset command test} {
+            set nodes_str "$nodeid1 127.0.0.1 $port1 master - 0-16383"
+            set nodes_str "$nodes_str\n$nodeid2 127.0.0.1 $port2 master -"
 
-        # # Get and check cluster nodes info
-        # set output_nodes [r cluster nodes]
-        # set fields [split $output_nodes " "]
-        # assert_equal 9 [llength $fields]
-        # assert_equal "127.0.0.1:$port@[expr $port + 10000]" [lindex $fields 1]
-        # assert_equal "myself,master" [lindex $fields 2]
-        # assert_equal "0-100\n" [lindex $fields 8]
+            r clusterx setnodes $nodes_str 2
+            r -1 clusterx setnodes $nodes_str 2
 
-        # # Cluster slot command
-        # set ret [r cluster slots]
-        # assert_equal ${ret} "{0 100 {127.0.0.1 ${port} ${nodeid}}}"
+            set slot_0_key "06S"
+            assert_equal {OK} [r -1 set $slot_0_key 0]
+            catch {[r set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port1*" $err
+
+            r clusterx setslot 0 node $nodeid2 3
+            r -1 clusterx setslot 0 node $nodeid2 3
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 0 {127.0.0.1 $port2 $nodeid2}} {1 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            assert_equal {OK} [r set $slot_0_key 0]
+            catch {[r -1 set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port2*" $err
+
+            r clusterx setslot 1 node $nodeid2 4
+            r -1 clusterx setslot 1 node $nodeid2 4
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 1 {127.0.0.1 $port2 $nodeid2}} {2 16383 {127.0.0.1 $port1 $nodeid1}}"
+        }
     }
 }
 

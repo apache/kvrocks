@@ -793,8 +793,8 @@ class CommandBitCount : public Commander {
     }
     if (args.size() == 4) {
       try {
-        start_ = std::stoi(args[2]);
-        stop_ = std::stoi(args[3]);
+        start_ = std::stol(args[2]);
+        stop_ = std::stol(args[3]);
       } catch (std::exception &e) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
@@ -812,17 +812,17 @@ class CommandBitCount : public Commander {
   }
 
  private:
-  int start_ = 0, stop_ = -1;
+  int64_t start_ = 0, stop_ = -1;
 };
 
 class CommandBitPos: public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     try {
-      if (args.size() >= 4) start_ = std::stoi(args[3]);
+      if (args.size() >= 4) start_ = std::stol(args[3]);
       if (args.size() >= 5) {
         stop_given_ = true;
-        stop_ = std::stoi(args[4]);
+        stop_ = std::stol(args[4]);
       }
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
@@ -847,7 +847,7 @@ class CommandBitPos: public Commander {
   }
 
  private:
-  int start_ = 0, stop_ = -1;
+  int64_t start_ = 0, stop_ = -1;
   bool bit_ = false, stop_given_ = false;
 };
 

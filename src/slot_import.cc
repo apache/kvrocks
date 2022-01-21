@@ -43,7 +43,7 @@ bool SlotImport::Success(int slot) {
       return false;
   }
 
-  Status s = svr_->cluster_->SetSlot(slot, svr_->cluster_->GetMyId());
+  Status s = svr_->cluster_->SetSlotImported(import_slot_);
   if (!s.IsOK()) {
     LOG(ERROR) << "[import] Failed to set slot, Err: " << s.Msg();
     return false;
@@ -70,7 +70,7 @@ bool SlotImport::Fail(int slot) {
               << ", Err: " << s.ToString();
   }
 
-  import_status_ = kImportFail;
+  import_status_ = kImportFailed;
   import_fd_ = -1;
   return true;
 }
@@ -99,7 +99,7 @@ void SlotImport::StopForLinkError(int fd) {
   }
 
   LOG(INFO) << "[import] Stop importing for link error, slot: " << import_slot_;
-  import_status_ = kImportFail;
+  import_status_ = kImportFailed;
   import_fd_ = -1;
 }
 
@@ -135,7 +135,7 @@ Status SlotImport::GetImportInfo(std::vector<std::string> *info, int slot) {
     case kImportSuccess:
       import_stat = "SUCCESS";
       break;
-    case kImportFail:
+    case kImportFailed:
       import_stat = "ERROR";
       break;
     default:

@@ -1,6 +1,6 @@
 #include "slot_migrate.h"
 
-#include "batch_parser.h"
+#include "batch_extractor.h"
 
 static std::map<RedisType, std::string> type_to_cmd = {
   {kRedisString, "set"},
@@ -59,7 +59,7 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   }
 }
 
-Status SlotMigrate::MigrateStart(Server *svr, const std::string node_id, const std::string dst_ip,
+Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip,
                                  int dst_port, int slot, int speed, int pipeline_size, int seq_gap) {
   // Only one slot migration job at the same time
   int16_t no_slot = -1;
@@ -144,7 +144,7 @@ void SlotMigrate::StateMachine(void) {
           state_machine_ = kSlotMigrateSnapshot;
         } else {
           LOG(ERROR) << "[migrate] Failed to start migrating";
-          state_machine_ = kSlotMigrateFail;
+          state_machine_ = kSlotMigrateFailed;
         }
         break;
       }
@@ -155,7 +155,7 @@ void SlotMigrate::StateMachine(void) {
           state_machine_ = kSlotMigrateWal;
         } else {
           LOG(ERROR) << "[migrate] Failed to send snapshot";
-          state_machine_ = kSlotMigrateFail;
+          state_machine_ = kSlotMigrateFailed;
         }
         break;
       }
@@ -166,7 +166,7 @@ void SlotMigrate::StateMachine(void) {
           state_machine_ = kSlotMigrateSuccess;
         } else {
           LOG(ERROR) << "[migrate] Failed to sync Wal";
-          state_machine_ = kSlotMigrateFail;
+          state_machine_ = kSlotMigrateFailed;
         }
         break;
       }
@@ -178,14 +178,14 @@ void SlotMigrate::StateMachine(void) {
           migrate_state_ = kMigrateSuccess;
         } else {
           LOG(ERROR) << "[migrate] Failed to handle state 'SUCCESS'";
-          state_machine_ = kSlotMigrateFail;
+          state_machine_ = kSlotMigrateFailed;
         }
         break;
       }
-      case kSlotMigrateFail:
+      case kSlotMigrateFailed:
         Fail();
         LOG(INFO) << "[migrate] Succeed to handle state 'FAIL'";
-        migrate_state_ = kMigrateFail;
+        migrate_state_ = kMigrateFailed;
         state_machine_ = kSlotMigrateClean;
         break;
       case kSlotMigrateClean:
@@ -313,40 +313,28 @@ Status SlotMigrate::SyncWal(void) {
 }
 
 Status SlotMigrate::Success(void) {
-  std::unique_lock<std::mutex> ul(svr_->migrate_mutex);
   if (stop_) {
     LOG(ERROR) << "[migrate] Stop migrating slot " << migrate_slot_;
     return Status(Status::NotOK);
   }
-
   // Set destination status SUCCESS
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportSuccess)) {
     LOG(ERROR) << "[migrate] Fail to set destination import status " << kImportSuccess;
     return Status(Status::NotOK);
   }
-
-  Status st = svr_->cluster_->SetSlot(migrate_slot_, dst_node_);
+  std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
+  Status st = svr_->cluster_->SetSlotMigrated(migrate_slot_, dst_ip_port);
   if (!st.IsOK()) {
     LOG(ERROR) << "[migrate] Failed to set slot, Err:" << st.Msg();
     return Status(Status::NotOK);
-  }
-
-  // Clear slot data
-  if (stop_ == false) {
-    auto s = ClearKeysOfSlot(namespace_, migrate_slot_);
-    if (!s.ok()) {
-      LOG(ERROR) << "[migrate] Failed to clear keys of slot " << migrate_slot_
-                 << ", Err: " << s.ToString();
-      return Status(Status::NotOK);
-    }
   }
   return Status::OK();
 }
 
 Status SlotMigrate::Fail(void) {
   // Set destination status
-  if (!SetDstImportStatus(slot_job_->slot_fd_, kImportFail)) {
-    LOG(INFO) << "[migrate] Fail to set importing status " << kImportFail;
+  if (!SetDstImportStatus(slot_job_->slot_fd_, kImportFailed)) {
+    LOG(INFO) << "[migrate] Fail to set importing status " << kImportFailed;
   }
   // Stop slot forbiding writing
   forbidden_slot_ = -1;
@@ -376,7 +364,7 @@ bool SlotMigrate::SetDstImportStatus(int sock_fd, int status) {
   if (sock_fd <= 0) return false;
 
   int slot = migrate_slot_;
-  std::string cmd = Redis::MultiBulkString({"clusterx", "import", std::to_string(slot), std::to_string(status)});
+  std::string cmd = Redis::MultiBulkString({"cluster", "import", std::to_string(slot), std::to_string(status)});
   auto s = Util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     LOG(ERROR) << "[migrate] Failed to send import command to destination, slot: " << slot << ", error: " << s.Msg();
@@ -809,8 +797,8 @@ Status SlotMigrate::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::stri
   }
 
   // Get all constructed commands
-  auto aof_strings = write_batch_extractor.GetAofStrings();
-  for (const auto &iter : *aof_strings) {
+  auto resp_commands = write_batch_extractor.GetAofStrings();
+  for (const auto &iter : *resp_commands) {
     for (const auto &it : iter.second) {
       *commands += it;
       current_pipeline_size_++;
@@ -912,11 +900,10 @@ Status SlotMigrate::SyncWalBeforeForbidSlot(void) {
 Status SlotMigrate::SyncWalAfterForbidSlot() {
   // Block server to set forbidden slot
   uint64_t during = Util::GetTimeStampUS();
-  svr_->SetBlocking(true);
-  svr_->WaitRunningCmdsFinish();
-  SetForbiddenSlot(migrate_slot_);
-  svr_->SetBlocking(false);
-
+  {
+    auto exclusivity = svr_->WorkExclusivityGuard();
+    SetForbiddenSlot(migrate_slot_);
+  }
   wal_incremet_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
   during = Util::GetTimeStampUS() - during;
   LOG(INFO) << "[migrate] To set forbidden slot, server is blocked for " << during << "us";
@@ -964,7 +951,7 @@ Status SlotMigrate::GetMigrateInfo(std::vector<std::string> *info, int16_t slot)
     case kMigrateSuccess:
       task_state = "SUCCESS";
       break;
-    case kMigrateFail:
+    case kMigrateFailed:
       task_state = "FAIL";
       break;
     default:

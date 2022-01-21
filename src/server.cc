@@ -990,16 +990,10 @@ void Server::PrepareRestoreDB() {
   storage_->CloseDB();
 }
 
-void Server::WaitRunningCmdsFinish() {
-  LOG(INFO) << "Waiting for excuting command...";
-  while (excuting_command_num_ != 0) {
-    usleep(500);
-  }
-}
-
 void Server::WaitNoMigrateProcessing() {
   if (config_->slot_id_encoded) {
     LOG(INFO) << "Waiting until no migration task is running...";
+    slot_migrate_->StopMigrateTask();
     while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {
       usleep(500);
     }

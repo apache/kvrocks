@@ -21,12 +21,12 @@ start_server {tags {"Migrate from slave server"} overrides {cluster-enabled yes}
         $S clusterx SETNODES $cluster_nodes 1
 
         test {MIGRATE - Slave cannot migrate slot} {
-            catch {$S clusterx migrate $masterid 1} e
+            catch {$S clusterx migrate 1 $masterid} e
             assert_match {*Can't migrate slot*} $e
         }
 
         test {MIGRATE - Cannot migrate slot to a slave} {
-            catch {$M clusterx migrate $slaveid 0} e
+            catch {$M clusterx migrate 0 $slaveid} e
             assert_match {*Can't migrate slot to a slave*} $e
         }
     }
@@ -53,16 +53,16 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
         test {MIGRATE - Slot is out of range} {
             # Migrate slot -1
-            catch {$r0 clusterx migrate $node1_id -1} e
+            catch {$r0 clusterx migrate -1 $node1_id} e
             assert_match {*Slot is out of range*} $e
 
             # Migrate slot 16384
-            catch {$r0 clusterx migrate $node1_id 16384} e
+            catch {$r0 clusterx migrate 16384 $node1_id} e
             assert_match {*Slot is out of range*} $e
         }
 
         test {MIGRATE - Cannot migrate slot to itself} {
-            catch {$r0 clusterx migrate $node0_id 1} e
+            catch {$r0 clusterx migrate 1 $node0_id} e
             assert_match {*Can't migrate slot to myself*} $e
         }
 
@@ -71,7 +71,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             exec kill -9 $node1_pid
             after 50
             # Try migrating slot to node1
-            set ret [$r0 clusterx migrate $node1_id 1]
+            set ret [$r0 clusterx migrate 1 $node1_id]
             assert {$ret == "OK"}
             after 50
             # Migrating failed
@@ -108,11 +108,11 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             }
 
             # Migrate slot 0
-            set ret [$r0 clusterx migrate $node1_id 0]
+            set ret [$r0 clusterx migrate 0 $node1_id]
             assert { $ret == "OK"}
 
             # Migrate slot 2
-            catch {[$r0 clusterx migrate $node1_id 2]} e
+            catch {[$r0 clusterx migrate 2 $node1_id]} e
             assert_match {*There is already a migrating slot*} $e
 
             # Migrate slot 0 success
@@ -208,7 +208,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set sivalue [$r0 sirange $slot1_key_sortint 0 -1]
 
             # Migrate slot 1, all keys above are belong to slot 1
-            set ret [$r0 clusterx migrate $node1_id 1]
+            set ret [$r0 clusterx migrate 1 $node1_id]
             assert {$ret == "OK"}
 
             # Wait finish slot migrating
@@ -286,7 +286,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set slot3_key [lindex $::CRC16_SLOT_TABLE 3]
             $r0 set $slot3_key 3
 
-            set ret [$r0 clusterx migrate $node1_id 3]
+            set ret [$r0 clusterx migrate 3 $node1_id]
             assert {$ret == "OK"}
             wait_for_condition 50 100 {
                 [string match "*migrating_slot: 3*migrating_state: SUCCESS*" [$r0 cluster migratestatus 3]]
@@ -321,7 +321,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             }
 
             # Migrate slot 5
-            set ret [$r0 clusterx migrate $node1_id 5]
+            set ret [$r0 clusterx migrate 5 $node1_id]
             assert {$ret == "OK"}
 
             # Migrate status START(doing)
@@ -345,12 +345,12 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$lastval == $count}
         }
 
-        test {MIGRATE - Slot keys are cleared after migration} {
+        test {MIGRATE - Slot keys are not cleared after migration} {
             set slot6_key [lindex $::CRC16_SLOT_TABLE 6]
             assert {[$r0 set $slot6_key "slot6"] == "OK"}
             # Check key in src server
             assert {[$r0 get $slot6_key] == "slot6"}
-            set ret [$r0 clusterx migrate $node1_id 6]
+            set ret [$r0 clusterx migrate 6 $node1_id]
             assert {$ret == "OK"}
 
             # Migrate slot
@@ -362,7 +362,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Check key in destination server
             assert {[$r1 get $slot6_key] == "slot6"}
             # Check key in source server
-            assert {[string match "*$slot6_key*" [$r0 keys *]] == 0}
+            assert {[string match "*$slot6_key*" [$r0 keys *]] != 0}
         }
 
         test {MIGRATE - Migrate incremental data via parsing and filtering data in WAL} {
@@ -400,7 +400,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             for {set i 0} {$i < $count} {incr i} {
                 $r0 lpush $slot15_key_1 $i
             }
-            set ret [$r0 clusterx migrate $node1_id 15]
+            set ret [$r0 clusterx migrate 15 $node1_id]
             assert {$ret == "OK"}
 
             # Write key that doesn't belong to this slot
@@ -554,7 +554,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
                 $r0 lpush $slot16_key $i
             }
             # Migrate slot 16 from node1 to node0
-            set ret [$r0 clusterx migrate $node1_id 16]
+            set ret [$r0 clusterx migrate 16 $node1_id]
             assert {$ret == "OK"}
 
             # Should not finish 1.5s
@@ -599,7 +599,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             $r0 del $slot0_key
             $r0 set $slot0_key ""
             after 500
-            set ret [$r0 clusterx migrate $node1_id 0]
+            set ret [$r0 clusterx migrate 0 $node1_id]
             assert { $ret == "OK"}
 
             # Check migration task
@@ -622,7 +622,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             for {set i 0} {$i < $count} {incr i} {
                 $r0 lpush $slot1_key "\00\01"
             }
-            set ret [$r0 clusterx migrate $node1_id 1]
+            set ret [$r0 clusterx migrate 1 $node1_id]
             assert {$ret == "OK"}
             set slot1_key_2 "\x49\x1f\x7f{key294989}\xaf"
             $r0 set $slot1_key_2 "\00\01"
@@ -646,7 +646,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             after 500
 
             # Migrate slot 2
-            set ret [$r0 clusterx migrate $node1_id 2]
+            set ret [$r0 clusterx migrate 2 $node1_id]
             assert { $ret == "OK"}
             wait_for_condition 50 100 {
                 [string match "*migrating_slot: 2*migrating_state: SUCCESS*" [$r0 cluster migratestatus 2]]
@@ -667,7 +667,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             }
 
             # Migrate data
-            set ret [$r0 clusterx migrate $node1_id 8]
+            set ret [$r0 clusterx migrate 8 $node1_id]
             assert {$ret == "OK"}
 
             # Check migrating start
@@ -718,7 +718,7 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
                     $r0 lpush $slot10_key $i
                 }
                 # Start migrating
-                set ret [$r0 clusterx migrate $node2_id 10]
+                set ret [$r0 clusterx migrate 10 $node2_id]
                 assert {$ret == "OK"}
                 catch {[$r0 cluster migratestatus 10]} e
                 assert_match {*10*START*} $e
@@ -767,7 +767,7 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
             catch {$r0 config get migrate-speed} e
             assert_match {*32*} $e
             # Migrate slot
-            set ret [$r0 clusterx migrate $node1_id 11]
+            set ret [$r0 clusterx migrate 11 $node1_id]
             assert {$ret == "OK"}
             # Ensure migration started
             wait_for_condition 10 50 {
@@ -799,7 +799,7 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
             assert_match {*32*} $e
 
             # Migrate slot
-            set ret [$r0 clusterx migrate $node1_id 20]
+            set ret [$r0 clusterx migrate 20 $node1_id]
             assert {$ret == "OK"}
             # Check key has been migrated successfully
             wait_for_condition 10 100 {
@@ -896,7 +896,7 @@ start_server {tags {"Server A"} overrides {cluster-enabled yes
                 $r2 clusterx setnodes $cluster_nodes 2
 
                 # Try to migrate slot 0 from node1
-                assert {[$r1 clusterx migrate $node2_id 0] == "OK"}
+                assert {[$r1 clusterx migrate 0 $node2_id] == "OK"}
                 # Migrate slot 0 success
                 wait_for_condition 50 200 {
                     [string match "*0*SUCCESS*" [$r1 cluster migratestatus 0]]
@@ -907,7 +907,7 @@ start_server {tags {"Server A"} overrides {cluster-enabled yes
                 assert {[$r2 llen $slot0_key] == $count1}
 
                 # Try to import slot 10003 to node1
-                assert {[$r2 clusterx migrate $node1_id 10003] == "OK"}
+                assert {[$r2 clusterx migrate 10003 $node1_id] == "OK"}
                 # Import slot 10003 success
                 wait_for_condition 50 200 {
                     [string match "*10003*SUCCESS*" [$r2 cluster migratestatus 10003]]

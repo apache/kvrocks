@@ -22,7 +22,7 @@ start_server {tags {"Imported slave server"} overrides {cluster-enabled yes}} {
         test {IMPORT - slot to slave} {
             $S slaveof $M_host $M_port
             after 500
-            catch {$S clusterx import 1 0} e
+            catch {$S cluster import 1 0} e
             assert_match {*Slave can't import slot*} $e
         }
     }
@@ -38,30 +38,30 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
     $r0 clusterx SETNODES $cluster_nodes 1
 
     test {IMPORT - error slot} {
-        catch {$r0 clusterx import -1 0} e
+        catch {$r0 cluster import -1 0} e
         assert_match {*Slot is out of range*} $e
 
-        catch {$r0 clusterx import 16384 0} e
+        catch {$r0 cluster import 16384 0} e
         assert_match {*Slot is out of range*} $e
     }
 
     test {IMPORT - slot with error state} {
-        catch {$r0 clusterx import 1 4} e
+        catch {$r0 cluster import 1 4} e
         assert_match {*Invalid import state*} $e
-        catch {$r0 clusterx import 1 -3} e
+        catch {$r0 cluster import 1 -3} e
         assert_match {*Invalid import state*} $e
     }
 
     test {IMPORT - slot states in right order} {
         set slot_key1 [lindex $::CRC16_SLOT_TABLE 1]
         # Import start
-        assert {[$r0 clusterx import 1 0] == "OK"}
+        assert {[$r0 cluster import 1 0] == "OK"}
         $r0 set $slot_key1 slot1
         assert {[$r0 get $slot_key1] == {slot1}}
         catch {$r0 cluster importstatus 1} e
         assert_match {*import_slot: 1*import_state: START*} $e
         # Import success
-        assert {[$r0 clusterx import 1 1] == "OK"}
+        assert {[$r0 cluster import 1 1] == "OK"}
         catch {$r0 cluster importstatus 1} e
         assert_match {*import_slot: 1*import_state: SUCCESS*} $e
         after 50
@@ -70,11 +70,11 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
 
     test {IMPORT - slot state 'error'} {
         set slot_key10 [lindex $::CRC16_SLOT_TABLE 10]
-        assert {[$r0 clusterx import 10 0] == "OK"}
+        assert {[$r0 cluster import 10 0] == "OK"}
         $r0 set $slot_key10 slot10_again
         assert {[$r0 get $slot_key10] == {slot10_again}}
         # Import error
-        assert {[$r0 clusterx import 10 2] == "OK"}
+        assert {[$r0 cluster import 10 2] == "OK"}
         after 50
         catch {$r0 cluster importstatus 10} e
         assert_match {*import_slot: 10*import_state: ERROR*} $e
@@ -84,7 +84,7 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
 
     test {IMPORT - connection broken} {
         set slot_key11 [lindex $::CRC16_SLOT_TABLE 11]
-        assert {[$r0 clusterx import 11 0] == "OK"}
+        assert {[$r0 cluster import 11 0] == "OK"}
         $r0 set $slot_key11 slot11
         assert {[$r0 get $slot_key11] == {slot11}}
         # Close connection, server will stop importing

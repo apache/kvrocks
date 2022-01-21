@@ -498,12 +498,7 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   std::string prefix, prefix_end;
   ComposeSlotKeyPrefix(ns, slot, &prefix);
   ComposeSlotKeyPrefix(ns, slot + 1, &prefix_end);
-  std::string begin_key, end_key;
-  auto s = FindKeyRangeWithPrefix(prefix, prefix_end, &begin_key, &end_key, storage_->GetCFHandle("metadata"));
-  if (s.IsNotFound()) {
-    return rocksdb::Status::OK();
-  }
-  s = storage_->DeleteRange(begin_key, end_key);
+  auto s = storage_->DeleteRange(prefix, prefix_end);
   if (!s.ok()) {
     return s;
   }
@@ -521,7 +516,7 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot,
   read_options.fill_cache = false;
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
   bool end = false;
-  for (int i = 0; i < 16384; i++) {
+  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
     std::string prefix;
     ComposeSlotKeyPrefix(namespace_, i, &prefix);
     uint64_t total = 0;

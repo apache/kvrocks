@@ -65,8 +65,6 @@ class Server {
   void Join();
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
-  bool IsBlocking() { return is_blocking_; }
-  void SetBlocking(bool flag) { is_blocking_ = flag; }
   Config *GetConfig() { return config_; }
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
@@ -113,8 +111,6 @@ class Server {
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
-  void ReclaimOldDBPtr();
-  void WaitRunningCmdsFinish();
   void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
@@ -160,7 +156,6 @@ class Server {
   static std::atomic<int> unix_time_;
   class SlotMigrate *slot_migrate_ = nullptr;
   class SlotImport *slot_import_ = nullptr;
-  std::mutex migrate_mutex;
 
  private:
   void cron();

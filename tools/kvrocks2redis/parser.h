@@ -8,7 +8,7 @@
 #include "../../src/status.h"
 #include "../../src/storage.h"
 #include "../../src/redis_metadata.h"
-#include "../../src/batch_parser.h"
+#include "../../src/batch_extractor.h"
 
 #include "config.h"
 #include "writer.h"

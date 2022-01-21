@@ -5,7 +5,6 @@
 #include <event2/buffer.h>
 
 #include "status.h"
-#include "redis_cmd.h"
 
 class Server;
 

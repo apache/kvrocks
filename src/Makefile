@@ -42,7 +42,7 @@ SHARED_OBJS= cluster.o compact_filter.o config.o cron.o encoding.o event_listene
 			   redis_request.o redis_set.o redis_string.o redis_zset.o redis_geo.o replication.o \
 			   server.o stats.o storage.o task_runner.o util.o geohash.o worker.o redis_sortedint.o \
 			   compaction_checker.o table_properties_collector.o scripting.o sha1.o rand.o \
-			   slot_migrate.o slot_import.o batch_parser.o
+			   slot_migrate.o slot_import.o batch_extractor.o
 KVROCKS_OBJS= $(SHARED_OBJS) main.o
 
 UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../tests/compact_test.o \

@@ -6,6 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <unordered_map>
+#include <set>
 
 #include "status.h"
 #include "rw_lock.h"
@@ -57,16 +58,19 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
-  Status SetSlot(int slot, std::string node_id);
+  Status SetSlotMigrated(int slot, const std::string &ip_port);
+  Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   uint64_t GetVersion() { return version_; }
   bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
+  // bool IsNotMaster() { return myself_ == nullptr || myself_->role_ != kClusterMaster || svr_->IsSlave(); }
+  bool IsNotMaster();
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens,
                          Redis::Connection *conn);
   void SetMasterSlaveRepl();
-  Status MigrateSlot(std::string dst_node, int slot);
+  Status MigrateSlot(int slot, const std::string &dst_node_id);
   Status ImportSlot(Redis::Connection *conn, int slot, int state);
   Status GetMigrateInfo(int slot, std::vector<std::string> *info);
   Status GetImportInfo(int slot, std::vector<std::string> *info);
@@ -90,5 +94,6 @@ class Cluster {
   ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 
-  std::mutex cluster_mutex_;
+  std::map<int, std::string> migrated_slots_;
+  std::set<int> imported_slots_;
 };

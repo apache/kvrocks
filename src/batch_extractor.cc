@@ -1,4 +1,4 @@
-#include "batch_parser.h"
+#include "batch_extractor.h"
 
 #include <rocksdb/write_batch.h>
 #include <glog/logging.h>
@@ -28,10 +28,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     metadata.Decode(value.ToString());
     if (metadata.Type() == kRedisString) {
       command_args = {"SET", user_key, value.ToString().substr(5, value.size() - 5)};
-      aof_strings_[ns].emplace_back(Util::Command2RESP(command_args));
+      resp_commands_[ns].emplace_back(Util::Command2RESP(command_args));
       if (metadata.expire > 0) {
         command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
-        aof_strings_[ns].emplace_back(Util::Command2RESP(command_args));
+        resp_commands_[ns].emplace_back(Util::Command2RESP(command_args));
       }
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();
@@ -39,7 +39,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
         if (cmd == kRedisCmdExpire) {
           command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
-          aof_strings_[ns].emplace_back(Util::Command2RESP(command_args));
+          resp_commands_[ns].emplace_back(Util::Command2RESP(command_args));
         }
       }
     }
@@ -119,7 +119,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   }
 
   if (!command_args.empty()) {
-    aof_strings_[ns].emplace_back(Util::Command2RESP(command_args));
+    resp_commands_[ns].emplace_back(Util::Command2RESP(command_args));
   }
   return rocksdb::Status::OK();
 }
@@ -195,7 +195,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   }
 
   if (!command_args.empty()) {
-    aof_strings_[ns].emplace_back(Util::Command2RESP(command_args));
+    resp_commands_[ns].emplace_back(Util::Command2RESP(command_args));
   }
   return rocksdb::Status::OK();
 }

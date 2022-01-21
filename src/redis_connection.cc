@@ -361,8 +361,8 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
         (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-        (config->cluster_enabled && cmd_name == "clusterx" && cmd_tokens.size() >= 2
-         && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+        (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster")
+         && cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
@@ -403,10 +403,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
         Reply(Redis::Error(s.Msg()));
         continue;;
       }
-    }
-
-    // Check slot keys of forbidden slot for migration in cluster mode
-    if (svr_->GetConfig()->slot_id_encoded) {
+      // Check slot keys of forbidden slot for migration in cluster mode
       s = CheckForbiddenSlotHit(attributes, cmd_tokens);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;

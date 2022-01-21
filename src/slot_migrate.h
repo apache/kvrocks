@@ -28,7 +28,7 @@ enum MigrateTaskState {
   kMigrateNone = 0,
   kMigrateStart,
   kMigrateSuccess,
-  kMigrateFail
+  kMigrateFailed
 };
 
 enum MigrateStateMachine {
@@ -37,7 +37,7 @@ enum MigrateStateMachine {
   kSlotMigrateSnapshot,
   kSlotMigrateWal,
   kSlotMigrateSuccess,
-  kSlotMigrateFail,
+  kSlotMigrateFailed,
   kSlotMigrateClean
 };
 
@@ -65,7 +65,7 @@ class SlotMigrate : public Redis::Database {
 
   Status CreateMigrateHandleThread(void);
   void *Loop(void *arg);
-  Status MigrateStart(Server *svr, const std::string node_id, const std::string dst_ip,
+  Status MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip,
                       int dst_port, int slot, int speed, int pipeline_size, int seq_gap);
   void ReleaseForbiddenSlot();
   void SetMigrateSpeedLimit(int speed) { if (speed >= 0) migrate_speed_ = speed; }

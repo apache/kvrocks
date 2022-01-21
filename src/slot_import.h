@@ -9,11 +9,10 @@
 #include "config.h"
 #include "server.h"
 
-// To adapt PegaDB1.0, cannot modify the order of import statuses here
 enum ImportStatus{
   kImportStart,
   kImportSuccess,
-  kImportFail,
+  kImportFailed,
   kImportNone,
 };
 

@@ -142,8 +142,8 @@ rocksdb::Status Parser::ParseWriteBatch(const std::string &batch_string) {
 
   status = write_batch.Iterate(&write_batch_extractor);
   if (!status.ok()) return status;
-  auto aof_strings = write_batch_extractor.GetAofStrings();
-  for (const auto &iter : *aof_strings) {
+  auto resp_commands = write_batch_extractor.GetAofStrings();
+  for (const auto &iter : *resp_commands) {
     auto s = writer_->Write(iter.first, iter.second);
     if (!s.IsOK()) {
       LOG(ERROR) << "[kvrocks2redis] Failed to parse WriteBatch, encounter error: " << s.Msg();

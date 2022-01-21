@@ -87,8 +87,8 @@ target_sources(kvrocks PRIVATE
 	    src/slot_migrate.cc
 	    src/slot_import.h
 	    src/slot_import.cc
-        src/batch_parser.h
-        src/batch_parser.cc
+        src/batch_extractor.h
+        src/batch_extractor.cc
         src/redis_db.cc
         src/redis_db.h
         src/redis_connection.cc
@@ -198,8 +198,8 @@ target_sources(kvrocks2redis PRIVATE
 	    src/slot_migrate.cc
 	    src/slot_import.h
 	    src/slot_import.cc
-        src/batch_parser.h
-        src/batch_parser.cc
+        src/batch_extractor.h
+        src/batch_extractor.cc
         src/redis_db.cc
         src/redis_db.h
         src/compact_filter.cc

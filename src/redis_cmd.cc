@@ -4316,7 +4316,9 @@ class CommandClusterX : public Commander {
 
     if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
     if (subcommand_ == "setnodeid" && args_.size() == 3 &&
-        args_[2].size() == kClusetNodeIdLen) return Status::OK();
+        args_[2].size() == kClusterNodeIdLen) return Status::OK();
+
+    // CLUSTERX SETNODES $ALL_NODES_INFO $VERSION FORCE
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
       nodes_str_ = args_[2];
       set_version_ = atoll(args_[3].c_str());
@@ -4328,8 +4330,25 @@ class CommandClusterX : public Commander {
       }
       return Status(Status::RedisParseErr, "Invalid setnodes options");
     }
+
+    // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
+    if (subcommand_ == "setslot" && args_.size() == 6) {
+      slot_id_ = atoi(args_[2].c_str());
+      if (!Cluster::IsValidSlot(slot_id_)) {
+        return Status(Status::RedisParseErr, "Invalid slot id");
+      }
+      if (strcasecmp(args_[3].c_str(), "node") != 0) {
+        return Status(Status::RedisParseErr, "Invalid setslot options");
+      }
+      if (args_[4].size() != kClusterNodeIdLen) {
+        return Status(Status::RedisParseErr, "Invalid node id");
+      }
+      set_version_ = atoll(args_[5].c_str());
+      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
+      return Status::OK();
+    }
     return Status(Status::RedisParseErr,
-                  "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES");
+                  "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT");
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4357,6 +4376,13 @@ class CommandClusterX : public Commander {
       } else {
         *output = Redis::Error(s.Msg());
       }
+    } else if (subcommand_ == "setslot") {
+      Status s = svr->cluster_->SetSlot(slot_id_, args_[4], set_version_);
+      if (s.IsOK()) {
+        *output = Redis::SimpleString("OK");
+      } else {
+        *output = Redis::Error(s.Msg());
+      }
     } else if (subcommand_ == "version") {
       int64_t v = svr->cluster_->GetVersion();
       *output = Redis::BulkString(std::to_string(v));
@@ -4370,6 +4396,7 @@ class CommandClusterX : public Commander {
   std::string subcommand_;
   std::string nodes_str_;
   uint64_t set_version_ = 0;
+  int slot_id_ = -1;
   bool force_ = false;
 };
 

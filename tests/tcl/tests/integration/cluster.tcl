@@ -73,6 +73,63 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 
         catch {[r clusterx setnodes a -1]} err
         assert_match "*Invalid version*" $err 
+
+        catch {[r clusterx setslot 16384 07c37dfeb235213a872192d90877d0cd55635b91 1]} err
+        assert_match "*CLUSTER*" $err
+
+        catch {[r clusterx setslot 16383 a 1]} err
+        assert_match "*CLUSTER*" $err
+    }
+}
+
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+    set nodeid1 "07c37dfeb235213a872192d90877d0cd55635b91"
+    r clusterx SETNODEID $nodeid1
+    set port1 [srv port]
+
+    start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+        set nodeid2 "07c37dfeb235213a872192d90877d0cd55635b92"
+        r clusterx SETNODEID $nodeid2
+        set port2 [srv port]
+
+        test {cluster slotset command test} {
+            set nodes_str "$nodeid1 127.0.0.1 $port1 master - 0-16383"
+            set nodes_str "$nodes_str\n$nodeid2 127.0.0.1 $port2 master -"
+
+            r clusterx setnodes $nodes_str 2
+            r -1 clusterx setnodes $nodes_str 2
+
+            set slot_0_key "06S"
+            assert_equal {OK} [r -1 set $slot_0_key 0]
+            catch {[r set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port1*" $err
+
+            r clusterx setslot 0 node $nodeid2 3
+            r -1 clusterx setslot 0 node $nodeid2 3
+            assert_equal {3} [r clusterx version]
+            assert_equal {3} [r -1 clusterx version]
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 0 {127.0.0.1 $port2 $nodeid2}} {1 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            assert_equal {OK} [r set $slot_0_key 0]
+            catch {[r -1 set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port2*" $err
+
+            r clusterx setslot 1 node $nodeid2 4
+            r -1 clusterx setslot 1 node $nodeid2 4
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 1 {127.0.0.1 $port2 $nodeid2}} {2 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            # wrong version can't update slot distribution
+            catch {[r clusterx setslot 2 node $nodeid2 6]} err
+            assert_match "*version*" $err
+
+            catch {[r clusterx setslot 2 node $nodeid2 4]} err
+            assert_match "*version*" $err
+
+            assert_equal {4} [r clusterx version]
+            assert_equal {4} [r -1 clusterx version]
+        }
     }
 }
 

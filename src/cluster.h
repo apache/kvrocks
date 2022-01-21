@@ -13,11 +13,11 @@
 #include "redis_slot.h"
 
 enum {
-  kClusterMaster   = 1,
-  kClusterSlave    = 2,
-  kClusetNodeIdLen = 40,
-  kClusterPortIncr = 10000,
-  kClusterSlots    = HASH_SLOTS_SIZE,
+  kClusterMaster    = 1,
+  kClusterSlave     = 2,
+  kClusterNodeIdLen = 40,
+  kClusterPortIncr  = 10000,
+  kClusterSlots     = HASH_SLOTS_SIZE,
 };
 
 class ClusterNode {
@@ -55,10 +55,11 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
+  Status SetSlot(int slot, std::string node_id, int64_t version);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   uint64_t GetVersion() { return version_; }
-  bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
+  static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens);
   void SetMasterSlaveRepl();

@@ -21,4 +21,14 @@ start_server {tags {"bitmap"}} {
       catch {r get b0} e
       set e
   } {ERR Operation aborted: The size of the bitmap *}
+
+  test "SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type bitmap)" {
+      r del b0
+      set max_offset [expr 4*1024*1024*1024-1]
+      assert_error "*out of range*" {r setbit b0 [expr $max_offset+1] 1}
+      r setbit b0 $max_offset 1
+      assert_equal 1 [r getbit b0 $max_offset ]
+      assert_equal 1 [r bitcount b0 0 [expr $max_offset / 8] ]
+      assert_equal $max_offset  [r bitpos b0 1 ]
+  }
 }

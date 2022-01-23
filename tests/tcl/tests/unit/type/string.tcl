@@ -293,6 +293,16 @@ start_server {tags {"string"}} {
         assert_error "*out of range*" {r setbit mykey 0 20}
     }
 
+    test "SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type string)" {
+        r del mykey
+        r set mykey ""
+        set max_offset [expr 4*1024*1024*1024-1]
+        r setbit mykey $max_offset 1
+        assert_equal 1 [r getbit mykey $max_offset ]
+        assert_equal 1 [r bitcount mykey 0 [expr $max_offset / 8] ]
+        assert_equal $max_offset  [r bitpos mykey 1 ]
+    }
+
     # test "SETBIT fuzzing" {
     #     set str ""
     #     set len [expr 256*8]

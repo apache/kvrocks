@@ -14,8 +14,8 @@ class Bitmap : public Database {
   rocksdb::Status GetBit(const Slice &user_key, uint32_t offset, bool *bit);
   rocksdb::Status GetString(const Slice &user_key, const uint32_t max_btos_size, std::string *value);
   rocksdb::Status SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit);
-  rocksdb::Status BitCount(const Slice &user_key, int start, int stop, uint32_t *cnt);
-  rocksdb::Status BitPos(const Slice &user_key, bool bit, int start, int stop, bool stop_given, int *pos);
+  rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt);
+  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
   static bool GetBitFromValueAndOffset(const std::string &value, const uint32_t offset);
   static bool IsEmptySegment(const Slice &segment);
  private:

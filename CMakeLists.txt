@@ -17,15 +17,21 @@ if (REALTIME_LIB)
     list(APPEND EXTERNAL_LIBS PRIVATE rt)
 endif()
 
-include(cmake/jemalloc.cmake)
+if (CMAKE_HOST_APPLE)
+    set(DISABLE_JEMALLOC 1)
+endif ()
+
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
+if(NOT DISABLE_JEMALLOC)
+    include(cmake/jemalloc.cmake)
+    list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
+    list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
+endif()
 
 list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})
@@ -47,7 +53,7 @@ list(APPEND EXTERNAL_INCS PRIVATE ${lua_INCLUDE_DIRS})
 # Add git sha to version.h
 find_package(Git REQUIRED)
 execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_SHA)
-string(STRIP ${GIT_SHA} GIT_SHA)
+string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 # Main target
@@ -65,7 +71,11 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks PRIVATE -fsanitize=address)
     target_link_libraries(kvrocks PRIVATE -fsanitize=address)
 endif()
-add_dependencies(kvrocks jemalloc libevent glog snappy rocksdb lua)
+add_dependencies(kvrocks libevent glog snappy rocksdb lua)
+if(NOT DISABLE_JEMALLOC)
+    add_dependencies(kvrocks jemalloc)
+endif()
+
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks ${EXTERNAL_INCS})
 find_package(Threads REQUIRED)
@@ -371,7 +381,7 @@ add_executable(unittest
         src/rand.cc
         src/rand.h)
 
-add_dependencies(unittest glog rocksdb snappy jemalloc lua)
+add_dependencies(unittest glog rocksdb snappy lua)
 target_compile_features(unittest PRIVATE cxx_std_11)
 message(${snappy_LIBRARIES})
 target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} -lgtest)

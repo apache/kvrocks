@@ -15,11 +15,11 @@
 #include "redis_connection.h"
 
 enum {
-  kClusterMaster   = 1,
-  kClusterSlave    = 2,
-  kClusetNodeIdLen = 40,
-  kClusterPortIncr = 10000,
-  kClusterSlots    = HASH_SLOTS_SIZE,
+  kClusterMaster    = 1,
+  kClusterSlave     = 2,
+  kClusterNodeIdLen = 40,
+  kClusterPortIncr  = 10000,
+  kClusterSlots     = HASH_SLOTS_SIZE,
 };
 
 class ClusterNode {
@@ -58,6 +58,7 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(std::string node_id);
+  Status SetSlot(int slot, std::string node_id, int64_t version);
   Status SetSlotMigrated(int slot, const std::string &ip_port);
   Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);

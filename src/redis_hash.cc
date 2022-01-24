@@ -262,13 +262,18 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  LatestSnapShot ss(db_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options);
-  std::string prefix_key;
+  std::string prefix_key, next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.fill_cache = false;
+
+  auto iter = db_->NewIterator(read_options);
   for (iter->Seek(prefix_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {

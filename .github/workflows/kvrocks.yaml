@@ -44,11 +44,16 @@ jobs:
 
       - name: Redis Tcl Test
         run: |
+          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
+          tar -zxvf 6.2.6.tar.gz
+          cd redis-6.2.6/ && make redis-cli && cd -
+          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
           sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
+          cd tests/tcl && sh runtest
+          sh runtest --single integration/redis-cli && cd -
 
-  build-test-on-macos-latest:
-    runs-on: macos-latest
+  build-on-macos-latest:
+    runs-on: macos-11
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4
@@ -61,13 +66,4 @@ jobs:
           mkdir build
 
       - name: Build
-        run: |
-          make -j4
-          cp src/kvrocks build/kvrocks
-
-      - name: Unit Test
-        run: make test
-
-      - name: Redis Tcl Test
-        run:
-          cd tests/tcl && sh runtest && cd -
+        run: make -j4

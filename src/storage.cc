@@ -140,6 +140,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
   options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
   options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+  options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
 }
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
@@ -372,10 +373,16 @@ Status Storage::RestoreFromCheckpoint() {
   PurgeOldBackups(0, 0);
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
 
+  // Maybe there is no db dir
+  auto s = env_->CreateDirIfMissing(config_->db_dir);
+  if (!s.ok()) {
+    return Status(Status::NotOK, "Fail to create db dir, error: " + s.ToString());
+  }
+
   // Rename db dir to tmp, so we can restore if replica fails to load
   // the checkpoint from master.
   // But only try best effort to make data safe
-  auto s = env_->RenameFile(config_->db_dir, tmp_dir);
+  s = env_->RenameFile(config_->db_dir, tmp_dir);
   if (!s.ok()) {
     if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
     return Status(Status::NotOK, "Fail to rename db dir, error: " + s.ToString());
@@ -414,17 +421,6 @@ void Storage::EmptyDB() {
   auto s = rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to destroy db, error: " << s.ToString();
-  }
-
-  // Reopen db, it is empty if succeeded destroying db
-  auto s2 = Open();
-  if (!s2.IsOK()) {
-    LOG(ERROR) << "[storage] Failed to destroy db, error: " << s2.Msg();
-  }
-  if (s.ok() && s2.IsOK()) {
-    LOG(INFO) << "[sorage] Succeeded emptying db";
-  } else {
-    LOG(INFO) << "[sorage] Failed to empty db";
   }
 }
 

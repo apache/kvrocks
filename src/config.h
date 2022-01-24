@@ -62,9 +62,11 @@ struct Config{
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
+  int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;
+  int fullsync_recv_file_delay = 0;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
@@ -120,6 +122,7 @@ struct Config{
     int max_total_wal_size;
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
+    int level0_file_num_compaction_trigger;
     int compression;
     bool disable_auto_compactions;
     bool enable_blob_files;

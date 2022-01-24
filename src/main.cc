@@ -62,8 +62,11 @@ void *getMcontextEip(ucontext_t *uc) {
 #elif defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)
 #if defined(_STRUCT_X86_THREAD_STATE64) && !defined(__i386__)
         return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
-#else
+#elif defined(__i386__)
         return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__eip);
+#else
+        // OSX ARM64
+        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
 #endif
 #elif defined(__i386__) || defined(__X86_64__) || defined(__x86_64__)
         return reinterpret_cast<void*>(uc->uc_mcontext.gregs[REG_EIP]); /* Linux 32/64 bit */
@@ -114,7 +117,6 @@ void setupSigSegvAction() {
   sigaction(SIGBUS, &act, nullptr);
   sigaction(SIGFPE, &act, nullptr);
   sigaction(SIGILL, &act, nullptr);
-  sigaction(SIGBUS, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
   act.sa_handler = signal_handler;

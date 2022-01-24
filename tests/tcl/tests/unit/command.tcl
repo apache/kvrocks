@@ -1,7 +1,7 @@
 start_server {tags {"command"}} {
-    test {kvrocks has 166 commands currently} {
+    test {kvrocks has 167 commands currently} {
         r command count
-    } {166}
+    } {167}
 
     test {acquire GET command info by COMMAND INFO} {
         set e [lindex [r command info get] 0]
@@ -46,5 +46,25 @@ start_server {tags {"command"}} {
         assert {[expr abs($cmd_qps/2 - $seek_qps)] < 10}
         # prev_per_sec is almost the same as next_per_sec
         assert {[expr abs($cmd_qps - $next_qps)] < 10}
+    }
+
+    test {get bgsave information from INFO command} {
+        assert_equal 0 [s bgsave_in_progress]
+        assert_equal -1 [s last_bgsave_time]
+        assert_equal ok [s last_bgsave_status]
+        assert_equal -1 [s last_bgsave_time_sec]
+
+        assert_equal {OK} [r bgsave]
+        wait_for_condition 100 500 {
+            [s bgsave_in_progress] == 0
+        } else {
+            fail "Fail to bgsave"
+        }
+
+        set last_bgsave_time [s last_bgsave_time]
+        assert {$last_bgsave_time > 1640507660}
+        assert_equal ok [s last_bgsave_status]
+        set last_bgsave_time_sec [s last_bgsave_time_sec]
+        assert {$last_bgsave_time_sec < 3 && $last_bgsave_time_sec >= 0}
     }
 }

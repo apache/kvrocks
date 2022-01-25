@@ -1,7 +1,6 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
-#include <map>
 
 #include "util.h"
 #include "server.h"

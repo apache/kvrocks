@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <set>
+#include <map>
 
 #include "status.h"
 #include "rw_lock.h"

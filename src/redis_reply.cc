@@ -57,4 +57,14 @@ std::string Array(std::vector<std::string> list) {
     [](std::string &dest, std::string const &item) -> std::string& {dest += item; return dest;});
 }
 
+std::string Command2RESP(const std::vector<std::string> &cmd_args) {
+  std::string output;
+  output.append("*" + std::to_string(cmd_args.size()) + CRLF);
+  for (const auto &arg : cmd_args) {
+    output.append("$" + std::to_string(arg.size()) + CRLF);
+    output.append(arg + CRLF);
+  }
+  return output;
+}
+
 }  // namespace Redis

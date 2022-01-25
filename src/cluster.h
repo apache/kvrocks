@@ -64,8 +64,7 @@ class Cluster {
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   uint64_t GetVersion() { return version_; }
-  bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
-  // bool IsNotMaster() { return myself_ == nullptr || myself_->role_ != kClusterMaster || svr_->IsSlave(); }
+  static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens,

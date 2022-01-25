@@ -69,7 +69,7 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
   if (forbidden_slot_ == slot) {
     // Have to release migrate slot set above
     migrate_slot_ = -1;
-    return Status(Status::NotOK, "Can't migrate forbidden slot");
+    return Status(Status::NotOK, "Can't migrate slot which has been migrated");
   }
 
   migrate_state_ = kMigrateStart;

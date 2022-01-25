@@ -324,7 +324,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set ret [$r0 clusterx migrate 5 $node1_id]
             assert {$ret == "OK"}
 
-            # Migrate status START(doing)
+            # Migrate status START(migrating)
             if {[string match "*migrating_slot: 5*migrating_state: START*" [$r0 cluster migratestatus 5]]} {
                 # Write during migrating
                 set num [$r0 lpush $slot5_key $count]
@@ -345,7 +345,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$lastval == $count}
         }
 
-        test {MIGRATE - Slot keys are not cleared after migration} {
+        test {MIGRATE - Slot keys are not cleared after migration but cleared after setslot} {
             set slot6_key [lindex $::CRC16_SLOT_TABLE 6]
             assert {[$r0 set $slot6_key "slot6"] == "OK"}
             # Check key in src server
@@ -363,6 +363,11 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {[$r1 get $slot6_key] == "slot6"}
             # Check key in source server
             assert {[string match "*$slot6_key*" [$r0 keys *]] != 0}
+
+            # Change topology by 'setslot'
+            $r0 clusterx setslot 6 node $node1_id 2
+            # Check key is cleared after 'setslot'
+            assert {[string match "*$slot6_key*" [$r0 keys *]] == 0}
         }
 
         test {MIGRATE - Migrate incremental data via parsing and filtering data in WAL} {
@@ -604,7 +609,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Check migration task
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 0*migrating_state: SUCCESS*" [$r0 cluster migratestatus 0]]
+                [string match "*0*SUCCESS*" [$r0 cluster migratestatus 0]]
             } else {
                 fail "Fail to migrate slot 0"
             }
@@ -617,14 +622,15 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
         test {MIGRATE - Migrate binary key-value} {
             # Slot 1 key using hash tag
-            set slot1_key "\x3a\x88{key294989}\x3d\xaa"
+            set slot1_tag [lindex $::CRC16_SLOT_TABLE 1]
+            set slot1_key "\x3a\x88{$slot1_tag}\x3d\xaa"
             set count 257
             for {set i 0} {$i < $count} {incr i} {
                 $r0 lpush $slot1_key "\00\01"
             }
             set ret [$r0 clusterx migrate 1 $node1_id]
             assert {$ret == "OK"}
-            set slot1_key_2 "\x49\x1f\x7f{key294989}\xaf"
+            set slot1_key_2 "\x49\x1f\x7f{$slot1_tag}\xaf"
             $r0 set $slot1_key_2 "\00\01"
             after 1000
             # Check if finish

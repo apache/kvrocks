@@ -31,9 +31,9 @@ bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
     return true;
   } else if (strcasecmp("setnodeid", subcommand.c_str()) == 0) {
     return true;
-  } else if (strcasecmp("import", subcommand.c_str()) == 0) {
+  }  else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
     return true;
-  } else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
+  } else if (strcasecmp("import", subcommand.c_str()) == 0) {
     return true;
   }
   return false;
@@ -104,6 +104,19 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   to_assign_node->slots_[slot] = 1;
   slots_nodes_[slot] = to_assign_node;
 
+  // Clear data of migrated slot or record of imported slot
+  if (old_node != to_assign_node) {
+    // If slot is migrated from this node
+    if (migrated_slots_.count(slot)) {
+      svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, slot);
+      migrated_slots_.erase(slot);
+    }
+    // If slot is imported into this node
+    if (imported_slots_.count(slot)) {
+      imported_slots_.erase(slot);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -168,12 +181,13 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   if (myself_ != nullptr) SetMasterSlaveRepl();
 
   // Clear data of migrated slots
-  for (auto &it : migrated_slots_) {
-    if (slots_nodes_[it.first] != myself_) {
-      svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, it.first);
+  if (!migrated_slots_.empty()) {
+    for (auto &it : migrated_slots_) {
+      if (slots_nodes_[it.first] != myself_) {
+        svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, it.first);
+      }
     }
   }
-
   // Clear migrated and imported slot info
   migrated_slots_.clear();
   imported_slots_.clear();

@@ -7,9 +7,7 @@
 
 #include "../../src/redis_bitmap.h"
 #include "../../src/redis_slot.h"
-#include "../../src/util.h"
-
-#include "parser.h"
+#include "../../src/redis_reply.h"
 
 Status Parser::ParseFullDB() {
   rocksdb::DB *db_ = storage_->GetDB();
@@ -42,13 +40,13 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire
   std::string op, ns, user_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, is_slotid_encoded_);
   std::string output;
-  output = Util::Command2RESP(
+  output = Redis::Command2RESP(
       {"SET", user_key, value.ToString().substr(5, value.size() - 5)});
   Status s = writer_->Write(ns, {output});
   if (!s.IsOK()) return s;
 
   if (expire > 0) {
-    output = Util::Command2RESP({"EXPIREAT", user_key, std::to_string(expire)});
+    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire)});
     s = writer_->Write(ns, {output});
   }
   return s;
@@ -61,9 +59,9 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   std::string ns, prefix_key, user_key, sub_key, value, output, next_version_prefix_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, cluster_enabled_);
-  InternalKey(ns_key, "", metadata.version, cluster_enabled_).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, cluster_enabled_).Encode(&next_version_prefix_key);
+  ExtractNamespaceKey(ns_key, &ns, &user_key, is_slotid_encoded_);
+  InternalKey(ns_key, "", metadata.version, is_slotid_encoded_).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, is_slotid_encoded_).Encode(&next_version_prefix_key);
 
   rocksdb::DB *db_ = storage_->GetDB();
   rocksdb::ReadOptions read_options;
@@ -83,17 +81,17 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     value = iter->value().ToString();
     switch (type) {
       case kRedisHash:
-        output = Util::Command2RESP({"HSET", user_key, sub_key, value});
+        output = Redis::Command2RESP({"HSET", user_key, sub_key, value});
         break;
       case kRedisSet:
-        output = Util::Command2RESP({"SADD", user_key, sub_key});
+        output = Redis::Command2RESP({"SADD", user_key, sub_key});
         break;
       case kRedisList:
-        output = Util::Command2RESP({"RPUSH", user_key, value});
+        output = Redis::Command2RESP({"RPUSH", user_key, value});
         break;
       case kRedisZSet: {
         double score = DecodeDouble(value.data());
-        output = Util::Command2RESP({"ZADD", user_key, std::to_string(score), sub_key});
+        output = Redis::Command2RESP({"ZADD", user_key, std::to_string(score), sub_key});
         break;
       }
       case kRedisBitmap: {
@@ -103,7 +101,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       }
       case kRedisSortedint: {
         std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
-        output = Util::Command2RESP({"ZADD", user_key, val, val});
+        output = Redis::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
       default:break;  // should never get here
@@ -115,7 +113,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   if (metadata.expire > 0) {
-    output = Util::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire)});
+    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire)});
     Status s = writer_->Write(ns, {output});
     if (!s.IsOK()) return s;
   }
@@ -130,7 +128,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
     if (bitmap[i] == 0) continue;  // ignore zero byte
     for (int j = 0; j < 8; j++) {
       if (!(bitmap[i] & (1 << j))) continue;  // ignore zero bit
-      s = writer_->Write(ns.ToString(), {Util::Command2RESP(
+      s = writer_->Write(ns.ToString(), {Redis::Command2RESP(
           {"SETBIT", user_key.ToString(), std::to_string(index * 8 + i * 8 + j), "1"})
       });
       if (!s.IsOK()) return s;
@@ -141,7 +139,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
 
 rocksdb::Status Parser::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
-  WriteBatchExtractor write_batch_extractor(is_slotid_encoded_);
+  WriteBatchExtractor write_batch_extractor(is_slotid_encoded_, -1, true);
   rocksdb::Status status;
 
   status = write_batch.Iterate(&write_batch_extractor);

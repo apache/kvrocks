@@ -574,6 +574,39 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
                 fail "Slot 16 importing is not finished"
             }
         }
+
+        test {MIGRATE - Data of migrated slot can't be written to source but can be written to destination} {
+            # Construct key
+            set slot17_key [lindex $::CRC16_SLOT_TABLE 17]
+            $r0 del $slot17_key
+
+            # Write data
+            set count 100
+            for {set i 0} {$i < $count} {incr i} {
+                $r0 lpush $slot17_key $i
+            }
+            # Migrate slot 17 from node0 to node1
+            set ret [$r0 clusterx migrate 17 $node1_id]
+            assert {$ret == "OK"}
+            # Migrating started
+            catch {[$r0 cluster info]} e
+            assert_match {*migrating_slot: 17*start*} $e
+            # Check if finished
+            wait_for_condition 50 1000 {
+                [string match "*migrating_slot: 17*success*" [$r0 cluster info]]
+            } else {
+                fail "Slot 17 importing is not finished"
+            }
+            # Check data
+            assert {[$r1 llen $slot17_key] == $count}
+            # Write the migrated slot to source server
+            set slot17_key1 "{$slot17_key}_1"
+            catch {$r0 set $slot17_key1 slot17_value1} e
+            assert_match {*MOVED*} $e
+
+            # Write the migrated slot to destination server
+            assert {[$r1 set $slot17_key1 slot17_value1] == "OK"}
+        }
     }
 
 }
@@ -728,8 +761,13 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
                 assert {$ret == "OK"}
                 catch {[$r0 cluster info]} e
                 assert_match {*10*start*} $e
-                # Change source server to slave
-                $r0 slaveof $node1_host $node1_port
+                # Change source server to slave by set topology
+                set cluster_nodes "$node0_id 127.0.0.1 $node1_port master - 0-10000"
+                set cluster_nodes "$cluster_nodes\n$node0_id 127.0.0.1 $node0_port slave $node1_id"
+                set cluster_nodes "$cluster_nodes\n$node2_id 127.0.0.1 $node2_port master - 10001-16383"
+                $r0 clusterx SETNODES $cluster_nodes 2
+                $r1 clusterx SETNODES $cluster_nodes 2
+                $r2 clusterx SETNODES $cluster_nodes 2
                 after 1000
                 # Check destination importing status
                 catch {[$r2 cluster info]} e
@@ -821,105 +859,3 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
     }
 }
 
-# Test migration and importing after full sycnchronization and failover
-# 1. Let node1 as slave of node0, trigger full sycnchronization
-# 2. Change node1 as a master
-# 3. Migrate slot 0 from node1 to node2
-# 4. Import slot 2 from node2 to node1
-start_server {tags {"Server A"} overrides {cluster-enabled yes
-                                           max-replication-mb 1
-                                           rocksdb.write_buffer_size 1
-                                           rocksdb.target_file_size_base 1}} {
-    set r0 [srv 0 client]
-    set node0_host [srv 0 host]
-    set node0_port [srv 0 port]
-    set node0_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
-    $r0 clusterx setnodeid $node0_id
-    start_server {tags {"Server B"} overrides {cluster-enabled yes}} {
-        set r1 [srv 0 client]
-        set node1_host [srv 0 host]
-        set node1_port [srv 0 port]
-        set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
-        $r1 clusterx setnodeid $node1_id
-        start_server {tags {"Server C"} overrides {cluster-enabled yes}} {
-            set r2 [srv 0 client]
-            set node2_host [srv 0 host]
-            set node2_port [srv 0 port]
-            set node2_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx02"
-            $r2 clusterx setnodeid $node2_id
-
-            test {MIGRATE - Migrate and import slot after full sychronization and failover operation} {
-                # Set cluster topology
-                set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-10000"
-                set cluster_nodes "$cluster_nodes\n$node2_id 127.0.0.1 $node2_port master - 10001-16383"
-                $r0 clusterx setnodes $cluster_nodes 1
-                $r1 clusterx setnodes $cluster_nodes 1
-                $r2 clusterx setnodes $cluster_nodes 1
-
-                # Write node0
-                set count1 1000
-                set slot0_key [lindex $::CRC16_SLOT_TABLE 0]
-                for {set i 0} {$i < $count1} {incr i} {
-                    $r0 lpush $slot0_key [string repeat A 10240]
-                }
-                set slot1_key [lindex $::CRC16_SLOT_TABLE 1]
-                for {set i 0} {$i < $count1} {incr i} {
-                    $r0 lpush $slot1_key [string repeat B 10240]
-                }
-                $r0 compact
-                after 1000
-
-                # Write node2
-                set count3 2000
-                set slot10003_key [lindex $::CRC16_SLOT_TABLE 10003]
-                for {set i 0} {$i < $count3} {incr i} {
-                    $r2 lpush $slot10003_key slot10003_key_$i
-                }
-                after 2000
-
-                # Trigger full sychronization and failover operation
-                $r1 slaveof $node0_host $node0_port
-                # TODO: Check full sychronization is triggered successfully
-
-                # waiting for completing replication
-                wait_for_condition 50 500 {
-                    [string match "*master_link_status:up*" [$r1 info replication]]
-                } else {
-                    fail "Fail to sychronize with master"
-                }
-                after 500
-                $r1 slaveof no one
-
-                # Change cluster topology
-                set cluster_nodes "$node1_id 127.0.0.1 $node1_port master - 0-10000"
-                set cluster_nodes "$cluster_nodes\n$node0_id 127.0.0.1 $node0_port slave $node1_id"
-                set cluster_nodes "$cluster_nodes\n$node2_id 127.0.0.1 $node2_port master - 10001-16383"
-                $r0 clusterx setnodes $cluster_nodes 2
-                $r1 clusterx setnodes $cluster_nodes 2
-                $r2 clusterx setnodes $cluster_nodes 2
-
-                # Try to migrate slot 0 from node1
-                assert {[$r1 clusterx migrate 0 $node2_id] == "OK"}
-                # Migrate slot 0 success
-                wait_for_condition 50 200 {
-                    [string match "*0*success*" [$r1 cluster info]]
-                } else {
-                    fail "Fail to migrate slot 0"
-                }
-                # Check migrated data on destination server
-                assert {[$r2 llen $slot0_key] == $count1}
-
-                # Try to import slot 10003 to node1
-                assert {[$r2 clusterx migrate 10003 $node1_id] == "OK"}
-                # Import slot 10003 success
-                wait_for_condition 50 200 {
-                    [string match "*10003*success*" [$r1 cluster info]]
-                } else {
-                    fail "Fail to migrate slot 10003"
-                }
-                # Check imported data on node1
-                assert {[$r1 llen $slot10003_key] == $count3}
-            }
-        }
-    }
-}

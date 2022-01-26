@@ -114,10 +114,9 @@ int SlotImport::GetStatus() {
 }
 
 void SlotImport::GetImportInfo(std::string *info) {
+  std::lock_guard<std::mutex> guard(mutex_);
   info->clear();
-  *info = "# Import Status\r\n";
   if (import_slot_ < 0) {
-    *info += "There is no importing slot\r\n";
     return;
   }
 
@@ -139,7 +138,7 @@ void SlotImport::GetImportInfo(std::string *info) {
       break;
   }
 
-  *info = *info + "importing_slot: " + std::to_string(import_slot_) + "\r\n"
+  *info = "importing_slot: " + std::to_string(import_slot_) + "\r\n"
           + "import_state: " + import_stat + "\r\n";
 }
 

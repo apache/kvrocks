@@ -14,8 +14,8 @@ static std::map<RedisType, std::string> type_to_cmd = {
 
 SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
                         : Database(svr->storage_, kDefaultNamespace), svr_(svr),
-                          state_machine_(kSlotMigrateNone), current_pipeline_size_(0),
-                          migrate_speed_(0), last_send_time_(0), slot_job_(nullptr),
+                          state_machine_(kSlotMigrateNone), migrate_speed_(speed),
+                          last_send_time_(0), slot_job_(nullptr),
                           slot_snapshot_time_(0), wal_begin_seq_(0), wal_incremet_seq_(0) {
   // Let db_ and metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
@@ -35,11 +35,6 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   db_ = nullptr;
   metadata_cf_handle_ = nullptr;
 
-  if (speed == 0) {
-    migrate_speed_ = kMigrateSpeed;
-  } else {
-    migrate_speed_ = speed < 0 ? 0 : speed;
-  }
   if (pipeline_size > 0) {
     pipeline_size_limit_ = pipeline_size;
   }
@@ -925,9 +920,7 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
 
 void SlotMigrate::GetMigrateInfo(std::string *info) {
   info->clear();
-  *info = "# Migrate Status\r\n";
   if (migrate_slot_ < 0 && forbidden_slot_ < 0 && migrate_failed_slot_ < 0) {
-    *info += "There is no migrating slot\r\n";
     return;
   }
 
@@ -953,7 +946,7 @@ void SlotMigrate::GetMigrateInfo(std::string *info) {
       break;
   }
 
-  *info = *info + "migrating_slot: " + std::to_string(slot) + "\r\n"
+  *info = "migrating_slot: " + std::to_string(slot) + "\r\n"
           + "destination_node: " + dst_node_ + "\r\n"
           + "migrating_state: " + task_state + "\r\n";
 }

@@ -3454,6 +3454,9 @@ class CommandSlaveOf : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (svr->GetConfig()->cluster_enabled) {
+      return Status(Status::RedisExecErr, "can't change to slave in cluster mode");
+    }
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();

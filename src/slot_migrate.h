@@ -124,8 +124,17 @@ class SlotMigrate : public Redis::Database {
   };
   ParserState stat_ = ArrayLen;
 
-  int current_pipeline_size_;
-  int migrate_speed_;
+  static const size_t kProtoInlineMaxSize = 16 * 1024L;
+  static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;
+  static const int kMaxNotifyRetryTimes = 3;
+  static const int kPipelineSize = 16;
+  static const int kMigrateSpeed = 4096;
+  static const int kMaxItemsInCommand = 16;   // Iterms in every write commmand of complex keys
+  static const int kSeqGapLimit = 10000;
+  static const int kMaxLoopTimes = 10;
+
+  int current_pipeline_size_ = kPipelineSize;
+  int migrate_speed_ = kMigrateSpeed;
   uint64_t last_send_time_;
 
   std::thread t_;
@@ -145,15 +154,6 @@ class SlotMigrate : public Redis::Database {
   const rocksdb::Snapshot *slot_snapshot_;
   uint64_t wal_begin_seq_;
   uint64_t wal_incremet_seq_;
-
-  static const size_t kProtoInlineMaxSize = 16 * 1024L;
-  static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;
-  static const int kMaxNotifyRetryTimes = 3;
-  static const int kPipelineSize = 16;
-  static const int kMigrateSpeed = 4096;
-  static const int kMaxItemsInCommand = 16;   // Iterms in every write commmand of complex keys
-  static const int kSeqGapLimit = 10000;
-  static const int kMaxLoopTimes = 10;
 
   int pipeline_size_limit_ = kPipelineSize;
   int seq_gap_limit_ = kSeqGapLimit;

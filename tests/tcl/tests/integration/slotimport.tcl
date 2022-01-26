@@ -3,26 +3,26 @@ source "tests/helpers/crc16_slottable.tcl"
 
 start_server {tags {"Imported slave server"} overrides {cluster-enabled yes}} {
     # M is master, S is slave
-    set M [srv 0 client]
-    set M_host [srv 0 host]
-    set M_port [srv 0 port]
-    set masterid "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
-    $M clusterx SETNODEID $masterid
+    set r0 [srv 0 client]
+    set node0_host [srv 0 host]
+    set node0_port [srv 0 port]
+    set node0_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+    $r0 clusterx SETNODEID $node0_id
     start_server {overrides {cluster-enabled yes}} {
-        set S [srv 0 client]
-        set S_host [srv 0 host]
-        set S_port [srv 0 port]
-        set slaveid "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
-        $S clusterx SETNODEID $slaveid
-        set cluster_nodes "$masterid 127.0.0.1 $M_port master - 0-100"
-        set cluster_nodes "$cluster_nodes\n$slaveid 127.0.0.1 $S_port slave $masterid"
-        $M clusterx SETNODES $cluster_nodes 1
-        $S clusterx SETNODES $cluster_nodes 1
-        # Cannot import data to slave server
-        test {IMPORT - slot to slave} {
-            $S slaveof $M_host $M_port
-            after 500
-            catch {$S cluster import 1 0} e
+        set r1 [srv 0 client]
+        set node1_host [srv 0 host]
+        set node1_port [srv 0 port]
+        set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+        $r1 clusterx SETNODEID $node1_id
+
+        set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-100"
+        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port slave $node0_id"
+        $r0 clusterx SETNODES $cluster_nodes 1
+        $r1 clusterx SETNODES $cluster_nodes 1
+
+        test {IMPORT - Can't import slot to slave} {
+            after 100
+            catch {$r1 cluster import 1 0} e
             assert_match {*Slave can't import slot*} $e
         }
     }

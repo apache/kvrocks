@@ -333,7 +333,6 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   }
 
   *cluster_infos =
-    "# Cluster Info\r\n"
     "cluster_state:ok\r\n"
     "cluster_slots_assigned:" + std::to_string(ok_slot) + "\r\n"
     "cluster_slots_ok:" + std::to_string(ok_slot) + "\r\n"
@@ -622,7 +621,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
     // Server can't change the topology directly, so we record the migrated slots
     // to move the requests of the migrated slots to the destination node.
     if (migrated_slots_.count(slot)) {  // I'm not serving the migrated slot
-      return Status(Status::RedisExecErr, "Migrated MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
+      return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
@@ -649,6 +648,6 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
   } else {
     std::string ip_port = slots_nodes_[slot]->host_ + ":" +
                           std::to_string(slots_nodes_[slot]->port_);
-    return Status(Status::RedisExecErr, "Serve MOVED " + std::to_string(slot) + " " + ip_port);
+    return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + ip_port);
   }
 }

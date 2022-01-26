@@ -75,8 +75,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$ret == "OK"}
             after 50
             # Migrating failed
-            catch {[$r0 cluster migratestatus 1]} e
-            assert_match {*no migrating*} $e
+            catch {[$r0 cluster info]} e
+            assert_match {*1*fail*} $e
         }
     }
 }
@@ -117,7 +117,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Migrate slot 0 success
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 0*migrating_state: SUCCESS*" [$r0 cluster migratestatus 0]]
+                [string match "*migrating_slot: 0*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Fail to migrate slot 0"
             }
@@ -213,7 +213,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Wait finish slot migrating
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 1*migrating_state: SUCCESS*" [$r0 cluster migratestatus 1]]
+                [string match "*migrating_slot: 1*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Fail to migrate slot 1"
             }
@@ -289,7 +289,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set ret [$r0 clusterx migrate 3 $node1_id]
             assert {$ret == "OK"}
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 3*migrating_state: SUCCESS*" [$r0 cluster migratestatus 3]]
+                [string match "*migrating_slot: 3*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Slot 3 can't migrate"
             }
@@ -325,7 +325,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$ret == "OK"}
 
             # Migrate status START(migrating)
-            if {[string match "*migrating_slot: 5*migrating_state: START*" [$r0 cluster migratestatus 5]]} {
+            if {[string match "*migrating_slot: 5*migrating_state: start*" [$r0 cluster info]]} {
                 # Write during migrating
                 set num [$r0 lpush $slot5_key $count]
                 assert {$num == [expr $count + 1]}
@@ -335,7 +335,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Check dst server receiving all data when migrate slot snapshot
             wait_for_condition 50 1000 {
-                [string match "*migrating_slot: 5*migrating_state: SUCCESS*" [$r0 cluster migratestatus 5]]
+                [string match "*migrating_slot: 5*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Slot 5 migrating is not finished"
             }
@@ -355,7 +355,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Migrate slot
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 6*migrating_state: SUCCESS*" [$r0 cluster migratestatus 6]]
+                [string match "*migrating_slot: 6*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Fail to migrate slot 6"
             }
@@ -493,12 +493,12 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Wait for finishing
             wait_for_condition 50 1000 {
-                [string match "*migrating_slot: 15*migrating_state: SUCCESS*" [$r0 cluster migratestatus 15]]
+                [string match "*migrating_slot: 15*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Slot 15 migrating is not finished"
             }
             wait_for_condition 50 1000 {
-                [string match "*15*SUCCESS*" [$r1 cluster importstatus 15]]
+                [string match "*15*success*" [$r1 cluster info]]
             } else {
                 fail "Slot 15 importing is not finished"
             }
@@ -564,12 +564,12 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Should not finish 1.5s
             after 1500
-            catch {[$r0 cluster migratestatus 16]} e
-            assert_match {*migrating_slot: 16*START*} $e
+            catch {[$r0 cluster info]} e
+            assert_match {*migrating_slot: 16*start*} $e
 
             # Check if finish
             wait_for_condition 50 1000 {
-                [string match "*migrating_slot: 16*SUCCESS*" [$r0 cluster migratestatus 16]]
+                [string match "*migrating_slot: 16*success*" [$r0 cluster info]]
             } else {
                 fail "Slot 16 importing is not finished"
             }
@@ -609,7 +609,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
 
             # Check migration task
             wait_for_condition 50 100 {
-                [string match "*0*SUCCESS*" [$r0 cluster migratestatus 0]]
+                [string match "*0*success*" [$r0 cluster info]]
             } else {
                 fail "Fail to migrate slot 0"
             }
@@ -635,7 +635,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             after 1000
             # Check if finish
             wait_for_condition 50 100 {
-                [string match "*1*SUCCESS*" [$r1 cluster importstatus 1]]
+                [string match "*1*success*" [$r1 cluster info]]
             } else {
                 fail "Slot 1 importing is not finished"
             }
@@ -655,7 +655,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set ret [$r0 clusterx migrate 2 $node1_id]
             assert { $ret == "OK"}
             wait_for_condition 50 100 {
-                [string match "*migrating_slot: 2*migrating_state: SUCCESS*" [$r0 cluster migratestatus 2]]
+                [string match "*migrating_slot: 2*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Fail to migrate slot 2"
             }
@@ -677,16 +677,16 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$ret == "OK"}
 
             # Check migrating start
-            catch {[$r0 cluster migratestatus 8]} e
-            assert_match {*migrating_slot: 8*START*} $e
+            catch {[$r0 cluster info]} e
+            assert_match {*migrating_slot: 8*start*} $e
 
             # Kill destination server itself
             exec kill -9 $node1_pid
             # Wait migration timeout
             after 1000
             # Can't success
-            catch {[$r0 cluster migratestatus 8]} e
-            assert_match {*no migrating*} $e
+            catch {[$r0 cluster info]} e
+            assert_match {*migrating_slot: 8*migrating_state: fail*} $e
         }
     }
 }
@@ -726,17 +726,14 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
                 # Start migrating
                 set ret [$r0 clusterx migrate 10 $node2_id]
                 assert {$ret == "OK"}
-                catch {[$r0 cluster migratestatus 10]} e
-                assert_match {*10*START*} $e
+                catch {[$r0 cluster info]} e
+                assert_match {*10*start*} $e
                 # Change source server to slave
                 $r0 slaveof $node1_host $node1_port
                 after 1000
-                # Check source migrating status
-                catch {[$r0 cluster migratestatus 10]} e
-                assert_match {*Slave can't migrate slot*} $e
                 # Check destination importing status
-                catch {[$r2 cluster importstatus 10]} e
-                assert_match {*10*ERROR*} $e
+                catch {[$r2 cluster info]} e
+                assert_match {*10*error*} $e
             }
 
         }
@@ -777,7 +774,7 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
             assert {$ret == "OK"}
             # Ensure migration started
             wait_for_condition 10 50 {
-                [string match "*11*START*" [$r0 cluster migratestatus 11]]
+                [string match "*11*start*" [$r0 cluster info]]
             } else {
                 fail "Fail to start migrating slot 11"
             }
@@ -786,7 +783,7 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
             assert {$ret == "OK"}
             after 1000
             wait_for_condition 10 100 {
-                [string match "*no migrating*" [$r0 cluster migratestatus 11]]
+                [string match "*11*fail*" [$r0 cluster info]]
             } else {
                 fail "Fail to flush server while migrating slot 11"
             }
@@ -905,7 +902,7 @@ start_server {tags {"Server A"} overrides {cluster-enabled yes
                 assert {[$r1 clusterx migrate 0 $node2_id] == "OK"}
                 # Migrate slot 0 success
                 wait_for_condition 50 200 {
-                    [string match "*0*SUCCESS*" [$r1 cluster migratestatus 0]]
+                    [string match "*0*success*" [$r1 cluster info]]
                 } else {
                     fail "Fail to migrate slot 0"
                 }
@@ -916,7 +913,7 @@ start_server {tags {"Server A"} overrides {cluster-enabled yes
                 assert {[$r2 clusterx migrate 10003 $node1_id] == "OK"}
                 # Import slot 10003 success
                 wait_for_condition 50 200 {
-                    [string match "*10003*SUCCESS*" [$r2 cluster migratestatus 10003]]
+                    [string match "*10003*success*" [$r1 cluster info]]
                 } else {
                     fail "Fail to migrate slot 10003"
                 }

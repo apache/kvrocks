@@ -287,39 +287,6 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   svr_->GetPerfLog()->PushEntry(entry);
 }
 
-
-Status Connection::CheckForbiddenSlotHit(const struct CommandAttributes *attributes,
-                                      const std::vector<std::string> cmd_tokens) {
-  int slot = svr_->slot_migrate_->GetForbiddenSlot();
-  if (slot < 0) return Status::OK();
-  if (!attributes->is_write()) return Status::OK();
-
-  int i = attributes->first_key, end = 0;
-  if (attributes->last_key >= 1) {
-    end = attributes->last_key;
-  } else if (attributes->last_key < 0) {
-    end = cmd_tokens.size() + attributes->last_key;
-  }
-
-  if (i <= end && attributes->key_step <= 0) {
-    if (attributes->name == "flushall" || attributes->name == "flushdb") return Status::OK();
-    LOG(ERROR) << "Key position is wrong of current command: " << cmd_tokens.front();
-    return Status(Status::NotOK, "ERR wrong key position is set of this command: " + cmd_tokens.front());
-  }
-
-  while (i <= end) {
-    if (static_cast<uint16_t>(slot) == GetSlotNumFromKey(cmd_tokens[i])) {
-      LOG(INFO) << "Key hits forbidden slot! Key: " << cmd_tokens[i]
-                << ", slot: " << std::to_string(slot);
-      return Status(Status::NotOK, "ERR cannot write forbidden slot, key: "
-                                   + cmd_tokens[i] + ", slot: " + std::to_string(slot));
-    }
-    i += attributes->key_step;
-  }
-
-  return Status::OK();
-}
-
 void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds) {
   if (to_process_cmds.empty()) return;
 
@@ -406,13 +373,6 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
         Reply(Redis::Error(s.Msg()));
         continue;;
-      }
-      // Check slot keys of forbidden slot for migration in cluster mode
-      s = CheckForbiddenSlotHit(attributes, cmd_tokens);
-      if (!s.IsOK()) {
-        if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-        Reply(Redis::Error(s.Msg()));
-        continue;
       }
     }
 

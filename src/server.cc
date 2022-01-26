@@ -989,6 +989,9 @@ void Server::PrepareRestoreDB() {
   task_runner_.Join();
   task_runner_.Purge();
 
+  // If the DB is retored, the object 'db_' will be destroyed, but
+  // 'db_' will be accessed in data migration task. To avoid wrong
+  // accessing, data migration task should be stopped before restoring DB
   WaitNoMigrateProcessing();
 
   // To guarantee work theads don't access DB, we should relase 'ExclusivityGuard'
@@ -1010,7 +1013,7 @@ void Server::PrepareRestoreDB() {
 void Server::WaitNoMigrateProcessing() {
   if (config_->slot_id_encoded) {
     LOG(INFO) << "Waiting until no migration task is running...";
-    slot_migrate_->StopMigrateTask();
+    slot_migrate_->SetMigrateStopFlag(true);
     while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {
       usleep(500);
     }

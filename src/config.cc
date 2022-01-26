@@ -664,7 +664,7 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbidden to add namespace when requirepass was empty");
   }
-  if (slot_id_encoded) {
+  if (cluster_enabled) {
     return Status(Status::NotOK, "forbidden to add namespace when cluster mode was enabled");
   }
   auto s = isNamespaceLegal(ns);

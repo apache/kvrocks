@@ -50,7 +50,6 @@ FINAL_CXXFLAGS+= -I$(JEMALLOC_PATH)/include
 FINAL_LIBS+= $(JEMALLOC)
 endif
 
-K2RDIR= ../tools/kvrocks2redis
 SHARED_OBJS= cluster.o compact_filter.o config.o cron.o encoding.o event_listener.o lock_manager.o \
 			   log_collector.o redis_bitmap.o redis_bitmap_string.o redis_cmd.o redis_connection.o redis_db.o \
 			   redis_hash.o redis_list.o redis_metadata.o redis_slot.o redis_pubsub.o redis_reply.o \
@@ -67,7 +66,7 @@ UNITTEST_OBJS= $(SHARED_OBJS) ../tests/main.o ../tests/t_metadata_test.o ../test
 			   ../tests/task_runner_test.o  ../tests/t_string_test.o ../tests/t_zset_test.o ../tests/t_geo_test.o \
 			    ../tests/t_sortedint_test.o
 
-# K2RDIR= ../tools/kvrocks2redis
+K2RDIR= ../tools/kvrocks2redis
 KVROCKS2REDIS_OBJS= $(SHARED_OBJS) $(K2RDIR)/main.o $(K2RDIR)/config.o $(K2RDIR)/parser.o \
 					$(K2RDIR)/redis_writer.o $(K2RDIR)/sync.o  $(K2RDIR)/writer.o
 

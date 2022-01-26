@@ -146,9 +146,9 @@ class CommandKeys : public Commander {
 class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->slot_id_encoded) {
+    if (svr->GetConfig()->cluster_enabled) {
       if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
-        svr->slot_migrate_->StopMigrateTask();
+        svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
     }
@@ -171,9 +171,9 @@ class CommandFlushAll : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
-    if (svr->GetConfig()->slot_id_encoded) {
+    if (svr->GetConfig()->cluster_enabled) {
       if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
-        svr->slot_migrate_->StopMigrateTask();
+        svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
     }
@@ -3464,8 +3464,8 @@ class CommandSlaveOf : public Commander {
       if (s.IsOK()) {
         *output = Redis::SimpleString("OK");
         LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-        if (svr->GetConfig()->slot_id_encoded) {
-          svr->slot_migrate_->StartMigrateTask();
+        if (svr->GetConfig()->cluster_enabled) {
+          svr->slot_migrate_->SetMigrateStopFlag(false);
           LOG(INFO) << "Change server role to master, restart migration task";
         }
       }
@@ -3475,8 +3475,8 @@ class CommandSlaveOf : public Commander {
         *output = Redis::SimpleString("OK");
         LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_
                      << " enabled (user request from '" << conn->GetAddr() << "')";
-        if (svr->GetConfig()->slot_id_encoded) {
-          svr->slot_migrate_->StopMigrateTask();
+        if (svr->GetConfig()->cluster_enabled) {
+          svr->slot_migrate_->SetMigrateStopFlag(true);
           LOG(INFO) << "Change server role to slave, stop migration task";
         }
       } else {
@@ -4274,15 +4274,6 @@ class CommandCluster : public Commander {
     if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots"
         || subcommand_ == "info")) return Status::OK();
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
-    if (subcommand_ == "migratestatus" || subcommand_ == "importstatus") {
-      if (args.size() != 3) return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      try {
-        slot_ = atoi(args[2].c_str());
-      } catch (std::exception &e) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
-      return Status::OK();
-    }
     if (subcommand_ == "import") {
       if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
       try {
@@ -4293,29 +4284,8 @@ class CommandCluster : public Commander {
       }
       return Status::OK();
     }
-    if (subcommand_ == "slotkeys") {
-      if (args.size() == 2) return Status::OK();
-      if (args.size() == 3) {
-        try {
-          slot_ = atoi(args[2].c_str());
-        } catch (std::exception &e) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
-        }
-        return Status::OK();
-      } else if (args.size() == 4) {
-        try {
-          slot_ = atoi(args[2].c_str());
-          count_ = atoi(args[3].c_str());
-        } catch (std::exception &e) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
-        }
-        return Status::OK();
-      } else {
-        return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      }
-    }
     return Status(Status::RedisParseErr,
-                  "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|MIGRATESTATUS|IMPORTSTATUS|SLOTKEYS");
+                  "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT");
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4367,27 +4337,6 @@ class CommandCluster : public Commander {
       } else {
         *output = Redis::Error(s.Msg());
       }
-    } else if (subcommand_ == "migratestatus") {
-      std::vector<std::string> migrate_info;
-      Status s = svr->cluster_->GetMigrateInfo(slot_, &migrate_info);
-      if (s.IsOK()) {
-        *output = Redis::MultiBulkString(migrate_info);
-      } else {
-        *output = Redis::Error(s.Msg());
-      }
-    } else if (subcommand_ == "importstatus") {
-      std::vector<std::string> import_info;
-      Status s = svr->cluster_->GetImportInfo(slot_, &import_info);
-      if (s.IsOK()) {
-        *output = Redis::MultiBulkString(import_info);
-      } else {
-        *output = Redis::Error(s.Msg());
-      }
-    } else if (subcommand_ == "slotkeys") {
-      Status s = svr->cluster_->GetSlotKeys(conn, slot_, count_, output);
-      if (!s.IsOK()) {
-        *output = Redis::Error(s.Msg());
-      }
     } else if (subcommand_ == "import") {
       Status s = svr->cluster_->ImportSlot(conn, slot_, state_);
       if (s.IsOK()) {
@@ -4404,7 +4353,6 @@ class CommandCluster : public Commander {
  private:
   std::string subcommand_;
   int slot_ = -1;
-  int count_ = 0;
   ImportStatus state_ = kImportNone;
 };
 

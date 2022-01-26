@@ -23,7 +23,6 @@
 
 #include "util.h"
 #include "status.h"
-#include "redis_reply.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */

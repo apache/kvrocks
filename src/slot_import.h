@@ -26,7 +26,7 @@ class SlotImport : public Redis::Database {
   void StopForLinkError(int fd);
   int GetSlot();
   int GetStatus();
-  Status GetImportInfo(std::vector<std::string> *info, int slot);
+  void GetImportInfo(std::string *info);
 
  private:
   Server *svr_ = nullptr;

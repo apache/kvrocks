@@ -67,15 +67,13 @@ class Cluster {
   uint64_t GetVersion() { return version_; }
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
+  bool IsWriteForbiddenSlot(int slot);
   Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
                          const std::vector<std::string> &cmd_tokens,
                          Redis::Connection *conn);
   void SetMasterSlaveRepl();
   Status MigrateSlot(int slot, const std::string &dst_node_id);
   Status ImportSlot(Redis::Connection *conn, int slot, int state);
-  Status GetMigrateInfo(int slot, std::vector<std::string> *info);
-  Status GetImportInfo(int slot, std::vector<std::string> *info);
-  Status GetSlotKeys(Redis::Connection *conn, int slot, int count, std::string *output);
   std::string GetMyId() const { return myid_; }
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);

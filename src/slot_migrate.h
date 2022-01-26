@@ -71,13 +71,12 @@ class SlotMigrate : public Redis::Database {
   void SetMigrateSpeedLimit(int speed) { if (speed >= 0) migrate_speed_ = speed; }
   void SetPipelineSize(uint32_t size) { if (size > 0) pipeline_size_limit_ = size; }
   void SetSequenceGapSize(int size) { if (size > 0) seq_gap_limit_ = size; }
-  void StartMigrateTask() { stop_ = false; }
-  void StopMigrateTask() { stop_ = true; }
+  void SetMigrateStopFlag(bool state) { stop_ = state; }
   int16_t GetMigrateState() { return migrate_state_; }
   int16_t GetMigrateStateMachine() { return state_machine_; }
   int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
   int16_t GetMigratingSlot(void) { return migrate_slot_; }
-  Status GetMigrateInfo(std::vector<std::string> *info, int16_t slot);
+  void GetMigrateInfo(std::string *info);
 
  private:
   void StateMachine(void);
@@ -138,6 +137,7 @@ class SlotMigrate : public Redis::Database {
   int dst_port_;
   std::atomic<int16_t> forbidden_slot_;
   std::atomic<int16_t> migrate_slot_;
+  int16_t migrate_failed_slot_;
   std::atomic<MigrateTaskState> migrate_state_;
   std::atomic<bool> stop_;
   std::string current_migrate_key_;
@@ -145,7 +145,6 @@ class SlotMigrate : public Redis::Database {
   const rocksdb::Snapshot *slot_snapshot_;
   uint64_t wal_begin_seq_;
   uint64_t wal_incremet_seq_;
-  std::atomic<bool> is_blocking{false};
 
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;

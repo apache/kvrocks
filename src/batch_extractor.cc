@@ -74,14 +74,14 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
             command_args = {"LSET", user_key, (*args)[1], value.ToString()};
             break;
           case kRedisCmdLInsert:
-            if (firstSeen_) {
+            if (first_seen_) {
               if (args->size() < 4) {
                 LOG(ERROR)
                    << "Fail to parse write_batch in putcf cmd linsert : args error, should contain before pivot value";
                 return rocksdb::Status::OK();
               }
               command_args = {"LINSERT", user_key, (*args)[1] == "1" ? "before" : "after", (*args)[2], (*args)[3]};
-              firstSeen_ = false;
+              first_seen_ = false;
             }
             break;
           case kRedisCmdLRem:
@@ -161,23 +161,23 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
         switch (cmd) {
           case kRedisCmdLTrim:
-            if (firstSeen_) {
+            if (first_seen_) {
               if (args->size() < 3) {
                 LOG(ERROR) << "Fail to parse write_batch in DeleteCF cmd ltrim : args error ,should contain start,stop";
                 return rocksdb::Status::OK();
               }
               command_args = {"LTRIM", user_key, (*args)[1], (*args)[2]};
-              firstSeen_ = false;
+              first_seen_ = false;
             }
             break;
           case kRedisCmdLRem:
-            if (firstSeen_) {
+            if (first_seen_) {
               if (args->size() < 3) {
                 LOG(ERROR) << "Fail to parse write_batch in DeleteCF cmd lrem : args error ,should contain count,value";
                 return rocksdb::Status::OK();
               }
               command_args = {"LREM", user_key, (*args)[1], (*args)[2]};
-              firstSeen_ = false;
+              first_seen_ = false;
             }
             break;
           default:command_args = {cmd == kRedisCmdLPop ? "LPOP" : "RPOP", user_key};

@@ -50,12 +50,13 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   dst_port_ = -1;
   forbidden_slot_ = -1;
   migrate_slot_ = -1;
+  migrate_failed_slot_ = -1;
   migrate_state_ = kMigrateNone;
   stop_ = false;
   slot_snapshot_ = nullptr;
 
   if (svr->IsSlave()) {
-    StopMigrateTask();
+    SetMigrateStopFlag(true);
   }
 }
 
@@ -173,18 +174,17 @@ void SlotMigrate::StateMachine(void) {
       case kSlotMigrateSuccess: {
         auto s = Success();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to handle state 'SUCCESS'";
+          LOG(INFO) << "[migrate] Succeed to migrate slot " << migrate_slot_;
           state_machine_ = kSlotMigrateClean;
           migrate_state_ = kMigrateSuccess;
         } else {
-          LOG(ERROR) << "[migrate] Failed to handle state 'SUCCESS'";
           state_machine_ = kSlotMigrateFailed;
         }
         break;
       }
       case kSlotMigrateFailed:
         Fail();
-        LOG(INFO) << "[migrate] Succeed to handle state 'FAIL'";
+        LOG(INFO) << "[migrate] Failed to migrate slot" << migrate_slot_;
         migrate_state_ = kMigrateFailed;
         state_machine_ = kSlotMigrateClean;
         break;
@@ -221,7 +221,7 @@ Status SlotMigrate::Start(void) {
 
   // Set dst node importing START
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportStart)) {
-    LOG(ERROR) << "[migrate] Fail to set destination import status " << kImportStart;
+    LOG(ERROR) << "[migrate] Failed to notify the destination to prepare to import data";
     return Status(Status::NotOK);
   }
 
@@ -319,7 +319,7 @@ Status SlotMigrate::Success(void) {
   }
   // Set destination status SUCCESS
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportSuccess)) {
-    LOG(ERROR) << "[migrate] Fail to set destination import status " << kImportSuccess;
+    LOG(ERROR) << "[migrate] Failed to notify the destination that data migration succeeded";
     return Status(Status::NotOK);
   }
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
@@ -328,15 +328,17 @@ Status SlotMigrate::Success(void) {
     LOG(ERROR) << "[migrate] Failed to set slot, Err:" << st.Msg();
     return Status(Status::NotOK);
   }
+  migrate_failed_slot_ = -1;
   return Status::OK();
 }
 
 Status SlotMigrate::Fail(void) {
   // Set destination status
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportFailed)) {
-    LOG(INFO) << "[migrate] Fail to set importing status " << kImportFailed;
+    LOG(INFO) << "[migrate] Failed to notify the destination that data migration failed";
   }
   // Stop slot forbiding writing
+  migrate_failed_slot_ = migrate_slot_;
   forbidden_slot_ = -1;
   return Status::OK();
 }
@@ -356,7 +358,7 @@ Status SlotMigrate::Clean(void) {
   delete slot_job_;
   slot_job_ = nullptr;
   migrate_slot_ = -1;
-  StartMigrateTask();
+  SetMigrateStopFlag(false);
   return Status::OK();
 }
 
@@ -371,11 +373,7 @@ bool SlotMigrate::SetDstImportStatus(int sock_fd, int status) {
     return false;
   }
 
-  bool st = CheckResponseOnce(sock_fd);
-  if (!st) {
-    LOG(ERROR) << "[migrate] Failed to set destnation status " << status;
-  }
-  return st;
+  return CheckResponseOnce(sock_fd);
 }
 
 bool SlotMigrate::CheckResponseOnce(int sock_fd) {
@@ -521,10 +519,6 @@ Status SlotMigrate::MigrateOneKey(rocksdb::Slice key, std::string *restore_cmds)
   if (!st) return Status(Status::NotOK, "[migrate] Failed to get key's metadata");
   Metadata metadata(kRedisNone, false);
   metadata.Decode(bytes);
-  if (metadata.Expired()) {
-    LOG(INFO) << "[migrate] Expired Key: " << prefix_key;
-    return Status(Status::cOK, "expired");
-  }
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     LOG(INFO) << "[migrate] No elements of key: " << prefix_key;
     return Status(Status::cOK, "empty");;
@@ -797,7 +791,7 @@ Status SlotMigrate::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::stri
   }
 
   // Get all constructed commands
-  auto resp_commands = write_batch_extractor.GetAofStrings();
+  auto resp_commands = write_batch_extractor.GetRESPCommands();
   for (const auto &iter : *resp_commands) {
     for (const auto &it : iter.second) {
       *commands += it;
@@ -929,39 +923,37 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
   return Status::OK();
 }
 
-Status SlotMigrate::GetMigrateInfo(std::vector<std::string> *info, int16_t slot) {
+void SlotMigrate::GetMigrateInfo(std::string *info) {
   info->clear();
-  if (migrate_slot_ < 0 && forbidden_slot_ < 0) {
-    info->push_back("There is no migrating slot");
-    return Status::OK();
+  *info = "# Migrate Status\r\n";
+  if (migrate_slot_ < 0 && forbidden_slot_ < 0 && migrate_failed_slot_ < 0) {
+    *info += "There is no migrating slot\r\n";
+    return;
   }
 
-  if (slot != migrate_slot_ && slot != forbidden_slot_) {
-    return Status(Status::NotOK, "Input slot is not in migrating");
-  }
-
+  int16_t slot = -1;
   std::string task_state;
   switch (migrate_state_.load()) {
     case kMigrateNone:
-      task_state = "NONE";
+      task_state = "none";
       break;
     case kMigrateStart:
-      task_state = "START";
+      task_state = "start";
+      slot = migrate_slot_;
       break;
     case kMigrateSuccess:
-      task_state = "SUCCESS";
+      task_state = "success";
+      slot = forbidden_slot_;
       break;
     case kMigrateFailed:
-      task_state = "FAIL";
+      task_state = "fail";
+      slot = migrate_failed_slot_;
       break;
     default:
       break;
   }
 
-  info->push_back("# Migrate Status");
-  info->push_back("migrating_slot: " + std::to_string(slot));
-  info->push_back("destination_node: " + dst_node_);
-  info->push_back("migrating_state: " + task_state);
-
-  return Status::OK();
+  *info = *info + "migrating_slot: " + std::to_string(slot) + "\r\n"
+          + "destination_node: " + dst_node_ + "\r\n"
+          + "migrating_state: " + task_state + "\r\n";
 }

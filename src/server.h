@@ -166,7 +166,6 @@ class Server {
 
   std::atomic<bool> stop_;
   std::atomic<bool> is_loading_;
-  std::atomic<bool> is_blocking_{false};
   time_t start_time_ = 0;
   std::mutex slaveof_mu_;
   std::string master_host_;

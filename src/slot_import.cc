@@ -113,39 +113,33 @@ int SlotImport::GetStatus() {
   return import_status_;
 }
 
-Status SlotImport::GetImportInfo(std::vector<std::string> *info, int slot) {
+void SlotImport::GetImportInfo(std::string *info) {
   info->clear();
+  *info = "# Import Status\r\n";
   if (import_slot_ < 0) {
-    return Status(Status::NotOK, "There is no slot importing");
-  }
-  if (import_slot_ >= 0) {
-    if (import_slot_ != slot) {
-      return Status(Status::NotOK, "Input slot is not in importing");
-    }
+    *info += "There is no importing slot\r\n";
+    return;
   }
 
   std::string import_stat;
   switch (import_status_) {
     case kImportNone:
-      import_stat = "NONE";
+      import_stat = "none";
       break;
     case kImportStart:
-      import_stat = "START";
+      import_stat = "start";
       break;
     case kImportSuccess:
-      import_stat = "SUCCESS";
+      import_stat = "success";
       break;
     case kImportFailed:
-      import_stat = "ERROR";
+      import_stat = "error";
       break;
     default:
       break;
   }
 
-  info->push_back("# Import Status");
-  info->push_back("import_slot: " + std::to_string(import_slot_));
-  info->push_back("import_state: " + import_stat);
-
-  return Status::OK();
+  *info = *info + "importing_slot: " + std::to_string(import_slot_) + "\r\n"
+          + "import_state: " + import_stat + "\r\n";
 }
 

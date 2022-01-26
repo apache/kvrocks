@@ -104,7 +104,7 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   slots_nodes_[slot] = to_assign_node;
 
   // Clear data of migrated slot or record of imported slot
-  if (old_node != to_assign_node) {
+  if (old_node == myself_ && old_node != to_assign_node) {
     // If slot is migrated from this node
     if (migrated_slots_.count(slot)) {
       svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, slot);
@@ -226,6 +226,9 @@ Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
   if (!IsValidSlot(slot)) {
     return Status(Status::NotOK, "Slot is out of range");
   }
+  // It is called by slot-migrating thread which is an asynchronous thread.
+  // Therefore, it should be locked when a record is added to 'migrated_slots_'
+  // which will be accessed when executing commands.
   auto exclusivity = svr_->WorkExclusivityGuard();
   migrated_slots_[slot] = ip_port;
   return Status::OK();
@@ -235,6 +238,8 @@ Status Cluster::SetSlotImported(int slot) {
   if (!IsValidSlot(slot)) {
     return Status(Status::NotOK, "Slot is out of range");
   }
+  // It is called by command 'cluster import'. When executing the command, the
+  // exclusive lock has been locked. Therefore, it can't be locked again.
   imported_slots_.insert(slot);
   return Status::OK();
 }
@@ -315,57 +320,6 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
   return Status::OK();
 }
 
-Status Cluster::GetMigrateInfo(int slot, std::vector<std::string> *info) {
-  if (IsNotMaster()) {
-    return Status(Status::NotOK, "Slave can't migrate slot");
-  }
-  if (!IsValidSlot(slot)) {
-    return Status(Status::NotOK, "Slot is out of range");
-  }
-  return svr_->slot_migrate_->GetMigrateInfo(info, slot);
-}
-
-Status Cluster::GetImportInfo(int slot, std::vector<std::string> *info) {
-  if (IsNotMaster()) {
-    return Status(Status::NotOK, "Slave can't import slot");
-  }
-  if (!IsValidSlot(slot)) {
-    return Status(Status::NotOK, "Slot is out of range");
-  }
-  return svr_->slot_import_->GetImportInfo(info, slot);
-}
-
-Status Cluster::GetSlotKeys(Redis::Connection *conn, int slot, int count, std::string *output) {
-  if (!svr_->GetConfig()->cluster_enabled) {
-    return Status(Status::NotOK, "Server is not running in cluster");
-  }
-  if (slot < -1 || slot >= HASH_SLOTS_SIZE) {
-    return Status(Status::NotOK, "Slot is out of range");
-  }
-  std::map<int, uint64_t> keyscnt;
-  std::vector<std::string> keys;
-  Redis::Database redis_db(svr_->storage_, conn->GetNamespace());
-  auto s = redis_db.GetSlotKeysInfo(slot, &keyscnt, &keys, count);
-  std::vector<std::string> slotkeysinfo;
-  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
-    if (keyscnt[i] != 0) {
-      slotkeysinfo.push_back("slot " + std::to_string(i) + ": " + std::to_string(keyscnt[i]));
-    }
-  }
-  if (count > 0 && !keys.empty()) {
-    if (static_cast<int>(keyscnt[slot]) > count) {
-      slotkeysinfo.push_back("Show top " + std::to_string(count) + " keys:");
-    } else {
-      slotkeysinfo.push_back("All keys of slot " + std::to_string(slot) + ":");
-    }
-    for (int i = 0; i < static_cast<int>(keys.size()); i++) {
-      slotkeysinfo.push_back(keys[i]);
-    }
-  }
-  *output = Redis::MultiBulkString(slotkeysinfo);
-  return Status::OK();
-}
-
 Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   if (version_ < 0) {
     return Status(Status::ClusterDown,
@@ -379,6 +333,7 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   }
 
   *cluster_infos =
+    "# Cluster Info\r\n"
     "cluster_state:ok\r\n"
     "cluster_slots_assigned:" + std::to_string(ok_slot) + "\r\n"
     "cluster_slots_ok:" + std::to_string(ok_slot) + "\r\n"
@@ -388,6 +343,18 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
     "cluster_size:" + std::to_string(size_) + "\r\n"
     "cluster_current_epoch:" +  std::to_string(version_) + "\r\n"
     "cluster_my_epoch:" +  std::to_string(version_) + "\r\n";
+
+  if (myself_ != nullptr && myself_->role_ == kClusterMaster && !svr_->IsSlave()) {
+    // Get migrating status
+    std::string migrate_infos;
+    svr_->slot_migrate_->GetMigrateInfo(&migrate_infos);
+    *cluster_infos += migrate_infos;
+
+    // Get importing status
+    std::string import_infos;
+    svr_->slot_import_->GetImportInfo(&import_infos);
+    *cluster_infos += import_infos;
+  }
 
   return Status::OK();
 }
@@ -620,6 +587,13 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
+bool Cluster::IsWriteForbiddenSlot(int slot) {
+  if (svr_->slot_migrate_->GetForbiddenSlot() == slot) {
+    return true;
+  }
+  return false;
+}
+
 Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
                                 const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {
@@ -644,13 +618,28 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
   if (slots_nodes_[slot] == nullptr) {
     return Status(Status::ClusterDown, "CLUSTERDOWN Hash slot not served");
   } else if (myself_ && myself_ == slots_nodes_[slot]) {
+    // We use central controller to manage the topology of the cluster.
+    // Server can't change the topology directly, so we record the migrated slots
+    // to move the requests of the migrated slots to the destination node.
     if (migrated_slots_.count(slot)) {  // I'm not serving the migrated slot
-      return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
+      return Status(Status::RedisExecErr, "Migrated MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
+    }
+    // To keep data consistency, slot will be forbidden write while sending the last incremental data.
+    // During this phase, the requests of the migrating slot has to be rejected.
+    if (IsWriteForbiddenSlot(slot)) {
+      return Status(Status::RedisExecErr, "Can't write to slot being migrated which is in write forbidden phase");
     }
     return Status::OK();  // I'm serving this slot
   } else if (myself_ && myself_->importing_slot_ == slot && conn->IsImporting()) {
+    // While data migrating, the topology of the destination node has not been changed.
+    // The destination node has to serve the requests from the migrating slot,
+    // although the slot is not belong to itself. Therefore, we record the importing slot
+    // and mark the importing connection to accept the importing data.
     return Status::OK();  // I'm serving the importing connection
   } else if (myself_ && imported_slots_.count(slot)) {
+    // After the slot is migrated, new requests of the migrated slot will be moved to
+    // the destination server. Before the central controller change the topology, the destination
+    // server should record the imported slots to accept new data of the imported slots.
     return Status::OK();  // I'm serving the imported slot
   } else if (myself_ && myself_->role_ == kClusterSlave
      && attributes->is_write() == false
@@ -660,6 +649,6 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
   } else {
     std::string ip_port = slots_nodes_[slot]->host_ + ":" +
                           std::to_string(slots_nodes_[slot]->port_);
-    return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + ip_port);
+    return Status(Status::RedisExecErr, "Serve MOVED " + std::to_string(slot) + " " + ip_port);
   }
 }

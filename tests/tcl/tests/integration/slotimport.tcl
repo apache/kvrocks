@@ -58,12 +58,12 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
         assert {[$r0 cluster import 1 0] == "OK"}
         $r0 set $slot_key1 slot1
         assert {[$r0 get $slot_key1] == {slot1}}
-        catch {$r0 cluster importstatus 1} e
-        assert_match {*import_slot: 1*import_state: START*} $e
+        catch {$r0 cluster info} e
+        assert_match {*importing_slot: 1*import_state: start*} $e
         # Import success
         assert {[$r0 cluster import 1 1] == "OK"}
-        catch {$r0 cluster importstatus 1} e
-        assert_match {*import_slot: 1*import_state: SUCCESS*} $e
+        catch {$r0 cluster info} e
+        assert_match {*importing_slot: 1*import_state: success*} $e
         after 50
         assert {[$r0 get $slot_key1] == {slot1}}
     }
@@ -76,8 +76,8 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
         # Import error
         assert {[$r0 cluster import 10 2] == "OK"}
         after 50
-        catch {$r0 cluster importstatus 10} e
-        assert_match {*import_slot: 10*import_state: ERROR*} $e
+        catch {$r0 cluster info} e
+        assert_match {*importing_slot: 10*import_state: error*} $e
         # Get empty
         assert {[$r0 exists $slot_key10] == 0}
     }
@@ -92,8 +92,8 @@ start_server {tags {"Imported server"} overrides {cluster-enabled yes}} {
         after 50
         # Reassign 'r0' for old 'r0' is released
         set r0 [srv 0 client]
-        catch {$r0 cluster importstatus 11} e
-        assert_match {*11*ERROR*} $e
+        catch {$r0 cluster info} e
+        assert_match {*11*error*} $e
         # Get empty
         assert {[$r0 exists $slot_key11] == 0}
     }

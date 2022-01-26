@@ -85,8 +85,6 @@ class Connection {
   void ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds);
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
-  Status CheckForbiddenSlotHit(const struct CommandAttributes *attributes,
-                               const std::vector<std::string> cmd_tokens);
   void SetImporting() { importing_ = true; }
   bool IsImporting() { return importing_; }
 

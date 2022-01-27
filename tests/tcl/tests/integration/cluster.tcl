@@ -173,7 +173,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                 set node3_host [srv host]
                 set node3_port [srv port]
                 set node3_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx03"
-                $r3 slaveof $node2_host $node2_port
 
                 set slot_0_key      "06S"
                 set slot_1_key      "Qi"
@@ -245,13 +244,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     catch {[$r0 set $slot_0_key 0]} err
                     assert_match "*MOVED 0*$node1_port*" $err
 
-                    catch {[$r0 get $slot_16383_key]} err
-                    assert_match "*MOVED 16383*$node2_port*" $err
-                }
-
-                test {requests non-member of cluster, role is slave} {
-                    $r0 slaveof $node1_host $node1_port
-                    after 100
                     catch {[$r0 get $slot_16383_key]} err
                     assert_match "*MOVED 16383*$node2_port*" $err
                 }

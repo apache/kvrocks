@@ -1011,7 +1011,7 @@ void Server::PrepareRestoreDB() {
 }
 
 void Server::WaitNoMigrateProcessing() {
-  if (config_->cluster_enabled_) {
+  if (config_->cluster_enabled) {
     LOG(INFO) << "Waiting until no migration task is running...";
     slot_migrate_->SetMigrateStopFlag(true);
     while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {

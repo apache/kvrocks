@@ -549,7 +549,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
         cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
       continue;
     }
-    auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key, cf_handle);
+    auto s = db.FindKeyRangeWithPrefix(prefix,  std::string(), &begin_key, &end_key, cf_handle);
     if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);

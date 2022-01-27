@@ -47,6 +47,7 @@ std::string Connection::ToString() {
 
 void Connection::Close() {
   owner_->FreeConnection(this);
+  if (close_cb_) close_cb_(GetFD());
 }
 
 void Connection::Detach() {
@@ -326,8 +327,8 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
         (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-        (config->cluster_enabled && cmd_name == "clusterx" && cmd_tokens.size() >= 2
-         && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+        (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster")
+         && cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
 
       // When executing lua script commands that have "exclusive" attribute,
@@ -367,7 +368,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     }
 
     if (config->cluster_enabled) {
-      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens);
+      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
         Reply(Redis::Error(s.Msg()));

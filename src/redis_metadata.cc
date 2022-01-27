@@ -134,6 +134,15 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->append(key.ToString());
 }
 
+void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
+  output->clear();
+
+  PutFixed8(output, static_cast<uint8_t>(ns.size()));
+  output->append(ns.ToString());
+
+  PutFixed16(output, static_cast<uint16_t>(slotid));
+}
+
 Metadata::Metadata(RedisType type, bool generate_version) {
   flags = (uint8_t)0x0f & type;
   expire = 0;

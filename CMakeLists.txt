@@ -93,6 +93,12 @@ endif()
 target_sources(kvrocks PRIVATE
         src/cluster.cc
         src/cluster.h
+        src/slot_migrate.h
+	    src/slot_migrate.cc
+	    src/slot_import.h
+	    src/slot_import.cc
+        src/batch_extractor.h
+        src/batch_extractor.cc
         src/redis_db.cc
         src/redis_db.h
         src/redis_connection.cc
@@ -198,6 +204,12 @@ target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS})
 target_sources(kvrocks2redis PRIVATE
         src/cluster.h
         src/cluster.cc
+	    src/slot_migrate.h
+	    src/slot_migrate.cc
+	    src/slot_import.h
+	    src/slot_import.cc
+        src/batch_extractor.h
+        src/batch_extractor.cc
         src/redis_db.cc
         src/redis_db.h
         src/compact_filter.cc
@@ -279,8 +291,6 @@ target_sources(kvrocks2redis PRIVATE
         tools/kvrocks2redis/main.cc
         tools/kvrocks2redis/sync.cc
         tools/kvrocks2redis/sync.h
-        tools/kvrocks2redis/util.cc
-        tools/kvrocks2redis/util.h
         tools/kvrocks2redis/redis_writer.cc
         tools/kvrocks2redis/redis_writer.h
         tools/kvrocks2redis/writer.cc

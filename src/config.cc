@@ -106,6 +106,10 @@ Config::Config() {
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
+      {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
+      {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
+      {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
+
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
@@ -317,6 +321,21 @@ void Config::initFieldCallback() {
         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
         return Status::OK();
       }},
+      {"migrate-speed", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        srv->slot_migrate_->SetMigrateSpeedLimit(migrate_speed);
+        return Status::OK();
+      }},
+      {"migrate-pipeline-size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        srv->slot_migrate_->SetPipelineSize(pipeline_size);
+        return Status::OK();
+      }},
+      {"migrate-sequence-gap", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        srv->slot_migrate_->SetSequenceGapSize(sequence_gap);
+        return Status::OK();
+      }},
       {"rocksdb.target_file_size_base", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
@@ -459,6 +478,9 @@ Status Config::parseConfigFromString(std::string input) {
 Status Config::finish() {
   if (requirepass.empty() && !tokens.empty()) {
     return Status(Status::NotOK, "requirepass empty wasn't allowed while the namespace exists");
+  }
+  if ((cluster_enabled) && !tokens.empty()) {
+    return Status(Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists");
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
@@ -641,6 +663,9 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
     return Status(Status::NotOK, "forbidden to add namespace when requirepass was empty");
+  }
+  if (cluster_enabled) {
+    return Status(Status::NotOK, "forbidden to add namespace when cluster mode was enabled");
   }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;

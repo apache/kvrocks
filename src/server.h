@@ -23,6 +23,8 @@ extern "C" {
 #include "worker.h"
 #include "rw_lock.h"
 #include "cluster.h"
+#include "slot_migrate.h"
+#include "slot_import.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -109,6 +111,7 @@ class Server {
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
+  void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
@@ -151,6 +154,8 @@ class Server {
   Engine::Storage *storage_;
   Cluster *cluster_;
   static std::atomic<int> unix_time_;
+  class SlotMigrate *slot_migrate_ = nullptr;
+  class SlotImport *slot_import_ = nullptr;
 
  private:
   void cron();

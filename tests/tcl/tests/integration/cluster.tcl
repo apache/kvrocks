@@ -57,22 +57,22 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 
     test {errors of cluster subcommand} {
         catch {[r cluster no-subcommand]} err
-        assert_match "*CLUSTER*" $err 
- 
+        assert_match "*CLUSTER*" $err
+
         catch {[r clusterx version a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r cluster nodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodeid a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a -1]} err
-        assert_match "*Invalid version*" $err 
+        assert_match "*Invalid version*" $err
 
         catch {[r clusterx setslot 16384 07c37dfeb235213a872192d90877d0cd55635b91 1]} err
         assert_match "*CLUSTER*" $err
@@ -173,7 +173,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                 set node3_host [srv host]
                 set node3_port [srv port]
                 set node3_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx03"
-                $r3 slaveof $node2_host $node2_port
 
                 set slot_0_key      "06S"
                 set slot_1_key      "Qi"
@@ -218,7 +217,7 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     # Request node3 that doesn't serve slot 0, we will recieve MOVED
                     catch {[$r3 get $slot_0_key]} err
                     assert_match "*MOVED 0*$node1_port*" $err
-                    
+
                     # Request node1 that doesn't serve slot 16383, we will recieve MOVED,
                     # and the MOVED node must be master
                     catch {[$r1 get $slot_16383_key]} err
@@ -245,13 +244,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     catch {[$r0 set $slot_0_key 0]} err
                     assert_match "*MOVED 0*$node1_port*" $err
 
-                    catch {[$r0 get $slot_16383_key]} err
-                    assert_match "*MOVED 16383*$node2_port*" $err
-                }
-
-                test {requests non-member of cluster, role is slave} {
-                    $r0 slaveof $node1_host $node1_port
-                    after 100
                     catch {[$r0 get $slot_16383_key]} err
                     assert_match "*MOVED 16383*$node2_port*" $err
                 }

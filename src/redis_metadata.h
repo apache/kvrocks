@@ -50,6 +50,7 @@ struct KeyNumStats {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded);
+void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output);
 
 class InternalKey {
  public:

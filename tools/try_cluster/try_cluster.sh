@@ -11,11 +11,11 @@ REPLICAS=1
 ENDPORT=$((PORT+NODES))
 
 slots_range=("0-5460" "5461-10992" "10993-16383")
-node_id=("kvrockskvrockskvrockskvrockskvrocksnode1" 
-          "kvrockskvrockskvrockskvrockskvrocksnode2" 
-          "kvrockskvrockskvrockskvrockskvrocksnode3" 
-          "kvrockskvrockskvrockskvrockskvrocksnode4" 
-          "kvrockskvrockskvrockskvrockskvrocksnode5" 
+node_id=("kvrockskvrockskvrockskvrockskvrocksnode1"
+          "kvrockskvrockskvrockskvrockskvrocksnode2"
+          "kvrockskvrockskvrockskvrockskvrocksnode3"
+          "kvrockskvrockskvrockskvrockskvrocksnode4"
+          "kvrockskvrockskvrockskvrockskvrocksnode5"
           "kvrockskvrockskvrockskvrockskvrocksnode6")
 
 if [ "$1" == "start" ]

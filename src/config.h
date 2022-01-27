@@ -88,6 +88,9 @@ struct Config{
 
   bool slot_id_encoded = false;
   bool cluster_enabled = false;
+  int migrate_speed;
+  int pipeline_size;
+  int sequence_gap;
 
   // profiling
   int profiling_sample_ratio = 0;

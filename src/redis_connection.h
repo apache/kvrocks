@@ -85,6 +85,8 @@ class Connection {
   void ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds);
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
+  void SetImporting() { importing_ = true; }
+  bool IsImporting() { return importing_; }
 
   // Multi exec
   void SetInExec() { in_exec_ = true; }
@@ -94,6 +96,7 @@ class Connection {
   const std::vector<Redis::CommandTokens> &GetMultiExecCommands() { return multi_cmds_; }
 
   std::unique_ptr<Commander> current_cmd_;
+  std::function<void(int)> close_cb_ = nullptr;
 
  private:
   uint64_t id_ = 0;
@@ -120,5 +123,7 @@ class Connection {
   bool in_exec_ = false;
   bool multi_error_ = false;
   std::vector<Redis::CommandTokens> multi_cmds_;
+
+  bool importing_ = false;
 };
 }  // namespace Redis

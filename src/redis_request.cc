@@ -6,11 +6,11 @@
 #include <rocksdb/iostats_context.h>
 
 #include "util.h"
-#include "redis_cmd.h"
 #include "redis_reply.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "server.h"
+#include "redis_slot.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;

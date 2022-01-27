@@ -30,6 +30,9 @@ class Status {
     ClusterDown,
     ClusterInvalidInfo,
 
+    // Slot
+    SlotImport,
+
     // Network
     NetSendErr,
   };
@@ -38,6 +41,7 @@ class Status {
   explicit Status(Code code, std::string msg = "") : code_(code), msg_(std::move(msg)) {}
   bool IsOK() { return code_ == cOK; }
   bool IsNotFound() { return code_ == NotFound; }
+  bool IsImorting() { return code_ == SlotImport; }
   std::string Msg() { return msg_; }
   static Status OK() { return Status(cOK, "ok"); }
 

@@ -37,6 +37,8 @@ set ::all_tests {
     unit/command
     unit/config
     unit/scripting
+    integration/slotmigrate
+    integration/slotimport
     integration/replication
     integration/cluster
 }

@@ -12,8 +12,6 @@
 #include "../../src/redis_reply.h"
 #include "../../src/util.h"
 
-#include "util.h"
-
 void send_string_to_event(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);
   evbuffer_add(output, data.c_str(), data.length());

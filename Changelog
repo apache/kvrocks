@@ -1,3 +1,32 @@
+# Version 2.0.6
+
+New features
+  - Support slot-based data migration (#430)
+    Biggest feature of this version, authentically makes kvrocks scalable,
+    user can use CLUSTERX MIGRATE command to migrate slot and use CLUSTERX
+    SETSLOT to change cluster slot distribution after finishing migration.
+  - Make level0_file_num_compaction_trigger of RocksDB configurable (#455)
+  - Support CLUSTERX SETSLOT command (#463)
+
+Improvements
+  - Support executing INFO command during restoring database (#375)
+  - Auto Rewrite the config after the namespace was updated (#423)
+  - Support to convert sortedint type to zset type in kvrocks2redis (#431)
+  - Optimize the seek of RocksDB iterators (#438)
+  - Make the bitmap range the same with that of Redis (#465)
+  - Support GET command on bitmap type (#447)
+  - Support to compile on macOS 11 M1 inside (#450)
+
+Bugfixes
+  - Fix the parameter blob_garbage_collection_age_cutoff would be always zero (#425)
+  - Fix config rewrite overwrite the first rename-command with the last one (#429)
+  - Fix zrevrangebyscore for multi members with the same max score (#434)
+  - Fix data race in SetCurrentConnection (#440)
+  - Fix failing full replication when enabling slave-empty-db-before-fullsync (#446)
+  - Fix memory leak when full replication (#461)
+    Maybe leak dozen kilobytes per full replication
+
+
 # Version 2.0.5
 
 New features

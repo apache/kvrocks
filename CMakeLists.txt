@@ -21,17 +21,17 @@ if (CMAKE_HOST_APPLE)
     set(DISABLE_JEMALLOC 1)
 endif ()
 
-include(cmake/glog.cmake)
-include(cmake/snappy.cmake)
-include(cmake/rocksdb.cmake)
-include(cmake/libevent.cmake)
-include(cmake/lua.cmake)
-
 if(NOT DISABLE_JEMALLOC)
     include(cmake/jemalloc.cmake)
     list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
     list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
 endif()
+
+include(cmake/glog.cmake)
+include(cmake/snappy.cmake)
+include(cmake/rocksdb.cmake)
+include(cmake/libevent.cmake)
+include(cmake/lua.cmake)
 
 list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})

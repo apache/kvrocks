@@ -6,6 +6,17 @@
 #include <string>
 #include <vector>
 
+#if defined(__sparc__) || defined(__arm__)
+#define USE_ALIGNED_ACCESS
+#endif
+
+enum BitOpFlags {
+  kBitOpAnd,
+  kBitOpOr,
+  kBitOpXor,
+  kBitOpNot,
+};
+
 namespace Redis {
 
 class Bitmap : public Database {
@@ -16,6 +27,7 @@ class Bitmap : public Database {
   rocksdb::Status SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt);
   rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
+  rocksdb::Status BitOp(BitOpFlags op_flag, const Slice &user_key, const std::vector<Slice> &op_keys, int64_t *len);
   static bool GetBitFromValueAndOffset(const std::string &value, const uint32_t offset);
   static bool IsEmptySegment(const Slice &segment);
  private:

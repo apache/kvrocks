@@ -1,5 +1,7 @@
 #include "redis_bitmap.h"
 #include <vector>
+#include <memory>
+#include <utility>
 #include <algorithm>
 
 #include "redis_bitmap_string.h"
@@ -311,6 +313,185 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start,
   // bit was not found
   *pos = bit ? -1 : static_cast<int64_t>(metadata.size * 8);
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const Slice &user_key,
+                           const std::vector<Slice> &op_keys, int64_t *len) {
+  std::string ns_key, raw_value, ns_op_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  rocksdb::Status s;
+  std::vector<std::pair<std::string, BitmapMetadata>> meta_pairs;
+  uint64_t max_size = 0, num_keys = op_keys.size();
+
+  for (const auto &op_key : op_keys) {
+    BitmapMetadata metadata(false);
+    AppendNamespacePrefix(op_key, &ns_op_key);
+    s = GetMetadata(ns_op_key, &metadata, &raw_value);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        num_keys--;
+        continue;
+      }
+      return s;
+    }
+    if (metadata.Type() == kRedisString) {
+      return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
+    }
+    if (metadata.size > max_size) max_size = metadata.size;
+    meta_pairs.emplace_back(std::make_pair(ns_op_key, metadata));
+  }
+
+  rocksdb::WriteBatch batch;
+  if (max_size == 0) {
+    batch.Delete(metadata_cf_handle_, ns_key);
+    return storage_->Write(rocksdb::WriteOptions(), &batch);
+  }
+
+  BitmapMetadata res_metadata;
+  if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
+    uint64_t i, frag_numkeys = num_keys, stop_index = (max_size -1)/kBitmapSegmentBytes;
+    std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
+    uint16_t frag_maxlen = 0, frag_minlen = 0;
+    std::string sub_key, fragment;
+    unsigned char output, byte;
+    std::vector<std::string> fragments;
+
+    LatestSnapShot ss(db_);
+    rocksdb::ReadOptions read_options;
+    read_options.snapshot = ss.GetSnapShot();
+    for (uint64_t frag_index = 0; frag_index <= stop_index; frag_index++) {
+      for (const auto &meta_pair : meta_pairs) {
+        InternalKey(meta_pair.first, std::to_string(frag_index * kBitmapSegmentBytes),
+                  meta_pair.second.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+        auto s = db_->Get(read_options, sub_key, &fragment);
+        if (!s.ok() && !s.IsNotFound()) {
+          return s;
+        }
+        if (s.IsNotFound()) {
+          frag_numkeys--;
+          if (op_flag == kBitOpAnd) {
+            frag_maxlen = 0;
+            break;
+          }
+        } else {
+          if (frag_maxlen < fragment.size()) frag_maxlen = fragment.size();
+          if (fragment.size() < frag_minlen || frag_minlen == 0) frag_minlen = fragment.size();
+          fragments.emplace_back(fragment);
+        }
+      }
+
+      if (frag_maxlen != 0 || op_flag == kBitOpNot) {
+        uint16_t j = 0;
+        if (op_flag == kBitOpNot) {
+          memset(frag_res.get(), UCHAR_MAX, kBitmapSegmentBytes);
+        } else {
+          memset(frag_res.get(), 0, frag_maxlen);
+        }
+
+        #ifndef USE_ALIGNED_ACCESS
+        if (frag_minlen >= sizeof(uint64_t)*4 && frag_numkeys <= 16) {
+          uint64_t *lres = reinterpret_cast<uint64_t*>(frag_res.get());
+          const uint64_t *lp[16];
+          for (i = 0; i < frag_numkeys; i++) {
+            lp[i] = reinterpret_cast<const uint64_t*>(fragments[i].data());
+          }
+          memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
+
+          if (op_flag == kBitOpAnd) {
+              while (frag_minlen >= sizeof(uint64_t)*4) {
+                for (i = 1; i < frag_numkeys; i++) {
+                    lres[0] &= lp[i][0];
+                    lres[1] &= lp[i][1];
+                    lres[2] &= lp[i][2];
+                    lres[3] &= lp[i][3];
+                    lp[i]+=4;
+                }
+                lres+=4;
+                j += sizeof(uint64_t)*4;
+                frag_minlen -= sizeof(uint64_t)*4;
+              }
+          } else if (op_flag == kBitOpOr) {
+              while (frag_minlen >= sizeof(uint64_t)*4) {
+                for (i = 1; i < frag_numkeys; i++) {
+                    lres[0] |= lp[i][0];
+                    lres[1] |= lp[i][1];
+                    lres[2] |= lp[i][2];
+                    lres[3] |= lp[i][3];
+                    lp[i]+=4;
+                }
+                lres+=4;
+                j += sizeof(uint64_t)*4;
+                frag_minlen -= sizeof(uint64_t)*4;
+              }
+          } else if (op_flag == kBitOpXor) {
+              while (frag_minlen >= sizeof(uint64_t)*4) {
+                for (i = 1; i < frag_numkeys; i++) {
+                    lres[0] ^= lp[i][0];
+                    lres[1] ^= lp[i][1];
+                    lres[2] ^= lp[i][2];
+                    lres[3] ^= lp[i][3];
+                    lp[i]+=4;
+                }
+                lres+=4;
+                j += sizeof(uint64_t)*4;
+                frag_minlen -= sizeof(uint64_t)*4;
+              }
+          } else if (op_flag == kBitOpNot) {
+              while (frag_minlen >= sizeof(uint64_t)*4) {
+                  lres[0] = ~lres[0];
+                  lres[1] = ~lres[1];
+                  lres[2] = ~lres[2];
+                  lres[3] = ~lres[3];
+                  lres+=4;
+                  j += sizeof(uint64_t)*4;
+                  frag_minlen -= sizeof(uint64_t)*4;
+              }
+          }
+       }
+        #endif
+
+        for (; j < frag_maxlen; j++) {
+          output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+          if (op_flag == kBitOpNot) output = ~output;
+          for (i = 1; i < frag_numkeys; i++) {
+            byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+            switch (op_flag) {
+              case kBitOpAnd: output &= byte; break;
+              case kBitOpOr:  output |= byte; break;
+              case kBitOpXor: output ^= byte; break;
+              default: break;
+            }
+          }
+          frag_res[j] = output;
+        }
+
+        if (op_flag == kBitOpNot) {
+          if (frag_index == stop_index) {
+            frag_maxlen = max_size % kBitmapSegmentBytes;
+          } else {
+            frag_maxlen = kBitmapSegmentBytes;
+          }
+        }
+        InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes),
+                    res_metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+        batch.Put(sub_key, Slice(reinterpret_cast<char*>(frag_res.get()), frag_maxlen));
+      }
+
+      frag_maxlen = 0;
+      frag_minlen = 0;
+      frag_numkeys = num_keys;
+      fragments.clear();
+    }
+  }
+
+  std::string bytes;
+  res_metadata.size = max_size;
+  res_metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  *len = max_size;
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {

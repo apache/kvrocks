@@ -246,7 +246,7 @@ Status Cluster::SetSlotImported(int slot) {
 
 Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
   if (nodes_.find(dst_node_id) == nodes_.end()) {
-    return Status(Status::NotOK, "Cannot find the destination node id");
+    return Status(Status::NotOK, "Can't find the destination node id");
   }
   if (!IsValidSlot(slot)) {
     return Status(Status::NotOK, "Slot is out of range");
@@ -292,7 +292,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       // Set link error callback
       conn->close_cb_ = std::bind(&SlotImport::StopForLinkError, svr_->slot_import_, conn->GetFD());
       // Stop forbiding writing slot to accept write commands
-      svr_->slot_migrate_->ReleaseForbiddenSlot();
+      if (slot == svr_->slot_migrate_->GetForbiddenSlot()) svr_->slot_migrate_->ReleaseForbiddenSlot();
       LOG(INFO) << "[import] Start importing slot " << slot;
       break;
     case kImportSuccess:
@@ -625,7 +625,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
-    if (IsWriteForbiddenSlot(slot)) {
+    if (attributes->is_write() && IsWriteForbiddenSlot(slot)) {
       return Status(Status::RedisExecErr, "Can't write to slot being migrated which is in write forbidden phase");
     }
     return Status::OK();  // I'm serving this slot

@@ -46,8 +46,8 @@ std::string Connection::ToString() {
 }
 
 void Connection::Close() {
-  owner_->FreeConnection(this);
   if (close_cb_) close_cb_(GetFD());
+  owner_->FreeConnection(this);
 }
 
 void Connection::Detach() {

@@ -323,17 +323,17 @@ void Config::initFieldCallback() {
       }},
       {"migrate-speed", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
-        srv->slot_migrate_->SetMigrateSpeedLimit(migrate_speed);
+        if (cluster_enabled) srv->slot_migrate_->SetMigrateSpeedLimit(migrate_speed);
         return Status::OK();
       }},
       {"migrate-pipeline-size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
-        srv->slot_migrate_->SetPipelineSize(pipeline_size);
+        if (cluster_enabled) srv->slot_migrate_->SetPipelineSize(pipeline_size);
         return Status::OK();
       }},
       {"migrate-sequence-gap", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
-        srv->slot_migrate_->SetSequenceGapSize(sequence_gap);
+        if (cluster_enabled) srv->slot_migrate_->SetSequenceGapSize(sequence_gap);
         return Status::OK();
       }},
       {"rocksdb.target_file_size_base", [this](Server* srv, const std::string &k, const std::string& v)->Status {

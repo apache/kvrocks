@@ -133,7 +133,7 @@ class SlotMigrate : public Redis::Database {
   static const int kSeqGapLimit = 10000;
   static const int kMaxLoopTimes = 10;
 
-  int current_pipeline_size_ = kPipelineSize;
+  int current_pipeline_size_;
   int migrate_speed_ = kMigrateSpeed;
   uint64_t last_send_time_;
 
@@ -153,7 +153,7 @@ class SlotMigrate : public Redis::Database {
   uint64_t slot_snapshot_time_;
   const rocksdb::Snapshot *slot_snapshot_;
   uint64_t wal_begin_seq_;
-  uint64_t wal_incremet_seq_;
+  uint64_t wal_increment_seq_;
 
   int pipeline_size_limit_ = kPipelineSize;
   int seq_gap_limit_ = kSeqGapLimit;

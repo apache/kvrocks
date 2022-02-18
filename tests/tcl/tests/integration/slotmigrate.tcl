@@ -281,7 +281,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
         }
 
 
-        test {MIGRATE - Accessing slot is forbiden on source server but not on destination server} {
+        test {MIGRATE - Accessing slot is forbidden on source server but not on destination server} {
             # migrate slot 3
             set slot3_key [lindex $::CRC16_SLOT_TABLE 3]
             $r0 set $slot3_key 3
@@ -312,7 +312,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {$ret == "OK"}
         }
 
-        test {MIGRATE - Slot isn't forbiden writing when starting migrating} {
+        test {MIGRATE - Slot isn't forbidden writing when starting migrating} {
             # Write much data for slot 5
             set slot5_key [lindex $::CRC16_SLOT_TABLE 5]
             set count 10000

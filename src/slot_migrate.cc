@@ -14,8 +14,9 @@ static std::map<RedisType, std::string> type_to_cmd = {
 
 SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
                         : Database(svr->storage_, kDefaultNamespace), svr_(svr),
-                          state_machine_(kSlotMigrateNone), last_send_time_(0), slot_job_(nullptr),
-                          slot_snapshot_time_(0), wal_begin_seq_(0), wal_incremet_seq_(0) {
+                          state_machine_(kSlotMigrateNone), current_pipeline_size_(0),
+                          last_send_time_(0), slot_job_(nullptr), slot_snapshot_time_(0),
+                          wal_begin_seq_(0), wal_increment_seq_(0) {
   // Let db_ and metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -350,7 +351,7 @@ Status SlotMigrate::Clean(void) {
   state_machine_ = kSlotMigrateNone;
   current_pipeline_size_ = 0;
   wal_begin_seq_ = 0;
-  wal_incremet_seq_ = 0;
+  wal_increment_seq_ = 0;
   std::lock_guard<std::mutex> guard(job_mutex_);
   delete slot_job_;
   slot_job_ = nullptr;
@@ -857,8 +858,8 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
 Status SlotMigrate::SyncWalBeforeForbidSlot(void) {
   uint32_t count = 0;
   while (count < kMaxLoopTimes) {
-    wal_incremet_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
-    uint64_t gap = wal_incremet_seq_ - wal_begin_seq_;
+    wal_increment_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
+    uint64_t gap = wal_increment_seq_ - wal_begin_seq_;
     if (gap <= static_cast<uint64_t>(seq_gap_limit_)) {
       LOG(INFO) << "[migrate] Incremental data sequence: " << gap
                 << ", less than limit: " << seq_gap_limit_
@@ -875,13 +876,13 @@ Status SlotMigrate::SyncWalBeforeForbidSlot(void) {
     }
 
     // Iterate wal and migrate data
-    s = MigrateIncrementData(&iter, wal_incremet_seq_);
+    s = MigrateIncrementData(&iter, wal_increment_seq_);
     if (!s.IsOK()) {
       LOG(ERROR) << "[migrate] Failed to migrate WAL data before setting forbidden slot";
       return Status(Status::NotOK);
     }
 
-    wal_begin_seq_ = wal_incremet_seq_;
+    wal_begin_seq_ = wal_increment_seq_;
     count++;
   }
   LOG(INFO) << "[migrate] Succeed to migrate incremental data before setting forbidden slot, end epoch: " << count;
@@ -895,12 +896,12 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
     auto exclusivity = svr_->WorkExclusivityGuard();
     SetForbiddenSlot(migrate_slot_);
   }
-  wal_incremet_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
+  wal_increment_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
   during = Util::GetTimeStampUS() - during;
   LOG(INFO) << "[migrate] To set forbidden slot, server is blocked for " << during << "us";
 
   // No incremental data
-  if (wal_incremet_seq_ <= wal_begin_seq_) return Status::OK();
+  if (wal_increment_seq_ <= wal_begin_seq_) return Status::OK();
 
   // Get WAL iter
   std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
@@ -912,7 +913,7 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
   }
 
   // Send incremental data
-  s = MigrateIncrementData(&iter, wal_incremet_seq_);
+  s = MigrateIncrementData(&iter, wal_increment_seq_);
   if (!s.IsOK()) {
     LOG(ERROR) << "[migrate] Failed to migrate WAL data after setting forbidden slot";
     return Status(Status::NotOK);

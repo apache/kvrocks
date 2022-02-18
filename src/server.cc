@@ -73,6 +73,20 @@ Status Server::Start() {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
   }
+
+  if (config_->cluster_enabled) {
+    // Create objects used for slot migration
+    slot_migrate_ = new SlotMigrate(this, config_->migrate_speed,
+                                    config_->pipeline_size, config_->sequence_gap);
+    slot_import_ = new SlotImport(this);
+    // Create migrating thread
+    auto s = slot_migrate_->CreateMigrateHandleThread();
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
+      return Status(Status::NotOK);
+    }
+  }
+
   for (const auto worker : worker_threads_) {
     worker->Start();
   }
@@ -118,19 +132,6 @@ Status Server::Start() {
       }
     }
   });
-
-  if (config_->cluster_enabled) {
-    // Create objects used for slot migration
-    slot_migrate_ = new SlotMigrate(this, config_->migrate_speed,
-                                    config_->pipeline_size, config_->sequence_gap);
-    slot_import_ = new SlotImport(this);
-    // Create migrating thread
-    auto s = slot_migrate_->CreateMigrateHandleThread();
-    if (!s.IsOK()) {
-      LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
-      return Status(Status::NotOK);
-    }
-  }
 
   return Status::OK();
 }

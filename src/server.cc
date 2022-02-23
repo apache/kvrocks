@@ -86,7 +86,7 @@ Status Server::Start() {
   compaction_checker_thread_ = std::thread([this]() {
     uint64_t counter = 0;
     int32_t last_compact_date = 0;
-    Util::ThreadSetName("compaction-checker");
+    Util::ThreadSetName("compact-check");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
       // Sleep first

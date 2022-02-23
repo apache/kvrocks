@@ -97,7 +97,7 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
 Status SlotMigrate::CreateMigrateHandleThread(void) {
   try {
     t_ = std::thread([this]() {
-      Util::ThreadSetName("slotmigrate-task");
+      Util::ThreadSetName("slot-migrate");
       this->Loop(static_cast<void*>(this));
     });
   } catch(const std::exception &e) {

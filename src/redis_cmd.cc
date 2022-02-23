@@ -4159,7 +4159,7 @@ class CommandFetchMeta : public Commander {
 
     // Feed-replica-meta thread
     std::thread t = std::thread([svr, repl_fd, ip]() {
-      Util::ThreadSetName("feed-replica-data-info");
+      Util::ThreadSetName("feed-repl-info");
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(
           svr->storage_, &files);
@@ -4206,7 +4206,7 @@ class CommandFetchFile : public Commander {
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
     std::thread t = std::thread([svr, repl_fd, ip, files]() {
-      Util::ThreadSetName("feed-replica-file");
+      Util::ThreadSetName("feed-repl-file");
       svr->IncrFetchFileThread();
 
       for (auto file : files) {

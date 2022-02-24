@@ -54,6 +54,9 @@ TEST(Config, GetAndSet) {
       {"rocksdb.blob_file_size", "128"},
       {"rocksdb.enable_blob_garbage_collection", "yes"},
       {"rocksdb.blob_garbage_collection_age_cutoff", "25"},
+      {"rocksdb.max_bytes_for_level_base", "128"},
+      {"rocksdb.max_bytes_for_level_multiplier", "10"},
+      {"rocksdb.level_compaction_dynamic_level_bytes", "false"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

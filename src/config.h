@@ -130,6 +130,9 @@ struct Config{
     int blob_file_size;
     bool enable_blob_garbage_collection;
     int blob_garbage_collection_age_cutoff;
+    int max_bytes_for_level_base;
+    int max_bytes_for_level_multiplier;
+    bool level_compaction_dynamic_level_bytes;
   } RocksDB;
 
  public:

@@ -189,9 +189,9 @@ Status Sync::incrementBatchLoop() {
 void Sync::parseKVFromLocalStorage() {
   LOG(INFO) << "[kvrocks2redis] Start parsing kv from the local storage";
   for (const auto &iter : config_->tokens) {
-    auto s = writer_->FlushAll(iter.first);
+    auto s = writer_->FlushDB(iter.first);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[kvrocks2redis] Failed to flush all in namespace: " << iter.first
+      LOG(ERROR) << "[kvrocks2redis] Failed to flush target redis db in namespace: " << iter.first
                  << ", encounter error: " << s.Msg();
       return;
     }

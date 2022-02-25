@@ -432,12 +432,12 @@ void Config::initFieldCallback() {
       {"rocksdb.max_background_compactions", set_db_option_cb},
       {"rocksdb.max_background_flushes", set_db_option_cb},
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
+      {"rocksdb.level_compaction_dynamic_level_bytes", set_db_option_cb},
 
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
-      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
-      {"rocksdb.level_compaction_dynamic_level_bytes", set_cf_option_cb}
+      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb}
   };
   for (const auto& iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

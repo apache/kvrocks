@@ -21,7 +21,7 @@ const char *kDefaultNamespace = "__namespace";
 
 const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
 
-const char *errNotSetLevelCompactionDynamicLevelBytes = "Must set rocksdb.level_compaction_dynamic_level_bytes.";
+const char *errNotSetLevelCompactionDynamicLevelBytes = "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
@@ -426,13 +426,21 @@ void Config::initFieldCallback() {
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
       }},
+      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        if (!RocksDB.level_compaction_dynamic_level_bytes) {
+          return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
+        }
+        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
+        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+      }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},
       {"rocksdb.delayed_write_rate", set_db_option_cb},
       {"rocksdb.max_background_compactions", set_db_option_cb},
       {"rocksdb.max_background_flushes", set_db_option_cb},
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
-      {"rocksdb.level_compaction_dynamic_level_bytes", set_db_option_cb},
 
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},

@@ -445,7 +445,7 @@ void Config::initFieldCallback() {
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
-      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
+      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb}
   };
   for (const auto& iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

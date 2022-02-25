@@ -149,8 +149,10 @@ Config::Config() {
       {"rocksdb.blob_garbage_collection_age_cutoff",
        false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100)},
       {"rocksdb.max_bytes_for_level_base", false, new IntField(&RocksDB.max_bytes_for_level_base, 256, 0, INT16_MAX)},
-      {"rocksdb.max_bytes_for_level_multiplier", false, new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
-      {"rocksdb.level_compaction_dynamic_level_bytes", false, new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
+      {"rocksdb.max_bytes_for_level_multiplier", 
+        false, new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
+      {"rocksdb.level_compaction_dynamic_level_bytes", 
+        false, new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
   };
   for (const auto &wrapper : fields) {
     auto field = wrapper.field;
@@ -424,8 +426,9 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-      }}, 
-      {"rocksdb.max_bytes_for_level_multiplier", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+      }},
+      {"rocksdb.max_bytes_for_level_multiplier", [this](Server* srv, const std::string &k,
+                                                   const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.level_compaction_dynamic_level_bytes) {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);

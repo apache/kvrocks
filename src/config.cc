@@ -21,7 +21,8 @@ const char *kDefaultNamespace = "__namespace";
 
 const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
 
-const char *errNotSetLevelCompactionDynamicLevelBytes = "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
+const char *errNotSetLevelCompactionDynamicLevelBytes = 
+            "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},

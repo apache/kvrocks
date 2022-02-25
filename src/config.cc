@@ -146,7 +146,7 @@ Config::Config() {
        false, new IntField(&RocksDB.level0_file_num_compaction_trigger, 4, 1, 1024)},
       {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
       {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
-      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 134217728, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 128, 0, INT_MAX)},
       {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
       {"rocksdb.blob_garbage_collection_age_cutoff",
        false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100)},

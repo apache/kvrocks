@@ -1,11 +1,10 @@
 #include "parser.h"
 
-#include <memory>
-
 #include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 
-#include "../../src/redis_bitmap.h"
+#include <memory>
+
 #include "../../src/redis_slot.h"
 #include "../../src/redis_reply.h"
 

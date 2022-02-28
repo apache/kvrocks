@@ -1,17 +1,14 @@
 #include "config.h"
-#include <fcntl.h>
-#include <string.h>
+
 #include <strings.h>
-#include <glog/logging.h>
 #include <rocksdb/env.h>
 
 #include <fstream>
 #include <iostream>
-#include <sstream>
+#include <utility>
 #include <vector>
 
 #include "../../src/util.h"
-#include "../../src/status.h"
 #include "../../src/config.h"
 
 namespace Kvrocks2redis {

@@ -39,16 +39,15 @@ Status RedisWriter::Write(const std::string &ns, const std::vector<std::string> 
   return Status::OK();
 }
 
-Status RedisWriter::FlushAll(const std::string &ns) {
-  auto s = Writer::FlushAll(ns);
+Status RedisWriter::FlushDB(const std::string &ns) {
+  auto s = Writer::FlushDB(ns);
   if (!s.IsOK()) {
     return s;
   }
 
   updateNextOffset(ns, 0);
 
-  //Warning: this will flush all redis data
-  s = Write(ns, {Redis::Command2RESP({"FLUSHALL"})});
+  s = Write(ns, {Redis::Command2RESP({"FLUSHDB"})});
   if (!s.IsOK()) return s;
 
   return Status::OK();

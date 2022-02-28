@@ -206,6 +206,7 @@ LOOP_LABEL:
         LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
         break;
       }
+      self->repl_->repl_state_ = kReplConnecting;
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
       self->Start();

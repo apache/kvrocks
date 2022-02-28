@@ -350,6 +350,12 @@ add_executable(unittest
         src/log_collector.cc
         src/table_properties_collector.cc
         src/table_properties_collector.h
+        src/batch_extractor.cc
+        src/batch_extractor.h
+        src/slot_migrate.cc
+        src/slot_migrate.h
+        src/slot_import.cc
+        src/slot_import.h
         src/compaction_checker.cc
         src/compaction_checker.h
         src/scripting.cc

@@ -25,7 +25,7 @@ FeedSlaveThread::~FeedSlaveThread() {
 Status FeedSlaveThread::Start() {
   try {
     t_ = std::thread([this]() {
-      Util::ThreadSetName("feed-slave-thread");
+      Util::ThreadSetName("feed-replica");
       sigset_t mask, omask;
       sigemptyset(&mask);
       sigemptyset(&omask);

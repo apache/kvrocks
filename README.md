@@ -5,7 +5,7 @@
 - [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
 
-Kvrocks is an open-source key-value database which is based on rocksdb and compatible with Redis protocol. Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
+Kvrocks is an open-source distributed key-value database which is based on rocksdb and compatible with Redis protocol. Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
 Kvrocks has the following key features:
 
@@ -13,6 +13,7 @@ Kvrocks has the following key features:
 - Namespace, similar to redis db but use token per namespace
 - Replication, async replication using binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
+- Cluster mode, centralized management but compatible with Redis cluster client access
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glog/logging.h>
+#include <map>
 #include <string>
 #include <vector>
 #include <thread>
@@ -12,7 +13,7 @@ class RedisWriter : public Writer {
   explicit RedisWriter(Kvrocks2redis::Config *config);
   ~RedisWriter();
   Status Write(const std::string &ns, const std::vector<std::string> &aofs) override;
-  Status FlushAll(const std::string &ns) override;
+  Status FlushDB(const std::string &ns) override;
 
   void Stop() override;
 

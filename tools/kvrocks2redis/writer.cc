@@ -21,7 +21,7 @@ Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs
   return Status::OK();
 }
 
-Status Writer::FlushAll(const std::string &ns) {
+Status Writer::FlushDB(const std::string &ns) {
   auto s = GetAofFd(ns, true);
   if (!s.IsOK()) {
     return Status(Status::NotOK, s.Msg());

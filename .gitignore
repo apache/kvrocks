@@ -45,5 +45,3 @@ make_config.mk
 .vscode
 kvrocks2redis
 
-src/compactdb/
-src/testsdb/

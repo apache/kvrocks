@@ -435,8 +435,8 @@ void Config::initFieldCallback() {
         if (!RocksDB.level_compaction_dynamic_level_bytes) {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
         }
-        std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
-        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+        std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
+        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

@@ -164,6 +164,15 @@ void Config::initFieldValidator() {
         if (v.empty() && !tokens.empty()) {
           return Status(Status::NotOK, "requirepass empty not allowed while the namespace exists");
         }
+        if (tokens.find(v) != tokens.end()) {
+          return Status(Status::NotOK, "requirepass is duplicated with namespace tokens");
+        }
+        return Status::OK();
+      }},
+      {"masterauth", [this](const std::string& k, const std::string& v)->Status {
+        if (tokens.find(v) != tokens.end()) {
+          return Status(Status::NotOK, "masterauth is duplicated with namespace tokens");
+        }
         return Status::OK();
       }},
       {"compact-cron", [this](const std::string& k, const std::string& v)->Status {
@@ -644,6 +653,11 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
+
+  if (token == requirepass || token == masterauth) {
+    return Status(Status::NotOK, "the token is duplicated with requirepass or masterauth");
+  }
+
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
@@ -672,6 +686,11 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
+
+  if (token == requirepass || token == masterauth) {
+    return Status(Status::NotOK, "the token is duplicated with requirepass or masterauth");
+  }
+
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       return Status(Status::NotOK, "the namespace has already exists");

@@ -238,6 +238,8 @@ Status Storage::Open(bool read_only) {
     4 /* key length*/ + 1 /* one char at least for one key */ + 8 /* version */ +
     config_->slot_id_encoded ? 2 : 0 /* slot id */;
   subkey_opts.prefix_extractor.reset(rocksdb::NewFixedPrefixTransform(key_prefix_len));
+  subkey_opts.memtable_whole_key_filtering = true;
+  subkey_opts.memtable_prefix_bloom_size_ratio = 0.2;
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;

@@ -272,6 +272,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+  read_options.prefix_same_as_start = true;
 
   auto iter = db_->NewIterator(read_options);
   for (iter->Seek(prefix_key);

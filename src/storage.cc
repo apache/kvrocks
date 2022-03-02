@@ -14,6 +14,7 @@
 #include <rocksdb/env.h>
 #include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/convenience.h>
+#include <rocksdb/slice_transform.h>
 
 #include "config.h"
 #include "redis_db.h"
@@ -232,6 +233,11 @@ Status Storage::Open(bool read_only) {
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
   rocksdb::ColumnFamilyOptions subkey_opts(options);
+  // the least prfex length of the same key
+  const int key_prefix_len = 1 + strlen(kDefaultNamespace) + /* namespace */
+    4 /* key length*/ + 1 /* one char at least for one key */ + 8 /* version */ +
+    config_->slot_id_encoded ? 2 : 0 /* slot id */;
+  subkey_opts.prefix_extractor.reset(rocksdb::NewFixedPrefixTransform(key_prefix_len));
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;

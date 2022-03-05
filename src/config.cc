@@ -525,6 +525,17 @@ Status Config::Load(const std::string &path) {
     std::cout << "Warn: no config file specified, using the default config. "
                     "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
+
+  // Validate again when read all the config items from the file.
+  for (const auto &iter : fields_) {
+    if (iter.second->validate) {
+        auto s = iter.second->validate(iter.first, iter.second->ToString());
+        if (!s.IsOK()) {
+            return Status(Status::NotOK, iter.first + " is invalid: " + s.Msg());
+        }
+    }
+  }
+
   for (const auto &iter : fields_) {
     if (iter.second->callback) {
       auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());

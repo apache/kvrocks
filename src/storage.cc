@@ -141,7 +141,7 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
   options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
   options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
-  options->max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
+  options->max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base * MiB;
   options->max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
   options->level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
 }

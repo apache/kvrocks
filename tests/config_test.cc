@@ -51,7 +51,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.level0_stop_writes_trigger", "100"},
       {"rocksdb.enable_blob_files", "no"},
       {"rocksdb.min_blob_size", "0"},
-      {"rocksdb.blob_file_size", "268435456"},
+      {"rocksdb.blob_file_size", "256"},
       {"rocksdb.enable_blob_garbage_collection", "yes"},
       {"rocksdb.blob_garbage_collection_age_cutoff", "25"},
   };

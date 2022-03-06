@@ -83,7 +83,7 @@ void Storage::InitTableOptions(rocksdb::BlockBasedTableOptions *table_options) {
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->enable_blob_files = config_->RocksDB.enable_blob_files;
-  cf_options->min_blob_size = config_->RocksDB.min_blob_size * MiB;
+  cf_options->min_blob_size = config_->RocksDB.min_blob_size;
   cf_options->blob_file_size = config_->RocksDB.blob_file_size * MiB;
   cf_options->blob_compression_type = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
   cf_options->enable_blob_garbage_collection = config_->RocksDB.enable_blob_garbage_collection;

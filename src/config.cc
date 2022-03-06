@@ -367,14 +367,16 @@ void Config::initFieldCallback() {
         if (!RocksDB.enable_blob_files) {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
-        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
+                                                    std::to_string(RocksDB.min_blob_size * MiB));
       }},
       {"rocksdb.blob_file_size", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.enable_blob_files) {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
-        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
+        return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
+                                                    std::to_string(RocksDB.blob_file_size * MiB));
       }},
       {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
                                                         const std::string& v)->Status {

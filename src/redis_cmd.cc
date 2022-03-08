@@ -15,6 +15,7 @@
 #include "redis_hash.h"
 #include "redis_bitmap.h"
 #include "redis_list.h"
+#include "redis_reply.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "redis_set.h"
@@ -1827,6 +1828,7 @@ class CommandSPop : public Commander {
     try {
       if (args.size() == 3) {
         count_ = std::stoi(args[2]);
+        with_count_ = true;
       }
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
@@ -1840,12 +1842,21 @@ class CommandSPop : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members, false);
+    if (with_count_) {
+        *output = Redis::MultiBulkString(members, false);
+    } else {
+        if (members.size() > 0) {
+            *output = Redis::BulkString(members.front());
+        } else {
+            *output = Redis::NilString();
+        }
+    }
     return Status::OK();
   }
 
  private:
   int count_ = 1;
+  bool with_count_ = false;
 };
 
 class CommandSRandMember : public Commander {

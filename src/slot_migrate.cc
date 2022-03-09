@@ -217,6 +217,15 @@ Status SlotMigrate::Start(void) {
     return Status(Status::NotOK);
   }
 
+  // Auth first
+  std::string pass = svr_->GetConfig()->requirepass;
+  if (!pass.empty()) {
+    bool st = AuthDstServer(slot_job_->slot_fd_, pass);
+    if (!st) {
+      return Status(Status::NotOK, "Failed to auth destination server");
+    }
+  }
+
   // Set dst node importing START
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportStart)) {
     LOG(ERROR) << "[migrate] Failed to notify the destination to prepare to import data";
@@ -358,6 +367,23 @@ Status SlotMigrate::Clean(void) {
   migrate_slot_ = -1;
   SetMigrateStopFlag(false);
   return Status::OK();
+}
+
+bool SlotMigrate::AuthDstServer(int sock_fd, std::string password) {
+  std::string cmd = Redis::MultiBulkString({"auth", password}, false);
+  auto s = Util::SockSend(sock_fd, cmd);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[migrate] Failed to send auth command to destination, slot: "
+               << migrate_slot_ << ", error: " << s.Msg();
+    return false;
+  }
+
+  if (!CheckResponseOnce(sock_fd)) {
+    LOG(ERROR) << "[migrate] Failed to auth destination server with '" << password
+               << "', stop migrating slot " << migrate_slot_;
+    return false;
+  }
+  return true;
 }
 
 bool SlotMigrate::SetDstImportStatus(int sock_fd, int status) {

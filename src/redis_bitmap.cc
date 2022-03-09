@@ -185,7 +185,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     value[byte_index] &= ~(1 << bit_offset);
   }
   rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisBitmap, {std::to_string(offset)});
+  WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(offset)});
   batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, value);
   if (metadata.size != bitmap_size) {
@@ -315,8 +315,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const Slice &user_key,
-                           const std::vector<Slice> &op_keys, int64_t *len) {
+rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name,
+                              const Slice &user_key, const std::vector<Slice> &op_keys, int64_t *len) {
   std::string ns_key, raw_value, ns_op_key;
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -348,6 +348,12 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const Slice &user_key,
     batch.Delete(metadata_cf_handle_, ns_key);
     return storage_->Write(rocksdb::WriteOptions(), &batch);
   }
+  std::vector<std::string> log_args = {std::to_string(kRedisCmdBitOp), op_name};
+  for (const auto &op_key : op_keys) {
+    log_args.emplace_back(op_key.ToString());
+  }
+  WriteBatchLogData log_data(kRedisBitmap, std::move(log_args));
+  batch.PutLogData(log_data.Encode());
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
@@ -450,7 +456,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const Slice &user_key,
               }
           }
        }
-        #endif
+       #endif
 
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];

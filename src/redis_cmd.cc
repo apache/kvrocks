@@ -894,7 +894,7 @@ class CommandBitOp : public Commander {
     for (uint64_t i = 3; i < args_.size(); i++) {
       op_keys.emplace_back(Slice(args_[i]));
     }
-    rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[2], op_keys, &destkey_len);
+    rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(destkey_len);
     return Status::OK();

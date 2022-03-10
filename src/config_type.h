@@ -29,6 +29,7 @@ class ConfigField {
   virtual Status ToBool(bool *b) { return Status(Status::NotOK, "not supported"); }
 
  public:
+  int line_number;
   bool readonly = true;
   validate_fn validate = nullptr;
   callback_fn callback = nullptr;

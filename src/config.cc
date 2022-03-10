@@ -457,7 +457,7 @@ void Config::ClearMaster() {
   }
 }
 
-Status Config::parseConfigFromString(std::string input) {
+Status Config::parseConfigFromString(std::string input, int line_number) {
   std::vector<std::string> kv;
   Util::Split2KV(input, " \t", &kv);
 
@@ -471,10 +471,7 @@ Status Config::parseConfigFromString(std::string input) {
   auto iter = fields_.find(kv[0]);
   if (iter != fields_.end()) {
     auto field = iter->second;
-    if (field->validate) {
-      auto s = field->validate(kv[0], kv[1]);
-      if (!s.IsOK()) return s;
-    }
+    field->line_number = line_number;
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
   }
@@ -513,7 +510,7 @@ Status Config::Load(const std::string &path) {
     int line_num = 1;
     while (!file.eof()) {
       std::getline(file, line);
-      Status s = parseConfigFromString(line);
+      Status s = parseConfigFromString(line, line_num);
       if (!s.IsOK()) {
         file.close();
         return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
@@ -526,13 +523,13 @@ Status Config::Load(const std::string &path) {
                     "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
 
-  // Validate again when read all the config items from the file.
   for (const auto &iter : fields_) {
-    if (iter.second->validate) {
-        auto s = iter.second->validate(iter.first, iter.second->ToString());
-        if (!s.IsOK()) {
-            return Status(Status::NotOK, iter.first + " is invalid: " + s.Msg());
-        }
+    if (iter.second->line_number != 0 && iter.second->validate) {
+      auto s = iter.second->validate(iter.first, iter.second->ToString());
+      if (!s.IsOK()) {
+      return Status(Status::NotOK, "at line: #L" + std::to_string(iter.second->line_number)
+                    + ", " + iter.first + " is invalid: " + s.Msg());
+      }
     }
   }
 

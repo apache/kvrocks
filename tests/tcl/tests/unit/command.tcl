@@ -1,7 +1,7 @@
 start_server {tags {"command"}} {
     test {kvrocks has 167 commands currently} {
         r command count
-    } {167}
+    } {168}
 
     test {acquire GET command info by COMMAND INFO} {
         set e [lindex [r command info get] 0]

@@ -4587,6 +4587,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("expireat", 3, "write", 1, 1, 1, CommandExpireAt),
     ADD_CMD("pexpireat", 3, "write", 1, 1, 1, CommandPExpireAt),
     ADD_CMD("del", -2, "write", 1, -1, 1, CommandDel),
+    ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
 
     ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
     ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),

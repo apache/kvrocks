@@ -53,8 +53,9 @@ Kvrocks has the following key features:
 # Centos/Redhat
 sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which gtest gtest-devel
 
-# Ubuntu
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool which libgtest-dev
+# Ubuntu/Debian
+sudo apt update
+sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool
 
 # MACOSX
 brew install autoconf automake libtool snappy googletest

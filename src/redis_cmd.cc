@@ -60,7 +60,7 @@ class CommandAuth : public Commander {
     }
     const auto requirepass = config->requirepass;
     if (!requirepass.empty() && user_password != requirepass) {
-      *output = Redis::Error("ERR invaild password");
+      *output = Redis::Error("ERR invalid password");
       return Status::OK();
     }
     conn->SetNamespace(kDefaultNamespace);

@@ -65,7 +65,7 @@ class FeedSlaveThread {
 class ReplicationThread {
  public:
   explicit ReplicationThread(std::string host, uint32_t port,
-                             Server *srv, std::string auth = "");
+                             Server *srv);
   Status Start(std::function<void()> &&pre_fullsync_cb,
                std::function<void()> &&post_fullsync_cb);
   void Stop();
@@ -124,7 +124,6 @@ class ReplicationThread {
   bool stop_flag_ = false;
   std::string host_;
   uint32_t port_;
-  std::string auth_;
   Server *srv_ = nullptr;
   Engine::Storage *storage_ = nullptr;
   ReplState repl_state_;

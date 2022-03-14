@@ -244,3 +244,46 @@ start_server {tags {"repl"}} {
         }
     }
 }
+
+start_server {tags {"repl"}} {
+    set slave [srv 0 client]
+    set slave_ip [srv 0 host]
+    set slave_port [srv 0 port]
+    start_server {} {
+        set master [srv 0 client]
+        set master_ip [srv 0 host]
+        set master_port [srv 0 port]
+        test {Slave can re-sync with master after password change} {
+            $slave slaveof $master_ip $master_port
+            after 200
+            catch {$slave info replication} var
+            assert_match {*role:slave*} $var
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
+
+            # Change password and break repl connection
+            $master config set requirepass pass
+            $slave config set requirepass pass
+            $slave config set masterauth pass
+
+            set ret [$master client list]
+            set lines [split $ret "\n"]
+            global conn_addr
+            foreach  line $lines {
+                if {[string match "*cmd=psync*" $line]} {
+                    set list [split $line " "]
+                    foreach str $list {
+                        if {[string match "*addr=*" $str]} {
+                            set conn_addr [string range $str 5 end]
+                        }
+                    }
+                }
+            }
+
+            $master client kill $conn_addr
+            after 200
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
+        }
+    }
+}

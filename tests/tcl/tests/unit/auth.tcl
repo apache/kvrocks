@@ -9,7 +9,7 @@ start_server {tags {"auth"} overrides {requirepass foobar}} {
     test {AUTH fails when a wrong password is given} {
         catch {r auth wrong!} err
         set _ $err
-    } {*invaild password*}
+    } {*invalid password*}
 
     test {Arbitrary command gives an error when AUTH is required} {
         catch {r set foo bar} err

@@ -153,7 +153,7 @@ class EnumField : public ConfigField {
   Status Set(const std::string &v) override {
     int e = configEnumGetValue(enums_, v.c_str());
     if (e == INT_MIN) {
-      return Status(Status::NotOK, "invaild enum option");
+      return Status(Status::NotOK, "invalid enum option");
     }
     *receiver_ = e;
     return Status::OK();

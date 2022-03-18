@@ -48,9 +48,9 @@ Storage::Storage(Config *config)
   SetCheckpointAccessTime(0);
   backup_creating_time_ = std::time(nullptr);
 
-  uint64_t max_expire_delete_io_mb = kIORateLimitMaxMb;
-  if (config_->max_expire_delete_io_mb > 0) max_expire_delete_io_mb = static_cast<uint64_t>(config_->max_expire_delete_io_mb);
-  expdel_rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_expire_delete_io_mb * MiB));
+  uint64_t max_expdel_io_mb = kIORateLimitMaxMb;
+  if (config_->max_expire_delete_io_mb > 0) max_expdel_io_mb = static_cast<uint64_t>(config_->max_expire_delete_io_mb);
+  expdel_rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_expdel_io_mb * MiB));
 }
 
 Storage::~Storage() {

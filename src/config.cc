@@ -524,6 +524,8 @@ Status Config::Load(const std::string &path) {
   }
 
   for (const auto &iter : fields_) {
+    // line_number = 0 means the user didn't specify the field value
+    // on config file and would use default value, so won't validate here.
     if (iter.second->line_number != 0 && iter.second->validate) {
       auto s = iter.second->validate(iter.first, iter.second->ToString());
       if (!s.IsOK()) {

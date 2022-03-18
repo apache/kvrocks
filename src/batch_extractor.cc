@@ -101,11 +101,36 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       case kRedisBitmap: {
         auto args = log_data_.GetArguments();
         if (args->size() < 1) {
-          LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
+          LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : args error ,should at least contain cmd";
           return rocksdb::Status::OK();
         }
-        bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[0]));
-        command_args = {"SETBIT", user_key, (*args)[0], bit_value ? "1" : "0"};
+        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        switch (cmd) {
+          case kRedisCmdSetBit: {
+            if (args->size() < 2) {
+              LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
+              return rocksdb::Status::OK();
+            }
+            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[1]));
+            command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
+            break;
+          }
+          case kRedisCmdBitOp:
+            if (first_seen_) {
+              if (args->size() < 4) {
+                LOG(ERROR)
+                   << "Fail to parse write_batch in putcf cmd bitop : args error, should at least contain srckey";
+                return rocksdb::Status::OK();
+              }
+              command_args = {"BITOP", (*args)[1], user_key};
+              command_args.insert(command_args.end(), args->begin() + 2, args->end());
+              first_seen_ = false;
+            }
+            break;
+          default:
+            LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : cmd error";
+            return rocksdb::Status::OK();
+        }
         break;
       }
       case kRedisSortedint: {

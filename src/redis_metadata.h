@@ -29,6 +29,8 @@ enum RedisCommand {
   kRedisCmdLPush,
   kRedisCmdRPush,
   kRedisCmdExpire,
+  kRedisCmdSetBit,
+  kRedisCmdBitOp,
 };
 
 const std::vector<std::string> RedisTypeNames = {

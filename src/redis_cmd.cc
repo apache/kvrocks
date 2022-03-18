@@ -866,6 +866,44 @@ class CommandBitPos: public Commander {
   bool bit_ = false, stop_given_ = false;
 };
 
+class CommandBitOp : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    std::string opname = Util::ToLower(args[1]);
+    if (opname == "and")
+      op_flag_ = kBitOpAnd;
+    else if (opname == "or")
+      op_flag_ = kBitOpOr;
+    else if (opname == "xor")
+      op_flag_ = kBitOpXor;
+    else if (opname == "not")
+      op_flag_ = kBitOpNot;
+    else
+        return Status(Status::RedisInvalidCmd, "Unknown bit operation");
+    if (op_flag_ == kBitOpNot && args.size() != 4) {
+        return Status(Status::RedisInvalidCmd,
+                  "BITOP NOT must be called with a single source key.");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int64_t destkey_len = 0;
+    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> op_keys;
+    for (uint64_t i = 3; i < args_.size(); i++) {
+      op_keys.emplace_back(Slice(args_[i]));
+    }
+    rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(destkey_len);
+    return Status::OK();
+  }
+
+ private:
+  BitOpFlags op_flag_;
+};
+
 class CommandType : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4614,6 +4652,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("setbit", 4, "write", 1, 1, 1, CommandSetBit),
     ADD_CMD("bitcount", -2, "read-only", 1, 1, 1, CommandBitCount),
     ADD_CMD("bitpos", -3, "read-only", 1, 1, 1, CommandBitPos),
+    ADD_CMD("bitop", -4, "write", 2, -1, 1, CommandBitOp),
 
     ADD_CMD("hget", 3, "read-only", 1, 1, 1, CommandHGet),
     ADD_CMD("hincrby", 4, "write", 1, 1, 1, CommandHIncrBy),

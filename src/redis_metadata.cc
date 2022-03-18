@@ -232,6 +232,10 @@ bool Metadata::Expired() const {
   return Type() != kRedisString && size == 0;
 }
 
+bool Metadata::Empty() const {
+  return Type() != kRedisString && size == 0;
+}
+
 ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
   head = UINT64_MAX/2;
   tail = head;

@@ -74,6 +74,7 @@ class ZSet : public SubKeyScanner {
       score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(const Slice &user_key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(const Slice &user_key, int *ret);
+  rocksdb::Status RCard(const Slice &user_key, int *ret);
   rocksdb::Status Count(const Slice &user_key, const ZRangeSpec &spec, int *ret);
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
   rocksdb::Status Range(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);

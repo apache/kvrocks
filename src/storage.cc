@@ -47,6 +47,10 @@ Storage::Storage(Config *config)
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
   backup_creating_time_ = std::time(nullptr);
+
+  uint64_t max_expire_delete_io_mb = kIORateLimitMaxMb;
+  if (config_->max_expire_delete_io_mb > 0) max_expire_delete_io_mb = static_cast<uint64_t>(config_->max_expire_delete_io_mb);
+  expdel_rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_expire_delete_io_mb * MiB));
 }
 
 Storage::~Storage() {
@@ -587,6 +591,28 @@ void Storage::SetIORateLimit(uint64_t max_io_mb) {
     max_io_mb = kIORateLimitMaxMb;
   }
   rate_limiter_->SetBytesPerSecond(max_io_mb * MiB);
+}
+
+void Storage::SetExpdelIORateLimit(uint64_t max_expire_delete_io_mb) {
+  if (max_expire_delete_io_mb == 0) {
+    max_expire_delete_io_mb = kIORateLimitMaxMb;
+  }
+  expdel_rate_limiter_->SetBytesPerSecond(max_expire_delete_io_mb * MiB);
+}
+
+void Storage::ExpdelSpeedLimit(int64_t bytes) {
+  if (GetExpdelIORateLimit() > 0
+      && bytes <= expdel_rate_limiter_->GetSingleBurstBytes()) {
+      expdel_rate_limiter_->Request(bytes, rocksdb::Env::IO_HIGH, nullptr, rocksdb::RateLimiter::OpType::kWrite);
+  }
+}
+
+std::unique_ptr<RWLock::ReadLock> Storage::ReadExpireLockGuard() {
+  return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(db_expire_lock_));
+}
+
+std::unique_ptr<RWLock::WriteLock> Storage::WriteExpireLockGuard() {
+  return std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(db_expire_lock_));
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }

@@ -106,6 +106,25 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::RCard(const Slice &user_key, int *ret) {
+  *ret = 0;
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  ZSetMetadata metadata(false);
+
+  std::string bytes;
+  auto s = GetRawMetadata(ns_key, &bytes);
+  if (!s.ok()) return s;
+  metadata.Decode(bytes);
+  if (metadata.Type() != kRedisZSet) {
+    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
+  }
+  *ret = metadata.size;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status ZSet::Count(const Slice &user_key, const ZRangeSpec &spec, int *ret) {
   *ret = 0;
   return RangeByScore(user_key, spec, nullptr, ret);

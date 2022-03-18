@@ -2123,6 +2123,22 @@ class CommandZCard : public Commander {
   }
 };
 
+// Get number of elements from raw meta key of the sorted set without checking expiration
+class CommandRZCard : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int ret;
+
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = zset_db.RCard(args_[1], &ret);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
 class CommandZIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -4705,6 +4721,7 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("zadd", -4, "write", 1, 1, 1, CommandZAdd),
     ADD_CMD("zcard", 2, "read-only", 1, 1, 1, CommandZCard),
+    ADD_CMD("rzcard", 2, "read-only", 1, 1, 1, CommandRZCard),
     ADD_CMD("zcount", 4, "read-only", 1, 1, 1, CommandZCount),
     ADD_CMD("zincrby", 4, "write", 1, 1, 1, CommandZIncrBy),
     ADD_CMD("zinterstore", -4, "write", 1, 1, 1, CommandZInterStore),

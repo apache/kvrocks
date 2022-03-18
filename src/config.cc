@@ -90,6 +90,7 @@ Config::Config() {
       {"log-dir", true, new StringField(&log_dir, "")},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
+      {"max-expire-delete-io-mb", false, new IntField(&max_expire_delete_io_mb, 5, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
@@ -324,6 +325,11 @@ void Config::initFieldCallback() {
       {"max-io-mb", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         srv->storage_->SetIORateLimit(static_cast<uint64_t>(max_io_mb));
+        return Status::OK();
+      }},
+      {"max-expire-delete-io-mb", [this](Server* srv, const std::string &k, const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        srv->storage_->SetExpdelIORateLimit(static_cast<uint64_t>(max_expire_delete_io_mb));
         return Status::OK();
       }},
       {"profiling-sample-record-max-len", [this](Server* srv, const std::string &k, const std::string& v)->Status {

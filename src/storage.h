@@ -81,6 +81,13 @@ class Storage {
   Status CheckDBSizeLimit();
   void SetIORateLimit(uint64_t max_io_mb);
 
+  uint64_t GetExpdelIORateLimit() { return config_->max_expire_delete_io_mb; }
+  void SetExpdelIORateLimit(uint64_t max_expire_delete_io_mb);
+  void ExpdelSpeedLimit(int64_t bytes);
+
+  std::unique_ptr<RWLock::ReadLock> ReadExpireLockGuard();
+  std::unique_ptr<RWLock::WriteLock> WriteExpireLockGuard();
+
   std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
   std::unique_ptr<RWLock::WriteLock> WriteLockGuard();
 
@@ -135,6 +142,8 @@ class Storage {
   time_t GetCheckpointAccessTime()  { return checkpoint_info_.access_time; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
+  void SetDBNoExpire(bool yes_or_no) { no_expire_ = yes_or_no; }
+  bool IsDBNoExpire() { return no_expire_; }
 
  private:
   rocksdb::DB *db_ = nullptr;
@@ -157,6 +166,12 @@ class Storage {
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
+
+  // Switch for expiration of complex meta key, should be true for slave
+  bool no_expire_ = false;
+  RWLock::ReadWriteLock db_expire_lock_;
+
+  std::shared_ptr<rocksdb::RateLimiter> expdel_rate_limiter_ = NULL;
 };
 
 }  // namespace Engine

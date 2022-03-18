@@ -119,6 +119,8 @@ class Server {
   void GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
+  void SetDBNoExpire(bool flag);
+
   int DecrClientNum();
   int IncrClientNum();
   int IncrMonitorClientNum();

@@ -287,3 +287,43 @@ start_server {tags {"repl"}} {
         }
     }
 }
+
+start_server {tags {"repl"}} {
+    set slave [srv 0 client]
+    set slave_ip [srv 0 host]
+    set slave_port [srv 0 port]
+    start_server {} {
+        set master [srv 0 client]
+        set master_ip [srv 0 host]
+        set master_port [srv 0 port]
+        test {master delete expired complex key during compaction and sync to slave} {
+            $slave slaveof $master_ip $master_port
+            
+            # write complex key
+            $master zadd myzset 1 m1 2 m2 3 m3
+            after 1000
+            assert_equal 3 [$master zcard myzset]
+            assert_equal 3 [$slave zcard myzset]
+            $master expire myzset 1
+
+            after 2000
+
+            # check that complex key is expired but not deleted
+            assert_equal 0 [$master zcard myzset]
+            assert_equal 0 [$slave zcard myzset]
+            assert_equal 3 [$master rzcard myzset]
+            assert_equal 3 [$slave rzcard myzset]
+
+            # check that slave do not delete expired complex key during compaction
+            $slave compact
+            after 2000
+            assert_equal 3 [$slave rzcard myzset]
+
+            # check that master delete expired complex key during compaction and sync to slave
+            $master compact
+            after 2000
+            assert_equal 0 [$master rzcard myzset]
+            assert_equal 0 [$slave rzcard myzset]
+        }
+    }
+}

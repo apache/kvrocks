@@ -191,6 +191,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
     master_host_ = host;
     master_port_ = port;
     config_->SetMaster(host, port);
+    SetDBNoExpire(true);
   } else {
     replication_thread_ = nullptr;
   }
@@ -206,6 +207,7 @@ Status Server::RemoveMaster() {
     config_->ClearMaster();
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
+    SetDBNoExpire(false);
   }
   slaveof_mu_.unlock();
   return Status::OK();
@@ -1421,4 +1423,10 @@ void Server::AdjustOpenFilesLimit() {
     LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
                  << " (it's originally set to " << old_limit << ")";
   }
+}
+
+// Only affect expiration of complex meta key
+void Server::SetDBNoExpire(bool flag) {
+  auto guard = storage_->WriteExpireLockGuard();
+  storage_->SetDBNoExpire(flag);
 }

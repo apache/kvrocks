@@ -15,6 +15,7 @@ class MetadataFilter : public rocksdb::CompactionFilter {
  public:
   explicit MetadataFilter(Storage *storage): stor_(storage) {}
   const char *Name() const override { return "MetadataFilter"; }
+  bool IfRemoveExpiredRecord(const Slice &ikey, RedisType type) const;
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override;
  private:
@@ -45,8 +46,9 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
 
   const char *Name() const override { return "SubkeyFilter"; }
   bool IsKeyExpired(const InternalKey &ikey, const Slice &value) const;
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override;
+  rocksdb::CompactionFilter::Decision FilterV2(int level, const Slice& key, ValueType value_type,
+                                                const Slice& existing_value, std::string* new_value,
+                                                std::string* skip_until) const override;
 
  protected:
   mutable std::string cached_key_;

@@ -90,6 +90,7 @@ TEST(Config, GetAndSet) {
       {"slaveof", "no one"},
       {"db-name", "test_dbname"},
       {"dir", "test_dir"},
+      {"log-dir", "test_dir"},
       {"backup-dir", "test_dir/backup"},
       {"pidfile", "test.pid"},
       {"supervised", "no"},

@@ -360,7 +360,9 @@ proc start_server {options {code undefined}} {
     }
 
     # use a different directory every time a server is started
-    dict set config dir [tmpdir server]
+    set t_dir [tmpdir server]
+    dict set config dir $t_dir
+    dict set config log-dir $t_dir
 
     # start every server on a different port
     set port [find_available_port $::baseport $::portcount]

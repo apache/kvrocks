@@ -154,7 +154,11 @@ static void initGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->log_dir;
+  if (config->log_dir.empty()) {
+    FLAGS_logtostderr = 1;
+  } else {
+    FLAGS_log_dir = config->log_dir;
+  }
 }
 
 bool supervisedUpstart() {

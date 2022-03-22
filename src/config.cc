@@ -254,7 +254,6 @@ void Config::initFieldCallback() {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
         db_dir = dir + "/db";
         if (backup_dir.empty()) backup_dir = dir + "/backup";
-        if (log_dir.empty()) log_dir = dir;
         checkpoint_dir = dir + "/checkpoint";
         sync_checkpoint_dir = dir + "/sync_checkpoint";
         backup_sync_dir = dir + "/backup_for_sync";
@@ -520,7 +519,6 @@ Status Config::finish() {
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
-  if (log_dir.empty()) log_dir = dir;
   if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
   std::vector<std::string> createDirs = {dir};
   for (const auto &name : createDirs) {

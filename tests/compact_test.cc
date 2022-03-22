@@ -42,6 +42,9 @@ TEST(Compact, Filter) {
   }
   delete iter;
 
+  status = storage_->Compact(nullptr, nullptr);
+  assert(status.ok());
+  
   iter = db->NewIterator(read_options, storage_->GetCFHandle("subkey"));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -67,6 +70,9 @@ TEST(Compact, Filter) {
   }
   delete iter;
 
+  status = storage_->Compact(nullptr, nullptr);
+  assert(status.ok());
+  
   iter = db->NewIterator(read_options, storage_->GetCFHandle("zset_score"));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     EXPECT_TRUE(false);  // never reach here

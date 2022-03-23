@@ -588,9 +588,6 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Migrate slot 17 from node0 to node1
             set ret [$r0 clusterx migrate 17 $node1_id]
             assert {$ret == "OK"}
-            # Migrating started
-            catch {[$r0 cluster info]} e
-            assert_match {*migrating_slot: 17*start*} $e
             # Check if finished
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 17*success*" [$r0 cluster info]]
@@ -927,8 +924,6 @@ start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
             # Migrating slot will fail if no auth
             set ret [$r0 clusterx migrate 22 $node1_id]
             assert {$ret == "OK"}
-            catch {[$r0 cluster info]} e
-            assert_match {*migrating_slot: 22*start*} $e
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 22*fail*" [$r0 cluster info]]
             } else {
@@ -940,8 +935,7 @@ start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
             # Migrating slot will fail if auth with wrong password
             $r0 config set requirepass pass
             set ret [$r0 clusterx migrate 22 $node1_id]
-            catch {[$r0 cluster info]} e
-            assert_match {*migrating_slot: 22*start*} $e
+            assert {$ret == "OK"}
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 22*fail*" [$r0 cluster info]]
             } else {
@@ -953,6 +947,7 @@ start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
             # Migrating slot will succeed if auth with right password
             $r0 config set requirepass password
             set ret [$r0 clusterx migrate 22 $node1_id]
+            assert {$ret == "OK"}
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 22*success*" [$r0 cluster info]]
             } else {

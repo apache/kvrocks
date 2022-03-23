@@ -110,6 +110,7 @@ start_server {tags {"pubsub"}} {
         assert_equal {unsubscribe chan1 2} [$rd1 read]
         assert_equal {unsubscribe chan2 1} [$rd1 read]
         assert_equal {unsubscribe chan3 0} [$rd1 read]
+        after 50
         assert_equal 0 [r publish chan1 hello]
         assert_equal 0 [r publish chan2 hello]
         assert_equal 0 [r publish chan3 hello]

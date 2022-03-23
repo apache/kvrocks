@@ -892,9 +892,6 @@ start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
             # Migrate slot 21 from node0 to node1
             set ret [$r0 clusterx migrate 21 $node1_id]
             assert {$ret == "OK"}
-            # Migrating started
-            catch {[$r0 cluster info]} e
-            assert_match {*migrating_slot: 21*start*} $e
             # Check if finished
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 21*success*" [$r0 cluster info]]

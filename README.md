@@ -126,7 +126,7 @@ OK
 
 ## Cluster
 
-Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with redis cluster client. You can use redis cluster SDKs acces kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://github.com/KvrocksLabs/kvrocks/wiki/Kvrocks-Cluster-Introduction)
+Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://github.com/KvrocksLabs/kvrocks/wiki/Kvrocks-Cluster-Introduction)
 
 ## DOCs
 

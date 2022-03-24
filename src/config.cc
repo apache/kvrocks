@@ -174,6 +174,15 @@ void Config::initFieldValidator() {
         if (v.empty() && !tokens.empty()) {
           return Status(Status::NotOK, "requirepass empty not allowed while the namespace exists");
         }
+        if (tokens.find(v) != tokens.end()) {
+          return Status(Status::NotOK, "requirepass is duplicated with namespace tokens");
+        }
+        return Status::OK();
+      }},
+      {"masterauth", [this](const std::string& k, const std::string& v)->Status {
+        if (tokens.find(v) != tokens.end()) {
+          return Status(Status::NotOK, "masterauth is duplicated with namespace tokens");
+        }
         return Status::OK();
       }},
       {"compact-cron", [this](const std::string& k, const std::string& v)->Status {
@@ -484,7 +493,7 @@ void Config::ClearMaster() {
   }
 }
 
-Status Config::parseConfigFromString(std::string input) {
+Status Config::parseConfigFromString(std::string input, int line_number) {
   std::vector<std::string> kv;
   Util::Split2KV(input, " \t", &kv);
 
@@ -498,10 +507,7 @@ Status Config::parseConfigFromString(std::string input) {
   auto iter = fields_.find(kv[0]);
   if (iter != fields_.end()) {
     auto field = iter->second;
-    if (field->validate) {
-      auto s = field->validate(kv[0], kv[1]);
-      if (!s.IsOK()) return s;
-    }
+    field->line_number = line_number;
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
   }
@@ -540,7 +546,7 @@ Status Config::Load(const std::string &path) {
     int line_num = 1;
     while (!file.eof()) {
       std::getline(file, line);
-      Status s = parseConfigFromString(line);
+      Status s = parseConfigFromString(line, line_num);
       if (!s.IsOK()) {
         file.close();
         return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
@@ -552,6 +558,19 @@ Status Config::Load(const std::string &path) {
     std::cout << "Warn: no config file specified, using the default config. "
                     "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf" << std::endl;
   }
+
+  for (const auto &iter : fields_) {
+    // line_number = 0 means the user didn't specify the field value
+    // on config file and would use default value, so won't validate here.
+    if (iter.second->line_number != 0 && iter.second->validate) {
+      auto s = iter.second->validate(iter.first, iter.second->ToString());
+      if (!s.IsOK()) {
+      return Status(Status::NotOK, "at line: #L" + std::to_string(iter.second->line_number)
+                    + ", " + iter.first + " is invalid: " + s.Msg());
+      }
+    }
+  }
+
   for (const auto &iter : fields_) {
     if (iter.second->callback) {
       auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
@@ -680,6 +699,11 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
+
+  if (token == requirepass || token == masterauth) {
+    return Status(Status::NotOK, "the token is duplicated with requirepass or masterauth");
+  }
+
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       tokens.erase(iter.first);
@@ -708,6 +732,11 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (tokens.find(token) != tokens.end()) {
     return Status(Status::NotOK, "the token has already exists");
   }
+
+  if (token == requirepass || token == masterauth) {
+    return Status(Status::NotOK, "the token is duplicated with requirepass or masterauth");
+  }
+
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
       return Status(Status::NotOK, "the namespace has already exists");

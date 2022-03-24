@@ -4438,12 +4438,10 @@ class CommandClusterX : public Commander {
       return Status(Status::RedisParseErr, "Invalid setnodes options");
     }
 
-    // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
-    if (subcommand_ == "setslot" && args_.size() == 6) {
-      slot_id_ = atoi(args_[2].c_str());
-      if (!Cluster::IsValidSlot(slot_id_)) {
-        return Status(Status::RedisParseErr, "Invalid slot id");
-      }
+    // CLUSTERX SETSLOT "$SLOTS_BATCH" NODE $NODE_ID $VERSION
+    if (subcommand_ == "setslot") {
+      if (args_.size() != 6) return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      slots_batch_ = args_[2];
       if (strcasecmp(args_[3].c_str(), "node") != 0) {
         return Status(Status::RedisParseErr, "Invalid setslot options");
       }
@@ -4484,7 +4482,7 @@ class CommandClusterX : public Commander {
         *output = Redis::Error(s.Msg());
       }
     } else if (subcommand_ == "setslot") {
-      Status s = svr->cluster_->SetSlot(slot_id_, args_[4], set_version_);
+      Status s = svr->cluster_->SetSlot(slots_batch_, args_[4], set_version_);
       if (s.IsOK()) {
         *output = Redis::SimpleString("OK");
       } else {
@@ -4510,7 +4508,7 @@ class CommandClusterX : public Commander {
   std::string subcommand_;
   std::string nodes_str_;
   uint64_t set_version_ = 0;
-  int slot_id_ = -1;
+  std::string slots_batch_;
   bool force_ = false;
   std::string dst_node_id_;
   int slot_ = -1;

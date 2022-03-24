@@ -57,9 +57,8 @@ Status Cluster::SetNodeId(std::string node_id) {
   return Status::OK();
 }
 
-// Set the slot to the node if new version is current version +1. It is useful
-// when we scale cluster avoid too many big messages, since we only update one
-// slot distribution and there are 16384 slot in our design.
+// Set slots to the node if new version is current version +1. It is useful
+// when we scale cluster avoid too many big messages.
 //
 // The reason why the new version MUST be +1 of current version is that,
 // the command changes topology based on specific topology (also means specific
@@ -68,14 +67,14 @@ Status Cluster::SetNodeId(std::string node_id) {
 // This is different with CLUSTERX SETNODES commands because it uses new version
 // topology to cover current version, it allows kvrocks nodes lost some topology
 // updates since of network failure, it is state instead of operation.
-Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
+Status Cluster::SetSlot(const std::string &slots_batch, std::string node_id, int64_t new_version) {
   // Parameters check
   if (new_version <= 0 || new_version != version_ + 1) {
     return Status(Status::NotOK, "Invalid cluster version");
   }
-  if (!IsValidSlot(slot)) {
-    return Status(Status::NotOK, "Invalid slot id");
-  }
+  std::vector<int> slots;
+  Status s = ParseSlotsBatch(slots_batch, &slots);
+  if (!s.IsOK()) return s;
   if (node_id.size() != kClusterNodeIdLen)  {
     return Status(Status::NotOK, "Invalid node id");
   }
@@ -96,26 +95,27 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   //  1. Remove the slot from old node if existing
   //  2. Add the slot into to-assign node
   //  3. Update the map of slots to nodes.
-  std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
-  if (old_node != nullptr) {
-    old_node->slots_[slot] = 0;
-  }
-  to_assign_node->slots_[slot] = 1;
-  slots_nodes_[slot] = to_assign_node;
-
-  // Clear data of migrated slot or record of imported slot
-  if (old_node == myself_ && old_node != to_assign_node) {
-    // If slot is migrated from this node
-    if (migrated_slots_.count(slot)) {
-      svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, slot);
-      migrated_slots_.erase(slot);
+  for (auto slot : slots) {
+    std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
+    if (old_node != nullptr) {
+      old_node->slots_[slot] = 0;
     }
-    // If slot is imported into this node
-    if (imported_slots_.count(slot)) {
-      imported_slots_.erase(slot);
+    to_assign_node->slots_[slot] = 1;
+    slots_nodes_[slot] = to_assign_node;
+
+    // Clear data of migrated slot or record of imported slot
+    if (old_node == myself_ && old_node != to_assign_node) {
+      // If slot is migrated from this node
+      if (migrated_slots_.count(slot)) {
+        svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, slot);
+        migrated_slots_.erase(slot);
+      }
+      // If slot is imported into this node
+      if (imported_slots_.count(slot)) {
+        imported_slots_.erase(slot);
+      }
     }
   }
-
   return Status::OK();
 }
 
@@ -507,7 +507,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // 3) port
     int port = std::atoi(fields[2].c_str());
     if (port <= 0 || port >= (65535-kClusterPortIncr)) {
-      return Status(Status::ClusterInvalidInfo, "Invalid cluste node port");
+      return Status(Status::ClusterInvalidInfo, "Invalid cluster node port");
     }
 
     // 4) role
@@ -518,14 +518,14 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
                strcasecmp(fields[3].c_str(), "replica") == 0) {
       role = kClusterSlave;
     } else {
-      return Status(Status::ClusterInvalidInfo, "Invalid cluste node role");
+      return Status(Status::ClusterInvalidInfo, "Invalid cluster node role");
     }
 
     // 5) master id
     std::string master_id = fields[4];
     if ((role == kClusterMaster && master_id != "-") ||
         (role == kClusterSlave && master_id.size() != kClusterNodeIdLen)) {
-      return Status(Status::ClusterInvalidInfo, "Invalid cluste node master id");
+      return Status(Status::ClusterInvalidInfo, "Invalid cluster node master id");
     }
 
     std::bitset<kClusterSlots> slots;
@@ -548,7 +548,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
       if (ranges.size() == 1) {
         start = std::atoi(ranges[0].c_str());
         if (IsValidSlot(start) == false) {
-          return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
+          return Status(Status::ClusterInvalidInfo, "Invalid cluster slot range");
         }
         slots.set(start, 1);
         if (role == kClusterMaster) {
@@ -562,7 +562,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         start = std::atoi(ranges[0].c_str());
         stop = std::atoi(ranges[1].c_str());
         if (start >= stop || start < 0 || stop >= kClusterSlots) {
-          return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
+          return Status(Status::ClusterInvalidInfo, "Invalid cluster slot range");
         }
         for (int j = start; j <= stop; j++) {
           slots.set(j, 1);
@@ -575,13 +575,47 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else {
-        return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
+        return Status(Status::ClusterInvalidInfo, "Invalid cluster slot range");
       }
     }
 
     // Create master node
     (*nodes)[id] = std::shared_ptr<ClusterNode>(
         new ClusterNode(id, host, port, role, master_id, slots));
+  }
+  return Status::OK();
+}
+
+Status Cluster::ParseSlotsBatch(const std::string &slot_batch_str, std::vector<int> *slots) {
+  if (slot_batch_str.empty()) return Status(Status::NotOK, "Empty slots batch");
+
+  std::vector<std::string> slots_info;
+  Util::Split(slot_batch_str, " ", &slots_info);
+  if (slots_info.empty()) return Status(Status::NotOK, "Invalid slots batch");
+
+  for (const auto &info : slots_info) {
+    // slot id should be integer and greater than 0
+    if (info[0] < '0' || info[0] > '9') return Status(Status::NotOK, "Invalid slot " + info);
+    // slot range should be complete, range like '11-' is not allowed
+    if (info.find('-') == (info.size() - 1)) return Status(Status::NotOK, "Invalid slot info " + info);
+
+    std::vector<std::string> fields;
+    Util::Split(info, "-", &fields);
+    if (fields.size() == 1) {
+      int slot = std::atoi(fields[0].c_str());
+      if (!IsValidSlot(slot)) return Status(Status::NotOK, "Invalid slot " + std::to_string(slot));
+      slots->push_back(slot);
+    } else if (fields.size() == 2) {
+      int start = std::atoi(fields[0].c_str());
+      int end = std::atoi(fields[1].c_str());
+      if (IsValidSlot(start) && IsValidSlot(end) && start <= end) {
+        for (int i = start; i <= end; i++) slots->push_back(i);
+      } else {
+        return Status(Status::NotOK, "Invalid slots range");
+      }
+    } else {
+      return Status(Status::NotOK, "Invalid slots info");
+    }
   }
   return Status::OK();
 }

@@ -129,6 +129,32 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 
             assert_equal {4} [r clusterx version]
             assert_equal {4} [r -1 clusterx version]
+
+            # test set batch slots
+            r clusterx setslot "15 17 19 20-30 40 50 60-70" node $nodeid2 5
+            r -1 clusterx setslot "15 17 19 20-30 40 50 60-70" node $nodeid2 5
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            catch {[r cluster nodes]} ret
+            assert_match {*0-1 15 17 19-30 40 50 60-70*} $ret
+
+            # wrong slots batch will be rejected
+            catch {[r clusterx setslot "" node $nodeid2 6]} ret
+            assert_match {*Empty slots batch*} $ret
+
+            catch {[r clusterx setslot "80 - 90" node $nodeid2 6]} ret
+            assert_match {*Invalid slot*} $ret
+            catch {[r clusterx setslot "80-" node $nodeid2 6]} ret
+            assert_match {*Invalid slot info 80-*} $ret
+            catch {[r clusterx setslot "80-a" node $nodeid2 6]} ret
+            assert_match {*Invalid slots range*} $ret
+
+            catch {[r clusterx setslot "100 16385" node $nodeid2 6]} ret
+            assert_match {*Invalid slot 16385*} $ret
+            catch {[r clusterx setslot "-1 100" node $nodeid2 6]} ret
+            assert_match {*Invalid slot -1*} $ret
+
+            catch {[r clusterx setslot "200-100" node $nodeid2 6]} ret
+            assert_match {*Invalid slots range*} $ret
         }
     }
 }

@@ -75,10 +75,10 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
         assert_match "*Invalid version*" $err
 
         catch {[r clusterx setslot 16384 07c37dfeb235213a872192d90877d0cd55635b91 1]} err
-        assert_match "*CLUSTER*" $err
+        assert_match "*wrong*" $err
 
         catch {[r clusterx setslot 16383 a 1]} err
-        assert_match "*CLUSTER*" $err
+        assert_match "*wrong*" $err
     }
 }
 

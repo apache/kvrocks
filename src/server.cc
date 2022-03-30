@@ -35,6 +35,17 @@ Server::Server(Engine::Storage *storage, Config *config) :
 
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
+    // multiple workers can't listen to the same unix socket, so
+    // listen unix socket only from a single worker - the first one
+    if (!config->unixsocket.empty() && i == 0) {
+      Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[server] Failed to listen on unix socket: "<< config->unixsocket
+                   << ", encounter error: " << s.Msg();
+        delete worker;
+        exit(1);
+      }
+    }
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
   AdjustOpenFilesLimit();

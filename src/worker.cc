@@ -2,8 +2,11 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <list>
 #include <cctype>
+#include <cstring>
 #include <utility>
 #include <algorithm>
 #include <glog/logging.h>
@@ -24,7 +27,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   int port = config->port;
   auto binds = config->binds;
   for (const auto &bind : binds) {
-    Status s = listen(bind, port, config->backlog);
+    Status s = listenTCP(bind, port, config->backlog);
     if (!s.IsOK()) {
       LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
                  << ", encounter error: " << s.Msg();
@@ -58,8 +61,8 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
   worker->KickoutIdleClients(config->timeout);
 }
 
-void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
-                           sockaddr *address, int socklen, void *ctx) {
+void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
+                              sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "[worker] New connection: fd=" << fd
               << " from port: " << worker->svr_->GetConfig()->port << " thread #"
@@ -86,23 +89,49 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                     Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
-  std::string ip;
-  uint32_t port;
-  if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
-    conn->SetAddr(ip, port);
-  }
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     conn->Close();
   }
-
+  std::string ip;
+  uint32_t port;
+  if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
+    conn->SetAddr(ip, port);
+  }
   if (worker->rate_limit_group_ != nullptr) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
 
-Status Worker::listen(const std::string &host, int port, int backlog) {
+void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
+                                     sockaddr *address, int socklen, void *ctx) {
+  auto worker = static_cast<Worker *>(ctx);
+  DLOG(INFO) << "[worker] New connection: fd=" << fd
+              << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket << " thread #"
+              << worker->tid_;
+  event_base *base = evconnlistener_get_base(listener);
+  auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
+  bufferevent *bev = bufferevent_socket_new(base,
+                                            fd,
+                                            evThreadSafeFlags);
+  auto conn = new Redis::Connection(bev, worker);
+  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
+                    Redis::Connection::OnEvent, conn);
+  bufferevent_enable(bev, EV_READ);
+  Status status = worker->AddConnection(conn);
+  if (!status.IsOK()) {
+    std::string err_msg = Redis::Error("ERR " + status.Msg());
+    write(fd, err_msg.data(), err_msg.size());
+    conn->Close();
+  }
+  conn->SetAddr(worker->svr_->GetConfig()->unixsocket, 0);
+  if (worker->rate_limit_group_ != nullptr) {
+    bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
+  }
+}
+
+Status Worker::listenTCP(const std::string &host, int port, int backlog) {
   sockaddr_in sin{};
   sin.sin_family = AF_INET;
   evutil_inet_pton(AF_INET, host.data(), &(sin.sin_addr));
@@ -120,9 +149,34 @@ Status Worker::listen(const std::string &host, int port, int backlog) {
     return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
   evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newConnection, this,
+  auto lev = evconnlistener_new(base_, newTCPConnection, this,
                                 LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
+  return Status::OK();
+}
+
+Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) {
+  unlink(path.c_str());
+  sockaddr_un sa{};
+  if (path.size() > sizeof(sa.sun_path) - 1) {
+    return Status(Status::NotOK, "unix socket path too long");
+  }
+  sa.sun_family = AF_LOCAL;
+  strncpy(sa.sun_path, path.c_str(), sizeof(sa.sun_path) - 1);
+  int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+  if (fd == -1) {
+    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  }
+  if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  }
+  evutil_make_socket_nonblocking(fd);
+  auto lev = evconnlistener_new(base_, newUnixSocketConnection, this,
+                                LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+  listen_events_.emplace_back(lev);
+  if (perm != 0) {
+    chmod(sa.sun_path, (mode_t)perm);
+  }
   return Status::OK();
 }
 

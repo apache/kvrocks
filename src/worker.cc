@@ -93,6 +93,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
     std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     conn->Close();
+    return;
   }
   std::string ip;
   uint32_t port;
@@ -124,6 +125,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
     std::string err_msg = Redis::Error("ERR " + status.Msg());
     write(fd, err_msg.data(), err_msg.size());
     conn->Close();
+    return;
   }
   conn->SetAddr(worker->svr_->GetConfig()->unixsocket, 0);
   if (worker->rate_limit_group_ != nullptr) {

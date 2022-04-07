@@ -178,7 +178,7 @@ latency: 99.9% < 10ms
 
 ## License
 
-Kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.
+Kvrocks is under the Apache License Version 2.0. See the LICENSE file for details.
 
 ## 微信公众号
 

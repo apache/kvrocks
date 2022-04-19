@@ -3,12 +3,22 @@
 #include <rocksdb/write_batch.h>
 #include <glog/logging.h>
 
+#include "server.h"
 #include "redis_bitmap.h"
 #include "redis_slot.h"
 #include "redis_reply.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
-  log_data_.Decode(blob);
+  // Currently, we only have two kinds of log data
+  if (ServerLogData::IsServerLogData(blob.data())) {
+    ServerLogData server_log;
+    if (server_log.Decode(blob).IsOK()) {
+      // We don't handle server log currently
+    }
+  } else {
+    // Redis type log data
+    log_data_.Decode(blob);
+  }
 }
 
 rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key,

@@ -67,6 +67,7 @@ struct Config{
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;
   int fullsync_recv_file_delay = 0;
+  bool use_rsid_psync = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;

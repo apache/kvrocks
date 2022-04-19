@@ -3556,22 +3556,58 @@ class CommandStats: public Commander {
 class CommandPSync : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    size_t seq_arg = 1;
+    if (args.size() == 3) {
+      seq_arg = 2;
+      new_psync = true;
+    }
     try {
-      auto s = std::stoull(args[1]);
+      auto s = std::stoull(args[seq_arg]);
       next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
+    }
+    if (new_psync) {
+      assert(args.size() == 3);
+      replica_replid = args[1];
+      if (replica_replid.size() != kReplIdLength) {
+        return Status(Status::RedisParseErr, "Wrong replication id length");
+      }
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    LOG(INFO) << "Slave " << conn->GetAddr() << " asks for synchronization"
+    LOG(INFO) << "Slave " << conn->GetAddr()
+              << ", listening port: " << conn->GetListeningPort()
+              << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
+              << " replication id: " << (replica_replid.length() ?  replica_replid : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeq();
-    if (!checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
-      svr->stats_.IncrPSyncErrCounter();
+
+    bool need_full_sync = false;
+
+    // Check replication id of the last sequence log
+    if (new_psync && svr->GetConfig()->use_rsid_psync) {
+      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq - 1);
+      LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
+
+      // We check replication id only when WAL has this sequence, since there may be no WAL,
+      // Or WAL may has nothing when starting from db of old version kvrocks.
+      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
+        *output = "wrong replication id of the last log";
+        need_full_sync = true;
+      }
+    }
+
+    // Check Log sequence
+    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
       *output = "sequence out of range, please use fullsync";
+      need_full_sync = true;
+    }
+
+    if (need_full_sync) {
+      svr->stats_.IncrPSyncErrCounter();
       return Status(Status::RedisExecErr, *output);
     }
 
@@ -3598,6 +3634,8 @@ class CommandPSync : public Commander {
 
  private:
   rocksdb::SequenceNumber next_repl_seq = 0;
+  bool new_psync = false;
+  std::string replica_replid;
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage,
@@ -4771,7 +4809,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
     ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
+    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
     ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
     ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
     ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),

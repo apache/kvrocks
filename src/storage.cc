@@ -626,7 +626,7 @@ bool Storage::ShiftReplId(void) {
   std::mt19937 gen(rd() + getpid());
   std::uniform_int_distribution<> distrib(0, charset_len-1);
   std::string rand_str;
-  for(int i = 0; i < kReplIdLength; i++) {
+  for (int i = 0; i < kReplIdLength; i++) {
     rand_str.push_back(charset[distrib(gen)]);
   }
   replid_ = rand_str;
@@ -644,7 +644,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
 
   // An extractor to extract update from raw writebatch
   class ReplIdExtractor : public rocksdb::WriteBatch::Handler {
-  public:
+   public:
     rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key,
                         const Slice &value) override {
       return rocksdb::Status::OK();
@@ -670,8 +670,9 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
     };
     std::string GetReplId(void) {
       return replid_in_wal_;
-    };
-  private:
+    }
+
+   private:
     std::string replid_in_wal_;
   };
 

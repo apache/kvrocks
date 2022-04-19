@@ -195,11 +195,11 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                         const rocksdb::Slice &value) override;
   rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
-    return rocksdb::Status::OK(); 
+    return rocksdb::Status::OK();
   }
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
                   const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
-    return rocksdb::Status::OK(); 
+    return rocksdb::Status::OK();
   }
   WriteBatchType Type() { return type_; }
   std::string Key() const { return kv_.first; }

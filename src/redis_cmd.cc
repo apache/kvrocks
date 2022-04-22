@@ -4274,10 +4274,12 @@ class CommandFetchFile : public Commander {
             Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
           LOG(INFO) << "[replication] Succeed sending file " << file << " to "
                     << ip;
-        } else {
-          LOG(WARNING) << "[replication] Fail to send file " << file << " to "
-                       << ip << ", error: " << strerror(errno);
+          close(fd);
+          break;
         }
+
+        LOG(WARNING) << "[replication] Fail to send file " << file << " to "
+                       << ip << ", error: " << strerror(errno);
         close(fd);
 
         // Sleep if the speed of sending file is more than replication speed limit

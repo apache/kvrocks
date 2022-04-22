@@ -4277,6 +4277,8 @@ class CommandFetchFile : public Commander {
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to "
                        << ip << ", error: " << strerror(errno);
+          close(fd);
+          break;
         }
         close(fd);
 

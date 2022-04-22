@@ -373,6 +373,11 @@ proc start_server {options {code undefined}} {
         dict set config port $port
     }
 
+    # disable checking for leaks if setting
+    if {$::disable_check_leaks} {
+        dict set srv "skipleaks" 1
+    }
+
     set unixsocket [file normalize [format "%s/%s" [dict get $config "dir"] "socket"]]
     dict set config "unixsocket" $unixsocket
 

@@ -505,6 +505,8 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   std::string begin_key = kLuaFunctionPrefix, end_key = begin_key;
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
+  end_key[end_key.size()-1] += 1;
+
   rocksdb::WriteBatch batch;
   auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
   if (!s.ok()) {

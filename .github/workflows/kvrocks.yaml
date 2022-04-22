@@ -67,7 +67,3 @@ jobs:
 
       - name: Build
         run: make -j4
-
-      - name: Redis Tcl Test
-        run:
-          cd tests/tcl && sh runtest && cd -

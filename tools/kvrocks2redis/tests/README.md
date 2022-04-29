@@ -1,4 +1,5 @@
 ## Populate data and append new data script 
+
 * for testing the kvrocks2redis, manually check generate aof )
 
 ## Usage
@@ -8,6 +9,7 @@
 * install dependency::
     * pip install git+https://github.com/andymccurdy/redis-py.git@2.10.3   
 * Usage 
+
 ```
 # populate data
 python populate-kvrocks.py  
@@ -15,3 +17,4 @@ python populate-kvrocks.py
 # append new data 
 python append-data-to-kvrocks.py
 # check appended new aof data  
+```

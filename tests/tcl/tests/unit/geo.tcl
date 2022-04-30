@@ -15,6 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/geo.tcl
+
 # Helper functions to simulate search-in-radius in the Tcl side in order to
 # verify the Redis implementation with a fuzzy test.
 proc geo_degrad deg {expr {$deg*atan(1)*8/360}}

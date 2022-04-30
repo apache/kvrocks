@@ -15,6 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/support/server.tcl
+
 set ::global_overrides {}
 set ::tags {}
 set ::valgrind_errors {}

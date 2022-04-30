@@ -15,9 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Redis test suite. Copyright (C) 2009 Salvatore Sanfilippo antirez@gmail.com
-# This software is released under the BSD License. See the COPYING file for
-# more information.
+# Copyright (c) 2009, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/test_helper.tcl
+
+# Redis test suite.
 
 package require Tcl 8.5
 

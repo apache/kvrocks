@@ -22,5 +22,3 @@ start_server {tags {"config"} overrides {rename-command "KEYS KEYSNEW"}} {
         assert_equal "" [r KEYSNEW *]
     }
 }
-
-

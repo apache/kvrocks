@@ -15,9 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Tcl redis cluster client as a wrapper of redis.rb.
 # Copyright (C) 2014 Salvatore Sanfilippo
-# Released under the BSD license like Redis itself
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/support/cli.tcl
+
+# Tcl redis cluster client as a wrapper of redis.rb.
 #
 # Example usage:
 #

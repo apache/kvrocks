@@ -15,9 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Copyright (c) 2009-2014, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/support/redis.tcl
+
 # Tcl client library - used by the Redis test
-# Copyright (C) 2009-2014 Salvatore Sanfilippo
-# Released under the BSD license like Redis itself
 #
 # Example usage:
 #

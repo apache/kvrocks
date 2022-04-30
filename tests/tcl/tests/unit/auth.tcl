@@ -15,6 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/auth.tcl
+
 start_server {tags {"auth"}} {
     test {AUTH fails if there is no password configured server side} {
         catch {r auth foo} err

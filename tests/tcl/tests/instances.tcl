@@ -15,14 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Copyright (c) 2014, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/instances.tcl
+
 # Multi-instance test framework.
 # This is used in order to test Sentinel and Redis Cluster, and provides
 # basic capabilities for spawning and handling N parallel Redis / Sentinel
 # instances.
-#
-# Copyright (C) 2014 Salvatore Sanfilippo antirez@gmail.com
-# This software is released under the BSD License. See the COPYING file for
-# more information.
 
 package require Tcl 8.5
 

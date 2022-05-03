@@ -17,7 +17,7 @@
 
 FROM ubuntu:22.04 as build
 
-RUN apt update && apt install -y make git autoconf libtool g++
+RUN apt update && apt install -y make git autoconf libtool g++ libsnappy-dev
 WORKDIR /kvrocks
 
 COPY . .

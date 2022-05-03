@@ -15,13 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM ubuntu:18.04
+FROM ubuntu:22.04 as build
+
+RUN apt update && apt install -y make git autoconf libtool g++
+WORKDIR /kvrocks
+
+COPY . .
+RUN make -j4
+
+
+FROM ubuntu:22.04
 
 RUN apt update && apt install -y libsnappy-dev
 WORKDIR /kvrocks
 
-RUN mkdir /data
-COPY ./build/bin/kvrocks ./bin/
+COPY --from=build /kvrocks/src/kvrocks ./bin/
+
 COPY ./kvrocks.conf  ./conf/
 RUN sed  -i -e 's|dir /tmp/kvrocks|dir /var/lib/kvrocks|g' ./conf/kvrocks.conf
 VOLUME /var/lib/kvrocks

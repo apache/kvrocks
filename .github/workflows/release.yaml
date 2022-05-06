@@ -26,7 +26,7 @@ env:
   FPM_OPTS: "-s dir --prefix '/www/kvrocks' -n kvrocks --epoch 7 \
           --config-files /www/kvrocks/conf/kvrocks.conf --iteration release \
           --verbose --category 'kvrocks/projects' --description 'kvrocks' \
-          --url 'https://github.com/KvrocksLabs' --license 'Apache2.0'"
+          --url 'https://github.com/apache/incubator-kvrocks' --license 'Apache2.0'"
 
 jobs:
   release-deb-packages-and-docker-image:

@@ -77,12 +77,19 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
       - name: Build And Push Docker Image
         run: |
-          docker build -t kvrocks/kvrocks:$RELEASE_TAG .
-          docker tag kvrocks/kvrocks:$RELEASE_TAG kvrocks/kvrocks:latest
-          docker push kvrocks/kvrocks:$RELEASE_TAG
-          docker push kvrocks/kvrocks:latest
+          docker buildx build --platform linux/amd64,linux/arm64 --tag kvrocks/kvrocks:$RELEASE_TAG --tag kvrocks/kvrocks:latest .
 
   release-rpm-packages:
     name: Release Rpm Packages

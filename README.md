@@ -56,7 +56,7 @@ sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make sna
 
 # Ubuntu/Debian
 sudo apt update
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool googletest googletest-tools libgmock-dev libgtest-dev google-mock
+sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool googletest libgtest-dev
 
 # MACOSX
 brew install autoconf automake libtool snappy googletest

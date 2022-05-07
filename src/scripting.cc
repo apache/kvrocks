@@ -245,7 +245,7 @@ namespace Lua {
     Server *srv = conn->GetServer();
     lua_State *lua = srv->Lua();
 
-    auto s = Util::StringToNum(args[2], &numkeys);
+    auto s = Util::DecimalStringToNum(args[2], &numkeys);
     if (!s.IsOK()) {
       return s;
     }
@@ -604,7 +604,7 @@ const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
   const char *p = strchr(reply+1, '\r');
   int64_t value;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &value);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &value);
   lua_pushnumber(lua, static_cast<lua_Number>(value));
   return p+2;
 }
@@ -613,7 +613,7 @@ const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
   const char *p = strchr(reply+1, '\r');
   int64_t  bulklen;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &bulklen);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &bulklen);
   if (bulklen == -1) {
     lua_pushboolean(lua, 0);
     return p+2;
@@ -648,7 +648,7 @@ const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, 
   int64_t mbulklen;
   int j = 0;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &mbulklen);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &mbulklen);
   p += 2;
   if (mbulklen == -1) {
     lua_pushboolean(lua, 0);

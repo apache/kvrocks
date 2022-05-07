@@ -100,6 +100,8 @@ struct Config{
   std::string masterauth;
   std::string requirepass;
   std::string master_host;
+  std::string unixsocket;
+  int unixsocketperm = 0777;
   int master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;

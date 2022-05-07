@@ -42,7 +42,6 @@ Kvrocks has the following key features:
 ## Building kvrocks
 
 #### requirements
- 
 * g++ (required by c++11, version >= 4.8)
 * autoconf automake libtool snappy
 

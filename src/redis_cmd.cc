@@ -3658,7 +3658,7 @@ class CommandPerfLog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::StringToNum(args[2], &cnt_);
+        Status s = Util::DecimalStringToNum(args[2], &cnt_);
         return s;
       }
     }
@@ -3694,7 +3694,7 @@ class CommandSlowlog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::StringToNum(args[2], &cnt_);
+        Status s = Util::DecimalStringToNum(args[2], &cnt_);
         return s;
       }
     }

@@ -60,12 +60,16 @@ class Worker {
                   uint64_t type, bool skipme, int64_t *killed);
   void KickoutIdleClients(int timeout);
 
+  Status ListenUnixSocket(const std::string &path, int perm, int backlog);
+
   Server *svr_;
 
  private:
-  Status listen(const std::string &host, int port, int backlog);
-  static void newConnection(evconnlistener *listener, evutil_socket_t fd,
-                            sockaddr *address, int socklen, void *ctx);
+  Status listenTCP(const std::string &host, int port, int backlog);
+  static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
+                               sockaddr *address, int socklen, void *ctx);
+  static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
+                                      sockaddr *address, int socklen, void *ctx);
   static void TimerCB(int, int16_t events, void *ctx);
   Redis::Connection *removeConnection(int fd);
 

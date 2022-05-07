@@ -133,6 +133,8 @@ Config::Config() {
       {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
       {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
+      {"unixsocket", true, new StringField(&unixsocket, "")},
+      {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
@@ -227,9 +229,9 @@ void Config::initFieldValidator() {
           return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");
         }
         int64_t start, stop;
-        Status s = Util::StringToNum(args[0], &start, 0, 24);
+        Status s = Util::DecimalStringToNum(args[0], &start, 0, 24);
         if (!s.IsOK()) return s;
-        s = Util::StringToNum(args[1], &stop, 0, 24);
+        s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
         if (!s.IsOK()) return s;
         if (start > stop)  return Status(Status::NotOK, "invalid range format, start should be smaller than stop");
         compaction_checker_range.Start = start;

@@ -42,7 +42,6 @@ Kvrocks has the following key features:
 ## Building kvrocks
 
 #### requirements
-
 * g++ (required by c++11, version >= 4.8)
 * autoconf automake libtool snappy
 
@@ -56,7 +55,7 @@ sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make sna
 
 # Ubuntu/Debian
 sudo apt update
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool
+sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool googletest libgtest-dev
 
 # MACOSX
 brew install autoconf automake libtool snappy googletest

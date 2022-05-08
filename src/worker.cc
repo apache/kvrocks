@@ -44,10 +44,15 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
+  Status s;
   int port = config->port;
   auto binds = config->binds;
   for (const auto &bind : binds) {
-    Status s = listenTCP(bind, port, config->backlog);
+    if (strchr(bind.data(), ':')) {
+      s = listenTCP(bind, port, AF_INET6, config->backlog);
+    } else {
+      s = listenTCP(bind, port, AF_INET, config->backlog);
+    }
     if (!s.IsOK()) {
       LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
                  << ", encounter error: " << s.Msg();
@@ -153,27 +158,42 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   }
 }
 
-Status Worker::listenTCP(const std::string &host, int port, int backlog) {
-  sockaddr_in sin{};
-  sin.sin_family = AF_INET;
-  evutil_inet_pton(AF_INET, host.data(), &(sin.sin_addr));
-  sin.sin_port = htons(port);
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  int sock_opt = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+Status Worker::listenTCP(const std::string &host, int port, int af, int backlog) {
+  char _port[6];
+  int rv, fd, sock_opt = 1;
+
+  snprintf(_port, sizeof(_port), "%d", port);
+  struct addrinfo hints, *srv_info, *p;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = af;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  if ((rv = getaddrinfo(host.data(), _port, &hints, &srv_info)) != 0) {
+    return Status(Status::NotOK, gai_strerror(rv));
   }
-  // to support multi-thread binding on macOS
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+
+  for (p = srv_info; p != nullptr; p = p->ai_next) {
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
+      continue;
+    if (af == AF_INET6 && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
+      return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    }
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
+      return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    }
+    // to support multi-thread binding on macOS
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
+      return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    }
+    if (bind(fd, p->ai_addr, p->ai_addrlen)) {
+      return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    }
+    evutil_make_socket_nonblocking(fd);
+    auto lev = evconnlistener_new(base_, newTCPConnection, this,
+                                  LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+    listen_events_.emplace_back(lev);
   }
-  if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-  }
-  evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newTCPConnection, this,
-                                LEV_OPT_CLOSE_ON_FREE, backlog, fd);
-  listen_events_.emplace_back(lev);
   return Status::OK();
 }
 

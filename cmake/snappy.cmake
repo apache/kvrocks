@@ -24,5 +24,8 @@ FetchContent_Declare(snappy
   GIT_TAG b02bfa754ebf27921d8da3bd2517eab445b84ff9
 )
 
-set(SNAPPY_BUILD_TESTS OFF CACHE INTERNAL "")
-FetchContent_MakeAvailable(snappy)
+include(cmake/utils.cmake)
+
+FetchContent_MakeAvailableWithArgs(snappy
+  SNAPPY_BUILD_TESTS=OFF
+)

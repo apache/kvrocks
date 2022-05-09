@@ -31,15 +31,16 @@ if(NOT jemalloc_POPULATED)
   execute_process(COMMAND autoconf
     WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
   )
-  execute_process(COMMAND ./configure -C --enable-autogen --disable-libdl --with-jemalloc-prefix=""
-    WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
+  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure -C --enable-autogen --disable-libdl --with-jemalloc-prefix=""
+    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  add_custom_target(make_jemalloc COMMAND make
-    WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
+  add_custom_target(make_jemalloc 
+    COMMAND make
+    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
 endif()
 
 add_library(jemalloc INTERFACE)
 target_include_directories(jemalloc INTERFACE ${jemalloc_SOURCE_DIR}/include)
-target_link_libraries(jemalloc INTERFACE ${jemalloc_SOURCE_DIR}/lib/libjemalloc.a)
+target_link_libraries(jemalloc INTERFACE ${jemalloc_BINARY_DIR}/lib/libjemalloc.a)
 add_dependencies(jemalloc make_jemalloc)

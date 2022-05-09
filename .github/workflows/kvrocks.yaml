@@ -34,6 +34,7 @@ jobs:
       matrix:
         os: [ubuntu-18.04]
     runs-on: ${{ matrix.os }}
+    needs: license # wait for license job
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4
@@ -83,6 +84,7 @@ jobs:
       matrix:
         os: [ubuntu-18.04]
     runs-on: ${{ matrix.os }}
+    needs: license # wait for license job
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4
@@ -101,6 +103,7 @@ jobs:
 
   build-on-macos-latest:
     runs-on: macos-11
+    needs: license # wait for license job
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4

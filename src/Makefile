@@ -57,6 +57,7 @@ FINAL_LIBS+= $(GLOG) $(LIBEVENT) $(LIBEVENT_PTHREADS) $(ROCKSDB) $(LUA)
 # Operating system
 ifeq ($(uname_S),Darwin)
 	# Darwin
+	export ROCKSDB_DISABLE_JEMALLOC=1
 	DISABLE_JEMALLOC=1
 else
 endif

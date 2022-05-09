@@ -84,7 +84,7 @@ jobs:
       matrix:
         os: [ubuntu-18.04]
     runs-on: ${{ matrix.os }}
-    needs: license # wait for license job
+    needs: [license]
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4

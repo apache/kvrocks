@@ -40,30 +40,25 @@ endif ()
 
 if(NOT DISABLE_JEMALLOC)
     include(cmake/jemalloc.cmake)
-    list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
-    list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
+    list(APPEND EXTERNAL_LIBS PRIVATE jemalloc)
 endif()
 
+include(cmake/gtest.cmake)
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE glog)
+list(APPEND EXTERNAL_LIBS PRIVATE snappy)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${rocksdb_LIBRARIES})
 list(APPEND EXTERNAL_INCS PRIVATE ${rocksdb_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE rocksdb)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${snappy_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${snappy_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE event event_pthreads)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${libevent_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${libevent_INCLUDE_DIRS})
-
-list(APPEND EXTERNAL_LIBS PRIVATE ${lua_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${lua_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE lua)
 
 # End dependencies
 
@@ -87,10 +82,6 @@ option(ENABLE_ASAN "enable ASAN santinizer" OFF)
 if(ENBALE_ASAN)
     target_compile_options(kvrocks PRIVATE -fsanitize=address)
     target_link_libraries(kvrocks PRIVATE -fsanitize=address)
-endif()
-add_dependencies(kvrocks libevent glog snappy rocksdb lua)
-if(NOT DISABLE_JEMALLOC)
-    add_dependencies(kvrocks jemalloc)
 endif()
 
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
@@ -203,7 +194,6 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
 endif()
-add_dependencies(kvrocks2redis libevent glog rocksdb)
 target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
 target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
 if(UNWIND_LIB)
@@ -404,10 +394,8 @@ add_executable(unittest
         src/rand.cc
         src/rand.h)
 
-add_dependencies(unittest glog rocksdb snappy lua)
 target_compile_features(unittest PRIVATE cxx_std_11)
-message(${snappy_LIBRARIES})
-target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} -lgtest)
+target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} gtest_main)
 if(UNWIND_LIB)
     target_link_libraries(unittest PRIVATE -lunwind)
 endif()

@@ -65,4 +65,4 @@ fi
 
 git submodule init
 git submodule update
-cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=Release .. && make -j4
+cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=Release .. && make -j4 kvrocks kvrocks2redis

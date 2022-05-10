@@ -27,7 +27,7 @@ include(FetchContent)
 
 FetchContent_Declare(rocksdb
   GIT_REPOSITORY https://github.com/facebook/rocksdb
-  GIT_TAG 645c445978bb22c8c7791f90a0d9931928a58045
+  GIT_TAG v6.29.5
 )
 
 include(cmake/utils.cmake)

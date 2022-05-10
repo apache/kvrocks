@@ -15,34 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# used for `find_package(JeMalloc)` mechanism in rocksdb
 
-set(COMPILE_WITH_JEMALLOC ON)
+if(jemalloc_SOURCE_DIR)
+  message(STATUS "found JeMalloc in ${jemalloc_SOURCE_DIR}")
 
-if (DISABLE_JEMALLOC)
-  set(COMPILE_WITH_JEMALLOC OFF)
+  add_library(JeMalloc::JeMalloc ALIAS jemalloc) # rocksdb use it
+  install(TARGETS jemalloc EXPORT RocksDBTargets) # export for install(...)
 endif()
-
-include(FetchContent)
-
-FetchContent_Declare(rocksdb
-  GIT_REPOSITORY https://github.com/facebook/rocksdb
-  GIT_TAG v6.29.5
-)
-
-include(cmake/utils.cmake)
-
-FetchContent_MakeAvailableWithArgs(rocksdb
-  CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/modules # to locate FindJeMalloc.cmake
-  FAIL_ON_WARNINGS=OFF
-  WITH_TESTS=OFF
-  WITH_BENCHMARK_TOOLS=OFF
-  WITH_SNAPPY=ON
-  WITH_TOOLS=OFF
-  WITH_GFLAGS=OFF
-  USE_RTTI=ON
-  ROCKSDB_BUILD_SHARED=OFF
-  WITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
-)
-
-set(rocksdb_INCLUDE_DIRS ${rocksdb_SOURCE_DIR}/include)

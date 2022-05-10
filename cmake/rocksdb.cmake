@@ -32,8 +32,12 @@ FetchContent_Declare(rocksdb
 
 include(cmake/utils.cmake)
 
+FetchContent_GetProperties(jemalloc)
+FetchContent_GetProperties(snappy)
+
 FetchContent_MakeAvailableWithArgs(rocksdb
   CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/modules # to locate FindJeMalloc.cmake
+  Snappy_DIR=${PROJECT_SOURCE_DIR}/cmake/modules # to locate SnappyConfig.cmake
   FAIL_ON_WARNINGS=OFF
   WITH_TESTS=OFF
   WITH_BENCHMARK_TOOLS=OFF

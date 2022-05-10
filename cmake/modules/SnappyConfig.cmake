@@ -15,11 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# used for `find_package(JeMalloc)` mechanism in rocksdb
+# used for `find_package(Snappy CONFIG)` mechanism in rocksdb
 
-if(jemalloc_SOURCE_DIR)
-  message(STATUS "Found JeMalloc in ${jemalloc_SOURCE_DIR}")
+if(snappy_SOURCE_DIR)
+  message(STATUS "Found Snappy in ${snappy_SOURCE_DIR}")
 
-  add_library(JeMalloc::JeMalloc ALIAS jemalloc) # rocksdb use it
-  install(TARGETS jemalloc EXPORT RocksDBTargets) # export for install(...)
+  add_library(Snappy::snappy ALIAS snappy) # rocksdb use it
 endif()

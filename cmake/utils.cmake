@@ -17,16 +17,27 @@
 
 include_guard()
 
-include(FetchContent)
+macro(parse_var arg key value)
+  string(REGEX REPLACE "^(.+)=(.+)$" "\\1;\\2" REGEX_RESULT ${arg})
+  list(GET REGEX_RESULT 0 ${key})
+  list(GET REGEX_RESULT 1 ${value})
+endmacro()
 
-FetchContent_Declare(snappy
-  GIT_REPOSITORY https://github.com/google/snappy
-  GIT_TAG 1.1.9
-)
+function(FetchContent_MakeAvailableWithArgs dep)
+  if(NOT ${dep}_POPULATED)
+    FetchContent_Populate(${dep})
 
-include(cmake/utils.cmake)
+    foreach(arg IN LISTS ARGN)
+      parse_var(${arg} key value)
+      set(${key}_OLD ${${key}})
+      set(${key} ${value} CACHE INTERNAL "")
+    endforeach()
 
-FetchContent_MakeAvailableWithArgs(snappy
-  SNAPPY_BUILD_TESTS=OFF
-  SNAPPY_BUILD_BENCHMARKS=OFF
-)
+    add_subdirectory(${${dep}_SOURCE_DIR} ${${dep}_BINARY_DIR} EXCLUDE_FROM_ALL)
+
+    foreach(arg IN LISTS ARGN)
+      parse_var(${arg} key value)
+      set(${key} ${${key}_OLD} CACHE INTERNAL "")
+    endforeach()
+  endif()
+endfunction()

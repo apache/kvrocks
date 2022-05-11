@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13)
 project(kvrocks
         VERSION 999.999.999
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
@@ -40,30 +40,24 @@ endif ()
 
 if(NOT DISABLE_JEMALLOC)
     include(cmake/jemalloc.cmake)
-    list(APPEND EXTERNAL_LIBS PRIVATE ${jemalloc_LIBRARIES})
-    list(APPEND EXTERNAL_INCS PRIVATE ${jemalloc_INCLUDE_DIRS})
+    list(APPEND EXTERNAL_LIBS PRIVATE jemalloc)
 endif()
 
+include(cmake/gtest.cmake)
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${glog_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${glog_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE glog)
+list(APPEND EXTERNAL_LIBS PRIVATE snappy)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${rocksdb_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${rocksdb_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${snappy_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${snappy_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
 
-list(APPEND EXTERNAL_LIBS PRIVATE ${libevent_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${libevent_INCLUDE_DIRS})
-
-list(APPEND EXTERNAL_LIBS PRIVATE ${lua_LIBRARIES})
-list(APPEND EXTERNAL_INCS PRIVATE ${lua_INCLUDE_DIRS})
+list(APPEND EXTERNAL_LIBS PRIVATE lua)
 
 # End dependencies
 
@@ -88,13 +82,8 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks PRIVATE -fsanitize=address)
     target_link_libraries(kvrocks PRIVATE -fsanitize=address)
 endif()
-add_dependencies(kvrocks libevent glog snappy rocksdb lua)
-if(NOT DISABLE_JEMALLOC)
-    add_dependencies(kvrocks jemalloc)
-endif()
 
 target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
-target_include_directories(kvrocks ${EXTERNAL_INCS})
 find_package(Threads REQUIRED)
 if(THREADS_HAVE_PTHREAD_ARG)
     target_compile_options(kvrocks PUBLIC "-pthread")
@@ -203,9 +192,7 @@ if(ENBALE_ASAN)
     target_compile_options(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     target_link_libraries(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
 endif()
-add_dependencies(kvrocks2redis libevent glog rocksdb)
 target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
-target_include_directories(kvrocks2redis ${EXTERNAL_INCS})
 if(UNWIND_LIB)
     target_link_libraries(kvrocks2redis PRIVATE -lunwind)
 endif()
@@ -404,13 +391,10 @@ add_executable(unittest
         src/rand.cc
         src/rand.h)
 
-add_dependencies(unittest glog rocksdb snappy lua)
 target_compile_features(unittest PRIVATE cxx_std_11)
-message(${snappy_LIBRARIES})
-target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} -lgtest)
+target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} gtest_main)
 if(UNWIND_LIB)
     target_link_libraries(unittest PRIVATE -lunwind)
 endif()
 target_include_directories(unittest PRIVATE ${PROJECT_BINARY_DIR})
-target_include_directories(unittest ${EXTERNAL_INCS})
 target_include_directories(unittest PRIVATE src)

@@ -15,18 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# used for `find_package(JeMalloc)` mechanism in rocksdb
 
-include(FetchContent)
+if(jemalloc_SOURCE_DIR)
+  message(STATUS "Found JeMalloc in ${jemalloc_SOURCE_DIR}")
 
-FetchContent_Declare(snappy
-  GIT_REPOSITORY https://github.com/google/snappy
-  GIT_TAG 1.1.9
-)
-
-include(cmake/utils.cmake)
-
-FetchContent_MakeAvailableWithArgs(snappy
-  SNAPPY_BUILD_TESTS=OFF
-  SNAPPY_BUILD_BENCHMARKS=OFF
-)
+  add_library(JeMalloc::JeMalloc ALIAS jemalloc) # rocksdb use it
+  install(TARGETS jemalloc EXPORT RocksDBTargets) # export for install(...)
+endif()

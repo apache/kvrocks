@@ -57,12 +57,11 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     fi
     mkdir -p $BUILD_DIR/cmake
     cd $BUILD_DIR
-    curl -O -L https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2.tar.gz
-    tar -zxf cmake-3.13.2.tar.gz && cd cmake-3.13.2
+    CMAKE_DOWNLOAD_VERSION=3.23.1
+    curl -O -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_DOWNLOAD_VERSION/cmake-$CMAKE_DOWNLOAD_VERSION.tar.gz
+    tar -zxf cmake-$CMAKE_DOWNLOAD_VERSION.tar.gz && cd cmake-$CMAKE_DOWNLOAD_VERSION
     ./bootstrap --prefix=$CMAKE_INSTALL_DIR && make && make install && cd ../..
     CMAKE_BIN=$CMAKE_INSTALL_DIR/bin/cmake
 fi
 
-git submodule init
-git submodule update
 cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=Release .. && make -j4 kvrocks kvrocks2redis

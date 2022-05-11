@@ -184,4 +184,4 @@ install: all
 	$(KVROCKS_INSTALL) $(PROG) $(BIN_DIR)
 
 uninstall:
-	rm -rf $(INSTALL_DIR)/$(PROG)
+	rm -rf $(BIN_DIR)/$(PROG)

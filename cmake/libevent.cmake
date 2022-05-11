@@ -15,39 +15,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
-if (NOT __LIBEVENT_INCLUDED)
-    set(__LIBEVENT_INCLUDED TRUE)
-    # build directory
-    set(libevent_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/libevent-prefix)
-    # install directory
-    set(libevent_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/libevent-install)
+include_guard()
 
-    if (UNIX)
-        set(LIBEVENT_EXTRA_COMPILER_FLAGS "-fPIC")
-    endif()
+include(FetchContent)
 
-    set(LIBEVENT_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LIBEVENT_EXTRA_COMPILER_FLAGS}")
-    set(LIBEVENT_C_FLAGS "${CMAKE_C_FLAGS} ${LIBEVENT_EXTRA_COMPILER_FLAGS}")
+FetchContent_Declare(libevent
+  GIT_REPOSITORY https://github.com/libevent/libevent
+  GIT_TAG release-2.1.11-stable
+)
 
-    ExternalProject_Add(libevent
-        PREFIX ${libevent_PREFIX}
-        SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/libevent
-        INSTALL_DIR ${libevent_INSTALL}
-        CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                   -DCMAKE_INSTALL_PREFIX=${libevent_INSTALL}
-                   -DCMAKE_C_FLAGS=${LIBEVENT_C_FLAGS}
-                   -DCMAKE_CXX_FLAGS=${LIBEVENT_CXX_FLAGS}
-                   -DEVENT__DISABLE_TESTS=ON
-                   -DEVENT__DISABLE_REGRESS=ON
-                   -DEVENT__DISABLE_SAMPLES=ON
-                   -DEVENT__DISABLE_OPENSSL=ON
-                   -DEVENT__LIBRARY_TYPE=STATIC
-        LOG_DOWNLOAD 1
-        LOG_CONFIGURE 1
-        LOG_INSTALL 1
-        )
+include(cmake/utils.cmake)
 
-    set(libevent_FOUND TRUE)
-    set(libevent_INCLUDE_DIRS ${libevent_INSTALL}/include)
-    set(libevent_LIBRARIES ${libevent_INSTALL}/lib/libevent.a ${libevent_INSTALL}/lib/libevent_pthreads.a)
-endif()
+FetchContent_MakeAvailableWithArgs(libevent
+  EVENT__DISABLE_TESTS=ON
+  EVENT__DISABLE_REGRESS=ON
+  EVENT__DISABLE_SAMPLES=ON
+  EVENT__DISABLE_OPENSSL=ON
+  EVENT__LIBRARY_TYPE=STATIC
+  EVENT__DISABLE_BENCHMARK=ON
+)
+
+add_library(event_with_headers INTERFACE)
+target_include_directories(event_with_headers INTERFACE ${libevent_SOURCE_DIR}/include ${libevent_BINARY_DIR}/include)
+target_link_libraries(event_with_headers INTERFACE event event_pthreads)

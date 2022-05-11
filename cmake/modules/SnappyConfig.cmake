@@ -15,18 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# used for `find_package(Snappy CONFIG)` mechanism in rocksdb
 
-include(FetchContent)
+if(snappy_SOURCE_DIR)
+  message(STATUS "Found Snappy in ${snappy_SOURCE_DIR}")
 
-FetchContent_Declare(snappy
-  GIT_REPOSITORY https://github.com/google/snappy
-  GIT_TAG 1.1.9
-)
-
-include(cmake/utils.cmake)
-
-FetchContent_MakeAvailableWithArgs(snappy
-  SNAPPY_BUILD_TESTS=OFF
-  SNAPPY_BUILD_BENCHMARKS=OFF
-)
+  add_library(Snappy::snappy ALIAS snappy) # rocksdb use it
+endif()

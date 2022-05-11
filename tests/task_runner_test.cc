@@ -31,7 +31,6 @@ TEST(TaskRunner, PublishOverflow) {
     if (i < 3) {
       ASSERT_TRUE(s.IsOK());
     } else {
-      std::cout << "i:" << i <<std::endl;
       ASSERT_FALSE(s.IsOK());
     }
   }

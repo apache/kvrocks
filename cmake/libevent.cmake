@@ -21,7 +21,7 @@ include(FetchContent)
 
 FetchContent_Declare(libevent
   GIT_REPOSITORY https://github.com/libevent/libevent
-  GIT_TAG 4c908dde58ef780eeefcc9df4db3063ca62ea862
+  GIT_TAG release-2.1.11-stable
 )
 
 include(cmake/utils.cmake)

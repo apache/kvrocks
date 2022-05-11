@@ -49,4 +49,6 @@ FetchContent_MakeAvailableWithArgs(rocksdb
   WITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
 )
 
-set(rocksdb_INCLUDE_DIRS ${rocksdb_SOURCE_DIR}/include)
+add_library(rocksdb_with_headers INTERFACE)
+target_include_directories(rocksdb_with_headers INTERFACE ${rocksdb_SOURCE_DIR}/include)
+target_link_libraries(rocksdb_with_headers INTERFACE rocksdb)

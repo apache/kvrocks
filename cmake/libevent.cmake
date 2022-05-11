@@ -34,3 +34,7 @@ FetchContent_MakeAvailableWithArgs(libevent
   EVENT__LIBRARY_TYPE=STATIC
   EVENT__DISABLE_BENCHMARK=ON
 )
+
+add_library(event_with_headers INTERFACE)
+target_include_directories(event_with_headers INTERFACE ${libevent_SOURCE_DIR}/include ${libevent_BINARY_DIR}/include)
+target_link_libraries(event_with_headers INTERFACE event event_pthreads)

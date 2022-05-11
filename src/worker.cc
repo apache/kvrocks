@@ -48,11 +48,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   int port = config->port;
   auto binds = config->binds;
   for (const auto &bind : binds) {
-    if (strchr(bind.data(), ':')) {
-      s = listenTCP(bind, port, AF_INET6, config->backlog);
-    } else {
-      s = listenTCP(bind, port, AF_INET, config->backlog);
-    }
+    s = listenTCP(bind, port, config->backlog);
     if (!s.IsOK()) {
       LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
                  << ", encounter error: " << s.Msg();
@@ -158,10 +154,16 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   }
 }
 
-Status Worker::listenTCP(const std::string &host, int port, int af, int backlog) {
+Status Worker::listenTCP(const std::string &host, int port, int backlog) {
   char _port[6];
+  int af;
   int rv, fd, sock_opt = 1;
 
+  if (strchr(host.data(), ':')) {
+    af = AF_INET6;
+  } else {
+    af = AF_INET;
+  }
   snprintf(_port, sizeof(_port), "%d", port);
   struct addrinfo hints, *srv_info, *p;
   memset(&hints, 0, sizeof(hints));

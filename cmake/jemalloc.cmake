@@ -40,7 +40,9 @@ if(NOT jemalloc_POPULATED)
   )
 endif()
 
+find_package(Threads REQUIRED)
+
 add_library(jemalloc INTERFACE)
 target_include_directories(jemalloc INTERFACE $<BUILD_INTERFACE:${jemalloc_BINARY_DIR}/include>)
-target_link_libraries(jemalloc INTERFACE $<BUILD_INTERFACE:${jemalloc_BINARY_DIR}/lib/libjemalloc.a>)
+target_link_libraries(jemalloc INTERFACE $<BUILD_INTERFACE:${jemalloc_BINARY_DIR}/lib/libjemalloc.a> Threads::Threads)
 add_dependencies(jemalloc make_jemalloc)

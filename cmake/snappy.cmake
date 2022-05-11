@@ -21,11 +21,12 @@ include(FetchContent)
 
 FetchContent_Declare(snappy
   GIT_REPOSITORY https://github.com/google/snappy
-  GIT_TAG b02bfa754ebf27921d8da3bd2517eab445b84ff9
+  GIT_TAG 1.1.9
 )
 
 include(cmake/utils.cmake)
 
 FetchContent_MakeAvailableWithArgs(snappy
   SNAPPY_BUILD_TESTS=OFF
+  SNAPPY_BUILD_BENCHMARKS=OFF
 )

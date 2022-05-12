@@ -17,19 +17,18 @@
 
 FROM ubuntu:22.04 as build
 
-RUN apt update && apt install -y make git autoconf libtool g++ libsnappy-dev
+RUN apt update && apt install -y cmake make git autoconf libtool g++
 WORKDIR /kvrocks
 
 COPY . .
-RUN make -j4
+RUN mkdir docker-build && ./build.sh docker-build
 
 
 FROM ubuntu:22.04
 
-RUN apt update && apt install -y libsnappy-dev
 WORKDIR /kvrocks
 
-COPY --from=build /kvrocks/src/kvrocks ./bin/
+COPY --from=build /kvrocks/docker-build/kvrocks ./bin/
 
 COPY ./kvrocks.conf  ./conf/
 RUN sed  -i -e 's|dir /tmp/kvrocks|dir /var/lib/kvrocks|g' ./conf/kvrocks.conf

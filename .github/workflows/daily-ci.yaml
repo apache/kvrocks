@@ -61,7 +61,6 @@ jobs:
 
       - name: Build
         run: |
-          git submodule init && git submodule update
           mkdir _build && cd _build
           cmake -DDISABLE_JEMALLOC=true -DCMAKE_BUILD_TYPE=Release ..
           make -j4 kvrocks kvrocks2redis
@@ -82,12 +81,13 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install snappy googletest gcc autoconf automake libtool
+          brew install cmake gcc autoconf automake libtool
           mkdir build
       - name: Build
         run: |
+          cd build
+          cmake ..
           make -j4
-          cp src/kvrocks build/kvrocks
       - name: Unit Test
         run: make test
 

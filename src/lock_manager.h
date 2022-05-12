@@ -33,6 +33,7 @@ class LockManager {
   unsigned Size();
   void Lock(const rocksdb::Slice &key);
   void UnLock(const rocksdb::Slice &key);
+  void LockTwo(const rocksdb::Slice &first_key, const rocksdb::Slice &second_key);
 
  private:
   int hash_power_;
@@ -54,4 +55,22 @@ class LockGuard {
  private:
   LockManager *lock_mgr_ = nullptr;
   rocksdb::Slice key_;
+};
+
+class TwoLockGuard {
+ public:
+  explicit TwoLockGuard(LockManager *lock_mgr, rocksdb::Slice first_key, rocksdb::Slice second_key):
+      lock_mgr_(lock_mgr),
+      first_key_(first_key),
+      second_key_(second_key) {
+    lock_mgr->LockTwo(first_key, second_key);
+  }
+  ~TwoLockGuard() {
+    lock_mgr_->UnLock(first_key_);
+    lock_mgr_->UnLock(second_key_);
+  }
+ private:
+  LockManager *lock_mgr_ = nullptr;
+  rocksdb::Slice first_key_;
+  rocksdb::Slice second_key_;
 };

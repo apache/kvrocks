@@ -51,3 +51,7 @@ void LockManager::Lock(const rocksdb::Slice &key) {
 void LockManager::UnLock(const rocksdb::Slice &key) {
   mutex_pool_[hash(key)]->unlock();
 }
+
+void LockManager::LockTwo(const rocksdb::Slice &first_key, const rocksdb::Slice &second_key) {
+  std::lock(*mutex_pool_[hash(first_key)], *mutex_pool_[hash(second_key)]);
+}

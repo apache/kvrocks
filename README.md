@@ -43,44 +43,44 @@ Kvrocks has the following key features:
 
 #### requirements
 * g++ (required by c++11, version >= 4.8)
-* autoconf automake libtool snappy
+* autoconf automake libtool cmake
 
 #### Build
 
-***NOTE: You should install the snappy first:***
-
 ```shell
 # Centos/Redhat
-sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which gtest gtest-devel
+sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
 
 # Ubuntu/Debian
 sudo apt update
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool googletest libgtest-dev
+sudo apt-get install gcc g++ make cmake autoconf automake libtool
 
 # MACOSX
-brew install autoconf automake libtool snappy googletest
+brew install autoconf automake libtool cmake
 ```
 
 It is as simple as:
 
 ```shell
-$ git clone --recursive https://github.com/apache/incubator-kvrocks.git
+$ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd kvrocks
-$ make -j4
+$ mkdir build
+$ ./build.sh build # manually run CMake if you want to build Debug version or add some build options
 ```
 
 ### Running kvrocks
 
 ```shell
-$ ./src/kvrocks -c kvrocks.conf
+$ ./build/kvrocks -c kvrocks.conf
 ```
 
 ### Running test cases
 
-***NOTE: You should install the googletest first***
-
 ```shell
-make test
+$ # make sure CMake was executed in ./build
+$ cd build
+$ make unittest
+$ ./unittest
 ```
 
 ### Supported platforms

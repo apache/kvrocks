@@ -48,26 +48,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cppcheck
           sudo pip install cpplint==1.5.0
-          sudo apt-get install -y tar libsnappy-dev
+          sudo apt-get install -y tar cmake
           mkdir build
 
       - name: Lint
         run: |
-          make lint
+          ./cpplint.sh
+          ./cppcheck.sh
 
       - name: Build
         run: |
+          cd build
+          cmake ..
           make -j4
-          cp src/kvrocks build/kvrocks
+          cd ..
 
       - name: Unit Test
         run: |
-          wget https://github.com/google/googletest/archive/release-1.8.1.tar.gz
-          tar -zxvf release-1.8.1.tar.gz
-          cd googletest-release-1.8.1/
-          cmake CMakeLists.txt
-          make && sudo make install && cd -
-          make test
+          ./build/unittest
 
       - name: Redis Tcl Test
         run: |
@@ -78,28 +76,6 @@ jobs:
           sudo apt-get install tcl8.5
           cd tests/tcl && sh runtest
           sh runtest --single integration/redis-cli && cd -
-
-  build-on-ubuntu-with-cmake:
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-    runs-on: ${{ matrix.os }}
-    needs: [license]
-    steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Install Dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install -y gcc g++ cmake
-          mkdir _build
-
-      - name: Build
-        run: |
-          sh build.sh _build
 
   build-on-macos-latest:
     runs-on: macos-11
@@ -112,8 +88,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install snappy googletest gcc autoconf automake libtool
+          brew install gcc autoconf automake libtool cmake
           mkdir build
 
       - name: Build
-        run: make -j4
+        run: |
+          cd build
+          cmake ..
+          make -j4

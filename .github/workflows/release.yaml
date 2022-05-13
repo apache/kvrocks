@@ -41,16 +41,19 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get install -y tar libsnappy-dev
+          sudo apt-get install -y tar cmake
           mkdir -p build/bin
           mkdir -p build/conf
 
       - name: Build
         run: |
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
           make -j4
-          cp src/kvrocks build/bin/
-          cp src/kvrocks2redis build/bin/
-          cp kvrocks.conf build/conf/
+          cp kvrocks bin/
+          cp kvrocks2redis bin/
+          cp ../kvrocks.conf conf/
+          cd ..
 
       - name: Set ENV
         run: |
@@ -101,7 +104,7 @@ jobs:
         run: |
           yum install -y epel-release
           yum install -y https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
-          yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which gtest gtest-devel
+          yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
 
       - name: Checkout Code Base
         uses: actions/checkout@v2.3.4
@@ -110,12 +113,14 @@ jobs:
 
       - name: Build
         run: |
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release
           make -j4
-          mkdir -p build/bin
-          mkdir -p build/conf
-          cp src/kvrocks build/bin/
-          cp src/kvrocks2redis build/bin/
-          cp kvrocks.conf build/conf/
+          mkdir -p bin
+          mkdir -p conf
+          cp kvrocks bin/
+          cp kvrocks2redis bin/
+          cp ../kvrocks.conf conf/
 
       - name: Set ENV
         run: |

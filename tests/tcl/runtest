@@ -12,7 +12,7 @@ then
     exit 1
 fi
 
-cp ../../src/kvrocks redis-server && $TCLSH tests/test_helper.tcl "${@}"
+cp ../../build/kvrocks redis-server && $TCLSH tests/test_helper.tcl "${@}"
 status=$?
 rm ./redis-server
 exit $status

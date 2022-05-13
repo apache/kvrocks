@@ -45,8 +45,6 @@
 #define HAVE_BACKTRACE 1
 #endif
 
-const char *kDefaultConfPath = "../kvrocks.conf";
-
 std::function<void()> hup_handler;
 
 struct Options {
@@ -151,7 +149,7 @@ void setupSigSegvAction() {
 
 static void usage(const char* program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"
-            << "\t-c config file, default is " << kDefaultConfPath << "\n"
+            << "\t-c config file\n"
             << "\t-h help\n";
   exit(0);
 }

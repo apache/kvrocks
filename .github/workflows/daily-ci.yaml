@@ -21,6 +21,7 @@ on:
   schedule:
     # Daily run this action at 1am
     - cron: '0 1 * * *'
+  workflow_dispatch:
 
 jobs:
   build-on-ubuntu-docker:
@@ -61,10 +62,10 @@ jobs:
 
       - name: Build
         run: |
-          mkdir _build && cd _build
+          mkdir build && cd build
           cmake -DDISABLE_JEMALLOC=true -DCMAKE_BUILD_TYPE=Release ..
           make -j4 kvrocks kvrocks2redis
-          cp kvrocks ../src && cd ..
+          cd ..
 
       - name: Redis Tcl Test
         run: |
@@ -88,9 +89,12 @@ jobs:
           cd build
           cmake ..
           make -j4
+          cd ..
       - name: Unit Test
-        run: make test
-
+        run: |
+          cd build
+          ./unittest
+          cd ..
       - name: Redis Tcl Test
         run:
           cd tests/tcl && sh runtest && cd -

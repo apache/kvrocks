@@ -306,21 +306,27 @@ Status SockReadLine(int fd, std::string *data) {
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
+  addr->clear();
+
   sockaddr_storage sa{};
   socklen_t sa_len = sizeof(sa);
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
     return -1;
   }
-  if (sa.ss_family == AF_INET) {
+  if (sa.ss_family == AF_INET6) {
+    char buf[INET6_ADDRSTRLEN];
+    auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
+    inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET_ADDRSTRLEN);
+    addr->append(buf);
+    *port = ntohs(sa6->sin6_port);
+  } else {
     auto sa4 = reinterpret_cast<sockaddr_in *>(&sa);
     char buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, reinterpret_cast<void *>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
-    addr->clear();
     addr->append(buf);
     *port = ntohs(sa4->sin_port);
-    return 0;
   }
-  return -2;  // only support AF_INET currently
+  return 0;
 }
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {

@@ -524,7 +524,8 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   std::string dst_ns_key;
   AppendNamespacePrefix(dst, &dst_ns_key);
 
-  TwoLockGuard guard(storage_->GetLockManager(), src_ns_key, dst_ns_key);
+  std::vector<std::string> lock_keys{src_ns_key, dst_ns_key};
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
   ListMetadata src_metadata(false);
   auto s = GetMetadata(src_ns_key, &src_metadata);
   if (!s.ok()) {

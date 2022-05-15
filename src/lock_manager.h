@@ -20,10 +20,12 @@
 
 #pragma once
 
+#include <rocksdb/db.h>
+
 #include <mutex>
 #include <vector>
-
-#include <rocksdb/db.h>
+#include <string>
+#include <functional>
 
 class LockManager {
  public:
@@ -33,7 +35,7 @@ class LockManager {
   unsigned Size();
   void Lock(const rocksdb::Slice &key);
   void UnLock(const rocksdb::Slice &key);
-  void LockTwo(const rocksdb::Slice &first_key, const rocksdb::Slice &second_key);
+  std::vector<std::mutex *> MultiGet(const std::vector<std::string> &keys);
 
  private:
   int hash_power_;
@@ -57,20 +59,24 @@ class LockGuard {
   rocksdb::Slice key_;
 };
 
-class TwoLockGuard {
+class MultiLockGuard {
  public:
-  explicit TwoLockGuard(LockManager *lock_mgr, rocksdb::Slice first_key, rocksdb::Slice second_key):
-      lock_mgr_(lock_mgr),
-      first_key_(first_key),
-      second_key_(second_key) {
-    lock_mgr->LockTwo(first_key, second_key);
+  explicit MultiLockGuard(LockManager *lock_mgr, const std::vector<std::string> &keys):
+      lock_mgr_(lock_mgr) {
+    locks_ = lock_mgr_->MultiGet(keys);
+    for (const auto &iter : locks_) {
+      iter->lock();
+    }
   }
-  ~TwoLockGuard() {
-    lock_mgr_->UnLock(first_key_);
-    lock_mgr_->UnLock(second_key_);
+
+  ~MultiLockGuard() {
+    // Lock with order `A B C` and unlock should be `C B A`
+    for (auto iter = locks_.rbegin(); iter != locks_.rend(); ++iter) {
+      (*iter)->unlock();
+    }
   }
+
  private:
   LockManager *lock_mgr_ = nullptr;
-  rocksdb::Slice first_key_;
-  rocksdb::Slice second_key_;
+  std::vector<std::mutex*> locks_;
 };

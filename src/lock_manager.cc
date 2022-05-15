@@ -22,6 +22,7 @@
 
 #include <thread>
 #include <string>
+#include <set>
 
 LockManager::LockManager(int hash_power): hash_power_(hash_power) {
   hash_mask_ = (1U << hash_power) - 1;
@@ -52,12 +53,23 @@ void LockManager::UnLock(const rocksdb::Slice &key) {
   mutex_pool_[hash(key)]->unlock();
 }
 
-void LockManager::LockTwo(const rocksdb::Slice &first_key, const rocksdb::Slice &second_key) {
-  auto first_idx = hash(first_key);
-  auto second_idx = hash(second_key);
-  if (first_idx == second_idx) {
-    // to avoid deadlock on the same mutex: get another mutex for the second key
-    second_idx = (second_idx + 1) & hash_mask_;
+std::vector<std::mutex *> LockManager::MultiGet(const std::vector<std::string> &keys) {
+  std::vector<std::mutex *> locks;
+  std::set<unsigned, std::greater<unsigned>> to_acquire_indexes;
+  // We are using the `set` to avoid retrieving the mutex, as well as guarantee to retrieve
+  // the order of locks.
+  //
+  // For example, we need lock the key `A` and `B` and they have the same lock hash
+  // index, it will be deadlock if lock the same mutex twice. Besides, we also need
+  // to order the mutex before acquiring locks since different threads may acquire
+  // same keys with different order.
+  for (const auto &key : keys) {
+    to_acquire_indexes.insert(hash(key));
   }
-  std::lock(*mutex_pool_[first_idx], *mutex_pool_[second_idx]);
+
+  locks.reserve(to_acquire_indexes.size());
+  for (const auto &index : to_acquire_indexes) {
+    locks.emplace_back(mutex_pool_[index]);
+  }
+  return locks;
 }

@@ -53,5 +53,11 @@ void LockManager::UnLock(const rocksdb::Slice &key) {
 }
 
 void LockManager::LockTwo(const rocksdb::Slice &first_key, const rocksdb::Slice &second_key) {
-  std::lock(*mutex_pool_[hash(first_key)], *mutex_pool_[hash(second_key)]);
+  auto first_idx = hash(first_key);
+  auto second_idx = hash(second_key);
+  if (first_idx == second_idx) {
+    // to avoid deadlock on the same mutex: get another mutex for the second key
+    second_idx = (second_idx + 1) & hash_mask_;
+  }
+  std::lock(*mutex_pool_[first_idx], *mutex_pool_[second_idx]);
 }

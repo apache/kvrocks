@@ -444,3 +444,113 @@ TEST_F(RedisListLMoveTest, LMoveSrcRightDstRight) {
   listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[0], fields_[1], fields_[2]});
   listElementsAreEqualTo(dst_key_, 0, dst_fields_.size()+1, {dst_fields_[0], dst_fields_[1], dst_fields_[2], dst_fields_[3], fields_[3]});
 }
+
+TEST_F(RedisListTest, LPopEmptyList) {
+  std::string non_existing_key{"non-existing-key"};
+  list->Del(non_existing_key);
+  std::string elem;
+  auto s = list->Pop(non_existing_key, &elem, true);
+  EXPECT_TRUE(s.IsNotFound());
+  std::vector<std::string> elems;
+  s = list->PopMulti(non_existing_key, true, 10, &elems);
+  EXPECT_TRUE(s.IsNotFound());
+}
+
+TEST_F(RedisListTest, LPopOneElement) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  for (size_t i = 0; i < fields_.size(); i++) {
+    std::string elem;
+    list->Pop(key_, &elem, true);
+    EXPECT_EQ(elem, fields_[i].ToString());
+  }
+  std::string elem;
+  auto s = list->Pop(key_, true, &elem);
+  EXPECT_TRUE(s.IsNotFound());
+  list->Del(key_);
+}
+
+TEST_F(RedisListTest, LPopMulti) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::vector<std::string> elems;
+  size_t requested_size = fields_.size() / 3;
+  auto s = list->PopMulti(key_, true, requested_size, &elems);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elems.size(), requested_size);
+  for (size_t i = 0; i < elems.size(); ++i) {
+    EXPECT_EQ(elems[i], fields_[i].ToString());
+  }
+  list->Del(key_);
+}
+
+TEST_F(RedisListTest, LPopMultiCountGreaterThanListSize) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::vector<std::string> elems;
+  auto s = list->PopMulti(key_, true, 2*ret, &elems);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elems.size(), ret);
+  for (size_t i = 0; i < elems.size(); ++i) {
+    EXPECT_EQ(elems[i], fields_[i].ToString());
+  }
+  list->Del(key_);
+}
+
+TEST_F(RedisListTest, RPopEmptyList) {
+  std::string non_existing_key{"non-existing-key"};
+  list->Del(non_existing_key);
+  std::string elem;
+  auto s = list->Pop(non_existing_key, &elem, false);
+  EXPECT_TRUE(s.IsNotFound());
+  std::vector<std::string> elems;
+  s = list->PopMulti(non_existing_key, false, 10, &elems);
+  EXPECT_TRUE(s.IsNotFound());
+}
+
+TEST_F(RedisListTest, RPopOneElement) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  for (size_t i = 0; i < fields_.size(); i++) {
+    std::string elem;
+    list->Pop(key_, &elem, false);
+    EXPECT_EQ(elem, fields_[fields_.size() - i - 1].ToString());
+  }
+  std::string elem;
+  auto s = list->Pop(key_, false, &elem);
+  EXPECT_TRUE(s.IsNotFound());
+  list->Del(key_);
+}
+
+TEST_F(RedisListTest, RPopMulti) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::vector<std::string> elems;
+  size_t requested_size = fields_.size() / 3;
+  auto s = list->PopMulti(key_, false, requested_size, &elems);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elems.size(), requested_size);
+  for (size_t i = 0; i < elems.size(); ++i) {
+    EXPECT_EQ(elems[i], fields_[fields_.size() - i - 1].ToString());
+  }
+  list->Del(key_);
+}
+
+TEST_F(RedisListTest, RPopMultiCountGreaterThanListSize) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::vector<std::string> elems;
+  auto s = list->PopMulti(key_, false, 2*ret, &elems);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elems.size(), ret);
+  for (size_t i = 0; i < elems.size(); ++i) {
+    EXPECT_EQ(elems[i], fields_[fields_.size() - i - 1].ToString());
+  }
+  list->Del(key_);
+}

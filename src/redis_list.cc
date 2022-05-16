@@ -125,6 +125,54 @@ rocksdb::Status List::Pop(const Slice &user_key, std::string *elem, bool left) {
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
+rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32_t count,
+                               std::vector<std::string> *elems) {
+  elems->clear();
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  ListMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  rocksdb::WriteBatch batch;
+  RedisCommand cmd = left ? kRedisCmdLPop : kRedisCmdRPop;
+  WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
+  batch.PutLogData(log_data.Encode());
+
+  while (metadata.size > 0 && count > 0) {
+    uint64_t index = left ? metadata.head : metadata.tail - 1;
+    std::string buf;
+    PutFixed64(&buf, index);
+    std::string sub_key;
+    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    std::string elem;
+    s = db_->Get(rocksdb::ReadOptions(), sub_key, &elem);
+    if (!s.ok()) {
+      // FIXME: should be always exists??
+      return s;
+    }
+
+    elems->push_back(elem);
+    batch.Delete(sub_key);
+    metadata.size -= 1;
+    left ? ++metadata.head : --metadata.tail;
+    --count;
+  }
+
+  if (metadata.size == 0) {
+    batch.Delete(metadata_cf_handle_, ns_key);
+  } else {
+    std::string bytes;
+    metadata.Encode(&bytes);
+    batch.Put(metadata_cf_handle_, ns_key, bytes);
+  }
+
+  return storage_->Write(rocksdb::WriteOptions(), &batch);
+}
+
 /*
  * LRem would remove which value is equal to elem, and count limit the remove number and direction
  * Caution: The LRem timing complexity is O(N), don't use it on a long list

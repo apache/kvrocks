@@ -569,6 +569,56 @@ start_server {
         assert_error *WRONGTYPE* {r rpop notalist}
     }
 
+    test "LPOP/RPOP with wrong number of arguments" {
+        assert_error {*wrong number of arguments*} {r lpop key 1 1}
+        assert_error {*wrong number of arguments*} {r rpop key 2 2}
+    }
+
+    test {RPOP/LPOP with the optional count argument} {
+        assert_equal 7 [r lpush listcount aa bb cc dd ee ff gg]
+        assert_equal {gg} [r lpop listcount 1]
+        assert_equal {ff ee} [r lpop listcount 2]
+        assert_equal {aa bb} [r rpop listcount 2]
+        assert_equal {cc} [r rpop listcount 1]
+        assert_equal {dd} [r rpop listcount 123]
+        assert_error "*ERR*range*" {r lpop forbarqaz -123}
+    }
+
+    test "LPOP/RPOP with the count 0 returns an empty array" {
+        # Make sure we can distinguish between an empty array and a null response
+        r readraw 1
+
+        r lpush listcount zero
+        assert_equal {*0} [r lpop listcount 0]
+        assert_equal {*0} [r rpop listcount 0]
+
+        r readraw 0
+    }
+
+    test "LPOP/RPOP against non existing key" {
+        r readraw 1
+
+        r del non_existing_key
+        assert_equal [r lpop non_existing_key] {$-1}
+        assert_equal [r rpop non_existing_key] {$-1}
+
+        r readraw 0
+    }
+
+    test "LPOP/RPOP with <count> against non existing key" {
+        r readraw 1
+
+        r del non_existing_key
+
+        assert_equal [r lpop non_existing_key 0] {*-1}
+        assert_equal [r lpop non_existing_key 1] {*-1}
+
+        assert_equal [r rpop non_existing_key 0] {*-1}
+        assert_equal [r rpop non_existing_key 1] {*-1}
+
+        r readraw 0
+    }
+
     foreach {type num} {quicklist 250 quicklist 500} {
         test "Mass RPOP/LPOP - $type" {
             r del mylist

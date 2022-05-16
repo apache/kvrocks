@@ -60,7 +60,7 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     CMAKE_DOWNLOAD_VERSION=3.23.1
     curl -O -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_DOWNLOAD_VERSION/cmake-$CMAKE_DOWNLOAD_VERSION.tar.gz
     tar -zxf cmake-$CMAKE_DOWNLOAD_VERSION.tar.gz && cd cmake-$CMAKE_DOWNLOAD_VERSION
-    ./bootstrap --prefix=$CMAKE_INSTALL_DIR && make && make install && cd ../..
+    ./bootstrap --prefix=$CMAKE_INSTALL_DIR -- -DCMAKE_USE_OPENSSL=OFF && make && make install && cd ../..
     CMAKE_BIN=$CMAKE_INSTALL_DIR/bin/cmake
 fi
 

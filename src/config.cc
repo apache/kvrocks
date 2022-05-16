@@ -47,6 +47,14 @@ const char *errNotSetLevelCompactionDynamicLevelBytes =
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
+    {"zlib", rocksdb::CompressionType::kZlibCompression},
+    {"zip2", rocksdb::CompressionType::kBZip2Compression},
+    {"lz4", rocksdb::CompressionType::kLZ4Compression},
+    {"lz4hc", rocksdb::CompressionType::kLZ4HCCompression},
+    {"xpress", rocksdb::CompressionType::kXpressCompression},
+    {"zstd", rocksdb::CompressionType::kZSTD},
+    {"zstd_not_final", rocksdb::CompressionType::kZSTDNotFinalCompression},
+    {"disable", rocksdb::CompressionType::kDisableCompressionOption},
     {nullptr, 0}
 };
 

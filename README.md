@@ -2,7 +2,6 @@
 
 # ![image](https://github.com/apache/incubator-kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
 
-- [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
 
 Kvrocks is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
@@ -63,7 +62,7 @@ It is as simple as:
 
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
-$ cd kvrocks
+$ cd incubator-kvrocks
 $ mkdir build
 $ ./build.sh build # manually run CMake if you want to build Debug version or add some build options
 ```
@@ -175,6 +174,17 @@ latency: 99.9% < 10ms
 latency: 99.9% < 10ms
 
 ![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-threads.png)
+
+
+## Contact Us
+
+If you’d like to contribute to Kvrocks or contact us, please subscribe to the Kvrocks developer mailing list.
+
+The Kvrocks developer mailing list is: [dev@kvrocks.apache.org](mailto:dev@kvrocks.apache.org).
+
+[Subscribe to List](dev-subscribe@kvrocks.apache.org)
+[Unsubscribe from List](dev-unsubscribe@kvrocks.apache.org)
+[Archives](http://mail-archives.apache.org/mod_mbox/kvrocks-dev/)
 
 ## License
 

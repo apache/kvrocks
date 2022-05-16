@@ -1484,7 +1484,7 @@ class CommandPop : public Commander {
       }
     } else {
       std::string elem;
-      rocksdb::Status s = list_db.Pop(args_[1], &elem, left_);
+      rocksdb::Status s = list_db.Pop(args_[1], left_, &elem);
       if (!s.ok() && !s.IsNotFound()) {
         return Status(Status::RedisExecErr, s.ToString());
       }
@@ -1570,7 +1570,7 @@ class CommandBPop : public Commander {
     rocksdb::Status s;
     for (const auto &key : keys_) {
       last_key = key;
-      s = list_db.Pop(key, &elem, left_);
+      s = list_db.Pop(key, left_, &elem);
       if (s.ok() || !s.IsNotFound()) {
         break;
       }

@@ -89,14 +89,14 @@ TEST_F(RedisListTest, PushAndPop) {
   EXPECT_EQ(fields_.size(), ret);
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, false);
+    list->Pop(key_, false, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -124,7 +124,7 @@ TEST_F(RedisListTest, Index) {
     EXPECT_EQ(fields_[i].ToString(), elem);
   }
   for (size_t i = 0; i < fields_.size(); i++) {
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   rocksdb::Status s = list->Index(key_,-1, &elem);
@@ -142,7 +142,7 @@ TEST_F(RedisListTest, Set) {
   list->Index(key_, -1, &elem);
   EXPECT_EQ(new_elem.ToString(), elem);
   for (size_t i = 0; i < fields_.size(); i++) {
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
   }
   list->Del(key_);
 }
@@ -159,7 +159,7 @@ TEST_F(RedisListTest, Range) {
   }
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -178,7 +178,7 @@ TEST_F(RedisListTest, Rem) {
   EXPECT_EQ(fields_.size()-1, len);
   for (size_t i = 1; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   // lrem key_ 0 list-test-key-1
@@ -191,7 +191,7 @@ TEST_F(RedisListTest, Rem) {
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     if (fields_[i] == del_elem) continue;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   // lrem key_ 1 nosuchelement
@@ -204,7 +204,7 @@ TEST_F(RedisListTest, Rem) {
   EXPECT_EQ(fields_.size(), len);
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   // lrem key_ -1 list-test-key-1
@@ -219,7 +219,7 @@ TEST_F(RedisListTest, Rem) {
     if (fields_[i] == del_elem) {
       if (++cnt > 3) continue;
     }
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   // lrem key_ -5 list-test-key-1
@@ -232,7 +232,7 @@ TEST_F(RedisListTest, Rem) {
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
     if (fields_[i] == del_elem) continue;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -255,7 +255,7 @@ TEST_F(RedisListSpecificTest, Rem) {
       if (++cnt <= 1) continue;
     }
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   // lrem key_ -2 9
@@ -270,7 +270,7 @@ TEST_F(RedisListSpecificTest, Rem) {
       if (++cnt <= 2) continue;
     }
     std::string elem;
-    list->Pop(key_, &elem, false);
+    list->Pop(key_, false,  &elem);
     EXPECT_EQ(elem, fields_[i-1].ToString());
   }
   list->Del(key_);
@@ -286,7 +286,7 @@ TEST_F(RedisListTest, Trim) {
   EXPECT_EQ(fields_.size()-1, len);
   for (size_t i = 1; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -310,7 +310,7 @@ TEST_F(RedisListSpecificTest, Trim) {
   for (size_t i = 3; i < fields_.size()-2; i++) {
     if (fields_[i] == del_elem) continue;
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -328,7 +328,7 @@ TEST_F(RedisListTest, RPopLPush) {
   }
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(dst, &elem, false);
+    list->Pop(dst, false, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   list->Del(key_);
@@ -449,7 +449,7 @@ TEST_F(RedisListTest, LPopEmptyList) {
   std::string non_existing_key{"non-existing-key"};
   list->Del(non_existing_key);
   std::string elem;
-  auto s = list->Pop(non_existing_key, &elem, true);
+  auto s = list->Pop(non_existing_key, true, &elem);
   EXPECT_TRUE(s.IsNotFound());
   std::vector<std::string> elems;
   s = list->PopMulti(non_existing_key, true, 10, &elems);
@@ -462,7 +462,7 @@ TEST_F(RedisListTest, LPopOneElement) {
   EXPECT_EQ(fields_.size(), ret);
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, true);
+    list->Pop(key_, true, &elem);
     EXPECT_EQ(elem, fields_[i].ToString());
   }
   std::string elem;
@@ -504,7 +504,7 @@ TEST_F(RedisListTest, RPopEmptyList) {
   std::string non_existing_key{"non-existing-key"};
   list->Del(non_existing_key);
   std::string elem;
-  auto s = list->Pop(non_existing_key, &elem, false);
+  auto s = list->Pop(non_existing_key, false, &elem);
   EXPECT_TRUE(s.IsNotFound());
   std::vector<std::string> elems;
   s = list->PopMulti(non_existing_key, false, 10, &elems);
@@ -517,7 +517,7 @@ TEST_F(RedisListTest, RPopOneElement) {
   EXPECT_EQ(fields_.size(), ret);
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string elem;
-    list->Pop(key_, &elem, false);
+    list->Pop(key_, false, &elem);
     EXPECT_EQ(elem, fields_[fields_.size() - i - 1].ToString());
   }
   std::string elem;

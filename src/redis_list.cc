@@ -87,7 +87,7 @@ rocksdb::Status List::push(const Slice &user_key,
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status List::Pop(const Slice &user_key, std::string *elem, bool left) {
+rocksdb::Status List::Pop(const Slice &user_key, bool left, std::string *elem) {
   elem->clear();
 
   std::string ns_key;
@@ -486,7 +486,7 @@ rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string 
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
 
-  s = Pop(src, elem, false);
+  s = Pop(src, false, elem);
   if (!s.ok()) return s;
 
   int ret;

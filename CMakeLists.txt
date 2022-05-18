@@ -21,13 +21,9 @@ project(kvrocks
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
         LANGUAGES CXX)
 
-# External Dependences
-include(ExternalProject)
+option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
+option(ENABLE_ASAN "enable ASAN santinizer" OFF)
 
-set(default_build_type "Release")
-if (NOT CMAKE_BUILD_DIRECTORY)
-    set(CMAKE_BUILD_DIRECTORY ${CMAKE_BINARY_DIR})
-endif()
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)
@@ -35,7 +31,7 @@ if (REALTIME_LIB)
 endif()
 
 if (CMAKE_HOST_APPLE)
-    set(DISABLE_JEMALLOC 1)
+    set(DISABLE_JEMALLOC ON)
 endif ()
 
 if(NOT DISABLE_JEMALLOC)
@@ -50,16 +46,14 @@ include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
 
+find_package(Threads REQUIRED)
+
 list(APPEND EXTERNAL_LIBS PRIVATE glog)
 list(APPEND EXTERNAL_LIBS PRIVATE snappy)
-
 list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
-
 list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
-
 list(APPEND EXTERNAL_LIBS PRIVATE lua)
-
-# End dependencies
+list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
@@ -67,334 +61,45 @@ execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_SHA)
 string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
-# Main target
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 endif()
 
-find_library(UNWIND_LIB unwind)
+find_library(HAS_UNWIND_LIB unwind)
 
-add_executable(kvrocks)
-target_compile_features(kvrocks PRIVATE cxx_std_11)
-target_compile_options(kvrocks PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -O0)
-option(ENABLE_ASAN "enable ASAN santinizer" OFF)
-if(ENBALE_ASAN)
-    target_compile_options(kvrocks PRIVATE -fsanitize=address)
-    target_link_libraries(kvrocks PRIVATE -fsanitize=address)
+set(WARNING_FLAGS -Wall -Wpedantic -Wsign-compare -Wreturn-type)
+
+# kvrocks objects target
+file(GLOB KVROCKS_SRCS src/*.cc)
+list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/main.cc)
+
+add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
+
+target_include_directories(kvrocks_objs PUBLIC src ${PROJECT_BINARY_DIR})
+target_compile_features(kvrocks_objs PUBLIC cxx_std_11)
+target_compile_options(kvrocks_objs PUBLIC ${WARNING_FLAGS} -fno-omit-frame-pointer)
+target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
+if(ENABLE_ASAN)
+    target_compile_options(kvrocks_objs PUBLIC -fsanitize=address)
+    target_link_libraries(kvrocks_objs PUBLIC -fsanitize=address)
+endif()
+target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
+if(HAS_UNWIND_LIB)
+    target_link_libraries(kvrocks_objs PUBLIC -lunwind)
 endif()
 
-target_include_directories(kvrocks PRIVATE ${PROJECT_BINARY_DIR})
-find_package(Threads REQUIRED)
-if(THREADS_HAVE_PTHREAD_ARG)
-    target_compile_options(kvrocks PUBLIC "-pthread")
-endif()
-if(CMAKE_THREAD_LIBS_INIT)
-    target_link_libraries(kvrocks PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
-endif()
-target_link_libraries(kvrocks PRIVATE -fno-omit-frame-pointer)
-target_link_libraries(kvrocks ${EXTERNAL_LIBS})
-if(UNWIND_LIB)
-    target_link_libraries(kvrocks PRIVATE -lunwind)
-endif()
-target_sources(kvrocks PRIVATE
-        src/cluster.cc
-        src/cluster.h
-        src/slot_migrate.h
-	    src/slot_migrate.cc
-	    src/slot_import.h
-	    src/slot_import.cc
-        src/batch_extractor.h
-        src/batch_extractor.cc
-        src/redis_db.cc
-        src/redis_db.h
-        src/redis_connection.cc
-        src/redis_connection.h
-        src/compact_filter.cc
-        src/compact_filter.h
-        src/worker.cc
-        src/worker.h
-        src/main.cc
-        src/redis_request.cc
-        src/redis_request.h
-        src/redis_cmd.cc
-        src/redis_cmd.h
-        src/util.cc
-        src/util.h
-        src/geohash.cc
-        src/geohash.h
-        src/storage.cc
-        src/storage.h
-        src/status.h
-        src/redis_reply.h
-        src/redis_reply.cc
-        src/replication.cc
-        src/replication.h
-        src/task_runner.cc
-        src/task_runner.h
-        src/encoding.h
-        src/encoding.cc
-        src/redis_slot.h
-        src/redis_slot.cc
-        src/redis_metadata.h
-        src/redis_metadata.cc
-        src/redis_string.h
-        src/redis_string.cc
-        src/redis_hash.h
-        src/redis_hash.cc
-        src/redis_list.h
-        src/redis_list.cc
-        src/redis_set.h
-        src/redis_set.cc
-        src/redis_zset.cc
-        src/redis_zset.h
-        src/redis_geo.cc
-        src/redis_geo.h
-        src/redis_bitmap.cc
-        src/redis_bitmap.h
-        src/redis_bitmap_string.cc
-        src/redis_bitmap_string.h
-        src/redis_pubsub.cc
-        src/redis_pubsub.h
-        src/redis_sortedint.cc
-        src/redis_sortedint.h
-        src/lock_manager.cc
-        src/rocksdb_crc32c.h
-        src/config.cc
-        src/config.h
-        src/config_type.h
-        src/stats.cc
-        src/stats.h
-        src/server.cc
-        src/server.h
-        src/cron.cc
-        src/cron.h
-        src/event_listener.h
-        src/event_listener.cc
-        src/log_collector.h
-        src/log_collector.cc
-        src/table_properties_collector.cc
-        src/table_properties_collector.h
-        src/compaction_checker.cc
-        src/compaction_checker.h
-        src/scripting.cc
-        src/scripting.h
-        src/sha1.cc
-        src/sha1.h
-        src/rand.cc
-        src/rand.h)
+# kvrocks main target
+add_executable(kvrocks src/main.cc)
+target_link_libraries(kvrocks PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks2redis sync tool
-add_executable(kvrocks2redis)
-target_compile_features(kvrocks2redis PRIVATE cxx_std_11)
-target_compile_options(kvrocks2redis PRIVATE -Wall -Wpedantic -g -Wsign-compare -Wreturn-type)
-option(ENABLE_ASAN "enable ASAN santinizer" OFF)
-if(ENBALE_ASAN)
-    target_compile_options(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-    target_link_libraries(kvrocks2redis PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-endif()
-target_include_directories(kvrocks2redis PRIVATE ${PROJECT_BINARY_DIR})
-if(UNWIND_LIB)
-    target_link_libraries(kvrocks2redis PRIVATE -lunwind)
-endif()
+file(GLOB KVROCKS2REDIS_SRCS tools/kvrocks2redis/*.cc)
+add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 
-find_package(Threads REQUIRED)
-if(THREADS_HAVE_PTHREAD_ARG)
-    target_compile_options(kvrocks2redis PUBLIC "-pthread")
-endif()
-if(CMAKE_THREAD_LIBS_INIT)
-    target_link_libraries(kvrocks2redis PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
-endif()
-target_link_libraries(kvrocks2redis ${EXTERNAL_LIBS})
-target_sources(kvrocks2redis PRIVATE
-        src/cluster.h
-        src/cluster.cc
-	    src/slot_migrate.h
-	    src/slot_migrate.cc
-	    src/slot_import.h
-	    src/slot_import.cc
-        src/batch_extractor.h
-        src/batch_extractor.cc
-        src/redis_db.cc
-        src/redis_db.h
-        src/compact_filter.cc
-        src/compact_filter.h
-        src/worker.cc
-        src/worker.h
-        src/util.cc
-        src/util.h
-        src/geohash.cc
-        src/geohash.h
-        src/redis_connection.cc
-        src/redis_connection.h
-        src/redis_request.cc
-        src/redis_request.h
-        src/redis_cmd.cc
-        src/redis_cmd.h
-        src/storage.cc
-        src/storage.h
-        src/status.h
-        src/redis_reply.h
-        src/redis_reply.cc
-        src/task_runner.cc
-        src/task_runner.h
-        src/encoding.h
-        src/encoding.cc
-        src/redis_slot.h
-        src/redis_slot.cc
-        src/redis_metadata.h
-        src/redis_metadata.cc
-        src/redis_string.h
-        src/redis_string.cc
-        src/redis_hash.h
-        src/redis_hash.cc
-        src/redis_list.h
-        src/redis_list.cc
-        src/redis_set.h
-        src/redis_set.cc
-        src/redis_zset.cc
-        src/redis_zset.h
-        src/redis_geo.cc
-        src/redis_geo.h
-        src/redis_bitmap.cc
-        src/redis_bitmap.h
-        src/redis_bitmap_string.cc
-        src/redis_bitmap_string.h
-        src/redis_pubsub.cc
-        src/redis_pubsub.h
-        src/redis_sortedint.cc
-        src/redis_sortedint.h
-        src/replication.cc
-        src/replication.h
-        src/lock_manager.cc
-        src/rocksdb_crc32c.h
-        src/config.cc
-        src/config.h
-        src/config_type.h
-        src/stats.cc
-        src/stats.h
-        src/server.cc
-        src/server.h
-        src/cron.cc
-        src/cron.h
-        src/event_listener.h
-        src/event_listener.cc
-        src/log_collector.h
-        src/log_collector.cc
-        src/table_properties_collector.cc
-        src/table_properties_collector.h
-        src/compaction_checker.cc
-        src/compaction_checker.h
-        src/scripting.cc
-        src/scripting.h
-        src/rand.cc
-        src/rand.h
-        src/sha1.cc
-        src/sha1.h
-        tools/kvrocks2redis/config.cc
-        tools/kvrocks2redis/config.h
-        tools/kvrocks2redis/main.cc
-        tools/kvrocks2redis/sync.cc
-        tools/kvrocks2redis/sync.h
-        tools/kvrocks2redis/redis_writer.cc
-        tools/kvrocks2redis/redis_writer.h
-        tools/kvrocks2redis/writer.cc
-        tools/kvrocks2redis/writer.h
-        tools/kvrocks2redis/parser.cc
-        tools/kvrocks2redis/parser.h)
+target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
-add_executable(unittest
-        src/cluster.h
-        src/cluster.cc
-        src/server.cc
-        src/server.h
-        src/config.cc
-        src/config.h
-        src/worker.cc
-        src/worker.h
-        src/redis_slot.cc
-        src/redis_slot.h
-        src/redis_connection.cc
-        src/redis_connection.h
-        src/redis_pubsub.cc
-        src/redis_pubsub.h
-        src/redis_cmd.cc
-        src/redis_cmd.h
-        src/redis_request.cc
-        src/redis_request.h
-        src/replication.cc
-        src/replication.h
-        src/redis_reply.cc
-        src/redis_reply.h
-        src/redis_bitmap.cc
-        src/redis_bitmap.h
-        src/redis_bitmap_string.cc
-        src/redis_bitmap_string.h
-        src/redis_metadata.cc
-        src/encoding.cc
-        src/redis_string.cc
-        src/redis_hash.cc
-        src/redis_list.cc
-        src/redis_set.cc
-        src/redis_zset.cc
-        src/redis_geo.cc
-        src/redis_sortedint.cc
-        src/redis_sortedint.h
-        src/util.cc
-        src/geohash.cc
-        src/storage.cc
-        src/lock_manager.cc
-        src/stats.cc
-        src/event_listener.cc
-        src/task_runner.cc
-        src/cron.cc
-        src/compact_filter.cc
-        src/redis_db.cc
-        src/redis_db.h
-        src/log_collector.h
-        src/log_collector.cc
-        src/table_properties_collector.cc
-        src/table_properties_collector.h
-        src/batch_extractor.cc
-        src/batch_extractor.h
-        src/slot_migrate.cc
-        src/slot_migrate.h
-        src/slot_import.cc
-        src/slot_import.h
-        src/compaction_checker.cc
-        src/compaction_checker.h
-        src/scripting.cc
-        src/scripting.h
-        tests/main.cc
-        tests/test_base.h
-        tests/t_string_test.cc
-        tests/t_encoding_test.cc
-        tests/t_list_test.cc
-        tests/t_hash_test.cc
-        tests/t_set_test.cc
-        tests/t_sortedint_test.cc
-        tests/t_zset_test.cc
-        tests/t_geo_test.cc
-        tests/t_metadata_test.cc
-        tests/cluster_test.cc
-        tests/string_reply_test.cc
-        tests/string_util_test.cc
-        tests/rwlock_test.cc
-        tests/cron_test.cc
-        tests/config_test.cc
-        tests/task_runner_test.cc
-        tests/t_bitmap_test.cc
-        tests/compact_test.cc
-        tests/log_collector_test.cc
-        src/config_type.h
-        src/sha1.cc
-        src/sha1.h
-        src/rand.cc
-        src/rand.h)
+# kvrocks unit tests
+file(GLOB TESTS_SRCS tests/*.cc)
+add_executable(unittest ${TESTS_SRCS})
 
-target_compile_features(unittest PRIVATE cxx_std_11)
-target_link_libraries(unittest PRIVATE ${EXTERNAL_LIBS} gtest_main)
-if(UNWIND_LIB)
-    target_link_libraries(unittest PRIVATE -lunwind)
-endif()
-target_include_directories(unittest PRIVATE ${PROJECT_BINARY_DIR})
-target_include_directories(unittest PRIVATE src)
+target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main ${EXTERNAL_LIBS})

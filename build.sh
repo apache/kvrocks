@@ -64,4 +64,4 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     CMAKE_BIN=$CMAKE_INSTALL_DIR/bin/cmake
 fi
 
-cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=Release .. && make -j4 kvrocks kvrocks2redis
+cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=RelWithDebInfo .. && make -j4 kvrocks kvrocks2redis

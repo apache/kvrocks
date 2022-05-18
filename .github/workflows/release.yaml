@@ -42,17 +42,16 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get install -y tar cmake
-          mkdir -p build/bin
-          mkdir -p build/conf
+          mkdir -p build/release/bin
+          mkdir -p build/release/conf
 
       - name: Build
         run: |
+          ./build.sh build
           cd build
-          cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j4
-          cp kvrocks bin/
-          cp kvrocks2redis bin/
-          cp ../kvrocks.conf conf/
+          cp kvrocks release/bin/
+          cp kvrocks2redis release/bin/
+          cp ../kvrocks.conf release/conf/
           cd ..
 
       - name: Set ENV
@@ -64,7 +63,7 @@ jobs:
         uses: bpicode/github-action-fpm@v0.9.2
         with:
           fpm_args: '.'
-          fpm_opts: '-t deb -v ${{ env.VERSION }} -C ./build --depends libsnappy-dev ${{ env.FPM_OPTS }}'
+          fpm_opts: '-t deb -v ${{ env.VERSION }} -C ./build/release ${{ env.FPM_OPTS }}'
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -113,14 +112,14 @@ jobs:
 
       - name: Build
         run: |
+          mkdir -p build/release
+          ./build.sh build
           cd build
-          cmake -DCMAKE_BUILD_TYPE=Release
-          make -j4
-          mkdir -p bin
-          mkdir -p conf
-          cp kvrocks bin/
-          cp kvrocks2redis bin/
-          cp ../kvrocks.conf conf/
+          mkdir -p release/bin release/conf
+          cp kvrocks release/bin/
+          cp kvrocks2redis release/bin/
+          cp ../kvrocks.conf release/conf/
+          cd ..
 
       - name: Set ENV
         run: |
@@ -130,7 +129,7 @@ jobs:
         uses: bpicode/github-action-fpm@v0.9.2
         with:
           fpm_args: '.'
-          fpm_opts: "-t rpm -v ${{ env.VERSION }} -C ./build --depends snappy ${{ env.FPM_OPTS }}"
+          fpm_opts: "-t rpm -v ${{ env.VERSION }} -C ./build/release ${{ env.FPM_OPTS }}"
 
       - name: Release
         uses: softprops/action-gh-release@v1

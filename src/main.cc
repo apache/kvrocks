@@ -324,7 +324,6 @@ int main(int argc, char* argv[]) {
       srv->Stop();
     }
   };
-
   s = srv->Start();
   if (!s.IsOK()) {
     removePidFile(config.pidfile);

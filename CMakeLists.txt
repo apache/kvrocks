@@ -68,7 +68,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(ENABLE_STATIC_LIBSTDCXX)
         find_library(FOUND_STATIC_LIBSTDCXX libstdc++.a)
         if(NOT (FOUND_STATIC_LIBSTDCXX OR FORCE_STATIC_LIBSTDCXX))
-            message(ERROR "cannot find static library of libstdc++, please add ENABLE_STATIC_LIBSTDCXX=OFF to disable")
+            message(FATAL_ERROR "cannot find static library of libstdc++, please add ENABLE_STATIC_LIBSTDCXX=OFF to disable")
         endif()
 
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++")

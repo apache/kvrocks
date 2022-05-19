@@ -66,8 +66,10 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
     
     if(ENABLE_STATIC_LIBSTDCXX)
-        find_library(FOUND_STATIC_LIBSTDCXX libstdc++.a)
-        if(NOT (FOUND_STATIC_LIBSTDCXX OR FORCE_STATIC_LIBSTDCXX))
+        try_compile(FOUND_STATIC_LIBSTDCXX ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/static_libstdcxx.cc 
+            LINK_OPTIONS -static-libstdc++ CXX_STANDARD 11)
+
+        if(NOT FOUND_STATIC_LIBSTDCXX)
             message(FATAL_ERROR "cannot find static library of libstdc++, please add ENABLE_STATIC_LIBSTDCXX=OFF to disable")
         endif()
 

@@ -741,4 +741,48 @@ start_server {
     #     $rd2 close
     #     r ping
     # } {PONG}
+
+    test {Test LMOVE on different keys} {
+        r RPUSH list1{t} "1"
+        r RPUSH list1{t} "2"
+        r RPUSH list1{t} "3"
+        r RPUSH list1{t} "4"
+        r RPUSH list1{t} "5"
+
+        r LMOVE list1{t} list2{t} RIGHT LEFT
+        r LMOVE list1{t} list2{t} LEFT RIGHT
+        assert_equal [r llen list1{t}] 3
+        assert_equal [r llen list2{t}] 2
+        assert_equal [r lrange list1{t} 0 -1] {2 3 4}
+        assert_equal [r lrange list2{t} 0 -1] {5 1}
+    }
+
+    foreach from {LEFT RIGHT} {
+        foreach to {LEFT RIGHT} {
+            test "LMOVE $from $to on the list node" {
+                    r del target_key{t}
+                    r rpush target_key{t} 1
+
+                    set rd [redis_deferring_client]
+                    create_list list{t} "a b c d"
+                    $rd lmove list{t} target_key{t} $from $to
+                    set elem [$rd read]
+
+                    if {$from eq "RIGHT"} {
+                        assert_equal d $elem
+                        assert_equal "a b c" [r lrange list{t} 0 -1]
+                    } else {
+                        assert_equal a $elem
+                        assert_equal "b c d" [r lrange list{t} 0 -1]
+                    }
+                    if {$to eq "RIGHT"} {
+                        assert_equal $elem [r rpop target_key{t}]
+                    } else {
+                        assert_equal $elem [r lpop target_key{t}]
+                    }
+
+                    $rd close
+                }
+            }
+        }
 }

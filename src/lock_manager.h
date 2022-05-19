@@ -22,6 +22,8 @@
 
 #include <mutex>
 #include <vector>
+#include <string>
+#include <functional>
 
 #include <rocksdb/db.h>
 
@@ -33,6 +35,7 @@ class LockManager {
   unsigned Size();
   void Lock(const rocksdb::Slice &key);
   void UnLock(const rocksdb::Slice &key);
+  std::vector<std::mutex *> MultiGet(const std::vector<std::string> &keys);
 
  private:
   int hash_power_;
@@ -54,4 +57,26 @@ class LockGuard {
  private:
   LockManager *lock_mgr_ = nullptr;
   rocksdb::Slice key_;
+};
+
+class MultiLockGuard {
+ public:
+  explicit MultiLockGuard(LockManager *lock_mgr, const std::vector<std::string> &keys):
+      lock_mgr_(lock_mgr) {
+    locks_ = lock_mgr_->MultiGet(keys);
+    for (const auto &iter : locks_) {
+      iter->lock();
+    }
+  }
+
+  ~MultiLockGuard() {
+    // Lock with order `A B C` and unlock should be `C B A`
+    for (auto iter = locks_.rbegin(); iter != locks_.rend(); ++iter) {
+      (*iter)->unlock();
+    }
+  }
+
+ private:
+  LockManager *lock_mgr_ = nullptr;
+  std::vector<std::mutex*> locks_;
 };

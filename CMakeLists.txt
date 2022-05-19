@@ -22,6 +22,7 @@ project(kvrocks
 
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
 option(ENABLE_ASAN "enable ASAN santinizer" OFF)
+option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
@@ -64,10 +65,21 @@ string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
+    
+    if(ENABLE_STATIC_LIBSTDCXX)
+        try_compile(FOUND_STATIC_LIBSTDCXX ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/static_libstdcxx.cc 
+            LINK_OPTIONS -static-libstdc++ CXX_STANDARD 11)
+
+        if(NOT FOUND_STATIC_LIBSTDCXX)
+            message(FATAL_ERROR "cannot find static library of libstdc++, please add ENABLE_STATIC_LIBSTDCXX=OFF to disable")
+        endif()
+
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++")
+    endif()
 endif()
 
-find_library(HAS_UNWIND_LIB unwind)
+find_library(FOUND_UNWIND_LIB unwind)
 
 set(WARNING_FLAGS -Wall -Wpedantic -Wsign-compare -Wreturn-type)
 
@@ -86,8 +98,8 @@ if(ENABLE_ASAN)
     target_link_libraries(kvrocks_objs PUBLIC -fsanitize=address)
 endif()
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
-if(HAS_UNWIND_LIB)
-    target_link_libraries(kvrocks_objs PUBLIC -lunwind)
+if(FOUND_UNWIND_LIB)
+    target_link_libraries(kvrocks_objs PUBLIC ${FOUND_UNWIND_LIB})
 endif()
 
 # kvrocks main target

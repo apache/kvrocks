@@ -17,7 +17,6 @@
 
 cmake_minimum_required(VERSION 3.13)
 project(kvrocks
-        VERSION 999.999.999
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
         LANGUAGES CXX)
 
@@ -57,7 +56,10 @@ list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
-execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE GIT_SHA)
+execute_process(COMMAND sh -c "grep -i version -m1 Changelog | awk '{printf $3}'" 
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE PROJECT_VERSION)
+execute_process(COMMAND git rev-parse --short HEAD 
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)
 string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 

@@ -72,6 +72,9 @@ Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
+  } else {
+    // Generate new replication id if not a replica
+    storage_->ShiftReplId();
   }
 
   if (config_->cluster_enabled) {
@@ -1427,9 +1430,11 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   }
 
   const char *header = blob.data();
-  if (*header == kReplIdTag) {
+  // Only support `kReplIdTag` now
+  if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
     type_ = kReplIdLog;
+    content_ = std::string(blob.data()+2, blob.size()-2);
+    return Status::OK();
   }
-  content_ = std::string(blob.data()+2, blob.size()-2);
-  return Status::OK();
+  return Status(Status::NotOK);
 }

@@ -325,9 +325,6 @@ int main(int argc, char* argv[]) {
     }
   };
 
-  // Generate new replication id if not a replica
-  if (!srv->IsSlave()) storage.ShiftReplId();
-
   s = srv->Start();
   if (!s.IsOK()) {
     removePidFile(config.pidfile);

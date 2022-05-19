@@ -33,6 +33,29 @@ TEST(LockManager, LockKey) {
   }
 }
 
+TEST(LockManager, LockMultiKeys) {
+  LockManager lock_manager(2);
+
+  std::vector<std::string> keys1 = {"a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
+  std::vector<std::string> keys2 = {"a7", "a6", "a5", "a4", "a3", "a2", "a1", "a0"};
+
+  std::thread ths[10];
+  for(int i = 0; i < 10; i++) {
+    if (i % 2 == 0) {
+      ths[i] = std::thread([&lock_manager, &keys1]() {
+        MultiLockGuard(&lock_manager, keys1);
+      });
+    } else {
+      ths[i] = std::thread([&lock_manager, &keys2]() {
+        MultiLockGuard(&lock_manager, keys2);
+      });
+    }
+  }
+  for (auto & th : ths) {
+    th.join();
+  }
+}
+
 TEST(ReadWriteLock, ReadLockGurad) {
   RWLock::ReadWriteLock rwlock;
   int val = 1;

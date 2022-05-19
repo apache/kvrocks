@@ -1802,6 +1802,38 @@ class CommandRPopLPUSH : public Commander {
   }
 };
 
+class CommandLMove : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto arg_val = Util::ToLower(args_[3]);
+    if (arg_val != "left" && arg_val != "right") {
+      return Status(Status::RedisParseErr, errInvalidSyntax);
+    }
+    src_left_ = arg_val == "left";
+    arg_val = Util::ToLower(args_[4]);
+    if (arg_val != "left" && arg_val != "right") {
+      return Status(Status::RedisParseErr, errInvalidSyntax);
+    }
+    dst_left_ = arg_val == "left";
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    std::string elem;
+    auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
+    return Status::OK();
+  }
+
+ private:
+  bool src_left_;
+  bool dst_left_;
+};
+
 class CommandSAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4708,6 +4740,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("llen", 2, "read-only", 1, 1, 1, CommandLLen),
     ADD_CMD("lset", 4, "write", 1, 1, 1, CommandLSet),
     ADD_CMD("rpoplpush", 3, "write", 1, 2, 1, CommandRPopLPUSH),
+    ADD_CMD("lmove", 5, "write", 1, 2, 1, CommandLMove),
 
     ADD_CMD("sadd", -3, "write", 1, 1, 1, CommandSAdd),
     ADD_CMD("srem", -3, "write", 1, 1, 1, CommandSRem),

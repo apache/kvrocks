@@ -52,6 +52,37 @@ protected:
   }
 };
 
+class RedisListLMoveTest : public RedisListTest {
+protected:
+  void SetUp() override {
+    list->Del(key_);
+    list->Del(dst_key_);
+    fields_ = {"src1", "src2", "src3", "src4"};
+    dst_fields_ = {"dst", "dst2", "dst3", "dst4"};
+  }
+
+  void TearDown() {
+    list->Del(key_);
+    list->Del(dst_key_);
+  }
+
+  void listElementsAreEqualTo(const Slice &key, int start, int stop, const std::vector<Slice> &expected_elems) {
+    std::vector<std::string> actual_elems;
+    auto s = list->Range(key, start, stop, &actual_elems);
+    EXPECT_TRUE(s.ok());
+
+    EXPECT_EQ(actual_elems.size(), expected_elems.size());
+
+    for (size_t i = 0; i < actual_elems.size(); ++i) {
+      EXPECT_EQ(actual_elems[i], expected_elems[i].ToString());
+    }
+  }
+
+protected:
+  std::string dst_key_ = "test-dst-key";
+  std::vector<Slice> dst_fields_;
+};
+
 TEST_F(RedisListTest, PushAndPop) {
   int ret;
   list->Push(key_, fields_, true, &ret);
@@ -302,4 +333,114 @@ TEST_F(RedisListTest, RPopLPush) {
   }
   list->Del(key_);
   list->Del(dst);
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcNotExist) {
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, true, true, &elem);
+  EXPECT_EQ(elem, "");
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.IsNotFound());
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameSingleElem) {
+  int ret;
+  Slice element = fields_[0];
+  list->Push(key_, {element}, false, &ret);
+  EXPECT_EQ(1, ret);
+  std::string expected_elem;
+  auto s = list->LMove(key_, key_, true, true, &expected_elem);
+  EXPECT_EQ(expected_elem, element);
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[0]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsLeftRight) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, key_, true, false, &elem);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elem, fields_[0].ToString());
+  listElementsAreEqualTo(key_, 0, fields_.size()+1, {fields_[1], fields_[2], fields_[3], fields_[0]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsRightLeft) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, key_, false, true, &elem);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(elem, fields_[fields_.size()-1].ToString());
+  listElementsAreEqualTo(key_, 0, fields_.size()+1, {fields_[3], fields_[0], fields_[1], fields_[2]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveDstNotExist) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, true, false, &elem);
+  EXPECT_EQ(elem, fields_[0].ToString());
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[1], fields_[2], fields_[3]});
+  listElementsAreEqualTo(dst_key_, 0, dst_fields_.size(), {fields_[0]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcLeftDstLeft) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  list->Push(dst_key_, dst_fields_, false, &ret);
+  EXPECT_EQ(dst_fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, true, true, &elem);
+  EXPECT_EQ(elem, fields_[0].ToString());
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[1], fields_[2], fields_[3]});
+  listElementsAreEqualTo(dst_key_, 0, dst_fields_.size()+1, {fields_[0], dst_fields_[0], dst_fields_[1], dst_fields_[2], dst_fields_[3]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcLeftDstRight) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  list->Push(dst_key_, dst_fields_, false, &ret);
+  EXPECT_EQ(dst_fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, true, false, &elem);
+  EXPECT_EQ(elem, fields_[0].ToString());
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[1], fields_[2], fields_[3]});
+  listElementsAreEqualTo(dst_key_, 0, dst_fields_.size()+1, {dst_fields_[0], dst_fields_[1], dst_fields_[2], dst_fields_[3], fields_[0]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcRightDstLeft) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  list->Push(dst_key_, dst_fields_, false, &ret);
+  EXPECT_EQ(dst_fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, false, true, &elem);
+  EXPECT_EQ(elem, fields_[3].ToString());
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[0], fields_[1], fields_[2]});
+  listElementsAreEqualTo(dst_key_, 0, dst_fields_.size()+1, {fields_[3], dst_fields_[0], dst_fields_[1], dst_fields_[2], dst_fields_[3]});
+}
+
+TEST_F(RedisListLMoveTest, LMoveSrcRightDstRight) {
+  int ret;
+  list->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+  list->Push(dst_key_, dst_fields_, false, &ret);
+  EXPECT_EQ(dst_fields_.size(), ret);
+  std::string elem;
+  auto s = list->LMove(key_, dst_key_, false, false, &elem);
+  EXPECT_EQ(elem, fields_[3].ToString());
+  EXPECT_TRUE(s.ok());
+  listElementsAreEqualTo(key_, 0, fields_.size(), {fields_[0], fields_[1], fields_[2]});
+  listElementsAreEqualTo(dst_key_, 0, dst_fields_.size()+1, {dst_fields_[0], dst_fields_[1], dst_fields_[2], dst_fields_[3], fields_[3]});
 }

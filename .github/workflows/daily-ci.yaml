@@ -64,7 +64,7 @@ jobs:
         run: |
           mkdir build && cd build
           cmake -DDISABLE_JEMALLOC=true -DCMAKE_BUILD_TYPE=Release ..
-          make -j4 kvrocks kvrocks2redis
+          make -j4
           cd ..
 
       - name: Redis Tcl Test

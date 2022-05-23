@@ -48,7 +48,7 @@ start_server {tags {"repl"} overrides {use-rsid-psync yes}} {
                 # C never sync with any slave
                 assert_equal 0 [s sync_partial_ok]
 
-                # A -->>-- C, currently topolgy is A -->>-- C -->>-- B
+                # A -->>-- C, currently topology is A -->>-- C -->>-- B
                 $A slaveof $C_host $C_port
                 wait_for_sync $A
 
@@ -66,7 +66,7 @@ start_server {tags {"repl"} overrides {use-rsid-psync yes}} {
                 $A slaveof 127.0.0.1 1025
                 after 1000
 
-                # now topoly is
+                # now topology is
                 # A -->->-- B
                 # C -->->-- B
                 $A slaveof [srv -1 host] [srv -1 port]
@@ -75,6 +75,20 @@ start_server {tags {"repl"} overrides {use-rsid-psync yes}} {
                 # only partial sync, no full sync
                 assert_equal 2 [s -1 sync_full]
                 assert_equal 3 [s -1 sync_partial_ok]
+            }
+
+            test {replica can partially resync again after restarting} {
+                r config rewrite
+                restart_server 0 true false
+                wait_for_condition 200 500 {
+                    [s master_link_status] eq {up}
+                } else {
+                    fail "Replica C failed to resync with master B"
+                }
+
+                # don't increase sync_full, but increase sync_partial_ok
+                assert_equal 2 [s -1 sync_full]
+                assert_equal 4 [s -1 sync_partial_ok]
             }
         }
     }

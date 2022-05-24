@@ -75,6 +75,35 @@ enum ClientType {
   kTypeSlave      = (1ULL<<3),  // slave client
 };
 
+enum ServerLogType {
+  kServerLogNone,
+  kReplIdLog
+};
+
+class ServerLogData {
+ public:
+  // Redis::WriteBatchLogData always starts with digist ascii, we use alphabetic to
+  // distinguish ServerLogData with Redis::WriteBatchLogData.
+  static const char kReplIdTag = 'r';
+  static bool IsServerLogData(const char *header) {
+    if (header != NULL) return *header == kReplIdTag;
+    return false;
+  }
+
+  ServerLogData() = default;
+  explicit ServerLogData(ServerLogType type, const std::string &content) :
+      type_(type), content_(content) {}
+
+  ServerLogType GetType() { return type_; }
+  std::string GetContent() { return content_; }
+  std::string Encode();
+  Status Decode(const rocksdb::Slice &blob);
+
+ private:
+  ServerLogType type_ = kServerLogNone;
+  std::string content_;
+};
+
 class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
@@ -155,7 +184,6 @@ class Server {
   void ScriptReset();
   void ScriptFlush();
 
-  Status WriteToPropagateCF(const std::string &key, const std::string &value) const;
   Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);

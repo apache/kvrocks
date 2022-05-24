@@ -61,6 +61,7 @@ set ::all_tests {
     integration/slotmigrate
     integration/slotimport
     integration/replication
+    integration/rsid_psync
     integration/cluster
 }
 

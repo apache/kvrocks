@@ -103,6 +103,9 @@ Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
+  } else {
+    // Generate new replication id if not a replica
+    storage_->ShiftReplId();
   }
 
   if (config_->cluster_enabled) {
@@ -237,6 +240,7 @@ Status Server::RemoveMaster() {
     config_->ClearMaster();
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
+    storage_->ShiftReplId();
   }
   slaveof_mu_.unlock();
   return Status::OK();
@@ -1345,7 +1349,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
   std::string funcname = Engine::kLuaFunctionPrefix + sha;
-  WriteToPropagateCF(funcname, body);
+  storage_->WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {
@@ -1359,17 +1363,6 @@ void Server::ScriptFlush() {
   ScriptReset();
 }
 
-Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
-  rocksdb::WriteBatch batch;
-  auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  batch.Put(propagateCf, key, value);
-  auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
-  if (!s.ok()) {
-    return Status(Status::NotOK, s.ToString());
-  }
-  return Status::OK();
-}
-
 // Generally, we store data into rocksdb and just replicate WAL instead of propagating
 // commands. But sometimes, we need to update inner states or do special operations
 // for specific commands, such as `script flush`.
@@ -1380,7 +1373,7 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(channel, value);
+  return storage_->WriteToPropagateCF(channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
@@ -1452,4 +1445,27 @@ void Server::AdjustOpenFilesLimit() {
     LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
                  << " (it's originally set to " << old_limit << ")";
   }
+}
+
+std::string ServerLogData::Encode() {
+  if (type_ == kReplIdLog) {
+    return std::string(1, kReplIdTag) + " " + content_;
+  } else {
+    return content_;
+  }
+}
+
+Status ServerLogData::Decode(const rocksdb::Slice &blob) {
+  if (blob.size() == 0) {
+    return Status(Status::NotOK);
+  }
+
+  const char *header = blob.data();
+  // Only support `kReplIdTag` now
+  if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
+    type_ = kReplIdLog;
+    content_ = std::string(blob.data()+2, blob.size()-2);
+    return Status::OK();
+  }
+  return Status(Status::NotOK);
 }

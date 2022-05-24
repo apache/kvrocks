@@ -100,6 +100,7 @@ class ReplicationThread {
    public:
     enum class State {
       NEXT,
+      PREV,
       AGAIN,
       QUIT,
       RESTART,
@@ -148,6 +149,7 @@ class ReplicationThread {
   Engine::Storage *storage_ = nullptr;
   ReplState repl_state_;
   time_t last_io_time_ = 0;
+  bool next_try_old_psync_ = false;
 
   std::function<void()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;
@@ -198,6 +200,7 @@ class ReplicationThread {
   Status parallelFetchFile(const std::string &dir,
                   const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
+  static bool isWrongPsyncNum(const char *err);
 
   static void EventTimerCB(int, int16_t, void *ctx);
 
@@ -211,6 +214,13 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                         const rocksdb::Slice &value) override;
+  rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+    return rocksdb::Status::OK();
+  }
+  rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
+                  const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+    return rocksdb::Status::OK();
+  }
   WriteBatchType Type() { return type_; }
   std::string Key() const { return kv_.first; }
   std::string Value() const { return kv_.second; }

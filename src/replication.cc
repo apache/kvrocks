@@ -207,6 +207,8 @@ LOOP_LABEL:
   switch (st) {
     case CBState::NEXT:
       ++self->handler_idx_;
+    case CBState::PREV:
+      if (st == CBState::PREV) --self->handler_idx_;
       if (self->getHandlerEventType(self->handler_idx_) == WRITE) {
         SetWriteCB(bev, EvCallback, ctx);
       } else {
@@ -486,10 +488,39 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  auto next_seq = self->storage_->LatestSeq() + 1;
-  send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
+  auto cur_seq = self->storage_->LatestSeq();
+  auto next_seq = cur_seq + 1;
+  std::string replid;
+
+  // Get replication id
+  std::string replid_in_wal = self->storage_->GetReplIdFromWalBySeq(cur_seq);
+  // Set if valid replication id
+  if (replid_in_wal.length() == kReplIdLength) {
+    replid = replid_in_wal;
+  } else {
+    // Maybe there is no WAL, we can get replication id from db since master
+    // always write replication id into db before any operation when starting
+    // new "replication history".
+    std::string replid_in_db = self->storage_->GetReplIdFromDbEngine();
+    if (replid_in_db.length() == kReplIdLength) {
+      replid = replid_in_db;
+    }
+  }
+
+  // To adapt to old master using old PSYNC, i.e. only use next sequence id.
+  // Also use old PSYNC if replica can't find replication id from WAL and DB.
+  if (!self->srv_->GetConfig()->use_rsid_psync ||
+      self->next_try_old_psync_ || replid.length() != kReplIdLength) {
+    self->next_try_old_psync_ = false;  // Reset next_try_old_psync_
+    send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
+    LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
+  } else {
+    // NEW PSYNC "Unique Replication Sequence ID": replication id and sequence id
+    send_string(bev, Redis::MultiBulkString({"PSYNC", replid, std::to_string(next_seq)}));
+    LOG(INFO) << "[replication] Try to use new psync, current unique replication sequence id: "
+              << replid << ":" << cur_seq;
+  }
   self->repl_state_ = kReplSendPSync;
-  LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   return CBState::NEXT;
 }
 
@@ -507,6 +538,16 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
+
+  if (line[0] == '-' && isWrongPsyncNum(line)) {
+    self->next_try_old_psync_ = true;
+    free(line);
+    LOG(WARNING) << "The old version master, can't handle new PSYNC, "
+                  << "try old PSYNC again";
+    // Retry previous state, i.e. send PSYNC again
+    return CBState::PREV;
+  }
+
   if (strncmp(line, "+OK", 3) != 0) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
@@ -553,7 +594,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
           if (bulk_string != "ping") {
-            auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+            auto s = self->storage_->ReplicaApplyWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
             if (!s.IsOK()) {
               LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg() << ". batch: 0x"
                          << Util::StringToHex(bulk_string);
@@ -965,6 +1006,10 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
 
 bool ReplicationThread::isRestoringError(const char *err) {
   return std::string(err) == "-ERR restoring the db from backup";
+}
+
+bool ReplicationThread::isWrongPsyncNum(const char *err) {
+  return std::string(err) == "-ERR wrong number of arguments";
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

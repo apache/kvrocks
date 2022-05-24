@@ -27,6 +27,8 @@
 #include <cctype>
 #include <string>
 #include <vector>
+#include <utility>
+#include <memory>
 
 #include "status.h"
 #include "chrono"
@@ -89,5 +91,12 @@ void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);
 uint64_t GetTimeStampMS(void);
 uint64_t GetTimeStampUS(void);
+
+// define std::make_unique in c++14
+// refer to https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
+template <typename T, typename... Args>
+std::unique_ptr<T> MakeUnique(Args&& ... args) {
+     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
 
 }  // namespace Util

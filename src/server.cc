@@ -558,8 +558,15 @@ void Server::cron() {
     if (storage_->IsClosing()) continue;
 
     updateCachedTime();
+    counter++;
+    if (is_loading_) {
+      // We need to skip the cron operations since `is_loading_` means the db is restoring,
+      // and the db pointer will be modified after that. It will panic if we use the db pointer
+      // before the new db was reopened.
+      continue;
+    }
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
-    if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
+    if (counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
       std::tm now{};
       localtime_r(&t, &now);
@@ -576,7 +583,7 @@ void Server::cron() {
       }
     }
     // check every 10s
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
 
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
@@ -588,7 +595,7 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
@@ -609,13 +616,13 @@ void Server::cron() {
     // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
     // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
     // so manual trigger resume every minute after no space error to resume db under this scenario.
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
+    if (counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
       storage_->GetDB()->Resume();
       LOG(INFO) << "[server] Schedule to resume DB after no space error";
       storage_->SetDBInRetryableIOError(false);
     }
+
     cleanupExitedSlaves();
-    counter++;
     recordInstantaneousMetrics();
   }
 }

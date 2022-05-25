@@ -47,6 +47,7 @@ set ::all_tests {
     unit/type/hash
     unit/type/sint
     unit/type/bitmap
+    unit/type/stream
     unit/multi
     unit/expire
     unit/quit

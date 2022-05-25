@@ -29,6 +29,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <set>
 
 #include "lua.hpp"
 #include "stats.h"
@@ -53,6 +54,14 @@ struct ConnContext {
   Worker *owner;
   int fd;
   ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
+};
+
+struct StreamConsumer {
+  Worker *owner;
+  int fd;
+  Redis::StreamEntryID last_consumed_id;
+  StreamConsumer(Worker *w, int fd, Redis::StreamEntryID id) :
+    owner(w), fd(fd), last_consumed_id(id) {}
 };
 
 typedef struct {
@@ -138,7 +147,11 @@ class Server {
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
+  void BlockOnStreams(const std::vector<std::string> &keys,
+                      const std::vector<Redis::StreamEntryID> &entry_ids, Redis::Connection *conn);
+  void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
   Status WakeupBlockingConns(const std::string &key, size_t n_conns);
+  Status OnEntryAddedToStream(const std::string &key, const Redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
@@ -169,6 +182,8 @@ class Server {
   int IncrClientNum();
   int IncrMonitorClientNum();
   int DecrMonitorClientNum();
+  int IncrBlockedClientNum();
+  int DecrBlockedClientNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
   void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type,
@@ -254,6 +269,8 @@ class Server {
   std::mutex pubsub_channels_mu_;
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;
+  std::atomic<int> blocked_clients_{0};
+  std::map<std::string, std::set<StreamConsumer *>> blocked_stream_consumers_;
 
   // threads
   RWLock::ReadWriteLock works_concurrency_rw_lock_;

@@ -27,6 +27,7 @@
 #include <rocksdb/status.h>
 
 #include "encoding.h"
+#include "redis_stream_base.h"
 
 enum RedisType {
   kRedisNone,
@@ -37,6 +38,7 @@ enum RedisType {
   kRedisZSet,
   kRedisBitmap,
   kRedisSortedint,
+  kRedisStream,
 };
 
 enum RedisCommand {
@@ -56,7 +58,7 @@ enum RedisCommand {
 
 const std::vector<std::string> RedisTypeNames = {
     "none", "string", "hash",
-    "list", "set", "zset", "bitmap", "sortedint"
+    "list", "set", "zset", "bitmap", "sortedint", "stream"
 };
 
 extern const char* kErrMsgWrongType;
@@ -152,6 +154,21 @@ class ListMetadata : public Metadata {
   uint64_t head;
   uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
+ public:
+  void Encode(std::string *dst) override;
+  rocksdb::Status Decode(const std::string &bytes) override;
+};
+
+class StreamMetadata : public Metadata {
+ public:
+  Redis::StreamEntryID last_generated_id;
+  Redis::StreamEntryID recorded_first_entry_id;
+  Redis::StreamEntryID max_deleted_entry_id;
+  Redis::StreamEntryID first_entry_id;
+  Redis::StreamEntryID last_entry_id;
+  uint64_t entries_added = 0;
+
+  explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

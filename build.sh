@@ -16,12 +16,38 @@
 # specific language governing permissions and limitations
 # under the License.
 
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 BUILD_DIR" >&2
-  exit 1
+set -e
+
+function usage() {
+    echo "Usage: $0 BUILD_DIR [-Dvar=value ...] [--unittest] [-jN] [-h|--help]" >&2
+    echo >&2
+    echo "BUILD_DIR   : directory to store cmake-generated and build files" >&2
+    echo "-Dvar=value : extra cmake definitions" >&2
+    echo "-jN         : execute N build jobs concurrently, default N = 4" >&2
+    echo "--unittest  : build unittest target" >&2
+    echo "-h, --help  : print this help messages" >&2
+    exit 1
+}
+
+until [ $# -eq 0 ]; do
+    case $1 in
+        -D*) CMAKE_DEFS="$CMAKE_DEFS $1";;
+        --unittest) BUILD_UNITTEST=1;;
+        -j*) JOB_CMD=$1;;
+        -*) usage;;
+        *) BUILD_DIR=$1;;
+    esac
+    shift
+done
+
+if [ -z "$BUILD_DIR" ]; then
+    usage
 fi
 
-BUILD_DIR=$1
+if [ -z "$JOB_CMD" ]; then
+    JOB_CMD="-j4"
+fi
+
 WORKING_DIR=$(pwd)
 CMAKE_INSTALL_DIR=$WORKING_DIR/$BUILD_DIR/cmake
 CMAKE_REQUIRE_VERSION="3.13.0"
@@ -54,6 +80,7 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     printf ${YELLOW}"CMake $CMAKE_REQUIRE_VERSION or higher is required. Trying to install CMake $CMAKE_REQUIRE_VERSION ..."${NC}"\n"
     if [ ! -x "$(command -v curl)" ]; then
         printf ${RED}"Please install the curl first to download the cmake"${NC}"\n"
+        exit 1
     fi
     mkdir -p $BUILD_DIR/cmake
     cd $BUILD_DIR
@@ -64,4 +91,13 @@ if [ "$(printf '%s\n' "$CMAKE_REQUIRE_VERSION" "$CMAKE_VERSION" | sort -V | head
     CMAKE_BIN=$CMAKE_INSTALL_DIR/bin/cmake
 fi
 
-cd $BUILD_DIR && $CMAKE_BIN -DCMAKE_BUILD_TYPE=RelWithDebInfo .. && make -j4 kvrocks kvrocks2redis
+mkdir -p $BUILD_DIR
+cd $BUILD_DIR
+
+set -x
+$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS
+make $JOB_CMD kvrocks kvrocks2redis
+
+if [ -n "$BUILD_UNITTEST" ]; then
+    make $JOB_CMD unittest
+fi

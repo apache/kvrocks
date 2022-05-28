@@ -63,9 +63,8 @@ It is as simple as:
 
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
-$ cd kvrocks
-$ mkdir build
-$ ./build.sh build # manually run CMake if you want to build Debug version or add some build options
+$ cd incubator-kvrocks
+$ ./build.sh build # `./build.sh -h` to check more options
 ```
 
 ### Running kvrocks

@@ -417,7 +417,7 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
-                                                    std::to_string(RocksDB.blob_file_size * MiB));
+                                                    std::to_string(RocksDB.blob_file_size));
       }},
       {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
                                                         const std::string& v)->Status {

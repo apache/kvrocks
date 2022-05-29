@@ -172,7 +172,16 @@ static void initGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->log_dir;
+
+  if (Util::ToLower(config->log_dir) == "stdout") {
+    for (int level = google::INFO; level <= google::FATAL; level++) {
+      google::SetLogDestination(level, "");
+    }
+    FLAGS_stderrthreshold = google::ERROR;
+    FLAGS_logtostdout = true;
+  } else {
+    FLAGS_log_dir = config->log_dir;
+  }
 }
 
 bool supervisedUpstart() {

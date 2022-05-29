@@ -460,7 +460,7 @@ void Config::initFieldCallback() {
         if (!srv) return Status::OK();
         if (!RocksDB.level_compaction_dynamic_level_bytes) {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
-        }                  
+        }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
       }},
       {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
@@ -468,7 +468,7 @@ void Config::initFieldCallback() {
         if (!srv) return Status::OK();
         if (!RocksDB.level_compaction_dynamic_level_bytes) {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
-        }                  
+        }
         std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
         return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
       }},

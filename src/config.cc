@@ -453,7 +453,7 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
-                                                    std::to_string(RocksDB.max_bytes_for_level_base));
+                                                    std::to_string(RocksDB.max_bytes_for_level_base * MiB));
       }},
       {"rocksdb.max_bytes_for_level_multiplier", [this](Server* srv, const std::string &k,
                                                    const std::string& v)->Status {

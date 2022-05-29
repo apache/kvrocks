@@ -29,4 +29,5 @@ include(cmake/utils.cmake)
 FetchContent_MakeAvailableWithArgs(snappy
   SNAPPY_BUILD_TESTS=OFF
   SNAPPY_BUILD_BENCHMARKS=OFF
+  BUILD_SHARED_LIBS=OFF
 )

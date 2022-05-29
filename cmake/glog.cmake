@@ -21,7 +21,7 @@ include(FetchContent)
 
 FetchContent_Declare(glog
   GIT_REPOSITORY https://github.com/google/glog
-  GIT_TAG v0.4.0
+  GIT_TAG v0.6.0
 )
 
 include(cmake/utils.cmake)

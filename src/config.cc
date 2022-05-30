@@ -447,21 +447,27 @@ void Config::initFieldCallback() {
         double cutoff = val / 100;
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
+      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
+        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
+      }},
       {"rocksdb.max_bytes_for_level_base", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
+        if (!RocksDB.level_compaction_dynamic_level_bytes) {
+          return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
+        }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
                                                     std::to_string(RocksDB.max_bytes_for_level_base));
       }},
       {"rocksdb.max_bytes_for_level_multiplier", [this](Server* srv, const std::string &k,
                                                    const std::string& v)->Status {
         if (!srv) return Status::OK();
+        if (!RocksDB.level_compaction_dynamic_level_bytes) {
+          return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
+        }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-      }},
-      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
-                                                        const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
-        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

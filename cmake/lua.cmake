@@ -21,7 +21,7 @@ include(FetchContent)
 
 FetchContent_Declare(lua
   GIT_REPOSITORY https://github.com/KvrocksLabs/lua
-  GIT_TAG e7a8bfd88f5fe3431f35c53a8c1a0d42d49636b5
+  GIT_TAG c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
 )
 
 FetchContent_GetProperties(lua)

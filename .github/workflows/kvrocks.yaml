@@ -88,7 +88,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install clang autoconf automake libtool cmake
+          brew install autoconf automake libtool cmake
           mkdir build
 
       - name: Build

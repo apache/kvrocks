@@ -88,11 +88,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install gcc autoconf automake libtool cmake
+          brew install clang autoconf automake libtool cmake
           mkdir build
 
       - name: Build
         run: |
           cd build
-          cmake ..
+          cmake .. -DCMAKE_C_COMPILER=clang -DCMAKE_C_COMPILER=clang++
           make -j4

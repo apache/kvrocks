@@ -28,7 +28,7 @@ FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
   FetchContent_Populate(lua)
 
-  set(LUA_CFLAGS "${CMAKE_C_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  set(LUA_CFLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
 
   add_custom_target(make_lua COMMAND make "CC=${CMAKE_CXX_COMPILER}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src

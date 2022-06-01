@@ -40,7 +40,7 @@ if(NOT lua_POPULATED)
 
   set(LUA_CFLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
 
-  add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${CMAKE_CXX_FLAGS}" liblua.a
+  add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
   )
   

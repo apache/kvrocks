@@ -74,12 +74,10 @@ enum {
   LL_WARNING,
 };
 
-extern "C" {
 LUALIB_API int (luaopen_cjson)(lua_State *L);
 LUALIB_API int (luaopen_struct)(lua_State *L);
 LUALIB_API int (luaopen_cmsgpack)(lua_State *L);
 LUALIB_API int (luaopen_bit)(lua_State *L);
-}
 
 namespace Lua {
   lua_State* CreateState() {
@@ -778,7 +776,7 @@ std::string replyToRedisReply(lua_State *lua) {
  * by the non-error-trapping version of redis.pcall(), which is redis.call(),
  * this function will raise the Lua error so that the execution of the
  * script will be halted. */
-int raiseError(lua_State *lua) {
+[[noreturn]] int raiseError(lua_State *lua) {
   lua_pushstring(lua, "err");
   lua_gettable(lua, -2);
   return lua_error(lua);

@@ -21,16 +21,20 @@ include(FetchContent)
 
 FetchContent_Declare(lua
   GIT_REPOSITORY https://github.com/KvrocksLabs/lua
-  GIT_TAG 6f73d72d45c2e3915ee961e41705f35526608735
+  GIT_TAG c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
 )
 
 FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
   FetchContent_Populate(lua)
 
-  set(LUA_CFLAGS "${CMAKE_C_FLAGS} -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  set(LUA_CXX ${CMAKE_CXX_COMPILER})
+  set(LUA_CFLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
+  endif()
 
-  add_custom_target(make_lua COMMAND make "CFLAGS=${LUA_CFLAGS}" liblua.a
+  add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
   )
   

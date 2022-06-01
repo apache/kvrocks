@@ -30,9 +30,7 @@
 #include <memory>
 #include <unordered_map>
 
-extern "C" {
 #include <lua.h>
-}
 
 #include "stats.h"
 #include "storage.h"

@@ -30,7 +30,7 @@ if(NOT lua_POPULATED)
 
   set(LUA_CXX ${CMAKE_CXX_COMPILER})
   if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    try_compile(FOUND_ASSERT_H ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/include_assert_h.c)
+    try_compile(FOUND_ASSERT_H ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/include_assert_h.cc)
 
     if(NOT FOUND_ASSERT_H)
       message(STATUS "fail to compile cmake/checks/include_assert_h.c, use ${CXX} to compile lua instead of ${CMAKE_CXX_COMPILER}")

@@ -29,22 +29,10 @@ if(NOT lua_POPULATED)
   FetchContent_Populate(lua)
 
   set(LUA_CXX ${CMAKE_CXX_COMPILER})
-  message(STATUS "CXX ${CXX} CMAKE_CXX_COMPILER ${CMAKE_CXX_COMPILER} CMAKE_CXX_COMPILER_ID ${CMAKE_CXX_COMPILER_ID}")
-  message(STATUS "---------------------------------------------------------------------------------------------")
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    try_compile(FOUND_ASSERT_H ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/include_assert_h.cc
-      CMAKE_FLAGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-    )
-
-    if(NOT FOUND_ASSERT_H)
-      message(STATUS "fail to compile cmake/checks/include_assert_h.cc, use ${CXX} to compile lua instead of ${CMAKE_CXX_COMPILER}")
-      set(LUA_CXX ${CXX})
-    else()
-      message(STATUS "success to compile cmake/checks/include_assert_h.cc")
-    endif()
-  endif()
-
   set(LUA_CFLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
+  endif()
 
   add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src

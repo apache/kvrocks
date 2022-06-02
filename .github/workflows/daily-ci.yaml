@@ -64,8 +64,37 @@ jobs:
         run: |
           mkdir build && cd build
           cmake -DDISABLE_JEMALLOC=true -DCMAKE_BUILD_TYPE=Release ..
+          make -j4
+          cd ..
+
+      - name: Redis Tcl Test
+        run: |
+          sudo apt-get install tcl8.5
+          cd tests/tcl && sh runtest && cd -
+
+  build-on-ubuntu-with-sanitizers:
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+        sanitizer: [ENABLE_ASAN=ON, ENABLE_TSAN=ON]
+    
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 64
+
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake -D${{ matrix.sanitizer }} ..
           make -j4 kvrocks kvrocks2redis
           cd ..
+        
+      - name: Unit Test
+        run: |
+          ./build/unittest
 
       - name: Redis Tcl Test
         run: |

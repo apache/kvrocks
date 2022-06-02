@@ -89,7 +89,7 @@ jobs:
         run: |
           mkdir build && cd build
           cmake -D${{ matrix.sanitizer }} ..
-          make -j4 kvrocks kvrocks2redis
+          make -j4
           cd ..
         
       - name: Unit Test

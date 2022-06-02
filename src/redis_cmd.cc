@@ -65,6 +65,7 @@ const char *errInvalidExpireTime = "invalid expire time";
 const char *errWrongNumOfArguments = "wrong number of arguments";
 const char *errValueNotInterger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
+const char *errValueMustBePositive = "value is out of range, must be positive";
 
 class CommandAuth : public Commander {
  public:
@@ -1448,23 +1449,59 @@ class CommandRPushX : public CommandPush {
 class CommandPop : public Commander {
  public:
   explicit CommandPop(bool left) { left_ = left; }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    if (args.size() == 2) {
+      return Status::OK();
+    }
+    try {
+      int32_t v = std::stol(args[2]);
+      if (v < 0) {
+        return Status(Status::RedisParseErr, errValueMustBePositive);
+      }
+      count_ = v;
+      with_count_ = true;
+    } catch (const std::exception& ) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    return Status::OK();
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    std::string elem;
-    rocksdb::Status s = list_db.Pop(args_[1], &elem, left_);
-    if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
-    }
-    if (s.IsNotFound()) {
-      *output = Redis::NilString();
+    if (with_count_) {
+      std::vector<std::string> elems;
+      rocksdb::Status s = list_db.PopMulti(args_[1], left_, count_, &elems);
+      if (!s.ok() && !s.IsNotFound()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      if (s.IsNotFound()) {
+        *output = Redis::MultiLen(-1);
+      } else {
+        *output = Redis::MultiBulkString(elems);
+      }
     } else {
-      *output = Redis::BulkString(elem);
+      std::string elem;
+      rocksdb::Status s = list_db.Pop(args_[1], left_, &elem);
+      if (!s.ok() && !s.IsNotFound()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      if (s.IsNotFound()) {
+        *output = Redis::NilString();
+      } else {
+        *output = Redis::BulkString(elem);
+      }
     }
+
     return Status::OK();
   }
 
  private:
   bool left_;
+  bool with_count_ = false;
+  uint32_t count_ = 1;
 };
 
 class CommandLPop : public CommandPop {
@@ -1533,7 +1570,7 @@ class CommandBPop : public Commander {
     rocksdb::Status s;
     for (const auto &key : keys_) {
       last_key = key;
-      s = list_db.Pop(key, &elem, left_);
+      s = list_db.Pop(key, left_, &elem);
       if (s.ok() || !s.IsNotFound()) {
         break;
       }
@@ -3608,22 +3645,58 @@ class CommandStats: public Commander {
 class CommandPSync : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    size_t seq_arg = 1;
+    if (args.size() == 3) {
+      seq_arg = 2;
+      new_psync = true;
+    }
     try {
-      auto s = std::stoull(args[1]);
+      auto s = std::stoull(args[seq_arg]);
       next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
+    }
+    if (new_psync) {
+      assert(args.size() == 3);
+      replica_replid = args[1];
+      if (replica_replid.size() != kReplIdLength) {
+        return Status(Status::RedisParseErr, "Wrong replication id length");
+      }
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    LOG(INFO) << "Slave " << conn->GetAddr() << " asks for synchronization"
+    LOG(INFO) << "Slave " << conn->GetAddr()
+              << ", listening port: " << conn->GetListeningPort()
+              << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
+              << " replication id: " << (replica_replid.length() ?  replica_replid : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeq();
-    if (!checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
-      svr->stats_.IncrPSyncErrCounter();
+
+    bool need_full_sync = false;
+
+    // Check replication id of the last sequence log
+    if (new_psync && svr->GetConfig()->use_rsid_psync) {
+      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq - 1);
+      LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
+
+      // We check replication id only when WAL has this sequence, since there may be no WAL,
+      // Or WAL may has nothing when starting from db of old version kvrocks.
+      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
+        *output = "wrong replication id of the last log";
+        need_full_sync = true;
+      }
+    }
+
+    // Check Log sequence
+    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
       *output = "sequence out of range, please use fullsync";
+      need_full_sync = true;
+    }
+
+    if (need_full_sync) {
+      svr->stats_.IncrPSyncErrCounter();
       return Status(Status::RedisExecErr, *output);
     }
 
@@ -3650,6 +3723,8 @@ class CommandPSync : public Commander {
 
  private:
   rocksdb::SequenceNumber next_repl_seq = 0;
+  bool new_psync = false;
+  std::string replica_replid;
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage,
@@ -4728,8 +4803,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),
     ADD_CMD("lpushx", -3, "write", 1, 1, 1, CommandLPushX),
     ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
-    ADD_CMD("lpop", 2, "write", 1, 1, 1, CommandLPop),
-    ADD_CMD("rpop", 2, "write", 1, 1, 1, CommandRPop),
+    ADD_CMD("lpop", -2, "write", 1, 1, 1, CommandLPop),
+    ADD_CMD("rpop", -2, "write", 1, 1, 1, CommandRPop),
     ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
     ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
     ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
@@ -4826,7 +4901,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
     ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
+    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
     ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
     ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
     ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),

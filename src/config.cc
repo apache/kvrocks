@@ -118,6 +118,7 @@ Config::Config() {
       {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
       {"slave-read-only", false, new YesNoField(&slave_readonly, true)},
+      {"use-rsid-psync", true, new YesNoField(&use_rsid_psync, false)},
       {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},
       {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
       {"profiling-sample-record-threshold-ms",
@@ -168,12 +169,12 @@ Config::Config() {
        false, new IntField(&RocksDB.level0_file_num_compaction_trigger, 4, 1, 1024)},
       {"rocksdb.enable_blob_files", false, new YesNoField(&RocksDB.enable_blob_files, false)},
       {"rocksdb.min_blob_size", false, new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX)},
-      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 256, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&RocksDB.blob_file_size, 268435456, 0, INT_MAX)},
       {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&RocksDB.enable_blob_garbage_collection, true)},
       {"rocksdb.blob_garbage_collection_age_cutoff",
        false, new IntField(&RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100)},
       {"rocksdb.max_bytes_for_level_base",
-        false, new IntField(&RocksDB.max_bytes_for_level_base, 256, 0, INT_MAX)},
+        false, new IntField(&RocksDB.max_bytes_for_level_base, 268435456, 0, INT_MAX)},
       {"rocksdb.max_bytes_for_level_multiplier",
         false, new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes",
@@ -416,7 +417,7 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
-                                                    std::to_string(RocksDB.blob_file_size * MiB));
+                                                    std::to_string(RocksDB.blob_file_size));
       }},
       {"rocksdb.enable_blob_garbage_collection", [this](Server* srv, const std::string &k,
                                                         const std::string& v)->Status {
@@ -446,13 +447,19 @@ void Config::initFieldCallback() {
         double cutoff = val / 100;
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
+      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
+                                                        const std::string& v)->Status {
+        if (!srv) return Status::OK();
+        std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
+        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
+      }},
       {"rocksdb.max_bytes_for_level_base", [this](Server* srv, const std::string &k, const std::string& v)->Status {
         if (!srv) return Status::OK();
         if (!RocksDB.level_compaction_dynamic_level_bytes) {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
-                                                    std::to_string(RocksDB.max_bytes_for_level_base * MiB));
+                                                    std::to_string(RocksDB.max_bytes_for_level_base));
       }},
       {"rocksdb.max_bytes_for_level_multiplier", [this](Server* srv, const std::string &k,
                                                    const std::string& v)->Status {
@@ -461,15 +468,6 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
         }
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
-      }},
-      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
-                                                        const std::string& v)->Status {
-        if (!srv) return Status::OK();
-        if (!RocksDB.level_compaction_dynamic_level_bytes) {
-          return Status(Status::NotOK, errNotSetLevelCompactionDynamicLevelBytes);
-        }
-        std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
-        return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
       }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

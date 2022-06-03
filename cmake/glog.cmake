@@ -29,4 +29,5 @@ include(cmake/utils.cmake)
 FetchContent_MakeAvailableWithArgs(glog
   WITH_GFLAGS=OFF
   WITH_GTEST=OFF
+  BUILD_SHARED_LIBS=OFF
 )

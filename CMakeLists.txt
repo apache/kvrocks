@@ -53,6 +53,7 @@ include(cmake/snappy.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
+include(cmake/lz4.cmake)
 
 find_package(Threads REQUIRED)
 
@@ -61,22 +62,23 @@ list(APPEND EXTERNAL_LIBS PRIVATE snappy)
 list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
 list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
 list(APPEND EXTERNAL_LIBS PRIVATE lua)
+list(APPEND EXTERNAL_LIBS PRIVATE lz4)
 list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
-execute_process(COMMAND sh -c "grep -i version -m1 Changelog | awk '{printf $3}'" 
+execute_process(COMMAND sh -c "grep -i version -m1 Changelog | awk '{printf $3}'"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE PROJECT_VERSION)
-execute_process(COMMAND git rev-parse --short HEAD 
+execute_process(COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)
 string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
-    
+
     if(ENABLE_STATIC_LIBSTDCXX)
-        try_compile(FOUND_STATIC_LIBSTDCXX ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/static_libstdcxx.cc 
+        try_compile(FOUND_STATIC_LIBSTDCXX ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/cmake/checks/static_libstdcxx.cc
             LINK_OPTIONS -static-libstdc++ CXX_STANDARD 11)
 
         if(NOT FOUND_STATIC_LIBSTDCXX)

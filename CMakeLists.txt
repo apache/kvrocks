@@ -45,6 +45,8 @@ if(NOT DISABLE_JEMALLOC)
     list(APPEND EXTERNAL_LIBS PRIVATE jemalloc)
 endif()
 
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "do not build shared libs by default")
+
 include(cmake/gtest.cmake)
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)

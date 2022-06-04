@@ -20,6 +20,7 @@
 
 #include "storage.h"
 
+#include <strings.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <iostream>
@@ -209,9 +210,16 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     tmp_db->Close();
     delete tmp_db;
   }
-  // Open db would be failed if the column families have already exists,
-  // so we return ok here.
-  return Status::OK();
+
+  // We try to create families by opening the db without column families.
+  // If it's ok means we didn't create column families(cannot open without column families if created).
+  // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
+  std::string notOpenedPrefix = "Column families not opened";
+  if (s.IsInvalidArgument() &&
+      !strncasecmp(s.ToString().c_str(), notOpenedPrefix.c_str(), notOpenedPrefix.size())) {
+    return Status::OK();
+  }
+  return Status(Status::NotOK, s.ToString());
 }
 
 Status Storage::Open(bool read_only) {

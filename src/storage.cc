@@ -209,8 +209,19 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     tmp_db->Close();
     delete tmp_db;
   }
-  // Open db would be failed if the column families have already exists,
-  // so we return ok here.
+
+  if (!s.ok()) {
+    // We try to create families by opening the db without column families.
+    // If it's ok means we didn't create column families(cannot open without column families if created).
+    // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
+    // If the status message contains `Column families not opened` means that we have created the column
+    // families, let's ignore the error.
+    std::string notOpenedPrefix = "Column families not opened";
+    if (s.IsInvalidArgument() && s.ToString().find(notOpenedPrefix) != std::string::npos) {
+      return Status::OK();
+    }
+    return Status(Status::NotOK, s.ToString());
+  }
   return Status::OK();
 }
 

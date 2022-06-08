@@ -36,6 +36,7 @@ if(NOT lua_POPULATED)
 
   add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
+    BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
   )
   
   file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h")

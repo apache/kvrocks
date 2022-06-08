@@ -37,6 +37,7 @@ if(NOT jemalloc_POPULATED)
   add_custom_target(make_jemalloc 
     COMMAND make
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
+    BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
   )
 endif()
 

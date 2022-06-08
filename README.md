@@ -76,9 +76,8 @@ $ ./build/kvrocks -c kvrocks.conf
 ### Running test cases
 
 ```shell
-$ # make sure CMake was executed in ./build
+$ ./build.sh build --unittest
 $ cd build
-$ make unittest
 $ ./unittest
 ```
 

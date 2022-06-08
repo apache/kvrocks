@@ -22,7 +22,7 @@ set(LZ4_LIB_NAME "lz4")
 # set lz4
 set(LZ4_SOURCE "lz4-1.9.3")
 # set download dir
-set(LZ4_ZIP_DL_DIR ${CMAKE_CURRENT_BINARY_DIR}/../external)
+set(LZ4_ZIP_DL_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps)
 # set zip file name
 set(LZ4_ZIP_NAME "lz4-1.9.3.tar.gz")
 #

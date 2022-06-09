@@ -59,6 +59,18 @@ const std::string compressType2String(const rocksdb::CompressionType type) {
   return iter->second;
 }
 
+bool isDiskQuotaExceeded(const rocksdb::Status &bg_error) {
+    // EDQUOT: Disk quota exceeded (POSIX.1-2001)
+    std::string edquot_str = "Disk quota exceeded";
+    std::string err_msg = bg_error.ToString();
+
+    if (err_msg.length() < edquot_str.length()) {
+        return false;
+    }
+
+    return edquot_str == err_msg.substr(err_msg.size()-edquot_str.size());
+}
+
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
             << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
@@ -92,26 +104,32 @@ void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInf
             << ", smallest seqno: " << fi.smallest_seqno;
 }
 
-void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {
+void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *bg_error) {
   std::string reason_str;
   switch (reason) {
-    case rocksdb::BackgroundErrorReason::kCompaction:reason_str = "compact";
+    case rocksdb::BackgroundErrorReason::kCompaction:
+      reason_str = "compact";
       break;
-    case rocksdb::BackgroundErrorReason::kFlush:reason_str = "flush";
+    case rocksdb::BackgroundErrorReason::kFlush:
+      reason_str = "flush";
       break;
-    case rocksdb::BackgroundErrorReason::kMemTable:reason_str = "memtable";
+    case rocksdb::BackgroundErrorReason::kMemTable:
+      reason_str = "memtable";
       break;
-    case rocksdb::BackgroundErrorReason::kWriteCallback:reason_str = "writecallback";
+    case rocksdb::BackgroundErrorReason::kWriteCallback:
+      reason_str = "writecallback";
       break;
     default:
       // Should not arrive here
       break;
   }
-  if (status->IsNoSpace() && status->severity() < rocksdb::Status::kFatalError) {
+  if ((bg_error->IsNoSpace() || isDiskQuotaExceeded(*bg_error)) &&
+      bg_error->severity() < rocksdb::Status::kFatalError) {
     storage_->SetDBInRetryableIOError(true);
   }
+
   LOG(ERROR) << "[event_listener/background_error] reason: " << reason_str
-             << ", status: " << status->ToString();
+             << ", bg_error: " << bg_error->ToString();
 }
 
 void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {

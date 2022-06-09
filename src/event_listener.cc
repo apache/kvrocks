@@ -61,14 +61,11 @@ const std::string compressType2String(const rocksdb::CompressionType type) {
 
 bool isDiskQuotaExceeded(const rocksdb::Status &bg_error) {
     // EDQUOT: Disk quota exceeded (POSIX.1-2001)
-    std::string edquot_str = "Disk quota exceeded";
+    std::string exceeded_quota_str = "Disk quota exceeded";
     std::string err_msg = bg_error.ToString();
 
-    if (err_msg.length() < edquot_str.length()) {
-        return false;
-    }
-
-    return edquot_str == err_msg.substr(err_msg.size()-edquot_str.size());
+    std::size_t found = err_msg.find(exceeded_quota_str);
+    return found != std::string::npos;
 }
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {

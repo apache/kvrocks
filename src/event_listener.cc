@@ -65,7 +65,6 @@ bool isDiskQuotaExceeded(const rocksdb::Status &bg_error) {
     std::string err_msg = bg_error.ToString();
 
     return err_msg.find(exceeded_quota_str) != std::string::npos;
-
 }
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {

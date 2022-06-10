@@ -613,12 +613,14 @@ void Server::cron() {
       }
     }
     // check if DB need to be resumed every minute
-    // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
-    // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
-    // so manual trigger resume every minute after no space error to resume db under this scenario.
+    // Rocksdb has auto resume feature after retryable io error, earlier version(before v6.22.1) had
+    // bug when encounter no space error. The current version fixes the no space error issue, but it
+    // does not completely resolve, which still exists when encountered disk quota exceeded error.
+    // In order to properly handle all possible situations on rocksdb, we manually resume here
+    // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
       storage_->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after no space error";
+      LOG(INFO) << "[server] Schedule to resume DB after retryable io error";
       storage_->SetDBInRetryableIOError(false);
     }
 

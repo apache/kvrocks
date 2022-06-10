@@ -25,6 +25,7 @@ function usage() {
     echo "-Dvar=value : extra cmake definitions" >&2
     echo "-jN         : execute N build jobs concurrently, default N = 4" >&2
     echo "--unittest  : build unittest target" >&2
+    echo "--ninja     : use ninja to build kvrocks" >&2
     echo "-h, --help  : print this help messages" >&2
     exit 1
 }
@@ -33,6 +34,7 @@ until [ $# -eq 0 ]; do
     case $1 in
         -D*) CMAKE_DEFS="$CMAKE_DEFS $1";;
         --unittest) BUILD_UNITTEST=1;;
+        --ninja) USE_NINJA="-G Ninja";;
         -j*) JOB_CMD=$1;;
         -*) usage;;
         *) BUILD_DIR=$1;;
@@ -95,9 +97,9 @@ mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 
 set -x
-$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS
-make $JOB_CMD kvrocks kvrocks2redis
+$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS $USE_NINJA
+$CMAKE_BIN --build . $JOB_CMD -t kvrocks kvrocks2redis
 
 if [ -n "$BUILD_UNITTEST" ]; then
-    make $JOB_CMD unittest
+    $CMAKE_BIN --build . $JOB_CMD -t unittest
 fi

@@ -127,3 +127,23 @@ jobs:
       - name: Redis Tcl Test
         run:
           cd tests/tcl && sh runtest && cd -
+
+  build-on-ubuntu-with-ninja:
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 64
+
+      - name: Build
+        run: |
+          ./build.sh build --ninja
+        
+      - name: Unit Test
+        run: |
+          ./build/unittest

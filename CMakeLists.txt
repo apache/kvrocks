@@ -50,10 +50,10 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "do not build shared libs by default")
 include(cmake/gtest.cmake)
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
+include(cmake/lz4.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/lua.cmake)
-include(cmake/lz4.cmake)
 
 find_package(Threads REQUIRED)
 

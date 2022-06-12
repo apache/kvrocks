@@ -38,6 +38,9 @@ FetchContent_GetProperties(snappy)
 FetchContent_MakeAvailableWithArgs(rocksdb
   CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/modules # to locate FindJeMalloc.cmake
   Snappy_DIR=${PROJECT_SOURCE_DIR}/cmake/modules # to locate SnappyConfig.cmake
+  lz4_ROOT_DIR=${LZ4_LIB_SOURCE_DIR}
+  lz4_LIBRARIES=${LZ4_LIB_SOURCE_DIR}/liblz4.a
+  lz4_INCLUDE_DIRS=${LZ4_LIB_SOURCE_DIR}
   FAIL_ON_WARNINGS=OFF
   WITH_TESTS=OFF
   WITH_BENCHMARK_TOOLS=OFF

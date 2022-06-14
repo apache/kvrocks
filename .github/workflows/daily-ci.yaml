@@ -52,6 +52,7 @@ jobs:
 
   build-and-test:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-18.04

@@ -89,7 +89,7 @@ jobs:
 
       - name: Install Ninja
         if: ${{ matrix.with_ninja && startsWith(matrix.os, 'ubuntu') }}
-        run: sudo apt install -y ninja
+        run: sudo apt install -y ninja-build
       
       - name: Setup Mac OS
         if: ${{ startsWith(matrix.os, 'macos') }}

@@ -18,19 +18,21 @@
 name: Daily CI
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/daily-ci.yaml"
   schedule:
     # Daily run this action at 1am
     - cron: '0 1 * * *'
   workflow_dispatch:
 
 jobs:
-  build-on-ubuntu-docker:
+  build-docker-image:
     name: Build Docker Image
     runs-on: ubuntu-18.04
     steps:
-
       - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 64
 
@@ -48,102 +50,62 @@ jobs:
         run: |
           docker buildx build --platform linux/amd64,linux/arm64 .
 
-  build-on-ubuntu-without-jemalloc:
+  build-on-ubuntu:
     strategy:
       matrix:
-        os: [ubuntu-18.04]
-    
+        include:
+          - os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+          - os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+          - os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - os: ubuntu-18.04
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - os: ubuntu-18.04
+            with_ninja: --ninja
+          - os: ubuntu-18.04
+            with_ninja: --ninja
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - os: macos-latest
+          - os: macos-latest
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 64
 
-      - name: Build
-        run: |
-          mkdir build && cd build
-          cmake -DDISABLE_JEMALLOC=true -DCMAKE_BUILD_TYPE=Release ..
-          make -j4
-          cd ..
+      - name: Install Ninja
+        if: ${{ matrix.with_ninja && startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt install -y ninja
+      
+      - name: Setup Mac OS
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: brew install cmake gcc autoconf automake libtool
+      
+      - name: Install TCL
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt install -y tcl8.5
 
-      - name: Redis Tcl Test
+      - name: Build Kvrocks
         run: |
-          sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
-
-  build-on-ubuntu-with-sanitizers:
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-        sanitizer: [ENABLE_ASAN=ON, ENABLE_TSAN=ON]
-    
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Build
-        run: |
-          mkdir build && cd build
-          cmake -D${{ matrix.sanitizer }} ..
-          make -j4
-          cd ..
+          ./build.sh build -j$(nproc) --unittest \
+            ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
         
-      - name: Unit Test
-        run: |
-          ./build/unittest
+      - name: Run Unit Test
+        run: ./build/unittest
 
-      - name: Redis Tcl Test
-        run: |
-          sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
-
-  build-test-on-macos-latest:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Install Dependencies
-        run: |
-          brew install cmake gcc autoconf automake libtool
-          mkdir build
-      - name: Build
-        run: |
-          cd build
-          cmake ..
-          make -j4
-          cd ..
-      - name: Unit Test
-        run: |
-          cd build
-          ./unittest
-          cd ..
-      - name: Redis Tcl Test
-        run:
-          cd tests/tcl && sh runtest && cd -
-
-  build-on-ubuntu-with-ninja:
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-    
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Build
-        run: |
-          ./build.sh build --ninja
-        
-      - name: Unit Test
-        run: |
-          ./build/unittest
+      - name: Run Redis Tcl Test
+        run: cd tests/tcl && ./runtest

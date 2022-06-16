@@ -39,6 +39,9 @@ jobs:
       
       - name: Install Check Tools
         run: |
+          sudo pip install --upgrade pip
+          sudo pip install --upgrade setuptools
+          sudo apt-get update
           sudo apt-get install -y cppcheck
           sudo pip install cpplint==1.5.0
       

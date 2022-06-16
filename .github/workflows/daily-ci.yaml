@@ -56,30 +56,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-18.04
+          - name: Ubuntu GCC ASan
+            os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
-          - os: ubuntu-18.04
+          - name: Ubuntu GCC TSan
+            os: ubuntu-18.04
             with_sanitizer: -DENABLE_TSAN=ON
-          - os: ubuntu-18.04
+          - name: Ubuntu GCC without Jemalloc
+            os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - os: ubuntu-18.04
-            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - os: ubuntu-18.04
+          - name: Ubuntu Clang ASan
+            os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - os: ubuntu-18.04
+          - name: Ubuntu Clang TSan
+            os: ubuntu-18.04
             with_sanitizer: -DENABLE_TSAN=ON
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - os: ubuntu-18.04
+          - name: Ubuntu Clang without Jemalloc
+            os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - os: ubuntu-18.04
+          - name: Ubuntu GCC Ninja
+            os: ubuntu-18.04
             with_ninja: --ninja
-          - os: ubuntu-18.04
+          - name: Ubuntu GCC Ninja without Jemalloc
+            os: ubuntu-18.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - os: macos-latest
-          - os: macos-latest
+          - name: MacOS Clang
+            os: macos-latest
+          - name: MacOS Clang without Jemalloc
+            os: macos-latest
             without_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ${{ matrix.os }}

@@ -76,9 +76,17 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: brew install cmake gcc autoconf automake libtool
 
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
       - name: Build Kvrocks
         run: |
-          ./build.sh build -j$(nproc) --unittest ${{ matrix.clang }}
+          ./build.sh build -j$NPROC --unittest ${{ matrix.clang }}
         
       - name: Run Unit Test
         run: ./build/unittest
@@ -92,7 +100,7 @@ jobs:
         run: |
           wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
           tar -zxvf 6.2.6.tar.gz
-          cd redis-6.2.6 && make -j$(nproc) redis-cli && cd -
+          cd redis-6.2.6 && make -j$NPROC redis-cli && cd -
           cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
 
       - name: Run Redis Tcl Test

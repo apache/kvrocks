@@ -34,7 +34,7 @@ github:
       required_status_checks:
         strict: true
         contexts:
-          - "kvrocks ci actions / required (pull_request)"
+          - Required
 notifications:
   commits:      commits@kvrocks.apache.org
   issues:       issues@kvrocks.apache.org

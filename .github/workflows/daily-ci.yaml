@@ -108,10 +108,18 @@ jobs:
       - name: Install TCL
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: sudo apt install -y tcl8.5
+      
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Build Kvrocks
         run: |
-          ./build.sh build -j$(nproc) --unittest \
+          ./build.sh build -j$NPROC --unittest \
             ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
         
       - name: Run Unit Test

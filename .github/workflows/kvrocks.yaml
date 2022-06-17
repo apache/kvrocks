@@ -96,3 +96,9 @@ jobs:
           cd build
           cmake ..
           make -j4
+
+  required:
+    runs-on: ubuntu-latest
+    needs: [lint-build-test-on-ubuntu, build-on-macos-latest]
+    steps:
+      - run: echo success

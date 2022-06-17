@@ -22,6 +22,13 @@ github:
     Kvrocks is a distributed key value NoSQL database that uses RocksDB as storage engine
     and is compatible with Redis protocol.
   homepage: https://kvrocks.apache.org/
+  labels:
+    - database
+    - distributed
+    - kv
+    - namespace
+    - redis
+    - redis-cluster
   enabled_merge_buttons:
     squash:  true
     merge:   false
@@ -29,12 +36,13 @@ github:
   protected_branches:
     unstable:
       required_pull_request_reviews:
-        dismiss_stale_reviews: false
+        dismiss_stale_reviews: true
         required_approving_review_count: 1
       required_status_checks:
         strict: true
         contexts:
           - Required
+
 notifications:
   commits:      commits@kvrocks.apache.org
   issues:       issues@kvrocks.apache.org

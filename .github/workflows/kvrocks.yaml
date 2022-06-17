@@ -96,3 +96,20 @@ jobs:
           cd build
           cmake ..
           make -j4
+
+  required:
+    if: always()
+    name: Required
+    runs-on: ubuntu-latest
+    needs:
+      - lint-build-test-on-ubuntu
+      - build-on-macos-latest
+    steps:
+      - name: Merge requirement checking
+        run: |
+          lint_build_test_on_ubuntu=${{ needs.lint-build-test-on-ubuntu.result }}
+          build_on_macos_latest=${{ needs.build-on-macos-latest.result }}
+
+          if [[ $lint_build_test_on_ubuntu != 'success' ]] || [[ $build_on_macos_latest != 'success' ]]; then
+            exit 1
+          fi

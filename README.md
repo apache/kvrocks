@@ -55,7 +55,7 @@ sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make cma
 sudo apt update
 sudo apt-get install gcc g++ make cmake autoconf automake libtool
 
-# MACOSX
+# macOS
 brew install autoconf automake libtool cmake
 ```
 
@@ -83,9 +83,9 @@ $ ./unittest
 
 ### Supported platforms
 
-* centos 6/7
-* ubuntu
-* macosx
+* CentOS 6 or 7
+* Ubuntu
+* macOS
 
 ## Try kvrocks using Docker
 
@@ -178,6 +178,6 @@ latency: 99.9% < 10ms
 
 Kvrocks is under the Apache License Version 2.0. See the LICENSE file for details.
 
-## 微信公众号
+## WeChat Official Account (微信公众号)
 
-<img src="docs/images/wechat_account.jpg" alt="微信公众号" />
+<img src="docs/images/wechat_account.jpg" alt="WeChat offical account" />

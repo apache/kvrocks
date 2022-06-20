@@ -523,16 +523,20 @@ Status Config::parseConfigFromString(std::string input, int line_number) {
   if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
   if (kv[1] == "\"\"") return Status::OK();
 
-  kv[0] = Util::ToLower(kv[0]);
-  auto iter = fields_.find(kv[0]);
+  std::string field_key = Util::ToLower(kv[0]);
+  const char ns_str[] = "namespace.";
+  size_t ns_str_size = sizeof(ns_str) - 1;
+  if (!strncasecmp(kv[0].data(), ns_str, ns_str_size)) {
+      // namespace should keep key case-sensitive
+      field_key = kv[0];
+      tokens[kv[1]] = kv[0].substr(ns_str_size);
+  }
+  auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto field = iter->second;
     field->line_number = line_number;
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
-  }
-  if (!strncasecmp(kv[0].data(), "namespace.", 10)) {
-    tokens[kv[1]] = kv[0].substr(10, kv[0].size()-10);
   }
   return Status::OK();
 }

@@ -524,10 +524,12 @@ Status Config::parseConfigFromString(std::string input, int line_number) {
   if (kv[1] == "\"\"") return Status::OK();
 
   std::string configKey = Util::ToLower(kv[0]);
-  if (!strncasecmp(kv[0].data(), "namespace.", 10)) {
+  const char ns_str[] = "namespace.";
+  size_t ns_str_size = sizeof(ns_str) - 1;
+  if (!strncasecmp(kv[0].data(), ns_str, ns_str_size)) {
       // namespace should keep key case-sensitive
       configKey = kv[0];
-      tokens[kv[1]] = kv[0].substr(10, kv[0].size() - 10);
+      tokens[kv[1]] = kv[0].substr(ns_str_size);
   }
   auto iter = fields_.find(configKey);
   if (iter != fields_.end()) {

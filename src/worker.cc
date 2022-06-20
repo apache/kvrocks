@@ -1,9 +1,32 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "worker.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <list>
 #include <cctype>
+#include <cstring>
 #include <utility>
 #include <algorithm>
 #include <glog/logging.h>
@@ -21,10 +44,11 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
+  Status s;
   int port = config->port;
   auto binds = config->binds;
   for (const auto &bind : binds) {
-    Status s = listen(bind, port, config->backlog);
+    s = listenTCP(bind, port, config->backlog);
     if (!s.IsOK()) {
       LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
                  << ", encounter error: " << s.Msg();
@@ -58,8 +82,8 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
   worker->KickoutIdleClients(config->timeout);
 }
 
-void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
-                           sockaddr *address, int socklen, void *ctx) {
+void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
+                              sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   DLOG(INFO) << "[worker] New connection: fd=" << fd
               << " from port: " << worker->svr_->GetConfig()->port << " thread #"
@@ -86,43 +110,122 @@ void Worker::newConnection(evconnlistener *listener, evutil_socket_t fd,
                     Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
+  if (!status.IsOK()) {
+    std::string err_msg = Redis::Error("ERR " + status.Msg());
+    write(fd, err_msg.data(), err_msg.size());
+    conn->Close();
+    return;
+  }
   std::string ip;
   uint32_t port;
   if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
     conn->SetAddr(ip, port);
   }
-  if (!status.IsOK()) {
-    std::string err_msg = Redis::Error("ERR " + status.Msg());
-    write(fd, err_msg.data(), err_msg.size());
-    conn->Close();
-  }
-
   if (worker->rate_limit_group_ != nullptr) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
 
-Status Worker::listen(const std::string &host, int port, int backlog) {
-  sockaddr_in sin{};
-  sin.sin_family = AF_INET;
-  evutil_inet_pton(AF_INET, host.data(), &(sin.sin_addr));
-  sin.sin_port = htons(port);
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  int sock_opt = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
+void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
+                                     sockaddr *address, int socklen, void *ctx) {
+  auto worker = static_cast<Worker *>(ctx);
+  DLOG(INFO) << "[worker] New connection: fd=" << fd
+              << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket << " thread #"
+              << worker->tid_;
+  event_base *base = evconnlistener_get_base(listener);
+  auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
+  bufferevent *bev = bufferevent_socket_new(base,
+                                            fd,
+                                            evThreadSafeFlags);
+  auto conn = new Redis::Connection(bev, worker);
+  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
+                    Redis::Connection::OnEvent, conn);
+  bufferevent_enable(bev, EV_READ);
+  Status status = worker->AddConnection(conn);
+  if (!status.IsOK()) {
+    std::string err_msg = Redis::Error("ERR " + status.Msg());
+    write(fd, err_msg.data(), err_msg.size());
+    conn->Close();
+    return;
+  }
+  conn->SetAddr(worker->svr_->GetConfig()->unixsocket, 0);
+  if (worker->rate_limit_group_ != nullptr) {
+    bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
+  }
+}
+
+Status Worker::listenTCP(const std::string &host, int port, int backlog) {
+  char _port[6];
+  int af, rv, fd, sock_opt = 1;
+
+  if (strchr(host.data(), ':')) {
+    af = AF_INET6;
+  } else {
+    af = AF_INET;
+  }
+  snprintf(_port, sizeof(_port), "%d", port);
+  struct addrinfo hints, *srv_info, *p;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = af;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  if ((rv = getaddrinfo(host.data(), _port, &hints, &srv_info)) != 0) {
+    return Status(Status::NotOK, gai_strerror(rv));
+  }
+
+  for (p = srv_info; p != nullptr; p = p->ai_next) {
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
+      continue;
+    if (af == AF_INET6 && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
+      goto error;
+    }
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
+      goto error;
+    }
+    // to support multi-thread binding on macOS
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
+      goto error;
+    }
+    if (bind(fd, p->ai_addr, p->ai_addrlen)) {
+      goto error;
+    }
+    evutil_make_socket_nonblocking(fd);
+    auto lev = evconnlistener_new(base_, newTCPConnection, this,
+                                  LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+    listen_events_.emplace_back(lev);
+  }
+
+  freeaddrinfo(srv_info);
+  return Status::OK();
+
+error:
+  freeaddrinfo(srv_info);
+  return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+}
+
+Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) {
+  unlink(path.c_str());
+  sockaddr_un sa{};
+  if (path.size() > sizeof(sa.sun_path) - 1) {
+    return Status(Status::NotOK, "unix socket path too long");
+  }
+  sa.sun_family = AF_LOCAL;
+  strncpy(sa.sun_path, path.c_str(), sizeof(sa.sun_path) - 1);
+  int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+  if (fd == -1) {
     return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
-  // to support multi-thread binding on macOS
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-  }
-  if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+  if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
     return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
   evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newConnection, this,
+  auto lev = evconnlistener_new(base_, newUnixSocketConnection, this,
                                 LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
+  if (perm != 0) {
+    chmod(sa.sun_path, (mode_t)perm);
+  }
   return Status::OK();
 }
 

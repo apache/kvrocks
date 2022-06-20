@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "server.h"
 
 #include <fcntl.h>
@@ -35,6 +55,17 @@ Server::Server(Engine::Storage *storage, Config *config) :
 
   for (int i = 0; i < config->workers; i++) {
     auto worker = new Worker(this, config);
+    // multiple workers can't listen to the same unix socket, so
+    // listen unix socket only from a single worker - the first one
+    if (!config->unixsocket.empty() && i == 0) {
+      Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[server] Failed to listen on unix socket: "<< config->unixsocket
+                   << ", encounter error: " << s.Msg();
+        delete worker;
+        exit(1);
+      }
+    }
     worker_threads_.emplace_back(new WorkerThread(worker));
   }
   AdjustOpenFilesLimit();
@@ -72,7 +103,24 @@ Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
+  } else {
+    // Generate new replication id if not a replica
+    storage_->ShiftReplId();
   }
+
+  if (config_->cluster_enabled) {
+    // Create objects used for slot migration
+    slot_migrate_ = new SlotMigrate(this, config_->migrate_speed,
+                                    config_->pipeline_size, config_->sequence_gap);
+    slot_import_ = new SlotImport(this);
+    // Create migrating thread
+    auto s = slot_migrate_->CreateMigrateHandleThread();
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
+      return Status(Status::NotOK);
+    }
+  }
+
   for (const auto worker : worker_threads_) {
     worker->Start();
   }
@@ -86,7 +134,7 @@ Status Server::Start() {
   compaction_checker_thread_ = std::thread([this]() {
     uint64_t counter = 0;
     int32_t last_compact_date = 0;
-    Util::ThreadSetName("compaction-checker");
+    Util::ThreadSetName("compact-check");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
       // Sleep first
@@ -164,7 +212,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   uint32_t master_listen_port = port;
   if (GetConfig()->master_use_repl_port)  master_listen_port += 1;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(host, master_listen_port, this, config_->masterauth));
+      new ReplicationThread(host, master_listen_port, this));
   auto s = replication_thread_->Start(
       [this]() {
         PrepareRestoreDB();
@@ -192,6 +240,7 @@ Status Server::RemoveMaster() {
     config_->ClearMaster();
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
+    storage_->ShiftReplId();
   }
   slaveof_mu_.unlock();
   return Status::OK();
@@ -509,8 +558,15 @@ void Server::cron() {
     if (storage_->IsClosing()) continue;
 
     updateCachedTime();
+    counter++;
+    if (is_loading_) {
+      // We need to skip the cron operations since `is_loading_` means the db is restoring,
+      // and the db pointer will be modified after that. It will panic if we use the db pointer
+      // before the new db was reopened.
+      continue;
+    }
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
-    if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
+    if (counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
       std::tm now{};
       localtime_r(&t, &now);
@@ -527,7 +583,7 @@ void Server::cron() {
       }
     }
     // check every 10s
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
 
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
@@ -539,7 +595,7 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
@@ -557,16 +613,18 @@ void Server::cron() {
       }
     }
     // check if DB need to be resumed every minute
-    // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
-    // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
-    // so manual trigger resume every minute after no space error to resume db under this scenario.
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
+    // Rocksdb has auto resume feature after retryable io error, earlier version(before v6.22.1) had
+    // bug when encounter no space error. The current version fixes the no space error issue, but it
+    // does not completely resolve, which still exists when encountered disk quota exceeded error.
+    // In order to properly handle all possible situations on rocksdb, we manually resume here
+    // when encountering no space error and disk quota exceeded error.
+    if (counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
       storage_->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after no space error";
+      LOG(INFO) << "[server] Schedule to resume DB after retryable io error";
       storage_->SetDBInRetryableIOError(false);
     }
+
     cleanupExitedSlaves();
-    counter++;
     recordInstantaneousMetrics();
   }
 }
@@ -637,7 +695,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
-  string_stream << "is_bgsaving:" << (db_bgsave_ ? "yes" : "no") << "\r\n";
+  string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
   *info = string_stream.str();
 }
@@ -833,6 +891,11 @@ void Server::GetCommandsStatsInfo(std::string *info) {
   *info = string_stream.str();
 }
 
+// WARNING: we must not access DB(i.e.RocksDB) when server is loading since
+// DB is closed and the pointer is invalid. Server may crash if we access DB
+// during loading.
+// If you add new fields which access DB into INFO command output, make sure
+// this section cant't be shown when loading(i.e. !is_loading_).
 void Server::GetInfo(const std::string &ns, const std::string &section, std::string *info) {
   info->clear();
   std::ostringstream string_stream;
@@ -856,13 +919,21 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "persistence") {
     string_stream << "# Persistence\r\n";
     string_stream << "loading:" << is_loading_ <<"\r\n";
+
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_? 1 : 0) << "\r\n";
+    string_stream << "last_bgsave_time:" << last_bgsave_time_ << "\r\n";
+    string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
   }
   if (all || section == "stats") {
     std::string stats_info;
     GetStatsInfo(&stats_info);
     string_stream << stats_info;
   }
-  if (all || section == "replication") {
+
+  // In replication section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "replication")) {
     std::string replication_info;
     GetReplicationInfo(&replication_info);
     string_stream << replication_info;
@@ -883,7 +954,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     GetCommandsStatsInfo(&commands_stats_info);
     string_stream << commands_stats_info;
   }
-  if (all || section == "keyspace") {
+
+  // In keyspace section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "keyspace")) {
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
@@ -907,7 +980,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
       string_stream << "used_disk_percent: " << used_disk_percent << "%\r\n";
     }
   }
-  if (all || section == "rocksdb") {
+
+  // In rocksdb section, we access DB, so we can't do that when loading
+  if (!is_loading_ && (all || section == "rocksdb")) {
     std::string rocksdb_info;
     GetRocksDBInfo(&rocksdb_info);
     string_stream << rocksdb_info;
@@ -959,6 +1034,11 @@ void Server::PrepareRestoreDB() {
   task_runner_.Join();
   task_runner_.Purge();
 
+  // If the DB is retored, the object 'db_' will be destroyed, but
+  // 'db_' will be accessed in data migration task. To avoid wrong
+  // accessing, data migration task should be stopped before restoring DB
+  WaitNoMigrateProcessing();
+
   // To guarantee work theads don't access DB, we should relase 'ExclusivityGuard'
   // ASAP to avoid user can't recieve respones for long time, becasue the following
   // 'CloseDB' may cost much time to acquire DB mutex.
@@ -973,6 +1053,16 @@ void Server::PrepareRestoreDB() {
   // actually work.
   LOG(INFO) << "Waiting for closing DB...";
   storage_->CloseDB();
+}
+
+void Server::WaitNoMigrateProcessing() {
+  if (config_->cluster_enabled) {
+    LOG(INFO) << "Waiting until no migration task is running...";
+    slot_migrate_->SetMigrateStopFlag(true);
+    while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {
+      usleep(500);
+    }
+  }
 }
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
@@ -1003,18 +1093,24 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
 Status Server::AsyncBgsaveDB() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  if (db_bgsave_) {
+  if (is_bgsave_in_progress_) {
     return Status(Status::NotOK, "bgsave in-progress");
   }
-  db_bgsave_ = true;
+  is_bgsave_in_progress_ = true;
 
   Task task;
   task.arg = this;
   task.callback = [](void *arg) {
     auto svr = static_cast<Server*>(arg);
-    svr->storage_->CreateBackup();
+    auto start_bgsave_time = std::time(nullptr);
+    Status s = svr->storage_->CreateBackup();
+    auto stop_bgsave_time = std::time(nullptr);
+
     std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_bgsave_ = false;
+    svr->is_bgsave_in_progress_ = false;
+    svr->last_bgsave_time_ = static_cast<int>(start_bgsave_time);
+    svr->last_bgsave_status_ = s.IsOK() ? "ok" : "err";
+    svr->last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
   };
   return task_runner_.Publish(task);
 }
@@ -1262,7 +1358,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
   std::string funcname = Engine::kLuaFunctionPrefix + sha;
-  WriteToPropagateCF(funcname, body);
+  storage_->WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {
@@ -1276,17 +1372,6 @@ void Server::ScriptFlush() {
   ScriptReset();
 }
 
-Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
-  rocksdb::WriteBatch batch;
-  auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  batch.Put(propagateCf, key, value);
-  auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
-  if (!s.ok()) {
-    return Status(Status::NotOK, s.ToString());
-  }
-  return Status::OK();
-}
-
 // Generally, we store data into rocksdb and just replicate WAL instead of propagating
 // commands. But sometimes, we need to update inner states or do special operations
 // for specific commands, such as `script flush`.
@@ -1297,7 +1382,7 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(channel, value);
+  return storage_->WriteToPropagateCF(channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
@@ -1369,4 +1454,27 @@ void Server::AdjustOpenFilesLimit() {
     LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
                  << " (it's originally set to " << old_limit << ")";
   }
+}
+
+std::string ServerLogData::Encode() {
+  if (type_ == kReplIdLog) {
+    return std::string(1, kReplIdTag) + " " + content_;
+  } else {
+    return content_;
+  }
+}
+
+Status ServerLogData::Decode(const rocksdb::Slice &blob) {
+  if (blob.size() == 0) {
+    return Status(Status::NotOK);
+  }
+
+  const char *header = blob.data();
+  // Only support `kReplIdTag` now
+  if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
+    type_ = kReplIdLog;
+    content_ = std::string(blob.data()+2, blob.size()-2);
+    return Status::OK();
+  }
+  return Status(Status::NotOK);
 }

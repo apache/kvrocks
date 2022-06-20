@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #define __STDC_FORMAT_MACROS
@@ -10,9 +30,7 @@
 #include <memory>
 #include <unordered_map>
 
-extern "C" {
 #include <lua.h>
-}
 
 #include "stats.h"
 #include "storage.h"
@@ -23,6 +41,8 @@ extern "C" {
 #include "worker.h"
 #include "rw_lock.h"
 #include "cluster.h"
+#include "slot_migrate.h"
+#include "slot_import.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -51,6 +71,35 @@ enum ClientType {
   kTypePubsub     = (1ULL<<1),  // pubsub client
   kTypeMaster     = (1ULL<<2),  // master client
   kTypeSlave      = (1ULL<<3),  // slave client
+};
+
+enum ServerLogType {
+  kServerLogNone,
+  kReplIdLog
+};
+
+class ServerLogData {
+ public:
+  // Redis::WriteBatchLogData always starts with digist ascii, we use alphabetic to
+  // distinguish ServerLogData with Redis::WriteBatchLogData.
+  static const char kReplIdTag = 'r';
+  static bool IsServerLogData(const char *header) {
+    if (header != NULL) return *header == kReplIdTag;
+    return false;
+  }
+
+  ServerLogData() = default;
+  explicit ServerLogData(ServerLogType type, const std::string &content) :
+      type_(type), content_(content) {}
+
+  ServerLogType GetType() { return type_; }
+  std::string GetContent() { return content_; }
+  std::string Encode();
+  Status Decode(const rocksdb::Slice &blob);
+
+ private:
+  ServerLogType type_ = kServerLogNone;
+  std::string content_;
 };
 
 class Server {
@@ -109,6 +158,7 @@ class Server {
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
+  void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
   Status AsyncBgsaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
@@ -132,7 +182,6 @@ class Server {
   void ScriptReset();
   void ScriptFlush();
 
-  Status WriteToPropagateCF(const std::string &key, const std::string &value) const;
   Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
@@ -151,6 +200,8 @@ class Server {
   Engine::Storage *storage_;
   Cluster *cluster_;
   static std::atomic<int> unix_time_;
+  class SlotMigrate *slot_migrate_ = nullptr;
+  class SlotImport *slot_import_ = nullptr;
 
  private:
   void cron();
@@ -188,7 +239,11 @@ class Server {
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;
   bool db_compacting_ = false;
-  bool db_bgsave_ = false;
+  bool is_bgsave_in_progress_ = false;
+  int last_bgsave_time_ = -1;
+  std::string last_bgsave_status_ = "ok";
+  int last_bgsave_time_sec_ = -1;
+
   std::map<std::string, DBScanInfo> db_scan_infos_;
 
   LogCollector<SlowEntry> slow_log_;

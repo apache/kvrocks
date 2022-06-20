@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <string>
@@ -8,7 +28,7 @@
 #include "../../src/status.h"
 #include "../../src/storage.h"
 #include "../../src/redis_metadata.h"
-#include "../../src/redis_slot.h"
+#include "../../src/batch_extractor.h"
 
 #include "config.h"
 #include "writer.h"
@@ -32,7 +52,7 @@ class Parser {
   explicit Parser(Engine::Storage *storage, Writer *writer)
       : storage_(storage), writer_(writer) {
     lastest_snapshot_ = new LatestSnapShot(storage->GetDB());
-    cluster_enabled_ = storage_->IsSlotIdEncoded();
+    is_slotid_encoded_ = storage_->IsSlotIdEncoded();
   }
   ~Parser() {
     delete lastest_snapshot_;
@@ -46,32 +66,9 @@ class Parser {
   Engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
   LatestSnapShot *lastest_snapshot_ = nullptr;
-  bool cluster_enabled_ = false;
+  bool is_slotid_encoded_ = false;
 
   Status parseSimpleKV(const Slice &ns_key, const Slice &value, int expire);
   Status parseComplexKV(const Slice &ns_key, const Metadata &metadata);
   Status parseBitmapSegment(const Slice &ns, const Slice &user_key, int index, const Slice &bitmap);
-};
-
-// An extractor to extract update from raw writebatch
-class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
- public:
-  WriteBatchExtractor() {}
-  explicit WriteBatchExtractor(bool cluster_enabled, int16_t slot = -1, bool to_redis = true)
-  : cluster_enabled_(cluster_enabled), slot_(slot), to_redis_(to_redis) {}
-  void LogData(const rocksdb::Slice &blob) override;
-  rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key,
-                        const Slice &value) override;
-
-  rocksdb::Status DeleteCF(uint32_t column_family_id, const Slice &key) override;
-  rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
-                                const Slice& begin_key, const Slice& end_key) override;
-  std::map<std::string, std::vector<std::string>> *GetAofStrings() { return &aof_strings_; }
- private:
-  std::map<std::string, std::vector<std::string>> aof_strings_;
-  Redis::WriteBatchLogData log_data_;
-  bool firstSeen_ = true;
-  bool cluster_enabled_ = false;
-  int slot_;
-  bool to_redis_;
 };

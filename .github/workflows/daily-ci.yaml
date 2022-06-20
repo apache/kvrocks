@@ -1,0 +1,129 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Daily CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/daily-ci.yaml"
+  schedule:
+    # Daily run this action at 1am
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-docker-image:
+    name: Build Docker Image
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 64
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
+      - name: Build Docker Image
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 .
+
+  build-and-test:
+    name: Build And Test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu GCC ASan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+          # - name: Ubuntu GCC TSan
+          #   os: ubuntu-18.04
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          - name: Ubuntu GCC without Jemalloc
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Ubuntu Clang ASan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          # - name: Ubuntu Clang TSan
+          #   os: ubuntu-18.04
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          #   clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Ubuntu Clang without Jemalloc
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Ubuntu GCC Ninja
+            os: ubuntu-18.04
+            with_ninja: --ninja
+          - name: Ubuntu GCC Ninja without Jemalloc
+            os: ubuntu-18.04
+            with_ninja: --ninja
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: MacOS Clang
+            os: macos-latest
+          - name: MacOS Clang without Jemalloc
+            os: macos-latest
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 64
+
+      - name: Install Ninja
+        if: ${{ matrix.with_ninja && startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt install -y ninja-build
+      
+      - name: Setup Mac OS
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: brew install cmake gcc autoconf automake libtool
+      
+      - name: Install TCL
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt install -y tcl8.5
+      
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Build Kvrocks
+        run: |
+          ./build.sh build -j$NPROC --unittest \
+            ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
+        
+      - name: Run Unit Test
+        run: ./build/unittest
+
+      - name: Run Redis Tcl Test
+        run: cd tests/tcl && ./runtest

@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/type/zset.tcl
+
 start_server {tags {"zset"}} {
     proc create_zset {key items} {
         r del $key
@@ -381,6 +404,18 @@ start_server {tags {"zset"}} {
             assert_error "*double*" {r zrangebyscore fooz str 1}
             assert_error "*double*" {r zrangebyscore fooz 1 str}
             assert_error "*double*" {r zrangebyscore fooz 1 NaN}
+        }
+
+        test "ZRANGEBYSCORE for min/max score with multi member" {
+            # int score
+            create_zset mzset {-inf a -inf b -1 c 2 d 3 e +inf f +inf g}
+            assert_equal {a -inf b -inf c -1 d 2 e 3 f inf g inf} [r zrangebyscore mzset -inf +inf WITHSCORES]
+            assert_equal {g inf f inf e 3 d 2 c -1 b -inf a -inf} [r zrevrangebyscore mzset +inf -inf WITHSCORES]
+
+            # double score
+            create_zset nzset {-1.004 a -1.004 b -1.002 c 1.002 d 1.004 e 1.004 f}
+            assert_equal {a -1.004 b -1.004 c -1.002 d 1.002 e 1.004 f 1.004} [r zrangebyscore nzset -1.004 1.004 WITHSCORES]
+            assert_equal {f 1.004 e 1.004 d 1.002 c -1.002 b -1.004 a -1.004} [r zrevrangebyscore nzset 1.004 -1.004 WITHSCORES]
         }
 
         proc create_default_lex_zset {} {

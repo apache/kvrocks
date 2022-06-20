@@ -1,30 +1,49 @@
-if (NOT __LUA_INCLUDED) # guard against multiple includes
-    set(__LUA_INCLUDED TRUE)
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-    # build directory
-    set(lua_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/lua-prefix)
-    # install directory
-    set(lua_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/lua-install)
-    set(LUA_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/lua/src")
+include_guard()
 
-    set(CFLAGS "${CMAKE_C_FLAGS} -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC='' -DLUA_USE_MKSTEMP")
+include(FetchContent)
 
-    ExternalProject_Add(lua
-            SOURCE_DIR ${LUA_SOURCE_DIR}
-            PREFIX ${lua_PREFIX}
-            INSTALL_DIR ${lua_INSTALL}
-            CONFIGURE_COMMAND ""
-            BUILD_COMMAND make CFLAGS+=${CFLAGS} liblua.a
+FetchContent_Declare(lua
+  GIT_REPOSITORY https://github.com/KvrocksLabs/lua
+  GIT_TAG c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
+)
 
-            BUILD_ALWAYS true
-            BUILD_IN_SOURCE true
-            INSTALL_COMMAND COMMAND cp liblua.a ${lua_INSTALL}
-            )
-    file(GLOB LUA_PUBLIC_HEADERS
-            "${LUA_SOURCE_DIR}/*.h"
-            )
-    file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_INSTALL}/include)
-    set(lua_FOUND TRUE)
-    set(lua_INCLUDE_DIRS ${lua_INSTALL}/include)
-    set(lua_LIBRARIES ${lua_INSTALL}/liblua.a)
+FetchContent_GetProperties(lua)
+if(NOT lua_POPULATED)
+  FetchContent_Populate(lua)
+
+  set(LUA_CXX ${CMAKE_CXX_COMPILER})
+  set(LUA_CFLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
+  endif()
+
+  add_custom_target(make_lua COMMAND make "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
+    WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
+    BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
+  )
+  
+  file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h")
+  file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_BINARY_DIR}/include)
 endif()
+
+add_library(lua INTERFACE)
+target_include_directories(lua INTERFACE ${lua_BINARY_DIR}/include)
+target_link_libraries(lua INTERFACE ${lua_SOURCE_DIR}/src/liblua.a)
+add_dependencies(lua make_lua)

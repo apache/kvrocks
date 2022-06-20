@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #define __STDC_FORMAT_MACROS
 #include <unistd.h>
 #include <sys/stat.h>
@@ -286,26 +306,44 @@ Status SockReadLine(int fd, std::string *data) {
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
+  addr->clear();
+
   sockaddr_storage sa{};
   socklen_t sa_len = sizeof(sa);
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
     return -1;
   }
-  if (sa.ss_family == AF_INET) {
+  if (sa.ss_family == AF_INET6) {
+    char buf[INET6_ADDRSTRLEN];
+    auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
+    inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET_ADDRSTRLEN);
+    addr->append(buf);
+    *port = ntohs(sa6->sin6_port);
+  } else {
     auto sa4 = reinterpret_cast<sockaddr_in *>(&sa);
     char buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, reinterpret_cast<void *>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
-    addr->clear();
     addr->append(buf);
     *port = ntohs(sa4->sin_port);
-    return 0;
   }
-  return -2;  // only support AF_INET currently
+  return 0;
 }
 
-Status StringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
+Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
   try {
     *n = static_cast<int64_t>(std::stoll(str));
+    if (max > min && (*n < min || *n > max)) {
+      return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
+    }
+  } catch (std::exception &e) {
+    return Status(Status::NotOK, "value is not an integer or out of range");
+  }
+  return Status::OK();
+}
+
+Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
+  try {
+    *n = static_cast<int64_t>(std::stoll(str, nullptr, 8));
     if (max > min && (*n < min || *n > max)) {
       return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
     }
@@ -617,6 +655,18 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   } else {
     return retval;
   }
+}
+
+uint64_t GetTimeStampMS(void) {
+  auto tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+  auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+  return ts.count();
+}
+
+uint64_t GetTimeStampUS(void) {
+  auto tp = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now());
+  auto ts = std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch());
+  return ts.count();
 }
 
 }  // namespace Util

@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_writer.h"
 
 #include <fcntl.h>
@@ -7,8 +27,6 @@
 
 #include "../../src/util.h"
 #include "../../src/redis_reply.h"
-
-#include "util.h"
 
 RedisWriter::RedisWriter(Kvrocks2redis::Config *config) : Writer(config) {
   try {
@@ -41,16 +59,15 @@ Status RedisWriter::Write(const std::string &ns, const std::vector<std::string> 
   return Status::OK();
 }
 
-Status RedisWriter::FlushAll(const std::string &ns) {
-  auto s = Writer::FlushAll(ns);
+Status RedisWriter::FlushDB(const std::string &ns) {
+  auto s = Writer::FlushDB(ns);
   if (!s.IsOK()) {
     return s;
   }
 
   updateNextOffset(ns, 0);
 
-  // Warning: this will flush all redis data
-  s = Write(ns, {Rocksdb2Redis::Command2RESP({"FLUSHALL"})});
+  s = Write(ns, {Redis::Command2RESP({"FLUSHDB"})});
   if (!s.IsOK()) return s;
 
   return Status::OK();

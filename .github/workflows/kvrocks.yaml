@@ -1,73 +1,129 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 name: kvrocks ci actions  # don't edit while the badge was depend on this
 
 on: [push, pull_request]
 
 jobs:
-  lint-build-test-on-ubuntu:
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-    runs-on: ${{ matrix.os }}
+  license:
+    name: Check license header
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: apache/skywalking-eyes@main
+        with:
+          config: tools/ci/licenserc.yml
+
+
+  lint:
+    name: Lint and check code
+    runs-on: ubuntu-18.04
     steps:
       - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Install Dependencies
+        uses: actions/checkout@v3
+      
+      - name: Install Check Tools
         run: |
           sudo pip install --upgrade pip
           sudo pip install --upgrade setuptools
           sudo apt-get update
           sudo apt-get install -y cppcheck
           sudo pip install cpplint==1.5.0
-          sudo apt-get install -y tar libsnappy-dev
-          mkdir build
-
-      - name: Lint
+      
+      - name: Lint and check code
         run: |
-          make lint
+          ./cpplint.sh
+          ./cppcheck.sh
 
-      - name: Build
-        run: |
-          make -j4
-          cp src/kvrocks build/kvrocks
 
-      - name: Unit Test
-        run: |
-          wget https://github.com/google/googletest/archive/release-1.8.1.tar.gz
-          tar -zxvf release-1.8.1.tar.gz
-          cd googletest-release-1.8.1/
-          cmake CMakeLists.txt
-          make && sudo make install && cd -
-          make test
+  build-and-test:
+    name: Build and test
+    needs: [license, lint]
+    strategy:
+      matrix:
+        include:
+          - name: Ubuntu GCC
+            os: ubuntu-18.04
+          - name: Ubuntu Clang
+            os: ubuntu-18.04
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Mac OS
+            os: macos-latest
 
-      - name: Redis Tcl Test
-        run: |
-          sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest && cd -
-
-  build-test-on-macos-latest:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 64
+      
+      - name: Setup Mac OS
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: brew install cmake gcc autoconf automake libtool
 
-      - name: Install Dependencies
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+
+      - name: Get cpu core number
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Build Kvrocks
         run: |
-          brew install snappy googletest gcc autoconf automake libtool
-          mkdir build
+          ./build.sh build -j$NPROC --unittest ${{ matrix.clang }}
+        
+      - name: Run Unit Test
+        run: ./build/unittest
+      
+      - name: Install TCL
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt install -y tcl8.5
 
-      - name: Build
+      - name: Prepare Redis CLI
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
-          make -j4
-          cp src/kvrocks build/kvrocks
+          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
+          tar -zxvf 6.2.6.tar.gz
+          cd redis-6.2.6 && make -j$NPROC redis-cli && cd -
+          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
 
-      - name: Unit Test
-        run: make test
+      - name: Run Redis Tcl Test
+        run: |
+          cd tests/tcl && ./runtest
+      
+      - name: Run Redis Tcl Test (Redis CLI)
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          cd tests/tcl && ./runtest --single integration/redis-cli
 
-      - name: Redis Tcl Test
-        run:
-          cd tests/tcl && sh runtest && cd -
+
+  required:
+    if: always()
+    name: Required
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+    steps:
+      - name: Merge requirement checking
+        run: |
+          build_and_test=${{ needs.build-and-test.result }}
+
+          if [[ $build_and_test != 'success' ]]; then
+            exit 1
+          fi

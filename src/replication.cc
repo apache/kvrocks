@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "replication.h"
 
 #include <signal.h>
@@ -25,7 +45,7 @@ FeedSlaveThread::~FeedSlaveThread() {
 Status FeedSlaveThread::Start() {
   try {
     t_ = std::thread([this]() {
-      Util::ThreadSetName("feed-slave-thread");
+      Util::ThreadSetName("feed-replica");
       sigset_t mask, omask;
       sigemptyset(&mask);
       sigemptyset(&omask);
@@ -168,7 +188,9 @@ ReplicationThread::CallbacksStateMachine::CallbacksStateMachine(
     ReplicationThread *repl,
     ReplicationThread::CallbacksStateMachine::CallbackList &&handlers)
     : repl_(repl), handlers_(std::move(handlers)) {
-  if (!repl_->auth_.empty()) {
+  // Note: It may cause data races to use 'masterauth' directly.
+  // It is acceptable because password change is a low frequency operation.
+  if (!repl_->srv_->GetConfig()->masterauth.empty()) {
     handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", authReadCB);
     handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
@@ -185,6 +207,8 @@ LOOP_LABEL:
   switch (st) {
     case CBState::NEXT:
       ++self->handler_idx_;
+    case CBState::PREV:
+      if (st == CBState::PREV) --self->handler_idx_;
       if (self->getHandlerEventType(self->handler_idx_) == WRITE) {
         SetWriteCB(bev, EvCallback, ctx);
       } else {
@@ -206,6 +230,7 @@ LOOP_LABEL:
         LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
         break;
       }
+      self->repl_->repl_state_ = kReplConnecting;
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
       self->Start();
@@ -257,10 +282,9 @@ void ReplicationThread::CallbacksStateMachine::Stop() {
 }
 
 ReplicationThread::ReplicationThread(std::string host, uint32_t port,
-                                     Server *srv, std::string auth)
+                                     Server *srv)
     : host_(std::move(host)),
       port_(port),
-      auth_(std::move(auth)),
       srv_(srv),
       storage_(srv->storage_),
       repl_state_(kReplConnecting),
@@ -363,8 +387,7 @@ void ReplicationThread::run() {
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
                                                           void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  const auto auth_len_str = std::to_string(self->auth_.length());
-  send_string(bev, Redis::MultiBulkString({"AUTH", self->auth_}));
+  send_string(bev, Redis::MultiBulkString({"AUTH", self->srv_->GetConfig()->masterauth}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   self->repl_state_ = kReplSendAuth;
   return CBState::NEXT;
@@ -465,10 +488,39 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
     bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  auto next_seq = self->storage_->LatestSeq() + 1;
-  send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
+  auto cur_seq = self->storage_->LatestSeq();
+  auto next_seq = cur_seq + 1;
+  std::string replid;
+
+  // Get replication id
+  std::string replid_in_wal = self->storage_->GetReplIdFromWalBySeq(cur_seq);
+  // Set if valid replication id
+  if (replid_in_wal.length() == kReplIdLength) {
+    replid = replid_in_wal;
+  } else {
+    // Maybe there is no WAL, we can get replication id from db since master
+    // always write replication id into db before any operation when starting
+    // new "replication history".
+    std::string replid_in_db = self->storage_->GetReplIdFromDbEngine();
+    if (replid_in_db.length() == kReplIdLength) {
+      replid = replid_in_db;
+    }
+  }
+
+  // To adapt to old master using old PSYNC, i.e. only use next sequence id.
+  // Also use old PSYNC if replica can't find replication id from WAL and DB.
+  if (!self->srv_->GetConfig()->use_rsid_psync ||
+      self->next_try_old_psync_ || replid.length() != kReplIdLength) {
+    self->next_try_old_psync_ = false;  // Reset next_try_old_psync_
+    send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
+    LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
+  } else {
+    // NEW PSYNC "Unique Replication Sequence ID": replication id and sequence id
+    send_string(bev, Redis::MultiBulkString({"PSYNC", replid, std::to_string(next_seq)}));
+    LOG(INFO) << "[replication] Try to use new psync, current unique replication sequence id: "
+              << replid << ":" << cur_seq;
+  }
   self->repl_state_ = kReplSendPSync;
-  LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   return CBState::NEXT;
 }
 
@@ -486,6 +538,16 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
+
+  if (line[0] == '-' && isWrongPsyncNum(line)) {
+    self->next_try_old_psync_ = true;
+    free(line);
+    LOG(WARNING) << "The old version master, can't handle new PSYNC, "
+                  << "try old PSYNC again";
+    // Retry previous state, i.e. send PSYNC again
+    return CBState::PREV;
+  }
+
   if (strncmp(line, "+OK", 3) != 0) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
@@ -532,7 +594,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
           if (bulk_string != "ping") {
-            auto s = self->storage_->WriteBatch(std::string(bulk_data, self->incr_bulk_len_));
+            auto s = self->storage_->ReplicaApplyWriteBatch(std::string(bulk_data, self->incr_bulk_len_));
             if (!s.IsOK()) {
               LOG(ERROR) << "[replication] CRITICAL - Failed to write batch to local, " << s.Msg() << ". batch: 0x"
                          << Util::StringToHex(bulk_string);
@@ -629,6 +691,8 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         for (auto f : need_files) {
           meta.files.emplace_back(f, 0);
         }
+        free(line);
+
         target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
         // Clean invalid files of checkpoint, "CURRENT" file must be invalid
         // because we identify one file by its file number but only "CURRENT"
@@ -780,9 +844,10 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   size_t line_len;
 
   // Send auth when needed
-  if (!auth_.empty()) {
+  std::string auth = srv_->GetConfig()->masterauth;
+  if (!auth.empty()) {
     evbuffer *evbuf = evbuffer_new();
-    const auto auth_command = Redis::MultiBulkString({"AUTH", auth_});
+    const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
     auto s = Util::SockSend(sock_fd, auth_command);
     if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:"+s.Msg());
     while (true) {
@@ -893,6 +958,11 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir,
       break;
     }
     DLOG(INFO) << "[fetch] Succeed fetching file " << files[i];
+
+    // Just for tests
+    if (srv_->GetConfig()->fullsync_recv_file_delay) {
+      sleep(srv_->GetConfig()->fullsync_recv_file_delay);
+    }
   }
   evbuffer_free(evbuf);
   return s;
@@ -936,6 +1006,10 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
 
 bool ReplicationThread::isRestoringError(const char *err) {
   return std::string(err) == "-ERR restoring the db from backup";
+}
+
+bool ReplicationThread::isWrongPsyncNum(const char *err) {
+  return std::string(err) == "-ERR wrong number of arguments";
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

@@ -1,11 +1,11 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
-# ![image](https://github.com/kvrockslabs/kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/kvrockslabs/kvrocks)](https://github.com/kvrockslabs/kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/kvrockslabs/kvrocks)](https://github.com/kvrockslabs/kvrocks/stargazers)
+# ![image](https://github.com/apache/incubator-kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
 
 - [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
 
-Kvrocks is an open-source key-value database which is based on rocksdb and compatible with Redis protocol. Intention to decrease the cost of memory and increase the capability while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
+**Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
 Kvrocks has the following key features:
 
@@ -13,6 +13,7 @@ Kvrocks has the following key features:
 - Namespace, similar to redis db but use token per namespace
 - Replication, async replication using binlog like MySQL
 - High Available, supports redis sentinel to failover when master or slave was failed
+- Cluster mode, centralized management but compatible with Redis cluster client access
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
@@ -30,8 +31,9 @@ Kvrocks has the following key features:
 <td height = "128" width = "164"><img src="docs/images/rgyun_logo.png" alt="Rgyun"></td>
 </tr>
 <tr>
- <td height = "128" width = "164"><img src="docs/images/xueqiu_logo.png" alt="Xueqiu"></td>
-  <td height = "128" width = "164"><img src="docs/images/U-NEXT_logo.png" alt="U-NEXT"></td>
+<td height = "128" width = "164"><img src="docs/images/xueqiu_logo.png" alt="Xueqiu"></td>
+<td height = "128" width = "164"><img src="docs/images/U-NEXT_logo.png" alt="U-NEXT"></td>
+<td height = "128" width = "164"><img src="docs/images/circl-lu.png" alt="circl.lu"></td>
 </tr>
 </table>
 
@@ -40,52 +42,50 @@ Kvrocks has the following key features:
 ## Building kvrocks
 
 #### requirements
-
 * g++ (required by c++11, version >= 4.8)
-* autoconf automake libtool snappy
+* autoconf automake libtool cmake
 
 #### Build
 
-***NOTE: You should install the snappy first:***
-
 ```shell
 # Centos/Redhat
-sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make snappy snappy-devel autoconf automake libtool which gtest gtest-devel
+sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
 
-# Ubuntu
-sudo apt-get install gcc g++ make libsnappy-dev autoconf automake libtool which libgtest-dev
+# Ubuntu/Debian
+sudo apt update
+sudo apt-get install gcc g++ make cmake autoconf automake libtool
 
-# MACOSX
-brew install autoconf automake libtool snappy googletest
+# macOS
+brew install autoconf automake libtool cmake
 ```
 
 It is as simple as:
 
 ```shell
-$ git clone --recursive https://github.com/kvrockslabs/kvrocks.git
-$ cd kvrocks
-$ make -j4
+$ git clone https://github.com/apache/incubator-kvrocks.git
+$ cd incubator-kvrocks
+$ ./build.sh build # `./build.sh -h` to check more options
 ```
 
 ### Running kvrocks
 
 ```shell
-$ ./src/kvrocks -c kvrocks.conf
+$ ./build/kvrocks -c kvrocks.conf
 ```
 
 ### Running test cases
 
-***NOTE: You should install the googletest first***
-
 ```shell
-make test
+$ ./build.sh build --unittest
+$ cd build
+$ ./unittest
 ```
 
 ### Supported platforms
 
-* centos 6/7
-* ubuntu
-* macosx
+* CentOS 6 or 7
+* Ubuntu
+* macOS
 
 ## Try kvrocks using Docker
 
@@ -122,13 +122,17 @@ OK
 OK
 ```
 
+## Cluster
+
+Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://github.com/apache/incubator-kvrocks/wiki/Kvrocks-Cluster-Introduction)
+
 ## DOCs
 
-* [supported commands](https://github.com/KvrocksLabs/kvrocks/wiki/Support-Commands)
-* [design complex kv on rocksdb](https://github.com/kvrockslabs/kvrocks/blob/master/docs/metadata-design.md)
-* [replication design](https://github.com/kvrockslabs/kvrocks/blob/master/docs/replication-design.md)
+* [supported commands](https://github.com/apache/incubator-kvrocks/wiki/Support-Commands)
+* [design complex kv on rocksdb](https://github.com/apache/incubator-kvrocks/blob/master/docs/metadata-design.md)
+* [replication design](https://github.com/apache/incubator-kvrocks/blob/master/docs/replication-design.md)
 
-For more informations, can see: [Kvrocks Wiki](https://github.com/KvrocksLabs/kvrocks/wiki)
+For more informations, can see: [Kvrocks Wiki](https://github.com/apache/incubator-kvrocks/wiki)
 
 ## Tools
 * Export the Kvrocks monitor metrics, please use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
@@ -152,7 +156,7 @@ For more informations, can see: [Kvrocks Wiki](https://github.com/KvrocksLabs/kv
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-commands.png)
+![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-commands.png)
 
 #### 2.  QPS on different payloads
 
@@ -160,7 +164,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-values.png)
+![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -168,12 +172,12 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/kvrockslabs/kvrocks/master/docs/images/chart-threads.png)
+![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-threads.png)
 
 ## License
 
-Kvrocks is under the BSD-3-Clause license. See the LICENSE file for details.
+Kvrocks is under the Apache License Version 2.0. See the LICENSE file for details.
 
-## 微信公众号
+## WeChat Official Account (微信公众号)
 
-<img src="docs/images/wechat_account.jpg" alt="微信公众号" />
+<img src="docs/images/wechat_account.jpg" alt="WeChat offical account" />

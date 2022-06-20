@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_metadata.h"
 #include "redis_slot.h"
 #include <time.h>
@@ -12,6 +32,9 @@
 const int VersionCounterBits = 11;
 
 static std::atomic<uint64_t> version_counter_ = {0};
+
+const char* kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
+const char* kErrMsgKeyExpired = "the key was expired";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;
@@ -132,6 +155,15 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   }
 
   ns_key->append(key.ToString());
+}
+
+void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
+  output->clear();
+
+  PutFixed8(output, static_cast<uint8_t>(ns.size()));
+  output->append(ns.ToString());
+
+  PutFixed16(output, static_cast<uint16_t>(slotid));
 }
 
 Metadata::Metadata(RedisType type, bool generate_version) {

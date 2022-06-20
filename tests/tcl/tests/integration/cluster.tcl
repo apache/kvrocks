@@ -1,3 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 source "tests/helpers/crc16_slottable.tcl"
 
 start_server {tags {"disable-cluster"}} {
@@ -57,22 +74,79 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
 
     test {errors of cluster subcommand} {
         catch {[r cluster no-subcommand]} err
-        assert_match "*CLUSTER*" $err 
- 
+        assert_match "*CLUSTER*" $err
+
         catch {[r clusterx version a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r cluster nodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodeid a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a]} err
-        assert_match "*CLUSTER*" $err 
+        assert_match "*CLUSTER*" $err
 
         catch {[r clusterx setnodes a -1]} err
-        assert_match "*Invalid version*" $err 
+        assert_match "*Invalid version*" $err
+
+        catch {[r clusterx setslot 16384 07c37dfeb235213a872192d90877d0cd55635b91 1]} err
+        assert_match "*CLUSTER*" $err
+
+        catch {[r clusterx setslot 16383 a 1]} err
+        assert_match "*CLUSTER*" $err
+    }
+}
+
+start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+    set nodeid1 "07c37dfeb235213a872192d90877d0cd55635b91"
+    r clusterx SETNODEID $nodeid1
+    set port1 [srv port]
+
+    start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
+        set nodeid2 "07c37dfeb235213a872192d90877d0cd55635b92"
+        r clusterx SETNODEID $nodeid2
+        set port2 [srv port]
+
+        test {cluster slotset command test} {
+            set nodes_str "$nodeid1 127.0.0.1 $port1 master - 0-16383"
+            set nodes_str "$nodes_str\n$nodeid2 127.0.0.1 $port2 master -"
+
+            r clusterx setnodes $nodes_str 2
+            r -1 clusterx setnodes $nodes_str 2
+
+            set slot_0_key "06S"
+            assert_equal {OK} [r -1 set $slot_0_key 0]
+            catch {[r set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port1*" $err
+
+            r clusterx setslot 0 node $nodeid2 3
+            r -1 clusterx setslot 0 node $nodeid2 3
+            assert_equal {3} [r clusterx version]
+            assert_equal {3} [r -1 clusterx version]
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 0 {127.0.0.1 $port2 $nodeid2}} {1 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            assert_equal {OK} [r set $slot_0_key 0]
+            catch {[r -1 set $slot_0_key 0]} err
+            assert_match "*MOVED 0*$port2*" $err
+
+            r clusterx setslot 1 node $nodeid2 4
+            r -1 clusterx setslot 1 node $nodeid2 4
+            assert_equal [r cluster slots] [r -1 cluster slots]
+            assert_equal [r cluster slots] "{0 1 {127.0.0.1 $port2 $nodeid2}} {2 16383 {127.0.0.1 $port1 $nodeid1}}"
+
+            # wrong version can't update slot distribution
+            catch {[r clusterx setslot 2 node $nodeid2 6]} err
+            assert_match "*version*" $err
+
+            catch {[r clusterx setslot 2 node $nodeid2 4]} err
+            assert_match "*version*" $err
+
+            assert_equal {4} [r clusterx version]
+            assert_equal {4} [r -1 clusterx version]
+        }
     }
 }
 
@@ -116,7 +190,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                 set node3_host [srv host]
                 set node3_port [srv port]
                 set node3_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx03"
-                $r3 slaveof $node2_host $node2_port
 
                 set slot_0_key      "06S"
                 set slot_1_key      "Qi"
@@ -161,7 +234,7 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     # Request node3 that doesn't serve slot 0, we will recieve MOVED
                     catch {[$r3 get $slot_0_key]} err
                     assert_match "*MOVED 0*$node1_port*" $err
-                    
+
                     # Request node1 that doesn't serve slot 16383, we will recieve MOVED,
                     # and the MOVED node must be master
                     catch {[$r1 get $slot_16383_key]} err
@@ -188,13 +261,6 @@ start_server {tags {"cluster"} overrides {cluster-enabled yes}} {
                     catch {[$r0 set $slot_0_key 0]} err
                     assert_match "*MOVED 0*$node1_port*" $err
 
-                    catch {[$r0 get $slot_16383_key]} err
-                    assert_match "*MOVED 16383*$node2_port*" $err
-                }
-
-                test {requests non-member of cluster, role is slave} {
-                    $r0 slaveof $node1_host $node1_port
-                    after 100
                     catch {[$r0 get $slot_16383_key]} err
                     assert_match "*MOVED 16383*$node2_port*" $err
                 }

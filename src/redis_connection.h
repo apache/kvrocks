@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <vector>
@@ -85,6 +105,8 @@ class Connection {
   void ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds);
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
+  void SetImporting() { importing_ = true; }
+  bool IsImporting() { return importing_; }
 
   // Multi exec
   void SetInExec() { in_exec_ = true; }
@@ -94,6 +116,7 @@ class Connection {
   const std::vector<Redis::CommandTokens> &GetMultiExecCommands() { return multi_cmds_; }
 
   std::unique_ptr<Commander> current_cmd_;
+  std::function<void(int)> close_cb_ = nullptr;
 
  private:
   uint64_t id_ = 0;
@@ -120,5 +143,7 @@ class Connection {
   bool in_exec_ = false;
   bool multi_error_ = false;
   std::vector<Redis::CommandTokens> multi_cmds_;
+
+  bool importing_ = false;
 };
 }  // namespace Redis

@@ -1,6 +1,27 @@
-# Redis test suite. Copyright (C) 2009 Salvatore Sanfilippo antirez@gmail.com
-# This software is released under the BSD License. See the COPYING file for
-# more information.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2009, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/test_helper.tcl
+
+# Redis test suite.
 
 package require Tcl 8.5
 
@@ -25,6 +46,7 @@ set ::all_tests {
     unit/type/zset
     unit/type/hash
     unit/type/sint
+    unit/type/bitmap
     unit/multi
     unit/expire
     unit/quit
@@ -36,7 +58,10 @@ set ::all_tests {
     unit/command
     unit/config
     unit/scripting
+    integration/slotmigrate
+    integration/slotimport
     integration/replication
+    integration/rsid_psync
     integration/cluster
 }
 
@@ -76,6 +101,7 @@ set ::wait_server 0
 set ::stop_on_failure 0
 set ::loop 0
 set ::tlsdir "tests/tls"
+set ::disable_check_leaks 1
 
 # Set to 1 when we are running in client mode. The Redis test uses a
 # server-client model to run tests simultaneously. The server instance

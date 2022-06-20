@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>
 #include <glog/logging.h>
@@ -46,6 +66,7 @@ std::string Connection::ToString() {
 }
 
 void Connection::Close() {
+  if (close_cb_) close_cb_(GetFD());
   owner_->FreeConnection(this);
 }
 
@@ -292,7 +313,6 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
 
-  svr_->SetCurrentConnection(this);
   for (auto &cmd_tokens : to_process_cmds) {
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
         !IsFlagEnabled(Connection::kMultiExec)) break;
@@ -310,7 +330,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR unknown command"));
+      Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));
       continue;
     }
     const auto attributes = current_cmd_->GetAttributes();
@@ -327,9 +347,14 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
         (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-        (config->cluster_enabled && cmd_name == "clusterx" && cmd_tokens.size() >= 2
-         && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+        (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster")
+         && cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
+
+      // When executing lua script commands that have "exclusive" attribute,
+      // we need to know current connection, but we should set current connection
+      // after acquiring the WorkExclusivityGuard to make it thread-safe
+      svr_->SetCurrentConnection(this);
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
     }
@@ -363,7 +388,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     }
 
     if (config->cluster_enabled) {
-      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens);
+      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
         Reply(Redis::Error(s.Msg()));

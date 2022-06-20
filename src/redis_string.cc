@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_string.h"
 #include <utility>
 #include <string>
@@ -14,10 +34,14 @@ std::vector<rocksdb::Status> String::getRawValues(
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  std::vector<rocksdb::ColumnFamilyHandle*> cfs(keys.size(), metadata_cf_handle_);
-  auto statuses = db_->MultiGet(read_options, cfs, keys, raw_values);
+  raw_values->resize(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(keys.size());
+  db_->MultiGet(read_options, metadata_cf_handle_, keys.size(),
+                keys.data(), pin_values.data(), statuses.data(), false);
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses[i].ok()) continue;
+    (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
     Metadata metadata(kRedisNone, false);
     metadata.Decode((*raw_values)[i]);
     if (metadata.Expired()) {
@@ -120,11 +144,9 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
 }
 
 rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
-  std::vector<Slice> keys{user_key};
-  std::vector<std::string> values;
-  std::vector<rocksdb::Status> statuses = MGet(keys, &values);
-  *value = std::move(values[0]);
-  return statuses[0];
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  return getValue(ns_key, value);
 }
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {

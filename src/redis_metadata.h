@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <string>
@@ -29,6 +49,9 @@ enum RedisCommand {
   kRedisCmdLPush,
   kRedisCmdRPush,
   kRedisCmdExpire,
+  kRedisCmdSetBit,
+  kRedisCmdBitOp,
+  kRedisCmdLMove,
 };
 
 const std::vector<std::string> RedisTypeNames = {
@@ -36,8 +59,8 @@ const std::vector<std::string> RedisTypeNames = {
     "list", "set", "zset", "bitmap", "sortedint"
 };
 
-const char kErrMsgWrongType[] = "WRONGTYPE Operation against a key holding the wrong kind of value";
-const char kErrMsgKeyExpired[] = "the key was expired";
+extern const char* kErrMsgWrongType;
+extern const char* kErrMsgKeyExpired;
 
 using rocksdb::Slice;
 
@@ -50,6 +73,7 @@ struct KeyNumStats {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded);
+void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output);
 
 class InternalKey {
  public:

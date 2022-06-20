@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "lock_manager.h"
 #include "rw_lock.h"
 #include <thread>
@@ -10,6 +30,29 @@ TEST(LockManager, LockKey) {
   for (const auto key : keys) {
     locks.Lock(key);
     locks.UnLock(key);
+  }
+}
+
+TEST(LockManager, LockMultiKeys) {
+  LockManager lock_manager(2);
+
+  std::vector<std::string> keys1 = {"a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
+  std::vector<std::string> keys2 = {"a7", "a6", "a5", "a4", "a3", "a2", "a1", "a0"};
+
+  std::thread ths[10];
+  for(int i = 0; i < 10; i++) {
+    if (i % 2 == 0) {
+      ths[i] = std::thread([&lock_manager, &keys1]() {
+        MultiLockGuard(&lock_manager, keys1);
+      });
+    } else {
+      ths[i] = std::thread([&lock_manager, &keys2]() {
+        MultiLockGuard(&lock_manager, keys2);
+      });
+    }
+  }
+  for (auto & th : ths) {
+    th.join();
   }
 }
 

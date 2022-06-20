@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_bitmap_string.h"
 #include <vector>
 #include <glog/logging.h>
@@ -45,7 +65,7 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key,
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int start, int stop, uint32_t *cnt) {
+rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {
   *cnt = 0;
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   /* Convert negative indexes */
@@ -57,12 +77,12 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int start, 
   if (stop < 0) stop = strlen + stop;
   if (start < 0) start = 0;
   if (stop < 0) stop = 0;
-  if (stop >= static_cast<int>(strlen)) stop = strlen - 1;
+  if (stop >= static_cast<int64_t>(strlen)) stop = strlen - 1;
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
      * zero can be returned is: start > stop. */
   if (start <= stop) {
-    int bytes = stop - start + 1;
+    int64_t bytes = stop - start + 1;
     *cnt = redisPopcount((unsigned char *) (&string_value[0] + start), bytes);
   }
   return rocksdb::Status::OK();
@@ -70,10 +90,10 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int start, 
 
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
                                      bool bit,
-                                     int start,
-                                     int stop,
+                                     int64_t start,
+                                     int64_t stop,
                                      bool stop_given,
-                                     int *pos) {
+                                     int64_t *pos) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   auto strlen = string_value.size();
   /* Convert negative indexes */
@@ -81,12 +101,12 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
   if (stop < 0) stop = strlen + stop;
   if (start < 0) start = 0;
   if (stop < 0) stop = 0;
-  if (stop >= static_cast<int>(strlen)) stop = strlen - 1;
+  if (stop >= static_cast<int64_t>(strlen)) stop = strlen - 1;
 
   if (start > stop) {
     *pos = -1;
   } else {
-    int bytes = stop - start + 1;
+    int64_t bytes = stop - start + 1;
     *pos = redisBitpos((unsigned char *) (&string_value[0] + start), bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
@@ -113,7 +133,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
  * This function started out as:
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L40
  * */
-size_t BitmapString::redisPopcount(unsigned char *p, int count) {
+size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   size_t bits = 0;
   uint32_t *p4;
   static const unsigned char bitsinbyte[256] =
@@ -185,10 +205,10 @@ size_t BitmapString::redisPopcount(unsigned char *p, int count) {
  * This function started out as:
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L101
  * */
-int BitmapString::redisBitpos(unsigned char *c, int count, int bit) {
+int64_t BitmapString::redisBitpos(unsigned char *c, int64_t count, int bit) {
   uint64_t *l;
   uint64_t skipval, word = 0, one;
-  int pos = 0; /* Position of bit, to return to the caller. */
+  int64_t pos = 0; /* Position of bit, to return to the caller. */
   uint64_t j;
   int found;
 

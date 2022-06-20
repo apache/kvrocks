@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 #include <sys/resource.h>
 
@@ -62,9 +82,12 @@ struct Config{
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
+  int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;
+  int fullsync_recv_file_delay = 0;
+  bool use_rsid_psync = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
@@ -78,6 +101,8 @@ struct Config{
   std::string masterauth;
   std::string requirepass;
   std::string master_host;
+  std::string unixsocket;
+  int unixsocketperm = 0777;
   int master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
@@ -86,6 +111,9 @@ struct Config{
 
   bool slot_id_encoded = false;
   bool cluster_enabled = false;
+  int migrate_speed;
+  int pipeline_size;
+  int sequence_gap;
 
   // profiling
   int profiling_sample_ratio = 0;
@@ -117,6 +145,7 @@ struct Config{
     int max_total_wal_size;
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
+    int level0_file_num_compaction_trigger;
     int compression;
     bool disable_auto_compactions;
     bool enable_blob_files;
@@ -124,6 +153,9 @@ struct Config{
     int blob_file_size;
     bool enable_blob_garbage_collection;
     int blob_garbage_collection_age_cutoff;
+    int max_bytes_for_level_base;
+    int max_bytes_for_level_multiplier;
+    bool level_compaction_dynamic_level_bytes;
   } RocksDB;
 
  public:
@@ -151,7 +183,7 @@ struct Config{
 
   void initFieldValidator();
   void initFieldCallback();
-  Status parseConfigFromString(std::string input);
+  Status parseConfigFromString(std::string input, int line_number);
   Status finish();
   Status isNamespaceLegal(const std::string &ns);
 };

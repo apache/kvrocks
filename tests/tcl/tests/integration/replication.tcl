@@ -1,15 +1,53 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/integration/replication.tcl
+
 start_server {tags {"repl"}} {
     set A [srv 0 client]
     set A_host "localhost"
     set A_port [srv 0 port]
+    populate 100 "" 10
     start_server {} {
         set B [srv 0 client]
         set B_host [srv 0 host]
         set B_port [srv 0 port]
 
         test {Set instance A as slave of B} {
+            $A config set slave-empty-db-before-fullsync yes
+            $A config set fullsync-recv-file-delay 2
             $A slaveof $B_host $B_port
+
+            # in loading status
             after 1000
+            assert_equal {1} [s -1 loading]
+            wait_for_condition 500 100 {
+                [s -1 loading] == 0
+            } else {
+                fail "Fail to load master snapshot"
+            }
+            # reset config
+            after 1000
+            $A config set fullsync-recv-file-delay 0
+            $A config set slave-empty-db-before-fullsync no
 
             wait_for_condition 50 100 {
                 [lindex [$A role] 0] eq {slave} &&
@@ -226,6 +264,49 @@ start_server {tags {"repl"}} {
             after 100
             assert_equal 1 [$slave hget myhash 1]
             assert_equal a [$slave hget myhash a]
+        }
+    }
+}
+
+start_server {tags {"repl"}} {
+    set slave [srv 0 client]
+    set slave_ip [srv 0 host]
+    set slave_port [srv 0 port]
+    start_server {} {
+        set master [srv 0 client]
+        set master_ip [srv 0 host]
+        set master_port [srv 0 port]
+        test {Slave can re-sync with master after password change} {
+            $slave slaveof $master_ip $master_port
+            after 200
+            catch {$slave info replication} var
+            assert_match {*role:slave*} $var
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
+
+            # Change password and break repl connection
+            $master config set requirepass pass
+            $slave config set requirepass pass
+            $slave config set masterauth pass
+
+            set ret [$master client list]
+            set lines [split $ret "\n"]
+            global conn_addr
+            foreach  line $lines {
+                if {[string match "*cmd=psync*" $line]} {
+                    set list [split $line " "]
+                    foreach str $list {
+                        if {[string match "*addr=*" $str]} {
+                            set conn_addr [string range $str 5 end]
+                        }
+                    }
+                }
+            }
+
+            $master client kill $conn_addr
+            after 200
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
         }
     }
 }

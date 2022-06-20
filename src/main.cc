@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <getopt.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -24,8 +44,6 @@
 #if defined(__APPLE__) || defined(__linux__)
 #define HAVE_BACKTRACE 1
 #endif
-
-const char *kDefaultConfPath = "../kvrocks.conf";
 
 std::function<void()> hup_handler;
 
@@ -62,8 +80,11 @@ void *getMcontextEip(ucontext_t *uc) {
 #elif defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)
 #if defined(_STRUCT_X86_THREAD_STATE64) && !defined(__i386__)
         return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
-#else
+#elif defined(__i386__)
         return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__eip);
+#else
+        // OSX ARM64
+        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
 #endif
 #elif defined(__i386__) || defined(__X86_64__) || defined(__x86_64__)
         return reinterpret_cast<void*>(uc->uc_mcontext.gregs[REG_EIP]); /* Linux 32/64 bit */
@@ -114,7 +135,6 @@ void setupSigSegvAction() {
   sigaction(SIGBUS, &act, nullptr);
   sigaction(SIGFPE, &act, nullptr);
   sigaction(SIGILL, &act, nullptr);
-  sigaction(SIGBUS, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
   act.sa_handler = signal_handler;
@@ -129,7 +149,7 @@ void setupSigSegvAction() {
 
 static void usage(const char* program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"
-            << "\t-c config file, default is " << kDefaultConfPath << "\n"
+            << "\t-c config file\n"
             << "\t-h help\n";
   exit(0);
 }
@@ -152,7 +172,16 @@ static void initGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->log_dir;
+
+  if (Util::ToLower(config->log_dir) == "stdout") {
+    for (int level = google::INFO; level <= google::FATAL; level++) {
+      google::SetLogDestination(level, "");
+    }
+    FLAGS_stderrthreshold = google::ERROR;
+    FLAGS_logtostdout = true;
+  } else {
+    FLAGS_log_dir = config->log_dir;
+  }
 }
 
 bool supervisedUpstart() {
@@ -322,7 +351,11 @@ int main(int argc, char* argv[]) {
       srv->Stop();
     }
   };
-  srv->Start();
+  s = srv->Start();
+  if (!s.IsOK()) {
+    removePidFile(config.pidfile);
+    exit(1);
+  }
   srv->Join();
 
   removePidFile(config.pidfile);

@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <inttypes.h>
@@ -16,6 +36,8 @@
 #include "lock_manager.h"
 #include "config.h"
 #include "rw_lock.h"
+
+const int kReplIdLength = 16;
 
 enum ColumnFamilyID{
   kColumnFamilyIDDefault,
@@ -59,7 +81,7 @@ class Storage {
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq,
                     std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
-  Status WriteBatch(std::string &&raw_batch);
+  Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
   rocksdb::Status Delete(const rocksdb::WriteOptions &options,
@@ -68,6 +90,7 @@ class Storage {
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
+  Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
@@ -136,8 +159,13 @@ class Storage {
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 
+  bool ShiftReplId(void);
+  std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
+  std::string GetReplIdFromDbEngine(void);
+
  private:
   rocksdb::DB *db_ = nullptr;
+  std::string replid_;
   std::mutex backup_mu_;
   time_t backup_creating_time_;
   rocksdb::BackupEngine *backup_ = nullptr;

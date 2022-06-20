@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "sync.h"
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -11,8 +31,6 @@
 
 #include "../../src/redis_reply.h"
 #include "../../src/util.h"
-
-#include "util.h"
 
 void send_string_to_event(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);
@@ -191,9 +209,9 @@ Status Sync::incrementBatchLoop() {
 void Sync::parseKVFromLocalStorage() {
   LOG(INFO) << "[kvrocks2redis] Start parsing kv from the local storage";
   for (const auto &iter : config_->tokens) {
-    auto s = writer_->FlushAll(iter.first);
+    auto s = writer_->FlushDB(iter.first);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[kvrocks2redis] Failed to flush all in namespace: " << iter.first
+      LOG(ERROR) << "[kvrocks2redis] Failed to flush target redis db in namespace: " << iter.first
                  << ", encounter error: " << s.Msg();
       return;
     }

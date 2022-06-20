@@ -1,6 +1,27 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_slot.h"
 #include "redis_db.h"
 #include <ctime>
+#include <map>
 #include "server.h"
 #include "util.h"
 
@@ -276,7 +297,6 @@ rocksdb::Status Database::Scan(const std::string &cursor,
       if (keys->empty()) {
         if (iter->Valid()) {
           ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());
-
           auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
           if (res.first == prefix.end()) {
             keys->emplace_back(user_key);
@@ -325,7 +345,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 rocksdb::Status Database::FlushDB() {
   std::string prefix, begin_key, end_key;
   ComposeNamespaceKey(namespace_, "", &prefix, false);
-  auto s = FindKeyRangeWithPrefix(prefix, &begin_key, &end_key);
+  auto s = FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key);
   if (!s.ok()) {
     return rocksdb::Status::OK();
   }
@@ -437,6 +457,7 @@ void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output)
 }
 
 rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
+                                                 const std::string &prefix_end,
                                                  std::string *begin,
                                                  std::string *end,
                                                  rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -449,11 +470,11 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
   begin->clear();
   end->clear();
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_->GetDB());
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, cf_handle);
+  auto iter = storage_->GetDB()->NewIterator(read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     delete iter;
@@ -463,9 +484,16 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
 
   // it's ok to increase the last char in prefix as the boundary of the prefix
   // while we limit the namespace last char shouldn't be larger than 128.
-  std::string next_prefix = prefix;
-  auto prefix_size = prefix.size();
-  next_prefix[prefix_size - 1]++;
+  std::string next_prefix;
+  if (!prefix_end.empty()) {
+    next_prefix = prefix_end;
+  } else {
+    next_prefix = prefix;
+    char last_char = next_prefix.back();
+    last_char++;
+    next_prefix.pop_back();
+    next_prefix.push_back(last_char);
+  }
   iter->SeekForPrev(next_prefix);
   int max_prev_limit = 128;  // prevent unpredicted long while loop
   int i = 0;
@@ -479,6 +507,63 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
   }
   *end = iter->key().ToString();
   delete iter;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
+  if (!storage_->IsSlotIdEncoded()) {
+    return rocksdb::Status::Aborted("It is not in cluster mode");
+  }
+
+  std::string prefix, prefix_end;
+  ComposeSlotKeyPrefix(ns, slot, &prefix);
+  ComposeSlotKeyPrefix(ns, slot + 1, &prefix_end);
+  auto s = storage_->DeleteRange(prefix, prefix_end);
+  if (!s.ok()) {
+    return s;
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::GetSlotKeysInfo(int slot,
+                                          std::map<int, uint64_t> *slotskeys,
+                                          std::vector<std::string> *keys,
+                                          int count) {
+  const rocksdb::Snapshot *snapshot;
+  snapshot = storage_->GetDB()->GetSnapshot();
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = snapshot;
+  read_options.fill_cache = false;
+  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  bool end = false;
+  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
+    std::string prefix;
+    ComposeSlotKeyPrefix(namespace_, i, &prefix);
+    uint64_t total = 0;
+    int cnt = 0;
+    if (slot != -1 && i != slot) {
+      (*slotskeys)[i] = total;
+      continue;
+    }
+    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
+      if (!iter->key().starts_with(prefix)) {
+        break;
+      }
+      total++;
+      if (slot != -1 && count > 0 && !end) {
+        // Get user key
+        if (cnt < count) {
+          std::string ns, user_key;
+          ExtractNamespaceKey(iter->key(), &ns, &user_key, true);
+          keys->push_back(user_key);
+          cnt++;
+        }
+      }
+    }
+    // Maybe cnt < count
+    if (cnt > 0) end = true;
+    (*slotskeys)[i] = total;
+  }
   return rocksdb::Status::OK();
 }
 

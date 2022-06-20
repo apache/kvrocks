@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <thread>
@@ -65,7 +85,7 @@ class FeedSlaveThread {
 class ReplicationThread {
  public:
   explicit ReplicationThread(std::string host, uint32_t port,
-                             Server *srv, std::string auth = "");
+                             Server *srv);
   Status Start(std::function<void()> &&pre_fullsync_cb,
                std::function<void()> &&post_fullsync_cb);
   void Stop();
@@ -80,6 +100,7 @@ class ReplicationThread {
    public:
     enum class State {
       NEXT,
+      PREV,
       AGAIN,
       QUIT,
       RESTART,
@@ -124,11 +145,11 @@ class ReplicationThread {
   bool stop_flag_ = false;
   std::string host_;
   uint32_t port_;
-  std::string auth_;
   Server *srv_ = nullptr;
   Engine::Storage *storage_ = nullptr;
   ReplState repl_state_;
   time_t last_io_time_ = 0;
+  bool next_try_old_psync_ = false;
 
   std::function<void()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;
@@ -179,6 +200,7 @@ class ReplicationThread {
   Status parallelFetchFile(const std::string &dir,
                   const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
+  static bool isWrongPsyncNum(const char *err);
 
   static void EventTimerCB(int, int16_t, void *ctx);
 
@@ -192,6 +214,13 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                         const rocksdb::Slice &value) override;
+  rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+    return rocksdb::Status::OK();
+  }
+  rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
+                  const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+    return rocksdb::Status::OK();
+  }
   WriteBatchType Type() { return type_; }
   std::string Key() const { return kv_.first; }
   std::string Value() const { return kv_.second; }

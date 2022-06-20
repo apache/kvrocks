@@ -1,56 +1,54 @@
-if (NOT __ROCKSDB_INCLUDED)
-  set(__ROCKSDB_INCLUDED TRUE)
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-  find_package(Threads)
-  set(CMAKE_INSTALL_LIBDIR lib)
-  # build directory
-  set(rocksdb_PREFIX ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-prefix)
-  # install directory
-  set(rocksdb_INSTALL ${CMAKE_BUILD_DIRECTORY}/external/rocksdb-install)
+include_guard()
 
-  if (UNIX)
-      set(ROCKSDB_EXTRA_COMPILER_FLAGS "-fPIC")
-  endif()
+set(COMPILE_WITH_JEMALLOC ON)
 
-  set(ROCKSDB_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
-  set(ROCKSDB_C_FLAGS "${CMAKE_C_FLAGS} ${ROCKSDB_EXTRA_COMPILER_FLAGS}")
-  set(JEMALLOC_ROOT_DIR ${jemalloc_INSTALL})
-  ExternalProject_Add(rocksdb
-      DEPENDS jemalloc snappy
-      PREFIX ${rocksdb_PREFIX}
-      #GIT_REPOSITORY "https://github.com/facebook/rocksdb"
-      #GIT_TAG "v5.15.10"
-      SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/rocksdb
-      INSTALL_DIR ${rocksdb_INSTALL}
-      CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-		 -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
-                 -DCMAKE_INSTALL_PREFIX=${rocksdb_INSTALL}
-                 -DBUILD_SHARED_LIBS=OFF
-                 -DBUILD_STATIC_LIBS=ON
-                 -DBUILD_PACKAGING=OFF
-                 -DBUILD_TESTING=OFF
-                 -DBUILD_NC_TESTS=OFF
-                 -DBUILD_CONFIG_TESTS=OFF
-                 -DINSTALL_HEADERS=ON
-                 -DCMAKE_C_FLAGS=${ROCKSDB_C_FLAGS}
-                 -DCMAKE_CXX_FLAGS=${ROCKSDB_CXX_FLAGS}
-                 -DCMAKE_PREFIX_PATH=${snappy_INSTALL}
-                 -DJEMALLOC_ROOT_DIR=${JEMALLOC_ROOT_DIR}
-                 -DFAIL_ON_WARNINGS=OFF
-                 -DWITH_TESTS=OFF
-                 -DWITH_SNAPPY=ON
-                 -DWITH_TOOLS=OFF
-                 -DWITH_GFLAGS=OFF
-                 -DUSE_RTTI=ON
-                 -DWITH_JEMALLOC=ON
-      LOG_DOWNLOAD 1
-      LOG_CONFIGURE 1
-      LOG_INSTALL 1
-      )
-
-  include(GNUInstallDirs)
-  set(rocksdb_FOUND TRUE)
-  set(rocksdb_INCLUDE_DIRS ${rocksdb_INSTALL}/include)
-  set(rocksdb_LIBRARIES ${rocksdb_INSTALL}/${CMAKE_INSTALL_LIBDIR}/librocksdb.a)
+if (DISABLE_JEMALLOC)
+  set(COMPILE_WITH_JEMALLOC OFF)
 endif()
 
+include(FetchContent)
+
+FetchContent_Declare(rocksdb
+  GIT_REPOSITORY https://github.com/facebook/rocksdb
+  GIT_TAG v6.29.5
+)
+
+include(cmake/utils.cmake)
+
+FetchContent_GetProperties(jemalloc)
+FetchContent_GetProperties(snappy)
+
+FetchContent_MakeAvailableWithArgs(rocksdb
+  CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/modules # to locate FindJeMalloc.cmake
+  Snappy_DIR=${PROJECT_SOURCE_DIR}/cmake/modules # to locate SnappyConfig.cmake
+  FAIL_ON_WARNINGS=OFF
+  WITH_TESTS=OFF
+  WITH_BENCHMARK_TOOLS=OFF
+  WITH_SNAPPY=ON
+  WITH_TOOLS=OFF
+  WITH_GFLAGS=OFF
+  USE_RTTI=ON
+  ROCKSDB_BUILD_SHARED=OFF
+  WITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
+)
+
+add_library(rocksdb_with_headers INTERFACE)
+target_include_directories(rocksdb_with_headers INTERFACE ${rocksdb_SOURCE_DIR}/include)
+target_link_libraries(rocksdb_with_headers INTERFACE rocksdb)

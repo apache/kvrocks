@@ -1,7 +1,55 @@
-// Copyright Redis(https://github.com/redis/redis)
-// Copyright Kvrocks Core Team (bugfix and adapted to kvrocks coding style)
-// All rights reserved.
-//
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
+/*
+ * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+// This file is modified from several source code files about lua scripting of Redis.
+// See the original code at https://github.com/redis/redis.
+
 #include "scripting.h"
 
 #include <math.h>
@@ -26,12 +74,10 @@ enum {
   LL_WARNING,
 };
 
-extern "C" {
 LUALIB_API int (luaopen_cjson)(lua_State *L);
 LUALIB_API int (luaopen_struct)(lua_State *L);
 LUALIB_API int (luaopen_cmsgpack)(lua_State *L);
 LUALIB_API int (luaopen_bit)(lua_State *L);
-}
 
 namespace Lua {
   lua_State* CreateState() {
@@ -197,7 +243,7 @@ namespace Lua {
     Server *srv = conn->GetServer();
     lua_State *lua = srv->Lua();
 
-    auto s = Util::StringToNum(args[2], &numkeys);
+    auto s = Util::DecimalStringToNum(args[2], &numkeys);
     if (!s.IsOK()) {
       return s;
     }
@@ -341,7 +387,7 @@ namespace Lua {
     Config *config = srv->GetConfig();
     Redis::Connection *conn = srv->GetCurrentConnection();
     if (config->cluster_enabled) {
-      auto s = srv->cluster_->CanExecByMySelf(attributes, args);
+      auto s = srv->cluster_->CanExecByMySelf(attributes, args, conn);
       if (!s.IsOK()) {
         pushError(lua, s.Msg().c_str());
         return raise_error ? raiseError(lua) : 1;
@@ -556,7 +602,7 @@ const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
   const char *p = strchr(reply+1, '\r');
   int64_t value;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &value);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &value);
   lua_pushnumber(lua, static_cast<lua_Number>(value));
   return p+2;
 }
@@ -565,7 +611,7 @@ const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
   const char *p = strchr(reply+1, '\r');
   int64_t  bulklen;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &bulklen);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &bulklen);
   if (bulklen == -1) {
     lua_pushboolean(lua, 0);
     return p+2;
@@ -600,7 +646,7 @@ const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, 
   int64_t mbulklen;
   int j = 0;
 
-  Util::StringToNum(std::string(reply+1, p-reply-1), &mbulklen);
+  Util::DecimalStringToNum(std::string(reply+1, p-reply-1), &mbulklen);
   p += 2;
   if (mbulklen == -1) {
     lua_pushboolean(lua, 0);
@@ -730,7 +776,7 @@ std::string replyToRedisReply(lua_State *lua) {
  * by the non-error-trapping version of redis.pcall(), which is redis.call(),
  * this function will raise the Lua error so that the execution of the
  * script will be halted. */
-int raiseError(lua_State *lua) {
+[[noreturn]] int raiseError(lua_State *lua) {
   lua_pushstring(lua, "err");
   lua_gettable(lua, -2);
   return lua_error(lua);

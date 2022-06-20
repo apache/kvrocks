@@ -1,9 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "storage.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <algorithm>
 #include <event2/buffer.h>
 #include <glog/logging.h>
@@ -15,6 +36,7 @@
 #include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/convenience.h>
 
+#include "server.h"
 #include "config.h"
 #include "redis_db.h"
 #include "rocksdb_crc32c.h"
@@ -34,6 +56,8 @@ const char *kPropagateColumnFamilyName = "propagate";
 const char *kPropagateScriptCommand = "script";
 
 const char *kLuaFunctionPrefix = "lua_f_";
+
+const char *kReplicationIdKey = "replication_id_";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 
@@ -140,6 +164,10 @@ void Storage::InitOptions(rocksdb::Options *options) {
   options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
   options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
   options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+  options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
+  options->max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
+  options->max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
+  options->level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
 }
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
@@ -181,8 +209,19 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     tmp_db->Close();
     delete tmp_db;
   }
-  // Open db would be failed if the column families have already exists,
-  // so we return ok here.
+
+  if (!s.ok()) {
+    // We try to create families by opening the db without column families.
+    // If it's ok means we didn't create column families(cannot open without column families if created).
+    // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
+    // If the status message contains `Column families not opened` means that we have created the column
+    // families, let's ignore the error.
+    std::string notOpenedPrefix = "Column families not opened";
+    if (s.IsInvalidArgument() && s.ToString().find(notOpenedPrefix) != std::string::npos) {
+      return Status::OK();
+    }
+    return Status(Status::NotOK, s.ToString());
+  }
   return Status::OK();
 }
 
@@ -372,10 +411,16 @@ Status Storage::RestoreFromCheckpoint() {
   PurgeOldBackups(0, 0);
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
 
+  // Maybe there is no db dir
+  auto s = env_->CreateDirIfMissing(config_->db_dir);
+  if (!s.ok()) {
+    return Status(Status::NotOK, "Fail to create db dir, error: " + s.ToString());
+  }
+
   // Rename db dir to tmp, so we can restore if replica fails to load
   // the checkpoint from master.
   // But only try best effort to make data safe
-  auto s = env_->RenameFile(config_->db_dir, tmp_dir);
+  s = env_->RenameFile(config_->db_dir, tmp_dir);
   if (!s.ok()) {
     if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
     return Status(Status::NotOK, "Fail to rename db dir, error: " + s.ToString());
@@ -414,17 +459,6 @@ void Storage::EmptyDB() {
   auto s = rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Failed to destroy db, error: " << s.ToString();
-  }
-
-  // Reopen db, it is empty if succeeded destroying db
-  auto s2 = Open();
-  if (!s2.IsOK()) {
-    LOG(ERROR) << "[storage] Failed to destroy db, error: " << s2.Msg();
-  }
-  if (s.ok() && s2.IsOK()) {
-    LOG(INFO) << "[sorage] Succeeded emptying db";
-  } else {
-    LOG(INFO) << "[sorage] Failed to empty db";
   }
 }
 
@@ -468,10 +502,12 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
     return rocksdb::Status::SpaceLimit();
   }
 
-  auto s = db_->Write(options, updates);
-  if (!s.ok()) return s;
+  // Put replication id logdata at the end of write batch
+  if (replid_.length() == kReplIdLength) {
+    updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
+  }
 
-  return s;
+  return db_->Write(options, updates);
 }
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
@@ -479,19 +515,21 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
                                 const rocksdb::Slice &key) {
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
-  return db_->Write(options, &batch);
+  return Write(options, &batch);
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
-  auto s = db_->DeleteRange(rocksdb::WriteOptions(), GetCFHandle("metadata"), first_key, last_key);
+  rocksdb::WriteBatch batch;
+  rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle("metadata");
+  auto s = batch.DeleteRange(cf_handle, first_key, last_key);
   if (!s.ok()) {
     return s;
   }
-  s = Delete(rocksdb::WriteOptions(), GetCFHandle("metadata"), last_key);
+  s = batch.Delete(cf_handle, last_key);
   if (!s.ok()) {
     return s;
   }
-  return rocksdb::Status::OK();
+  return Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -499,10 +537,16 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
   end_key[end_key.size()-1] += 1;
-  return db_->DeleteRange(options, cf_handle, begin_key, end_key);
+
+  rocksdb::WriteBatch batch;
+  auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
+  if (!s.ok()) {
+    return s;
+  }
+  return Write(rocksdb::WriteOptions(), &batch);
 }
 
-Status Storage::WriteBatch(std::string &&raw_batch) {
+Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
   if (reach_db_size_limit_) {
     return Status(Status::NotOK, "reach space limit");
   }
@@ -553,7 +597,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
         cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
       continue;
     }
-    auto s = db.FindKeyRangeWithPrefix(prefix, &begin_key, &end_key, cf_handle);
+    auto s = db.FindKeyRangeWithPrefix(prefix,  std::string(), &begin_key, &end_key, cf_handle);
     if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
@@ -591,6 +635,93 @@ void Storage::SetIORateLimit(uint64_t max_io_mb) {
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }
+
+Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  rocksdb::WriteBatch batch;
+
+  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  batch.Put(cf, key, value);
+  auto s = Write(rocksdb::WriteOptions(), &batch);
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+bool Storage::ShiftReplId(void) {
+  const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const int charset_len = strlen(charset);
+
+  // Do nothing if don't enable rsid psync
+  if (!config_->use_rsid_psync) return true;
+
+  std::random_device rd;
+  std::mt19937 gen(rd() + getpid());
+  std::uniform_int_distribution<> distrib(0, charset_len-1);
+  std::string rand_str;
+  for (int i = 0; i < kReplIdLength; i++) {
+    rand_str.push_back(charset[distrib(gen)]);
+  }
+  replid_ = rand_str;
+  LOG(INFO) << "[replication] New replication id: " << replid_;
+
+  // Write new replication id into db engine
+  WriteToPropagateCF(kReplicationIdKey, replid_);
+  return true;
+}
+
+std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
+
+  if (!WALHasNewData(seq) || !GetWALIter(seq, &iter).IsOK()) return "";
+
+  // An extractor to extract update from raw writebatch
+  class ReplIdExtractor : public rocksdb::WriteBatch::Handler {
+   public:
+    rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key,
+                        const Slice &value) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
+                    const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+      return rocksdb::Status::OK();
+    }
+
+    void LogData(const rocksdb::Slice &blob) override {
+      // Currently, we alway put replid log data at the last.
+      if (ServerLogData::IsServerLogData(blob.data())) {
+        ServerLogData serverlog;
+        if (serverlog.Decode(blob).IsOK()) {
+          if (serverlog.GetType() == kReplIdLog) {
+            replid_in_wal_ = serverlog.GetContent();
+          }
+        }
+      }
+    };
+    std::string GetReplId(void) {
+      return replid_in_wal_;
+    }
+
+   private:
+    std::string replid_in_wal_;
+  };
+
+  auto batch = iter->GetBatch();
+  ReplIdExtractor write_batch_handler;
+  rocksdb::Status s = batch.writeBatchPtr->Iterate(&write_batch_handler);
+  if (!s.ok()) return "";
+  return write_batch_handler.GetReplId();
+}
+
+std::string Storage::GetReplIdFromDbEngine(void) {
+  std::string replid_in_db;
+  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  auto s = db_->Get(rocksdb::ReadOptions(), cf, kReplicationIdKey, &replid_in_db);
+  return replid_in_db;
+}
 
 std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() {
   return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(db_rw_lock_));

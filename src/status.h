@@ -63,11 +63,10 @@ class Status {
   bool IsNotFound() { return code_ == NotFound; }
   bool IsImorting() { return code_ == SlotImport; }
   std::string Msg() {
-    if(!IsOK())
-      return msg_;
-    else {
+    if(IsOK()) {
       return "ok";
     }
+    return msg_;
   }
   static Status OK() { return {}; }
 

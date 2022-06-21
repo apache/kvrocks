@@ -17,8 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
-CHECK_TYPES="warning,portability,information,missingInclude"
+# we should run cmake configuration to fetch deps if we want to enable missingInclude
+CHECK_TYPES="warning,portability,information"
 STANDARD=c++11
 ERROR_EXITCODE=1
 LANG=c++
-cppcheck --force --enable=${CHECK_TYPES} -U__GNUC__ -x ${LANG}  src --std=${STANDARD} --error-exitcode=${ERROR_EXITCODE} --suppress=missingInclude
+cppcheck --force --enable=${CHECK_TYPES} -U__GNUC__ -x ${LANG}  src --std=${STANDARD} --error-exitcode=${ERROR_EXITCODE}

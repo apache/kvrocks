@@ -171,7 +171,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   // Update replicas info and size
   for (auto &n : nodes_) {
     if (n.second->role_ == kClusterSlave) {
-      if (nodes_.find(n.second->master_id_) != nodes_.end()) {
+      if (nodes_.find(n.second->master_id_) != nodes.end()) {
         nodes_[n.second->master_id_]->replicas.push_back(n.first);
       }
     }

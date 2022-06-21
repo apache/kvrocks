@@ -43,7 +43,7 @@ struct UniqueFreePtr : std::unique_ptr<T, StaticFree> {
 
 struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
     UniqueEvbufReadln(evbuffer* buffer, evbuffer_eol_style eol_style)
-      : UniqueFreePtr(evbuffer_readln(buffer, &length, eol_style)) {} // cppcheck-suppress uninitMemberVar
+      : UniqueFreePtr(evbuffer_readln(buffer, &length, eol_style)) {}  // cppcheck-suppress uninitMemberVar
 
     size_t length;
 };

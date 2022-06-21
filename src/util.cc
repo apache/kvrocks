@@ -376,7 +376,9 @@ std::vector<std::string> Split(const std::string &in, const std::string &delim) 
   }
 
   if (delim.empty()) {
-    out.push_back(in);
+    out.resize(in.size());
+    std::transform(in.begin(), in.end(), out.begin(),
+      [](char c) -> std::string { return {c}; });
     return out;
   }
 

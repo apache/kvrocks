@@ -32,7 +32,7 @@ jobs:
 
   lint:
     name: Lint and check code
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v3

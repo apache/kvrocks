@@ -37,6 +37,7 @@
 #include "util.h"
 #include "status.h"
 #include "server.h"
+#include "event_utils.h"
 
 FeedSlaveThread::~FeedSlaveThread() {
   delete conn_;
@@ -395,18 +396,14 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev,
 
 ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev,
                                                          void *ctx) {
-  char *line;
-  size_t line_len;
   auto input = bufferevent_get_input(bev);
-  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
-  if (strncmp(line, "+OK", 3) != 0) {
+  if (strncmp(line.get(), "+OK", 3) != 0) {
     // Auth failed
-    LOG(ERROR) << "[replication] Auth failed: " << line;
-    free(line);
+    LOG(ERROR) << "[replication] Auth failed: " << line.get();
     return CBState::RESTART;
   }
-  free(line);
   LOG(INFO) << "[replication] Auth response was received, continue...";
   return CBState::NEXT;
 }
@@ -422,31 +419,26 @@ ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(
 
 ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(
     bufferevent *bev, void *ctx) {
-  char *line;
-  size_t line_len;
   auto input = bufferevent_get_input(bev);
-  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
   if (line[0] == '-') {
-    if (isRestoringError(line)) {
+    if (isRestoringError(line.get())) {
       LOG(WARNING) << "The master was restoring the db, retry later";
     } else {
-      LOG(ERROR) << "Failed to get the db name, " << line;
+      LOG(ERROR) << "Failed to get the db name, " << line.get();
     }
-    free(line);
     return CBState::RESTART;
   }
   auto self = static_cast<ReplicationThread *>(ctx);
   std::string db_name = self->storage_->GetName();
-  if (line_len == db_name.size() && !strncmp(line, db_name.data(), line_len)) {
+  if (line.length == db_name.size() && !strncmp(line.get(), db_name.data(), line.length)) {
     // DB name match, we should continue to next step: TryPsync
-    free(line);
     LOG(INFO) << "[replication] DB name is valid, continue...";
     return CBState::NEXT;
   }
-  LOG(ERROR) << "[replication] Mismatched the db name, local: " << db_name << ", remote: " << line;
-  free(line);
+  LOG(ERROR) << "[replication] Mismatched the db name, local: " << db_name << ", remote: " << line.get();
   return CBState::RESTART;
 }
 
@@ -462,24 +454,19 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(
 
 ReplicationThread::CBState ReplicationThread::replConfReadCB(
     bufferevent *bev, void *ctx) {
-  char *line;
-  size_t line_len;
   auto input = bufferevent_get_input(bev);
-  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
-  if (line[0] == '-' && isRestoringError(line)) {
-    free(line);
+  if (line[0] == '-' && isRestoringError(line.get())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
-  if (strncmp(line, "+OK", 3) != 0) {
-    LOG(WARNING) << "[replication] Failed to replconf: " << line+1;
-    free(line);
+  if (strncmp(line.get(), "+OK", 3) != 0) {
+    LOG(WARNING) << "[replication] Failed to replconf: " << line.get() + 1;
     //  backward compatible with old version that doesn't support replconf cmd
     return CBState::NEXT;
   } else {
-    free(line);
     LOG(INFO) << "[replication] replconf is ok, start psync";
     return CBState::NEXT;
   }
@@ -526,39 +513,33 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(
 
 ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
                                                              void *ctx) {
-  char *line;
-  size_t line_len;
   auto self = static_cast<ReplicationThread *>(ctx);
   auto input = bufferevent_get_input(bev);
-  line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
-  if (line[0] == '-' && isRestoringError(line)) {
-    free(line);
+  if (line[0] == '-' && isRestoringError(line.get())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
 
-  if (line[0] == '-' && isWrongPsyncNum(line)) {
+  if (line[0] == '-' && isWrongPsyncNum(line.get())) {
     self->next_try_old_psync_ = true;
-    free(line);
     LOG(WARNING) << "The old version master, can't handle new PSYNC, "
                   << "try old PSYNC again";
     // Retry previous state, i.e. send PSYNC again
     return CBState::PREV;
   }
 
-  if (strncmp(line, "+OK", 3) != 0) {
+  if (strncmp(line.get(), "+OK", 3) != 0) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     self->fullsync_steps_.Start();
-    LOG(INFO) << "[replication] Failed to psync, error: " << line
+    LOG(INFO) << "[replication] Failed to psync, error: " << line.get()
               << ", switch to fullsync";
-    free(line);
     return CBState::QUIT;
   } else {
     // PSYNC is OK, use IncrementBatchLoop
-    free(line);
     LOG(INFO) << "[replication] PSync is ok, start increment batch loop";
     return CBState::NEXT;
   }
@@ -566,26 +547,24 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev,
 
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(
     bufferevent *bev, void *ctx) {
-  char *line = nullptr;
-  size_t line_len = 0;
   char *bulk_data = nullptr;
   auto self = static_cast<ReplicationThread *>(ctx);
   self->repl_state_ = kReplConnected;
   auto input = bufferevent_get_input(bev);
   while (true) {
     switch (self->incr_state_) {
-      case Incr_batch_size:
+      case Incr_batch_size: {
         // Read bulk length
-        line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+        UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return CBState::AGAIN;
-        self->incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-        free(line);
+        self->incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (self->incr_bulk_len_ == 0) {
           LOG(ERROR) << "[replication] Invalid increment data size";
           return CBState::RESTART;
         }
         self->incr_state_ = Incr_batch_data;
         break;
+      }
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (self->incr_bulk_len_+2 <= evbuffer_get_length(input)) {  // We got enough data
@@ -623,50 +602,46 @@ ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(
 
 ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
                                                              void *ctx) {
-  char *line;
-  size_t line_len;
   auto self = static_cast<ReplicationThread *>(ctx);
   auto input = bufferevent_get_input(bev);
   switch (self->fullsync_state_) {
-    case kFetchMetaID:
+    case kFetchMetaID: {
       // New version master only sends meta file content
       if (!self->srv_->GetConfig()->master_use_repl_port) {
         self->fullsync_state_ = kFetchMetaContent;
         return CBState::AGAIN;
       }
-      line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
-        LOG(ERROR) << "[replication] Failed to fetch meta id: " << line;
-        free(line);
+        LOG(ERROR) << "[replication] Failed to fetch meta id: " << line.get();
         return CBState::RESTART;
       }
       self->fullsync_meta_id_ = static_cast<rocksdb::BackupID>(
-          line_len > 0 ? std::strtoul(line, nullptr, 10) : 0);
-      free(line);
+          line.length > 0 ? std::strtoul(line.get(), nullptr, 10) : 0);
       if (self->fullsync_meta_id_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta id received";
         return CBState::RESTART;
       }
       self->fullsync_state_ = kFetchMetaSize;
       LOG(INFO) << "[replication] Succeed fetching meta id: " << self->fullsync_meta_id_;
-    case kFetchMetaSize:
-      line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    }
+    case kFetchMetaSize: {
+      UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) return CBState::AGAIN;
       if (line[0] == '-') {
-        LOG(ERROR) << "[replication] Failed to fetch meta size: " << line;
-        free(line);
+        LOG(ERROR) << "[replication] Failed to fetch meta size: " << line.get();
         return CBState::RESTART;
       }
-      self->fullsync_filesize_ = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
-      free(line);
+      self->fullsync_filesize_ = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";
         return CBState::RESTART;
       }
       self->fullsync_state_ = kFetchMetaContent;
       LOG(INFO) << "[replication] Succeed fetching meta size: " << self->fullsync_filesize_;
-    case kFetchMetaContent:
+    }
+    case kFetchMetaContent: {
       std::string target_dir;
       Engine::Storage::ReplDataManager::MetaInfo meta;
       // Master using old version
@@ -679,19 +654,17 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
         target_dir = self->srv_->GetConfig()->backup_sync_dir;
       } else {
         // Master using new version
-        line = evbuffer_readln(input, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+        UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return CBState::AGAIN;
         if (line[0] == '-') {
-          LOG(ERROR) << "[replication] Failed to fetch meta info: " << line;
-          free(line);
+          LOG(ERROR) << "[replication] Failed to fetch meta info: " << line.get();
           return CBState::RESTART;
         }
         std::vector<std::string> need_files;
-        Util::Split(std::string(line), ",", &need_files);
+        Util::Split(std::string(line.get()), ",", &need_files);
         for (auto f : need_files) {
           meta.files.emplace_back(f, 0);
         }
-        free(line);
 
         target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
         // Clean invalid files of checkpoint, "CURRENT" file must be invalid
@@ -751,6 +724,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
       // Switch to psync state machine again
       self->psync_steps_.Start();
       return CBState::QUIT;
+    }
   }
 
   LOG(ERROR) << "Should not arrive here";
@@ -841,31 +815,24 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
 }
 
 Status ReplicationThread::sendAuth(int sock_fd) {
-  size_t line_len;
-
   // Send auth when needed
   std::string auth = srv_->GetConfig()->masterauth;
   if (!auth.empty()) {
-    evbuffer *evbuf = evbuffer_new();
+    UniqueEvbuf evbuf;
     const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
     auto s = Util::SockSend(sock_fd, auth_command);
     if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:"+s.Msg());
     while (true) {
-      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        evbuffer_free(evbuf);
+      if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
         return Status(Status::NotOK, std::string("read auth response err: ")+strerror(errno));
       }
-      char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
-      if (strncmp(line, "+OK", 3) != 0) {
-        free(line);
-        evbuffer_free(evbuf);
+      if (strncmp(line.get(), "+OK", 3) != 0) {
         return Status(Status::NotOK, "auth got invalid response");
       }
-      free(line);
       break;
     }
-    evbuffer_free(evbuf);
   }
   return Status::OK();
 }
@@ -873,24 +840,22 @@ Status ReplicationThread::sendAuth(int sock_fd) {
 Status ReplicationThread::fetchFile(int sock_fd,  evbuffer *evbuf,
                           const std::string &dir, std::string file,
                           uint32_t crc, fetch_file_callback fn) {
-  size_t line_len, file_size;
+  size_t file_size;
 
   // Read file size line
   while (true) {
-    char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+    UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
         return Status(Status::NotOK, std::string("read size: ")+strerror(errno));
       }
       continue;
     }
-    if (*line == '-') {
-      std::string msg(line);
-      free(line);
+    if (line[0] == '-') {
+      std::string msg(line.get());
       return Status(Status::NotOK, msg);
     }
-    file_size = line_len > 0 ? std::strtoull(line, nullptr, 10) : 0;
-    free(line);
+    file_size = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
     break;
   }
 
@@ -948,10 +913,10 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir,
   auto s = Util::SockSend(sock_fd, fetch_command);
   if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: "+s.Msg());
 
-  evbuffer *evbuf = evbuffer_new();
+  UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {
     DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
-    s = fetchFile(sock_fd, evbuf, dir, files[i], crcs[i], fn);
+    s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
       LOG(WARNING) << "[fetch] Fail to fetch file " << files[i] << ", err: " << s.Msg();
@@ -964,7 +929,6 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir,
       sleep(srv_->GetConfig()->fullsync_recv_file_delay);
     }
   }
-  evbuffer_free(evbuf);
   return s;
 }
 

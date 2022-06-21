@@ -27,7 +27,7 @@
 #include "event2/buffer.h"
 
 template <typename F, F *f> struct StaticFunction {
-  template <typename... Ts> decltype(auto) operator()(Ts &&...args) const {
+  template <typename... Ts> auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {
     return f(std::forward<Ts>(args)...);
   }
 };

@@ -29,10 +29,9 @@
 #include <vector>
 #include <utility>
 #include <memory>
-
-#include "status.h"
 #include <chrono>
 
+#include "status.h"
 #include "solarisfixes.h"
 
 namespace Util {

@@ -369,15 +369,15 @@ std::string Trim(std::string in, const std::string &chars) {
 }
 
 std::vector<std::string> Split(const std::string &in, const std::string &delim) {
-  if (in.empty() || delim.empty()) return {};
-  
   std::vector<std::string> out;
+
+  if (in.empty() || delim.empty()) return out;
 
   size_t begin = 0, end = in.find_first_of(delim);
   do {
     std::string elem = in.substr(begin, end - begin);
     if (!elem.empty()) out.push_back(std::move(elem));
-    if(end == std::string::npos) break;
+    if (end == std::string::npos) break;
     begin = end + 1;
     end = in.find_first_of(delim, begin);
   } while (true);
@@ -392,7 +392,7 @@ std::vector<std::string> Split2KV(const std::string &in, const std::string &deli
   if (pos != std::string::npos) {
     std::string key = in.substr(0, pos);
     if (!key.empty()) out.push_back(std::move(key));
-    
+
     std::string value = Trim(in.substr(pos + 1), delim);
     if (!value.empty()) out.push_back(std::move(value));
   }

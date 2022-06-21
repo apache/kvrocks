@@ -22,4 +22,9 @@ CHECK_TYPES="warning,portability,information"
 STANDARD=c++11
 ERROR_EXITCODE=1
 LANG=c++
-cppcheck --force --enable=${CHECK_TYPES} -U__GNUC__ -x ${LANG}  src --std=${STANDARD} --error-exitcode=${ERROR_EXITCODE} --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude --suppress=unmatchedSuppression
+
+set -ex
+cppcheck --version
+cppcheck \
+    --force --enable=${CHECK_TYPES} -U__GNUC__ -x ${LANG}  src --std=${STANDARD} --error-exitcode=${ERROR_EXITCODE} \
+    --inline-suppr --suppress=noCopyConstructor:src/server.cc --suppress=noOperatorEq:src/server.cc -j$(nproc)

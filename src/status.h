@@ -57,13 +57,19 @@ class Status {
     NetSendErr,
   };
 
-  Status() : Status(cOK, "ok") {}
-  explicit Status(Code code, std::string msg = "") : code_(code), msg_(std::move(msg)) {}
+  Status() : Status(cOK) {}
+  explicit Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}
   bool IsOK() { return code_ == cOK; }
   bool IsNotFound() { return code_ == NotFound; }
   bool IsImorting() { return code_ == SlotImport; }
-  std::string Msg() { return msg_; }
-  static Status OK() { return Status(cOK, "ok"); }
+  std::string Msg() {
+    if(!IsOK())
+      return msg_;
+    else {
+      return "ok";
+    }
+  }
+  static Status OK() { return {}; }
 
  private:
   Code code_;

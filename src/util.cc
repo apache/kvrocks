@@ -371,7 +371,14 @@ std::string Trim(std::string in, const std::string &chars) {
 std::vector<std::string> Split(const std::string &in, const std::string &delim) {
   std::vector<std::string> out;
 
-  if (in.empty() || delim.empty()) return out;
+  if (in.empty()) {
+    return out;
+  }
+
+  if (delim.empty()) {
+    out.push_back(in);
+    return out;
+  }
 
   size_t begin = 0, end = in.find_first_of(delim);
   do {

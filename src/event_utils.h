@@ -18,8 +18,11 @@
  *
  */
 
+#pragma once
+
 #include <memory>
 #include <cstdlib>
+#include <utility>
 
 #include "event2/buffer.h"
 
@@ -51,5 +54,5 @@ struct UniqueEvbuf : std::unique_ptr<evbuffer, StaticEvbufFree> {
   using base_type = std::unique_ptr<evbuffer, StaticEvbufFree>;
 
   UniqueEvbuf() : base_type(evbuffer_new()) {}
-  UniqueEvbuf(evbuffer *buffer) : base_type(buffer) {}
+  explicit UniqueEvbuf(evbuffer *buffer) : base_type(buffer) {}
 };

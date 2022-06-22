@@ -550,29 +550,25 @@ std::string StringToHex(const std::string &input) {
   return output;
 }
 
-constexpr std::uint64_t ExpTo1024(size_t n) {
-  return static_cast<std::uint64_t>(1) << (10 * n);
-}
-
 void BytesToHuman(char *buf, size_t size, uint64_t n) {
   double d;
 
-  if (n < ExpTo1024(1)) {
+  if (n < 1024) {
     snprintf(buf, size, "%" PRIu64 "B", n);
-  } else if (n < ExpTo1024(2)) {
-    d = static_cast<double>(n)/ExpTo1024(1);
+  } else if (n < (1024*1024)) {
+    d = static_cast<double>(n)/(1024);
     snprintf(buf, size, "%.2fK", d);
-  } else if (n < ExpTo1024(3)) {
-    d = static_cast<double>(n)/ExpTo1024(2);
+  } else if (n < (1024LL*1024*1024)) {
+    d = static_cast<double>(n)/(1024*1024);
     snprintf(buf, size, "%.2fM", d);
-  } else if (n < ExpTo1024(4)) {
-    d = static_cast<double>(n)/ExpTo1024(3);
+  } else if (n < (1024LL*1024*1024*1024)) {
+    d = static_cast<double>(n)/(1024LL*1024*1024);
     snprintf(buf, size, "%.2fG", d);
-  } else if (n < ExpTo1024(5)) {
-    d = static_cast<double>(n)/ExpTo1024(4);
+  } else if (n < (1024LL*1024*1024*1024*1024)) {
+    d = static_cast<double>(n)/(1024LL*1024*1024*1024);
     snprintf(buf, size, "%.2fT", d);
-  } else if (n < ExpTo1024(6)) {
-    d = static_cast<double>(n)/ExpTo1024(5);
+  } else if (n < (1024LL*1024*1024*1024*1024*1024)) {
+    d = static_cast<double>(n)/(1024LL*1024*1024*1024*1024);
     snprintf(buf, size, "%.2fP", d);
   } else {
     snprintf(buf, size, "%" PRIu64 "B", n);

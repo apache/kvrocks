@@ -660,8 +660,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
           LOG(ERROR) << "[replication] Failed to fetch meta info: " << line.get();
           return CBState::RESTART;
         }
-        std::vector<std::string> need_files;
-        Util::Split(std::string(line.get()), ",", &need_files);
+        std::vector<std::string> need_files = Util::Split(std::string(line.get()), ",");
         for (auto f : need_files) {
           meta.files.emplace_back(f, 0);
         }

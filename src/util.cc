@@ -60,7 +60,7 @@
 #define AE_HUP 8
 
 namespace Util {
-Status SockConnect(std::string host, uint32_t port, int *fd) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   int rv, cfd;
   char portstr[6];  /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
@@ -155,7 +155,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
     if (!s.IsOK()) return s;
@@ -354,42 +354,54 @@ std::string ToLower(std::string in) {
   return in;
 }
 
-void Trim(const std::string &in, const std::string &chars, std::string *out) {
-  out->clear();
-  if (in.empty()) return;
-  out->assign(in);
-  out->erase(0, out->find_first_not_of(chars));
-  out->erase(out->find_last_not_of(chars)+1);
+std::string Trim(std::string in, const std::string &chars) {
+  if (in.empty()) return in;
+
+  in.erase(0, in.find_first_not_of(chars));
+  in.erase(in.find_last_not_of(chars) + 1);
+
+  return in;
 }
 
-void Split(std::string in, std::string delim, std::vector<std::string> *out) {
-  if (in.empty() || !out) return;
-  out->clear();
+std::vector<std::string> Split(const std::string &in, const std::string &delim) {
+  std::vector<std::string> out;
 
-  std::string::size_type pos = 0;
-  std::string elem, trimed_elem;
-  do {
-    pos = in.find_first_of(delim);
-    elem = in.substr(0, pos);
-    Trim(elem, delim, &trimed_elem);
-    if (!trimed_elem.empty()) out->push_back(trimed_elem);
-    in = in.substr(pos+1);
-  } while (pos != std::string::npos);
-}
-
-void Split2KV(const std::string&in, std::string delim, std::vector<std::string> *out) {
-  out->clear();
-  std::string::size_type pos;
-  if ((pos = in.find_first_of(delim)) != std::string::npos) {
-    pos = in.find_first_of(delim);
-    std::string str, key, value;
-    str = in.substr(0, pos);
-    Util::Trim(str, delim, &key);
-    if (!key.empty()) out->push_back(key);
-    str = in.substr(pos+1);
-    Util::Trim(str, delim, &value);
-    if (!value.empty()) out->push_back(value);
+  if (in.empty()) {
+    return out;
   }
+
+  if (delim.empty()) {
+    out.resize(in.size());
+    std::transform(in.begin(), in.end(), out.begin(),
+      [](char c) -> std::string { return {c}; });
+    return out;
+  }
+
+  size_t begin = 0, end = in.find_first_of(delim);
+  do {
+    std::string elem = in.substr(begin, end - begin);
+    if (!elem.empty()) out.push_back(std::move(elem));
+    if (end == std::string::npos) break;
+    begin = end + 1;
+    end = in.find_first_of(delim, begin);
+  } while (true);
+
+  return out;
+}
+
+std::vector<std::string> Split2KV(const std::string &in, const std::string &delim) {
+  std::vector<std::string> out;
+
+  std::string::size_type pos = in.find_first_of(delim);
+  if (pos != std::string::npos) {
+    std::string key = in.substr(0, pos);
+    if (!key.empty()) out.push_back(std::move(key));
+
+    std::string value = Trim(in.substr(pos + 1), delim);
+    if (!value.empty()) out.push_back(std::move(value));
+  }
+
+  return out;
 }
 
 bool HasPrefix(const std::string &str, const std::string &prefix) {

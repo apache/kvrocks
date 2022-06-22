@@ -111,12 +111,10 @@ TEST(Cluster, CluseterGetNodes) {
   s = cluster.GetClusterNodes(&output_nodes);
   ASSERT_TRUE(s.IsOK());
 
-  std::vector<std::string> vnodes;
-  Util::Split(output_nodes, "\n", &vnodes);
+  std::vector<std::string> vnodes = Util::Split(output_nodes, "\n");
 
   for (unsigned i = 0; i < vnodes.size(); i++) {
-    std::vector<std::string> node_fields;
-    Util::Split(vnodes[i], " ", &node_fields);
+    std::vector<std::string> node_fields = Util::Split(vnodes[i], " ");
 
     if (node_fields[0] == "07c37dfeb235213a872192d90877d0cd55635b91") {
       ASSERT_TRUE(node_fields.size() == 8);

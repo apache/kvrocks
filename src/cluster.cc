@@ -171,7 +171,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   // Update replicas info and size
   for (auto &n : nodes_) {
     if (n.second->role_ == kClusterSlave) {
-      if (nodes_.find(n.second->master_id_) != nodes.end()) {
+      if (nodes_.find(n.second->master_id_) != nodes_.end()) {
         nodes_[n.second->master_id_]->replicas.push_back(n.first);
       }
     }
@@ -500,8 +500,7 @@ std::string Cluster::GenNodesDescription() {
 
 Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes) {
-  std::vector<std::string> nodes_info;
-  Util::Split(nodes_str, "\n", &nodes_info);
+  std::vector<std::string> nodes_info = Util::Split(nodes_str, "\n");
   if (nodes_info.size() == 0) {
     return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");
   }
@@ -509,8 +508,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
   // Parse all nodes
   for (const auto& node_str : nodes_info) {
-    std::vector<std::string> fields;
-    Util::Split(node_str, " ", &fields);
+    std::vector<std::string> fields = Util::Split(node_str, " ");
     if (fields.size() < 5) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");
     }
@@ -563,8 +561,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // 6) slot info
     for (unsigned i = 5; i < fields.size(); i++) {
       int start, stop;
-      std::vector<std::string> ranges;
-      Util::Split(fields[i], "-", &ranges);
+      std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
         start = std::atoi(ranges[0].c_str());
         if (IsValidSlot(start) == false) {

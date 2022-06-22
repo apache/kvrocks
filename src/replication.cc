@@ -686,8 +686,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev,
           free(line);
           return CBState::RESTART;
         }
-        std::vector<std::string> need_files;
-        Util::Split(std::string(line), ",", &need_files);
+        std::vector<std::string> need_files = Util::Split(std::string(line), ",");
         for (auto f : need_files) {
           meta.files.emplace_back(f, 0);
         }

@@ -29,40 +29,16 @@
 #include <vector>
 #include <utility>
 #include <memory>
+#include <chrono>
 
 #include "status.h"
-#include "chrono"
-
-#if defined(__sun)
-
-#if defined(__GNUC__)
-#include <math.h>
-#undef isnan
-#define isnan(x) \
-     __extension__({ __typeof(x) __x_a = (x); \
-     __builtin_expect(__x_a != __x_a, 0); })
-
-#undef isfinite
-#define isfinite(x) \
-     __extension__({ __typeof(x) __x_f = (x); \
-     __builtin_expect(!isnan(__x_f - __x_f), 1); })
-
-#undef isinf
-#define isinf(x) \
-     __extension__({ __typeof(x) __x_i = (x); \
-     __builtin_expect(!isnan(__x_i) && !isfinite(__x_i), 0); })
-
-#define u_int uint
-#define u_int32_t uint32_t
-#endif /* __GNUC__ */
-
-#endif /* __sun */
+#include "solarisfixes.h"
 
 namespace Util {
 // sock util
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(std::string host, uint32_t port, int *fd);
-Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout = 0);
+Status SockConnect(const std::string &host, uint32_t port, int *fd);
+Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);
@@ -78,9 +54,9 @@ Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_
 const std::string Float2String(double d);
 std::string ToLower(std::string in);
 void BytesToHuman(char *buf, size_t size, uint64_t n);
-void Trim(const std::string &in, const std::string &chars, std::string *out);
-void Split(std::string in, std::string delim, std::vector<std::string> *out);
-void Split2KV(const std::string&in, std::string delim, std::vector<std::string> *out);
+std::string Trim(std::string in, const std::string &chars);
+std::vector<std::string> Split(const std::string &in, const std::string &delim);
+std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);

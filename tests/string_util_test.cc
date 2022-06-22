@@ -42,28 +42,33 @@ TEST(StringUtil, Trim) {
           {"\t\tabc\t\t", "abc"},
           {"\t\tabc\n\n", "abc"},
           {"\n\nabc\n\n", "abc"},
+          {" a b", "a b"},
+          {"a \tb\t \n", "a \tb"},
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
-    std::string output;
-    Util::Trim(input, " \t\n", &output);
+    std::string output = Util::Trim(input, " \t\n");
     ASSERT_EQ(output, iter->second);
   }
 }
 
 TEST(StringUtil, Split) {
-  std::vector<std::string> array;
   std::vector<std::string> expected = {"a", "b", "c", "d"};
-  Util::Split("a,b,c,d", ",", &array);
+  std::vector<std::string> array = Util::Split("a,b,c,d", ",");
   ASSERT_EQ(expected, array);
-  Util::Split("a,b,,c,d,", ",", &array);
+  array = Util::Split("a,b,,c,d,", ",");
   ASSERT_EQ(expected, array);
-  Util::Split(",a,b,c,d,", ",", &array);
+  array = Util::Split(",a,b,c,d,", ",");
   ASSERT_EQ(expected, array);
-  Util::Split("a     b  c  d   ", " ", &array);
+  array = Util::Split("a     b  c  d   ", " ");
   ASSERT_EQ(expected, array);
-  Util::Split("a\tb\nc\t\nd   ", " \t\n", &array);
+  array = Util::Split("a\tb\nc\t\nd   ", " \t\n");
   ASSERT_EQ(expected, array);
+
+  ASSERT_EQ(Util::Split("a", " "), std::vector<std::string>{"a"});
+  ASSERT_EQ(Util::Split("a bc", " "), (std::vector<std::string>{"a", "bc"}));
+  ASSERT_EQ(Util::Split("a  b c def gh ", " "), (std::vector<std::string>{"a", "b", "c", "def", "gh"}));
+  ASSERT_EQ(Util::Split("  hello;hi,,; one ;;; two,, ", " ,;"), (std::vector<std::string>{"hello", "hi", "one", "two"}));
 }
 
 TEST(StringUtil, TokenizeRedisProtocol) {

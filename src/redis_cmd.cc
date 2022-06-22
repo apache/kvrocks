@@ -4371,8 +4371,7 @@ class CommandFetchFile : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<std::string> files;
-    Util::Split(files_str_, ",", &files);
+    std::vector<std::string> files = Util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
@@ -4934,8 +4933,7 @@ void PopulateCommands() {
 void InitCommandsTable() {
   for (int i = 0; i < GetCommandNum(); i++) {
     std::string desc = redisCommandTable[i].description;
-    std::vector<std::string> str_flags;
-    Util::Split(desc, " ", &str_flags);
+    std::vector<std::string> str_flags = Util::Split(desc, " ");
     for (const auto &flag : str_flags) {
       if (flag == "write") redisCommandTable[i].flags |= kCmdWrite;
       if (flag == "read-only") redisCommandTable[i].flags |= kCmdReadOnly;

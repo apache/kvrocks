@@ -74,7 +74,7 @@ Status Request::Tokenize(evbuffer *input) {
             free(line);
             return Status(Status::NotOK, "Protocol error: invalid bulk length");
           }
-          Util::Split(std::string(line, len), " \t", &tokens_);
+          tokens_ = Util::Split(std::string(line, len), " \t");
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
         }

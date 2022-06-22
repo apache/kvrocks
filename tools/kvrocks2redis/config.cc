@@ -46,8 +46,7 @@ int Config::yesnotoi(std::string input) {
 }
 
 Status Config::parseConfigFromString(std::string input) {
-  std::vector<std::string> args;
-  Util::Split(input, " \t\r\n", &args);
+  std::vector<std::string> args = Util::Split(input, " \t\r\n");
   // omit empty line and comment
   if (args.empty() || args[0].front() == '#') return Status::OK();
 

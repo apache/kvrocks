@@ -640,8 +640,7 @@ std::string WriteBatchLogData::Encode() {
 
 Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   const std::string& log_data = blob.ToString();
-  std::vector<std::string> args;
-  Util::Split(log_data, " ", &args);
+  std::vector<std::string> args = Util::Split(log_data, " ");
   type_ = static_cast<RedisType >(std::stoi(args[0]));
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 

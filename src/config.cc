@@ -210,23 +210,20 @@ void Config::initFieldValidator() {
         return Status::OK();
       }},
       {"compact-cron", [this](const std::string& k, const std::string& v)->Status {
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
+        std::vector<std::string> args = Util::Split(v, " \t");
         return compact_cron.SetScheduleTime(args);
       }},
       {"bgsave-cron", [this](const std::string& k, const std::string& v)->Status {
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
+        std::vector<std::string> args = Util::Split(v, " \t");
         return bgsave_cron.SetScheduleTime(args);
       }},
       {"compaction-checker-range", [this](const std::string& k, const std::string& v)->Status {
-        std::vector<std::string> args;
         if (v.empty()) {
           compaction_checker_range.Start = -1;
           compaction_checker_range.Stop = -1;
           return Status::OK();
         }
-        Util::Split(v, "-", &args);
+        std::vector<std::string> args = Util::Split(v, "-");
         if (args.size() != 2) {
           return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");
         }
@@ -241,8 +238,7 @@ void Config::initFieldValidator() {
         return Status::OK();
       }},
       {"rename-command", [](const std::string &k, const std::string &v) -> Status {
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
+        std::vector<std::string> args = Util::Split(v, " \t");
         if (args.size() != 2) {
           return Status(Status::NotOK, "Invalid rename-command format");
         }
@@ -299,8 +295,7 @@ void Config::initFieldCallback() {
       }},
       {"bind", [this](Server* srv,  const std::string &k,  const std::string& v)->Status {
         trimRocksDBPrefix(k);
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
+        std::vector<std::string> args = Util::Split(v, " \t");
         binds = std::move(args);
         return Status::OK();
       }},
@@ -313,8 +308,7 @@ void Config::initFieldCallback() {
         if (v.empty()) {
           return Status::OK();
         }
-        std::vector<std::string> args;
-        Util::Split(v, " \t", &args);
+        std::vector<std::string> args = Util::Split(v, " \t");
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
         if (args[0] != "no" && args[1] != "one") {
           master_host = args[0];
@@ -326,8 +320,7 @@ void Config::initFieldCallback() {
         return Status::OK();
       }},
       {"profiling-sample-commands", [this](Server* srv, const std::string &k, const std::string& v)->Status {
-        std::vector<std::string> cmds;
-        Util::Split(v, ",", &cmds);
+        std::vector<std::string> cmds = Util::Split(v, ",");
         profiling_sample_all_commands = false;
         profiling_sample_commands.clear();
         for (auto const &cmd : cmds) {
@@ -515,8 +508,7 @@ void Config::ClearMaster() {
 }
 
 Status Config::parseConfigFromString(std::string input, int line_number) {
-  std::vector<std::string> kv;
-  Util::Split2KV(input, " \t", &kv);
+  std::vector<std::string> kv = Util::Split2KV(input, " \t");
 
   // skip the comment and empty line
   if (kv.empty() || kv[0].front() == '#') return Status::OK();
@@ -662,12 +654,12 @@ Status Config::Rewrite() {
     std::vector<std::string> kv;
     while (!file.eof()) {
       std::getline(file, raw_line);
-      Util::Trim(raw_line, " \t\r\n", &trim_line);
+      trim_line = Util::Trim(raw_line, " \t\r\n");
       if (trim_line.empty() || trim_line.front() == '#') {
         lines.emplace_back(raw_line);
         continue;
       }
-      Util::Split2KV(trim_line, " \t", &kv);
+      kv = Util::Split2KV(trim_line, " \t");
       if (kv.size() != 2) {
         lines.emplace_back(raw_line);
         continue;

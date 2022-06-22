@@ -19,7 +19,6 @@
  */
 
 #include "redis_zset.h"
-#include "util.h"
 
 #include <math.h>
 #include <map>
@@ -27,6 +26,8 @@
 #include <cmath>
 #include <memory>
 #include <set>
+
+#include "util.h"
 
 namespace Redis {
 

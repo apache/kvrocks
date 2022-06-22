@@ -34,6 +34,9 @@
 #include "status.h"
 #include "solarisfixes.h"
 
+#include "rocksdb/db.h"
+#include "rocksdb/iterator.h"
+
 namespace Util {
 // sock util
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
@@ -72,7 +75,17 @@ uint64_t GetTimeStampUS(void);
 // refer to https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
 template <typename T, typename... Args>
 std::unique_ptr<T> MakeUnique(Args&& ... args) {
-     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
+
+struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
+  using base_type = std::unique_ptr<rocksdb::Iterator>;
+
+  UniqueIterator(rocksdb::Iterator *iter) : base_type(iter) {}
+  UniqueIterator(rocksdb::DB* db, const rocksdb::ReadOptions& options, rocksdb::ColumnFamilyHandle* column_family)
+    : base_type(db->NewIterator(options, column_family)) {}
+  UniqueIterator(rocksdb::DB* db, const rocksdb::ReadOptions& options)
+    : base_type(db->NewIterator(options)) {}
+};
 
 }  // namespace Util

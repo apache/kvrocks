@@ -293,7 +293,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = Util::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
@@ -310,7 +310,6 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
     }
     field_values->emplace_back(fv);
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

@@ -152,14 +152,13 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = Util::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -216,7 +215,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = Util::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -225,7 +224,6 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     if (pop) batch.Delete(iter->key());
     if (++n >= count) break;
   }
-  delete iter;
   if (pop && n > 0) {
     metadata.size -= n;
     std::string bytes;

@@ -22,6 +22,7 @@
 #include "redis_db.h"
 #include <ctime>
 #include <map>
+#include "rocksdb/iterator.h"
 #include "server.h"
 #include "util.h"
 
@@ -179,7 +180,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -220,7 +221,6 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   if (stats && stats->n_expires > 0) {
     stats->avg_ttl = ttl_sum / stats->n_expires;
   }
-  delete iter;
 }
 
 rocksdb::Status Database::Scan(const std::string &cursor,
@@ -237,7 +237,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -315,7 +315,6 @@ rocksdb::Status Database::Scan(const std::string &cursor,
     ns_prefix.append(prefix);
     iter->Seek(ns_prefix);
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -362,25 +361,21 @@ rocksdb::Status Database::FlushAll() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
-    delete iter;
     return rocksdb::Status::OK();
   }
   auto first_key = iter->key().ToString();
   iter->SeekToLast();
   if (!iter->Valid()) {
-    delete iter;
     return rocksdb::Status::OK();
   }
   auto last_key = iter->key().ToString();
   auto s = storage_->DeleteRange(first_key, last_key);
   if (!s.ok()) {
-    delete iter;
     return s;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -474,10 +469,9 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = storage_->GetDB()->NewIterator(read_options, cf_handle);
+  auto iter = Util::UniqueIterator(storage_->GetDB(), read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    delete iter;
     return rocksdb::Status::NotFound();
   }
   *begin = iter->key().ToString();
@@ -502,11 +496,9 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
     iter->Prev();
   }
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    delete iter;
     return rocksdb::Status::NotFound();
   }
   *end = iter->key().ToString();
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -585,7 +577,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = Util::UniqueIterator(db_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
     InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
@@ -618,7 +610,6 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
       break;
     }
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

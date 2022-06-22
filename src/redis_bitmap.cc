@@ -130,7 +130,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   read_options.fill_cache = false;
   uint32_t frag_index, valid_size;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = Util::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
@@ -158,7 +158,6 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
     }
     value->replace(frag_index, valid_size, fragment.data(), valid_size);
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

@@ -35,7 +35,7 @@
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
 const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
-const size_t PROTO_MULTI_MAX_SIZE = 1024 * 1024L;
+const int64_t PROTO_MULTI_MAX_SIZE = 1024 * 1024L;
 
 Status Request::Tokenize(evbuffer *input) {
   char *line;
@@ -59,10 +59,14 @@ Status Request::Tokenize(evbuffer *input) {
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] == '*') {
           try {
-            multi_bulk_len_ = std::stoull(std::string(line + 1, len-1));
+            multi_bulk_len_ = std::stoll(std::string(line + 1, len-1));
           } catch (std::exception &e) {
             free(line);
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+          }
+          if (multi_bulk_len_ <= 0) {
+              free(line);
+              continue;
           }
           if (multi_bulk_len_ > PROTO_MULTI_MAX_SIZE) {
             free(line);

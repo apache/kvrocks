@@ -25,6 +25,7 @@
 #include "rocksdb/iterator.h"
 #include "server.h"
 #include "util.h"
+#include "db_util.h"
 
 namespace Redis {
 
@@ -180,7 +181,7 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -237,7 +238,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -361,7 +362,7 @@ rocksdb::Status Database::FlushAll() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = Util::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
@@ -469,7 +470,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = Util::UniqueIterator(storage_->GetDB(), read_options, cf_handle);
+  auto iter = DBUtil::UniqueIterator(storage_->GetDB(), read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     return rocksdb::Status::NotFound();
@@ -577,7 +578,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
     InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);

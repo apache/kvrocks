@@ -24,6 +24,7 @@
 #include <cmath>
 #include <iostream>
 #include <rocksdb/status.h>
+#include "db_util.h"
 
 namespace Redis {
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
@@ -293,7 +294,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key);
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {

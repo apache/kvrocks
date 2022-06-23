@@ -21,6 +21,8 @@
 #include "redis_list.h"
 
 #include <stdlib.h>
+#include "db_util.h"
+
 namespace Redis {
 
 rocksdb::Status List::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
@@ -194,7 +196,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
@@ -285,7 +287,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -401,7 +403,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {

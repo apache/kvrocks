@@ -28,6 +28,7 @@
 #include <set>
 
 #include "util.h"
+#include "db_util.h"
 
 namespace Redis {
 
@@ -177,7 +178,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -248,7 +249,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.fill_cache = false;
 
   rocksdb::WriteBatch batch;
-  auto iter = Util::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -354,7 +355,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   read_options.fill_cache = false;
 
   int pos = 0;
-  auto iter = Util::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
@@ -437,7 +438,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   read_options.fill_cache = false;
 
   int pos = 0;
-  auto iter = Util::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
@@ -599,7 +600,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = Util::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {

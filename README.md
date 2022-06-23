@@ -73,6 +73,21 @@ $ ./build.sh build # `./build.sh -h` to check more options
 $ ./build/kvrocks -c kvrocks.conf
 ```
 
+### Running kvrocks using Docker
+
+```
+$ docker run -it -p 6666:6666 kvrocks/kvrocks
+```
+
+### Connect kvrocks service
+
+```
+$ redis-cli -p 6666
+
+127.0.0.1:6666> get a
+(nil)
+```
+
 ### Running test cases
 
 ```shell
@@ -86,16 +101,6 @@ $ ./unittest
 * CentOS 6 or 7
 * Ubuntu
 * macOS
-
-## Try kvrocks using Docker
-
-```
-$ docker run -it -p 6666:6666 kvrocks/kvrocks
-$ redis-cli -p 6666
-
-127.0.0.1:6666> get a
-(nil)
-```
 
 ##  Namespace
 

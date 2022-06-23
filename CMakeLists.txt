@@ -30,6 +30,8 @@ if(ENABLE_ASAN AND ENABLE_TSAN)
     message(FATAL_ERROR "ASan and TSan cannot be used at the same time")
 endif()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)

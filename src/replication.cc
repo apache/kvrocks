@@ -37,7 +37,7 @@
 #include "util.h"
 #include "status.h"
 #include "server.h"
-#include "event_utils.h"
+#include "event_util.h"
 
 FeedSlaveThread::~FeedSlaveThread() {
   delete conn_;

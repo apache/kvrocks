@@ -31,7 +31,7 @@
 #include "redis_connection.h"
 #include "server.h"
 #include "redis_slot.h"
-#include "event_utils.h"
+#include "event_util.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;

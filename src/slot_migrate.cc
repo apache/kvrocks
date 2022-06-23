@@ -20,7 +20,7 @@
 
 #include "slot_migrate.h"
 #include "batch_extractor.h"
-#include "event_utils.h"
+#include "event_util.h"
 
 static std::map<RedisType, std::string> type_to_cmd = {
   {kRedisString, "set"},

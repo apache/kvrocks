@@ -44,6 +44,8 @@ version.h
 
 kvrocks
 kvrocks2redis
+compactdb
+testsdb
 
 build
 cmake-build-debug

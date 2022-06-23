@@ -61,7 +61,7 @@ protected:
     dst_fields_ = {"dst", "dst2", "dst3", "dst4"};
   }
 
-  void TearDown() {
+  void TearDown() override {
     list->Del(key_);
     list->Del(dst_key_);
   }

@@ -776,7 +776,7 @@ std::string replyToRedisReply(lua_State *lua) {
  * by the non-error-trapping version of redis.pcall(), which is redis.call(),
  * this function will raise the Lua error so that the execution of the
  * script will be halted. */
-[[noreturn]] int raiseError(lua_State *lua) {
+[[noreturn]] void raiseError(lua_State *lua) {
   lua_pushstring(lua, "err");
   lua_gettable(lua, -2);
   lua_error(lua);

@@ -45,3 +45,4 @@ make_config.mk
 .vscode
 kvrocks2redis
 build
+.cache

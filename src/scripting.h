@@ -65,7 +65,7 @@ const char *redisProtocolToLuaType_Bool(lua_State *lua, const char *reply, int t
 const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply);
 std::string replyToRedisReply(lua_State *lua);
 void pushError(lua_State *lua, const char *err);
-[[noreturn]] void raiseError(lua_State *lua);
+[[noreturn]] int raiseError(lua_State *lua);
 void sortArray(lua_State *lua);
 void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems);
 

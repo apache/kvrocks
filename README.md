@@ -73,13 +73,13 @@ $ ./build.sh build # `./build.sh -h` to check more options
 $ ./build/kvrocks -c kvrocks.conf
 ```
 
-## Running kvrocks using Docker
+### Running kvrocks using Docker
 
 ```
 $ docker run -it -p 6666:6666 kvrocks/kvrocks
 ```
 
-## Connect kvrocks service
+### Connect kvrocks service
 
 ```
 $ redis-cli -p 6666

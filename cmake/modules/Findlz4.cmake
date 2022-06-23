@@ -17,7 +17,7 @@
 
 # used for `find_package(lz4)` mechanism in rocksdb
 
-if(jemalloc_SOURCE_DIR)
+if(lz4_SOURCE_DIR)
   message(STATUS "Found lz4 in ${lz4_SOURCE_DIR}")
 
   add_library(lz4::lz4 ALIAS lz4) # rocksdb use it

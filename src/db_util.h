@@ -37,4 +37,4 @@ struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
     : base_type(db->NewIterator(options)) {}
 };
 
-}
+}  // namespace DBUtil

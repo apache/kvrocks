@@ -779,7 +779,8 @@ std::string replyToRedisReply(lua_State *lua) {
 [[noreturn]] int raiseError(lua_State *lua) {
   lua_pushstring(lua, "err");
   lua_gettable(lua, -2);
-  return lua_error(lua);
+  lua_error(lua);
+  __builtin_unreachable();
 }
 
 /* Sort the array currently in the stack. We do this to make the output

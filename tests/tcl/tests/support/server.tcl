@@ -508,13 +508,13 @@ proc start_server {options {code undefined}} {
             error_and_quit $config_file $line
         }
 
-        #while 1 {
-        #    # check that the server actually started and is ready for connections
-        #    if {[count_message_lines $stdout "Ready to accept"] > 0} {
-        #        break
-        #    }
-        #    after 10
-        #}
+        while 1 {
+           # check that the server actually started and is ready for connections
+           if {[count_message_lines $stdout "Ready to accept"] > 0} {
+               break
+           }
+           after 10
+        }
 
         # append the server to the stack
         lappend ::servers $srv
@@ -617,17 +617,15 @@ proc restart_server {level wait_ready rotate_logs} {
     # re-set $srv in the servers list
     lset ::servers end+$level $srv
 
-    # if {$wait_ready} {
-    #     while 1 {
-    #         # check that the server actually started and is ready for connections
-    #         if {[count_message_lines $stdout "Ready to accept"] > $prev_ready_count} {
-    #             break
-    #         }
-    #         after 10
-    #     }
-    # }
+    if {$wait_ready} {
+        while 1 {
+            # check that the server actually started and is ready for connections
+            if {[count_message_lines $stdout "Ready to accept"] > $prev_ready_count} {
+                break
+            }
+            after 10
+        }
+    }
 
-    # Just sleep 1s to make sure that kvrocks started
-    after 1000
     reconnect $level
 }

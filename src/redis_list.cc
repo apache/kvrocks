@@ -21,6 +21,8 @@
 #include "redis_list.h"
 
 #include <stdlib.h>
+#include "db_util.h"
+
 namespace Redis {
 
 rocksdb::Status List::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
@@ -194,7 +196,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
@@ -207,7 +209,6 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     }
   }
   if (to_delete_indexes.empty()) {
-    delete iter;
     return rocksdb::Status::NotFound();
   }
 
@@ -258,7 +259,6 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  delete iter;
   *ret = static_cast<int>(to_delete_indexes.size());
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
@@ -287,7 +287,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -299,7 +299,6 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
     }
   }
   if (pivot_index == (metadata.head - 1)) {
-    delete iter;
     *ret = -1;
     return rocksdb::Status::NotFound();
   }
@@ -345,7 +344,6 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
 
-  delete iter;
   *ret = metadata.size;
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
@@ -405,7 +403,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -417,7 +415,6 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
     if (index > metadata.head + stop) break;
     elems->push_back(iter->value().ToString());
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

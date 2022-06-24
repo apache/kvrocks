@@ -498,7 +498,7 @@ proc start_server {options {code undefined}} {
     dict set srv "port" $port
     dict set srv "stdout" $stdout
     dict set srv "stderr" $stderr
-    dict set srv "log_file" [format "%s/%s" [dict get $config "dir"] "kvrocks.INFO"]
+    dict set srv "dir" [dict get $config "dir"]
     dict set srv "unixsocket" $unixsocket
 
     # if a block of code is supplied, we wait for the server to become
@@ -511,7 +511,7 @@ proc start_server {options {code undefined}} {
  
         while 1 {
            # check that the server actually started and is ready for connections
-           if {[count_message_lines [dict get $srv "log_file"] "Ready to accept"] > 0} {
+           if {[count_log_message [dict get $srv "dir"] "Ready to accept"] > 0} {
                break
            }
            after 10
@@ -597,7 +597,7 @@ proc restart_server {level wait_ready rotate_logs} {
         file rename $stdout $stdout.$ts.$pid
         file rename $stderr $stderr.$ts.$pid
     }
-    set prev_ready_count [count_message_lines [dict get $srv "log_file"] "Ready to accept"]
+    set prev_ready_count [count_log_message [dict get $srv "dir"] "Ready to accept"]
 
     # if we're inside a test, write the test name to the server log file
     if {[info exists ::cur_test]} {
@@ -621,7 +621,7 @@ proc restart_server {level wait_ready rotate_logs} {
     if {$wait_ready} {
         while 1 {
             # check that the server actually started and is ready for connections
-            if {[count_message_lines [dict get $srv "log_file"] "Ready to accept"] > $prev_ready_count} {
+            if {[count_log_message [dict get $srv "dir"] "Ready to accept"] > $prev_ready_count} {
                 break
             }
             after 10

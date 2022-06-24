@@ -59,12 +59,17 @@ Status Request::Tokenize(evbuffer *input) {
         svr_->stats_.IncrInbondBytes(len);
         if (line[0] == '*') {
           try {
-            multi_bulk_len_ = std::stoull(std::string(line + 1, len-1));
+            multi_bulk_len_ = std::stoll(std::string(line + 1, len-1));
           } catch (std::exception &e) {
             free(line);
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
-          if (multi_bulk_len_ > PROTO_MULTI_MAX_SIZE) {
+          if (multi_bulk_len_ <= 0) {
+              multi_bulk_len_ = 0;
+              free(line);
+              continue;
+          }
+          if (multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
             free(line);
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }

@@ -15,25 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
-include(FetchContent)
+# used for `find_package(lz4)` mechanism in rocksdb
 
-FetchContent_Declare(
-  lz4
-  URL https://github.com/lz4/lz4/archive/v1.9.3.tar.gz
-  URL_HASH MD5=3a1ab1684e14fc1afc66228ce61b2db3
-)
+if(lz4_SOURCE_DIR)
+  message(STATUS "Found lz4 in ${lz4_SOURCE_DIR}")
 
-FetchContent_GetProperties(lz4)
-if(NOT lz4_POPULATED)
-  FetchContent_Populate(lz4)
-  add_custom_target(make_lz4 COMMAND make liblz4.a
-    WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
-    BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
-  )
+  add_library(lz4::lz4 ALIAS lz4) # rocksdb use it
+  install(TARGETS lz4 EXPORT RocksDBTargets) # export for install(...)
 endif()
-
-add_library(lz4 INTERFACE)
-target_include_directories(lz4 INTERFACE $<BUILD_INTERFACE:${lz4_SOURCE_DIR}/lib>)
-target_link_libraries(lz4 INTERFACE $<BUILD_INTERFACE:${lz4_SOURCE_DIR}/lib/liblz4.a>)
-add_dependencies(lz4 make_lz4)

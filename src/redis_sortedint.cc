@@ -24,6 +24,8 @@
 #include <iostream>
 #include <limits>
 
+#include "db_util.h"
+
 namespace Redis {
 
 rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *metadata) {
@@ -143,7 +145,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   read_options.fill_cache = false;
 
   uint64_t id, pos = 0;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
@@ -154,7 +156,6 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
     ids->emplace_back(id);
     if (limit > 0 && ids && ids->size() >= limit) break;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -188,7 +189,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
   read_options.fill_cache = false;
 
   int pos = 0;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -214,7 +215,6 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
     if (size) *size += 1;
     if (spec.count > 0 && ids && ids->size() >= static_cast<unsigned>(spec.count)) break;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

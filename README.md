@@ -1,6 +1,10 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
-# ![image](https://github.com/apache/incubator-kvrocks/workflows/kvrocks%20ci%20actions/badge.svg) ![image](https://img.shields.io/badge/build-passing-brightgreen) [![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
+[![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
+[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) 
+[![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
+
+---
 
 - [Google Group](https://groups.google.com/g/kvrocks)
 - [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)

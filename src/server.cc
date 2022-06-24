@@ -167,7 +167,7 @@ Status Server::Start() {
     }
   });
 
-  std::cout << "Ready to accept connections" << std::endl;
+  LOG(INFO) << "Ready to accept connections\n";
 
   return Status::OK();
 }

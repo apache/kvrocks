@@ -403,7 +403,6 @@ proc start_server {options {code undefined}} {
 
     set unixsocket [file normalize [format "%s/%s" [dict get $config "dir"] "socket"]]
     dict set config "unixsocket" $unixsocket
-    dict set config "log-dir" [format "%s/%s" [dict get $config "dir"] "stdout"]
 
     # apply overrides from global space and arguments
     foreach {directive arguments} [concat $::global_overrides $overrides] {

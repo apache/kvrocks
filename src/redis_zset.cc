@@ -27,6 +27,9 @@
 #include <memory>
 #include <set>
 
+#include "util.h"
+#include "db_util.h"
+
 namespace Redis {
 
 rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
@@ -60,7 +63,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
     // For example, we add members with `ZADD mykey 1 a 2 a` and `ZRANGE mykey 0 1`
     // return only one member(`a`) was expected but got the member `a` twice now.
     //
-    // The root cause of this issue was the score key  was composed by member and score,
+    // The root cause of this issue was the score key was composed by member and score,
     // so the last one can't overwrite the previous when the score was different.
     // A simple workaround was add those members with reversed order and skip the member if has added.
     if (added_member_keys.find(member_key) != added_member_keys.end()) {
@@ -175,7 +178,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -194,7 +197,6 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
     batch.Delete(score_cf_handle_, iter->key());
     if (mscores->size() >= static_cast<unsigned>(count)) break;
   }
-  delete iter;
 
   if (!mscores->empty()) {
     metadata.size -= mscores->size();
@@ -247,7 +249,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.fill_cache = false;
 
   rocksdb::WriteBatch batch;
-  auto iter = db_->NewIterator(read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -272,7 +274,6 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
     }
     if (count++ >= stop) break;
   }
-  delete iter;
 
   if (removed_subkey) {
     metadata.size -= removed_subkey;
@@ -354,7 +355,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   read_options.fill_cache = false;
 
   int pos = 0;
-  auto iter = db_->NewIterator(read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
@@ -393,7 +394,6 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
     if (size) *size += 1;
     if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
-  delete iter;
 
   if (spec.removed && *size > 0) {
     metadata.size -= *size;
@@ -438,7 +438,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   read_options.fill_cache = false;
 
   int pos = 0;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
@@ -483,7 +483,6 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
     if (size) *size += 1;
     if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
   }
-  delete iter;
 
   if (spec.removed && *size > 0) {
     metadata.size -= *size;
@@ -601,7 +600,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -617,7 +616,6 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
     if (score == target_score && score_key == member) break;
     rank++;
   }
-  delete iter;
 
   *ret = rank;
   return rocksdb::Status::OK();

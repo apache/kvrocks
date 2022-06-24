@@ -134,7 +134,7 @@ proc ping_server {host port} {
     set retval 0
     if {[catch {
         if {$::tls} {
-            set fd [::tls::socket $host $port] 
+            set fd [::tls::socket $host $port]
         } else {
             set fd [socket $host $port]
         }
@@ -508,7 +508,7 @@ proc start_server {options {code undefined}} {
         if {[string match {*already in use*} $line]} {
             error_and_quit $config_file $line
         }
- 
+
         while 1 {
            # check that the server actually started and is ready for connections
            if {[count_log_message [dict get $srv "dir"] "Ready to accept"] > 0} {

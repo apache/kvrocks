@@ -441,7 +441,7 @@ void Config::initFieldCallback() {
         double cutoff = val / 100;
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
-      {"rocksdb.level_compaction_dynamic_level_bytes", [this](Server* srv, const std::string &k,
+      {"rocksdb.level_compaction_dynamic_level_bytes", [](Server* srv, const std::string &k,
                                                         const std::string& v)->Status {
         if (!srv) return Status::OK();
         std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";

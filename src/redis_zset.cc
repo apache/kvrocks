@@ -63,7 +63,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
     // For example, we add members with `ZADD mykey 1 a 2 a` and `ZRANGE mykey 0 1`
     // return only one member(`a`) was expected but got the member `a` twice now.
     //
-    // The root cause of this issue was the score key  was composed by member and score,
+    // The root cause of this issue was the score key was composed by member and score,
     // so the last one can't overwrite the previous when the score was different.
     // A simple workaround was add those members with reversed order and skip the member if has added.
     if (added_member_keys.find(member_key) != added_member_keys.end()) {

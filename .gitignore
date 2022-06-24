@@ -31,17 +31,19 @@
 *.out
 *.app
 
-.idea/
-cmake-build-debug
 *.o
 *.pyc
 *.swp
 *.swo
 .DS_Store
-kvrocks
 version.h
-Makefile.dep
-make_config.mk
+
+.idea/
 .vscode
-kvrocks2redis
+.cache
+
+compactdb
+testsdb
+
 build
+cmake-build-*

@@ -52,7 +52,7 @@ class Request {
 
   enum ParserState { ArrayLen, BulkLen, BulkData };
   ParserState state_ = ArrayLen;
-  size_t multi_bulk_len_ = 0;
+  int64_t multi_bulk_len_ = 0;
   size_t bulk_len_ = 0;
   CommandTokens tokens_;
   std::vector<CommandTokens> commands_;

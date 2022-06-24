@@ -75,6 +75,13 @@ start_server {tags {"protocol network"}} {
         reconnect
         assert_error "*wrong*arguments*" {r ping x y z}
     }
+
+    test "Empty array parsed" {
+        reconnect
+        r write "*-1\r\n*3\r\n\$3\r\nset\r\n\$3\r\nkey\r\n\$3\r\nval\r\n"
+        r flush
+        assert_equal "OK" [r read]
+    }
 }
 
 start_server {tags {"regression"}} {

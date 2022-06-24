@@ -27,7 +27,8 @@ FetchContent_Declare(
 FetchContent_GetProperties(lz4)
 if(NOT lz4_POPULATED)
   FetchContent_Populate(lz4)
-  add_custom_target(make_lz4 COMMAND make liblz4.a
+  
+  add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} liblz4.a
     WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
     BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
   )

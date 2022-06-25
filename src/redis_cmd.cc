@@ -4723,7 +4723,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("ping", 1, "read-only", 0, 0, 0, CommandPing),
     ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
     ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
-    ADD_CMD("role", 1, "read-only", 0, 0, 0, CommandRole),
+    ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),
     ADD_CMD("config", -2, "read-only", 0, 0, 0, CommandConfig),
     ADD_CMD("namespace", -3, "read-only", 0, 0, 0, CommandNamespace),
     ADD_CMD("keys", 2, "read-only", 0, 0, 0, CommandKeys),

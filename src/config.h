@@ -21,10 +21,11 @@
 #pragma once
 #include <sys/resource.h>
 
-#include <string>
 #include <map>
-#include <vector>
+#include <memory>
 #include <set>
+#include <string>
+#include <vector>
 
 #include <rocksdb/options.h>
 

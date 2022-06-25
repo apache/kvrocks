@@ -44,12 +44,12 @@ start_server {tags {"command"}} {
 
     test {get rocksdb ops by COMMAND INFO} {
         # Write data for 5 seconds to ensure accurate and stable QPS.
-        for {set i 0} {$i < 25} {incr i} {
-            for {set j 0} {$j < 100} {incr j} {
+        for {set i 0} {$i < 5} {incr i} {
+            for {set j 0} {$j < 500} {incr j} {
                 r lpush key$i value$i
                 r lrange key$i 0 1
             }
-            after 200
+            after 1000
         }
         set cmd_qps [s instantaneous_ops_per_sec]
         set put_qps [s put_per_sec]

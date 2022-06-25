@@ -87,233 +87,287 @@ Config::Config() {
     const std::string name;
     bool readonly;
     std::unique_ptr<ConfigField> field;
-
-    FieldWrapper(std::string name, bool readonly,
-                 std::unique_ptr<ConfigField> field)
-        : name(std::move(name)), readonly(readonly), field(std::move(field)){};
-
-    FieldWrapper(const FieldWrapper &wrapper)
-        : name(std::move(wrapper.name)), readonly(wrapper.readonly) {}
   };
-  std::vector<FieldWrapper> fields{
-      {"bind", true,
-       std::unique_ptr<ConfigField>(new StringField(&binds_, "127.0.0.1"))},
-      {"port", true,
-       std::unique_ptr<ConfigField>(new IntField(&port, 6666, 1, 65535))},
-      {"workers", true,
-       std::unique_ptr<ConfigField>(new IntField(&workers, 8, 1, 256))},
-      {"timeout", false,
-       std::unique_ptr<ConfigField>(new IntField(&timeout, 0, 0, INT_MAX))},
-      {"tcp-backlog", true,
-       std::unique_ptr<ConfigField>(new IntField(&backlog, 511, 0, INT_MAX))},
-      {"maxclients", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&maxclients, 10240, 0, INT_MAX))},
-      {"max-backup-to-keep", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&max_backup_to_keep, 1, 0, 1))},
-      {"max-backup-keep-hours", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&max_backup_keep_hours, 0, 0, INT_MAX))},
-      {"master-use-repl-port", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&master_use_repl_port, false))},
-      {"requirepass", false,
-       std::unique_ptr<ConfigField>(new StringField(&requirepass, ""))},
-      {"masterauth", false,
-       std::unique_ptr<ConfigField>(new StringField(&masterauth, ""))},
-      {"slaveof", true,
-       std::unique_ptr<ConfigField>(new StringField(&slaveof_, ""))},
-      {"compact-cron", false,
-       std::unique_ptr<ConfigField>(new StringField(&compact_cron_, ""))},
-      {"bgsave-cron", false,
-       std::unique_ptr<ConfigField>(new StringField(&bgsave_cron_, ""))},
-      {"compaction-checker-range", false,
-       std::unique_ptr<ConfigField>(
-           new StringField(&compaction_checker_range_, ""))},
-      {"db-name", true,
-       std::unique_ptr<ConfigField>(new StringField(&db_name, "change.me.db"))},
-      {"dir", true,
-       std::unique_ptr<ConfigField>(new StringField(&dir, "/tmp/kvrocks"))},
-      {"backup-dir", true,
-       std::unique_ptr<ConfigField>(new StringField(&backup_dir, ""))},
-      {"log-dir", true,
-       std::unique_ptr<ConfigField>(new StringField(&log_dir, ""))},
-      {"pidfile", true,
-       std::unique_ptr<ConfigField>(new StringField(&pidfile, ""))},
-      {"max-io-mb", false,
-       std::unique_ptr<ConfigField>(new IntField(&max_io_mb, 500, 0, INT_MAX))},
-      {"max-bitmap-to-string-mb", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX))},
-      {"max-db-size", false,
-       std::unique_ptr<ConfigField>(new IntField(&max_db_size, 0, 0, INT_MAX))},
-      {"max-replication-mb", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&max_replication_mb, 0, 0, INT_MAX))},
-      {"supervised", true,
-       std::unique_ptr<ConfigField>(new EnumField(
-           &supervised_mode, supervised_mode_enum, SUPERVISED_NONE))},
-      {"slave-serve-stale-data", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&slave_serve_stale_data, true))},
-      {"slave-empty-db-before-fullsync", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&slave_empty_db_before_fullsync, false))},
-      {"slave-priority", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&slave_priority, 100, 0, INT_MAX))},
-      {"slave-read-only", false,
-       std::unique_ptr<ConfigField>(new YesNoField(&slave_readonly, true))},
-      {"use-rsid-psync", true,
-       std::unique_ptr<ConfigField>(new YesNoField(&use_rsid_psync, false))},
-      {"profiling-sample-ratio", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&profiling_sample_ratio, 0, 0, 100))},
-      {"profiling-sample-record-max-len", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX))},
-      {"profiling-sample-record-threshold-ms", false,
-       std::unique_ptr<ConfigField>(new IntField(
-           &profiling_sample_record_threshold_ms, 100, 0, INT_MAX))},
-      {"slowlog-log-slower-than", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX))},
-      {"profiling-sample-commands", false,
-       std::unique_ptr<ConfigField>(
-           new StringField(&profiling_sample_commands_, ""))},
-      {"slowlog-max-len", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&slowlog_max_len, 128, 0, INT_MAX))},
-      {"purge-backup-on-fullsync", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&purge_backup_on_fullsync, false))},
-      {"rename-command", true,
-       std::unique_ptr<ConfigField>(new StringField(&rename_command_, ""))},
-      {"auto-resize-block-and-sst", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&auto_resize_block_and_sst, true))},
-      {"fullsync-recv-file-delay", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX))},
-      {"cluster-enabled", true,
-       std::unique_ptr<ConfigField>(new YesNoField(&cluster_enabled, false))},
-      {"migrate-speed", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&migrate_speed, 4096, 0, INT_MAX))},
-      {"migrate-pipeline-size", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&pipeline_size, 16, 1, INT_MAX))},
-      {"migrate-sequence-gap", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&sequence_gap, 10000, 1, INT_MAX))},
-      {"unixsocket", true,
-       std::unique_ptr<ConfigField>(new StringField(&unixsocket, ""))},
-      {"unixsocketperm", true,
-       std::unique_ptr<ConfigField>(
-           new OctalField(&unixsocketperm, 0777, 1, INT_MAX))},
+  std::vector<FieldWrapper> fields;
+  fields.emplace_back(FieldWrapper{
+      "bind", true,
+      std::unique_ptr<ConfigField>(new StringField(&binds_, "127.0.0.1"))});
+  fields.emplace_back(FieldWrapper{
+      "port", true,
+      std::unique_ptr<ConfigField>(new IntField(&port, 6666, 1, 65535))});
+  fields.emplace_back(FieldWrapper{
+      "workers", true,
+      std::unique_ptr<ConfigField>(new IntField(&workers, 8, 1, 256))});
+  fields.emplace_back(FieldWrapper{
+      "timeout", false,
+      std::unique_ptr<ConfigField>(new IntField(&timeout, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "tcp-backlog", true,
+      std::unique_ptr<ConfigField>(new IntField(&backlog, 511, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"maxclients", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &maxclients, 10240, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"max-backup-to-keep", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &max_backup_to_keep, 1, 0, 1))});
+  fields.emplace_back(
+      FieldWrapper{"max-backup-keep-hours", false,
+                   std::unique_ptr<ConfigField>(
+                       new IntField(&max_backup_keep_hours, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"master-use-repl-port", false,
+                                   std::unique_ptr<ConfigField>(new YesNoField(
+                                       &master_use_repl_port, false))});
+  fields.emplace_back(FieldWrapper{
+      "requirepass", false,
+      std::unique_ptr<ConfigField>(new StringField(&requirepass, ""))});
+  fields.emplace_back(FieldWrapper{
+      "masterauth", false,
+      std::unique_ptr<ConfigField>(new StringField(&masterauth, ""))});
+  fields.emplace_back(FieldWrapper{
+      "slaveof", true,
+      std::unique_ptr<ConfigField>(new StringField(&slaveof_, ""))});
+  fields.emplace_back(FieldWrapper{
+      "compact-cron", false,
+      std::unique_ptr<ConfigField>(new StringField(&compact_cron_, ""))});
+  fields.emplace_back(FieldWrapper{
+      "bgsave-cron", false,
+      std::unique_ptr<ConfigField>(new StringField(&bgsave_cron_, ""))});
+  fields.emplace_back(FieldWrapper{"compaction-checker-range", false,
+                                   std::unique_ptr<ConfigField>(new StringField(
+                                       &compaction_checker_range_, ""))});
+  fields.emplace_back(FieldWrapper{
+      "db-name", true,
+      std::unique_ptr<ConfigField>(new StringField(&db_name, "change.me.db"))});
+  fields.emplace_back(FieldWrapper{
+      "dir", true,
+      std::unique_ptr<ConfigField>(new StringField(&dir, "/tmp/kvrocks"))});
+  fields.emplace_back(FieldWrapper{
+      "backup-dir", true,
+      std::unique_ptr<ConfigField>(new StringField(&backup_dir, ""))});
+  fields.emplace_back(FieldWrapper{
+      "log-dir", true,
+      std::unique_ptr<ConfigField>(new StringField(&log_dir, ""))});
+  fields.emplace_back(FieldWrapper{
+      "pidfile", true,
+      std::unique_ptr<ConfigField>(new StringField(&pidfile, ""))});
+  fields.emplace_back(FieldWrapper{
+      "max-io-mb", false,
+      std::unique_ptr<ConfigField>(new IntField(&max_io_mb, 500, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"max-bitmap-to-string-mb", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &max_bitmap_to_string_mb, 16, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "max-db-size", false,
+      std::unique_ptr<ConfigField>(new IntField(&max_db_size, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"max-replication-mb", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &max_replication_mb, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "supervised", true,
+      std::unique_ptr<ConfigField>(new EnumField(
+          &supervised_mode, supervised_mode_enum, SUPERVISED_NONE))});
+  fields.emplace_back(FieldWrapper{"slave-serve-stale-data", false,
+                                   std::unique_ptr<ConfigField>(new YesNoField(
+                                       &slave_serve_stale_data, true))});
+  fields.emplace_back(
+      FieldWrapper{"slave-empty-db-before-fullsync", false,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &slave_empty_db_before_fullsync, false))});
+  fields.emplace_back(FieldWrapper{"slave-priority", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &slave_priority, 100, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "slave-read-only", false,
+      std::unique_ptr<ConfigField>(new YesNoField(&slave_readonly, true))});
+  fields.emplace_back(FieldWrapper{
+      "use-rsid-psync", true,
+      std::unique_ptr<ConfigField>(new YesNoField(&use_rsid_psync, false))});
+  fields.emplace_back(FieldWrapper{"profiling-sample-ratio", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &profiling_sample_ratio, 0, 0, 100))});
+  fields.emplace_back(
+      FieldWrapper{"profiling-sample-record-max-len", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &profiling_sample_record_max_len, 256, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "profiling-sample-record-threshold-ms", false,
+      std::unique_ptr<ConfigField>(new IntField(
+          &profiling_sample_record_threshold_ms, 100, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"slowlog-log-slower-than", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &slowlog_log_slower_than, 200000, -1, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"profiling-sample-commands", false,
+                                   std::unique_ptr<ConfigField>(new StringField(
+                                       &profiling_sample_commands_, ""))});
+  fields.emplace_back(FieldWrapper{"slowlog-max-len", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &slowlog_max_len, 128, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"purge-backup-on-fullsync", false,
+                                   std::unique_ptr<ConfigField>(new YesNoField(
+                                       &purge_backup_on_fullsync, false))});
+  fields.emplace_back(FieldWrapper{
+      "rename-command", true,
+      std::unique_ptr<ConfigField>(new StringField(&rename_command_, ""))});
+  fields.emplace_back(FieldWrapper{"auto-resize-block-and-sst", false,
+                                   std::unique_ptr<ConfigField>(new YesNoField(
+                                       &auto_resize_block_and_sst, true))});
+  fields.emplace_back(
+      FieldWrapper{"fullsync-recv-file-delay", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &fullsync_recv_file_delay, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "cluster-enabled", true,
+      std::unique_ptr<ConfigField>(new YesNoField(&cluster_enabled, false))});
+  fields.emplace_back(FieldWrapper{"migrate-speed", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &migrate_speed, 4096, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"migrate-pipeline-size", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &pipeline_size, 16, 1, INT_MAX))});
+  fields.emplace_back(FieldWrapper{"migrate-sequence-gap", false,
+                                   std::unique_ptr<ConfigField>(new IntField(
+                                       &sequence_gap, 10000, 1, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "unixsocket", true,
+      std::unique_ptr<ConfigField>(new StringField(&unixsocket, ""))});
+  fields.emplace_back(FieldWrapper{"unixsocketperm", true,
+                                   std::unique_ptr<ConfigField>(new OctalField(
+                                       &unixsocketperm, 0777, 1, INT_MAX))});
 
-      /* rocksdb options */
-      {"rocksdb.compression", false,
-       std::unique_ptr<ConfigField>(
-           new EnumField(&RocksDB.compression, compression_type_enum, 0))},
-      {"rocksdb.block_size", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.block_size, 4096, 0, INT_MAX))},
-      {"rocksdb.max_open_files", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_open_files, 4096, -1, INT_MAX))},
-      {"rocksdb.write_buffer_size", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.write_buffer_size, 64, 0, 4096))},
-      {"rocksdb.max_write_buffer_number", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_write_buffer_number, 4, 0, 256))},
-      {"rocksdb.target_file_size_base", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.target_file_size_base, 128, 1, 1024))},
-      {"rocksdb.max_background_compactions", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_background_compactions, 2, 0, 32))},
-      {"rocksdb.max_background_flushes", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_background_flushes, 2, 0, 32))},
-      {"rocksdb.max_sub_compactions", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_sub_compactions, 1, 0, 16))},
-      {"rocksdb.delayed_write_rate", false,
-       std::unique_ptr<ConfigField>(
-           new Int64Field(&RocksDB.delayed_write_rate, 0, 0, INT64_MAX))},
-      {"rocksdb.wal_ttl_seconds", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.WAL_ttl_seconds, 3 * 3600, 0, INT_MAX))},
-      {"rocksdb.wal_size_limit_mb", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.WAL_size_limit_MB, 16384, 0, INT_MAX))},
-      {"rocksdb.max_total_wal_size", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_total_wal_size, 64 * 4 * 2, 0, INT_MAX))},
-      {"rocksdb.disable_auto_compactions", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&RocksDB.disable_auto_compactions, false))},
-      {"rocksdb.enable_pipelined_write", true,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&RocksDB.enable_pipelined_write, false))},
-      {"rocksdb.stats_dump_period_sec", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.stats_dump_period_sec, 0, 0, INT_MAX))},
-      {"rocksdb.cache_index_and_filter_blocks", true,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&RocksDB.cache_index_and_filter_blocks, false))},
-      {"rocksdb.subkey_block_cache_size", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.subkey_block_cache_size, 2048, 0, INT_MAX))},
-      {"rocksdb.metadata_block_cache_size", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.metadata_block_cache_size, 2048, 0, INT_MAX))},
-      {"rocksdb.share_metadata_and_subkey_block_cache", true,
-       std::unique_ptr<ConfigField>(new YesNoField(
-           &RocksDB.share_metadata_and_subkey_block_cache, true))},
-      {"rocksdb.row_cache_size", true,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.row_cache_size, 0, 0, INT_MAX))},
-      {"rocksdb.compaction_readahead_size", false,
-       std::unique_ptr<ConfigField>(new IntField(
-           &RocksDB.compaction_readahead_size, 2 * MiB, 0, 64 * MiB))},
-      {"rocksdb.level0_slowdown_writes_trigger", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024))},
-      {"rocksdb.level0_stop_writes_trigger", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.level0_stop_writes_trigger, 40, 1, 1024))},
-      {"rocksdb.level0_file_num_compaction_trigger", false,
-       std::unique_ptr<ConfigField>(new IntField(
-           &RocksDB.level0_file_num_compaction_trigger, 4, 1, 1024))},
-      {"rocksdb.enable_blob_files", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&RocksDB.enable_blob_files, false))},
-      {"rocksdb.min_blob_size", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.min_blob_size, 4096, 0, INT_MAX))},
-      {"rocksdb.blob_file_size", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.blob_file_size, 268435456, 0, INT_MAX))},
-      {"rocksdb.enable_blob_garbage_collection", false,
-       std::unique_ptr<ConfigField>(
-           new YesNoField(&RocksDB.enable_blob_garbage_collection, true))},
-      {"rocksdb.blob_garbage_collection_age_cutoff", false,
-       std::unique_ptr<ConfigField>(new IntField(
-           &RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100))},
-      {"rocksdb.max_bytes_for_level_base", false,
-       std::unique_ptr<ConfigField>(new IntField(
-           &RocksDB.max_bytes_for_level_base, 268435456, 0, INT_MAX))},
-      {"rocksdb.max_bytes_for_level_multiplier", false,
-       std::unique_ptr<ConfigField>(
-           new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100))},
-      {"rocksdb.level_compaction_dynamic_level_bytes", false,
-       std::unique_ptr<ConfigField>(new YesNoField(
-           &RocksDB.level_compaction_dynamic_level_bytes, false))},
-  };
+  /* rocksdb options */
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.compression", false,
+                   std::unique_ptr<ConfigField>(new EnumField(
+                       &RocksDB.compression, compression_type_enum, 0))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.block_size", true,
+                   std::unique_ptr<ConfigField>(
+                       new IntField(&RocksDB.block_size, 4096, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_open_files", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_open_files, 4096, -1, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.write_buffer_size", false,
+                   std::unique_ptr<ConfigField>(
+                       new IntField(&RocksDB.write_buffer_size, 64, 0, 4096))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_write_buffer_number", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_write_buffer_number, 4, 0, 256))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.target_file_size_base", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.target_file_size_base, 128, 1, 1024))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_background_compactions", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_background_compactions, 2, 0, 32))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_background_flushes", true,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_background_flushes, 2, 0, 32))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_sub_compactions", false,
+                   std::unique_ptr<ConfigField>(
+                       new IntField(&RocksDB.max_sub_compactions, 1, 0, 16))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.delayed_write_rate", false,
+                   std::unique_ptr<ConfigField>(new Int64Field(
+                       &RocksDB.delayed_write_rate, 0, 0, INT64_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.wal_ttl_seconds", true,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.WAL_ttl_seconds, 3 * 3600, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.wal_size_limit_mb", true,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.WAL_size_limit_MB, 16384, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_total_wal_size", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_total_wal_size, 64 * 4 * 2, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.disable_auto_compactions", false,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.disable_auto_compactions, false))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.enable_pipelined_write", true,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.enable_pipelined_write, false))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.stats_dump_period_sec", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.stats_dump_period_sec, 0, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.cache_index_and_filter_blocks", true,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.cache_index_and_filter_blocks, false))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.subkey_block_cache_size", true,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.subkey_block_cache_size, 2048, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.metadata_block_cache_size", true,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.metadata_block_cache_size, 2048, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.share_metadata_and_subkey_block_cache", true,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.share_metadata_and_subkey_block_cache, true))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.row_cache_size", true,
+                   std::unique_ptr<ConfigField>(
+                       new IntField(&RocksDB.row_cache_size, 0, 0, INT_MAX))});
+  fields.emplace_back(FieldWrapper{
+      "rocksdb.compaction_readahead_size", false,
+      std::unique_ptr<ConfigField>(new IntField(
+          &RocksDB.compaction_readahead_size, 2 * MiB, 0, 64 * MiB))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.level0_slowdown_writes_trigger", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.level0_slowdown_writes_trigger, 20, 1, 1024))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.level0_stop_writes_trigger", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.level0_stop_writes_trigger, 40, 1, 1024))});
+  fields.emplace_back(FieldWrapper{
+      "rocksdb.level0_file_num_compaction_trigger", false,
+      std::unique_ptr<ConfigField>(new IntField(
+          &RocksDB.level0_file_num_compaction_trigger, 4, 1, 1024))});
+  fields.emplace_back(FieldWrapper{"rocksdb.enable_blob_files", false,
+                                   std::unique_ptr<ConfigField>(new YesNoField(
+                                       &RocksDB.enable_blob_files, false))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.min_blob_size", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.min_blob_size, 4096, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.blob_file_size", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.blob_file_size, 268435456, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.enable_blob_garbage_collection", false,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.enable_blob_garbage_collection, true))});
+  fields.emplace_back(FieldWrapper{
+      "rocksdb.blob_garbage_collection_age_cutoff", false,
+      std::unique_ptr<ConfigField>(new IntField(
+          &RocksDB.blob_garbage_collection_age_cutoff, 25, 0, 100))});
+  fields.emplace_back(FieldWrapper{
+      "rocksdb.max_bytes_for_level_base", false,
+      std::unique_ptr<ConfigField>(new IntField(
+          &RocksDB.max_bytes_for_level_base, 268435456, 0, INT_MAX))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.max_bytes_for_level_multiplier", false,
+                   std::unique_ptr<ConfigField>(new IntField(
+                       &RocksDB.max_bytes_for_level_multiplier, 10, 1, 100))});
+  fields.emplace_back(
+      FieldWrapper{"rocksdb.level_compaction_dynamic_level_bytes", false,
+                   std::unique_ptr<ConfigField>(new YesNoField(
+                       &RocksDB.level_compaction_dynamic_level_bytes, false))});
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;
     field->readonly = wrapper.readonly;

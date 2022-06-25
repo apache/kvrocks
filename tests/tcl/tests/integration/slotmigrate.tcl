@@ -414,9 +414,9 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             $r0 del $slot15_key_10
 
             # Set slow migrate
-            $r0 config set migrate-speed 32
+            $r0 config set migrate-speed 64
             catch {$r0 config get migrate-speed} e
-            assert_match {*32*} $e
+            assert_match {*64*} $e
 
             set count 2000
             for {set i 0} {$i < $count} {incr i} {
@@ -509,7 +509,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set sivalue [$r0 sirange $slot15_key_10 0 -1]
 
             # Wait for finishing
-            wait_for_condition 50 1000 {
+            wait_for_condition 100 1000 {
                 [string match "*migrating_slot: 15*migrating_state: success*" [$r0 cluster info]]
             } else {
                 fail "Slot 15 migrating is not finished"

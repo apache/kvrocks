@@ -148,9 +148,13 @@ proc count_message_lines {file pattern} {
 }
 
 # returns the number of times a line with that pattern appears in the log
-proc count_log_message {srv_idx pattern} {
-    set stdout [srv $srv_idx stdout]
-    return [count_message_lines $stdout $pattern]
+proc count_log_message {dir pattern} {
+    set files [glob [format "%s/%s" $dir "kvrocks.*.INFO.*"]]
+    set res 0
+    foreach file $files {
+        incr res [count_message_lines $file $pattern]
+    }
+    return $res
 }
 
 # verify pattern exists in server's sdtout after a certain line number

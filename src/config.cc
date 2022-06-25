@@ -37,12 +37,13 @@
 #include "server.h"
 #include "log_collector.h"
 
-const char *kDefaultNamespace = "__namespace";
+const std::string kDefaultNamespace = "__namespace";
 
-const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes first.";
+const std::string errNotEnableBlobDB =
+    "Must set rocksdb.enable_blob_files to yes first.";
 
-const char *errNotSetLevelCompactionDynamicLevelBytes =
-            "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
+const std::string errNotSetLevelCompactionDynamicLevelBytes =
+    "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},

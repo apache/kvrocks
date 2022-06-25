@@ -59,8 +59,8 @@ const std::vector<std::string> RedisTypeNames = {
     "list", "set", "zset", "bitmap", "sortedint"
 };
 
-extern const char* kErrMsgWrongType;
-extern const char* kErrMsgKeyExpired;
+extern const std::string kErrMsgWrongType;
+extern const std::string kErrMsgKeyExpired;
 
 using rocksdb::Slice;
 

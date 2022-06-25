@@ -47,7 +47,7 @@ const size_t KiB = 1024L;
 const size_t MiB = 1024L * KiB;
 const size_t GiB = 1024L * MiB;
 
-extern const char *kDefaultNamespace;
+extern const std::string kDefaultNamespace;
 
 struct CompactionCheckerRange {
  public:

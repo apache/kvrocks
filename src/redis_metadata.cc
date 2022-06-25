@@ -33,8 +33,9 @@ const int VersionCounterBits = 11;
 
 static std::atomic<uint64_t> version_counter_ = {0};
 
-const char* kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
-const char* kErrMsgKeyExpired = "the key was expired";
+const std::string kErrMsgWrongType =
+    "WRONGTYPE Operation against a key holding the wrong kind of value";
+const std::string kErrMsgKeyExpired = "the key was expired";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;

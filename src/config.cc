@@ -90,12 +90,9 @@ Config::Config() {
 
     FieldWrapper(std::string name, bool readonly,
                  std::unique_ptr<ConfigField> field)
-        : name(std::move(name)), readonly(readonly), field(std::move(field)){};
-
-    FieldWrapper(const FieldWrapper &wrapper)
-        : name(std::move(wrapper.name)), readonly(wrapper.readonly) {}
+        : name(std::move(name)), readonly(readonly), field(std::move(field)){}
   };
-  std::vector<FieldWrapper> fields{
+  FieldWrapper fields[] = {
       {"bind", true,
        std::unique_ptr<ConfigField>(new StringField(&binds_, "127.0.0.1"))},
       {"port", true,

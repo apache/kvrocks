@@ -167,7 +167,7 @@ Status Server::Start() {
     }
   });
 
-  LOG(INFO) << "Ready to accept connections\n";
+  LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();
 }

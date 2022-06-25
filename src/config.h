@@ -178,7 +178,7 @@ struct Config{
   std::string bgsave_cron_;
   std::string compaction_checker_range_;
   std::string profiling_sample_commands_;
-  std::map<std::string, ConfigField*> fields_;
+  std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::string rename_command_;
 
   void initFieldValidator();

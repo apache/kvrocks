@@ -90,7 +90,7 @@ Config::Config() {
 
     FieldWrapper(std::string name, bool readonly,
                  ConfigField* field)
-        : name(std::move(name)), readonly(readonly), field(std::move(field)) {}
+        : name(std::move(name)), readonly(readonly), field(field) {}
   };
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
@@ -487,8 +487,7 @@ void Config::initFieldCallback() {
   }
 }
 
-Config::~Config() {
-}
+Config::~Config() = default;
 
 void Config::SetMaster(const std::string &host, int port) {
   master_host = host;

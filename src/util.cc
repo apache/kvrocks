@@ -43,6 +43,7 @@
 
 #include "util.h"
 #include "status.h"
+#include "event_util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -287,21 +288,15 @@ Status SockSetBlocking(int fd, int blocking) {
 }
 
 Status SockReadLine(int fd, std::string *data) {
-  size_t line_len;
-  evbuffer *evbuf = evbuffer_new();
-  if (evbuffer_read(evbuf, fd, -1) <= 0) {
-    evbuffer_free(evbuf);
+  UniqueEvbuf evbuf;
+  if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
     return Status(Status::NotOK, std::string("read response err: ") + strerror(errno));
   }
-  char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
-    free(line);
-    evbuffer_free(evbuf);
     return Status(Status::NotOK, std::string("read response err(empty): ") + strerror(errno));
   }
-  *data = std::string(line, line_len);
-  free(line);
-  evbuffer_free(evbuf);
+  *data = std::string(line.get(), line.length);
   return Status::OK();
 }
 

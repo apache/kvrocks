@@ -39,7 +39,7 @@ jobs:
 
   lint:
     name: Lint and check code
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v3

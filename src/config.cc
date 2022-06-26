@@ -188,7 +188,7 @@ Config::Config() {
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;
     field->readonly = wrapper.readonly;
-    fields_.insert({wrapper.name, std::move(field)});
+    fields_.emplace(std::move(wrapper.name), std::move(field));
   }
   initFieldValidator();
   initFieldCallback();

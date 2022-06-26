@@ -27,4 +27,4 @@ set -ex
 cppcheck --version
 cppcheck \
     --force --enable=${CHECK_TYPES} -U__GNUC__ -x ${LANG}  src --std=${STANDARD} --error-exitcode=${ERROR_EXITCODE} \
-    --inline-suppr --suppress=noCopyConstructor:src/server.cc --suppress=noOperatorEq:src/server.cc -j$(nproc)
+    --inline-suppr -j$(nproc)

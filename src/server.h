@@ -198,9 +198,9 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
-  Cluster *cluster_;
+  std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
-  class SlotMigrate *slot_migrate_ = nullptr;
+  std::unique_ptr<class SlotMigrate> slot_migrate_;
   class SlotImport *slot_import_ = nullptr;
 
  private:

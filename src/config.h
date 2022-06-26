@@ -63,7 +63,7 @@ struct CompactionCheckerRange {
 struct Config{
  public:
   Config();
-  ~Config();
+  ~Config() = default;
   int port = 6666;
   int workers = 0;
   int timeout = 0;

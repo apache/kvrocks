@@ -487,8 +487,6 @@ void Config::initFieldCallback() {
   }
 }
 
-Config::~Config() = default;
-
 void Config::SetMaster(const std::string &host, int port) {
   master_host = host;
   master_port = port;

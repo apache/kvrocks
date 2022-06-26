@@ -84,7 +84,7 @@ const char *configEnumGetName(configEnum *ce, int val) {
 
 Config::Config() {
   struct FieldWrapper {
-    const std::string name;
+    std::string name;
     bool readonly;
     std::unique_ptr<ConfigField> field;
 

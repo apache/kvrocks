@@ -44,6 +44,7 @@
 #include "event_listener.h"
 #include "compact_filter.h"
 #include "table_properties_collector.h"
+#include "event_util.h"
 
 namespace Engine {
 
@@ -848,8 +849,6 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage,
 
 Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
     Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf) {
-  char *line;
-  size_t len;
   Storage::ReplDataManager::MetaInfo meta;
   auto meta_file = "meta/" + std::to_string(meta_id);
   DLOG(INFO) << "[meta] id: " << meta_id;
@@ -862,39 +861,34 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
   wf->Close();
 
   // timestamp;
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] timestamp: " << line;
-  meta.timestamp = std::strtoll(line, nullptr, 10);
-  free(line);
+  UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] timestamp: " << line.get();
+  meta.timestamp = std::strtoll(line.get(), nullptr, 10);
   // sequence
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] seq:" << line;
-  meta.seq = std::strtoull(line, nullptr, 10);
-  free(line);
+  line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] seq:" << line.get();
+  meta.seq = std::strtoull(line.get(), nullptr, 10);
   // optional metadata
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  if (strncmp(line, "metadata", 8) == 0) {
-    DLOG(INFO) << "[meta] meta: " << line;
-    meta.meta_data = std::string(line, len);
-    free(line);
-    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
+  if (strncmp(line.get(), "metadata", 8) == 0) {
+    DLOG(INFO) << "[meta] meta: " << line.get();
+    meta.meta_data = std::string(line.get(), line.length);
+    line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   }
-  DLOG(INFO) << "[meta] file count: " << line;
-  free(line);
+  DLOG(INFO) << "[meta] file count: " << line.get();
   // file list
   while (true) {
-    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+    line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
     if (!line) {
       break;
     }
-    DLOG(INFO) << "[meta] file info: " << line;
-    auto cptr = line;
+    DLOG(INFO) << "[meta] file info: " << line.get();
+    auto cptr = line.get();
     while (*(cptr++) != ' ') {}
-    auto filename = std::string(line, cptr - line - 1);
+    auto filename = std::string(line.get(), cptr - line.get() - 1);
     while (*(cptr++) != ' ') {}
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
-    free(line);
   }
   SwapTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
   return meta;

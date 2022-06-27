@@ -4714,9 +4714,7 @@ class CommandScript : public Commander {
 };
 
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \
-{name, arity, description, 0, first_key, last_key, key_step, []() -> std::unique_ptr<Commander> { \
-  return std::unique_ptr<Commander>(new fn()); \
-}}
+{name, arity, description, 0, first_key, last_key, key_step}
 
 CommandAttributes redisCommandTable[] = {
     ADD_CMD("auth", 2, "read-only ok-loading", 0, 0, 0, CommandAuth),

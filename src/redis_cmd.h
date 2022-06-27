@@ -88,7 +88,6 @@ struct CommandAttributes {
   int first_key;
   int last_key;
   int key_step;
-  CommanderFactory factory;
 
   bool is_write() const { return (flags & kCmdWrite) != 0; }
   bool is_ok_loading() const { return (flags & kCmdLoading) != 0; }

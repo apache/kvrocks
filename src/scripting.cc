@@ -334,6 +334,7 @@ namespace Lua {
   int redisPCallCommand(lua_State *lua) {
     return redisGenericCommand(lua, 0);
   }
+
   int redisGenericCommand(lua_State *lua, int raise_error) {
     int j, argc = lua_gettop(lua);
     std::vector<std::string> args;
@@ -368,7 +369,7 @@ namespace Lua {
       return raise_error ? raiseError(lua) : 1;
     }
     auto redisCmd = cmd_iter->second;
-    auto cmd = redisCmd->factory();
+    auto cmd = std::unique_ptr<Redis::Commander>(new Redis::Commander);
     cmd->SetAttributes(redisCmd);
     cmd->SetArgs(args);
     int arity = cmd->GetAttributes()->arity;

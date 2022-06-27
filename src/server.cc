@@ -29,6 +29,7 @@
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 
+#include "redis_cmd.h"
 #include "util.h"
 #include "worker.h"
 #include "version.h"
@@ -1336,9 +1337,9 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name,
   if (cmd_iter == commands->end()) {
     return Status(Status::RedisUnknownCmd);
   }
-  auto redisCmd = cmd_iter->second;
-  *cmd = redisCmd->factory();
-  (*cmd)->SetAttributes(redisCmd);
+  auto redis_cmd = cmd_iter->second;
+  *cmd = std::unique_ptr<Redis::Commander>(new Redis::Commander);
+  (*cmd)->SetAttributes(redis_cmd);
   return Status::OK();
 }
 

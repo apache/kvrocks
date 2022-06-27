@@ -59,7 +59,7 @@ include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
-include(cmake/lua.cmake)
+include(cmake/luajit.cmake)
 
 find_package(Threads REQUIRED)
 
@@ -67,7 +67,7 @@ list(APPEND EXTERNAL_LIBS PRIVATE glog)
 list(APPEND EXTERNAL_LIBS PRIVATE snappy)
 list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
 list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
-list(APPEND EXTERNAL_LIBS PRIVATE lua)
+list(APPEND EXTERNAL_LIBS PRIVATE luajit)
 list(APPEND EXTERNAL_LIBS PRIVATE lz4)
 list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 

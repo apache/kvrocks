@@ -53,6 +53,7 @@
 #include "scripting.h"
 
 #include <math.h>
+#include <memory>
 #include <string>
 
 #include "util.h"

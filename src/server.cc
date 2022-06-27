@@ -29,7 +29,6 @@
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 
-#include "redis_cmd.h"
 #include "util.h"
 #include "worker.h"
 #include "version.h"

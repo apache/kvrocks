@@ -30,7 +30,7 @@
 
 Status Parser::ParseFullDB() {
   rocksdb::DB *db_ = storage_->GetDB();
-  if (!lastest_snapshot_) lastest_snapshot_ = new LatestSnapShot(db_);
+  if (!lastest_snapshot_) lastest_snapshot_ = std::unique_ptr<LatestSnapShot>(new LatestSnapShot(db_));
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_ = storage_->GetCFHandle("metadata");
 
   rocksdb::ReadOptions read_options;

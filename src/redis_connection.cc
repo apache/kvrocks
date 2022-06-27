@@ -327,7 +327,7 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
       }
     }
 
-    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), current_cmd_.get());
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));

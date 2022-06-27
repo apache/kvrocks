@@ -1329,7 +1329,7 @@ ReplState Server::GetReplicationState() {
 }
 
 Status Server::LookupAndCreateCommand(const std::string &cmd_name,
-                                      std::unique_ptr<Redis::Commander> *cmd) {
+                                      Redis::Commander* cmd) {
   auto commands = Redis::GetCommands();
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
   auto cmd_iter = commands->find(Util::ToLower(cmd_name));
@@ -1337,8 +1337,9 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name,
     return Status(Status::RedisUnknownCmd);
   }
   auto redisCmd = cmd_iter->second;
-  *cmd = redisCmd->factory();
-  (*cmd)->SetAttributes(redisCmd);
+  auto generated_cmd = redisCmd->factory();
+  cmd = std::move(generated_cmd).get();
+  cmd->SetAttributes(redisCmd);
   return Status::OK();
 }
 

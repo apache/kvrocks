@@ -160,7 +160,7 @@ class SlotMigrate : public Redis::Database {
   std::thread t_;
   std::mutex job_mutex_;
   std::condition_variable job_cv_;
-  SlotMigrateJob *slot_job_;
+  std::unique_ptr<SlotMigrateJob> slot_job_ = nullptr;
   std::string dst_node_;
   std::string dst_ip_;
   int dst_port_;

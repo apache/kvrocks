@@ -68,7 +68,8 @@ It is as simple as:
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd incubator-kvrocks
-$ ./build.sh build # `./build.sh -h` to check more options, and `--ghproxy` is recommanded for chinese users
+$ ./build.sh build # `./build.sh -h` to check more options;
+                   # especially, `./build.sh build --ghproxy` will fetch dependencies via ghproxy.com.
 ```
 
 ### Running kvrocks

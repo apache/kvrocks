@@ -39,10 +39,6 @@
 #include "server.h"
 #include "event_util.h"
 
-FeedSlaveThread::~FeedSlaveThread() {
-  delete conn_;
-}
-
 Status FeedSlaveThread::Start() {
   try {
     t_ = std::thread([this]() {

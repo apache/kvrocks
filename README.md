@@ -68,7 +68,7 @@ It is as simple as:
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd incubator-kvrocks
-$ ./build.sh build # `./build.sh -h` to check more options
+$ ./build.sh build # `./build.sh -h` to check more options, and `--ghproxy` is recommanded for chinese users
 ```
 
 ### Running kvrocks
@@ -102,8 +102,10 @@ $ ./unittest
 
 ### Supported platforms
 
-* CentOS 6 or 7
-* Ubuntu
+* Linux distributions
+  * CentOS 6 or 7
+  * Ubuntu
+  * and most other distros
 * macOS
 
 ##  Namespace

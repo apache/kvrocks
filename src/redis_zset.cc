@@ -418,6 +418,11 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
+  std::unique_ptr<LockGuard> lock_guard;
+  if (spec.removed) {
+    lock_guard = std::unique_ptr<LockGuard>(
+      new LockGuard(storage_->GetLockManager(), ns_key));
+  }
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

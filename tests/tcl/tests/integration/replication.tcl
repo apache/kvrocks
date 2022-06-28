@@ -201,9 +201,9 @@ start_server {tags {"repl"} overrides {max-replication-mb 1 rocksdb.compression 
             } else {
                 fail "Fail to resume broken transfer based files"
             }
-            after 1000
 
             # Slave loads checkpoint successfully
+            wait_for_sync r
             assert_equal b [r get a]
         }
     }

@@ -23,6 +23,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <memory>
 
 #include "../../src/redis_db.h"
 #include "../../src/status.h"
@@ -51,13 +52,10 @@ class Parser {
  public:
   explicit Parser(Engine::Storage *storage, Writer *writer)
       : storage_(storage), writer_(writer) {
-    lastest_snapshot_ = new LatestSnapShot(storage->GetDB());
+    lastest_snapshot_ = std::unique_ptr<LatestSnapShot>(new LatestSnapShot(storage->GetDB()));
     is_slotid_encoded_ = storage_->IsSlotIdEncoded();
   }
-  ~Parser() {
-    delete lastest_snapshot_;
-    lastest_snapshot_ = nullptr;
-  }
+  ~Parser() {}
 
   Status ParseFullDB();
   rocksdb::Status ParseWriteBatch(const std::string &batch_string);
@@ -65,7 +63,7 @@ class Parser {
  protected:
   Engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
-  LatestSnapShot *lastest_snapshot_ = nullptr;
+  std::unique_ptr<LatestSnapShot> lastest_snapshot_ = nullptr;
   bool is_slotid_encoded_ = false;
 
   Status parseSimpleKV(const Slice &ns_key, const Slice &value, int expire);

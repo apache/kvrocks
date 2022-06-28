@@ -140,7 +140,7 @@ add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks unit tests
-file(GLOB TESTS_SRCS tests/*.cc)
+file(GLOB TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
 
 target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main ${EXTERNAL_LIBS})

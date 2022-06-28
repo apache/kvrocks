@@ -21,10 +21,11 @@
 #pragma once
 #include <sys/resource.h>
 
-#include <string>
 #include <map>
-#include <vector>
+#include <memory>
 #include <set>
+#include <string>
+#include <vector>
 
 #include <rocksdb/options.h>
 
@@ -62,7 +63,7 @@ struct CompactionCheckerRange {
 struct Config{
  public:
   Config();
-  ~Config();
+  ~Config() = default;
   int port = 6666;
   int workers = 0;
   int timeout = 0;
@@ -178,7 +179,7 @@ struct Config{
   std::string bgsave_cron_;
   std::string compaction_checker_range_;
   std::string profiling_sample_commands_;
-  std::map<std::string, ConfigField*> fields_;
+  std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::string rename_command_;
 
   void initFieldValidator();

@@ -421,7 +421,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
   std::unique_ptr<LockGuard> lock_guard;
   if (spec.removed) {
     lock_guard = std::unique_ptr<LockGuard>(
-      new LockGuard(storage_->GetLockManager(), dbns_key));
+      new LockGuard(storage_->GetLockManager(), ns_key));
   }
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);

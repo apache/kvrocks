@@ -22,6 +22,8 @@
 #include "batch_extractor.h"
 #include "event_util.h"
 
+#include <utility>
+
 static std::map<RedisType, std::string> type_to_cmd = {
   {kRedisString, "set"},
   {kRedisList, "rpush"},

@@ -17,14 +17,12 @@
 
 include_guard()
 
-include(FetchContent)
-
-FetchContent_Declare(snappy
-  GIT_REPOSITORY https://github.com/google/snappy
-  GIT_TAG 1.1.9
-)
-
 include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(snappy
+  google/snappy 1.1.9
+  MD5=1ecaa4c5c662c2d9cb669669d22c28aa
+)
 
 FetchContent_MakeAvailableWithArgs(snappy
   SNAPPY_BUILD_TESTS=OFF

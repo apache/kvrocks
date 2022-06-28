@@ -26,6 +26,10 @@ option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 
+set(DEPS_FETCH_PROXY "" CACHE STRING 
+    "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
+     https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
+
 if(ENABLE_ASAN AND ENABLE_TSAN)
     message(FATAL_ERROR "ASan and TSan cannot be used at the same time")
 endif()

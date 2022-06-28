@@ -17,14 +17,12 @@
 
 include_guard()
 
-include(FetchContent)
-
-FetchContent_Declare(gtest
-  GIT_REPOSITORY https://github.com/google/googletest
-  GIT_TAG release-1.11.0
-)
-
 include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(gtest
+  google/googletest release-1.11.0
+  MD5=52943a59cefce0ae0491d4d2412c120b
+)
 
 FetchContent_MakeAvailableWithArgs(gtest
   BUILD_GMOCK=OFF

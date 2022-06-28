@@ -17,14 +17,12 @@
 
 include_guard()
 
-include(FetchContent)
-
-FetchContent_Declare(libevent
-  GIT_REPOSITORY https://github.com/libevent/libevent
-  GIT_TAG release-2.1.11-stable
-)
-
 include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(libevent
+  libevent/libevent release-2.1.11-stable
+  MD5=b3185885cad72a4fc2f2d2194dfee2cc
+)
 
 FetchContent_MakeAvailableWithArgs(libevent
   EVENT__DISABLE_TESTS=ON

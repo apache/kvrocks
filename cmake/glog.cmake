@@ -17,14 +17,12 @@
 
 include_guard()
 
-include(FetchContent)
-
-FetchContent_Declare(glog
-  GIT_REPOSITORY https://github.com/google/glog
-  GIT_TAG v0.6.0
-)
-
 include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(glog
+  google/glog v0.6.0
+  MD5=1b246d4d0e8a011d33e0813b256198ef
+)
 
 FetchContent_MakeAvailableWithArgs(glog
   WITH_GFLAGS=OFF

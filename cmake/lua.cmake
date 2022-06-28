@@ -17,11 +17,11 @@
 
 include_guard()
 
-include(FetchContent)
+include(cmake/utils.cmake)
 
-FetchContent_Declare(lua
-  GIT_REPOSITORY https://github.com/KvrocksLabs/lua
-  GIT_TAG c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
+FetchContent_DeclareGitHubWithMirror(lua
+  KvrocksLabs/lua c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
+  MD5=79950ff054ae76e5c9f9c57b38484229
 )
 
 FetchContent_GetProperties(lua)

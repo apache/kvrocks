@@ -26,6 +26,7 @@ function usage() {
     echo "-jN         : execute N build jobs concurrently, default N = 4" >&2
     echo "--unittest  : build unittest target" >&2
     echo "--ninja     : use ninja to build kvrocks" >&2
+    echo "--ghproxy   : use ghproxy.com to fetch dependencies" >&2
     echo "-h, --help  : print this help messages" >&2
     exit 1
 }
@@ -35,6 +36,7 @@ until [ $# -eq 0 ]; do
         -D*) CMAKE_DEFS="$CMAKE_DEFS $1";;
         --unittest) BUILD_UNITTEST=1;;
         --ninja) USE_NINJA="-G Ninja";;
+        --ghproxy) USE_GHPROXY="-DDEPS_FETCH_PROXY=https://ghproxy.com/";;
         -j*) JOB_CMD=$1;;
         -*) usage;;
         *) BUILD_DIR=$1;;
@@ -97,7 +99,7 @@ mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 
 set -x
-$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS $USE_NINJA
+$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS $USE_NINJA $USE_GHPROXY
 $CMAKE_BIN --build . $JOB_CMD -t kvrocks kvrocks2redis
 
 if [ -n "$BUILD_UNITTEST" ]; then

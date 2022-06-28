@@ -23,14 +23,12 @@ if (DISABLE_JEMALLOC)
   set(COMPILE_WITH_JEMALLOC OFF)
 endif()
 
-include(FetchContent)
-
-FetchContent_Declare(rocksdb
-  GIT_REPOSITORY https://github.com/facebook/rocksdb
-  GIT_TAG v6.29.5
-)
-
 include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(rocksdb
+  facebook/rocksdb v6.29.5
+  MD5=b7efb227f10a668adcb914c973f19648
+)
 
 FetchContent_GetProperties(jemalloc)
 FetchContent_GetProperties(snappy)

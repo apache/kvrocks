@@ -104,11 +104,13 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
   dst_node_ = node_id;
 
   // Create migration job
-  slot_job_ = std::unique_ptr<SlotMigrateJob>(new SlotMigrateJob(slot, dst_ip, dst_port,
+  auto job = std::unique_ptr<SlotMigrateJob>(new SlotMigrateJob(slot, dst_ip, dst_port,
                                            speed, pipeline_size, seq_gap));
-  std::lock_guard<std::mutex> guard(job_mutex_);
-  job_cv_.notify_one();
-
+  {
+    std::lock_guard<std::mutex> guard(job_mutex_);
+    slot_job_ = std::move(job);
+    job_cv_.notify_one();
+  }
   LOG(INFO) << "[migrate] Start migrating slot " << slot
             << " to " << dst_ip << ":" << dst_port;
   return Status::OK();

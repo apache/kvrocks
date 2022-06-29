@@ -138,5 +138,5 @@ jobs:
 
       - name: Run Redis Tcl Test
         run: |
-        cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
-        cd tests/tcl && ./runtest
+          cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
+          cd tests/tcl && ./runtest

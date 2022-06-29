@@ -27,7 +27,12 @@ FetchContent_DeclareGitHubWithMirror(lz4
 FetchContent_GetProperties(lz4)
 if(NOT lz4_POPULATED)
   FetchContent_Populate(lz4)
-  add_custom_target(make_lz4 COMMAND make liblz4.a
+
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
+  endif()
+  
+  add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
     WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
     BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
   )

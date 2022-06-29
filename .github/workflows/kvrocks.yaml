@@ -115,6 +115,11 @@ jobs:
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl && ./runtest
 
+  daily-ci:
+    if: ${{ github.event.label.name == 'need-daily-CI' }}
+    name: Run Daily CI
+    uses: ./.github/workflows/daily-ci.yaml
+
   required:
     if: always()
     name: Required

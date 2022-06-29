@@ -25,6 +25,7 @@ on:
     # Daily run this action at 1am
     - cron: '0 1 * * *'
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build-docker-image:

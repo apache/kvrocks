@@ -77,7 +77,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ~/bin/redis-cli
+            ~/local/bin/redis-cli
           key: ${{ runner.os }}-redis-cli
 
       - name: Setup macOS
@@ -98,7 +98,9 @@ jobs:
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
           tar -xzvf redis-6.2.6.tar.gz
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli ~/bin/ && popd
+          mkdir -p $HOME/local/bin
+          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli && popd
+          mv redis-6.2.6/src/redis-cli $HOME/local/bin/
 
       - name: Checkout Code Base
         uses: actions/checkout@v3
@@ -111,7 +113,7 @@ jobs:
 
       - name: Run Redis Tcl Test
         run: |
-          cp /usr/bin/redis-cli tests/tcl/redis-cli
+          cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl && ./runtest
 
   required:

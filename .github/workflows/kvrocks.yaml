@@ -56,7 +56,6 @@ jobs:
           ./cpplint.sh
           ./cppcheck.sh
 
-
   build-and-test:
     name: Build and test
     needs: [license, lint]
@@ -97,7 +96,7 @@ jobs:
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
-          curl https://github.com/redis/redis/archive/6.2.6.tar.gz
+          curl -O https://github.com/redis/redis/archive/6.2.6.tar.gz
           tar -xzvf 6.2.6.tar.gz
           pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && sudo mv src/redis-cli /usr/bin/ && popd
 

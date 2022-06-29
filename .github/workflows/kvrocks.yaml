@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: kvrocks ci actions  # don't edit while the badge was depend on this
+name: CI
 
 on: [push, pull_request]
 
@@ -36,7 +36,6 @@ jobs:
         with:
           config: tools/ci/licenserc.yml
 
-
   lint:
     name: Lint and check code
     runs-on: ubuntu-latest
@@ -48,15 +47,14 @@ jobs:
         run: |
           sudo pip install --upgrade pip
           sudo pip install --upgrade setuptools
-          sudo apt-get update
-          sudo apt-get install -y cppcheck
+          sudo apt update
+          sudo apt install -y cppcheck
           sudo pip install cpplint==1.5.0
 
       - name: Lint and check code
         run: |
           ./cpplint.sh
           ./cppcheck.sh
-
 
   build-and-test:
     name: Build and test
@@ -69,56 +67,53 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-18.04
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - name: Mac OS
+          - name: macOS AppleClang
             os: macos-latest
 
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/local/bin/redis-cli
+          key: ${{ runner.os }}-redis-cli
+
+      - name: Setup macOS
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: |
+          brew install cmake gcc autoconf automake libtool
+          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+      
+      - name: Setup Linux
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          sudo apt update
+          sudo apt install -y tcl8.5
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Install redis
+        if: steps.cache-redis.outputs.cache-hit != 'true'
+        run: |
+          curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
+          tar -xzvf redis-6.2.6.tar.gz
+          mkdir -p $HOME/local/bin
+          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+
       - name: Checkout Code Base
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 64
-
-      - name: Setup Mac OS
-        if: ${{ startsWith(matrix.os, 'macos') }}
-        run: brew install cmake gcc autoconf automake libtool
-
-      - name: Get cpu core number
-        if: ${{ startsWith(matrix.os, 'macos') }}
-        run: echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-
-      - name: Get cpu core number
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Build Kvrocks
-        run: |
-          ./build.sh build -j$NPROC --unittest ${{ matrix.clang }}
+        run: ./build.sh build -j$NPROC --unittest ${{ matrix.clang }}
 
       - name: Run Unit Test
         run: ./build/unittest
 
-      - name: Install TCL
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: sudo apt install -y tcl8.5
-
-      - name: Prepare Redis CLI
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: |
-          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
-          tar -zxvf 6.2.6.tar.gz
-          cd redis-6.2.6 && make -j$NPROC redis-cli && cd -
-          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
-
       - name: Run Redis Tcl Test
         run: |
+          cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl && ./runtest
-
-      - name: Run Redis Tcl Test (Redis CLI)
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: |
-          cd tests/tcl && ./runtest --single integration/redis-cli
-
 
   required:
     if: always()

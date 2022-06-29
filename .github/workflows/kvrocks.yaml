@@ -116,7 +116,7 @@ jobs:
           cd tests/tcl && ./runtest
 
   daily-ci:
-    if: ${{ github.event.label.name == 'need-daily-CI' }}
+    if: github.event.label.name == 'need-daily-CI'
     name: Run Daily CI
     uses: ./.github/workflows/daily-ci.yaml
 

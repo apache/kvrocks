@@ -60,6 +60,7 @@ set ::all_tests {
     unit/scripting
     integration/slotmigrate
     integration/slotimport
+    integration/redis-cli
     integration/replication
     integration/rsid_psync
     integration/cluster

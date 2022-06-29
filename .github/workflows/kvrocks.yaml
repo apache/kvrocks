@@ -99,8 +99,7 @@ jobs:
           curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
           tar -xzvf redis-6.2.6.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli && popd
-          mv redis-6.2.6/src/redis-cli $HOME/local/bin/
+          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3

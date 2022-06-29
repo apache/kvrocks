@@ -17,11 +17,11 @@
 
 include_guard()
 
-include(FetchContent)
+include(cmake/utils.cmake)
 
-FetchContent_Declare(jemalloc
-  GIT_REPOSITORY https://github.com/jemalloc/jemalloc
-  GIT_TAG 12cd13cd418512d9e7596921ccdb62e25a103f87
+FetchContent_DeclareGitHubWithMirror(jemalloc
+  jemalloc/jemalloc 12cd13cd418512d9e7596921ccdb62e25a103f87
+  MD5=5df60c70718ba94253cb15d60e69e2f8
 )
 
 FetchContent_GetProperties(jemalloc)

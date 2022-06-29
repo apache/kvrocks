@@ -26,6 +26,10 @@ option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 
+set(DEPS_FETCH_PROXY "" CACHE STRING 
+    "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
+     https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
+
 if(ENABLE_ASAN AND ENABLE_TSAN)
     message(FATAL_ERROR "ASan and TSan cannot be used at the same time")
 endif()
@@ -136,7 +140,7 @@ add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks unit tests
-file(GLOB TESTS_SRCS tests/*.cc)
+file(GLOB TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
 
 target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main ${EXTERNAL_LIBS})

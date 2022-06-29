@@ -16,12 +16,12 @@
 # under the License.
 
 include_guard()
-include(FetchContent)
 
-FetchContent_Declare(
-  lz4
-  URL https://github.com/lz4/lz4/archive/v1.9.3.tar.gz
-  URL_HASH MD5=3a1ab1684e14fc1afc66228ce61b2db3
+include(cmake/utils.cmake)
+
+FetchContent_DeclareGitHubWithMirror(lz4
+  lz4/lz4 v1.9.3
+  MD5=72defe037b2c3db7a69affe7fe4bffd6
 )
 
 FetchContent_GetProperties(lz4)

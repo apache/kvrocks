@@ -84,11 +84,15 @@ const char *configEnumGetName(configEnum *ce, int val) {
 
 Config::Config() {
   struct FieldWrapper {
-    const char *name;
+    std::string name;
     bool readonly;
-    ConfigField *field;
+    std::unique_ptr<ConfigField> field;
+
+    FieldWrapper(std::string name, bool readonly,
+                 ConfigField* field)
+        : name(std::move(name)), readonly(readonly), field(field) {}
   };
-  std::vector<FieldWrapper> fields = {
+  FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "127.0.0.1")},
       {"port", true, new IntField(&port, 6666, 1, 65535)},
@@ -181,10 +185,10 @@ Config::Config() {
       {"rocksdb.level_compaction_dynamic_level_bytes",
         false, new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
   };
-  for (const auto &wrapper : fields) {
-    auto field = wrapper.field;
+  for (auto &wrapper : fields) {
+    auto &field = wrapper.field;
     field->readonly = wrapper.readonly;
-    fields_.insert({wrapper.name, field});
+    fields_.emplace(std::move(wrapper.name), std::move(field));
   }
   initFieldValidator();
   initFieldCallback();
@@ -483,12 +487,6 @@ void Config::initFieldCallback() {
   }
 }
 
-Config::~Config() {
-  for (const auto &iter : fields_) {
-    delete iter.second;
-  }
-}
-
 void Config::SetMaster(const std::string &host, int port) {
   master_host = host;
   master_port = port;
@@ -526,7 +524,7 @@ Status Config::parseConfigFromString(std::string input, int line_number) {
   }
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
-    auto field = iter->second;
+    auto& field = iter->second;
     field->line_number = line_number;
     auto s = field->Set(kv[1]);
     if (!s.IsOK()) return s;
@@ -615,7 +613,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
   if (iter == fields_.end() || iter->second->readonly) {
     return Status(Status::NotOK, "Unsupported CONFIG parameter: "+key);
   }
-  auto field = iter->second;
+  auto& field = iter->second;
   if (field->validate) {
     auto s = field->validate(key, value);
     if (!s.IsOK()) return s;

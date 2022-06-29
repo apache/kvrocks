@@ -20,7 +20,11 @@
 
 #include "slot_migrate.h"
 
+#include <utility>
+
 #include "batch_extractor.h"
+#include "event_util.h"
+
 
 static std::map<RedisType, std::string> type_to_cmd = {
   {kRedisString, "set"},
@@ -104,12 +108,13 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
   dst_node_ = node_id;
 
   // Create migration job
-  SlotMigrateJob *job = new SlotMigrateJob(slot, dst_ip, dst_port,
-                                           speed, pipeline_size, seq_gap);
-  std::lock_guard<std::mutex> guard(job_mutex_);
-  slot_job_ = job;
-  job_cv_.notify_one();
-
+  auto job = std::unique_ptr<SlotMigrateJob>(new SlotMigrateJob(slot, dst_ip, dst_port,
+                                           speed, pipeline_size, seq_gap));
+  {
+    std::lock_guard<std::mutex> guard(job_mutex_);
+    slot_job_ = std::move(job);
+    job_cv_.notify_one();
+  }
   LOG(INFO) << "[migrate] Start migrating slot " << slot
             << " to " << dst_ip << ":" << dst_port;
   return Status::OK();
@@ -382,7 +387,6 @@ Status SlotMigrate::Clean(void) {
   wal_begin_seq_ = 0;
   wal_increment_seq_ = 0;
   std::lock_guard<std::mutex> guard(job_mutex_);
-  delete slot_job_;
   slot_job_ = nullptr;
   migrate_slot_ = -1;
   SetMigrateStopFlag(false);
@@ -462,15 +466,13 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
   setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
   // Start checking response
-  size_t line_len = 0, bulk_len = 0;
-  char *line = nullptr;
+  size_t bulk_len = 0;
   int cnt = 0;
   stat_ = ArrayLen;
-  evbuffer *evbuf = evbuffer_new();
+  UniqueEvbuf evbuf;
   while (true) {
     // Read response data from socket buffer to event buffer
-    if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-      evbuffer_free(evbuf);
+    if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
       LOG(ERROR) << "[migrate] Failed to read response, Err: " + std::string(strerror(errno));
       return false;
     }
@@ -481,7 +483,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
       switch (stat_) {
         // Handle single string response
         case ArrayLen: {
-          line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+          UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
           if (!line) {
             LOG(INFO) << "[migrate] Event buffer is empty, read socket again";
             run = false;
@@ -489,12 +491,12 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
           }
 
           if (line[0] == '-') {
-            LOG(ERROR) << "[migrate] Got invalid response: " + std::string(line)
-                << ", line length: " << line_len;
+            LOG(ERROR) << "[migrate] Got invalid response: " + std::string(line.get())
+                << ", line length: " << line.length;
             stat_ = Error;
           } else if (line[0] == '$') {
             try {
-              bulk_len = std::stoull(std::string(line + 1, line_len - 1));
+              bulk_len = std::stoull(std::string(line.get() + 1, line.length - 1));
               stat_ = bulk_len > 0 ? BulkData : OneRspEnd;
             } catch (const std::exception &e) {
               LOG(ERROR) << "[migrate] Protocol Err: expect integer";
@@ -503,22 +505,21 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
           } else if (line[0] == '+' || line[0] == ':') {
               stat_ = OneRspEnd;
           } else {
-            LOG(ERROR) << "[migrate] Unexpected response: " << line;
+            LOG(ERROR) << "[migrate] Unexpected response: " << line.get();
             stat_ = Error;
           }
 
-          free(line);
           break;
         }
         // Handle bulk string response
         case BulkData: {
-          if (evbuffer_get_length(evbuf) < bulk_len + 2) {
+          if (evbuffer_get_length(evbuf.get()) < bulk_len + 2) {
             LOG(INFO) << "[migrate] Bulk data in event buffer is not complete, read socket again";
             run = false;
             break;
           }
           // TODO(chrisZMF): Check tail '\r\n'
-          evbuffer_drain(evbuf, bulk_len + 2);
+          evbuffer_drain(evbuf.get(), bulk_len + 2);
           bulk_len = 0;
           stat_ = OneRspEnd;
           break;
@@ -526,14 +527,12 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
         case OneRspEnd: {
           cnt++;
           if (cnt >= total) {
-            evbuffer_free(evbuf);
             return true;
           }
           stat_ = ArrayLen;
           break;
         }
         case Error: {
-          evbuffer_free(evbuf);
           return false;
         }
         default: break;

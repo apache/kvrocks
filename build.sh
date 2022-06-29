@@ -28,6 +28,7 @@ function usage() {
     echo "--ninja     : use ninja to build kvrocks" >&2
     echo "--gcc       : use gcc/g++ to build kvrocks" >&2
     echo "--clang     : use clang/clang++ to build kvrocks" >&2
+    echo "--ghproxy   : use ghproxy.com to fetch dependencies" >&2
     echo "-h, --help  : print this help messages" >&2
     exit 1
 }
@@ -39,6 +40,7 @@ until [ $# -eq 0 ]; do
         --ninja) USE_NINJA="-G Ninja";;
         --gcc) COMPILER="-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++";;
         --clang) COMPILER="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++";;
+        --ghproxy) USE_GHPROXY="-DDEPS_FETCH_PROXY=https://ghproxy.com/";;
         -j*) JOB_CMD=$1;;
         -*) usage;;
         *) BUILD_DIR=$1;;
@@ -101,7 +103,7 @@ mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 
 set -x
-$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS $USE_NINJA $COMPILER
+$CMAKE_BIN $WORKING_DIR -DCMAKE_BUILD_TYPE=RelWithDebInfo $CMAKE_DEFS $USE_NINJA $COMPILER $USE_GHPROXY
 $CMAKE_BIN --build . $JOB_CMD -t kvrocks kvrocks2redis
 
 if [ -n "$BUILD_UNITTEST" ]; then

@@ -27,7 +27,10 @@ on:
 jobs:
   build-docker-image:
     name: Build Docker Image
-    if: (github.event_name != 'pull_request') || (contains(github.event.pull_request.labels.*.name, 'needs-daily-ci'))
+    if: |
+      (github.event_name != 'pull_request') ||
+      (github.event.action == 'labeled' && github.event.label.name == 'needs-daily-ci') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'needs-daily-ci'))
     runs-on: ubuntu-18.04
     steps:
       - name: Checkout Code Base

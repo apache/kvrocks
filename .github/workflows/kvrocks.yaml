@@ -118,6 +118,7 @@ jobs:
   daily-ci:
     if: contains(github.event.pull_request.labels.*.name, 'need-daily-CI')
     name: Run Daily CI
+    needs: [license, lint]
     uses: ./.github/workflows/daily-ci.yaml
 
   required:

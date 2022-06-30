@@ -17,11 +17,11 @@
 
 include_guard()
 
-include(FetchContent)
+include(cmake/utils.cmake)
 
-FetchContent_Declare(luajit
-  GIT_REPOSITORY https://github.com/xiaobiaozhao/LuaJIT.git
-  GIT_TAG 803487f8b01c672495a2fcd29dcbed09e4fd6319
+FetchContent_DeclareGitHubWithMirror(luajit
+  KvrocksLabs/LuaJIT 803487f8b01c672495a2fcd29dcbed09e4fd6319
+  MD5=cd08841342cd933fb7e3d6d4253fbeec
 )
 
 FetchContent_GetProperties(luajit)

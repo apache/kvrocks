@@ -145,7 +145,16 @@ jobs:
       - name: Run Redis Tcl Test
         run: |
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
-          cd tests/tcl && ./runtest
+          cd tests/tcl
+          ./runtest --dont-clean
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
+          if [[ $SANITIZER_OUTPUT ]]; then
+            echo "$SANITIZER_OUTPUT"
+            echo "\ndetail reports:\n"
+            cat $(find tests/tmp -iname stderr)
+            echo "sanitizer error was reported, exiting..."
+            exit 1
+          fi
 
   required:
     if: always()

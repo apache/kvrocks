@@ -147,7 +147,7 @@ jobs:
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl
           ./runtest --dont-clean
-          SANITIZER_OUTPUT=$(grep Sanitizer tests/tmp -r)
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r)
           echo $SANITIZER_OUTPUT
           if [[ $SANITIZER_OUTPUT ]]; then exit 1; fi
 

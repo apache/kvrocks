@@ -85,6 +85,7 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
+  Lua::DestroyState(lua_);
 }
 
 // Kvrocks threads list:

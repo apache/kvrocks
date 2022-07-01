@@ -54,7 +54,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   cluster_ = std::unique_ptr<Cluster>(new Cluster(this, config_->binds, config_->port));
 
   for (int i = 0; i < config->workers; i++) {
-    auto worker = new Worker(this, config);
+    auto worker = std::unique_ptr<Worker>(new Worker(this, config));
     // multiple workers can't listen to the same unix socket, so
     // listen unix socket only from a single worker - the first one
     if (!config->unixsocket.empty() && i == 0) {
@@ -62,11 +62,10 @@ Server::Server(Engine::Storage *storage, Config *config) :
       if (!s.IsOK()) {
         LOG(ERROR) << "[server] Failed to listen on unix socket: "<< config->unixsocket
                    << ", encounter error: " << s.Msg();
-        delete worker;
         exit(1);
       }
     }
-    worker_threads_.emplace_back(new WorkerThread(worker));
+    worker_threads_.emplace_back(std::unique_ptr<WorkerThread> (new WorkerThread(std::move(worker))));
   }
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
@@ -79,9 +78,6 @@ Server::Server(Engine::Storage *storage, Config *config) :
 }
 
 Server::~Server() {
-  for (const auto &worker_thread : worker_threads_) {
-    delete worker_thread;
-  }
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
@@ -121,7 +117,7 @@ Status Server::Start() {
     }
   }
 
-  for (const auto worker : worker_threads_) {
+  for (const auto& worker : worker_threads_) {
     worker->Start();
   }
   task_runner_.Start();
@@ -175,7 +171,7 @@ Status Server::Start() {
 void Server::Stop() {
   stop_ = true;
   if (replication_thread_) replication_thread_->Stop();
-  for (const auto worker : worker_threads_) {
+  for (const auto& worker : worker_threads_) {
     worker->Stop();
   }
   DisconnectSlaves();
@@ -184,7 +180,7 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  for (const auto worker : worker_threads_) {
+  for (const auto& worker : worker_threads_) {
     worker->Join();
   }
   task_runner_.Join();

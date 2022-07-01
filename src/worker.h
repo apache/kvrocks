@@ -89,16 +89,16 @@ class Worker {
 
 class WorkerThread {
  public:
-  explicit WorkerThread(Worker *worker) : worker_(worker) {}
-  ~WorkerThread() { delete worker_; }
+  explicit WorkerThread(std::unique_ptr<Worker> worker) : worker_(std::move(worker)) {}
+  ~WorkerThread() = default;
   WorkerThread(const WorkerThread&) = delete;
   WorkerThread(WorkerThread&&) = delete;
-  Worker *GetWorker() { return worker_; }
+  Worker *GetWorker() { return worker_.get(); }
   void Start();
   void Stop();
   void Join();
 
  private:
   std::thread t_;
-  Worker *worker_;
+  std::unique_ptr<Worker> worker_;
 };

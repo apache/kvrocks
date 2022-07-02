@@ -28,7 +28,7 @@ FetchContent_GetProperties(luajit)
 if(NOT lua_POPULATED)
   FetchContent_Populate(luajit)
 
-  set(LUA_CFLAGS "-DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  set(LUA_CFLAGS "-fsanitize=address -fsanitize=leak -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()

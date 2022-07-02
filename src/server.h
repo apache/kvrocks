@@ -261,7 +261,7 @@ class Server {
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;
-  std::vector<WorkerThread *> worker_threads_;
+  std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };
 

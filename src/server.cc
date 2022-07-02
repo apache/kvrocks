@@ -54,7 +54,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   cluster_ = std::unique_ptr<Cluster>(new Cluster(this, config_->binds, config_->port));
 
   for (int i = 0; i < config->workers; i++) {
-    auto worker = std::unique_ptr<Worker>(new Worker(this, config));
+    auto worker = Util::MakeUnique<Worker>(this, config);
     // multiple workers can't listen to the same unix socket, so
     // listen unix socket only from a single worker - the first one
     if (!config->unixsocket.empty() && i == 0) {
@@ -65,7 +65,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
         exit(1);
       }
     }
-    worker_threads_.emplace_back(std::unique_ptr<WorkerThread> (new WorkerThread(std::move(worker))));
+    worker_threads_.emplace_back(Util::MakeUnique<WorkerThread>(std::move(worker)));
   }
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);

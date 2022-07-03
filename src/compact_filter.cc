@@ -55,7 +55,7 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
 
   auto db = stor_->GetDB();
   const auto cf_handles = stor_->GetCFHandles();
-  // storage close the would delete the column familiy handler and DB
+  // storage close the would delete the column family handler and DB
   if (!db || cf_handles->size() < 2)  return false;
 
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());

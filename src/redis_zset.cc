@@ -477,7 +477,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
     if (spec.removed) {
       std::string score_bytes = iter->value().ToString();
-      score_bytes.append(member.ToString());
+      score_bytes.append(member.data(), member.size());
       std::string score_key;
       InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
       batch.Delete(score_cf_handle_, score_key);
@@ -538,7 +538,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
     std::string score_bytes;
     s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
     if (s.ok()) {
-      score_bytes.append(member.ToString());
+      score_bytes.append(member.data(), member.size());
       InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
       batch.Delete(member_key);
       batch.Delete(score_cf_handle_, score_key);

@@ -19,17 +19,16 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 #include "test_base.h"
 #include "redis_string.h"
 
 class RedisStringTest : public TestBase {
 protected:
   explicit RedisStringTest() : TestBase() {
-    string = new Redis::String(storage_, "string_ns");
+    string = Util::MakeUnique<Redis::String>(Redis::String(storage_, "string_ns"));
   }
-  ~RedisStringTest() {
-    delete string;
-  }
+  ~RedisStringTest() = default;
   void SetUp() override {
     key_ = "test-string-key";
     pairs_ = {
@@ -43,7 +42,7 @@ protected:
   }
 
 protected:
-  Redis::String *string;
+  std::unique_ptr<Redis::String> string;
   std::vector<StringPair> pairs_;
 };
 

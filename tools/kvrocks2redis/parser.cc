@@ -89,7 +89,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(read_options));
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {
       break;
@@ -137,7 +137,6 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     if (!s.IsOK()) return s;
   }
 
-  delete iter;
   return Status::OK();
 }
 

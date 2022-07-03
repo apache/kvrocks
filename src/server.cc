@@ -1073,16 +1073,13 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   }
   db_compacting_ = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [begin_key, end_key](void *arg) {
-    auto svr = static_cast<Server *>(arg);
+  Task task = [begin_key, end_key, this] {
     Slice *begin = nullptr, *end = nullptr;
     if (!begin_key.empty()) begin = new Slice(begin_key);
     if (!end_key.empty()) end = new Slice(end_key);
-    svr->storage_->Compact(begin, end);
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_compacting_ = false;
+    storage_->Compact(begin, end);
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    db_compacting_ = false;
     delete begin;
     delete end;
   };
@@ -1096,29 +1093,23 @@ Status Server::AsyncBgsaveDB() {
   }
   is_bgsave_in_progress_ = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [](void *arg) {
-    auto svr = static_cast<Server*>(arg);
+  Task task = [this] {
     auto start_bgsave_time = std::time(nullptr);
-    Status s = svr->storage_->CreateBackup();
+    Status s = storage_->CreateBackup();
     auto stop_bgsave_time = std::time(nullptr);
 
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->is_bgsave_in_progress_ = false;
-    svr->last_bgsave_time_ = static_cast<int>(start_bgsave_time);
-    svr->last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    svr->last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    is_bgsave_in_progress_ = false;
+    last_bgsave_time_ = static_cast<int>(start_bgsave_time);
+    last_bgsave_status_ = s.IsOK() ? "ok" : "err";
+    last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
   };
   return task_runner_.Publish(task);
 }
 
 Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  Task task;
-  task.arg = this;
-  task.callback = [num_backups_to_keep, backup_max_keep_hours](void *arg) {
-    auto svr = static_cast<Server *>(arg);
-    svr->storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
+  Task task = [num_backups_to_keep, backup_max_keep_hours, this] {
+    storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
   };
   return task_runner_.Publish(task);
 }
@@ -1134,18 +1125,15 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   }
   db_scan_infos_[ns].is_scanning = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [ns](void *arg) {
-    auto svr = static_cast<Server*>(arg);
-    Redis::Database db(svr->storage_, ns);
+  Task task = [ns, this] {
+    Redis::Database db(storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_scan_infos_[ns].key_num_stats = stats;
-    time(&svr->db_scan_infos_[ns].last_scan_time);
-    svr->db_scan_infos_[ns].is_scanning = false;
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    db_scan_infos_[ns].key_num_stats = stats;
+    time(&db_scan_infos_[ns].last_scan_time);
+    db_scan_infos_[ns].is_scanning = false;
   };
   return task_runner_.Publish(task);
 }

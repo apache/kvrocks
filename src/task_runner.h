@@ -30,10 +30,7 @@
 
 #include "status.h"
 
-struct Task {
-  std::function<void(void*)> callback;
-  void *arg;
-};
+using Task = std::function<void()>;
 
 class TaskRunner {
  public:

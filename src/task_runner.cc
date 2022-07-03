@@ -78,7 +78,7 @@ void TaskRunner::run() {
       task = task_queue_.front();
       task_queue_.pop_front();
       lock.unlock();
-      if (task.callback) task.callback(task.arg);
+      if (task) task();
       lock.lock();
     }
   }

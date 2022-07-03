@@ -23,7 +23,7 @@
 #include <thread>
 #include "util.h"
 
-Status TaskRunner::Publish(Task task) {
+Status TaskRunner::Publish(const Task &task) {
   mu_.lock();
   if (stop_) {
     mu_.unlock();

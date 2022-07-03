@@ -233,11 +233,14 @@ RedisType Metadata::Type() const {
 
 int32_t Metadata::TTL() const {
   int64_t now;
+  if (expire <= 0) {
+    return -1;
+  }
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  if (expire != 0 && expire < now) {
+  if (expire < now) {
     return -2;
   }
-  return expire <= 0 ? -1 : int32_t (expire - now);
+  return int32_t (expire - now);
 }
 
 timeval Metadata::Time() const {
@@ -247,12 +250,15 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::Expired() const {
-  int64_t now;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
-  if (expire > 0 && expire < now) {
+  if (Type() != kRedisString && size == 0) {
     return true;
   }
-  return Type() != kRedisString && size == 0;
+  if (expire <= 0) {
+    return false;
+  }
+  int64_t now;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
+  return expire < now;
 }
 
 ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
@@ -280,5 +286,5 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
     GetFixed64(&input, &head);
     GetFixed64(&input, &tail);
   }
-  return rocksdb::Status();
+  return rocksdb::Status::OK();
 }

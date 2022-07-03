@@ -117,7 +117,7 @@ Status Server::Start() {
     }
   }
 
-  for (const auto& worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Start();
   }
   task_runner_.Start();
@@ -171,7 +171,7 @@ Status Server::Start() {
 void Server::Stop() {
   stop_ = true;
   if (replication_thread_) replication_thread_->Stop();
-  for (const auto& worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Stop();
   }
   DisconnectSlaves();
@@ -180,7 +180,7 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  for (const auto& worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Join();
   }
   task_runner_.Join();

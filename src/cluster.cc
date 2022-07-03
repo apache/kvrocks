@@ -507,7 +507,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   nodes->clear();
 
   // Parse all nodes
-  for (const auto& node_str : nodes_info) {
+  for (const auto &node_str : nodes_info) {
     std::vector<std::string> fields = Util::Split(node_str, " ");
     if (fields.size() < 5) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");

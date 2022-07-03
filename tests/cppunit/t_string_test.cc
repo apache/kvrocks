@@ -75,7 +75,7 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   string->MSet(pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
-  for (const auto pair : pairs_) {
+  for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
   string->MGet(keys, &values);
@@ -178,7 +178,7 @@ TEST_F(RedisStringTest, MSetNX) {
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
-  for (const auto pair : pairs_) {
+  for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
   string->MGet(keys, &values);

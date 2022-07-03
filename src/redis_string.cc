@@ -340,7 +340,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.ToString());
+    bytes.append(pair.value.data(), pair.value.size());
     rocksdb::WriteBatch batch;
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());
@@ -383,7 +383,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.ToString());
+    bytes.append(pair.value.data(), pair.value.size());
     rocksdb::WriteBatch batch;
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());

@@ -85,7 +85,6 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
-  Lua::DestroyState(lua_);
 }
 
 // Kvrocks threads list:
@@ -175,6 +174,7 @@ Status Server::Start() {
 
 void Server::Stop() {
   stop_ = true;
+  Lua::DestroyState(lua_);
   if (replication_thread_) replication_thread_->Stop();
   for (const auto worker : worker_threads_) {
     worker->Stop();

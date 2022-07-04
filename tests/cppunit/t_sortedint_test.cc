@@ -26,7 +26,7 @@
 class RedisSortedintTest : public TestBase {
 protected:
   explicit RedisSortedintTest() : TestBase() {
-    sortedint = Util::MakeUnique<Redis::Sortedint>(Redis::Sortedint(storage_, "sortedint_ns"));
+    sortedint = Util::MakeUnique<Redis::Sortedint>(storage_, "sortedint_ns");
   }
   ~RedisSortedintTest() = default;
   void SetUp() override {

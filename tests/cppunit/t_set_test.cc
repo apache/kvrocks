@@ -26,7 +26,7 @@
 class RedisSetTest : public TestBase {
 protected:
   explicit RedisSetTest() : TestBase() {
-    set = Util::MakeUnique<Redis::Set>(Redis::Set(storage_, "set_ns"));
+    set = Util::MakeUnique<Redis::Set>(storage_, "set_ns");
   }
   ~RedisSetTest() = default;
   void SetUp() override {

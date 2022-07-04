@@ -26,7 +26,7 @@
 class CronTest : public testing::Test {
  protected:
   explicit CronTest() {
-    cron = Util::MakeUnique<Cron>(Cron());
+    cron = Util::MakeUnique<Cron>();
     std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
     cron->SetScheduleTime(schedule);
   }

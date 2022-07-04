@@ -27,7 +27,7 @@
 class RedisGeoTest : public TestBase {
  protected:
   RedisGeoTest() : TestBase() {
-    geo = Util::MakeUnique<Redis::Geo>(Redis::Geo(storage_, "geo_ns"));
+    geo = Util::MakeUnique<Redis::Geo>(storage_, "geo_ns");
   }
   ~RedisGeoTest() = default;
   void SetUp() {

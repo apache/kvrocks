@@ -56,8 +56,7 @@ TEST(TaskRunner, Run) {
   Status s;
   Task t;
   for(int i = 0; i < 100; i++) {
-    t.callback = [](void *arg){auto ptr = (std::atomic<int>*)arg; ptr->fetch_add(1);};
-    t.arg = (void*) &counter;
+    t = [&counter]{counter.fetch_add(1);};
     s = tr.Publish(t);
     ASSERT_TRUE(s.IsOK());
   }

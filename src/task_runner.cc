@@ -23,7 +23,7 @@
 #include <thread>
 #include "util.h"
 
-Status TaskRunner::Publish(Task task) {
+Status TaskRunner::Publish(const Task &task) {
   mu_.lock();
   if (stop_) {
     mu_.unlock();
@@ -78,7 +78,7 @@ void TaskRunner::run() {
       task = task_queue_.front();
       task_queue_.pop_front();
       lock.unlock();
-      if (task.callback) task.callback(task.arg);
+      if (task) task();
       lock.lock();
     }
   }

@@ -131,7 +131,6 @@ bool InternalKey::operator==(const InternalKey &that) const {
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded) {
   uint8_t namespace_size;
   GetFixed8(&ns_key, &namespace_size);
-
   *ns = ns_key.ToString().substr(0, namespace_size);
   ns_key.remove_prefix(namespace_size);
 
@@ -147,21 +146,21 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->clear();
 
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
-  ns_key->append(ns.ToString());
+  ns_key->append(ns.data(), ns.size());
 
   if (slot_id_encoded) {
     auto slot_id = GetSlotNumFromKey(key.ToString());
     PutFixed16(ns_key, slot_id);
   }
 
-  ns_key->append(key.ToString());
+  ns_key->append(key.data(), key.size());
 }
 
 void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
   output->clear();
 
   PutFixed8(output, static_cast<uint8_t>(ns.size()));
-  output->append(ns.ToString());
+  output->append(ns.data(), ns.size());
 
   PutFixed16(output, static_cast<uint16_t>(slotid));
 }

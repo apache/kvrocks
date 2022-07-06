@@ -60,15 +60,47 @@ jobs:
     name: Build and test
     needs: [license, lint]
     strategy:
+      fail-fast: false
       matrix:
         include:
+          - name: Darwin Clang
+            os: macos-latest
+          - name: Darwin Clang without Jemalloc
+            os: macos-latest
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Ubuntu GCC
             os: ubuntu-18.04
           - name: Ubuntu Clang
             os: ubuntu-18.04
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          - name: macOS AppleClang
-            os: macos-latest
+          - name: Ubuntu GCC ASan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+          # - name: Ubuntu GCC TSan
+          #   os: ubuntu-18.04
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          - name: Ubuntu GCC without Jemalloc
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Ubuntu Clang ASan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          # - name: Ubuntu Clang TSan
+          #   os: ubuntu-18.04
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          #   clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Ubuntu Clang without Jemalloc
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Ubuntu GCC Ninja
+            os: ubuntu-18.04
+            with_ninja: --ninja
+          - name: Ubuntu GCC Ninja without Jemalloc
+            os: ubuntu-18.04
+            with_ninja: --ninja
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -90,7 +122,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.5
+          sudo apt install -y tcl8.5 ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis
@@ -105,7 +137,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Build Kvrocks
-        run: ./build.sh build -j$NPROC --unittest ${{ matrix.clang }}
+        run: ./build.sh build -j$NPROC --unittest ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
 
       - name: Run Unit Test
         run: ./build/unittest
@@ -113,7 +145,16 @@ jobs:
       - name: Run Redis Tcl Test
         run: |
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
-          cd tests/tcl && ./runtest
+          cd tests/tcl
+          ./runtest --dont-clean
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
+          if [[ $SANITIZER_OUTPUT ]]; then
+            echo "$SANITIZER_OUTPUT"
+            echo "\ndetail reports:\n"
+            cat $(find tests/tmp -iname stderr)
+            echo "sanitizer error was reported, exiting..."
+            exit 1
+          fi
 
   required:
     if: always()

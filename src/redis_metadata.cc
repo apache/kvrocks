@@ -131,7 +131,6 @@ bool InternalKey::operator==(const InternalKey &that) const {
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded) {
   uint8_t namespace_size;
   GetFixed8(&ns_key, &namespace_size);
-
   *ns = ns_key.ToString().substr(0, namespace_size);
   ns_key.remove_prefix(namespace_size);
 
@@ -147,21 +146,21 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->clear();
 
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
-  ns_key->append(ns.ToString());
+  ns_key->append(ns.data(), ns.size());
 
   if (slot_id_encoded) {
     auto slot_id = GetSlotNumFromKey(key.ToString());
     PutFixed16(ns_key, slot_id);
   }
 
-  ns_key->append(key.ToString());
+  ns_key->append(key.data(), key.size());
 }
 
 void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
   output->clear();
 
   PutFixed8(output, static_cast<uint8_t>(ns.size()));
-  output->append(ns.ToString());
+  output->append(ns.data(), ns.size());
 
   PutFixed16(output, static_cast<uint16_t>(slotid));
 }
@@ -233,11 +232,14 @@ RedisType Metadata::Type() const {
 
 int32_t Metadata::TTL() const {
   int64_t now;
+  if (expire <= 0) {
+    return -1;
+  }
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  if (expire != 0 && expire < now) {
+  if (expire < now) {
     return -2;
   }
-  return expire <= 0 ? -1 : int32_t (expire - now);
+  return int32_t (expire - now);
 }
 
 timeval Metadata::Time() const {
@@ -247,12 +249,15 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::Expired() const {
-  int64_t now;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
-  if (expire > 0 && expire < now) {
+  if (Type() != kRedisString && size == 0) {
     return true;
   }
-  return Type() != kRedisString && size == 0;
+  if (expire <= 0) {
+    return false;
+  }
+  int64_t now;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
+  return expire < now;
 }
 
 ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
@@ -280,5 +285,5 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
     GetFixed64(&input, &head);
     GetFixed64(&input, &tail);
   }
-  return rocksdb::Status();
+  return rocksdb::Status::OK();
 }

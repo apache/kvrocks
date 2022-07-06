@@ -262,7 +262,7 @@ void Config::initFieldValidator() {
         return Status::OK();
       }},
   };
-  for (const auto& iter : validators) {
+  for (const auto &iter : validators) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
       field_iter->second->validate = iter.second;
@@ -479,7 +479,7 @@ void Config::initFieldCallback() {
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb}
   };
-  for (const auto& iter : callbacks) {
+  for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
       field_iter->second->callback = iter.second;

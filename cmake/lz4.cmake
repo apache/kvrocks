@@ -28,11 +28,12 @@ FetchContent_GetProperties(lz4)
 if(NOT lz4_POPULATED)
   FetchContent_Populate(lz4)
 
+  set(LZ4_CFLAGS "${CMAKE_C_FLAGS}")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
+    set(LZ4_CFLAGS "${LZ4_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
   
-  add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
+  add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} CFLAGS=${LZ4_CFLAGS} LDFLAGS=${CMAKE_EXE_LINKER_FLAGS} liblz4.a
     WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
     BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
   )

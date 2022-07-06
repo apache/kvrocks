@@ -101,6 +101,9 @@ jobs:
             os: ubuntu-18.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Ubuntu GCC without luajit
+            os: ubuntu-18.04
+            without_luajit: -DUSE_LUAJIT=OFF
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -117,7 +120,7 @@ jobs:
         run: |
           brew install cmake gcc autoconf automake libtool
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-      
+
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |

@@ -30,7 +30,13 @@
 #include <memory>
 #include <unordered_map>
 
+#ifdef USE_LUAJIT
 #include <lua.hpp>
+#else
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
+#endif
 
 #include "stats.h"
 #include "storage.h"

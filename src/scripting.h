@@ -23,7 +23,13 @@
 #include <string>
 #include <vector>
 
+#ifdef USE_LUAJIT
 #include <lua.hpp>
+#else
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
+#endif
 
 #include "status.h"
 #include "redis_connection.h"

@@ -38,7 +38,7 @@ if(NOT lua_POPULATED)
     set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=11.0")
   endif()
 
-  add_custom_target(make_luajit COMMAND make libluajit.a
+  add_custom_target(make_luajit COMMAND make -j$NPROC libluajit.a
     "CFLAGS=${LUA_CFLAGS}"
     ${MACOSX_TARGET}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src

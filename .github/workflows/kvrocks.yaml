@@ -76,9 +76,9 @@ jobs:
           - name: Ubuntu GCC ASan
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
-          # - name: Ubuntu GCC TSan
-          #   os: ubuntu-18.04
-          #   with_sanitizer: -DENABLE_TSAN=ON
+          - name: Ubuntu GCC TSan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
           - name: Ubuntu GCC without Jemalloc
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -86,10 +86,10 @@ jobs:
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
             clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          # - name: Ubuntu Clang TSan
-          #   os: ubuntu-18.04
-          #   with_sanitizer: -DENABLE_TSAN=ON
-          #   clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          - name: Ubuntu Clang TSan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+            clang: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           - name: Ubuntu Clang without Jemalloc
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON

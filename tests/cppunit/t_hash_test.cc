@@ -19,17 +19,16 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 
 #include "test_base.h"
 #include "redis_hash.h"
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {
-    hash = new Redis::Hash(storage_, "hash_ns");
+    hash = Util::MakeUnique<Redis::Hash>(storage_, "hash_ns");
   }
-  ~RedisHashTest() {
-    delete hash;
-  }
+  ~RedisHashTest() = default;
   void SetUp() override {
     key_ = "test_hash->key";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
@@ -39,7 +38,7 @@ protected:
   }
 
 protected:
-  Redis::Hash *hash;
+  std::unique_ptr<Redis::Hash> hash;
 };
 
 TEST_F(RedisHashTest, GetAndSet) {

@@ -38,7 +38,7 @@ TEST(Compact, Filter) {
 
   int ret;
   std::string ns = "test_compact";
-  auto hash = new Redis::Hash(storage_.get(), ns);
+  auto hash = Util::MakeUnique<Redis::Hash>(storage_.get(), ns);
   std::string expired_hash_key = "expire_hash_key";
   std::string live_hash_key = "live_hash_key";
   hash->Set(expired_hash_key, "f1", "v1", &ret);
@@ -71,9 +71,8 @@ TEST(Compact, Filter) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
-  delete hash;
 
-  auto zset = new Redis::ZSet(storage_.get(), ns);
+  auto zset = Util::MakeUnique<Redis::ZSet>(storage_.get(), ns);
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores =  {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, 0, &member_scores, &ret);
@@ -95,6 +94,4 @@ TEST(Compact, Filter) {
   }
 
   db->ReleaseSnapshot(read_options.snapshot);
-
-  delete zset;
 }

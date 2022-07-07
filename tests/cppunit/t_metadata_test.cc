@@ -22,6 +22,7 @@
 #include "redis_hash.h"
 #include "test_base.h"
 #include <gtest/gtest.h>
+#include <memory>
 
 TEST(InternalKey, EncodeAndDecode) {
   Slice key = "test-metadata-key";
@@ -66,19 +67,16 @@ TEST(Metadata, EncodeAndDeocde) {
 class RedisTypeTest : public TestBase {
 public:
   RedisTypeTest() :TestBase() {
-    redis = new Redis::Database(storage_, "default_ns");
-    hash = new Redis::Hash(storage_, "default_ns");
+    redis = Util::MakeUnique<Redis::Database>(storage_, "default_ns");
+    hash = Util::MakeUnique<Redis::Hash>(storage_, "default_ns");
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_  = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
   }
-  ~RedisTypeTest() {
-    delete redis;
-    delete hash;
-  }
+  ~RedisTypeTest() = default;
 protected:
-  Redis::Database *redis;
-  Redis::Hash *hash;
+  std::unique_ptr<Redis::Database> redis;
+  std::unique_ptr<Redis::Hash> hash;
 };
 
 TEST_F(RedisTypeTest, GetMetadata) {

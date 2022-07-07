@@ -19,18 +19,16 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 #include "test_base.h"
 #include "redis_zset.h"
 
 class RedisZSetTest : public TestBase {
 protected:
   RedisZSetTest() : TestBase() {
-    zset = new Redis::ZSet(storage_, "zset_ns"
-    );
+    zset = Util::MakeUnique<Redis::ZSet>(storage_, "zset_ns");
   }
-  ~RedisZSetTest() {
-    delete zset;
-  }
+  ~RedisZSetTest() = default;
   void SetUp() {
     key_ = "test_zset_key";
     fields_ = {"zset_test_key-1", "zset_test_key-2", "zset_test_key-3", "zset_test_key-4", "zset_test_key-5",
@@ -40,7 +38,7 @@ protected:
 
 protected:
   std::vector<double> scores_;
-  Redis::ZSet *zset;
+  std::unique_ptr<Redis::ZSet> zset;
 };
 
 TEST_F(RedisZSetTest, Add) {

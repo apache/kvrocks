@@ -21,15 +21,14 @@
 #include "test_base.h"
 #include "redis_list.h"
 #include <gtest/gtest.h>
+#include <memory>
 
 class RedisListTest : public TestBase {
 protected:
   explicit RedisListTest():TestBase() {
-    list = new Redis::List(storage_, "list_ns");
+    list = Util::MakeUnique<Redis::List>(storage_, "list_ns");
   }
-  ~RedisListTest() {
-    delete list;
-  }
+  ~RedisListTest() = default;
   void SetUp() override {
     key_ = "test-list-key";
     fields_ = {
@@ -41,7 +40,7 @@ protected:
   }
 
 protected:
-  Redis::List *list;
+  std::unique_ptr<Redis::List> list;
 };
 
 class RedisListSpecificTest : public RedisListTest {

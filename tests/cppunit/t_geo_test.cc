@@ -20,18 +20,16 @@
 
 #include <gtest/gtest.h>
 #include <math.h>
+#include <memory>
 #include "test_base.h"
 #include "redis_geo.h"
 
 class RedisGeoTest : public TestBase {
  protected:
   RedisGeoTest() : TestBase() {
-    geo = new Redis::Geo(storage_, "geo_ns"
-    );
+    geo = Util::MakeUnique<Redis::Geo>(storage_, "geo_ns");
   }
-  ~RedisGeoTest() {
-    delete geo;
-  }
+  ~RedisGeoTest() = default;
   void SetUp() {
     key_ = "test_geo_key";
     fields_ = {"geo_test_key-1", "geo_test_key-2", "geo_test_key-3", "geo_test_key-4", "geo_test_key-5",
@@ -46,7 +44,7 @@ class RedisGeoTest : public TestBase {
   std::vector<double> longitudes_;
   std::vector<double> latitudes_;
   std::vector<std::string> geoHashes_;
-  Redis::Geo *geo;
+  std::unique_ptr<Redis::Geo> geo;
 };
 
 TEST_F(RedisGeoTest, Add) {

@@ -19,6 +19,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 
 #include "test_base.h"
 #include "redis_bitmap.h"
@@ -26,18 +27,16 @@
 class RedisBitmapTest : public TestBase {
  protected:
   explicit RedisBitmapTest() : TestBase() {
-    bitmap = new Redis::Bitmap(storage_, "bitmap_ns");
+    bitmap = Util::MakeUnique<Redis::Bitmap>(storage_, "bitmap_ns");
   }
-  ~RedisBitmapTest() {
-    delete bitmap;
-  }
+  ~RedisBitmapTest() = default;
   void SetUp() override {
     key_ = "test_bitmap_key";
   }
   void TearDown() override {}
 
  protected:
-  Redis::Bitmap *bitmap;
+  std::unique_ptr<Redis::Bitmap> bitmap;
 };
 
 TEST_F(RedisBitmapTest, GetAndSetBit) {

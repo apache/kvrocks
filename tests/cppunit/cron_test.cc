@@ -19,21 +19,21 @@
  */
 
 #include "cron.h"
+#include "util.h"
 #include <gtest/gtest.h>
+#include <memory>
 
 class CronTest : public testing::Test {
  protected:
   explicit CronTest() {
-    cron = new Cron();
+    cron = Util::MakeUnique<Cron>();
     std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
     cron->SetScheduleTime(schedule);
   }
-  ~CronTest() {
-    delete cron;
-  }
+  ~CronTest() = default;
 
  protected:
-  Cron *cron;
+  std::unique_ptr<Cron> cron;
 };
 
 TEST_F(CronTest, IsTimeMatch) {

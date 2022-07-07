@@ -19,24 +19,23 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 #include "redis_set.h"
 #include "test_base.h"
 
 class RedisSetTest : public TestBase {
 protected:
   explicit RedisSetTest() : TestBase() {
-    set = new Redis::Set(storage_, "set_ns");
+    set = Util::MakeUnique<Redis::Set>(storage_, "set_ns");
   }
-  ~RedisSetTest() {
-    delete set;
-  }
+  ~RedisSetTest() = default;
   void SetUp() override {
     key_ = "test-set-key";
     fields_ = {"set-key-1", "set-key-2", "set-key-3", "set-key-4"};
   }
 
 protected:
-  Redis::Set *set;
+  std::unique_ptr<Redis::Set> set;
 };
 
 TEST_F(RedisSetTest, AddAndRemove) {

@@ -140,7 +140,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Build Kvrocks
-        run: ./build.sh build -j$NPROC --unittest ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
+        run: ./build.sh build -j$NPROC --unittest ${{ matrix.clang }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
 
       - name: Run Unit Test
         run: ./build/unittest

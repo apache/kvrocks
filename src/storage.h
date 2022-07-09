@@ -68,9 +68,9 @@ class Storage {
   Status OpenForReadOnly();
   void CloseDB();
   void EmptyDB();
-  void InitTableOptions(rocksdb::BlockBasedTableOptions *table_options);
+  rocksdb::BlockBasedTableOptions InitTableOptions();
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
-  void InitOptions(rocksdb::Options *options);
+  rocksdb::Options InitOptions();
   Status SetColumnFamilyOption(const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);

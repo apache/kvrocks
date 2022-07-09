@@ -345,9 +345,11 @@ Status Worker::Reply(int fd, const std::string &reply) {
 }
 
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {
-  std::lock_guard<std::mutex> guard(conns_mu_);
-  conns_.erase(conn->GetFD());
-  monitor_conns_[conn->GetFD()] = conn;
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    conns_.erase(conn->GetFD());
+    monitor_conns_[conn->GetFD()] = conn;
+  }
   svr_->IncrMonitorClientNum();
   conn->EnableFlag(Redis::Connection::kMonitor);
 }
@@ -402,23 +404,26 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr,
 }
 
 void Worker::KickoutIdleClients(int timeout) {
-  std::lock_guard<std::mutex> guard(conns_mu_);
   std::list<std::pair<int, uint64_t>> to_be_killed_conns;
-  if (conns_.empty()) {
-    return;
-  }
-  int iterations = std::min(static_cast<int>(conns_.size()), 50);
-  auto iter = conns_.upper_bound(last_iter_conn_fd);
-  while (iterations--) {
-    if (iter == conns_.end()) iter = conns_.begin();
-    if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
-      to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    if (conns_.empty()) {
+      return;
     }
-    iter++;
+    int iterations = std::min(static_cast<int>(conns_.size()), 50);
+    auto iter = conns_.upper_bound(last_iter_conn_fd);
+    while (iterations--) {
+      if (iter == conns_.end())
+        iter = conns_.begin();
+      if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
+        to_be_killed_conns.emplace_back(
+            std::make_pair(iter->first, iter->second->GetID()));
+      }
+      iter++;
+    }
+    iter--;
+    last_iter_conn_fd = iter->first;
   }
-  iter--;
-  last_iter_conn_fd = iter->first;
-
   for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
   }

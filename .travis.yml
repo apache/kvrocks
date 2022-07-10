@@ -22,6 +22,7 @@ arch:
   - arm64
 
 os: linux
+dist: focal
 
 services:
   - docker

@@ -27,10 +27,6 @@ on:
 jobs:
   build-docker-image:
     name: Build Docker Image
-    if: |
-      (github.event_name != 'pull_request') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'needs-daily-ci') ||
-      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'needs-daily-ci'))
     runs-on: ubuntu-18.04
     steps:
       - name: Checkout Code Base
@@ -39,13 +35,5 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
 
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v1
-
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
-
-      - name: Build Docker Image
-        run: |
-          docker buildx build --platform linux/amd64,linux/arm64 .

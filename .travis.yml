@@ -26,9 +26,5 @@ os: linux
 services:
   - docker
 
-compiler:
-  - gcc
-  - clang
-
 script:
-  - docker buildx inspect
+  - docker build .

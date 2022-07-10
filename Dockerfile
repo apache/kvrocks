@@ -17,6 +17,10 @@
 
 FROM ubuntu:focal as build
 
+# workaround tzdata install hanging
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 RUN apt update
 RUN apt install -y cmake make git autoconf libtool g++
 WORKDIR /kvrocks

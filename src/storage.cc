@@ -93,17 +93,19 @@ void Storage::CloseDB() {
   db_ = nullptr;
 }
 
-void Storage::InitTableOptions(rocksdb::BlockBasedTableOptions *table_options) {
-  table_options->format_version = 5;
-  table_options->index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
-  table_options->filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
-  table_options->partition_filters = true;
-  table_options->optimize_filters_for_memory = true;
-  table_options->metadata_block_size = 4096;
-  table_options->data_block_index_type =
+rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
+  rocksdb::BlockBasedTableOptions table_options;
+  table_options.format_version = 5;
+  table_options.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+  table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+  table_options.partition_filters = true;
+  table_options.optimize_filters_for_memory = true;
+  table_options.metadata_block_size = 4096;
+  table_options.data_block_index_type =
    rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
-  table_options->data_block_hash_table_util_ratio = 0.75;
-  table_options->block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  table_options.data_block_hash_table_util_ratio = 0.75;
+  table_options.block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  return table_options;
 }
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
@@ -116,59 +118,62 @@ void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100.0;
 }
 
-void Storage::InitOptions(rocksdb::Options *options) {
-  options->create_if_missing = true;
-  options->create_missing_column_families = true;
+rocksdb::Options Storage::InitOptions() {
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  options.create_missing_column_families = true;
   // options.IncreaseParallelism(2);
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
-  options->statistics = rocksdb::CreateDBStatistics();
-  options->stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
-  options->max_open_files = config_->RocksDB.max_open_files;
-  options->compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
-  options->max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
-  options->max_background_flushes = config_->RocksDB.max_background_flushes;
-  options->max_background_compactions = config_->RocksDB.max_background_compactions;
-  options->max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
-  options->min_write_buffer_number_to_merge = 2;
-  options->write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
-  options->num_levels = 7;
-  options->compression_per_level.resize(options->num_levels);
+  options.statistics = rocksdb::CreateDBStatistics();
+  options.stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
+  options.max_open_files = config_->RocksDB.max_open_files;
+  options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
+  options.max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
+  options.max_background_flushes = config_->RocksDB.max_background_flushes;
+  options.max_background_compactions = config_->RocksDB.max_background_compactions;
+  options.max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
+  options.min_write_buffer_number_to_merge = 2;
+  options.write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
+  options.num_levels = 7;
+  options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
-  for (int i = 0; i < options->num_levels; ++i) {
+  for (int i = 0; i < options.num_levels; ++i) {
     if (i < 2) {
-      options->compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
+      options.compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
     } else {
-      options->compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+      options.compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
     }
   }
   if (config_->RocksDB.row_cache_size) {
-    options->row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
+    options.row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
   }
-  options->enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
-  options->target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
-  options->max_manifest_file_size = 64 * MiB;
-  options->max_log_file_size = 256 * MiB;
-  options->keep_log_file_num = 12;
-  options->WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
-  options->WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
-  options->max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
-  options->listeners.emplace_back(new EventListener(this));
-  options->dump_malloc_stats = true;
+  options.enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
+  options.target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
+  options.max_manifest_file_size = 64 * MiB;
+  options.max_log_file_size = 256 * MiB;
+  options.keep_log_file_num = 12;
+  options.WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
+  options.WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
+  options.max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
+  options.listeners.emplace_back(new EventListener(this));
+  options.dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
-  options->sst_file_manager = sst_file_manager_;
+  options.sst_file_manager = sst_file_manager_;
   uint64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = static_cast<uint64_t>(config_->max_io_mb);
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
-  options->rate_limiter = rate_limiter_;
-  options->delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
-  options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
-  options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
-  options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
-  options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
-  options->max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
-  options->max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
-  options->level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
+  options.rate_limiter = rate_limiter_;
+  options.delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
+  options.compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
+  options.level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
+  options.level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+  options.level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
+  options.max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
+  options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
+  options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
+
+  return options;
 }
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
@@ -234,8 +239,7 @@ Status Storage::Open(bool read_only) {
   size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
 
-  rocksdb::Options options;
-  InitOptions(&options);
+  rocksdb::Options options = InitOptions();
   CreateColumnFamilies(options);
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
@@ -244,8 +248,7 @@ Status Storage::Open(bool read_only) {
     shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
   }
 
-  rocksdb::BlockBasedTableOptions metadata_table_opts;
-  InitTableOptions(&metadata_table_opts);
+  rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
   metadata_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
@@ -263,8 +266,7 @@ Status Storage::Open(bool read_only) {
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
   SetBlobDB(&metadata_opts);
 
-  rocksdb::BlockBasedTableOptions subkey_table_opts;
-  InitTableOptions(&subkey_table_opts);
+  rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
   subkey_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
@@ -278,16 +280,14 @@ Status Storage::Open(bool read_only) {
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
   SetBlobDB(&subkey_opts);
 
-  rocksdb::BlockBasedTableOptions pubsub_table_opts;
-  InitTableOptions(&pubsub_table_opts);
+  rocksdb::BlockBasedTableOptions pubsub_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
   pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   SetBlobDB(&pubsub_opts);
 
-  rocksdb::BlockBasedTableOptions propagate_table_opts;
-  InitTableOptions(&propagate_table_opts);
+  rocksdb::BlockBasedTableOptions propagate_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions propagate_opts(options);
   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
   propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();

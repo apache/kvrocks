@@ -72,9 +72,8 @@ TEST(StringUtil, Split) {
 }
 
 TEST(StringUtil, TokenizeRedisProtocol) {
-  std::vector<std::string> array;
   std::vector<std::string> expected = {"this", "is", "a", "test"};
-  Util::TokenizeRedisProtocol("*4\r\n$4\r\nthis\r\n$2\r\nis\r\n$1\r\na\r\n$4\r\ntest\r\n", &array);
+  auto array = Util::TokenizeRedisProtocol("*4\r\n$4\r\nthis\r\n$2\r\nis\r\n$1\r\na\r\n$4\r\ntest\r\n");
   ASSERT_EQ(expected, array);
 }
 

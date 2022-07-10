@@ -19,24 +19,23 @@
  */
 
 #include <gtest/gtest.h>
+#include <memory>
 #include "redis_sortedint.h"
 #include "test_base.h"
 
 class RedisSortedintTest : public TestBase {
 protected:
   explicit RedisSortedintTest() : TestBase() {
-    sortedint = new Redis::Sortedint(storage_, "sortedint_ns");
+    sortedint = Util::MakeUnique<Redis::Sortedint>(storage_, "sortedint_ns");
   }
-  ~RedisSortedintTest() {
-    delete sortedint;
-  }
+  ~RedisSortedintTest() = default;
   void SetUp() override {
     key_ = "test-sortedint-key";
     ids_ = {1, 2, 3, 4};
   }
 
 protected:
-  Redis::Sortedint *sortedint;
+  std::unique_ptr<Redis::Sortedint> sortedint;
   std::vector<uint64_t > ids_;
 };
 

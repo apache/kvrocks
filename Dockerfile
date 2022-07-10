@@ -26,7 +26,7 @@ RUN apt install -y cmake make git autoconf libtool g++
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./build.sh
+RUN ./build.sh build
 
 FROM ubuntu:focal
 

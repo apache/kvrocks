@@ -39,7 +39,7 @@ if(NOT lua_POPULATED)
     BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
   )
 
-  file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h")
+  file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h" "${lua_SOURCE_DIR}/src/*.hpp")
   file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_BINARY_DIR}/include)
 endif()
 

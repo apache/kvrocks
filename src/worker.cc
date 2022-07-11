@@ -345,10 +345,11 @@ Status Worker::Reply(int fd, const std::string &reply) {
 }
 
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {
-  conns_mu_.lock();
-  conns_.erase(conn->GetFD());
-  monitor_conns_[conn->GetFD()] = conn;
-  conns_mu_.unlock();
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    conns_.erase(conn->GetFD());
+    monitor_conns_[conn->GetFD()] = conn;
+  }
   svr_->IncrMonitorClientNum();
   conn->EnableFlag(Redis::Connection::kMonitor);
 }
@@ -384,7 +385,7 @@ std::string Worker::GetClientsStr() {
 
 void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr,
                         uint64_t type, bool skipme, int64_t *killed) {
-  conns_mu_.lock();
+  std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &iter : conns_) {
     Redis::Connection* conn = iter.second;
     if (skipme && self == conn) continue;
@@ -400,29 +401,29 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr,
       (*killed)++;
     }
   }
-  conns_mu_.unlock();
 }
 
 void Worker::KickoutIdleClients(int timeout) {
-  conns_mu_.lock();
   std::list<std::pair<int, uint64_t>> to_be_killed_conns;
-  if (conns_.empty()) {
-    conns_mu_.unlock();
-    return;
-  }
-  int iterations = std::min(static_cast<int>(conns_.size()), 50);
-  auto iter = conns_.upper_bound(last_iter_conn_fd);
-  while (iterations--) {
-    if (iter == conns_.end()) iter = conns_.begin();
-    if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
-      to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    if (conns_.empty()) {
+      return;
     }
-    iter++;
+    int iterations = std::min(static_cast<int>(conns_.size()), 50);
+    auto iter = conns_.upper_bound(last_iter_conn_fd);
+    while (iterations--) {
+      if (iter == conns_.end())
+        iter = conns_.begin();
+      if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
+        to_be_killed_conns.emplace_back(
+            std::make_pair(iter->first, iter->second->GetID()));
+      }
+      iter++;
+    }
+    iter--;
+    last_iter_conn_fd = iter->first;
   }
-  iter--;
-  last_iter_conn_fd = iter->first;
-  conns_mu_.unlock();
-
   for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
   }

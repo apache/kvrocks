@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import glob
 import os
 import pathlib
 import click
@@ -55,7 +56,7 @@ def cli():
 @click.option('-D', multiple=True, metavar='key=value', help='extra CMake definitions')
 def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
     """
-    BUILD_DIR: directory to store build files [default: build]
+    Build executables to BUILD_DIR [default: build]
     """
 
     basedir = pathlib.Path(__file__).parent
@@ -98,14 +99,52 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
     if unittest:
         target.append("unittest")
     run([cmake, "--build", ".", f"-j{jobs}", "-t", *target])
-    click.echo(f'Building {dir} {jobs} {ghproxy} {ninja} {unittest}...\n{basedir}')
 
-@click.command(context_settings=CONTEXT_SETTINGS)
+@click.group()
 def check():
-    click.echo("Checking...")
+    """
+    Check code with cpplint or cppcheck
+    """
+    pass
+
+@click.command()
+def cpplint():
+    """
+    Lint code with cpplint (https://github.com/cpplint/cpplint)
+    """
+    output = run(["command", "-v", "cpplint"], stdout=subprocess.PIPE)
+    cpplint = output.read().decode().strip()
+    run(["test", "-x", cpplint], msg="cpplint is required")
+
+    options = ["--linelength=120", "--filter=-build/include_subdir,-legal/copyright,-build/c++11"]
+    sources = [*glob.glob("src/*.h"), *glob.glob("src/*.cc")]
+    run([cpplint, *options, *sources])
+
+@click.command()
+def cppcheck():
+    """
+    Check code with cppcheck (https://github.com/danmar/cppcheck)
+    """
+    output = run(["command", "-v", "cppcheck"], stdout=subprocess.PIPE)
+    cppcheck = output.read().decode().strip()
+    run(["test", "-x", cppcheck], msg="cppcheck is required")
+
+    options = ["-x", "c++"]
+    options.append("-U__GNUC__")
+    options.append("--force")
+    options.append("--std=c++11")
+    # we should run cmake configuration to fetch deps if we want to enable missingInclude
+    options.append("--enable=warning,portability,information")
+    options.append("--error-exitcode=1")
+    options.append("--inline-suppr")
+
+    sources = ["src"]
+    run([cppcheck, *options, *sources])
 
 cli.add_command(build)
 cli.add_command(check)
+check.add_command(cpplint)
+check.add_command(cppcheck)
 
 if __name__ == '__main__':
     cli()

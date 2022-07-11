@@ -15,28 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM ubuntu:focal as build
+language: cpp
 
-# workaround tzdata install hanging
-ENV TZ=Asia/Shanghai
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+arch:
+  - amd64
+  - arm64
 
-RUN apt update
-RUN apt install -y cmake make git autoconf libtool g++
-WORKDIR /kvrocks
+os: linux
+dist: focal
 
-COPY . .
-RUN ./build.sh build
+services:
+  - docker
 
-FROM ubuntu:focal
-
-WORKDIR /kvrocks
-
-COPY --from=build /kvrocks/build/kvrocks ./bin/
-
-COPY ./kvrocks.conf  ./conf/
-RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' ./conf/kvrocks.conf
-VOLUME /var/lib/kvrocks
-
-EXPOSE 6666:6666 
-ENTRYPOINT ["./bin/kvrocks", "-c", "./conf/kvrocks.conf"]
+script:
+  - docker build .

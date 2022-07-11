@@ -23,10 +23,11 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update
 RUN apt install -y cmake make git autoconf libtool g++
+RUN pip install click semver
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./build.sh build
+RUN ./x.py build
 
 FROM ubuntu:focal
 

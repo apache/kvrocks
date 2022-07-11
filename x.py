@@ -51,8 +51,9 @@ def cli():
 @click.option('--ghproxy', default=False, help='use https://ghproxy.com to fetch dependencies', is_flag=True)
 @click.option('--ninja', default=False, help='use Ninja to build kvrocks', is_flag=True)
 @click.option('--unittest', default=False, help='build unittest target', is_flag=True)
+@click.option('--compiler', default='auto', show_default=True, type=click.Choice(('auto', 'gcc', 'clang')), help='compiler used to build kvrocks')
 @click.option('-D', multiple=True, metavar='key=value', help='extra CMake definitions')
-def build(dir, jobs, ghproxy, ninja, unittest, d):
+def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
     """
     BUILD_DIR: directory to store build files [default: build]
     """
@@ -82,8 +83,15 @@ def build(dir, jobs, ghproxy, ninja, unittest, d):
         cmake_options.append("-DDEPS_FETCH_PROXY=https://ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
+
+    if compiler == 'gcc':
+        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
+    elif compiler == 'clang':
+        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+
     if d:
         cmake_options += [f"-D{o}" for o in d]
+
     run([cmake, basedir, *cmake_options])
 
     target = ["kvrocks", "kvrocks2redis"]

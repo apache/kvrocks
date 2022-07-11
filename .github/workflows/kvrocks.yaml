@@ -55,6 +55,7 @@ jobs:
         run: pip install click semver cpplint==1.5.0
       - name: Lint and check code
         run: |
+          echo $(command -v cpplint)
           ./x.py check cpplint
           ./x.py check cppcheck
 

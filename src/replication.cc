@@ -952,8 +952,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       break;
     case kBatchTypePropagate:
       if (write_batch_handler.Key() == Engine::kPropagateScriptCommand) {
-        std::vector<std::string> tokens;
-        Util::TokenizeRedisProtocol(write_batch_handler.Value(), &tokens);
+        std::vector<std::string> tokens = Util::TokenizeRedisProtocol(write_batch_handler.Value());
         if (!tokens.empty()) {
           srv_->ExecPropagatedCommand(tokens);
         }

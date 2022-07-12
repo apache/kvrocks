@@ -42,6 +42,12 @@ error message: {msg}
     else:
         return p.stdout
 
+def find_command(command, msg=None):
+    output = run(["bash", "-c", f"command -v {command}"], stdout=subprocess.PIPE)
+    path = output.read().decode().strip()
+    run(["test", "-x", path], msg=msg)
+    return path
+
 @click.group()
 def cli():
     pass
@@ -61,20 +67,15 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
 
     basedir = pathlib.Path(__file__).parent
 
-    output = run(["command", "-v", "autoconf"], stdout=subprocess.PIPE)
-    autoconf = output.read().decode().strip()
-    run(["test", "-x", autoconf], msg="autoconf is required to build jemalloc")
-
-    output = run(["command", "-v", "cmake"], stdout=subprocess.PIPE)
-    cmake = output.read().decode().strip()
-    run(["test", "-x", cmake], msg="cmake is required to build kvrocks")
+    find_command("autoconf", msg="autoconf is required to build jemalloc")
+    cmake = find_command("cmake", msg="CMake is required")
 
     output = run([cmake, "-version"], stdout=subprocess.PIPE)
     output = run(["head", "-n", "1"], stdin=output, stdout=subprocess.PIPE)
     output = run(["sed", "s/[^0-9.]*//g"], stdin=output, stdout=subprocess.PIPE)
     cmake_version = output.read().decode().strip()
     if semver.compare(cmake_version, CMAKE_REQUIRE_VERSION) < 0:
-        raise RuntimeError(f"CMake {CMAKE_REQUIRE_VERSION} or higher is required. Got: {cmake_version}")
+        raise RuntimeError(f"CMake {CMAKE_REQUIRE_VERSION} or higher is required, got: {cmake_version}")
 
     os.makedirs(dir, exist_ok=True)
     os.chdir(dir)
@@ -84,15 +85,12 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
         cmake_options.append("-DDEPS_FETCH_PROXY=https://ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
-
     if compiler == 'gcc':
         cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
     elif compiler == 'clang':
         cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
-
     if d:
         cmake_options += [f"-D{o}" for o in d]
-
     run([cmake, basedir, *cmake_options])
 
     target = ["kvrocks", "kvrocks2redis"]
@@ -112,10 +110,7 @@ def cpplint():
     """
     Lint code with cpplint (https://github.com/cpplint/cpplint)
     """
-    output = run(["command", "-v", "cpplint"], stdout=subprocess.PIPE)
-    cpplint = output.read().decode().strip()
-    run(["test", "-x", cpplint], msg="cpplint is required")
-
+    cpplint = find_command("cpplint", msg="cpplint is required")
     options = ["--linelength=120", "--filter=-build/include_subdir,-legal/copyright,-build/c++11"]
     sources = [*glob.glob("src/*.h"), *glob.glob("src/*.cc")]
     run([cpplint, *options, *sources])
@@ -125,9 +120,7 @@ def cppcheck():
     """
     Check code with cppcheck (https://github.com/danmar/cppcheck)
     """
-    output = run(["command", "-v", "cppcheck"], stdout=subprocess.PIPE)
-    cppcheck = output.read().decode().strip()
-    run(["test", "-x", cppcheck], msg="cppcheck is required")
+    cppcheck = find_command("cppcheck", msg="cppcheck is required")
 
     options = ["-x", "c++"]
     options.append("-U__GNUC__")
@@ -139,6 +132,7 @@ def cppcheck():
     options.append("--inline-suppr")
 
     sources = ["src"]
+
     run([cppcheck, *options, *sources])
 
 cli.add_command(build)

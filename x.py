@@ -20,15 +20,35 @@
 import glob
 import os
 import pathlib
+import re
 import click
-import semver
 import subprocess
 import sys
 
-CMAKE_REQUIRE_VERSION = "3.13.0"
+CMAKE_REQUIRE_VERSION = (3, 13, 0)
 CONTEXT_SETTINGS = {
     "help_option_names": ['-h', '--help'],
 }
+SEMVER_REGEX = re.compile(
+    r"""
+        ^
+        (?P<major>0|[1-9]\d*)
+        \.
+        (?P<minor>0|[1-9]\d*)
+        \.
+        (?P<patch>0|[1-9]\d*)
+        (?:-(?P<prerelease>
+            (?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)
+            (?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*
+        ))?
+        (?:\+(?P<build>
+            [0-9a-zA-Z-]+
+            (?:\.[0-9a-zA-Z-]+)*
+        ))?
+        $
+    """,
+    re.VERBOSE,
+)
 
 def run(args, msg=None, **kwargs):
     sys.stdout.flush()
@@ -76,8 +96,14 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
     output = run(["head", "-n", "1"], stdin=output, stdout=subprocess.PIPE)
     output = run(["sed", "s/[^0-9.]*//g"], stdin=output, stdout=subprocess.PIPE)
     cmake_version = output.read().decode().strip()
-    if semver.compare(cmake_version, CMAKE_REQUIRE_VERSION) < 0:
-        raise RuntimeError(f"CMake {CMAKE_REQUIRE_VERSION} or higher is required, got: {cmake_version}")
+    cmake_require_version = '.'.join(map(str, CMAKE_REQUIRE_VERSION))
+    cmake_semver = SEMVER_REGEX.match(cmake_version)
+    if cmake_semver is None:
+        raise RuntimeError(f"CMake {cmake_require_version} or higher is required, got: {cmake_version}")
+    cmake_semver = cmake_semver.groupdict()
+    cmake_semver = (int(cmake_semver["major"]), int(cmake_semver["minor"]), int(cmake_semver["patch"]))
+    if cmake_semver < CMAKE_REQUIRE_VERSION:
+        raise RuntimeError(f"CMake {cmake_require_version} or higher is required, got: {cmake_version}")
 
     os.makedirs(dir, exist_ok=True)
     os.chdir(dir)

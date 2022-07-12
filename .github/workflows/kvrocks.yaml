@@ -52,7 +52,7 @@ jobs:
         with:
           python-version: 3.x
       - name: Setup dependencies
-        run: pip install click semver cpplint==1.5.0
+        run: pip install click cpplint==1.5.0
       - name: Lint and check code
         run: |
           ./x.py check cpplint
@@ -152,7 +152,7 @@ jobs:
           python-version: 3.x
 
       - name: Setup dependencies
-        run: pip install click semver
+        run: pip install click
 
       - name: Build Kvrocks
         run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}

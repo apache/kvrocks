@@ -47,7 +47,7 @@ jobs:
 
       - name: Build
         run: |
-          ./build.sh build
+          ./x.py build
           cd build
           cp kvrocks release/bin/
           cp kvrocks2redis release/bin/
@@ -113,7 +113,7 @@ jobs:
       - name: Build
         run: |
           mkdir -p build/release
-          ./build.sh build
+          ./x.py build
           cd build
           mkdir -p release/bin release/conf
           cp kvrocks release/bin/

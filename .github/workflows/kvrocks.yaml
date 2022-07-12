@@ -46,13 +46,12 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y cppcheck
-          sudo pip install cpplint==1.5.0
       - name: Setup Python
         uses: actions/setup-python@v2
         with:
           python-version: 3.x
       - name: Setup dependencies
-        run: pip install click cpplint==1.5.0
+        run: pip install cpplint==1.5.0
       - name: Lint and check code
         run: |
           ./x.py check cpplint
@@ -150,9 +149,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: 3.x
-
-      - name: Setup dependencies
-        run: pip install click
 
       - name: Build Kvrocks
         run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}

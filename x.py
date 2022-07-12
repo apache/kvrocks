@@ -17,11 +17,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import argparse
 import glob
 import os
 import pathlib
 import re
-import click
 import subprocess
 import sys
 
@@ -70,22 +70,8 @@ def find_command(command, msg=None):
     run(["test", "-x", path], msg=msg)
     return path
 
-@click.group(context_settings=CONTEXT_SETTINGS)
-def cli():
-    pass
-
-@click.command()
-@click.argument('dir', default='build', metavar='BUILD_DIR')
-@click.option('-j', '--jobs', default=4, show_default=True, metavar='N', help='execute N build jobs concurrently')
-@click.option('--ghproxy', default=False, help='use https://ghproxy.com to fetch dependencies', is_flag=True)
-@click.option('--ninja', default=False, help='use Ninja to build kvrocks', is_flag=True)
-@click.option('--unittest', default=False, help='build unittest target', is_flag=True)
-@click.option('--compiler', default='auto', show_default=True, type=click.Choice(('auto', 'gcc', 'clang')), help='compiler used to build kvrocks')
-@click.option('-D', multiple=True, metavar='key=value', help='extra CMake definitions')
-def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
-    """
-    Build executables to BUILD_DIR [default: build]
-    """
+def build(args):
+    (dir, jobs, ghproxy, ninja, unittest, compiler, d) = (args.dir, args.jobs, args.ghproxy, args.ninja, args.unittest, args.compiler, args.D)
 
     basedir = pathlib.Path(__file__).parent.absolute()
 
@@ -126,29 +112,14 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
         target.append("unittest")
     run([cmake, "--build", ".", f"-j{jobs}", "-t", *target])
 
-@click.group()
-def check():
-    """
-    Check code with cpplint or cppcheck
-    """
-    pass
-
-@click.command()
-def cpplint():
-    """
-    Lint code with cpplint (https://github.com/cpplint/cpplint)
-    """
-    cpplint = find_command("cpplint", msg="cpplint is required")
+def cpplint(args):
+    command = find_command("cpplint", msg="cpplint is required")
     options = ["--linelength=120", "--filter=-build/include_subdir,-legal/copyright,-build/c++11"]
     sources = [*glob.glob("src/*.h"), *glob.glob("src/*.cc")]
-    run([cpplint, *options, *sources])
+    run([command, *options, *sources])
 
-@click.command()
-def cppcheck():
-    """
-    Check code with cppcheck (https://github.com/danmar/cppcheck)
-    """
-    cppcheck = find_command("cppcheck", msg="cppcheck is required")
+def cppcheck(args):
+    command = find_command("cppcheck", msg="cppcheck is required")
 
     options = ["-x", "c++"]
     options.append("-U__GNUC__")
@@ -161,12 +132,47 @@ def cppcheck():
 
     sources = ["src"]
 
-    run([cppcheck, *options, *sources])
-
-cli.add_command(build)
-cli.add_command(check)
-check.add_command(cpplint)
-check.add_command(cppcheck)
+    run([command, *options, *sources])
 
 if __name__ == '__main__':
-    cli()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.set_defaults(func=lambda _: parser.print_help())
+
+    subparsers = parser.add_subparsers()
+
+    parser_check = subparsers.add_parser(
+        'check',
+        description="Check code with cpplint or cppcheck",
+        help="Check code with cpplint or cppcheck")
+    parser_check.set_defaults(func=lambda _: parser_check.print_help())
+    parser_check_subparsers = parser_check.add_subparsers()
+    parser_check_cpplint = parser_check_subparsers.add_parser(
+        'cpplint',
+        description="Lint code with cpplint (https://github.com/cpplint/cpplint)",
+        help="Lint code with cpplint (https://github.com/cpplint/cpplint)")
+    parser_check_cpplint.set_defaults(func=cpplint)
+    parser_check_cppcheck = parser_check_subparsers.add_parser(
+        'cppcheck',
+        description="Check code with cppcheck (https://github.com/danmar/cppcheck)",
+        help="Check code with cppcheck (https://github.com/danmar/cppcheck)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_check_cppcheck.set_defaults(func=cppcheck)
+
+    parser_build = subparsers.add_parser(
+        'build',
+        description="Build executables to BUILD_DIR [default: build]",
+        help="Build executables to BUILD_DIR [default: build]",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory to store cmake-generated and build files")
+    parser_build.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_build.add_argument('--ghproxy', default=False, action='store_true', help='use https://ghproxy.com to fetch dependencies')
+    parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
+    parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
+    parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
+    parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
+    parser_build.set_defaults(func=build)
+
+    args = parser.parse_args()
+    args.func(args)

@@ -26,9 +26,6 @@ import subprocess
 import sys
 
 CMAKE_REQUIRE_VERSION = (3, 13, 0)
-CONTEXT_SETTINGS = {
-    "help_option_names": ['-h', '--help'],
-}
 SEMVER_REGEX = re.compile(
     r"""
         ^

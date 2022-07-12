@@ -22,8 +22,8 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update
-RUN apt install -y cmake make git autoconf libtool g++
-RUN pip install click semver
+RUN apt install -y cmake make git autoconf libtool g++ python3 python3-pip
+RUN pip3 install click semver
 WORKDIR /kvrocks
 
 COPY . .

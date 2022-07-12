@@ -55,7 +55,6 @@ jobs:
         run: pip install click semver cpplint==1.5.0
       - name: Lint and check code
         run: |
-          echo $(command -v cpplint)
           ./x.py check cpplint
           ./x.py check cppcheck
 
@@ -82,6 +81,7 @@ jobs:
           - name: Ubuntu GCC ASan
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
+            compiler: gcc
           # - name: Ubuntu GCC TSan
           #   os: ubuntu-18.04
           #   with_sanitizer: -DENABLE_TSAN=ON

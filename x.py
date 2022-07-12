@@ -26,7 +26,9 @@ import subprocess
 import sys
 
 CMAKE_REQUIRE_VERSION = "3.13.0"
-CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+CONTEXT_SETTINGS = {
+    "help_option_names": ['-h', '--help'],
+}
 
 def run(args, msg=None, **kwargs):
     sys.stdout.flush()
@@ -48,11 +50,11 @@ def find_command(command, msg=None):
     run(["test", "-x", path], msg=msg)
     return path
 
-@click.group()
+@click.group(context_settings=CONTEXT_SETTINGS)
 def cli():
     pass
 
-@click.command(context_settings=CONTEXT_SETTINGS)
+@click.command()
 @click.argument('dir', default='build', metavar='BUILD_DIR')
 @click.option('-j', '--jobs', default=4, show_default=True, metavar='N', help='execute N build jobs concurrently')
 @click.option('--ghproxy', default=False, help='use https://ghproxy.com to fetch dependencies', is_flag=True)

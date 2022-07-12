@@ -67,7 +67,7 @@ def build(dir, jobs, ghproxy, ninja, unittest, compiler, d):
     Build executables to BUILD_DIR [default: build]
     """
 
-    basedir = pathlib.Path(__file__).parent
+    basedir = pathlib.Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
     cmake = find_command("cmake", msg="CMake is required")

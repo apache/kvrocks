@@ -425,21 +425,37 @@ class CommandSet : public Commander {
     for (size_t i = 3; i < args.size(); i++) {
       last_arg = (i == args.size()-1);
       std::string opt = Util::ToLower(args[i]);
-      if (opt == "nx") {
+      if (opt == "nx" && !xx_) {
         nx_ = true;
-      } else if (opt == "xx") {
+      } else if (opt == "xx" && !nx_) {
         xx_ = true;
-      } else if (opt == "ex") {
-        if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
-        ttl_ = atoi(args_[++i].c_str());
+      } else if (opt == "ex" && !ttl_ && !last_arg) {
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          ttl_ = std::stoi(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "px") {
-        if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
-        auto ttl_ms = atol(args[++i].c_str());
+      } else if (opt == "px" && !ttl_ && !last_arg) {
+        long ttl_ms = 0;
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          ttl_ms = std::stol(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (ttl_ms > 0 && ttl_ms < 1000) {
-          // round up the pttl to second
-          ttl_ = 1;
+          ttl_ = 1;  // round up the pttl to second
         } else {
           ttl_ = static_cast<int>(ttl_ms/1000);
         }

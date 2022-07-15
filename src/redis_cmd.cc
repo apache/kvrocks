@@ -442,7 +442,7 @@ class CommandSet : public Commander {
         }
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "px" && !ttl_ && !last_arg) {
-        long ttl_ms = 0;
+        int64_t ttl_ms = 0;
         try {
           std::string s = args_[++i];
           std::string::size_type sz;

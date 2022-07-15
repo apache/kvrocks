@@ -145,7 +145,7 @@ def package_source(args):
     run([git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}'], stdout=subprocess.PIPE)
     run([git, 'tag', '-a', f'v{version}', '-m', '[source-release] copy for tag v{version}'], stdout=subprocess.PIPE)
 
-    tarball = f'apache-kvrocks-{version}.tar.gz'
+    tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
     # 2. Create the source tarball
     output = run([git, 'ls-files'], stdout=subprocess.PIPE)
     run(['xargs', 'tar', '-czf', tarball], stdin=output, stdout=subprocess.PIPE)

@@ -131,6 +131,36 @@ def cppcheck(args):
 
     run([command, *options, *sources])
 
+def package_source(args):
+    version = args.release_version.strip()
+    if SEMVER_REGEX.match(version) is None:
+        raise RuntimeError(f"Kvrocks version should follow semver spec, got: {version}")
+    
+    # 0. Write input version to VERSION file
+    with open('VERSION', 'w+') as f:
+        f.write(version)
+
+    # 1. Git commit and tag
+    git = find_command('git', msg='git is required for source packaging')
+    run([git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}'], stdout=subprocess.PIPE)
+    run([git, 'tag', '-a', f'v{version}', '-m', '[source-release] copy for tag v{version}'], stdout=subprocess.PIPE)
+
+    tarball = f'apache-kvrocks-{version}.tar.gz'
+    # 2. Create the source tarball
+    output = run([git, 'ls-files'], stdout=subprocess.PIPE)
+    run(['xargs', 'tar', '-czf', tarball], stdin=output, stdout=subprocess.PIPE)
+
+    # 3. GPG Sign
+    gpg = find_command('gpg', msg='gpg is required for source packaging')
+    run([gpg, '--detach-sign', '--armor', tarball], stdout=subprocess.PIPE)
+
+    # 4. Generate sha512 checksum
+    sha512sum = find_command('sha512sum', msg='sha512sum is required for source packaging')
+    output = run([sha512sum, tarball], stdout=subprocess.PIPE)
+    payload = output.read().decode().strip()
+    with open(f'{tarball}.sha512', 'w+') as f:
+        f.write(payload)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.set_defaults(func=lambda _: parser.print_help())
@@ -170,6 +200,22 @@ if __name__ == '__main__':
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
     parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
     parser_build.set_defaults(func=build)
+
+    parser_package = subparsers.add_parser(
+        'package',
+        description="Package the source tarball or binary installer",
+        help="Package the source tarball or binary installer",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_package.set_defaults(func=lambda _: parser_package.print_help())
+    parser_package_subparsers = parser_package.add_subparsers()
+    parser_package_source = parser_package_subparsers.add_parser(
+        'source',
+        description="Package the source tarball",
+        help="Package the source tarball",
+    )
+    parser_package_source.add_argument('-v', '--release-version', required=True, metavar='VERSION', help='current releasing version')
+    parser_package_source.set_defaults(func=package_source)
 
     args = parser.parse_args()
     args.func(args)

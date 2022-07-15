@@ -73,7 +73,7 @@ list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
-execute_process(COMMAND sh -c "grep -i version -m1 Changelog | awk '{printf $3}'"
+execute_process(COMMAND sh -c "cat VERSION"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE PROJECT_VERSION)
 execute_process(COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)

@@ -4401,6 +4401,7 @@ class CommandFetchFile : public Commander {
       svr->IncrFetchFileThread();
 
       for (auto file : files) {
+        if (svr->IsStopped()) break;
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /

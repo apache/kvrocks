@@ -306,7 +306,7 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   svr_->GetPerfLog()->PushEntry(entry);
 }
 
-void Connection::ExecuteCommands(std::list<Redis::CommandTokens> *to_process_cmds) {
+void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
 

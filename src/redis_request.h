@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include <list>
+#include <deque>
 #include <vector>
 #include <string>
 #include <event2/buffer.h>
@@ -45,7 +45,7 @@ class Request {
   // Parse the redis requests (bulk string array format)
   Status Tokenize(evbuffer *input);
 
-  std::list<CommandTokens> *GetCommands() { return &commands_; }
+  std::deque<CommandTokens> *GetCommands() { return &commands_; }
 
  private:
   // internal states related to parsing
@@ -55,7 +55,7 @@ class Request {
   int64_t multi_bulk_len_ = 0;
   size_t bulk_len_ = 0;
   CommandTokens tokens_;
-  std::list<CommandTokens> commands_;
+  std::deque<CommandTokens> commands_;
 
   Server *svr_;
 };

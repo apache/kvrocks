@@ -358,6 +358,7 @@ int main(int argc, char* argv[]) {
   }
   srv->Join();
 
+  delete srv;
   removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();
   libevent_global_shutdown();

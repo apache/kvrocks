@@ -1577,7 +1577,7 @@ class CommandBPop : public Commander {
       timeval tm = {timeout_, 0};
       evtimer_add(timer_, &tm);
     }
-    return Status::OK();
+    return Status(Status::BlockingCmd);
   }
 
   rocksdb::Status TryPopFromList() {
@@ -3362,7 +3362,7 @@ class CommandExec : public Commander {
     }
 
     // Reply multi length first
-    conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands().size()));
+    conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
     conn->ExecuteCommands(conn->GetMultiExecCommands());
@@ -4401,6 +4401,7 @@ class CommandFetchFile : public Commander {
       svr->IncrFetchFileThread();
 
       for (auto file : files) {
+        if (svr->IsStopped()) break;
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /

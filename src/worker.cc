@@ -62,6 +62,9 @@ Worker::~Worker() {
   for (const auto &iter : conns_) {
     conns.emplace_back(iter.second);
   }
+  for (const auto &iter : monitor_conns_) {
+    conns.emplace_back(iter.second);
+  }
   for (const auto &iter : conns) {
     iter->Close();
   }

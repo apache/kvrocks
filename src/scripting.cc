@@ -90,6 +90,7 @@ namespace Lua {
   }
 
   void DestroyState(lua_State *lua) {
+    lua_gc(lua, LUA_GCCOLLECT, 0);
     lua_close(lua);
   }
 

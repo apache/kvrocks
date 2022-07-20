@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(lua
-  KvrocksLabs/lua c8e4bbfa25f7202f3b778ccb88e54ab84a1861fb
-  MD5=79950ff054ae76e5c9f9c57b38484229
+  KvrocksLabs/lua f458c3d797db31155fa0c156d5301716df48cb8c
+  MD5=c7c4deb9f750d8f2bef0044a701df85c
 )
 
 FetchContent_GetProperties(lua)
@@ -38,8 +38,8 @@ if(NOT lua_POPULATED)
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
     BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
   )
-  
-  file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h")
+
+  file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h" "${lua_SOURCE_DIR}/src/*.hpp")
   file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_BINARY_DIR}/include)
 endif()
 

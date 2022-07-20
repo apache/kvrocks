@@ -110,6 +110,10 @@ jobs:
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: gcc
+          - name: Ubuntu GCC without luajit
+            os: ubuntu-18.04
+            without_luajit: -DUSE_LUAJIT=OFF
+            compiler: gcc
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -151,7 +155,7 @@ jobs:
           python-version: 3.x
 
       - name: Build Kvrocks
-        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }}
+        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
 
       - name: Run Unit Test
         run: ./build/unittest

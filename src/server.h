@@ -30,8 +30,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include <lua.h>
-
+#include "lua.hpp"
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"

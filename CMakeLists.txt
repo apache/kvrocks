@@ -25,8 +25,9 @@ option(ENABLE_ASAN "enable address santinizer" OFF)
 option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
+option(USE_LUAJIT "use luaJIT instead of lua" ON)
 
-set(DEPS_FETCH_PROXY "" CACHE STRING 
+set(DEPS_FETCH_PROXY "" CACHE STRING
     "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
      https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
 
@@ -59,7 +60,12 @@ include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
+
+if (USE_LUAJIT)
+include(cmake/luajit.cmake)
+else()
 include(cmake/lua.cmake)
+endif()
 
 find_package(Threads REQUIRED)
 
@@ -67,8 +73,14 @@ list(APPEND EXTERNAL_LIBS PRIVATE glog)
 list(APPEND EXTERNAL_LIBS PRIVATE snappy)
 list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
 list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
-list(APPEND EXTERNAL_LIBS PRIVATE lua)
 list(APPEND EXTERNAL_LIBS PRIVATE lz4)
+if (USE_LUAJIT)
+list(APPEND EXTERNAL_LIBS PRIVATE luajit)
+else()
+list(APPEND EXTERNAL_LIBS PRIVATE lua)
+endif()
+
+
 list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
 
 # Add git sha to version.h

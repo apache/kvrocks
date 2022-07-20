@@ -263,9 +263,10 @@ start_server {tags {"scripting"}} {
                 assert(re.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x)
                 -- so, the final x.x is at the depth limit and was assigned nil
                 assert(re.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x == nil)
-                return {h, re.x.x.x.x.x.x.x.x.y == re.y, re.y == 5}
+                assert(h == "82a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a178c0a17905a17905a17905a17905a17905a17905a17905a17905" or h == "82a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a178c0")
+                return {re.x.x.x.x.x.x.x.x.y == re.y, re.y == 5}
         } 0
-    } {82a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a178c0 1 1}
+    } {1 1}
     test {EVAL - Numerical sanity check from bitop} {
         r eval {assert(0x7fffffff == 2147483647, "broken hex literals");
                 assert(0xffffffff == -1 or 0xffffffff == 2^32-1,

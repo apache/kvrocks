@@ -82,6 +82,17 @@ Server::~Server() {
     delete iter.first;
   }
 
+  // Wait for all fetch file threads stop and exit and force destroy
+  // the server after 60s.
+  int counter = 0;
+  while (GetFetchFileThreadNum() != 0) {
+    usleep(100000);
+    if (++counter == 600) {
+      LOG(WARNING) << "Will force destroy the server after waiting 60s, leave " << GetFetchFileThreadNum()
+                   << " fetch file threads are still running";
+      break;
+    }
+  }
   Lua::DestroyState(lua_);
 }
 

@@ -40,7 +40,7 @@ script:
       docker push $IMAGE_NAME:$IMAGE_TAG
       docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:nightly
       docker push $IMAGE_NAME:nightly
-      docker logout $DOCKERHUB_USER
+      docker logout
     fi
 
 env:

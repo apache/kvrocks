@@ -56,7 +56,7 @@ start_server {tags {"expire"}} {
         r set x foo
         r expireat x [expr [clock seconds]+15]
         r ttl x
-    } {1[345]}
+    } {1[3456]}
 
     test {SETEX - Set + Expire combo operation. Check for TTL} {
         r setex x 12 test

@@ -56,7 +56,7 @@ start_server {tags {"expire"}} {
         r set x foo
         r expireat x [expr [clock seconds]+15]
         r ttl x
-    } {1[345]}
+    } {1[3456]}
 
     test {SETEX - Set + Expire combo operation. Check for TTL} {
         r setex x 12 test
@@ -86,9 +86,9 @@ start_server {tags {"expire"}} {
 
     test {PERSIST can undo an EXPIRE} {
         r set x foo
-        r expire x 50
+        r expire x 12
         list [r ttl x] [r persist x] [r ttl x] [r get x]
-    } {50 1 -1 foo}
+    } {1[012] 1 -1 foo}
 
     test {PERSIST returns 0 against non existing or non volatile keys} {
         r set x foo

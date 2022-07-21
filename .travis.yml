@@ -29,6 +29,7 @@ services:
 
 script:
   - |
+    export TZ=Asia/Shanghai
     IMAGE_NAME="kvrocks/kvrocks"
     IMAGE_TAG="nightly-$(date "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
     echo building $IMAGE_NAME:$IMAGE_TAG

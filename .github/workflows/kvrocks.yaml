@@ -93,10 +93,10 @@ jobs:
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: clang
-          # - name: Ubuntu Clang TSan
-          #   os: ubuntu-18.04
-          #   with_sanitizer: -DENABLE_TSAN=ON
-          #   compiler: clang
+          - name: Ubuntu Clang TSan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+            compiler: clang
           - name: Ubuntu Clang without Jemalloc
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON

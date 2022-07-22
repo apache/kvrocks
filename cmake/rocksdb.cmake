@@ -23,6 +23,11 @@ if (DISABLE_JEMALLOC)
   set(COMPILE_WITH_JEMALLOC OFF)
 endif()
 
+set(COMPILE_WITH_TSAN OFF)
+if (ENABLE_TSAN)
+  set(COMPILE_WITH_TSAN ON)
+endif()
+
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(rocksdb
@@ -46,6 +51,7 @@ FetchContent_MakeAvailableWithArgs(rocksdb
   USE_RTTI=ON
   ROCKSDB_BUILD_SHARED=OFF
   WITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
+  WITH_TSAN=${COMPILE_WITH_TSAN}
 )
 
 add_library(rocksdb_with_headers INTERFACE)

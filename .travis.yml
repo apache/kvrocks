@@ -26,9 +26,21 @@ services:
 jobs:
   include:
     - stage: build
-      arch:
-        - amd64
-        - arm64
+      arch: amd64
+      script:
+        - |
+          export TZ=Asia/Shanghai
+          IMAGE_NAME="kvrocks/kvrocks"
+          IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
+          echo building $IMAGE_NAME:$IMAGE_TAG
+          docker build -t $IMAGE_NAME:$IMAGE_TAG .
+          if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
+            echo pushing $IMAGE_NAME:$IMAGE_TAG
+            docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN
+            docker push $IMAGE_NAME:$IMAGE_TAG
+            docker logout
+          fi
+    - arch: arm64
       script:
         - |
           export TZ=Asia/Shanghai

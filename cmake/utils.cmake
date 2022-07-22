@@ -19,6 +19,12 @@ include_guard()
 
 include(FetchContent)
 
+if (ENABLE_TSAN)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")
+endif()
+
 macro(parse_var arg key value)
   string(REGEX REPLACE "^(.+)=(.+)$" "\\1;\\2" REGEX_RESULT ${arg})
   list(GET REGEX_RESULT 0 ${key})

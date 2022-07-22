@@ -17,31 +17,47 @@
 
 language: cpp
 
-arch:
-  - amd64
-  - arm64
-
 os: linux
 dist: focal
 
 services:
   - docker
 
-script:
-  - |
-    export TZ=Asia/Shanghai
-    IMAGE_NAME="kvrocks/kvrocks"
-    IMAGE_TAG="nightly-$(date "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
-    echo building $IMAGE_NAME:$IMAGE_TAG
-    docker build -t $IMAGE_NAME:$IMAGE_TAG .
-    if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
-      echo pushing $IMAGE_NAME:$IMAGE_TAG
-      docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN
-      docker push $IMAGE_NAME:$IMAGE_TAG
-      docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:nightly
-      docker push $IMAGE_NAME:nightly
-      docker logout
-    fi
+jobs:
+  include:
+    - stage: build
+      arch:
+        - amd64
+        - arm64
+      script:
+        - |
+          export TZ=Asia/Shanghai
+          IMAGE_NAME="kvrocks/kvrocks"
+          IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
+          echo building $IMAGE_NAME:$IMAGE_TAG
+          docker build -t $IMAGE_NAME:$IMAGE_TAG .
+          if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
+            echo pushing $IMAGE_NAME:$IMAGE_TAG
+            docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN
+            docker push $IMAGE_NAME:$IMAGE_TAG
+            docker logout
+          fi
+    - stage: push
+      script:
+        - |
+          export TZ=Asia/Shanghai
+          IMAGE_NAME="kvrocks/kvrocks"
+          IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
+          if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
+            echo pushing $IMAGE_NAME:$IMAGE_TAG
+            docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN
+            docker manifest create $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:$IMAGE_TAG-amd64 $IMAGE_NAME:$IMAGE_TAG-arm64
+            docker manifest inspect $IMAGE_NAME:$IMAGE_TAG
+            docker manifest push $IMAGE_NAME:$IMAGE_TAG
+            docker manifest create $IMAGE_NAME:nightly $IMAGE_NAME:$IMAGE_TAG
+            docker manifest push $IMAGE_NAME:nightly
+            docker logout
+          fi
 
 env:
   global:

@@ -70,6 +70,7 @@ jobs:
         with:
           files: |
             ./*.deb
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -136,5 +137,6 @@ jobs:
         with:
           files: |
             ./*.rpm
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

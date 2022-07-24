@@ -169,12 +169,12 @@ def package_source(release_version: str) -> None:
     with open(f'{tarball}.sha512', 'w+') as f:
         f.write(payload)
 
-def package_fpm(package_type: str, release_version: str, dir: str, jobs: int, ghproxy: bool, compiler: str) -> None:
+def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) -> None:
     fpm = find_command('fpm', msg=f'fpm is required for {package_type} packaging')
 
     version = write_version(release_version)
 
-    build(dir=dir, jobs=jobs, ghproxy=ghproxy, ninja=False, unittest=False, compiler=compiler, cmake_path='cmake', D=[])
+    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, compiler='auto', cmake_path='cmake', D=[])
 
     package_dir = Path(dir) / 'package-fpm'
     makedirs(str(package_dir), exist_ok=False)
@@ -271,8 +271,6 @@ if __name__ == '__main__':
     parser_package_fpm.add_argument('-t', '--package-type', required=True, choices=('rpm', 'deb'), help='package type for fpm to build')
     parser_package_fpm.add_argument('dir', metavar='BUILD_DIR', help="directory to store cmake-generated and build files")
     parser_package_fpm.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
-    parser_package_fpm.add_argument('--ghproxy', default=False, action='store_true', help='use https://ghproxy.com to fetch dependencies')
-    parser_package_fpm.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
     parser_package_fpm.set_defaults(func=package_fpm)
 
     args = parser.parse_args()

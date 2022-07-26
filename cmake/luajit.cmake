@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(luajit
-  KvrocksLabs/LuaJIT 803487f8b01c672495a2fcd29dcbed09e4fd6319
-  MD5=cd08841342cd933fb7e3d6d4253fbeec
+  KvrocksLabs/LuaJIT b80ea0e44bd259646d988324619612f645e4b637
+  MD5=f9566c424fb57b226066e3a39a10ec8d
 )
 
 FetchContent_GetProperties(luajit)

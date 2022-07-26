@@ -74,11 +74,6 @@ enum {
   LL_WARNING,
 };
 
-LUALIB_API int (luaopen_cjson)(lua_State *L);
-LUALIB_API int (luaopen_struct)(lua_State *L);
-LUALIB_API int (luaopen_cmsgpack)(lua_State *L);
-LUALIB_API int (luaopen_bit)(lua_State *L);
-
 namespace Lua {
   lua_State* CreateState() {
     lua_State *lua = lua_open();

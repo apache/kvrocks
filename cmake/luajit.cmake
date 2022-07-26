@@ -28,7 +28,7 @@ FetchContent_GetProperties(luajit)
 if(NOT lua_POPULATED)
   FetchContent_Populate(luajit)
 
-  set(LUA_CFLAGS "-DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  set(LUA_CFLAGS "${CMAKE_C_FLAGS} -DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
@@ -39,8 +39,7 @@ if(NOT lua_POPULATED)
   endif()
 
   add_custom_target(make_luajit COMMAND make libluajit.a
-    "CFLAGS=${LUA_CFLAGS}"
-    ${MACOSX_TARGET}
+    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
     BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
   )

@@ -15,23 +15,27 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM ubuntu:22.04 as build
+FROM ubuntu:focal as build
 
-RUN apt update && apt install -y cmake make git autoconf libtool g++
+# workaround tzdata install hanging
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+RUN apt update
+RUN apt install -y cmake make git autoconf libtool g++ python3
 WORKDIR /kvrocks
 
 COPY . .
-RUN mkdir docker-build && ./build.sh docker-build
+RUN ./x.py build
 
-
-FROM ubuntu:22.04
+FROM ubuntu:focal
 
 WORKDIR /kvrocks
 
-COPY --from=build /kvrocks/docker-build/kvrocks ./bin/
+COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 COPY ./kvrocks.conf  ./conf/
-RUN sed  -i -e 's|dir /tmp/kvrocks|dir /var/lib/kvrocks|g' ./conf/kvrocks.conf
+RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' ./conf/kvrocks.conf
 VOLUME /var/lib/kvrocks
 
 EXPOSE 6666:6666 

@@ -55,6 +55,9 @@ class Status {
 
     // Network
     NetSendErr,
+
+    // Blocking
+    BlockingCmd,
   };
 
   Status() : Status(cOK) {}
@@ -62,6 +65,7 @@ class Status {
   bool IsOK() { return code_ == cOK; }
   bool IsNotFound() { return code_ == NotFound; }
   bool IsImorting() { return code_ == SlotImport; }
+  bool IsBlockingCommand() { return code_ == BlockingCmd; }
   std::string Msg() {
     if (IsOK()) {
       return "ok";

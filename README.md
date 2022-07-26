@@ -1,3 +1,22 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
@@ -6,18 +25,18 @@
 
 ---
 
-- [Google Group](https://groups.google.com/g/kvrocks)
-- [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
+* [Google Group](https://groups.google.com/g/kvrocks)
+* [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
 
 **Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
 Kvrocks has the following key features:
 
-- Redis protocol, user can use redis client to visit the kvrocks
-- Namespace, similar to redis db but use token per namespace
-- Replication, async replication using binlog like MySQL
-- High Available, supports redis sentinel to failover when master or slave was failed
-- Cluster mode, centralized management but compatible with Redis cluster client access
+* Redis protocol, user can use redis client to visit the kvrocks
+* Namespace, similar to redis db but use token per namespace
+* Replication, async replication using binlog like MySQL
+* High Available, supports redis sentinel to failover when master or slave was failed
+* Cluster mode, centralized management but compatible with Redis cluster client access
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
@@ -41,35 +60,34 @@ Kvrocks has the following key features:
 </tr>
 </table>
 
-***Tickets a pull reqeust to let us known that you're using kvrocks and add your logo to README***
+***Tickets a pull request to let us known that you're using kvrocks and add your logo to README***
 
-## Building kvrocks
+## Build and Run kvrocks
 
-#### requirements
-* g++ (required by c++11, version >= 4.8)
-* autoconf automake libtool cmake
-
-#### Build
+### Prerequisite
 
 ```shell
-# Centos/Redhat
-sudo yum install -y epel-release && sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
+# CentOS / RedHat
+sudo yum install -y epel-release
+sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
 
-# Ubuntu/Debian
+# Ubuntu / Debian
 sudo apt update
-sudo apt-get install gcc g++ make cmake autoconf automake libtool
+sudo apt install -y gcc g++ make cmake autoconf automake libtool
 
 # macOS
 brew install autoconf automake libtool cmake
 ```
+
+### Build
 
 It is as simple as:
 
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd incubator-kvrocks
-$ ./build.sh build # `./build.sh -h` to check more options;
-                   # especially, `./build.sh build --ghproxy` will fetch dependencies via ghproxy.com.
+$ ./x.py build # `./x.py build -h` to check more options;
+               # especially, `./x.py build --ghproxy` will fetch dependencies via ghproxy.com.
 ```
 
 ### Running kvrocks
@@ -111,7 +129,7 @@ $ ./unittest
 
 ##  Namespace
 
-namespace was used to isolate data between users. unlike all the redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` was regraded as admin token, only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc…
+Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc..
 
 ```
 # add token
@@ -136,24 +154,25 @@ OK
 
 ## Cluster
 
-Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://github.com/apache/incubator-kvrocks/wiki/Kvrocks-Cluster-Introduction)
+Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://kvrocks.apache.org/docs/Cluster/kvrocks-cluster-introduction)
 
-## DOCs
+## Documents
 
-* [supported commands](https://github.com/apache/incubator-kvrocks/wiki/Support-Commands)
-* [design complex kv on rocksdb](https://github.com/apache/incubator-kvrocks/blob/master/docs/metadata-design.md)
-* [replication design](https://github.com/apache/incubator-kvrocks/blob/master/docs/replication-design.md)
+Documents are hosted at the [official website](https://kvrocks.apache.org/docs/supported-commands).
 
-For more informations, can see: [Kvrocks Wiki](https://github.com/apache/incubator-kvrocks/wiki)
+* [Supported Commands](https://kvrocks.apache.org/docs/supported-commands)
+* [Design Complex Structure on RocksDB](https://kvrocks.apache.org/docs/Design/design-structure-on-rocksdb)
+* [Replication Design](https://kvrocks.apache.org/docs/Design/replication)
 
 ## Tools
+
 * Export the Kvrocks monitor metrics, please use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
-* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by vipshop
+* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by @vipshop
 * Migrate from kvrocks to redis. use `kvrocks2redis` in build dir
 
 ## Performance
 
-#### Hardware
+### Hardware
 
 * CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
 * Memory: 32 GiB
@@ -162,21 +181,21 @@ For more informations, can see: [Kvrocks Wiki](https://github.com/apache/incubat
 
 >  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
 
- #### 1. Commands QPS
+### 1. Commands QPS
 
 > kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-commands.png)
+![image](docs/images/chart-commands.png)
 
-#### 2.  QPS on different payloads
+### 2.  QPS on different payloads
 
 > kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-values.png)
+![image](docs/images/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -184,12 +203,12 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](https://raw.githubusercontent.com/apache/incubator-kvrocks/master/docs/images/chart-threads.png)
+![image](docs/images/chart-threads.png)
 
 ## License
 
-Kvrocks is under the Apache License Version 2.0. See the LICENSE file for details.
+Kvrocks is under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
 
 ## WeChat Official Account (微信公众号)
 
-<img src="docs/images/wechat_account.jpg" alt="WeChat offical account" />
+![WeChat official account](docs/images/wechat_account.jpg)

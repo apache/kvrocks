@@ -21,6 +21,7 @@
 #pragma once
 
 #include <vector>
+#include <deque>
 #include <string>
 #include <utility>
 #include <memory>
@@ -102,7 +103,7 @@ class Connection {
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
-  void ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds);
+  void ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }
@@ -113,7 +114,7 @@ class Connection {
   bool IsInExec() { return in_exec_; }
   bool IsMultiError() { return multi_error_; }
   void ResetMultiExec();
-  const std::vector<Redis::CommandTokens> &GetMultiExecCommands() { return multi_cmds_; }
+  std::deque<Redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
   std::unique_ptr<Commander> current_cmd_;
   std::function<void(int)> close_cb_ = nullptr;
@@ -142,7 +143,7 @@ class Connection {
   Server *svr_;
   bool in_exec_ = false;
   bool multi_error_ = false;
-  std::vector<Redis::CommandTokens> multi_cmds_;
+  std::deque<Redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;
 };

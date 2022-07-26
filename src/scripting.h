@@ -23,13 +23,9 @@
 #include <string>
 #include <vector>
 
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
-
+#include "lua.hpp"
 #include "status.h"
 #include "redis_connection.h"
-
 
 namespace Lua {
 

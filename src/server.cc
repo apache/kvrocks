@@ -81,6 +81,19 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
+
+  // Wait for all fetch file threads stop and exit and force destroy
+  // the server after 60s.
+  int counter = 0;
+  while (GetFetchFileThreadNum() != 0) {
+    usleep(100000);
+    if (++counter == 600) {
+      LOG(WARNING) << "Will force destroy the server after waiting 60s, leave " << GetFetchFileThreadNum()
+                   << " fetch file threads are still running";
+      break;
+    }
+  }
+  Lua::DestroyState(lua_);
 }
 
 // Kvrocks threads list:
@@ -189,13 +202,12 @@ void Server::Join() {
 }
 
 Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
-  slaveof_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
   if (!force_reconnect &&
       !master_host_.empty() && master_host_ == host &&
       master_port_ == port) {
-    slaveof_mu_.unlock();
     return Status::OK();
   }
 
@@ -226,12 +238,11 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   } else {
     replication_thread_ = nullptr;
   }
-  slaveof_mu_.unlock();
   return s;
 }
 
 Status Server::RemoveMaster() {
-  slaveof_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
@@ -240,7 +251,6 @@ Status Server::RemoveMaster() {
     replication_thread_ = nullptr;
     storage_->ShiftReplId();
   }
-  slaveof_mu_.unlock();
   return Status::OK();
 }
 
@@ -258,7 +268,7 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
 }
 
 void Server::DisconnectSlaves() {
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
   }
@@ -268,12 +278,11 @@ void Server::DisconnectSlaves() {
     slave_thread->Join();
     delete slave_thread;
   }
-  slave_threads_mu_.unlock();
 }
 
 void Server::cleanupExitedSlaves() {
   std::list<FeedSlaveThread *> exited_slave_threads;
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (slave_thread->IsStopped())
       exited_slave_threads.emplace_back(slave_thread);
@@ -285,7 +294,6 @@ void Server::cleanupExitedSlaves() {
     t->Join();
     delete t;
   }
-  slave_threads_mu_.unlock();
 }
 
 void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
@@ -830,15 +838,13 @@ void Server::GetRoleInfo(std::string *info) {
 
 std::string Server::GetLastRandomKeyCursor() {
   std::string cursor;
-  last_random_key_cursor_mu_.lock();
+  std::lock_guard<std::mutex> guard(last_random_key_cursor_mu_);
   cursor = last_random_key_cursor_;
-  last_random_key_cursor_mu_.unlock();
   return cursor;
 }
 void Server::SetLastRandomKeyCursor(const std::string &cursor) {
-  last_random_key_cursor_mu_.lock();
+  std::lock_guard<std::mutex> guard(last_random_key_cursor_mu_);
   last_random_key_cursor_ = cursor;
-  last_random_key_cursor_mu_.unlock();
 }
 
 int Server::GetUnixTime() {
@@ -1264,11 +1270,10 @@ std::string Server::GetClientsStr() {
   for (const auto &t : worker_threads_) {
     clients.append(t->GetWorker()->GetClientsStr());
   }
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slave_threads_mu_);
   for (const auto &st : slave_threads_) {
     clients.append(st->GetConn()->ToString());
   }
-  slave_threads_mu_.unlock();
   return clients;
 }
 

@@ -31,7 +31,8 @@ if(NOT jemalloc_POPULATED)
   execute_process(COMMAND autoconf
     WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
   )
-  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} CFLAGS=${CMAKE_C_FLAGS}
+  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure 
+    CC=${CMAKE_C_COMPILER} CFLAGS=${CMAKE_C_FLAGS} LDFLAGS=${CMAKE_EXE_LINKER_FLAGS}
     -C --enable-autogen --disable-libdl --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )

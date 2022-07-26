@@ -39,7 +39,7 @@ if(NOT lua_POPULATED)
   endif()
 
   add_custom_target(make_luajit COMMAND make libluajit.a
-    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}" "LDFLAGS=${CMAKE_EXE_LINKER_FLAGS}" ${MACOSX_TARGET}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
     BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
   )

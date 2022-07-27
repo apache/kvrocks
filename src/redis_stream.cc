@@ -19,10 +19,11 @@
  */
 
 #include "redis_stream.h"
-#include "db_util.h"
 
 #include <glog/logging.h>
 #include <rocksdb/status.h>
+
+#include "db_util.h"
 
 
 namespace Redis {

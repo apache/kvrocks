@@ -35,6 +35,10 @@ if(ENABLE_ASAN AND ENABLE_TSAN)
     message(FATAL_ERROR "ASan and TSan cannot be used at the same time")
 endif()
 
+if((ENABLE_ASAN OR ENABLE_TSAN) AND (NOT DISABLE_JEMALLOC))
+    message(FATAL_ERROR "ASan/TSan does not work well with JeMalloc")
+endif()
+
 if(ENABLE_ASAN)
     if(ASAN_WITH_LSAN)
         if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "5"))

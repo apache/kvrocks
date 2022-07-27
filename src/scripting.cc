@@ -237,7 +237,8 @@ namespace Lua {
     int64_t numkeys = 0;
     char funcname[43];
     Server *srv = conn->GetServer();
-    lua_State *lua = srv->Lua();
+    // lua_State* lua = conn->Owner()->Lua();
+    lua_State* lua = srv->Lua();
 
     auto s = Util::DecimalStringToNum(args[2], &numkeys);
     if (!s.IsOK()) {

@@ -33,7 +33,10 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 #include "storage.h"
+
+#include "lua.hpp"
 #include "redis_connection.h"
+#include "storage.h"
 
 class Server;
 
@@ -62,6 +65,7 @@ class Worker {
 
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);
 
+  lua_State* Lua() { return lua_; }
   Server *svr_;
 
  private:
@@ -85,6 +89,7 @@ class Worker {
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
+  lua_State* lua_;
 };
 
 class WorkerThread {

@@ -92,7 +92,7 @@ execute_process(COMMAND git rev-parse --short HEAD
 string(STRIP "${GIT_SHA}" GIT_SHA)
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+if ((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
 
     if(ENABLE_STATIC_LIBSTDCXX)

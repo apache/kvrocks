@@ -4771,17 +4771,25 @@ class CommandXAdd : public Commander {
       }
 
       if (val == "maxlen" && !entry_id_found) {
-        std::string max_len_str;
+        if (i+1 >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
+        }
+
+        size_t max_len_idx;
         bool eq_sign_found = false;
         if (args[i+1] == "=") {
-          max_len_str = args[i+2];
+          max_len_idx = i+2;
           eq_sign_found = true;
         } else {
-          max_len_str = args[i+1];
+          max_len_idx = i+1;
+        }
+
+        if (max_len_idx >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
         }
 
         try {
-          max_len_ = std::stoull(max_len_str);
+          max_len_ = std::stoull(args[max_len_idx]);
           with_max_len_ = true;
         } catch (const std::exception &) {
           return Status(Status::RedisParseErr, errValueNotInterger);
@@ -4792,17 +4800,25 @@ class CommandXAdd : public Commander {
       }
 
       if (val == "minid" && !entry_id_found) {
-        std::string min_id_str;
+        if (i+1 >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
+        }
+
+        size_t min_id_idx;
         bool eq_sign_found = false;
-        if (args[i + 1] == "=") {
-          min_id_str = args[i+2];
+        if (args[i+1] == "=") {
+          min_id_idx = i+2;
           eq_sign_found = true;
         } else {
-          min_id_str = args[i+1];
+          min_id_idx = i+1;
+        }
+
+        if (min_id_idx >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
         }
 
         try {
-          auto s = ParseStreamEntryID(min_id_str, &min_id_);
+          auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
           if (!s.IsOK()) {
             return Status(Status::RedisParseErr, s.Msg());
           }
@@ -4816,6 +4832,10 @@ class CommandXAdd : public Commander {
       }
 
       if (val == "limit" && !entry_id_found) {
+        if (i+1 >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
+        }
+
         try {
           limit_ = std::stoull(args[i+1]);
           with_limit_ = true;
@@ -5248,6 +5268,10 @@ class CommandXRead : public Commander {
       }
 
       if (arg == "count") {
+        if (i+1 >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
+        }
+
         try {
           with_count_ = true;
           count_ = static_cast<uint64_t>(std::stoll(args[i+1]));
@@ -5259,6 +5283,10 @@ class CommandXRead : public Commander {
       }
 
       if (arg == "block") {
+        if (i+1 >= args.size()) {
+          return Status(Status::RedisParseErr, errInvalidSyntax);
+        }
+
         block_ = true;
         try {
           auto v = std::stoll(args[i+1]);
@@ -5534,31 +5562,39 @@ class CommandXTrim : public Commander {
     if (trim_strategy == "maxlen") {
       strategy_ = StreamTrimStrategy::MaxLen;
 
-      std::string len;
+      size_t max_len_idx;
       if (args[3] != "=") {
-        len = args[3];
+        max_len_idx = 3;
       } else {
-        len = args[4];
+        max_len_idx = 4;
         eq_sign_found = true;
       }
 
+      if (max_len_idx >= args.size()) {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+
       try {
-        max_len_ = std::stoull(len);
+        max_len_ = std::stoull(args[max_len_idx]);
       } catch (const std::exception &) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
     } else if (trim_strategy == "minid") {
       strategy_ = StreamTrimStrategy::MinID;
 
-      std::string id;
+      size_t min_id_idx;
       if (args[3] != "=") {
-        id = args[3];
+        min_id_idx = 3;
       } else {
-        id = args[4];
+        min_id_idx = 4;
         eq_sign_found = true;
       }
 
-      auto s = ParseStreamEntryID(id, &min_id_);
+      if (min_id_idx >= args.size()) {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+
+      auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
       if (!s.IsOK()) {
         return s;
       }

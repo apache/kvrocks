@@ -53,6 +53,7 @@ const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
+const char *kStreamColumnFamilyName = "stream";
 
 const char *kPropagateScriptCommand = "script";
 
@@ -204,7 +205,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
                                          kZSetScoreColumnFamilyName,
                                          kPubSubColumnFamilyName,
-                                         kPropagateColumnFamilyName};
+                                         kPropagateColumnFamilyName,
+                                         kStreamColumnFamilyName};
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -301,6 +303,7 @@ Status Storage::Open(bool read_only) {
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPropagateColumnFamilyName, propagate_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kStreamColumnFamilyName, subkey_opts));
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
@@ -568,6 +571,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[3];
   } else if (name == kPropagateColumnFamilyName) {
     return cf_handles_[4];
+  } else if (name == kStreamColumnFamilyName) {
+    return cf_handles_[5];
   }
   return cf_handles_[0];
 }

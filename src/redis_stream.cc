@@ -19,6 +19,7 @@
  */
 
 #include "redis_stream.h"
+#include "db_util.h"
 
 #include <glog/logging.h>
 #include <rocksdb/status.h>
@@ -242,12 +243,12 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options, stream_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
 
   for (const auto& id : ids) {
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
     std::string value;
-    s = db_->Get(read_options, entry_key, &value);
+    s = db_->Get(read_options, stream_cf_handle_, entry_key, &value);
     if (s.ok()) {
       *ret += 1;
       batch.Delete(stream_cf_handle_, entry_key);
@@ -287,8 +288,6 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
     }
   }
 
-  delete iter;
-
   if (*ret > 0) {
     metadata.size -= *ret;
 
@@ -326,7 +325,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     }
 
     std::string value;
-    auto s = db_->Get(rocksdb::ReadOptions(), start_key, &value);
+    auto s = db_->Get(rocksdb::ReadOptions(), stream_cf_handle_, start_key, &value);
     if (!s.ok()) {
       return s.IsNotFound() ? rocksdb::Status::OK() : s;
     }
@@ -354,7 +353,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options, stream_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
   iter->Seek(start_key);
   if (options.reverse && (!iter->Valid() || iter->key().ToString() != start_key)) {
     iter->SeekForPrev(start_key);
@@ -379,15 +378,13 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     }
   }
 
-  delete iter;
-
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status Stream::getEntryRawValue(const std::string &ns_key, const StreamMetadata &metadata,
                                          const StreamEntryID &id, std::string *value) const {
   std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
-  return db_->Get(rocksdb::ReadOptions(), entry_key, value);
+  return db_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, value);
 }
 
 rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full,
@@ -540,7 +537,7 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options, stream_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
   std::string start_key = internalKeyFromEntryID(ns_key, *metadata, metadata->first_entry_id);
   iter->Seek(start_key);
 
@@ -580,8 +577,6 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
     metadata->last_entry_id.Clear();
     metadata->recorded_first_entry_id.Clear();
   }
-
-  delete iter;
 
   if (ret > 0) {
     metadata->max_deleted_entry_id = entryIDFromInternalKey(last_deleted);

@@ -33,8 +33,12 @@ if(NOT lua_POPULATED)
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
 
+  if (CMAKE_HOST_APPLE)
+    set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  endif()
+
   add_custom_target(make_luajit COMMAND make libluajit.a
-    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}"
+    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
     BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
   )

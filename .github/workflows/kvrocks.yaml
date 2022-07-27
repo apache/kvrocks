@@ -85,6 +85,7 @@ jobs:
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC without Jemalloc
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -97,6 +98,7 @@ jobs:
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: clang
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu Clang without Jemalloc
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -158,10 +160,13 @@ jobs:
         run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
 
       - name: Run Unit Test
-        run: ./build/unittest
+        run: |
+          export ${{ matrix.runtime_env_vars }}
+          ./build/unittest
 
       - name: Run Redis Tcl Test
         run: |
+          export ${{ matrix.runtime_env_vars }}
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl
           ./runtest --dont-clean

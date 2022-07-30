@@ -255,13 +255,10 @@ proc spawn_server {config_file stdout stderr} {
 
 # Wait for actual startup, return 1 if port is busy, 0 otherwise
 proc wait_server_started {config_file stdout pid} {
-    set checkperiod 100; # Milliseconds
+    set checkperiod 1000; # Milliseconds
     set maxiter [expr {120*1000/$checkperiod}] ; # Wait up to 2 minutes.
     set port_busy 0
     while 1 {
-        if {[regexp -- " PID: $pid" [exec cat $stdout]]} {
-            break
-        }
         after $checkperiod
         incr maxiter -1
         if {$maxiter == 0} {
@@ -274,8 +271,11 @@ proc wait_server_started {config_file stdout pid} {
 
         # Check if the port is actually busy and the server failed
         # for this reason.
-        if {[regexp {Could not create server TCP} [exec cat $stdout]]} {
+        if {[regexp -- "Could not create server TCP" [exec cat $stdout]]} {
             set port_busy 1
+            break
+        }
+        if {[count_log_message [dict get $config_file "dir"] "Ready to accept"] > 0} {
             break
         }
     }
@@ -442,7 +442,7 @@ proc start_server {options {code undefined}} {
 
         # check that the server actually started
         set port_busy 0
-        # set port_busy [wait_server_started $config_file $stdout $pid]
+        set port_busy [wait_server_started $config $stdout $pid]
 
         # Sometimes we have to try a different port, even if we checked
         # for availability. Other test clients may grab the port before we

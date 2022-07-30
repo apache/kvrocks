@@ -151,7 +151,7 @@ def package_source(release_version: str) -> None:
     # 1. Git commit and tag
     git = find_command('git', msg='git is required for source packaging')
     run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
-    run(git, 'tag', '-a', f'v{version}', '-m', '[source-release] copy for tag v{version}')
+    run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
 
     tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
     # 2. Create the source tarball

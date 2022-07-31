@@ -79,28 +79,26 @@ jobs:
             compiler: clang
           - name: Ubuntu GCC ASan
             os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: gcc
-          # - name: Ubuntu GCC TSan
-          #   os: ubuntu-18.04
-          #   with_sanitizer: -DENABLE_TSAN=ON
-          #   compiler: gcc
-          - name: Ubuntu GCC without Jemalloc
+          - name: Ubuntu GCC TSan
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu Clang ASan
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
-            compiler: clang
-          # - name: Ubuntu Clang TSan
-          #   os: ubuntu-18.04
-          #   with_sanitizer: -DENABLE_TSAN=ON
-          #   compiler: clang
-          - name: Ubuntu Clang without Jemalloc
-            os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+          - name: Ubuntu Clang TSan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: clang
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
             os: ubuntu-18.04
             with_ninja: --ninja
@@ -158,10 +156,13 @@ jobs:
         run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
 
       - name: Run Unit Test
-        run: ./build/unittest
+        run: |
+          export ${{ matrix.runtime_env_vars }}
+          ./build/unittest
 
       - name: Run Redis Tcl Test
         run: |
+          export ${{ matrix.runtime_env_vars }}
           cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
           cd tests/tcl
           ./runtest --dont-clean

@@ -483,7 +483,7 @@ void Server::BlockOnStreams(const std::vector<std::string> &keys,
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   IncrBlockedClientNum();
   for (size_t i = 0; i < keys.size(); ++i) {
-    auto consumer = new StreamConsumer(conn->Owner(), conn->GetFD(), entry_ids[i]);
+    auto consumer = new StreamConsumer(conn->Owner(), conn->GetFD(), conn->GetNamespace(), entry_ids[i]);
     auto iter = blocked_stream_consumers_.find(keys[i]);
     if (iter == blocked_stream_consumers_.end()) {
       std::set<StreamConsumer*> consumers;
@@ -533,7 +533,8 @@ Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   return Status::OK();
 }
 
-Status Server::OnEntryAddedToStream(const std::string &key, const Redis::StreamEntryID &entry_id) {
+Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
+                                    const Redis::StreamEntryID &entry_id) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocked_stream_consumers_.find(key);
   if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
@@ -542,7 +543,7 @@ Status Server::OnEntryAddedToStream(const std::string &key, const Redis::StreamE
 
   for (auto it = iter->second.begin(); it != iter->second.end(); ) {
     StreamConsumer* consumer = *it;
-    if (entry_id > consumer->last_consumed_id) {
+    if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
       consumer->owner->EnableWriteEvent(consumer->fd);
       it = iter->second.erase(it);
       delete consumer;

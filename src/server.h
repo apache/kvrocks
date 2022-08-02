@@ -59,9 +59,10 @@ struct ConnContext {
 struct StreamConsumer {
   Worker *owner;
   int fd;
+  std::string ns;
   Redis::StreamEntryID last_consumed_id;
-  StreamConsumer(Worker *w, int fd, Redis::StreamEntryID id) :
-    owner(w), fd(fd), last_consumed_id(id) {}
+  StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id) :
+    owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
 };
 
 typedef struct {
@@ -151,7 +152,8 @@ class Server {
                       const std::vector<Redis::StreamEntryID> &entry_ids, Redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
   Status WakeupBlockingConns(const std::string &key, size_t n_conns);
-  Status OnEntryAddedToStream(const std::string &key, const Redis::StreamEntryID &entry_id);
+  Status OnEntryAddedToStream(const std::string &ns, const std::string &key,
+                              const Redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);

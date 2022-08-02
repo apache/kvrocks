@@ -4912,7 +4912,7 @@ class CommandXAdd : public Commander {
 
     *output = Redis::BulkString(entry_id.ToString());
 
-    svr->OnEntryAddedToStream(stream_name_, entry_id);
+    svr->OnEntryAddedToStream(conn->GetNamespace(), stream_name_, entry_id);
 
     return Status::OK();
   }

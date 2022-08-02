@@ -235,11 +235,11 @@ proc create_server_config_file {filename config} {
 
 proc spawn_server {config_file stdout stderr} {
     if {$::valgrind} {
-        set pid [exec valgrind --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec valgrind --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     } elseif ($::stack_logging) {
-        set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     } else {
-        set pid [exec ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     }
 
     if {$::wait_server} {

@@ -110,8 +110,20 @@ template <typename T>
 using remove_cvref_t = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
 template <typename T>
+struct StatusOr;
+
+template <typename T>
+struct IsStatusOr : std::integral_constant<bool, false> {};
+
+template <typename T>
+struct IsStatusOr<StatusOr<T>> : std::integral_constant<bool, true> {};
+
+template <typename T>
 struct StatusOr {
   static_assert(!std::is_same<T, Status>::value, "value_type cannot be Status");
+  static_assert(!std::is_same<T, Status::Code>::value, "value_type cannot be Status::Code");
+  static_assert(!IsStatusOr<T>::value, "value_type cannot be StatusOr");
+  static_assert(!std::is_reference<T>::value, "value_type cannot be reference");
 
   using value_type = T;
 

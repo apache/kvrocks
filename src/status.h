@@ -24,6 +24,8 @@
 #include <type_traits>
 #include <utility>
 #include <memory>
+#include <algorithm>
+#include <tuple>
 #include <glog/logging.h>
 
 class Status {
@@ -64,9 +66,9 @@ class Status {
   };
 
   Status() : Status(cOK) {}
-  explicit Status(Code code, std::string msg = {}) 
+  explicit Status(Code code, std::string msg = {})
     : code_(code), msg_(std::move(msg)) {}
-  
+
   template <Code code>
   bool Is() const { return code_ == code; }
 
@@ -121,28 +123,28 @@ struct StatusOr {
     new(storage_) error_type(new std::string(std::move(s.msg_)));
   }
 
-  StatusOr(Code code, std::string msg = {}) : code_(code) {
+  StatusOr(Code code, std::string msg = {}) : code_(code) { // NOLINT
     CHECK(code != Code::cOK);
     new(storage_) error_type(new std::string(std::move(msg)));
   }
 
-  template <typename ...Ts, 
+  template <typename ...Ts,
     typename std::enable_if<
-      (sizeof...(Ts) > 0 && 
+      (sizeof...(Ts) > 0 &&
         !std::is_same<Status, remove_cvref_t<first_element<Ts...>>>::value &&
         !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
         !std::is_same<value_type, remove_cvref_t<first_element<Ts...>>>::value &&
         !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value
-      ), int>::type = 0>
+      ), int>::type = 0> // NOLINT
   explicit StatusOr(Ts && ... args) : code_(Code::cOK) {
     new(storage_) value_type(std::forward<Ts>(args)...);
   }
 
-  StatusOr(T&& value) : code_(Code::cOK) {
+  StatusOr(T&& value) : code_(Code::cOK) { // NOLINT
     new(storage_) value_type(std::move(value));
   }
 
-  StatusOr(const T& value) : code_(Code::cOK) {
+  StatusOr(const T& value) : code_(Code::cOK) { // NOLINT
     new(storage_) value_type(value);
   }
 
@@ -230,7 +232,7 @@ struct StatusOr {
     }
   }
 
-private:
+ private:
   Status::Code code_;
   alignas(value_type) alignas(error_type) unsigned char storage_[std::max(sizeof(value_type), sizeof(error_type))];
 
@@ -249,5 +251,4 @@ private:
   const error_type& getError() const {
     return *reinterpret_cast<const error_type*>(storage_);
   }
-
 };

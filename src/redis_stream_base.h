@@ -55,15 +55,15 @@ struct StreamEntryID {
   }
 
   bool operator>=(const StreamEntryID &rhs) const {
-    if (ms > rhs.ms) return true;
-    if (ms == rhs.ms) return seq >= rhs.seq;
-    return false;
+    return !(*this < rhs);
   }
 
   bool operator>(const StreamEntryID &rhs) const {
-    if (ms > rhs.ms) return true;
-    if (ms == rhs.ms) return seq > rhs.seq;
-    return false;
+    return rhs < *this;
+  }
+
+  bool operator<=(const StreamEntryID &rhs) const {
+    return !(rhs < *this);
   }
 
   bool operator==(const StreamEntryID &rhs) const {

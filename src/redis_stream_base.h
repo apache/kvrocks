@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -126,19 +127,9 @@ struct StreamInfo {
   StreamEntryID last_generated_id;
   StreamEntryID max_deleted_entry_id;
   StreamEntryID recorded_first_entry_id;
-  StreamEntry *first_entry = nullptr;
-  StreamEntry *last_entry = nullptr;
+  std::unique_ptr<StreamEntry> first_entry;
+  std::unique_ptr<StreamEntry> last_entry;
   std::vector<StreamEntry> entries;
-
-  ~StreamInfo() {
-    if (first_entry) {
-      delete first_entry;
-    }
-
-    if (last_entry) {
-      delete last_entry;
-    }
-  }
 };
 
 struct StreamReadResult {

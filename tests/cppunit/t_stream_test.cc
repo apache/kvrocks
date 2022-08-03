@@ -1872,8 +1872,8 @@ TEST_F(RedisStreamTest, StreamInfoOnEmptyStream) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id.ToString());
   EXPECT_EQ(info.entries_added, 1);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), "0-0");
-  EXPECT_EQ(info.first_entry, nullptr);
-  EXPECT_EQ(info.last_entry, nullptr);
+  EXPECT_FALSE(info.first_entry);
+  EXPECT_FALSE(info.last_entry);
 }
 
 TEST_F(RedisStreamTest, StreamInfoOneEntry) {
@@ -1893,10 +1893,10 @@ TEST_F(RedisStreamTest, StreamInfoOneEntry) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), "0-0");
   EXPECT_EQ(info.entries_added, 1);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id.ToString());
   checkStreamEntryValues(info.first_entry->values, values);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id.ToString());
   checkStreamEntryValues(info.last_entry->values, values);
 }
@@ -1928,10 +1928,10 @@ TEST_F(RedisStreamTest, StreamInfoOnStreamWithElements) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), "0-0");
   EXPECT_EQ(info.entries_added, 3);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id1.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id1.ToString());
   checkStreamEntryValues(info.first_entry->values, values1);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id3.ToString());
   checkStreamEntryValues(info.last_entry->values, values3);
   EXPECT_EQ(info.entries.size(), 0);
@@ -1964,8 +1964,8 @@ TEST_F(RedisStreamTest, StreamInfoOnStreamWithElementsFullOption) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), "0-0");
   EXPECT_EQ(info.entries_added, 3);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id1.ToString());
-  EXPECT_EQ(info.first_entry, nullptr);
-  EXPECT_EQ(info.last_entry, nullptr);
+  EXPECT_FALSE(info.first_entry);
+  EXPECT_FALSE(info.last_entry);
   EXPECT_EQ(info.entries.size(), 3);
   EXPECT_EQ(info.entries[0].key, id1.ToString());
   checkStreamEntryValues(info.entries[0].values, values1);
@@ -2007,10 +2007,10 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterLastEntryDeletion) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id3.ToString());
   EXPECT_EQ(info.entries_added, 3);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id1.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id1.ToString());
   checkStreamEntryValues(info.first_entry->values, values1);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id2.ToString());
   checkStreamEntryValues(info.last_entry->values, values2);
   EXPECT_EQ(info.entries.size(), 0);
@@ -2048,10 +2048,10 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterFirstEntryDeletion) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id1.ToString());
   EXPECT_EQ(info.entries_added, 3);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id2.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id2.ToString());
   checkStreamEntryValues(info.first_entry->values, values2);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id3.ToString());
   checkStreamEntryValues(info.last_entry->values, values3);
   EXPECT_EQ(info.entries.size(), 0);
@@ -2096,10 +2096,10 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMinId) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id2.ToString());
   EXPECT_EQ(info.entries_added, 4);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id3.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id3.ToString());
   checkStreamEntryValues(info.first_entry->values, values3);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id4.ToString());
   checkStreamEntryValues(info.last_entry->values, values4);
   EXPECT_EQ(info.entries.size(), 0);
@@ -2144,10 +2144,10 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMaxLen) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id2.ToString());
   EXPECT_EQ(info.entries_added, 4);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), id3.ToString());
-  EXPECT_NE(info.first_entry, nullptr);
+  EXPECT_TRUE(info.first_entry);
   EXPECT_EQ(info.first_entry->key, id3.ToString());
   checkStreamEntryValues(info.first_entry->values, values3);
-  EXPECT_NE(info.last_entry, nullptr);
+  EXPECT_TRUE(info.last_entry);
   EXPECT_EQ(info.last_entry->key, id4.ToString());
   checkStreamEntryValues(info.last_entry->values, values4);
   EXPECT_EQ(info.entries.size(), 0);
@@ -2192,7 +2192,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimAllEntries) {
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id4.ToString());
   EXPECT_EQ(info.entries_added, 4);
   EXPECT_EQ(info.recorded_first_entry_id.ToString(), "0-0");
-  EXPECT_EQ(info.first_entry, nullptr);
-  EXPECT_EQ(info.last_entry, nullptr);
+  EXPECT_FALSE(info.first_entry);
+  EXPECT_FALSE(info.last_entry);
   EXPECT_EQ(info.entries.size(), 0);
 }

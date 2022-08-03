@@ -26,8 +26,7 @@ option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" ON)
-option(ENABLE_IPO "Enable Interprocedural Optimization, aka Link Time Optimization (LTO)" ON)
-
+option(ENABLE_IPO "enable interprocedural optimization" ON)
 
 set(DEPS_FETCH_PROXY "" CACHE STRING
     "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
@@ -61,30 +60,6 @@ if(ENABLE_TSAN)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-if(ENABLE_IPO)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT result OUTPUT output LANGUAGES CXX)
-    if(result)
-        message(STATUS "IPO / LTO enabled")
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)    
-        if(CMAKE_COMPILER_IS_GNUCXX)
-            set(CMAKE_CXX_COMPILE_OPTIONS_IPO -flto=auto -fno-fat-lto-objects)
-            set(CMAKE_C_COMPILE_OPTIONS_IPO -flto=auto -fno-fat-lto-objects)
-        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-            find_package(LLVM REQUIRED)
-            if(NOT CLANG_LTO_CACHE)
-                set(CLANG_LTO_CACHE ${PROJECT_BINARY_DIR}/.clang-lto.cache)
-            endif()
-
-            set(CMAKE_CXX_COMPILE_OPTIONS_IPO -flto=thin)
-            set(CMAKE_C_COMPILE_OPTIONS_IPO -flto=thin)
-            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld -Wl,--thinlto-jobs=all,--thinlto-cache-dir=${CLANG_LTO_CACHE}")
-        endif()
-    else()
-        message(WARNING "IPO is not supported: ${output}")
-    endif()
-endif()
 
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
@@ -173,6 +148,20 @@ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(FOUND_UNWIND_LIB)
     target_link_libraries(kvrocks_objs PUBLIC ${FOUND_UNWIND_LIB})
+endif()
+
+if(ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_result OUTPUT ipo_output LANGUAGES CXX)
+
+    if(ipo_result)
+        set_property(TARGET kvrocks_objs PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            set_property(TARGET kvrocks_objs APPEND_STRING PROPERTY LINK_FLAGS " -fuse-ld=lld ")
+        endif()
+    else()
+        message(WARNING "IPO is not supported: ${ipo_output}")
+    endif()
 endif()
 
 # kvrocks main target

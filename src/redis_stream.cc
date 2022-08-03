@@ -432,14 +432,16 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
     if (!s.ok()) {
       return s;
     }
-    info->first_entry = std::unique_ptr<StreamEntry>(new StreamEntry{metadata.first_entry_id.ToString(), DecodeRawStreamEntryValue(first_value)});
+    info->first_entry = std::unique_ptr<StreamEntry>(
+          new StreamEntry{metadata.first_entry_id.ToString(), DecodeRawStreamEntryValue(first_value)});
 
     std::string last_value;
     s = getEntryRawValue(ns_key, metadata, metadata.last_entry_id, &last_value);
     if (!s.ok()) {
       return s;
     }
-    info->last_entry = std::unique_ptr<StreamEntry>(new StreamEntry{metadata.last_entry_id.ToString(), DecodeRawStreamEntryValue(last_value)});
+    info->last_entry = std::unique_ptr<StreamEntry>(
+          new StreamEntry{metadata.last_entry_id.ToString(), DecodeRawStreamEntryValue(last_value)});
   }
 
   return rocksdb::Status::OK();

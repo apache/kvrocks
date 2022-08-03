@@ -4477,7 +4477,9 @@ class CommandCluster : public Commander {
       if (!s.IsOK()) return s;
 
       int64_t state;
-      s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart), static_cast<int64_t>(kImportNone));
+      s = Util::DecimalStringToNum(args[3], &state, 
+                                  static_cast<int64_t>(kImportStart), 
+                                  static_cast<int64_t>(kImportNone));
       if (!s.IsOK()) return s;
       state_ = static_cast<ImportStatus>(state);
       return Status::OK();

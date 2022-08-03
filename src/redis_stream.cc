@@ -20,6 +20,8 @@
 
 #include "redis_stream.h"
 
+#include <memory>
+
 #include <glog/logging.h>
 #include <rocksdb/status.h>
 

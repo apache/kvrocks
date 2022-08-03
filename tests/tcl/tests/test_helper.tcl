@@ -551,9 +551,14 @@ proc print_help_screen {} {
         "--port <port>      TCP port to use against external host."
         "--baseport <port>  Initial port number for spawned redis servers."
         "--portcount <num>  Port range for spawned redis servers."
+        "--server-path <p>  Path for redis server (default ./redis-server)."
+        "--cli-path <path>  Path for redis CLI (default ./redis-cli)."
         "--help             Print this help screen."
     } "\n"]
 }
+
+set ::redis_server_path ./redis-server
+set ::redis_cli_path ./redis-cli
 
 # parse arguments
 for {set j 0} {$j < [llength $argv]} {incr j} {
@@ -654,6 +659,12 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
         set ::loop 1
     } elseif {$opt eq {--timeout}} {
         set ::timeout $arg
+        incr j
+    } elseif {$opt eq {--server-path}} {
+        set ::redis_server_path $arg
+        incr j
+    } elseif {$opt eq {--cli-path}} {
+        set ::redis_cli_path $arg
         incr j
     } elseif {$opt eq {--help}} {
         print_help_screen

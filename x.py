@@ -17,17 +17,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from argparse import Namespace, ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
 from os import makedirs
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
 import sys
-from typing import Callable, List, Any, Optional, TextIO
+from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 
 CMAKE_REQUIRE_VERSION = (3, 13, 0)
+TCL_REQUIRE_VERSION = (8, 5, 0)
+
 SEMVER_REGEX = re.compile(
     r"""
         ^
@@ -49,7 +51,7 @@ SEMVER_REGEX = re.compile(
     re.VERBOSE,
 )
 
-def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> Popen:
+def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> Popen[Any]:
     sys.stdout.flush()
     if verbose:
         print(f"$ {' '.join(args)}")
@@ -57,11 +59,9 @@ def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any)
     p = Popen(args, **kwargs)
     code = p.wait()
     if code != 0:
-        err = f"""
-failed to run: {args}
-exit with code: {code}
-error message: {msg}
-"""
+        err = f"\nfailed to run: {args}\nexit with code: {code}\n"
+        if msg:
+            err += f"error message: {msg}\n"
         raise RuntimeError(err)
     
     return p
@@ -70,8 +70,18 @@ def run_pipe(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs:
     p = run(*args, msg=msg, verbose=verbose, stdout=PIPE, text=True, **kwargs)
     return p.stdout # type: ignore
 
-def find_command(command: str, msg: Optional[str]=None):
+def find_command(command: str, msg: Optional[str]=None) -> str:
     return run_pipe("which", command, msg=msg).read().strip()
+
+def check_version(current: str, required: Tuple[int, int, int], prog_name: Optional[str] = None) -> None:
+    require_version = '.'.join(map(str, required))
+    semver_match = SEMVER_REGEX.match(current)
+    if semver_match is None:
+        raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
+    semver_dict = semver_match.groupdict()
+    semver = (int(semver_dict["major"]), int(semver_dict["minor"]), int(semver_dict["patch"]))
+    if semver < required:
+        raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
 
 def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str]) -> None:
     basedir = Path(__file__).parent.absolute()
@@ -83,14 +93,7 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
     output = run_pipe("head", "-n", "1", stdin=output)
     output = run_pipe("sed", "s/[^0-9.]*//g", stdin=output)
     cmake_version = output.read().strip()
-    cmake_require_version = '.'.join(map(str, CMAKE_REQUIRE_VERSION))
-    cmake_semver_match = SEMVER_REGEX.match(cmake_version)
-    if cmake_semver_match is None:
-        raise RuntimeError(f"CMake {cmake_require_version} or higher is required, got: {cmake_version}")
-    cmake_semver_dict = cmake_semver_match.groupdict()
-    cmake_semver = (int(cmake_semver_dict["major"]), int(cmake_semver_dict["minor"]), int(cmake_semver_dict["patch"]))
-    if cmake_semver < CMAKE_REQUIRE_VERSION:
-        raise RuntimeError(f"CMake {cmake_require_version} or higher is required, got: {cmake_version}")
+    check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
     makedirs(dir, exist_ok=True)
 
@@ -116,7 +119,7 @@ def cpplint() -> None:
     command = find_command("cpplint", msg="cpplint is required")
     options = ["--linelength=120", "--filter=-build/include_subdir,-legal/copyright,-build/c++11"]
     sources = [*glob("src/*.h"), *glob("src/*.cc")]
-    run(command, *options, *sources)
+    run(command, *options, *sources, verbose=True)
 
 def cppcheck() -> None:
     command = find_command("cppcheck", msg="cppcheck is required")
@@ -132,7 +135,7 @@ def cppcheck() -> None:
 
     sources = ["src"]
 
-    run(command, *options, *sources)
+    run(command, *options, *sources, verbose=True)
 
 def write_version(release_version: str) -> str:
     version = release_version.strip()
@@ -204,7 +207,20 @@ def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) ->
         '--license', 'Apache-2.0'
     ]
 
-    run(fpm, *fpm_opts)
+    run(fpm, *fpm_opts, verbose=True)
+
+def test_tcl(dir: str, rest: List[str]) -> None:
+    tclsh = find_command('tclsh', msg='TCL is required for testing')
+
+    output = run_pipe('echo', 'puts [info patchlevel];exit 0')
+    output = run_pipe(tclsh, stdin=output)
+    tcl_version = output.read().strip()
+    check_version(tcl_version, TCL_REQUIRE_VERSION, "tclsh")
+
+    tcldir = Path(__file__).parent.absolute() / 'tests' / 'tcl'
+    run(tclsh, 'tests/test_helper.tcl', '--server-path', str(Path(dir).absolute() / 'kvrocks'), *rest, 
+        cwd=str(tcldir), verbose=True
+    )
 
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -272,6 +288,23 @@ if __name__ == '__main__':
     parser_package_fpm.add_argument('dir', metavar='BUILD_DIR', help="directory to store cmake-generated and build files")
     parser_package_fpm.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
     parser_package_fpm.set_defaults(func=package_fpm)
+
+    parser_test = subparsers.add_parser(
+        'test',
+        description="Test against a specific kvrocks build",
+        help="Test against a specific kvrocks build",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    parser_test.set_defaults(func=parser_test.print_help)
+    parser_test_subparsers = parser_test.add_subparsers()
+    parser_test_tcl = parser_test_subparsers.add_parser(
+        'tcl',
+        description="Test kvrocks via TCL scripts",
+        help="Test kvrocks via TCL scripts",
+    )
+    parser_test_tcl.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_tcl.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to TCL scripts")
+    parser_test_tcl.set_defaults(func=test_tcl)
 
     args = parser.parse_args()
 

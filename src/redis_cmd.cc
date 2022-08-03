@@ -4480,7 +4480,7 @@ class CommandCluster : public Commander {
       s = Util::DecimalStringToNum(args[3], &state,
                                   static_cast<int64_t>(kImportStart),
                                   static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return s;
+      if (!s.IsOK()) return Status(Status::NotOK, "Invalid import state");
       state_ = static_cast<ImportStatus>(state);
       return Status::OK();
     }

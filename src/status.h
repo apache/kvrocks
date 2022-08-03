@@ -236,7 +236,8 @@ struct StatusOr {
 
  private:
   Status::Code code_;
-  alignas(value_type) alignas(error_type) unsigned char storage_[std::max(sizeof(value_type), sizeof(error_type))];
+  alignas(value_type) alignas(error_type) unsigned char storage_
+    [sizeof(value_type) < sizeof(error_type) ? sizeof(error_type) : sizeof(value_type)];
 
   value_type& getValue() {
     return *reinterpret_cast<value_type*>(storage_);

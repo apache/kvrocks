@@ -80,12 +80,12 @@ class Status {
   }
 
   std::string Msg() const& {
-    if (*this) return ok_msg;
+    if (*this) return ok_msg();
     return msg_;
   }
 
   std::string Msg() && {
-    if (*this) return ok_msg;
+    if (*this) return ok_msg();
     return std::move(msg_);
   }
 
@@ -95,7 +95,9 @@ class Status {
   Code code_;
   std::string msg_;
 
-  static constexpr const char ok_msg[] = "ok";
+  static constexpr const char* ok_msg() {
+    return "ok";
+  }
 
   template <typename T>
   friend struct StatusOr;
@@ -215,12 +217,12 @@ struct StatusOr {
   }
 
   std::string Msg() const& {
-    if (*this) return Status::ok_msg;
+    if (*this) return Status::ok_msg();
     return *getError();
   }
 
   std::string Msg() && {
-    if (*this) return Status::ok_msg;
+    if (*this) return Status::ok_msg();
     return std::move(*getError());
   }
 

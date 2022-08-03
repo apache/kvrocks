@@ -4473,12 +4473,15 @@ class CommandCluster : public Commander {
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
     if (subcommand_ == "import") {
       if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      try {
-        slot_ = atoi(args[2].c_str());
-        state_ = static_cast<ImportStatus>(atoi(args[3].c_str()));
-      } catch (std::exception &e) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
+      auto s = Util::DecimalStringToNum(args[2], &slot_);
+      if (!s.IsOK()) return s;
+
+      int64_t state;
+      s = Util::DecimalStringToNum(args[3], &state,
+                                  static_cast<int64_t>(kImportStart),
+                                  static_cast<int64_t>(kImportNone));
+      if (!s.IsOK()) return Status(Status::NotOK, "Invalid import state");
+      state_ = static_cast<ImportStatus>(state);
       return Status::OK();
     }
     return Status(Status::RedisParseErr,
@@ -4535,7 +4538,7 @@ class CommandCluster : public Commander {
         *output = Redis::Error(s.Msg());
       }
     } else if (subcommand_ == "import") {
-      Status s = svr->cluster_->ImportSlot(conn, slot_, state_);
+      Status s = svr->cluster_->ImportSlot(conn, static_cast<int>(slot_), state_);
       if (s.IsOK()) {
       *output = Redis::SimpleString("OK");
       } else {
@@ -4549,7 +4552,7 @@ class CommandCluster : public Commander {
 
  private:
   std::string subcommand_;
-  int slot_ = -1;
+  int64_t slot_ = -1;
   ImportStatus state_ = kImportNone;
 };
 
@@ -4563,12 +4566,9 @@ class CommandClusterX : public Commander {
         args_[2].size() == kClusterNodeIdLen) return Status::OK();
     if (subcommand_ == "migrate") {
       if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      try {
-        slot_ = atoi(args[2].c_str());
-        dst_node_id_ = args[3];
-      } catch (std::exception &e) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
+      auto s = Util::DecimalStringToNum(args[2], &slot_);
+      if (!s.IsOK()) return s;
+      dst_node_id_ = args[3];
       return Status::OK();
     }
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
@@ -4639,7 +4639,7 @@ class CommandClusterX : public Commander {
       int64_t v = svr->cluster_->GetVersion();
       *output = Redis::BulkString(std::to_string(v));
     } else if (subcommand_ == "migrate") {
-      Status s = svr->cluster_->MigrateSlot(slot_, dst_node_id_);
+      Status s = svr->cluster_->MigrateSlot(static_cast<int>(slot_), dst_node_id_);
       if (s.IsOK()) {
         *output = Redis::SimpleString("OK");
       } else {
@@ -4658,7 +4658,7 @@ class CommandClusterX : public Commander {
   int slot_id_ = -1;
   bool force_ = false;
   std::string dst_node_id_;
-  int slot_ = -1;
+  int64_t slot_ = -1;
 };
 
 class CommandEval : public Commander {

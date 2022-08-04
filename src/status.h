@@ -134,12 +134,12 @@ struct StatusOr {
 
   explicit StatusOr(Status s) : code_(s.code_) {
     CHECK(!s);
-    new(storage_) error_type(new std::string(std::move(s.msg_)));
+    new(value_or_error_) error_type(new std::string(std::move(s.msg_)));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) { // NOLINT
     CHECK(code != Code::cOK);
-    new(storage_) error_type(new std::string(std::move(msg)));
+    new(value_or_error_) error_type(new std::string(std::move(msg)));
   }
 
   template <typename ...Ts,
@@ -151,23 +151,23 @@ struct StatusOr {
         !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value
       ), int>::type = 0> // NOLINT
   explicit StatusOr(Ts && ... args) : code_(Code::cOK) {
-    new(storage_) value_type(std::forward<Ts>(args)...);
+    new(value_or_error_) value_type(std::forward<Ts>(args)...);
   }
 
   StatusOr(T&& value) : code_(Code::cOK) { // NOLINT
-    new(storage_) value_type(std::move(value));
+    new(value_or_error_) value_type(std::move(value));
   }
 
   StatusOr(const T& value) : code_(Code::cOK) { // NOLINT
-    new(storage_) value_type(value);
+    new(value_or_error_) value_type(value);
   }
 
   StatusOr(const StatusOr&) = delete;
   StatusOr(StatusOr&& other) : code_(other.code_) {
     if (code_ == Code::cOK) {
-      new(storage_) value_type(std::move(other.getValue()));
+      new(value_or_error_) value_type(std::move(other.getValue()));
     } else {
-      new(storage_) error_type(std::move(other.getError()));
+      new(value_or_error_) error_type(std::move(other.getError()));
     }
   }
 
@@ -248,22 +248,22 @@ struct StatusOr {
 
  private:
   Status::Code code_;
-  alignas(value_type) alignas(error_type) unsigned char storage_
+  alignas(value_type) alignas(error_type) unsigned char value_or_error_
     [sizeof(value_type) < sizeof(error_type) ? sizeof(error_type) : sizeof(value_type)];
 
   value_type& getValue() {
-    return *reinterpret_cast<value_type*>(storage_);
+    return *reinterpret_cast<value_type*>(value_or_error_);
   }
 
   const value_type& getValue() const {
-    return *reinterpret_cast<const value_type*>(storage_);
+    return *reinterpret_cast<const value_type*>(value_or_error_);
   }
 
   error_type& getError() {
-    return *reinterpret_cast<error_type*>(storage_);
+    return *reinterpret_cast<error_type*>(value_or_error_);
   }
 
   const error_type& getError() const {
-    return *reinterpret_cast<const error_type*>(storage_);
+    return *reinterpret_cast<const error_type*>(value_or_error_);
   }
 };

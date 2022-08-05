@@ -165,6 +165,16 @@ rocksdb::Status String::GetSet(const std::string &user_key, const std::string &n
   // prev status was used to tell whether old value was empty or not
   return !write_status.ok() ? write_status : s;
 }
+rocksdb::Status String::GetDel(const std::string &user_key, std::string *value)  {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = getValue(ns_key, value);
+  if (!s.ok()) return s;
+
+  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+}
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};

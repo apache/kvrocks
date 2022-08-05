@@ -742,6 +742,9 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (cluster_enabled) {
     return Status(Status::NotOK, "forbidden to add namespace when cluster mode was enabled");
   }
+  if (ns == kDefaultNamespace) {
+    return Status(Status::NotOK, "default namespace already exists");
+  }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;
   if (tokens.find(token) != tokens.end()) {

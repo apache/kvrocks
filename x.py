@@ -51,7 +51,7 @@ SEMVER_REGEX = re.compile(
     re.VERBOSE,
 )
 
-def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> Popen[Any]:
+def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> Popen:
     sys.stdout.flush()
     if verbose:
         print(f"$ {' '.join(args)}")

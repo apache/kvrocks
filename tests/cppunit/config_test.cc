@@ -182,7 +182,7 @@ TEST(Namespace, Add) {
 
   s = config.AddNamespace(kDefaultNamespace, "mytoken");
   EXPECT_FALSE(s.IsOK());
-  EXPECT_EQ(s.Msg(), "forbidden to the add the default namespace");
+  EXPECT_EQ(s.Msg(), "forbidden to add the default namespace");
   unlink(path);
 }
 

@@ -157,6 +157,20 @@ TEST_F(RedisStringTest, GetSet) {
   }
   string->Del(key_);
 }
+TEST_F(RedisStringTest, GetDel) {
+  for (size_t i = 0; i < pairs_.size(); i++) {
+    string->Set(pairs_[i].key.ToString(), pairs_[i].value.ToString());
+  }
+  for (size_t i = 0; i < pairs_.size(); i++) {
+    std::string got_value;
+    string->GetDel(pairs_[i].key.ToString(), &got_value);
+    EXPECT_EQ(pairs_[i].value, got_value);
+
+    std::string second_got_value;
+    auto s = string->GetDel(pairs_[i].key.ToString(), &second_got_value);
+    EXPECT_TRUE(!s.ok() && s.IsNotFound());
+  }
+}
 
 TEST_F(RedisStringTest, MSetXX) {
   int ret;

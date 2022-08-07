@@ -325,6 +325,24 @@ class CommandGetSet : public Commander {
   }
 };
 
+class CommandGetDel : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    std::string value;
+    rocksdb::Status s = string_db.GetDel(args_[1], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(value);
+    }
+    return Status::OK();
+  }
+};
+
 class CommandGetRange: public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -4778,6 +4796,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
     ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
     ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),
+    ADD_CMD("getdel", 2, "write", 1, 1, 1, CommandGetDel),
     ADD_CMD("setrange", 4, "write", 1, 1, 1, CommandSetRange),
     ADD_CMD("mget", -2, "read-only", 1, -1, 1, CommandMGet),
     ADD_CMD("append", 3, "write", 1, 1, 1, CommandAppend),

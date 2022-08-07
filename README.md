@@ -114,7 +114,7 @@ $ redis-cli -p 6666
 ### Running test cases
 
 ```shell
-$ ./build.sh build --unittest
+$ ./x.py build --unittest
 $ cd build
 $ ./unittest
 ```

@@ -180,12 +180,12 @@ start_server {tags {"string"}} {
     #      set ex
     #  } {*wrong number of arguments*}
 
-    # test "GETDEL command" {
-    #     r del foo
-    #     r set foo bar
-    #     assert_equal bar [r getdel foo ]
-    #     assert_equal {} [r getdel foo ]
-    # }
+    test "GETDEL command" {
+        r del foo
+        r set foo bar
+        assert_equal bar [r getdel foo ]
+        assert_equal {} [r getdel foo ]
+    }
 
     # test {GETDEL propagate as DEL command to replica} {
     #     set repl [attach_to_replication_stream]

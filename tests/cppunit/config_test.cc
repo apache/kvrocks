@@ -179,6 +179,10 @@ TEST(Namespace, Add) {
   auto s = config.AddNamespace("n1", "t0");
   EXPECT_FALSE(s.IsOK());
   EXPECT_EQ(s.Msg(), "the namespace has already exists");
+
+  s = config.AddNamespace(kDefaultNamespace, "mytoken");
+  EXPECT_FALSE(s.IsOK());
+  EXPECT_EQ(s.Msg(), "forbidden to add the default namespace");
   unlink(path);
 }
 

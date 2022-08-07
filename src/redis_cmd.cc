@@ -112,6 +112,8 @@ class CommandNamespace : public Commander {
           namespaces.emplace_back(iter->second);  // namespace
           namespaces.emplace_back(iter->first);   // token
         }
+        namespaces.emplace_back(kDefaultNamespace);
+        namespaces.emplace_back(config->requirepass);
         *output = Redis::MultiBulkString(namespaces, false);
       } else {
         std::string token;

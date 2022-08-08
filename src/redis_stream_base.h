@@ -99,9 +99,7 @@ struct StreamEntry {
 struct StreamTrimOptions {
   uint64_t max_len;
   StreamEntryID min_id;
-  uint64_t limit;
   StreamTrimStrategy strategy = StreamTrimStrategy::None;
-  bool with_limit = false;
 };
 
 struct StreamAddOptions {

@@ -1494,7 +1494,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSize) {
   checkStreamEntryValues(entries[1].values, values4);
 }
 
-TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSizeAndLimitToBreakEarlier) {
+TEST_F(RedisStreamTest, TrimWithMaxLenEqualTo1) {
   Redis::StreamAddOptions add_options;
   add_options.with_entry_id = true;
   add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
@@ -1521,55 +1521,6 @@ TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSizeAndLimitToBreakEarlier) 
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 1;
-  options.with_limit = true;
-  options.limit = 2;
-  uint64_t trimmed;
-  s = stream->Trim(name, options, &trimmed);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(trimmed, 2);
-
-  Redis::StreamRangeOptions range_options;
-  range_options.start = Redis::StreamEntryID::Minimum();
-  range_options.end = Redis::StreamEntryID::Maximum();
-  std::vector<Redis::StreamEntry> entries;
-  s = stream->Range(name, range_options, &entries);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(entries.size(), 2);
-  EXPECT_EQ(entries[0].key, id3.ToString());
-  checkStreamEntryValues(entries[0].values, values3);
-  EXPECT_EQ(entries[1].key, id4.ToString());
-  checkStreamEntryValues(entries[1].values, values4);
-}
-
-TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSizeAndSufficientLimit) {
-  Redis::StreamAddOptions add_options;
-  add_options.with_entry_id = true;
-  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
-  std::vector<std::string> values1 = {"key1", "val1"};
-  Redis::StreamEntryID id1;
-  auto s = stream->Add(name, add_options, values1, &id1);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
-  std::vector<std::string> values2 = {"key2", "val2"};
-  Redis::StreamEntryID id2;
-  s = stream->Add(name, add_options, values2, &id2);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123458, 0};
-  std::vector<std::string> values3 = {"key3", "val3"};
-  Redis::StreamEntryID id3;
-  s = stream->Add(name, add_options, values3, &id3);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123459, 0};
-  std::vector<std::string> values4 = {"key4", "val4"};
-  Redis::StreamEntryID id4;
-  s = stream->Add(name, add_options, values4, &id4);
-  EXPECT_TRUE(s.ok());
-
-  Redis::StreamTrimOptions options;
-  options.strategy = Redis::StreamTrimStrategy::MaxLen;
-  options.max_len = 1;
-  options.with_limit = true;
-  options.limit = 10;
   uint64_t trimmed;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
@@ -1712,98 +1663,6 @@ TEST_F(RedisStreamTest, TrimWithMinId) {
   checkStreamEntryValues(entries[0].values, values3);
   EXPECT_EQ(entries[1].key, id4.ToString());
   checkStreamEntryValues(entries[1].values, values4);
-}
-
-TEST_F(RedisStreamTest, TrimWithMinIdAndLimitToBreakEarlier) {
-  Redis::StreamAddOptions add_options;
-  add_options.with_entry_id = true;
-  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
-  std::vector<std::string> values1 = {"key1", "val1"};
-  Redis::StreamEntryID id1;
-  auto s = stream->Add(name, add_options, values1, &id1);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
-  std::vector<std::string> values2 = {"key2", "val2"};
-  Redis::StreamEntryID id2;
-  s = stream->Add(name, add_options, values2, &id2);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123458, 0};
-  std::vector<std::string> values3 = {"key3", "val3"};
-  Redis::StreamEntryID id3;
-  s = stream->Add(name, add_options, values3, &id3);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123459, 0};
-  std::vector<std::string> values4 = {"key4", "val4"};
-  Redis::StreamEntryID id4;
-  s = stream->Add(name, add_options, values4, &id4);
-  EXPECT_TRUE(s.ok());
-
-  Redis::StreamTrimOptions options;
-  options.strategy = Redis::StreamTrimStrategy::MinID;
-  options.min_id = Redis::StreamEntryID{123458, 10};
-  options.with_limit = true;
-  options.limit = 2;
-  uint64_t trimmed;
-  s = stream->Trim(name, options, &trimmed);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(trimmed, 2);
-
-  Redis::StreamRangeOptions range_options;
-  range_options.start = Redis::StreamEntryID::Minimum();
-  range_options.end = Redis::StreamEntryID::Maximum();
-  std::vector<Redis::StreamEntry> entries;
-  s = stream->Range(name, range_options, &entries);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(entries.size(), 2);
-  EXPECT_EQ(entries[0].key, id3.ToString());
-  checkStreamEntryValues(entries[0].values, values3);
-  EXPECT_EQ(entries[1].key, id4.ToString());
-  checkStreamEntryValues(entries[1].values, values4);
-}
-
-TEST_F(RedisStreamTest, TrimWithMinIdAndSufficientLimit) {
-  Redis::StreamAddOptions add_options;
-  add_options.with_entry_id = true;
-  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
-  std::vector<std::string> values1 = {"key1", "val1"};
-  Redis::StreamEntryID id1;
-  auto s = stream->Add(name, add_options, values1, &id1);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
-  std::vector<std::string> values2 = {"key2", "val2"};
-  Redis::StreamEntryID id2;
-  s = stream->Add(name, add_options, values2, &id2);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123458, 0};
-  std::vector<std::string> values3 = {"key3", "val3"};
-  Redis::StreamEntryID id3;
-  s = stream->Add(name, add_options, values3, &id3);
-  EXPECT_TRUE(s.ok());
-  add_options.entry_id = Redis::NewStreamEntryID{123459, 0};
-  std::vector<std::string> values4 = {"key4", "val4"};
-  Redis::StreamEntryID id4;
-  s = stream->Add(name, add_options, values4, &id4);
-  EXPECT_TRUE(s.ok());
-
-  Redis::StreamTrimOptions options;
-  options.strategy = Redis::StreamTrimStrategy::MinID;
-  options.min_id = Redis::StreamEntryID{123458, 10};
-  options.with_limit = true;
-  options.limit = 10;
-  uint64_t trimmed;
-  s = stream->Trim(name, options, &trimmed);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(trimmed, 3);
-
-  Redis::StreamRangeOptions range_options;
-  range_options.start = Redis::StreamEntryID::Minimum();
-  range_options.end = Redis::StreamEntryID::Maximum();
-  std::vector<Redis::StreamEntry> entries;
-  s = stream->Range(name, range_options, &entries);
-  EXPECT_TRUE(s.ok());
-  EXPECT_EQ(entries.size(), 1);
-  EXPECT_EQ(entries[0].key, id4.ToString());
-  checkStreamEntryValues(entries[0].values, values4);
 }
 
 TEST_F(RedisStreamTest, TrimWithMinIdGreaterThanLastEntryID) {

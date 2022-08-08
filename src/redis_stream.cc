@@ -115,19 +115,14 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& op
       trim_options.max_len = options.trim_options.max_len > 0 ? options.trim_options.max_len - 1 : 0;
     }
 
-    uint64_t trimmed = trim(ns_key, trim_options, &metadata, &batch);
+    trim(ns_key, trim_options, &metadata, &batch);
 
-    bool new_one_can_be_trimmed = (!trim_options.with_limit
-                                   || (trim_options.with_limit && trimmed < trim_options.limit));
-
-    if (trim_options.strategy == StreamTrimStrategy::MinID
-        && next_entry_id < trim_options.min_id && new_one_can_be_trimmed) {
+    if (trim_options.strategy == StreamTrimStrategy::MinID && next_entry_id < trim_options.min_id) {
       // there is no sense to add this element because it would be removed, so just modify metadata and return it's ID
       should_add = false;
     }
 
-    if (trim_options.strategy == StreamTrimStrategy::MaxLen
-        && options.trim_options.max_len == 0 && new_one_can_be_trimmed) {
+    if (trim_options.strategy == StreamTrimStrategy::MaxLen && options.trim_options.max_len == 0) {
       // there is no sense to add this element because it would be removed, so just modify metadata and return it's ID
       should_add = false;
     }
@@ -548,10 +543,6 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
 
   std::string last_deleted;
   while (iter->Valid() && metadata->size > 0) {
-    if (options.with_limit && (ret >= options.limit)) {
-      break;
-    }
-
     if (options.strategy == StreamTrimStrategy::MaxLen && metadata->size <= options.max_len) {
       break;
     }

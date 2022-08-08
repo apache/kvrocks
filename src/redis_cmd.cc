@@ -71,6 +71,7 @@ const char *errNoSuchKey = "no such key";
 const char *errUnbalacedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 const char *errTimeoutIsNegative = "timeout is negative";
+const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
 
 class CommandAuth : public Commander {
  public:
@@ -4832,18 +4833,7 @@ class CommandXAdd : public Commander {
       }
 
       if (val == "limit" && !entry_id_found) {
-        if (i+1 >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
-        }
-
-        try {
-          limit_ = std::stoull(args[i+1]);
-          with_limit_ = true;
-        } catch (const std::exception &) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
-        }
-        i += 2;
-        continue;
+        return Status(Status::RedisParseErr, errLimitOptionNotAllowed);
       }
 
       if (val == "*" && !entry_id_found) {
@@ -4889,10 +4879,6 @@ class CommandXAdd : public Commander {
       options.trim_options.strategy = StreamTrimStrategy::MinID;
       options.trim_options.min_id = min_id_;
     }
-    if (with_limit_) {
-      options.trim_options.with_limit = true;
-      options.trim_options.limit = limit_ == 0 ? UINT64_MAX : limit_;
-    }
     if (with_entry_id_) {
       options.with_entry_id = true;
       options.entry_id = entry_id_;
@@ -4920,14 +4906,12 @@ class CommandXAdd : public Commander {
  private:
   std::string stream_name_;
   uint64_t max_len_ = 0;
-  uint64_t limit_;
   Redis::StreamEntryID min_id_;
   Redis::NewStreamEntryID entry_id_;
   std::vector<std::string> name_value_pairs_;
   bool nomkstream_ = false;
   bool with_max_len_ = false;
   bool with_min_id_ = false;
-  bool with_limit_ = false;
   bool with_entry_id_ = false;
 };
 
@@ -5602,25 +5586,19 @@ class CommandXTrim : public Commander {
       return Status(Status::RedisParseErr, errInvalidSyntax);
     }
 
-    std::string limit;
+    bool limit_option_found = false;
     if (eq_sign_found) {
       if (args.size() > 6 && Util::ToLower(args[5]) == "limit") {
-        with_limit_ = true;
-        limit = args[6];
+        limit_option_found = true;
       }
     } else {
       if (args.size() > 5 && Util::ToLower(args[4]) == "limit") {
-        with_limit_ = true;
-        limit = args[5];
+        limit_option_found = true;
       }
     }
 
-    if (with_limit_) {
-      try {
-        limit_ = std::stoull(limit);
-      } catch (const std::exception &) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
+    if (limit_option_found) {
+      return Status(Status::RedisParseErr, errLimitOptionNotAllowed);
     }
 
     return Status::OK();
@@ -5637,10 +5615,6 @@ class CommandXTrim : public Commander {
     options.strategy = strategy_;
     options.max_len = max_len_;
     options.min_id = min_id_;
-    options.with_limit = with_limit_;
-    if (options.with_limit) {
-      options.limit = limit_ == 0 ? UINT64_MAX : limit_;
-    }
 
     uint64_t removed;
     auto s = stream_db.Trim(args_[1], options, &removed);
@@ -5654,11 +5628,9 @@ class CommandXTrim : public Commander {
   }
 
  private:
-  uint64_t limit_ = 0;
   uint64_t max_len_ = 0;
   StreamEntryID min_id_;
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
-  bool with_limit_ = false;
 };
 
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \

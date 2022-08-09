@@ -4865,10 +4865,6 @@ class CommandXAdd : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->IsSlave()) {
-      return Status(Status::NotOK, "READONLY You can't write against a read only replica");
-    }
-
     Redis::StreamAddOptions options;
     options.nomkstream = nomkstream_;
     if (with_max_len_) {
@@ -4930,10 +4926,6 @@ class CommandXDel : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->IsSlave()) {
-      return Status(Status::NotOK, "READONLY You can't write against a read only slave");
-    }
-
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
     uint64_t deleted;
     auto s = stream_db.DeleteEntries(args_[1], ids_, &deleted);
@@ -5605,10 +5597,6 @@ class CommandXTrim : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->IsSlave()) {
-      return Status(Status::NotOK, "READONLY You can't write against a read only replica");
-    }
-
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
 
     StreamTrimOptions options;

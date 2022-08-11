@@ -96,7 +96,7 @@ rocksdb::Status List::Pop(const Slice &user_key, bool left, std::string *elem) {
   auto s = PopMulti(user_key, left, 1, &elems);
   if (!s.ok()) return s;
 
-  *elem = elems[0];
+  *elem = std::move(elems[0]);
   return rocksdb::Status::OK();
 }
 

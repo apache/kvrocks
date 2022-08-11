@@ -1603,7 +1603,7 @@ class CommandBPop : public Commander {
   rocksdb::Status TryPopFromList() {
     Redis::List list_db(svr_->storage_, conn_->GetNamespace());
     std::string elem;
-    std::string* last_key_ptr = nullptr;
+    const std::string* last_key_ptr = nullptr;
     rocksdb::Status s;
     for (const auto &key : keys_) {
       last_key_ptr = &key;
@@ -1616,7 +1616,7 @@ class CommandBPop : public Commander {
       if (last_key_ptr == nullptr) {
         conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
       } else {
-        conn_->Reply(Redis::MultiBulkString({std::move(*last_key_ptr), std::move(elem)}));
+        conn_->Reply(Redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
       }
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));

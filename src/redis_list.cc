@@ -20,7 +20,9 @@
 
 #include "redis_list.h"
 
-#include <stdlib.h>
+#include <cstdlib>
+#include <utility>
+
 #include "db_util.h"
 
 namespace Redis {

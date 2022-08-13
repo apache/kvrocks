@@ -273,7 +273,7 @@ class Server {
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;
   std::atomic<int> blocked_clients_{0};
-  std::map<std::string, std::set<StreamConsumer *>> blocked_stream_consumers_;
+  std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
 
   // threads
   RWLock::ReadWriteLock works_concurrency_rw_lock_;

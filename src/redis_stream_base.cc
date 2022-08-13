@@ -24,13 +24,16 @@
 
 namespace Redis {
 
+const char* kErrLastEntryIdReached = "last possible entry id reached";
+const char* kErrInvalidEntryIdSpecified = "Invalid stream ID specified as stream command argument";
+
 rocksdb::Status IncrementStreamEntryID(StreamEntryID *id) {
   if (id->seq == UINT64_MAX) {
     if (id->ms == UINT64_MAX) {
       // special case where 'id' is the last possible entry ID
       id->ms = 0;
       id->seq = 0;
-      return rocksdb::Status::InvalidArgument("last possible stream id reached");
+      return rocksdb::Status::InvalidArgument(kErrLastEntryIdReached);
     } else {
       id->ms++;
       id->seq = 0;
@@ -56,31 +59,28 @@ rocksdb::Status GetNextStreamEntryID(const StreamEntryID &last_id, StreamEntryID
 
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
   auto pos = input.find("-");
-  if (pos != std::string::npos) {
-    try {
+  try {
+    if (pos != std::string::npos) {
       auto ms_str = input.substr(0, pos);
       auto seq_str = input.substr(pos + 1);
 
       id->ms = std::stoull(ms_str);
       id->seq = std::stoull(seq_str);
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
-    }
-  } else {
-    try {
+    } else {
       id->ms = std::stoull(input);
       id->seq = 0;
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
     }
+  } catch (const std::exception &) {
+    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
   }
-  return Status();
+
+  return Status::OK();
 }
 
 Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
   auto pos = input.find("-");
-  if (pos != std::string::npos) {
-    try {
+  try {
+    if (pos != std::string::npos) {
       auto ms_str = input.substr(0, pos);
       auto seq_str = input.substr(pos + 1);
 
@@ -91,17 +91,14 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
       } else {
         id->seq = std::stoull(seq_str);
       }
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
-    }
-  } else {
-    try {
+    } else {
       id->ms = std::stoull(input);
       id->seq = 0;
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
     }
+  } catch (const std::exception &) {
+    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
   }
+
   return Status();
 }
 
@@ -111,24 +108,21 @@ Status ParseRangeStart(const std::string &input, StreamEntryID *id) {
 
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
   auto pos = input.find("-");
-  if (pos != std::string::npos) {
-    try {
+  try {
+    if (pos != std::string::npos) {
       auto ms_str = input.substr(0, pos);
       auto seq_str = input.substr(pos + 1);
 
       id->ms = std::stoull(ms_str);
       id->seq = std::stoull(seq_str);
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
-    }
-  } else {
-    try {
+    } else {
       id->ms = std::stoull(input);
       id->seq = UINT64_MAX;
-    } catch (const std::exception &) {
-      return Status(Status::RedisParseErr, "Invalid stream ID specified as stream command argument");
     }
+  } catch (const std::exception &) {
+    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
   }
+
   return Status();
 }
 

@@ -4818,16 +4818,12 @@ class CommandXAdd : public Commander {
           return Status(Status::RedisParseErr, errInvalidSyntax);
         }
 
-        try {
-          auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
-          if (!s.IsOK()) {
-            return Status(Status::RedisParseErr, s.Msg());
-          }
-          with_min_id_ = true;
-        } catch (const std::exception &) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+        auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
+        if (!s.IsOK()) {
+          return Status(Status::RedisParseErr, s.Msg());
         }
 
+        with_min_id_ = true;
         i += eq_sign_found ? 3 : 2;
         continue;
       }

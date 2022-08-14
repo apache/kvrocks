@@ -144,7 +144,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
                           static_cast<size_t>(kBitmapSegmentBytes),
                           static_cast<size_t>(metadata.size - frag_index)});
 
-    //  If you setbit bit 0 1, the value is stored as 0x01 in Kvocks but 0x80 in Redis.
+    //  If you setbit bit 0 1, the value is stored as 0x01 in Kvrocks but 0x80 in Redis.
     // So we need to swap bits is to keep the same return value as Redis.
     for (uint32_t i = 0; i < valid_size; i++) {
         if (!fragment[i]) continue;

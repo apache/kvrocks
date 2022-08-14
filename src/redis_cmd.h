@@ -75,7 +75,7 @@ class Commander {
 
  protected:
   std::vector<std::string> args_;
-  const CommandAttributes *attributes_;
+  const CommandAttributes *attributes_ = nullptr;
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;

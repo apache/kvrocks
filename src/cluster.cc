@@ -40,11 +40,11 @@ Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port) :
   }
 }
 
-// We access cluster without lock, acutally we guarantte data-safe by work theads
+// We access cluster without lock, actually we guarantee data-safe by work threads
 // ReadWriteLockGuard, CLUSTER command doesn't have 'execlusive' attribute, i.e.
 // CLUSTER command can be executed concurrently, but some subcommand may change
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
-// also can guarantte accessing data is safe.
+// also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
   if (strcasecmp("setnodes", subcommand.c_str()) == 0) {
     return true;

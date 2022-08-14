@@ -1602,17 +1602,22 @@ class CommandBPop : public Commander {
 
   rocksdb::Status TryPopFromList() {
     Redis::List list_db(svr_->storage_, conn_->GetNamespace());
-    std::string last_key, elem;
+    std::string elem;
+    const std::string* last_key_ptr = nullptr;
     rocksdb::Status s;
     for (const auto &key : keys_) {
-      last_key = key;
+      last_key_ptr = &key;
       s = list_db.Pop(key, left_, &elem);
       if (s.ok() || !s.IsNotFound()) {
         break;
       }
     }
     if (s.ok()) {
-      conn_->Reply(Redis::MultiBulkString({last_key, elem}));
+      if (last_key_ptr == nullptr) {
+        conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
+      } else {
+        conn_->Reply(Redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
+      }
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));
       LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->GetAttributes()->name

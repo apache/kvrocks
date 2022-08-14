@@ -154,7 +154,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
     GetFixed64(&sub_key, &id);
     if ( id == cursor_id || pos++ < offset ) continue;
     ids->emplace_back(id);
-    if (limit > 0 && ids && ids->size() >= limit) break;
+    if (limit > 0 && ids->size() >= limit) break;
   }
   return rocksdb::Status::OK();
 }

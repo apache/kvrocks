@@ -1990,7 +1990,7 @@ class CommandSMIsMember : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       members.emplace_back(Slice(args_[i]));
     }
 

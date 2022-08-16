@@ -82,6 +82,26 @@ TEST_F(RedisSetTest, IsMember) {
   set->Del(key_);
 }
 
+TEST_F(RedisSetTest, MIsMember) {
+  int ret;
+  std::vector<int> exists;
+  rocksdb::Status s = set->Add(key_, fields_, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  s = set->MIsMember(key_, fields_, &exists);
+  EXPECT_TRUE(s.ok());
+  for (size_t i = 0; i < fields_.size(); i++) {
+    EXPECT_TRUE(exists[i] == 1);
+  }
+  s = set->Remove(key_, {fields_[0]}, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+  s = set->MIsMember(key_, fields_, &exists);
+  EXPECT_TRUE(s.ok() && exists[0] == 0);
+  for (size_t i = 1; i < fields_.size(); i++) {
+    EXPECT_TRUE(exists[i] == 1);
+  }
+  set->Del(key_);
+}
+
 TEST_F(RedisSetTest, Move) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);

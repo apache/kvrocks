@@ -16,9 +16,9 @@
 # under the License.
 
 start_server {tags {"command"}} {
-    test {kvrocks has 179 commands currently} {
+    test {kvrocks has 180 commands currently} {
         r command count
-    } {179}
+    } {180}
 
     test {acquire GET command info by COMMAND INFO} {
         set e [lindex [r command info get] 0]

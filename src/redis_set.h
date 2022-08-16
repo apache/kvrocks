@@ -35,6 +35,7 @@ class Set : public SubKeyScanner {
 
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status IsMember(const Slice &user_key, const Slice &member, int *ret);
+  rocksdb::Status MIsMember(const Slice &user_key, const std::vector<Slice> &members, std::vector<int> *exists);
   rocksdb::Status Add(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status Members(const Slice &user_key, std::vector<std::string> *members);

@@ -1996,6 +1996,31 @@ class CommandSIsMember : public Commander {
   }
 };
 
+class CommandSMIsMember : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Set set_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> members;
+    for (size_t i = 2; i < args_.size(); i++) {
+      members.emplace_back(Slice(args_[i]));
+    }
+
+    std::vector<int> exists;
+    rocksdb::Status s = set_db.MIsMember(args_[1], members, &exists);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      exists.resize(members.size(), 0);
+    }
+    output->append(Redis::MultiLen(exists.size()));
+    for (const auto &exist : exists) {
+      output->append(Redis::Integer(exist));
+    }
+    return Status::OK();
+  }
+};
+
 class CommandSPop : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -5731,6 +5756,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("scard", 2, "read-only", 1, 1, 1, CommandSCard),
     ADD_CMD("smembers", 2, "read-only", 1, 1, 1, CommandSMembers),
     ADD_CMD("sismember", 3, "read-only", 1, 1, 1, CommandSIsMember),
+    ADD_CMD("smismember", -3, "read-only", 1, 1, 1, CommandSMIsMember),
     ADD_CMD("spop", -2, "write", 1, 1, 1, CommandSPop),
     ADD_CMD("srandmember", -2, "read-only", 1, 1, 1, CommandSRandMember),
     ADD_CMD("smove", 4, "write", 1, 2, 1, CommandSMove),

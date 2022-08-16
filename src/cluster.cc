@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <cassert>
 #include <cstring>
 #include <algorithm>
@@ -20,11 +40,11 @@ Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port) :
   }
 }
 
-// We access cluster without lock, acutally we guarantte data-safe by work theads
+// We access cluster without lock, actually we guarantee data-safe by work threads
 // ReadWriteLockGuard, CLUSTER command doesn't have 'execlusive' attribute, i.e.
 // CLUSTER command can be executed concurrently, but some subcommand may change
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
-// also can guarantte accessing data is safe.
+// also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
   if (strcasecmp("setnodes", subcommand.c_str()) == 0) {
     return true;
@@ -151,7 +171,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   // Update replicas info and size
   for (auto &n : nodes_) {
     if (n.second->role_ == kClusterSlave) {
-      if (nodes_.find(n.second->master_id_) != nodes.end()) {
+      if (nodes_.find(n.second->master_id_) != nodes_.end()) {
         nodes_[n.second->master_id_]->replicas.push_back(n.first);
       }
     }
@@ -480,17 +500,15 @@ std::string Cluster::GenNodesDescription() {
 
 Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes) {
-  std::vector<std::string> nodes_info;
-  Util::Split(nodes_str, "\n", &nodes_info);
+  std::vector<std::string> nodes_info = Util::Split(nodes_str, "\n");
   if (nodes_info.size() == 0) {
     return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");
   }
   nodes->clear();
 
   // Parse all nodes
-  for (const auto& node_str : nodes_info) {
-    std::vector<std::string> fields;
-    Util::Split(node_str, " ", &fields);
+  for (const auto &node_str : nodes_info) {
+    std::vector<std::string> fields = Util::Split(node_str, " ");
     if (fields.size() < 5) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");
     }
@@ -543,8 +561,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // 6) slot info
     for (unsigned i = 5; i < fields.size(); i++) {
       int start, stop;
-      std::vector<std::string> ranges;
-      Util::Split(fields[i], "-", &ranges);
+      std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
         start = std::atoi(ranges[0].c_str());
         if (IsValidSlot(start) == false) {

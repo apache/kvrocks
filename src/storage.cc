@@ -1,9 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "storage.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <algorithm>
 #include <event2/buffer.h>
 #include <glog/logging.h>
@@ -16,6 +37,7 @@
 #include <rocksdb/convenience.h>
 #include <rocksdb/slice_transform.h>
 
+#include "server.h"
 #include "config.h"
 #include "redis_db.h"
 #include "rocksdb_crc32c.h"
@@ -23,6 +45,7 @@
 #include "event_listener.h"
 #include "compact_filter.h"
 #include "table_properties_collector.h"
+#include "event_util.h"
 
 namespace Engine {
 
@@ -35,6 +58,8 @@ const char *kPropagateColumnFamilyName = "propagate";
 const char *kPropagateScriptCommand = "script";
 
 const char *kLuaFunctionPrefix = "lua_f_";
+
+const char *kReplicationIdKey = "replication_id_";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
 
@@ -69,17 +94,19 @@ void Storage::CloseDB() {
   db_ = nullptr;
 }
 
-void Storage::InitTableOptions(rocksdb::BlockBasedTableOptions *table_options) {
-  table_options->format_version = 5;
-  table_options->index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
-  table_options->filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
-  table_options->partition_filters = true;
-  table_options->optimize_filters_for_memory = true;
-  table_options->metadata_block_size = 4096;
-  table_options->data_block_index_type =
+rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
+  rocksdb::BlockBasedTableOptions table_options;
+  table_options.format_version = 5;
+  table_options.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+  table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+  table_options.partition_filters = true;
+  table_options.optimize_filters_for_memory = true;
+  table_options.metadata_block_size = 4096;
+  table_options.data_block_index_type =
    rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
-  table_options->data_block_hash_table_util_ratio = 0.75;
-  table_options->block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  table_options.data_block_hash_table_util_ratio = 0.75;
+  table_options.block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  return table_options;
 }
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
@@ -92,56 +119,62 @@ void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100.0;
 }
 
-void Storage::InitOptions(rocksdb::Options *options) {
-  options->create_if_missing = true;
-  options->create_missing_column_families = true;
+rocksdb::Options Storage::InitOptions() {
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  options.create_missing_column_families = true;
   // options.IncreaseParallelism(2);
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
-  options->statistics = rocksdb::CreateDBStatistics();
-  options->stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
-  options->max_open_files = config_->RocksDB.max_open_files;
-  options->compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
-  options->max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
-  options->max_background_flushes = config_->RocksDB.max_background_flushes;
-  options->max_background_compactions = config_->RocksDB.max_background_compactions;
-  options->max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
-  options->min_write_buffer_number_to_merge = 2;
-  options->write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
-  options->num_levels = 7;
-  options->compression_per_level.resize(options->num_levels);
+  options.statistics = rocksdb::CreateDBStatistics();
+  options.stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
+  options.max_open_files = config_->RocksDB.max_open_files;
+  options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
+  options.max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
+  options.max_background_flushes = config_->RocksDB.max_background_flushes;
+  options.max_background_compactions = config_->RocksDB.max_background_compactions;
+  options.max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
+  options.min_write_buffer_number_to_merge = 2;
+  options.write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
+  options.num_levels = 7;
+  options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
-  for (int i = 0; i < options->num_levels; ++i) {
+  for (int i = 0; i < options.num_levels; ++i) {
     if (i < 2) {
-      options->compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
+      options.compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
     } else {
-      options->compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+      options.compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
     }
   }
   if (config_->RocksDB.row_cache_size) {
-    options->row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
+    options.row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
   }
-  options->enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
-  options->target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
-  options->max_manifest_file_size = 64 * MiB;
-  options->max_log_file_size = 256 * MiB;
-  options->keep_log_file_num = 12;
-  options->WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
-  options->WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
-  options->max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
-  options->listeners.emplace_back(new EventListener(this));
-  options->dump_malloc_stats = true;
+  options.enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
+  options.target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
+  options.max_manifest_file_size = 64 * MiB;
+  options.max_log_file_size = 256 * MiB;
+  options.keep_log_file_num = 12;
+  options.WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
+  options.WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
+  options.max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
+  options.listeners.emplace_back(new EventListener(this));
+  options.dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
-  options->sst_file_manager = sst_file_manager_;
+  options.sst_file_manager = sst_file_manager_;
   uint64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = static_cast<uint64_t>(config_->max_io_mb);
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
-  options->rate_limiter = rate_limiter_;
-  options->delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
-  options->compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
-  options->level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
-  options->level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
-  options->level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
+  options.rate_limiter = rate_limiter_;
+  options.delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
+  options.compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
+  options.level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
+  options.level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
+  options.level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
+  options.max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
+  options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
+  options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
+
+  return options;
 }
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
@@ -183,8 +216,19 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     tmp_db->Close();
     delete tmp_db;
   }
-  // Open db would be failed if the column families have already exists,
-  // so we return ok here.
+
+  if (!s.ok()) {
+    // We try to create families by opening the db without column families.
+    // If it's ok means we didn't create column families(cannot open without column families if created).
+    // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
+    // If the status message contains `Column families not opened` means that we have created the column
+    // families, let's ignore the error.
+    std::string notOpenedPrefix = "Column families not opened";
+    if (s.IsInvalidArgument() && s.ToString().find(notOpenedPrefix) != std::string::npos) {
+      return Status::OK();
+    }
+    return Status(Status::NotOK, s.ToString());
+  }
   return Status::OK();
 }
 
@@ -196,8 +240,7 @@ Status Storage::Open(bool read_only) {
   size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
 
-  rocksdb::Options options;
-  InitOptions(&options);
+  rocksdb::Options options = InitOptions();
   CreateColumnFamilies(options);
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
@@ -206,8 +249,7 @@ Status Storage::Open(bool read_only) {
     shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
   }
 
-  rocksdb::BlockBasedTableOptions metadata_table_opts;
-  InitTableOptions(&metadata_table_opts);
+  rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
   metadata_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
@@ -225,8 +267,7 @@ Status Storage::Open(bool read_only) {
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
   SetBlobDB(&metadata_opts);
 
-  rocksdb::BlockBasedTableOptions subkey_table_opts;
-  InitTableOptions(&subkey_table_opts);
+  rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
   subkey_table_opts.block_cache = shared_block_cache ?
     shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
@@ -247,16 +288,14 @@ Status Storage::Open(bool read_only) {
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
   SetBlobDB(&subkey_opts);
 
-  rocksdb::BlockBasedTableOptions pubsub_table_opts;
-  InitTableOptions(&pubsub_table_opts);
+  rocksdb::BlockBasedTableOptions pubsub_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
   pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   SetBlobDB(&pubsub_opts);
 
-  rocksdb::BlockBasedTableOptions propagate_table_opts;
-  InitTableOptions(&propagate_table_opts);
+  rocksdb::BlockBasedTableOptions propagate_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions propagate_opts(options);
   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
   propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
@@ -472,10 +511,12 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
     return rocksdb::Status::SpaceLimit();
   }
 
-  auto s = db_->Write(options, updates);
-  if (!s.ok()) return s;
+  // Put replication id logdata at the end of write batch
+  if (replid_.length() == kReplIdLength) {
+    updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
+  }
 
-  return s;
+  return db_->Write(options, updates);
 }
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
@@ -483,19 +524,21 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
                                 const rocksdb::Slice &key) {
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
-  return db_->Write(options, &batch);
+  return Write(options, &batch);
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
-  auto s = db_->DeleteRange(rocksdb::WriteOptions(), GetCFHandle("metadata"), first_key, last_key);
+  rocksdb::WriteBatch batch;
+  rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle("metadata");
+  auto s = batch.DeleteRange(cf_handle, first_key, last_key);
   if (!s.ok()) {
     return s;
   }
-  s = Delete(rocksdb::WriteOptions(), GetCFHandle("metadata"), last_key);
+  s = batch.Delete(cf_handle, last_key);
   if (!s.ok()) {
     return s;
   }
-  return rocksdb::Status::OK();
+  return Write(rocksdb::WriteOptions(), &batch);
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -503,10 +546,16 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
   end_key[end_key.size()-1] += 1;
-  return db_->DeleteRange(options, cf_handle, begin_key, end_key);
+
+  rocksdb::WriteBatch batch;
+  auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
+  if (!s.ok()) {
+    return s;
+  }
+  return Write(rocksdb::WriteOptions(), &batch);
 }
 
-Status Storage::WriteBatch(std::string &&raw_batch) {
+Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
   if (reach_db_size_limit_) {
     return Status(Status::NotOK, "reach space limit");
   }
@@ -595,6 +644,93 @@ void Storage::SetIORateLimit(uint64_t max_io_mb) {
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }
+
+Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  rocksdb::WriteBatch batch;
+
+  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  batch.Put(cf, key, value);
+  auto s = Write(rocksdb::WriteOptions(), &batch);
+  if (!s.ok()) {
+    return Status(Status::NotOK, s.ToString());
+  }
+  return Status::OK();
+}
+
+bool Storage::ShiftReplId(void) {
+  const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const int charset_len = strlen(charset);
+
+  // Do nothing if don't enable rsid psync
+  if (!config_->use_rsid_psync) return true;
+
+  std::random_device rd;
+  std::mt19937 gen(rd() + getpid());
+  std::uniform_int_distribution<> distrib(0, charset_len-1);
+  std::string rand_str;
+  for (int i = 0; i < kReplIdLength; i++) {
+    rand_str.push_back(charset[distrib(gen)]);
+  }
+  replid_ = rand_str;
+  LOG(INFO) << "[replication] New replication id: " << replid_;
+
+  // Write new replication id into db engine
+  WriteToPropagateCF(kReplicationIdKey, replid_);
+  return true;
+}
+
+std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
+
+  if (!WALHasNewData(seq) || !GetWALIter(seq, &iter).IsOK()) return "";
+
+  // An extractor to extract update from raw writebatch
+  class ReplIdExtractor : public rocksdb::WriteBatch::Handler {
+   public:
+    rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key,
+                        const Slice &value) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
+                    const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+      return rocksdb::Status::OK();
+    }
+
+    void LogData(const rocksdb::Slice &blob) override {
+      // Currently, we alway put replid log data at the last.
+      if (ServerLogData::IsServerLogData(blob.data())) {
+        ServerLogData serverlog;
+        if (serverlog.Decode(blob).IsOK()) {
+          if (serverlog.GetType() == kReplIdLog) {
+            replid_in_wal_ = serverlog.GetContent();
+          }
+        }
+      }
+    };
+    std::string GetReplId(void) {
+      return replid_in_wal_;
+    }
+
+   private:
+    std::string replid_in_wal_;
+  };
+
+  auto batch = iter->GetBatch();
+  ReplIdExtractor write_batch_handler;
+  rocksdb::Status s = batch.writeBatchPtr->Iterate(&write_batch_handler);
+  if (!s.ok()) return "";
+  return write_batch_handler.GetReplId();
+}
+
+std::string Storage::GetReplIdFromDbEngine(void) {
+  std::string replid_in_db;
+  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  auto s = db_->Get(rocksdb::ReadOptions(), cf, kReplicationIdKey, &replid_in_db);
+  return replid_in_db;
+}
 
 std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() {
   return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(db_rw_lock_));
@@ -721,8 +857,6 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage,
 
 Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
     Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf) {
-  char *line;
-  size_t len;
   Storage::ReplDataManager::MetaInfo meta;
   auto meta_file = "meta/" + std::to_string(meta_id);
   DLOG(INFO) << "[meta] id: " << meta_id;
@@ -735,39 +869,34 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
   wf->Close();
 
   // timestamp;
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] timestamp: " << line;
-  meta.timestamp = std::strtoll(line, nullptr, 10);
-  free(line);
+  UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] timestamp: " << line.get();
+  meta.timestamp = std::strtoll(line.get(), nullptr, 10);
   // sequence
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] seq:" << line;
-  meta.seq = std::strtoull(line, nullptr, 10);
-  free(line);
+  line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
+  DLOG(INFO) << "[meta] seq:" << line.get();
+  meta.seq = std::strtoull(line.get(), nullptr, 10);
   // optional metadata
-  line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
-  if (strncmp(line, "metadata", 8) == 0) {
-    DLOG(INFO) << "[meta] meta: " << line;
-    meta.meta_data = std::string(line, len);
-    free(line);
-    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+  line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
+  if (strncmp(line.get(), "metadata", 8) == 0) {
+    DLOG(INFO) << "[meta] meta: " << line.get();
+    meta.meta_data = std::string(line.get(), line.length);
+    line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   }
-  DLOG(INFO) << "[meta] file count: " << line;
-  free(line);
+  DLOG(INFO) << "[meta] file count: " << line.get();
   // file list
   while (true) {
-    line = evbuffer_readln(evbuf, &len, EVBUFFER_EOL_LF);
+    line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
     if (!line) {
       break;
     }
-    DLOG(INFO) << "[meta] file info: " << line;
-    auto cptr = line;
+    DLOG(INFO) << "[meta] file info: " << line.get();
+    auto cptr = line.get();
     while (*(cptr++) != ' ') {}
-    auto filename = std::string(line, cptr - line - 1);
+    auto filename = std::string(line.get(), cptr - line.get() - 1);
     while (*(cptr++) != ' ') {}
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
-    free(line);
   }
   SwapTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
   return meta;

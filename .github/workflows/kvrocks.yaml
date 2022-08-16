@@ -1,69 +1,189 @@
-name: kvrocks ci actions  # don't edit while the badge was depend on this
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: CI
 
 on: [push, pull_request]
 
+# Cancel previous workflows if they are the same workflow on same ref (branch/tags)
+# with the same event (push/pull_request) even they are in progress.
+# This setting will help reduce the number of duplicated workflows.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
-  lint-build-test-on-ubuntu:
+  license:
+    name: Check license header
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: apache/skywalking-eyes/header@v0.4.0
+        with:
+          config: tools/ci/licenserc.yml
+
+  lint:
+    name: Lint and check code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Base
+        uses: actions/checkout@v3
+      - name: Install Check Tools
+        run: |
+          sudo apt update
+          sudo apt install -y cppcheck
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+      - name: Setup dependencies
+        run: pip install cpplint==1.5.0
+      - name: Lint and check code
+        run: |
+          ./x.py check cpplint
+          ./x.py check cppcheck
+
+  build-and-test:
+    name: Build and test
+    needs: [license, lint]
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-18.04]
+        include:
+          - name: Darwin Clang
+            os: macos-latest
+            compiler: auto
+          - name: Darwin Clang without Jemalloc
+            os: macos-latest
+            compiler: auto
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Ubuntu GCC
+            os: ubuntu-18.04
+            compiler: gcc
+          - name: Ubuntu Clang
+            os: ubuntu-18.04
+            compiler: clang
+          - name: Ubuntu GCC ASan
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_sanitizer: -DENABLE_ASAN=ON
+            compiler: gcc
+          - name: Ubuntu GCC TSan
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_sanitizer: -DENABLE_TSAN=ON
+            compiler: gcc
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          - name: Ubuntu Clang ASan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: clang
+          - name: Ubuntu Clang TSan
+            os: ubuntu-18.04
+            with_sanitizer: -DENABLE_TSAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: clang
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          - name: Ubuntu GCC Ninja
+            os: ubuntu-18.04
+            with_ninja: --ninja
+            compiler: gcc
+          - name: Ubuntu GCC Ninja without Jemalloc
+            os: ubuntu-18.04
+            with_ninja: --ninja
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: gcc
+          - name: Ubuntu GCC without luajit
+            os: ubuntu-18.04
+            without_luajit: -DUSE_LUAJIT=OFF
+            compiler: gcc
+
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v2
         with:
-          fetch-depth: 64
+          path: |
+            ~/local/bin/redis-cli
+          key: ${{ runner.os }}-redis-cli
 
-      - name: Install Dependencies
+      - name: Setup macOS
+        if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          sudo pip install --upgrade pip
-          sudo pip install --upgrade setuptools
-          sudo apt-get update
-          sudo apt-get install -y cppcheck
-          sudo pip install cpplint==1.5.0
-          sudo apt-get install -y tar libsnappy-dev
-          mkdir build
+          brew install cmake gcc autoconf automake libtool
+          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
 
-      - name: Lint
+      - name: Setup Linux
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
-          make lint
+          sudo apt update
+          sudo apt install -y tcl8.5 ninja-build
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
-      - name: Build
+      - name: Install redis
+        if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
-          make -j4
-          cp src/kvrocks build/kvrocks
+          curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
+          tar -xzvf redis-6.2.6.tar.gz
+          mkdir -p $HOME/local/bin
+          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
-      - name: Unit Test
+      - name: Checkout Code Base
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
+      - name: Build Kvrocks
+        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
+
+      - name: Run Unit Test
         run: |
-          wget https://github.com/google/googletest/archive/release-1.8.1.tar.gz
-          tar -zxvf release-1.8.1.tar.gz
-          cd googletest-release-1.8.1/
-          cmake CMakeLists.txt
-          make && sudo make install && cd -
-          make test
+          export ${{ matrix.runtime_env_vars }}
+          ./build/unittest
 
-      - name: Redis Tcl Test
+      - name: Run Redis Tcl Test
         run: |
-          wget https://github.com/redis/redis/archive/refs/tags/6.2.6.tar.gz
-          tar -zxvf 6.2.6.tar.gz
-          cd redis-6.2.6/ && make redis-cli && cd -
-          cp redis-6.2.6/src/redis-cli tests/tcl/redis-cli
-          sudo apt-get install tcl8.5
-          cd tests/tcl && sh runtest
-          sh runtest --single integration/redis-cli && cd -
+          export ${{ matrix.runtime_env_vars }}
+          ./x.py test tcl build --cli-path $HOME/local/bin/redis-cli --dont-clean
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
+          if [[ $SANITIZER_OUTPUT ]]; then
+            echo "$SANITIZER_OUTPUT"
+            echo "\ndetail reports:\n"
+            cat $(find tests/tmp -iname stderr)
+            echo "sanitizer error was reported, exiting..."
+            exit 1
+          fi
 
-  build-on-macos-latest:
-    runs-on: macos-11
+  required:
+    if: always()
+    name: Required
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
     steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v2.3.4
-        with:
-          fetch-depth: 64
-
-      - name: Install Dependencies
+      - name: Merge requirement checking
         run: |
-          brew install snappy googletest gcc autoconf automake libtool
-          mkdir build
+          build_and_test=${{ needs.build-and-test.result }}
 
-      - name: Build
-        run: make -j4
+          if [[ $build_and_test != 'success' ]]; then
+            exit 1
+          fi

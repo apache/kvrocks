@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/type/list.tcl
+
 start_server {
     tags {"list"}
 } {
@@ -546,6 +569,56 @@ start_server {
         assert_error *WRONGTYPE* {r rpop notalist}
     }
 
+    test "LPOP/RPOP with wrong number of arguments" {
+        assert_error {*wrong number of arguments*} {r lpop key 1 1}
+        assert_error {*wrong number of arguments*} {r rpop key 2 2}
+    }
+
+    test {RPOP/LPOP with the optional count argument} {
+        assert_equal 7 [r lpush listcount aa bb cc dd ee ff gg]
+        assert_equal {gg} [r lpop listcount 1]
+        assert_equal {ff ee} [r lpop listcount 2]
+        assert_equal {aa bb} [r rpop listcount 2]
+        assert_equal {cc} [r rpop listcount 1]
+        assert_equal {dd} [r rpop listcount 123]
+        assert_error "*ERR*range*" {r lpop forbarqaz -123}
+    }
+
+    test "LPOP/RPOP with the count 0 returns an empty array" {
+        # Make sure we can distinguish between an empty array and a null response
+        r readraw 1
+
+        r lpush listcount zero
+        assert_equal {*0} [r lpop listcount 0]
+        assert_equal {*0} [r rpop listcount 0]
+
+        r readraw 0
+    }
+
+    test "LPOP/RPOP against non existing key" {
+        r readraw 1
+
+        r del non_existing_key
+        assert_equal [r lpop non_existing_key] {$-1}
+        assert_equal [r rpop non_existing_key] {$-1}
+
+        r readraw 0
+    }
+
+    test "LPOP/RPOP with <count> against non existing key" {
+        r readraw 1
+
+        r del non_existing_key
+
+        assert_equal [r lpop non_existing_key 0] {*-1}
+        assert_equal [r lpop non_existing_key 1] {*-1}
+
+        assert_equal [r rpop non_existing_key 0] {*-1}
+        assert_equal [r rpop non_existing_key 1] {*-1}
+
+        r readraw 0
+    }
+
     foreach {type num} {quicklist 250 quicklist 500} {
         test "Mass RPOP/LPOP - $type" {
             r del mylist
@@ -718,4 +791,48 @@ start_server {
     #     $rd2 close
     #     r ping
     # } {PONG}
+
+    test {Test LMOVE on different keys} {
+        r RPUSH list1{t} "1"
+        r RPUSH list1{t} "2"
+        r RPUSH list1{t} "3"
+        r RPUSH list1{t} "4"
+        r RPUSH list1{t} "5"
+
+        r LMOVE list1{t} list2{t} RIGHT LEFT
+        r LMOVE list1{t} list2{t} LEFT RIGHT
+        assert_equal [r llen list1{t}] 3
+        assert_equal [r llen list2{t}] 2
+        assert_equal [r lrange list1{t} 0 -1] {2 3 4}
+        assert_equal [r lrange list2{t} 0 -1] {5 1}
+    }
+
+    foreach from {LEFT RIGHT} {
+        foreach to {LEFT RIGHT} {
+            test "LMOVE $from $to on the list node" {
+                    r del target_key{t}
+                    r rpush target_key{t} 1
+
+                    set rd [redis_deferring_client]
+                    create_list list{t} "a b c d"
+                    $rd lmove list{t} target_key{t} $from $to
+                    set elem [$rd read]
+
+                    if {$from eq "RIGHT"} {
+                        assert_equal d $elem
+                        assert_equal "a b c" [r lrange list{t} 0 -1]
+                    } else {
+                        assert_equal a $elem
+                        assert_equal "b c d" [r lrange list{t} 0 -1]
+                    }
+                    if {$to eq "RIGHT"} {
+                        assert_equal $elem [r rpop target_key{t}]
+                    } else {
+                        assert_equal $elem [r lpop target_key{t}]
+                    }
+
+                    $rd close
+                }
+            }
+        }
 }

@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/type/string.tcl
+
 start_server {tags {"string"}} {
     test {SET and GET an item} {
         r set x foobar
@@ -157,12 +180,12 @@ start_server {tags {"string"}} {
     #      set ex
     #  } {*wrong number of arguments*}
 
-    # test "GETDEL command" {
-    #     r del foo
-    #     r set foo bar
-    #     assert_equal bar [r getdel foo ]
-    #     assert_equal {} [r getdel foo ]
-    # }
+    test "GETDEL command" {
+        r del foo
+        r set foo bar
+        assert_equal bar [r getdel foo ]
+        assert_equal {} [r getdel foo ]
+    }
 
     # test {GETDEL propagate as DEL command to replica} {
     #     set repl [attach_to_replication_stream]
@@ -544,6 +567,18 @@ start_server {tags {"string"}} {
     #     r set foo bar pxat [expr [clock milliseconds] + 10000]
     #     assert_range [r ttl foo] 5 10
     # }
+
+    test {Extended SET with incorrect use of multi options should result in syntax err} {
+      catch {r set foo bar ex 10 px 10000} err1
+      catch {r set foo bar NX XX} err2
+      list $err1 $err2
+    } {*syntax err* *syntax err*}
+
+    test {Extended SET with incorrect expire value} {
+        catch {r set foo bar ex 1234xyz} e
+        set e
+    } {*not an integer*}
+
     test {Extended SET using multiple options at once} {
         r set foo val
         assert {[r set foo bar xx px 10000] eq {OK}}

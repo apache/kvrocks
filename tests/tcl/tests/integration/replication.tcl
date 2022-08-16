@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/integration/replication.tcl
+
 start_server {tags {"repl"}} {
     set A [srv 0 client]
     set A_host "localhost"
@@ -56,9 +79,8 @@ start_server {tags {"repl"}} {
             s role
         } {slave}
 
-        after 3000
+        wait_for_sync r
         test {Sync should have transferred keys from master} {
-            after 100
             assert_equal [r -1 get mykey] [r get mykey]
             assert_equal [r -1 get mystring] [r get mystring]
             assert_equal [r -1 lrange mylist 0 -1] [r lrange mylist 0 -1]
@@ -127,7 +149,9 @@ start_server {tags {"repl"}} {
             test {Multi slaves full sync with master at the same time} {
                 $A slaveof $C_host $C_port
                 $B slaveof $C_host $C_port
-                after 1000
+                
+                wait_for_sync $A
+                wait_for_sync $B
 
                 # Wait for finishing full replication
                 wait_for_condition 500 100 {
@@ -177,9 +201,9 @@ start_server {tags {"repl"} overrides {max-replication-mb 1 rocksdb.compression 
             } else {
                 fail "Fail to resume broken transfer based files"
             }
-            after 1000
 
             # Slave loads checkpoint successfully
+            wait_for_sync r
             assert_equal b [r get a]
         }
     }
@@ -213,7 +237,8 @@ start_server {tags {"repl"}} {
                 } else {
                     fail "Fail to share one checkpoint"
                 }
-                after 1000
+                wait_for_sync $slave1
+                wait_for_sync $slave2
                 assert_equal b [$slave1 get a]
                 assert_equal b [$slave2 get a]
             }
@@ -225,22 +250,61 @@ start_server {tags {"repl"}} {
     set slave [srv 0 client]
     start_server {} {
         $slave slaveof [srv 0 host] [srv 0 port]
+        wait_for_sync $slave
+
         test {Master doesn't pause replicating with replicas, #346} {
-            r set a b
-            wait_for_condition 500 100 {
-                [string match {*connected*} [$slave role]]
-            } else {
-                fail "Slaves can't sync with master"
-            }
             # In #346, we find a bug, if one command contains more than special
             # number updates, master won't send replication stream to replicas.
             r hset myhash 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 \
                           a a b b c c d d e e f f g g h h i i j j k k
             assert_equal 21 [r hlen myhash]
 
-            after 100
+            wait_for_ofs_sync r $slave
             assert_equal 1 [$slave hget myhash 1]
             assert_equal a [$slave hget myhash a]
+        }
+    }
+}
+
+start_server {tags {"repl"}} {
+    set slave [srv 0 client]
+    set slave_ip [srv 0 host]
+    set slave_port [srv 0 port]
+    start_server {} {
+        set master [srv 0 client]
+        set master_ip [srv 0 host]
+        set master_port [srv 0 port]
+        test {Slave can re-sync with master after password change} {
+            $slave slaveof $master_ip $master_port
+            wait_for_sync $slave
+            catch {$slave info replication} var
+            assert_match {*role:slave*} $var
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
+
+            # Change password and break repl connection
+            $master config set requirepass pass
+            $slave config set requirepass pass
+            $slave config set masterauth pass
+
+            set ret [$master client list]
+            set lines [split $ret "\n"]
+            global conn_addr
+            foreach  line $lines {
+                if {[string match "*cmd=psync*" $line]} {
+                    set list [split $line " "]
+                    foreach str $list {
+                        if {[string match "*addr=*" $str]} {
+                            set conn_addr [string range $str 5 end]
+                        }
+                    }
+                }
+            }
+
+            $master client kill $conn_addr
+            wait_for_sync $slave
+            catch {$master info replication} var
+            assert_match {*role:master*[$slave_ip]*[$slave_port]*} $var
         }
     }
 }

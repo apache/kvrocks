@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/scripting.tcl
+
 start_server {tags {"scripting"}} {
     test {EVAL - Does Lua interpreter replies to our requests?} {
         r eval {return 'hello'} 0
@@ -240,9 +263,10 @@ start_server {tags {"scripting"}} {
                 assert(re.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x)
                 -- so, the final x.x is at the depth limit and was assigned nil
                 assert(re.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x == nil)
-                return {h, re.x.x.x.x.x.x.x.x.y == re.y, re.y == 5}
+                assert(h == "82a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a17882a17881a178c0a17905a17905a17905a17905a17905a17905a17905a17905" or h == "82a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a178c0")
+                return {re.x.x.x.x.x.x.x.x.y == re.y, re.y == 5}
         } 0
-    } {82a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a17882a17905a17881a178c0 1 1}
+    } {1 1}
     test {EVAL - Numerical sanity check from bitop} {
         r eval {assert(0x7fffffff == 2147483647, "broken hex literals");
                 assert(0xffffffff == -1 or 0xffffffff == 2^32-1,

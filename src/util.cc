@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #define __STDC_FORMAT_MACROS
 #include <unistd.h>
 #include <sys/stat.h>
@@ -23,6 +43,7 @@
 
 #include "util.h"
 #include "status.h"
+#include "event_util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -39,7 +60,7 @@
 #define AE_HUP 8
 
 namespace Util {
-Status SockConnect(std::string host, uint32_t port, int *fd) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   int rv, cfd;
   char portstr[6];  /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
@@ -134,7 +155,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(std::string host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
     if (!s.IsOK()) return s;
@@ -267,45 +288,57 @@ Status SockSetBlocking(int fd, int blocking) {
 }
 
 Status SockReadLine(int fd, std::string *data) {
-  size_t line_len;
-  evbuffer *evbuf = evbuffer_new();
-  if (evbuffer_read(evbuf, fd, -1) <= 0) {
-    evbuffer_free(evbuf);
+  UniqueEvbuf evbuf;
+  if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
     return Status(Status::NotOK, std::string("read response err: ") + strerror(errno));
   }
-  char *line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+  UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
-    free(line);
-    evbuffer_free(evbuf);
     return Status(Status::NotOK, std::string("read response err(empty): ") + strerror(errno));
   }
-  *data = std::string(line, line_len);
-  free(line);
-  evbuffer_free(evbuf);
+  *data = std::string(line.get(), line.length);
   return Status::OK();
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
+  addr->clear();
+
   sockaddr_storage sa{};
   socklen_t sa_len = sizeof(sa);
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
     return -1;
   }
-  if (sa.ss_family == AF_INET) {
+  if (sa.ss_family == AF_INET6) {
+    char buf[INET6_ADDRSTRLEN];
+    auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
+    inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET_ADDRSTRLEN);
+    addr->append(buf);
+    *port = ntohs(sa6->sin6_port);
+  } else {
     auto sa4 = reinterpret_cast<sockaddr_in *>(&sa);
     char buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, reinterpret_cast<void *>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
-    addr->clear();
     addr->append(buf);
     *port = ntohs(sa4->sin_port);
-    return 0;
   }
-  return -2;  // only support AF_INET currently
+  return 0;
 }
 
-Status StringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
+Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
   try {
     *n = static_cast<int64_t>(std::stoll(str));
+    if (max > min && (*n < min || *n > max)) {
+      return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
+    }
+  } catch (std::exception &e) {
+    return Status(Status::NotOK, "value is not an integer or out of range");
+  }
+  return Status::OK();
+}
+
+Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
+  try {
+    *n = static_cast<int64_t>(std::stoll(str, nullptr, 8));
     if (max > min && (*n < min || *n > max)) {
       return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
     }
@@ -321,42 +354,54 @@ std::string ToLower(std::string in) {
   return in;
 }
 
-void Trim(const std::string &in, const std::string &chars, std::string *out) {
-  out->clear();
-  if (in.empty()) return;
-  out->assign(in);
-  out->erase(0, out->find_first_not_of(chars));
-  out->erase(out->find_last_not_of(chars)+1);
+std::string Trim(std::string in, const std::string &chars) {
+  if (in.empty()) return in;
+
+  in.erase(0, in.find_first_not_of(chars));
+  in.erase(in.find_last_not_of(chars) + 1);
+
+  return in;
 }
 
-void Split(std::string in, std::string delim, std::vector<std::string> *out) {
-  if (in.empty() || !out) return;
-  out->clear();
+std::vector<std::string> Split(const std::string &in, const std::string &delim) {
+  std::vector<std::string> out;
 
-  std::string::size_type pos = 0;
-  std::string elem, trimed_elem;
-  do {
-    pos = in.find_first_of(delim);
-    elem = in.substr(0, pos);
-    Trim(elem, delim, &trimed_elem);
-    if (!trimed_elem.empty()) out->push_back(trimed_elem);
-    in = in.substr(pos+1);
-  } while (pos != std::string::npos);
-}
-
-void Split2KV(const std::string&in, std::string delim, std::vector<std::string> *out) {
-  out->clear();
-  std::string::size_type pos;
-  if ((pos = in.find_first_of(delim)) != std::string::npos) {
-    pos = in.find_first_of(delim);
-    std::string str, key, value;
-    str = in.substr(0, pos);
-    Util::Trim(str, delim, &key);
-    if (!key.empty()) out->push_back(key);
-    str = in.substr(pos+1);
-    Util::Trim(str, delim, &value);
-    if (!value.empty()) out->push_back(value);
+  if (in.empty()) {
+    return out;
   }
+
+  if (delim.empty()) {
+    out.resize(in.size());
+    std::transform(in.begin(), in.end(), out.begin(),
+      [](char c) -> std::string { return {c}; });
+    return out;
+  }
+
+  size_t begin = 0, end = in.find_first_of(delim);
+  do {
+    std::string elem = in.substr(begin, end - begin);
+    if (!elem.empty()) out.push_back(std::move(elem));
+    if (end == std::string::npos) break;
+    begin = end + 1;
+    end = in.find_first_of(delim, begin);
+  } while (true);
+
+  return out;
+}
+
+std::vector<std::string> Split2KV(const std::string &in, const std::string &delim) {
+  std::vector<std::string> out;
+
+  std::string::size_type pos = in.find_first_of(delim);
+  if (pos != std::string::npos) {
+    std::string key = in.substr(0, pos);
+    if (!key.empty()) out.push_back(std::move(key));
+
+    std::string value = Trim(in.substr(pos + 1), delim);
+    if (!value.empty()) out.push_back(std::move(value));
+  }
+
+  return out;
 }
 
 bool HasPrefix(const std::string &str, const std::string &prefix) {
@@ -525,11 +570,11 @@ void BytesToHuman(char *buf, size_t size, uint64_t n) {
   }
 }
 
-void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *tokens) {
-  tokens->clear();
+std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
+  std::vector<std::string> tokens;
 
   if (value.empty()) {
-    return;
+    return tokens;
   }
 
   enum ParserState { stateArrayLen, stateBulkLen, stateBulkData };
@@ -540,12 +585,12 @@ void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *t
     switch (state) {
       case stateArrayLen:
         if (start[0] != '*') {
-          return;
+          return tokens;
         }
         p = strchr(start, '\r');
         if (!p || (p == end) || p[1] != '\n') {
-          tokens->clear();
-          return;
+          tokens.clear();
+          return tokens;
         }
         array_len = std::stoull(std::string(start+1, p));
         start = p + 2;
@@ -554,12 +599,12 @@ void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *t
 
       case stateBulkLen:
         if (start[0] != '$') {
-          return;
+          return tokens;
         }
         p = strchr(start, '\r');
         if (!p || (p == end) || p[1] != '\n') {
-          tokens->clear();
-          return;
+          tokens.clear();
+          return tokens;
         }
         bulk_len = std::stoull(std::string(start+1, p));
         start = p + 2;
@@ -568,18 +613,19 @@ void TokenizeRedisProtocol(const std::string &value, std::vector<std::string> *t
 
       case stateBulkData:
         if (bulk_len+2 > static_cast<uint64_t>(end-start)) {
-          tokens->clear();
-          return;
+          tokens.clear();
+          return tokens;
         }
-        tokens->emplace_back(std::string(start, start+bulk_len));
+        tokens.emplace_back(std::string(start, start+bulk_len));
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
     }
   }
-  if (array_len != tokens->size()) {
-    tokens->clear();
+  if (array_len != tokens.size()) {
+    tokens.clear();
   }
+  return tokens;
 }
 
 bool IsPortInUse(int port) {

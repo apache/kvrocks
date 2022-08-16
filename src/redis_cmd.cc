@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -15,6 +35,7 @@
 #include "redis_hash.h"
 #include "redis_bitmap.h"
 #include "redis_list.h"
+#include "redis_reply.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "redis_set.h"
@@ -44,6 +65,7 @@ const char *errInvalidExpireTime = "invalid expire time";
 const char *errWrongNumOfArguments = "wrong number of arguments";
 const char *errValueNotInterger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
+const char *errValueMustBePositive = "value is out of range, must be positive";
 
 class CommandAuth : public Commander {
  public:
@@ -59,7 +81,7 @@ class CommandAuth : public Commander {
     }
     const auto requirepass = config->requirepass;
     if (!requirepass.empty() && user_password != requirepass) {
-      *output = Redis::Error("ERR invaild password");
+      *output = Redis::Error("ERR invalid password");
       return Status::OK();
     }
     conn->SetNamespace(kDefaultNamespace);
@@ -90,11 +112,13 @@ class CommandNamespace : public Commander {
           namespaces.emplace_back(iter->second);  // namespace
           namespaces.emplace_back(iter->first);   // token
         }
+        namespaces.emplace_back(kDefaultNamespace);
+        namespaces.emplace_back(config->requirepass);
         *output = Redis::MultiBulkString(namespaces, false);
       } else {
         std::string token;
         auto s = config->GetNamespace(args_[2], &token);
-        if (s.IsNotFound()) {
+        if (s.Is<Status::NotFound>()) {
           *output = Redis::NilString();
         } else {
           *output = Redis::BulkString(token);
@@ -301,6 +325,24 @@ class CommandGetSet : public Commander {
   }
 };
 
+class CommandGetDel : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    std::string value;
+    rocksdb::Status s = string_db.GetDel(args_[1], &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      *output = Redis::NilString();
+    } else {
+      *output = Redis::BulkString(value);
+    }
+    return Status::OK();
+  }
+};
+
 class CommandGetRange: public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -403,21 +445,37 @@ class CommandSet : public Commander {
     for (size_t i = 3; i < args.size(); i++) {
       last_arg = (i == args.size()-1);
       std::string opt = Util::ToLower(args[i]);
-      if (opt == "nx") {
+      if (opt == "nx" && !xx_) {
         nx_ = true;
-      } else if (opt == "xx") {
+      } else if (opt == "xx" && !nx_) {
         xx_ = true;
-      } else if (opt == "ex") {
-        if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
-        ttl_ = atoi(args_[++i].c_str());
+      } else if (opt == "ex" && !ttl_ && !last_arg) {
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          ttl_ = std::stoi(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "px") {
-        if (last_arg) return Status(Status::NotOK, errInvalidSyntax);
-        auto ttl_ms = atol(args[++i].c_str());
+      } else if (opt == "px" && !ttl_ && !last_arg) {
+        int64_t ttl_ms = 0;
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          ttl_ms = std::stol(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (ttl_ms > 0 && ttl_ms < 1000) {
-          // round up the pttl to second
-          ttl_ = 1;
+          ttl_ = 1;  // round up the pttl to second
         } else {
           ttl_ = static_cast<int>(ttl_ms/1000);
         }
@@ -863,6 +921,44 @@ class CommandBitPos: public Commander {
  private:
   int64_t start_ = 0, stop_ = -1;
   bool bit_ = false, stop_given_ = false;
+};
+
+class CommandBitOp : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    std::string opname = Util::ToLower(args[1]);
+    if (opname == "and")
+      op_flag_ = kBitOpAnd;
+    else if (opname == "or")
+      op_flag_ = kBitOpOr;
+    else if (opname == "xor")
+      op_flag_ = kBitOpXor;
+    else if (opname == "not")
+      op_flag_ = kBitOpNot;
+    else
+        return Status(Status::RedisInvalidCmd, "Unknown bit operation");
+    if (op_flag_ == kBitOpNot && args.size() != 4) {
+        return Status(Status::RedisInvalidCmd,
+                  "BITOP NOT must be called with a single source key.");
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int64_t destkey_len = 0;
+    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> op_keys;
+    for (uint64_t i = 3; i < args_.size(); i++) {
+      op_keys.emplace_back(Slice(args_[i]));
+    }
+    rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(destkey_len);
+    return Status::OK();
+  }
+
+ private:
+  BitOpFlags op_flag_;
 };
 
 class CommandType : public Commander {
@@ -1389,23 +1485,59 @@ class CommandRPushX : public CommandPush {
 class CommandPop : public Commander {
  public:
   explicit CommandPop(bool left) { left_ = left; }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    if (args.size() == 2) {
+      return Status::OK();
+    }
+    try {
+      int32_t v = std::stol(args[2]);
+      if (v < 0) {
+        return Status(Status::RedisParseErr, errValueMustBePositive);
+      }
+      count_ = v;
+      with_count_ = true;
+    } catch (const std::exception& ) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    return Status::OK();
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    std::string elem;
-    rocksdb::Status s = list_db.Pop(args_[1], &elem, left_);
-    if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
-    }
-    if (s.IsNotFound()) {
-      *output = Redis::NilString();
+    if (with_count_) {
+      std::vector<std::string> elems;
+      rocksdb::Status s = list_db.PopMulti(args_[1], left_, count_, &elems);
+      if (!s.ok() && !s.IsNotFound()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      if (s.IsNotFound()) {
+        *output = Redis::MultiLen(-1);
+      } else {
+        *output = Redis::MultiBulkString(elems);
+      }
     } else {
-      *output = Redis::BulkString(elem);
+      std::string elem;
+      rocksdb::Status s = list_db.Pop(args_[1], left_, &elem);
+      if (!s.ok() && !s.IsNotFound()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+      if (s.IsNotFound()) {
+        *output = Redis::NilString();
+      } else {
+        *output = Redis::BulkString(elem);
+      }
     }
+
     return Status::OK();
   }
 
  private:
   bool left_;
+  bool with_count_ = false;
+  uint32_t count_ = 1;
 };
 
 class CommandLPop : public CommandPop {
@@ -1465,22 +1597,27 @@ class CommandBPop : public Commander {
       timeval tm = {timeout_, 0};
       evtimer_add(timer_, &tm);
     }
-    return Status::OK();
+    return Status(Status::BlockingCmd);
   }
 
   rocksdb::Status TryPopFromList() {
     Redis::List list_db(svr_->storage_, conn_->GetNamespace());
-    std::string last_key, elem;
+    std::string elem;
+    const std::string* last_key_ptr = nullptr;
     rocksdb::Status s;
     for (const auto &key : keys_) {
-      last_key = key;
-      s = list_db.Pop(key, &elem, left_);
+      last_key_ptr = &key;
+      s = list_db.Pop(key, left_, &elem);
       if (s.ok() || !s.IsNotFound()) {
         break;
       }
     }
     if (s.ok()) {
-      conn_->Reply(Redis::MultiBulkString({last_key, elem}));
+      if (last_key_ptr == nullptr) {
+        conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
+      } else {
+        conn_->Reply(Redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
+      }
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));
       LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->GetAttributes()->name
@@ -1743,6 +1880,38 @@ class CommandRPopLPUSH : public Commander {
   }
 };
 
+class CommandLMove : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto arg_val = Util::ToLower(args_[3]);
+    if (arg_val != "left" && arg_val != "right") {
+      return Status(Status::RedisParseErr, errInvalidSyntax);
+    }
+    src_left_ = arg_val == "left";
+    arg_val = Util::ToLower(args_[4]);
+    if (arg_val != "left" && arg_val != "right") {
+      return Status(Status::RedisParseErr, errInvalidSyntax);
+    }
+    dst_left_ = arg_val == "left";
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    std::string elem;
+    auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
+    return Status::OK();
+  }
+
+ private:
+  bool src_left_;
+  bool dst_left_;
+};
+
 class CommandSAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1821,12 +1990,38 @@ class CommandSIsMember : public Commander {
   }
 };
 
+class CommandSMIsMember : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Set set_db(svr->storage_, conn->GetNamespace());
+    std::vector<Slice> members;
+    for (size_t i = 2; i < args_.size(); i++) {
+      members.emplace_back(Slice(args_[i]));
+    }
+
+    std::vector<int> exists;
+    rocksdb::Status s = set_db.MIsMember(args_[1], members, &exists);
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    if (s.IsNotFound()) {
+      exists.resize(members.size(), 0);
+    }
+    output->append(Redis::MultiLen(exists.size()));
+    for (const auto &exist : exists) {
+      output->append(Redis::Integer(exist));
+    }
+    return Status::OK();
+  }
+};
+
 class CommandSPop : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     try {
       if (args.size() == 3) {
         count_ = std::stoi(args[2]);
+        with_count_ = true;
       }
     } catch (std::exception &e) {
       return Status(Status::RedisParseErr, errValueNotInterger);
@@ -1840,12 +2035,21 @@ class CommandSPop : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::MultiBulkString(members, false);
+    if (with_count_) {
+        *output = Redis::MultiBulkString(members, false);
+    } else {
+        if (members.size() > 0) {
+            *output = Redis::BulkString(members.front());
+        } else {
+            *output = Redis::NilString();
+        }
+    }
     return Status::OK();
   }
 
  private:
   int count_ = 1;
+  bool with_count_ = false;
 };
 
 class CommandSRandMember : public Commander {
@@ -3208,7 +3412,7 @@ class CommandExec : public Commander {
     }
 
     // Reply multi length first
-    conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands().size()));
+    conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
     conn->ExecuteCommands(conn->GetMultiExecCommands());
@@ -3507,22 +3711,58 @@ class CommandStats: public Commander {
 class CommandPSync : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    size_t seq_arg = 1;
+    if (args.size() == 3) {
+      seq_arg = 2;
+      new_psync = true;
+    }
     try {
-      auto s = std::stoull(args[1]);
+      auto s = std::stoull(args[seq_arg]);
       next_repl_seq = static_cast<rocksdb::SequenceNumber>(s);
     } catch (const std::exception &e) {
       return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
+    }
+    if (new_psync) {
+      assert(args.size() == 3);
+      replica_replid = args[1];
+      if (replica_replid.size() != kReplIdLength) {
+        return Status(Status::RedisParseErr, "Wrong replication id length");
+      }
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    LOG(INFO) << "Slave " << conn->GetAddr() << " asks for synchronization"
+    LOG(INFO) << "Slave " << conn->GetAddr()
+              << ", listening port: " << conn->GetListeningPort()
+              << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
+              << " replication id: " << (replica_replid.length() ?  replica_replid : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeq();
-    if (!checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
-      svr->stats_.IncrPSyncErrCounter();
+
+    bool need_full_sync = false;
+
+    // Check replication id of the last sequence log
+    if (new_psync && svr->GetConfig()->use_rsid_psync) {
+      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq - 1);
+      LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
+
+      // We check replication id only when WAL has this sequence, since there may be no WAL,
+      // Or WAL may has nothing when starting from db of old version kvrocks.
+      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
+        *output = "wrong replication id of the last log";
+        need_full_sync = true;
+      }
+    }
+
+    // Check Log sequence
+    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
       *output = "sequence out of range, please use fullsync";
+      need_full_sync = true;
+    }
+
+    if (need_full_sync) {
+      svr->stats_.IncrPSyncErrCounter();
       return Status(Status::RedisExecErr, *output);
     }
 
@@ -3549,6 +3789,8 @@ class CommandPSync : public Commander {
 
  private:
   rocksdb::SequenceNumber next_repl_seq = 0;
+  bool new_psync = false;
+  std::string replica_replid;
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage,
@@ -3589,7 +3831,7 @@ class CommandPerfLog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::StringToNum(args[2], &cnt_);
+        Status s = Util::DecimalStringToNum(args[2], &cnt_);
         return s;
       }
     }
@@ -3625,7 +3867,7 @@ class CommandSlowlog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::StringToNum(args[2], &cnt_);
+        Status s = Util::DecimalStringToNum(args[2], &cnt_);
         return s;
       }
     }
@@ -4195,8 +4437,7 @@ class CommandFetchFile : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<std::string> files;
-    Util::Split(files_str_, ",", &files);
+    std::vector<std::string> files = Util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
@@ -4210,6 +4451,7 @@ class CommandFetchFile : public Commander {
       svr->IncrFetchFileThread();
 
       for (auto file : files) {
+        if (svr->IsStopped()) break;
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb*MiB) /
@@ -4228,6 +4470,8 @@ class CommandFetchFile : public Commander {
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to "
                        << ip << ", error: " << strerror(errno);
+          close(fd);
+          break;
         }
         close(fd);
 
@@ -4279,12 +4523,15 @@ class CommandCluster : public Commander {
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
     if (subcommand_ == "import") {
       if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      try {
-        slot_ = atoi(args[2].c_str());
-        state_ = static_cast<ImportStatus>(atoi(args[3].c_str()));
-      } catch (std::exception &e) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
+      auto s = Util::DecimalStringToNum(args[2], &slot_);
+      if (!s.IsOK()) return s;
+
+      int64_t state;
+      s = Util::DecimalStringToNum(args[3], &state,
+                                  static_cast<int64_t>(kImportStart),
+                                  static_cast<int64_t>(kImportNone));
+      if (!s.IsOK()) return Status(Status::NotOK, "Invalid import state");
+      state_ = static_cast<ImportStatus>(state);
       return Status::OK();
     }
     return Status(Status::RedisParseErr,
@@ -4341,7 +4588,7 @@ class CommandCluster : public Commander {
         *output = Redis::Error(s.Msg());
       }
     } else if (subcommand_ == "import") {
-      Status s = svr->cluster_->ImportSlot(conn, slot_, state_);
+      Status s = svr->cluster_->ImportSlot(conn, static_cast<int>(slot_), state_);
       if (s.IsOK()) {
       *output = Redis::SimpleString("OK");
       } else {
@@ -4355,7 +4602,7 @@ class CommandCluster : public Commander {
 
  private:
   std::string subcommand_;
-  int slot_ = -1;
+  int64_t slot_ = -1;
   ImportStatus state_ = kImportNone;
 };
 
@@ -4369,12 +4616,9 @@ class CommandClusterX : public Commander {
         args_[2].size() == kClusterNodeIdLen) return Status::OK();
     if (subcommand_ == "migrate") {
       if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
-      try {
-        slot_ = atoi(args[2].c_str());
-        dst_node_id_ = args[3];
-      } catch (std::exception &e) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
-      }
+      auto s = Util::DecimalStringToNum(args[2], &slot_);
+      if (!s.IsOK()) return s;
+      dst_node_id_ = args[3];
       return Status::OK();
     }
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
@@ -4445,7 +4689,7 @@ class CommandClusterX : public Commander {
       int64_t v = svr->cluster_->GetVersion();
       *output = Redis::BulkString(std::to_string(v));
     } else if (subcommand_ == "migrate") {
-      Status s = svr->cluster_->MigrateSlot(slot_, dst_node_id_);
+      Status s = svr->cluster_->MigrateSlot(static_cast<int>(slot_), dst_node_id_);
       if (s.IsOK()) {
         *output = Redis::SimpleString("OK");
       } else {
@@ -4464,7 +4708,7 @@ class CommandClusterX : public Commander {
   int slot_id_ = -1;
   bool force_ = false;
   std::string dst_node_id_;
-  int slot_ = -1;
+  int64_t slot_ = -1;
 };
 
 class CommandEval : public Commander {
@@ -4546,7 +4790,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("ping", 1, "read-only", 0, 0, 0, CommandPing),
     ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
     ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
-    ADD_CMD("role", 1, "read-only", 0, 0, 0, CommandRole),
+    ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),
     ADD_CMD("config", -2, "read-only", 0, 0, 0, CommandConfig),
     ADD_CMD("namespace", -3, "read-only", 0, 0, 0, CommandNamespace),
     ADD_CMD("keys", 2, "read-only", 0, 0, 0, CommandKeys),
@@ -4576,11 +4820,13 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("expireat", 3, "write", 1, 1, 1, CommandExpireAt),
     ADD_CMD("pexpireat", 3, "write", 1, 1, 1, CommandPExpireAt),
     ADD_CMD("del", -2, "write", 1, -1, 1, CommandDel),
+    ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
 
     ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
     ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
     ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
     ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),
+    ADD_CMD("getdel", 2, "write", 1, 1, 1, CommandGetDel),
     ADD_CMD("setrange", 4, "write", 1, 1, 1, CommandSetRange),
     ADD_CMD("mget", -2, "read-only", 1, -1, 1, CommandMGet),
     ADD_CMD("append", 3, "write", 1, 1, 1, CommandAppend),
@@ -4602,6 +4848,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("setbit", 4, "write", 1, 1, 1, CommandSetBit),
     ADD_CMD("bitcount", -2, "read-only", 1, 1, 1, CommandBitCount),
     ADD_CMD("bitpos", -3, "read-only", 1, 1, 1, CommandBitPos),
+    ADD_CMD("bitop", -4, "write", 2, -1, 1, CommandBitOp),
 
     ADD_CMD("hget", 3, "read-only", 1, 1, 1, CommandHGet),
     ADD_CMD("hincrby", 4, "write", 1, 1, 1, CommandHIncrBy),
@@ -4623,8 +4870,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),
     ADD_CMD("lpushx", -3, "write", 1, 1, 1, CommandLPushX),
     ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
-    ADD_CMD("lpop", 2, "write", 1, 1, 1, CommandLPop),
-    ADD_CMD("rpop", 2, "write", 1, 1, 1, CommandRPop),
+    ADD_CMD("lpop", -2, "write", 1, 1, 1, CommandLPop),
+    ADD_CMD("rpop", -2, "write", 1, 1, 1, CommandRPop),
     ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
     ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
     ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
@@ -4635,12 +4882,14 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("llen", 2, "read-only", 1, 1, 1, CommandLLen),
     ADD_CMD("lset", 4, "write", 1, 1, 1, CommandLSet),
     ADD_CMD("rpoplpush", 3, "write", 1, 2, 1, CommandRPopLPUSH),
+    ADD_CMD("lmove", 5, "write", 1, 2, 1, CommandLMove),
 
     ADD_CMD("sadd", -3, "write", 1, 1, 1, CommandSAdd),
     ADD_CMD("srem", -3, "write", 1, 1, 1, CommandSRem),
     ADD_CMD("scard", 2, "read-only", 1, 1, 1, CommandSCard),
     ADD_CMD("smembers", 2, "read-only", 1, 1, 1, CommandSMembers),
     ADD_CMD("sismember", 3, "read-only", 1, 1, 1, CommandSIsMember),
+    ADD_CMD("smismember", -3, "read-only", 1, 1, 1, CommandSMIsMember),
     ADD_CMD("spop", -2, "write", 1, 1, 1, CommandSPop),
     ADD_CMD("srandmember", -2, "read-only", 1, 1, 1, CommandSRandMember),
     ADD_CMD("smove", 4, "write", 1, 2, 1, CommandSMove),
@@ -4720,7 +4969,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
     ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
+    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
     ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
     ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
     ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
@@ -4753,8 +5002,7 @@ void PopulateCommands() {
 void InitCommandsTable() {
   for (int i = 0; i < GetCommandNum(); i++) {
     std::string desc = redisCommandTable[i].description;
-    std::vector<std::string> str_flags;
-    Util::Split(desc, " ", &str_flags);
+    std::vector<std::string> str_flags = Util::Split(desc, " ");
     for (const auto &flag : str_flags) {
       if (flag == "write") redisCommandTable[i].flags |= kCmdWrite;
       if (flag == "read-only") redisCommandTable[i].flags |= kCmdReadOnly;

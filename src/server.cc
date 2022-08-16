@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "server.h"
 
 #include <fcntl.h>
@@ -31,11 +51,21 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
 
   // Init cluster
-  cluster_ = new Cluster(this, config_->binds, config_->port);
+  cluster_ = std::unique_ptr<Cluster>(new Cluster(this, config_->binds, config_->port));
 
   for (int i = 0; i < config->workers; i++) {
-    auto worker = new Worker(this, config);
-    worker_threads_.emplace_back(new WorkerThread(worker));
+    auto worker = Util::MakeUnique<Worker>(this, config);
+    // multiple workers can't listen to the same unix socket, so
+    // listen unix socket only from a single worker - the first one
+    if (!config->unixsocket.empty() && i == 0) {
+      Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[server] Failed to listen on unix socket: "<< config->unixsocket
+                   << ", encounter error: " << s.Msg();
+        exit(1);
+      }
+    }
+    worker_threads_.emplace_back(Util::MakeUnique<WorkerThread>(std::move(worker)));
   }
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
@@ -48,12 +78,22 @@ Server::Server(Engine::Storage *storage, Config *config) :
 }
 
 Server::~Server() {
-  for (const auto &worker_thread : worker_threads_) {
-    delete worker_thread;
-  }
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
+
+  // Wait for all fetch file threads stop and exit and force destroy
+  // the server after 60s.
+  int counter = 0;
+  while (GetFetchFileThreadNum() != 0) {
+    usleep(100000);
+    if (++counter == 600) {
+      LOG(WARNING) << "Will force destroy the server after waiting 60s, leave " << GetFetchFileThreadNum()
+                   << " fetch file threads are still running";
+      break;
+    }
+  }
+  Lua::DestroyState(lua_);
 }
 
 // Kvrocks threads list:
@@ -72,12 +112,15 @@ Status Server::Start() {
   if (!config_->master_host.empty()) {
     Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
+  } else {
+    // Generate new replication id if not a replica
+    storage_->ShiftReplId();
   }
 
   if (config_->cluster_enabled) {
     // Create objects used for slot migration
-    slot_migrate_ = new SlotMigrate(this, config_->migrate_speed,
-                                    config_->pipeline_size, config_->sequence_gap);
+    slot_migrate_ = std::unique_ptr<SlotMigrate>(new SlotMigrate(this, config_->migrate_speed,
+                                    config_->pipeline_size, config_->sequence_gap));
     slot_import_ = new SlotImport(this);
     // Create migrating thread
     auto s = slot_migrate_->CreateMigrateHandleThread();
@@ -87,7 +130,7 @@ Status Server::Start() {
     }
   }
 
-  for (const auto worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Start();
   }
   task_runner_.Start();
@@ -133,13 +176,15 @@ Status Server::Start() {
     }
   });
 
+  LOG(INFO) << "Ready to accept connections";
+
   return Status::OK();
 }
 
 void Server::Stop() {
   stop_ = true;
   if (replication_thread_) replication_thread_->Stop();
-  for (const auto worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Stop();
   }
   DisconnectSlaves();
@@ -148,7 +193,7 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  for (const auto worker : worker_threads_) {
+  for (const auto &worker : worker_threads_) {
     worker->Join();
   }
   task_runner_.Join();
@@ -157,13 +202,12 @@ void Server::Join() {
 }
 
 Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
-  slaveof_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
   if (!force_reconnect &&
       !master_host_.empty() && master_host_ == host &&
       master_port_ == port) {
-    slaveof_mu_.unlock();
     return Status::OK();
   }
 
@@ -178,7 +222,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   uint32_t master_listen_port = port;
   if (GetConfig()->master_use_repl_port)  master_listen_port += 1;
   replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(host, master_listen_port, this, config_->masterauth));
+      new ReplicationThread(host, master_listen_port, this));
   auto s = replication_thread_->Start(
       [this]() {
         PrepareRestoreDB();
@@ -194,20 +238,19 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   } else {
     replication_thread_ = nullptr;
   }
-  slaveof_mu_.unlock();
   return s;
 }
 
 Status Server::RemoveMaster() {
-  slaveof_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   if (!master_host_.empty()) {
     master_host_.clear();
     master_port_ = 0;
     config_->ClearMaster();
     if (replication_thread_) replication_thread_->Stop();
     replication_thread_ = nullptr;
+    storage_->ShiftReplId();
   }
-  slaveof_mu_.unlock();
   return Status::OK();
 }
 
@@ -225,7 +268,7 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
 }
 
 void Server::DisconnectSlaves() {
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
   }
@@ -235,12 +278,11 @@ void Server::DisconnectSlaves() {
     slave_thread->Join();
     delete slave_thread;
   }
-  slave_threads_mu_.unlock();
 }
 
 void Server::cleanupExitedSlaves() {
   std::list<FeedSlaveThread *> exited_slave_threads;
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (slave_thread->IsStopped())
       exited_slave_threads.emplace_back(slave_thread);
@@ -252,7 +294,6 @@ void Server::cleanupExitedSlaves() {
     t->Join();
     delete t;
   }
-  slave_threads_mu_.unlock();
 }
 
 void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
@@ -523,8 +564,15 @@ void Server::cron() {
     if (storage_->IsClosing()) continue;
 
     updateCachedTime();
+    counter++;
+    if (is_loading_) {
+      // We need to skip the cron operations since `is_loading_` means the db is restoring,
+      // and the db pointer will be modified after that. It will panic if we use the db pointer
+      // before the new db was reopened.
+      continue;
+    }
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
-    if (is_loading_ == false && counter != 0 && counter % 200 == 0) {
+    if (counter != 0 && counter % 200 == 0) {
       auto t = std::time(nullptr);
       std::tm now{};
       localtime_r(&t, &now);
@@ -541,7 +589,7 @@ void Server::cron() {
       }
     }
     // check every 10s
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
 
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
@@ -553,7 +601,7 @@ void Server::cron() {
     }
 
     // No replica uses this checkpoint, we can remove it.
-    if (is_loading_ == false && counter != 0 && counter % 100 == 0) {
+    if (counter != 0 && counter % 100 == 0) {
       time_t create_time = storage_->GetCheckpointCreateTime();
       time_t access_time = storage_->GetCheckpointAccessTime();
 
@@ -571,16 +619,18 @@ void Server::cron() {
       }
     }
     // check if DB need to be resumed every minute
-    // rocksdb has auto resume feature after retryable io error, but the current implement can't trigger auto resume
-    // when the no space error is only trigger by db_->Write without any other background action (compact/flush),
-    // so manual trigger resume every minute after no space error to resume db under this scenario.
-    if (is_loading_ == false && counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
+    // Rocksdb has auto resume feature after retryable io error, earlier version(before v6.22.1) had
+    // bug when encounter no space error. The current version fixes the no space error issue, but it
+    // does not completely resolve, which still exists when encountered disk quota exceeded error.
+    // In order to properly handle all possible situations on rocksdb, we manually resume here
+    // when encountering no space error and disk quota exceeded error.
+    if (counter != 0 && counter % 600 == 0 && storage_->IsDBInRetryableIOError()) {
       storage_->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after no space error";
+      LOG(INFO) << "[server] Schedule to resume DB after retryable io error";
       storage_->SetDBInRetryableIOError(false);
     }
+
     cleanupExitedSlaves();
-    counter++;
     recordInstantaneousMetrics();
   }
 }
@@ -788,15 +838,13 @@ void Server::GetRoleInfo(std::string *info) {
 
 std::string Server::GetLastRandomKeyCursor() {
   std::string cursor;
-  last_random_key_cursor_mu_.lock();
+  std::lock_guard<std::mutex> guard(last_random_key_cursor_mu_);
   cursor = last_random_key_cursor_;
-  last_random_key_cursor_mu_.unlock();
   return cursor;
 }
 void Server::SetLastRandomKeyCursor(const std::string &cursor) {
-  last_random_key_cursor_mu_.lock();
+  std::lock_guard<std::mutex> guard(last_random_key_cursor_mu_);
   last_random_key_cursor_ = cursor;
-  last_random_key_cursor_mu_.unlock();
 }
 
 int Server::GetUnixTime() {
@@ -1031,16 +1079,13 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   }
   db_compacting_ = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [begin_key, end_key](void *arg) {
-    auto svr = static_cast<Server *>(arg);
+  Task task = [begin_key, end_key, this] {
     Slice *begin = nullptr, *end = nullptr;
     if (!begin_key.empty()) begin = new Slice(begin_key);
     if (!end_key.empty()) end = new Slice(end_key);
-    svr->storage_->Compact(begin, end);
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_compacting_ = false;
+    storage_->Compact(begin, end);
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    db_compacting_ = false;
     delete begin;
     delete end;
   };
@@ -1054,29 +1099,23 @@ Status Server::AsyncBgsaveDB() {
   }
   is_bgsave_in_progress_ = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [](void *arg) {
-    auto svr = static_cast<Server*>(arg);
+  Task task = [this] {
     auto start_bgsave_time = std::time(nullptr);
-    Status s = svr->storage_->CreateBackup();
+    Status s = storage_->CreateBackup();
     auto stop_bgsave_time = std::time(nullptr);
 
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->is_bgsave_in_progress_ = false;
-    svr->last_bgsave_time_ = static_cast<int>(start_bgsave_time);
-    svr->last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    svr->last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    is_bgsave_in_progress_ = false;
+    last_bgsave_time_ = static_cast<int>(start_bgsave_time);
+    last_bgsave_status_ = s.IsOK() ? "ok" : "err";
+    last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
   };
   return task_runner_.Publish(task);
 }
 
 Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  Task task;
-  task.arg = this;
-  task.callback = [num_backups_to_keep, backup_max_keep_hours](void *arg) {
-    auto svr = static_cast<Server *>(arg);
-    svr->storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
+  Task task = [num_backups_to_keep, backup_max_keep_hours, this] {
+    storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
   };
   return task_runner_.Publish(task);
 }
@@ -1092,18 +1131,15 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   }
   db_scan_infos_[ns].is_scanning = true;
 
-  Task task;
-  task.arg = this;
-  task.callback = [ns](void *arg) {
-    auto svr = static_cast<Server*>(arg);
-    Redis::Database db(svr->storage_, ns);
+  Task task = [ns, this] {
+    Redis::Database db(storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 
-    std::lock_guard<std::mutex> lg(svr->db_job_mu_);
-    svr->db_scan_infos_[ns].key_num_stats = stats;
-    time(&svr->db_scan_infos_[ns].last_scan_time);
-    svr->db_scan_infos_[ns].is_scanning = false;
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    db_scan_infos_[ns].key_num_stats = stats;
+    time(&db_scan_infos_[ns].last_scan_time);
+    db_scan_infos_[ns].is_scanning = false;
   };
   return task_runner_.Publish(task);
 }
@@ -1234,11 +1270,10 @@ std::string Server::GetClientsStr() {
   for (const auto &t : worker_threads_) {
     clients.append(t->GetWorker()->GetClientsStr());
   }
-  slave_threads_mu_.lock();
+  std::lock_guard<std::mutex> guard(slave_threads_mu_);
   for (const auto &st : slave_threads_) {
     clients.append(st->GetConn()->ToString());
   }
-  slave_threads_mu_.unlock();
   return clients;
 }
 
@@ -1314,7 +1349,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
 
 void Server::ScriptSet(const std::string &sha, const std::string &body) {
   std::string funcname = Engine::kLuaFunctionPrefix + sha;
-  WriteToPropagateCF(funcname, body);
+  storage_->WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {
@@ -1328,17 +1363,6 @@ void Server::ScriptFlush() {
   ScriptReset();
 }
 
-Status Server::WriteToPropagateCF(const std::string &key, const std::string &value) const {
-  rocksdb::WriteBatch batch;
-  auto propagateCf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  batch.Put(propagateCf, key, value);
-  auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
-  if (!s.ok()) {
-    return Status(Status::NotOK, s.ToString());
-  }
-  return Status::OK();
-}
-
 // Generally, we store data into rocksdb and just replicate WAL instead of propagating
 // commands. But sometimes, we need to update inner states or do special operations
 // for specific commands, such as `script flush`.
@@ -1349,7 +1373,7 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);
   }
-  return WriteToPropagateCF(channel, value);
+  return storage_->WriteToPropagateCF(channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
@@ -1421,4 +1445,27 @@ void Server::AdjustOpenFilesLimit() {
     LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
                  << " (it's originally set to " << old_limit << ")";
   }
+}
+
+std::string ServerLogData::Encode() {
+  if (type_ == kReplIdLog) {
+    return std::string(1, kReplIdTag) + " " + content_;
+  } else {
+    return content_;
+  }
+}
+
+Status ServerLogData::Decode(const rocksdb::Slice &blob) {
+  if (blob.size() == 0) {
+    return Status(Status::NotOK);
+  }
+
+  const char *header = blob.data();
+  // Only support `kReplIdTag` now
+  if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
+    type_ = kReplIdLog;
+    content_ = std::string(blob.data()+2, blob.size()-2);
+    return Status::OK();
+  }
+  return Status(Status::NotOK);
 }

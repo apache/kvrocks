@@ -1,7 +1,24 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 start_server {tags {"command"}} {
-    test {kvrocks has 167 commands currently} {
+    test {kvrocks has 172 commands currently} {
         r command count
-    } {167}
+    } {172}
 
     test {acquire GET command info by COMMAND INFO} {
         set e [lindex [r command info get] 0]
@@ -26,26 +43,24 @@ start_server {tags {"command"}} {
     }
 
     test {get rocksdb ops by COMMAND INFO} {
-        # Write data for 5 seconds to ensure accurate and stable QPS.
-        for {set i 0} {$i < 25} {incr i} {
-            for {set j 0} {$j < 100} {incr j} {
+        for {set i 0} {$i < 2} {incr i} {
+            for {set j 0} {$j < 500} {incr j} {
                 r lpush key$i value$i
                 r lrange key$i 0 1
             }
-            after 200
+            after 1000
         }
-        set cmd_qps [s instantaneous_ops_per_sec]
+
         set put_qps [s put_per_sec]
         set get_qps [s get_per_sec]
         set seek_qps [s seek_per_sec]
         set next_qps [s next_per_sec]
-        # Based on the encoding of list, we can calculate the relationship
-        # between Rocksdb QPS and Command QPS.
-        assert {[expr abs($cmd_qps - $put_qps)] < 10}
-        assert {[expr abs($cmd_qps - $get_qps)] < 10}
-        assert {[expr abs($cmd_qps/2 - $seek_qps)] < 10}
+
+        assert {$put_qps > 0}
+        assert {$get_qps > 0}
+        assert {$seek_qps > 0}
         # prev_per_sec is almost the same as next_per_sec
-        assert {[expr abs($cmd_qps - $next_qps)] < 10}
+        assert {$next_qps > 0}
     }
 
     test {get bgsave information from INFO command} {

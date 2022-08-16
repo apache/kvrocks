@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/support/util.tcl
+
 proc randstring {min max {type binary}} {
     set len [expr {$min+int(rand()*($max-$min+1))}]
     set output {}
@@ -125,9 +148,13 @@ proc count_message_lines {file pattern} {
 }
 
 # returns the number of times a line with that pattern appears in the log
-proc count_log_message {srv_idx pattern} {
-    set stdout [srv $srv_idx stdout]
-    return [count_message_lines $stdout $pattern]
+proc count_log_message {dir pattern} {
+    set files [glob [format "%s/%s" $dir "kvrocks.*.INFO.*"]]
+    set res 0
+    foreach file $files {
+        incr res [count_message_lines $file $pattern]
+    }
+    return $res
 }
 
 # verify pattern exists in server's sdtout after a certain line number

@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>
 #include <glog/logging.h>
@@ -67,7 +87,6 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
     return;
   }
   conn->ExecuteCommands(conn->req_.GetCommands());
-  conn->req_.ClearCommands();
   if (conn->IsFlagEnabled(kCloseAsync)) {
     conn->Close();
   }
@@ -287,13 +306,14 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   svr_->GetPerfLog()->PushEntry(entry);
 }
 
-void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_process_cmds) {
-  if (to_process_cmds.empty()) return;
-
+void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
 
-  for (auto &cmd_tokens : to_process_cmds) {
+  while (!to_process_cmds->empty()) {
+    auto cmd_tokens = to_process_cmds->front();
+    to_process_cmds->pop_front();
+
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
         !IsFlagEnabled(Connection::kMultiExec)) break;
     if (GetNamespace().empty()) {
@@ -406,6 +426,12 @@ void Connection::ExecuteCommands(const std::vector<Redis::CommandTokens> &to_pro
     svr_->SlowlogPushEntryIfNeeded(current_cmd_->Args(), duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);
+
+    // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
+    // it will suspend the connection and wait for the wakeup signal.
+    if (s.Is<Status::BlockingCmd>()) {
+      break;
+    }
     // Reply for MULTI
     if (!s.IsOK()) {
       Reply(Redis::Error("ERR " + s.Msg()));

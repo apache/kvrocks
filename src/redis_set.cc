@@ -1,8 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_set.h"
 
 #include <map>
 #include <iostream>
 #include <memory>
+
+#include "db_util.h"
 
 namespace Redis {
 
@@ -133,36 +155,47 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   read_options.fill_cache = false;
   read_options.prefix_same_as_start = true;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *ret) {
-  *ret = 0;
+  std::vector<int> exists;
+  rocksdb::Status s = MIsMember(user_key, {member}, &exists);
+  if (!s.ok()) return s;
+  *ret = exists[0];
+  return s;
+}
+
+rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &members, std::vector<int> *exists) {
+  exists->clear();
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  std::string sub_key;
-  InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-  std::string value;
-  s = db_->Get(read_options, sub_key, &value);
-  if (s.ok()) {
-    *ret = 1;
+  std::string sub_key, value;
+  for (const auto &member : members) {
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    s = db_->Get(read_options, sub_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.IsNotFound()) {
+      exists->emplace_back(0);
+    } else {
+      exists->emplace_back(1);
+    }
   }
   return rocksdb::Status::OK();
 }
@@ -198,7 +231,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   read_options.fill_cache = false;
   read_options.prefix_same_as_start = true;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix);
        iter->Valid() && iter->key().starts_with(prefix);
        iter->Next()) {
@@ -207,7 +240,6 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     if (pop) batch.Delete(iter->key());
     if (++n >= count) break;
   }
-  delete iter;
   if (pop && n > 0) {
     metadata.size -= n;
     std::string bytes;

@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <string>
@@ -29,6 +49,7 @@ class ConfigField {
   virtual Status ToBool(bool *b) { return Status(Status::NotOK, "not supported"); }
 
  public:
+  int line_number = 0;
   bool readonly = true;
   validate_fn validate = nullptr;
   callback_fn callback = nullptr;
@@ -68,7 +89,35 @@ class IntField : public ConfigField {
   }
   Status Set(const std::string &v) override {
     int64_t n;
-    auto s = Util::StringToNum(v, &n, min_, max_);
+    auto s = Util::DecimalStringToNum(v, &n, min_, max_);
+    if (!s.IsOK()) return s;
+    *receiver_ = static_cast<int>(n);
+    return Status::OK();
+  }
+
+ private:
+  int *receiver_;
+  int min_ = INT_MIN;
+  int max_ = INT_MAX;
+};
+
+class OctalField : public ConfigField {
+ public:
+  OctalField(int *receiver, int n, int min, int max)
+      : receiver_(receiver), min_(min), max_(max) {
+    *receiver_ = n;
+  }
+  ~OctalField() override = default;
+  std::string ToString() override {
+    return std::to_string(*receiver_);
+  }
+  Status ToNumber(int64_t *n) override {
+    *n = *receiver_;
+    return Status::OK();
+  }
+  Status Set(const std::string &v) override {
+    int64_t n;
+    auto s = Util::OctalStringToNum(v, &n, min_, max_);
     if (!s.IsOK()) return s;
     *receiver_ = static_cast<int>(n);
     return Status::OK();
@@ -96,7 +145,7 @@ class Int64Field : public ConfigField {
   }
   Status Set(const std::string &v) override {
     int64_t n;
-    auto s = Util::StringToNum(v, &n, min_, max_);
+    auto s = Util::DecimalStringToNum(v, &n, min_, max_);
     if (!s.IsOK()) return s;
     *receiver_ = n;
     return Status::OK();
@@ -153,7 +202,7 @@ class EnumField : public ConfigField {
   Status Set(const std::string &v) override {
     int e = configEnumGetValue(enums_, v.c_str());
     if (e == INT_MIN) {
-      return Status(Status::NotOK, "invaild enum option");
+      return Status(Status::NotOK, "invalid enum option");
     }
     *receiver_ = e;
     return Status::OK();

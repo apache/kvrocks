@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_string.h"
 #include <utility>
 #include <string>
@@ -144,6 +164,16 @@ rocksdb::Status String::GetSet(const std::string &user_key, const std::string &n
   auto write_status = updateRawValue(ns_key, raw_value);
   // prev status was used to tell whether old value was empty or not
   return !write_status.ok() ? write_status : s;
+}
+rocksdb::Status String::GetDel(const std::string &user_key, std::string *value)  {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  rocksdb::Status s = getValue(ns_key, value);
+  if (!s.ok()) return s;
+
+  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
@@ -320,7 +350,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.ToString());
+    bytes.append(pair.value.data(), pair.value.size());
     rocksdb::WriteBatch batch;
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());
@@ -363,7 +393,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.ToString());
+    bytes.append(pair.value.data(), pair.value.size());
     rocksdb::WriteBatch batch;
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());

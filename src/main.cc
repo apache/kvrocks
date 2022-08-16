@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include <getopt.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -24,8 +44,6 @@
 #if defined(__APPLE__) || defined(__linux__)
 #define HAVE_BACKTRACE 1
 #endif
-
-const char *kDefaultConfPath = "../kvrocks.conf";
 
 std::function<void()> hup_handler;
 
@@ -131,7 +149,7 @@ void setupSigSegvAction() {
 
 static void usage(const char* program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"
-            << "\t-c config file, default is " << kDefaultConfPath << "\n"
+            << "\t-c config file\n"
             << "\t-h help\n";
   exit(0);
 }
@@ -154,7 +172,16 @@ static void initGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->log_dir;
+
+  if (Util::ToLower(config->log_dir) == "stdout") {
+    for (int level = google::INFO; level <= google::FATAL; level++) {
+      google::SetLogDestination(level, "");
+    }
+    FLAGS_stderrthreshold = google::ERROR;
+    FLAGS_logtostdout = true;
+  } else {
+    FLAGS_log_dir = config->log_dir;
+  }
 }
 
 bool supervisedUpstart() {
@@ -279,7 +306,6 @@ int main(int argc, char* argv[]) {
   signal(SIGTERM, signal_handler);
   setupSigSegvAction();
 
-  std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = parseCommandLineOptions(argc, argv);
   if (opts.show_usage) usage(argv[0]);
 
@@ -293,11 +319,12 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   initGoogleLog(&config);
+  LOG(INFO)<< "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
   if (Util::IsPortInUse(config.port)) {
-    std::cout << "Failed to start the server, the specified port["
+    LOG(ERROR)<< "Could not create server TCP since the specified port["
               << config.port << "] is already in use" << std::endl;
     exit(1);
   }
@@ -309,7 +336,6 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT;
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
@@ -331,6 +357,7 @@ int main(int argc, char* argv[]) {
   }
   srv->Join();
 
+  delete srv;
   removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();
   libevent_global_shutdown();

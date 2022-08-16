@@ -1,3 +1,26 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Copyright (c) 2006-2020, Salvatore Sanfilippo
+# See bundled license file licenses/LICENSE.redis for details.
+
+# This file is copied and modified from the Redis project,
+# which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/support/server.tcl
+
 set ::global_overrides {}
 set ::tags {}
 set ::valgrind_errors {}
@@ -111,7 +134,7 @@ proc ping_server {host port} {
     set retval 0
     if {[catch {
         if {$::tls} {
-            set fd [::tls::socket $host $port] 
+            set fd [::tls::socket $host $port]
         } else {
             set fd [socket $host $port]
         }
@@ -212,11 +235,11 @@ proc create_server_config_file {filename config} {
 
 proc spawn_server {config_file stdout stderr} {
     if {$::valgrind} {
-        set pid [exec valgrind --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec valgrind --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     } elseif ($::stack_logging) {
-        set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     } else {
-        set pid [exec ./redis-server -c $config_file >> $stdout 2>> $stderr &]
+        set pid [exec $::redis_server_path -c $config_file >> $stdout 2>> $stderr &]
     }
 
     if {$::wait_server} {
@@ -232,13 +255,10 @@ proc spawn_server {config_file stdout stderr} {
 
 # Wait for actual startup, return 1 if port is busy, 0 otherwise
 proc wait_server_started {config_file stdout pid} {
-    set checkperiod 100; # Milliseconds
+    set checkperiod 1000; # Milliseconds
     set maxiter [expr {120*1000/$checkperiod}] ; # Wait up to 2 minutes.
     set port_busy 0
     while 1 {
-        if {[regexp -- " PID: $pid" [exec cat $stdout]]} {
-            break
-        }
         after $checkperiod
         incr maxiter -1
         if {$maxiter == 0} {
@@ -251,8 +271,11 @@ proc wait_server_started {config_file stdout pid} {
 
         # Check if the port is actually busy and the server failed
         # for this reason.
-        if {[regexp {Could not create server TCP} [exec cat $stdout]]} {
+        if {[regexp -- "Could not create server TCP" [exec cat $stdout]]} {
             set port_busy 1
+            break
+        }
+        if {[count_log_message [dict get $config_file "dir"] "Ready to accept"] > 0} {
             break
         }
     }
@@ -373,6 +396,11 @@ proc start_server {options {code undefined}} {
         dict set config port $port
     }
 
+    # disable checking for leaks if setting
+    if {$::disable_check_leaks} {
+        dict set srv "skipleaks" 1
+    }
+
     set unixsocket [file normalize [format "%s/%s" [dict get $config "dir"] "socket"]]
     dict set config "unixsocket" $unixsocket
 
@@ -414,7 +442,7 @@ proc start_server {options {code undefined}} {
 
         # check that the server actually started
         set port_busy 0
-        # set port_busy [wait_server_started $config_file $stdout $pid]
+        set port_busy [wait_server_started $config $stdout $pid]
 
         # Sometimes we have to try a different port, even if we checked
         # for availability. Other test clients may grab the port before we
@@ -470,6 +498,7 @@ proc start_server {options {code undefined}} {
     dict set srv "port" $port
     dict set srv "stdout" $stdout
     dict set srv "stderr" $stderr
+    dict set srv "dir" [dict get $config "dir"]
     dict set srv "unixsocket" $unixsocket
 
     # if a block of code is supplied, we wait for the server to become
@@ -480,13 +509,13 @@ proc start_server {options {code undefined}} {
             error_and_quit $config_file $line
         }
 
-        #while 1 {
-        #    # check that the server actually started and is ready for connections
-        #    if {[count_message_lines $stdout "Ready to accept"] > 0} {
-        #        break
-        #    }
-        #    after 10
-        #}
+        while 1 {
+           # check that the server actually started and is ready for connections
+           if {[count_log_message [dict get $srv "dir"] "Ready to accept"] > 0} {
+               break
+           }
+           after 10
+        }
 
         # append the server to the stack
         lappend ::servers $srv
@@ -568,7 +597,7 @@ proc restart_server {level wait_ready rotate_logs} {
         file rename $stdout $stdout.$ts.$pid
         file rename $stderr $stderr.$ts.$pid
     }
-    set prev_ready_count [count_message_lines $stdout "Ready to accept"]
+    set prev_ready_count [count_log_message [dict get $srv "dir"] "Ready to accept"]
 
     # if we're inside a test, write the test name to the server log file
     if {[info exists ::cur_test]} {
@@ -589,17 +618,15 @@ proc restart_server {level wait_ready rotate_logs} {
     # re-set $srv in the servers list
     lset ::servers end+$level $srv
 
-    # if {$wait_ready} {
-    #     while 1 {
-    #         # check that the server actually started and is ready for connections
-    #         if {[count_message_lines $stdout "Ready to accept"] > $prev_ready_count} {
-    #             break
-    #         }
-    #         after 10
-    #     }
-    # }
+    if {$wait_ready} {
+        while 1 {
+            # check that the server actually started and is ready for connections
+            if {[count_log_message [dict get $srv "dir"] "Ready to accept"] > $prev_ready_count} {
+                break
+            }
+            after 10
+        }
+    }
 
-    # Just sleep 1s to make sure that kvrocks started
-    after 1000
     reconnect $level
 }

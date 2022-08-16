@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #include <cstring>
@@ -6,6 +26,7 @@
 #include <memory>
 #include <thread>
 #include <string>
+#include <utility>
 #include <vector>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -40,12 +61,16 @@ class Worker {
                   uint64_t type, bool skipme, int64_t *killed);
   void KickoutIdleClients(int timeout);
 
+  Status ListenUnixSocket(const std::string &path, int perm, int backlog);
+
   Server *svr_;
 
  private:
-  Status listen(const std::string &host, int port, int backlog);
-  static void newConnection(evconnlistener *listener, evutil_socket_t fd,
-                            sockaddr *address, int socklen, void *ctx);
+  Status listenTCP(const std::string &host, int port, int backlog);
+  static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
+                               sockaddr *address, int socklen, void *ctx);
+  static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
+                                      sockaddr *address, int socklen, void *ctx);
   static void TimerCB(int, int16_t events, void *ctx);
   Redis::Connection *removeConnection(int fd);
 
@@ -65,16 +90,16 @@ class Worker {
 
 class WorkerThread {
  public:
-  explicit WorkerThread(Worker *worker) : worker_(worker) {}
-  ~WorkerThread() { delete worker_; }
+  explicit WorkerThread(std::unique_ptr<Worker> worker) : worker_(std::move(worker)) {}
+  ~WorkerThread() = default;
   WorkerThread(const WorkerThread&) = delete;
   WorkerThread(WorkerThread&&) = delete;
-  Worker *GetWorker() { return worker_; }
+  Worker *GetWorker() { return worker_.get(); }
   void Start();
   void Stop();
   void Join();
 
  private:
   std::thread t_;
-  Worker *worker_;
+  std::unique_ptr<Worker> worker_;
 };

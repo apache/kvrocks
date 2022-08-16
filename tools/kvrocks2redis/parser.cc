@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "parser.h"
 
 #include <glog/logging.h>
@@ -7,10 +27,11 @@
 
 #include "../../src/redis_slot.h"
 #include "../../src/redis_reply.h"
+#include "db_util.h"
 
 Status Parser::ParseFullDB() {
   rocksdb::DB *db_ = storage_->GetDB();
-  if (!lastest_snapshot_) lastest_snapshot_ = new LatestSnapShot(db_);
+  if (!lastest_snapshot_) lastest_snapshot_ = std::unique_ptr<LatestSnapShot>(new LatestSnapShot(db_));
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_ = storage_->GetCFHandle("metadata");
 
   rocksdb::ReadOptions read_options;
@@ -69,7 +90,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
 
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {
       break;
@@ -117,7 +138,6 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     if (!s.IsOK()) return s;
   }
 
-  delete iter;
   return Status::OK();
 }
 

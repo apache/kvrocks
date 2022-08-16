@@ -1,3 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 # Import crc16 table
 source "tests/helpers/crc16_slottable.tcl"
 
@@ -397,9 +414,9 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             $r0 del $slot15_key_10
 
             # Set slow migrate
-            $r0 config set migrate-speed 32
+            $r0 config set migrate-speed 64
             catch {$r0 config get migrate-speed} e
-            assert_match {*32*} $e
+            assert_match {*64*} $e
 
             set count 2000
             for {set i 0} {$i < $count} {incr i} {
@@ -492,15 +509,15 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             set sivalue [$r0 sirange $slot15_key_10 0 -1]
 
             # Wait for finishing
-            wait_for_condition 50 1000 {
-                [string match "*migrating_slot: 15*migrating_state: success*" [$r0 cluster info]]
-            } else {
-                fail "Slot 15 migrating is not finished"
+            while 1 {
+                if {[string match "*migrating_slot: 15*migrating_state: success*" [$r0 cluster info]]} {
+                    break
+                }
             }
-            wait_for_condition 50 1000 {
-                [string match "*15*success*" [$r1 cluster info]]
-            } else {
-                fail "Slot 15 importing is not finished"
+            while 1 {
+                if {[string match "*15*success*" [$r1 cluster info]]} {
+                    break
+                }
             }
 
             # Check if the data is consistent
@@ -588,9 +605,6 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Migrate slot 17 from node0 to node1
             set ret [$r0 clusterx migrate 17 $node1_id]
             assert {$ret == "OK"}
-            # Migrating started
-            catch {[$r0 cluster info]} e
-            assert_match {*migrating_slot: 17*start*} $e
             # Check if finished
             wait_for_condition 50 1000 {
                 [string match "*migrating_slot: 17*success*" [$r0 cluster info]]
@@ -859,3 +873,102 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
     }
 }
 
+start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
+    set r0 [srv 0 client]
+    set node0_host [srv 0 host]
+    set node0_port [srv 0 port]
+    set node0_pid [srv 0 pid]
+    set node0_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+    $r0 clusterx SETNODEID $node0_id
+    start_server {overrides {cluster-enabled yes}} {
+        set r1 [srv 0 client]
+        set node1_host [srv 0 host]
+        set node1_port [srv 0 port]
+        set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+        $r1 clusterx SETNODEID $node1_id
+
+        set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-16383"
+        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master -"
+        $r0 clusterx SETNODES $cluster_nodes 1
+        $r1 clusterx SETNODES $cluster_nodes 1
+
+        test {MIGRATE - Migrate slot to newly added node} {
+            # Construct key
+            set slot21_key [lindex $::CRC16_SLOT_TABLE 21]
+            $r0 del $slot21_key
+
+            # Write to newly added node1 will be moved
+            catch {$r1 set $slot21_key foobar} ret
+            assert_match {*MOVED*} $ret
+
+            # Write data
+            set count 100
+            for {set i 0} {$i < $count} {incr i} {
+                $r0 lpush $slot21_key $i
+            }
+            # Migrate slot 21 from node0 to node1
+            set ret [$r0 clusterx migrate 21 $node1_id]
+            assert {$ret == "OK"}
+            # Check if finished
+            wait_for_condition 50 1000 {
+                [string match "*migrating_slot: 21*success*" [$r0 cluster info]]
+            } else {
+                fail "Slot 21 importing is not finished"
+            }
+            # Check data
+            assert {[$r1 llen $slot21_key] == $count}
+
+            # Write the migrated slot on source server
+            set slot21_key1 "{$slot21_key}_1"
+            catch {$r0 set $slot21_key1 slot21_value1} e
+            assert_match {*MOVED*} $e
+
+            # Write the migrated slot on destination server
+            assert {[$r1 set $slot21_key1 slot21_value1] == "OK"}
+        }
+
+        test {MIGRATE - Auth before migrating slot} {
+            $r1 config set requirepass password
+            set slot22_key [lindex $::CRC16_SLOT_TABLE 22]
+            set count 100
+            for {set i 0} {$i < $count} {incr i} {
+                $r0 lpush $slot22_key $i
+            }
+
+            # Migrating slot will fail if no auth
+            set ret [$r0 clusterx migrate 22 $node1_id]
+            assert {$ret == "OK"}
+            wait_for_condition 50 1000 {
+                [string match "*migrating_slot: 22*fail*" [$r0 cluster info]]
+            } else {
+                fail "Slot 22 importing is not finished"
+            }
+            catch {[$r1 exists $slot22_key]} e
+            assert_match {*MOVED*} $e
+
+            # Migrating slot will fail if auth with wrong password
+            $r0 config set requirepass pass
+            set ret [$r0 clusterx migrate 22 $node1_id]
+            assert {$ret == "OK"}
+            wait_for_condition 50 1000 {
+                [string match "*migrating_slot: 22*fail*" [$r0 cluster info]]
+            } else {
+                fail "Slot 22 importing is not finished"
+            }
+            catch {[$r1 exists $slot22_key]} e
+            assert_match {*MOVED*} $e
+
+            # Migrating slot will succeed if auth with right password
+            $r0 config set requirepass password
+            set ret [$r0 clusterx migrate 22 $node1_id]
+            assert {$ret == "OK"}
+            wait_for_condition 50 1000 {
+                [string match "*migrating_slot: 22*success*" [$r0 cluster info]]
+            } else {
+                fail "Slot 22 importing is not finished"
+            }
+            assert {[$r1 exists $slot22_key] == 1}
+            assert {[$r1 llen $slot22_key] == $count}
+        }
+    }
+}

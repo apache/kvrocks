@@ -1,8 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #include "redis_sortedint.h"
 
 #include <map>
 #include <iostream>
 #include <limits>
+
+#include "db_util.h"
 
 namespace Redis {
 
@@ -124,7 +146,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   read_options.prefix_same_as_start = true;
 
   uint64_t id, pos = 0;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
@@ -133,9 +155,8 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
     GetFixed64(&sub_key, &id);
     if ( id == cursor_id || pos++ < offset ) continue;
     ids->emplace_back(id);
-    if (limit > 0 && ids && ids->size() >= limit) break;
+    if (limit > 0 && ids->size() >= limit) break;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 
@@ -170,7 +191,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
   read_options.prefix_same_as_start = true;
 
   int pos = 0;
-  auto iter = db_->NewIterator(read_options);
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -196,7 +217,6 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
     if (size) *size += 1;
     if (spec.count > 0 && ids && ids->size() >= static_cast<unsigned>(spec.count)) break;
   }
-  delete iter;
   return rocksdb::Status::OK();
 }
 

@@ -1,3 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
 #pragma once
 
 #define __STDC_FORMAT_MACROS
@@ -10,10 +30,7 @@
 #include <memory>
 #include <unordered_map>
 
-extern "C" {
-#include <lua.h>
-}
-
+#include "lua.hpp"
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
@@ -53,6 +70,35 @@ enum ClientType {
   kTypePubsub     = (1ULL<<1),  // pubsub client
   kTypeMaster     = (1ULL<<2),  // master client
   kTypeSlave      = (1ULL<<3),  // slave client
+};
+
+enum ServerLogType {
+  kServerLogNone,
+  kReplIdLog
+};
+
+class ServerLogData {
+ public:
+  // Redis::WriteBatchLogData always starts with digist ascii, we use alphabetic to
+  // distinguish ServerLogData with Redis::WriteBatchLogData.
+  static const char kReplIdTag = 'r';
+  static bool IsServerLogData(const char *header) {
+    if (header != NULL) return *header == kReplIdTag;
+    return false;
+  }
+
+  ServerLogData() = default;
+  explicit ServerLogData(ServerLogType type, const std::string &content) :
+      type_(type), content_(content) {}
+
+  ServerLogType GetType() { return type_; }
+  std::string GetContent() { return content_; }
+  std::string Encode();
+  Status Decode(const rocksdb::Slice &blob);
+
+ private:
+  ServerLogType type_ = kServerLogNone;
+  std::string content_;
 };
 
 class Server {
@@ -135,7 +181,6 @@ class Server {
   void ScriptReset();
   void ScriptFlush();
 
-  Status WriteToPropagateCF(const std::string &key, const std::string &value) const;
   Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
@@ -152,9 +197,9 @@ class Server {
 
   Stats stats_;
   Engine::Storage *storage_;
-  Cluster *cluster_;
+  std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
-  class SlotMigrate *slot_migrate_ = nullptr;
+  std::unique_ptr<class SlotMigrate> slot_migrate_;
   class SlotImport *slot_import_ = nullptr;
 
  private:
@@ -215,7 +260,7 @@ class Server {
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;
-  std::vector<WorkerThread *> worker_threads_;
+  std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 };
 

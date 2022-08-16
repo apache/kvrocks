@@ -165,24 +165,36 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
 }
 
 rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *ret) {
-  *ret = 0;
+  std::vector<int> exists;
+  rocksdb::Status s = MIsMember(user_key, {member}, &exists);
+  if (!s.ok()) return s;
+  *ret = exists[0];
+  return s;
+}
+
+rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &members, std::vector<int> *exists) {
+  exists->clear();
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  std::string sub_key;
-  InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-  std::string value;
-  s = db_->Get(read_options, sub_key, &value);
-  if (s.ok()) {
-    *ret = 1;
+  std::string sub_key, value;
+  for (const auto &member : members) {
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    s = db_->Get(read_options, sub_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.IsNotFound()) {
+      exists->emplace_back(0);
+    } else {
+      exists->emplace_back(1);
+    }
   }
   return rocksdb::Status::OK();
 }

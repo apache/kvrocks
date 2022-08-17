@@ -456,6 +456,7 @@ void Server::AddBlockingKey(const std::string &key, Redis::Connection *conn) {
   } else {
     iter->second.emplace_back(conn_ctx);
   }
+  IncrBlockedClientNum();
 }
 
 void Server::UnBlockingKey(const std::string &key, Redis::Connection *conn) {
@@ -474,6 +475,47 @@ void Server::UnBlockingKey(const std::string &key, Redis::Connection *conn) {
       break;
     }
   }
+  DecrBlockedClientNum();
+}
+
+void Server::BlockOnStreams(const std::vector<std::string> &keys,
+                            const std::vector<Redis::StreamEntryID> &entry_ids, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  IncrBlockedClientNum();
+  for (size_t i = 0; i < keys.size(); ++i) {
+    auto consumer = std::make_shared<StreamConsumer>(
+          conn->Owner(), conn->GetFD(), conn->GetNamespace(), entry_ids[i]);
+    auto iter = blocked_stream_consumers_.find(keys[i]);
+    if (iter == blocked_stream_consumers_.end()) {
+      std::set<std::shared_ptr<StreamConsumer>> consumers;
+      consumers.insert(consumer);
+      blocked_stream_consumers_.insert(std::make_pair(keys[i], consumers));
+    } else {
+      iter->second.insert(consumer);
+    }
+  }
+}
+
+void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  DecrBlockedClientNum();
+  for (const auto &key : keys) {
+    auto iter = blocked_stream_consumers_.find(key);
+    if (iter == blocked_stream_consumers_.end()) {
+      continue;
+    }
+
+    for (auto it = iter->second.begin(); it != iter->second.end(); ) {
+      auto consumer = *it;
+      if (conn->GetFD() == consumer->fd && conn->Owner() == consumer->owner) {
+        iter->second.erase(it);
+        if (iter->second.empty()) {
+          blocked_stream_consumers_.erase(iter);
+        }
+        break;
+      }
+    }
+  }
 }
 
 Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
@@ -488,6 +530,27 @@ Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     delConnContext(conn_ctx);
     iter->second.pop_front();
   }
+  return Status::OK();
+}
+
+Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
+                                    const Redis::StreamEntryID &entry_id) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  auto iter = blocked_stream_consumers_.find(key);
+  if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
+    return Status(Status::NotOK);
+  }
+
+  for (auto it = iter->second.begin(); it != iter->second.end(); ) {
+    auto consumer = *it;
+    if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
+      consumer->owner->EnableWriteEvent(consumer->fd);
+      it = iter->second.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   return Status::OK();
 }
 
@@ -520,6 +583,14 @@ int Server::IncrMonitorClientNum() {
 
 int Server::DecrMonitorClientNum() {
   return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
+}
+
+int Server::IncrBlockedClientNum() {
+  return blocked_clients_.fetch_add(1, std::memory_order_relaxed);
+}
+
+int Server::DecrBlockedClientNum() {
+  return blocked_clients_.fetch_sub(1, std::memory_order_relaxed);
 }
 
 std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
@@ -740,6 +811,7 @@ void Server::GetClientsInfo(std::string *info) {
   string_stream << "maxclients:" << config_->maxclients << "\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
   string_stream << "monitor_clients:" << monitor_clients_ << "\r\n";
+  string_stream << "blocked_clients:" << blocked_clients_ << "\r\n";
   *info = string_stream.str();
 }
 

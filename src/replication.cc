@@ -958,6 +958,14 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
         }
       }
       break;
+    case kBatchTypeStream:
+      InternalKey ikey(write_batch_handler.Key(), storage_->IsSlotIdEncoded());
+      Slice entry_id = ikey.GetSubKey();
+      Redis::StreamEntryID id;
+      GetFixed64(&entry_id, &id.ms);
+      GetFixed64(&entry_id, &id.seq);
+      srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
+      break;
   }
   return rocksdb::Status::OK();
 }
@@ -980,6 +988,9 @@ rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksd
     type_ = kBatchTypePropagate;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
+  } else if (column_family_id == kColumnFamilyIDStream) {
+    type_ = kBatchTypeStream;
+    kv_ = std::make_pair(key.ToString(), value.ToString());
   }
   return rocksdb::Status::OK();
 }

@@ -35,6 +35,7 @@ static std::atomic<uint64_t> version_counter_ = {0};
 
 const char* kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 const char* kErrMsgKeyExpired = "the key was expired";
+const char* kErrMetadataTooShort = "metadata is too short";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;
@@ -176,13 +177,13 @@ Metadata::Metadata(RedisType type, bool generate_version) {
 rocksdb::Status Metadata::Decode(const std::string &bytes) {
   // flags(1byte) + expire (4byte)
   if (bytes.size() < 5) {
-    return rocksdb::Status::InvalidArgument("the metadata was too short");
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
   Slice input(bytes);
   GetFixed8(&input, &flags);
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
-    if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
+    if (input.size() < 12) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
@@ -249,12 +250,14 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::Expired() const {
-  if (Type() != kRedisString && size == 0) {
+  if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;
   }
+
   if (expire <= 0) {
     return false;
   }
+
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   return expire < now;
@@ -276,14 +279,76 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
-    if (input.size() < 12) rocksdb::Status::InvalidArgument("the metadata was too short");
+    if (input.size() < 12) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
   if (Type() == kRedisList) {
-    if (input.size() < 16) rocksdb::Status::InvalidArgument("the metadata was too short");
+    if (input.size() < 16) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &head);
     GetFixed64(&input, &tail);
   }
+  return rocksdb::Status::OK();
+}
+
+void StreamMetadata::Encode(std::string *dst) {
+  Metadata::Encode(dst);
+
+  PutFixed64(dst, last_generated_id.ms);
+  PutFixed64(dst, last_generated_id.seq);
+
+  PutFixed64(dst, recorded_first_entry_id.ms);
+  PutFixed64(dst, recorded_first_entry_id.seq);
+
+  PutFixed64(dst, max_deleted_entry_id.ms);
+  PutFixed64(dst, max_deleted_entry_id.seq);
+
+  PutFixed64(dst, first_entry_id.ms);
+  PutFixed64(dst, first_entry_id.seq);
+
+  PutFixed64(dst, last_entry_id.ms);
+  PutFixed64(dst, last_entry_id.seq);
+
+  PutFixed64(dst, entries_added);
+}
+
+rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
+  // flags(1byte) + expire (4byte)
+  if (bytes.size() < 5) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  Slice input(bytes);
+  GetFixed8(&input, &flags);
+  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
+
+  if (input.size() < 12) {
+    rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(&input, &version);
+  GetFixed32(&input, &size);
+
+  if (input.size() < 88) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(&input, &last_generated_id.ms);
+  GetFixed64(&input, &last_generated_id.seq);
+
+  GetFixed64(&input, &recorded_first_entry_id.ms);
+  GetFixed64(&input, &recorded_first_entry_id.seq);
+
+  GetFixed64(&input, &max_deleted_entry_id.ms);
+  GetFixed64(&input, &max_deleted_entry_id.seq);
+
+  GetFixed64(&input, &first_entry_id.ms);
+  GetFixed64(&input, &first_entry_id.seq);
+
+  GetFixed64(&input, &last_entry_id.ms);
+  GetFixed64(&input, &last_entry_id.seq);
+
+  GetFixed64(&input, &entries_added);
+
   return rocksdb::Status::OK();
 }

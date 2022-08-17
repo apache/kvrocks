@@ -379,7 +379,7 @@ Status Storage::DestroyBackup() {
 Status Storage::RestoreFromBackup() {
   // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
-  rocksdb::BackupableDBOptions bk_option(config_->backup_sync_dir);
+  rocksdb::BackupEngineOptions bk_option(config_->backup_sync_dir);
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
   if (!s.ok()) return Status(Status::DBBackupErr, s.ToString());
 

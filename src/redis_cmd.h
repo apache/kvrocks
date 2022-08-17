@@ -32,7 +32,7 @@
 #include <event2/event.h>
 #include <glog/logging.h>
 #include <rocksdb/types.h>
-#include <rocksdb/utilities/backupable_db.h>
+#include <rocksdb/utilities/backup_engine.h>
 
 #include "redis_reply.h"
 #include "status.h"

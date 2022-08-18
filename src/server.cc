@@ -26,7 +26,6 @@
 #include <sys/resource.h>
 #include <memory>
 #include <utility>
-#include <memory>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 

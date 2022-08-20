@@ -387,6 +387,17 @@ start_server {tags {"scripting"}} {
         set v [r eval { return redis.log(redis.LOG_WARNING, 'warning level'); } 0]
         assert_equal "" $v
     } {}
+
+    test {EVAL_RO - Successful case} {
+        r set foo bar
+        assert_equal bar [r eval_ro {return redis.call('get', KEYS[1]);} 1 foo]
+    }
+
+    test {EVAL_RO - Cannot run write commands} {
+        r set foo bar
+        catch {r eval_ro {redis.call('del', KEYS[1]);} 1 foo} e
+        set e
+    } {ERR Write commands are not allowed from read-only scripts*}
 }
 
 start_server {tags {"repl"}} {

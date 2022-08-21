@@ -80,12 +80,12 @@ class Status {
   }
 
   std::string Msg() const& {
-    if (*this) return ok_msg();
+    if (*this) return ok_msg;
     return msg_;
   }
 
   std::string Msg() && {
-    if (*this) return ok_msg();
+    if (*this) return ok_msg;
     return std::move(msg_);
   }
 
@@ -95,9 +95,7 @@ class Status {
   Code code_;
   std::string msg_;
 
-  static constexpr const char* ok_msg() {
-    return "ok";
-  }
+  static constexpr const char* ok_msg = "ok";
 
   template <typename T>
   friend struct StatusOr;
@@ -229,12 +227,12 @@ struct StatusOr {
   }
 
   std::string Msg() const& {
-    if (*this) return Status::ok_msg();
+    if (*this) return Status::ok_msg;
     return *getError();
   }
 
   std::string Msg() && {
-    if (*this) return Status::ok_msg();
+    if (*this) return Status::ok_msg;
     return std::move(*getError());
   }
 
@@ -252,18 +250,22 @@ struct StatusOr {
     [sizeof(value_type) < sizeof(error_type) ? sizeof(error_type) : sizeof(value_type)];
 
   value_type& getValue() {
-    return *reinterpret_cast<value_type*>(value_or_error_);
+    auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<value_type*>(value_or_error_);
+    return *ptr;
   }
 
   const value_type& getValue() const {
-    return *reinterpret_cast<const value_type*>(value_or_error_);
+    const auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<const value_type*>(value_or_error_);
+    return *ptr;
   }
 
   error_type& getError() {
-    return *reinterpret_cast<error_type*>(value_or_error_);
+    auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<error_type*>(value_or_error_);
+    return *ptr;
   }
 
   const error_type& getError() const {
-    return *reinterpret_cast<const error_type*>(value_or_error_);
+    const auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<const error_type*>(value_or_error_);
+    return *ptr;
   }
 };

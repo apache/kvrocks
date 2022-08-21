@@ -24,8 +24,8 @@
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
-#include <utility>
 #include <memory>
+#include <utility>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 
@@ -51,7 +51,7 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
 
   // Init cluster
-  cluster_ = std::unique_ptr<Cluster>(new Cluster(this, config_->binds, config_->port));
+  cluster_ = Util::MakeUnique<Cluster>(this, config_->binds, config_->port);
 
   for (int i = 0; i < config->workers; i++) {
     auto worker = Util::MakeUnique<Worker>(this, config);
@@ -119,8 +119,8 @@ Status Server::Start() {
 
   if (config_->cluster_enabled) {
     // Create objects used for slot migration
-    slot_migrate_ = std::unique_ptr<SlotMigrate>(new SlotMigrate(this, config_->migrate_speed,
-                                    config_->pipeline_size, config_->sequence_gap));
+    slot_migrate_ = Util::MakeUnique<SlotMigrate>(this, config_->migrate_speed,
+                                    config_->pipeline_size, config_->sequence_gap);
     slot_import_ = new SlotImport(this);
     // Create migrating thread
     auto s = slot_migrate_->CreateMigrateHandleThread();
@@ -594,11 +594,11 @@ int Server::DecrBlockedClientNum() {
 }
 
 std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
-  return std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(works_concurrency_rw_lock_));
+  return Util::MakeUnique<RWLock::ReadLock>(works_concurrency_rw_lock_);
 }
 
 std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
-  return std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(works_concurrency_rw_lock_));
+  return Util::MakeUnique<RWLock::WriteLock>(works_concurrency_rw_lock_);
 }
 
 std::atomic<uint64_t> *Server::GetClientID() {

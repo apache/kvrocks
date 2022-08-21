@@ -218,7 +218,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
 
   std::unique_ptr<LockGuard> lock_guard;
-  if (removed) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
+  if (removed) lock_guard = Util::MakeUnique<LockGuard>(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -296,7 +296,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key,
   AppendNamespacePrefix(user_key, &ns_key);
 
   std::unique_ptr<LockGuard> lock_guard;
-  if (spec.removed) lock_guard = std::unique_ptr<LockGuard>(new LockGuard(storage_->GetLockManager(), ns_key));
+  if (spec.removed) lock_guard = Util::MakeUnique<LockGuard>(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound()? rocksdb::Status::OK():s;
@@ -420,8 +420,8 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key,
 
   std::unique_ptr<LockGuard> lock_guard;
   if (spec.removed) {
-    lock_guard = std::unique_ptr<LockGuard>(
-      new LockGuard(storage_->GetLockManager(), ns_key));
+    lock_guard = Util::MakeUnique<LockGuard>(
+      storage_->GetLockManager(), ns_key);
   }
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);

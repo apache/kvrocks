@@ -19,6 +19,7 @@
  */
 
 #include "table_properties_collector.h"
+#include <memory>
 #include <utility>
 #include "encoding.h"
 #include "redis_metadata.h"
@@ -97,6 +98,6 @@ CompactOnExpiredTableCollectorFactory::CreateTablePropertiesCollector(
 std::shared_ptr<CompactOnExpiredTableCollectorFactory>
 NewCompactOnExpiredTableCollectorFactory(const std::string &cf_name,
                                          float trigger_threshold) {
-  return std::shared_ptr<CompactOnExpiredTableCollectorFactory>(
-      new CompactOnExpiredTableCollectorFactory(cf_name, trigger_threshold));
+  return Util::MakeShared<CompactOnExpiredTableCollectorFactory>(
+      cf_name, trigger_threshold);
 }

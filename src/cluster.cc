@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <memory>
 
 #include "util.h"
 #include "server.h"
@@ -552,8 +553,8 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         return Status(Status::ClusterInvalidInfo, "Invalid cluster nodes info");
       } else {
         // Create slave node
-        (*nodes)[id] = std::shared_ptr<ClusterNode>(
-          new ClusterNode(id, host, port, role, master_id, slots));
+        (*nodes)[id] = Util::MakeShared<ClusterNode>(
+          id, host, port, role, master_id, slots);
         continue;
       }
     }
@@ -597,8 +598,8 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    (*nodes)[id] = std::shared_ptr<ClusterNode>(
-        new ClusterNode(id, host, port, role, master_id, slots));
+    (*nodes)[id] = Util::MakeShared<ClusterNode>(
+        id, host, port, role, master_id, slots);
   }
   return Status::OK();
 }

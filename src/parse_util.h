@@ -51,22 +51,25 @@ struct ParseIntFunc<unsigned long long> {
 
 }
 
+template <typename T>
+using ParseResultAndPos = std::tuple<T, const char *>;
+
 template <typename T = long long>
-StatusOr<std::tuple<T, const char *>> TryParseInt(const char *v, int base = 0) {
+StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   char *end;
 
   errno = 0;
   auto res = details::ParseIntFunc<T>::value(v, &end, base);
 
   if(v == end) {
-    return {Status::NotOK, "TryParseInt: invalid argument"};
+    return {Status::NotOK, "TryParseInt: not started as an integer"};
   }
 
-  if(errno == ERANGE) {
-    return {Status::NotOK, "TryParseInt: out of range of integer type"};
+  if(errno) {
+    return {Status::NotOK, std::string{"TryParseInt: "} + std::strerror(errno)};
   }
 
-  return {res, end};
+  return ParseResultAndPos<T>{res, end};
 }
 
 template <typename T = long long>
@@ -87,7 +90,7 @@ template <typename T>
 using NumericRange = std::tuple<T, T>;
 
 template <typename T, typename U>
-NumericRange<T> GetMaxNumericRange() {
+constexpr NumericRange<T> GetMaxNumericRange() {
   return {std::numeric_limits<U>::min(), std::numeric_limits<U>::max()};
 }
 

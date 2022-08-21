@@ -97,7 +97,7 @@ class Status {
 
   static constexpr const char* ok_msg = "ok";
 
-  template <typename T>
+  template <typename>
   friend struct StatusOr;
 };
 
@@ -107,10 +107,10 @@ using first_element = typename std::tuple_element<0, std::tuple<Ts...>>::type;
 template <typename T>
 using remove_cvref_t = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-template <typename T>
+template <typename>
 struct StatusOr;
 
-template <typename T>
+template <typename>
 struct IsStatusOr : std::integral_constant<bool, false> {};
 
 template <typename T>
@@ -161,12 +161,20 @@ struct StatusOr {
   }
 
   StatusOr(const StatusOr&) = delete;
-  StatusOr(StatusOr&& other) : code_(other.code_) {
+
+  template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     if (code_ == Code::cOK) {
       new(value_or_error_) value_type(std::move(other.getValue()));
     } else {
       new(value_or_error_) error_type(std::move(other.getError()));
     }
+  }
+
+  template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
+    CHECK(code_ != Code::cOK);
+    new(value_or_error_) error_type(std::move(other.getError()));
   }
 
   Status& operator=(const Status&) = delete;
@@ -268,4 +276,7 @@ struct StatusOr {
     const auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<const error_type*>(value_or_error_);
     return *ptr;
   }
+
+  template <typename>
+  friend struct StatusOr;
 };

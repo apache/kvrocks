@@ -132,12 +132,12 @@ struct StatusOr {
 
   explicit StatusOr(Status s) : code_(s.code_) {
     CHECK(!s);
-    new(value_or_error_) error_type(new std::string(std::move(s.msg_)));
+    new(&error_) error_type(new std::string(std::move(s.msg_)));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) { // NOLINT
     CHECK(code != Code::cOK);
-    new(value_or_error_) error_type(new std::string(std::move(msg)));
+    new(&error_) error_type(new std::string(std::move(msg)));
   }
 
   template <typename ...Ts,
@@ -149,15 +149,15 @@ struct StatusOr {
         !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value
       ), int>::type = 0> // NOLINT
   explicit StatusOr(Ts && ... args) : code_(Code::cOK) {
-    new(value_or_error_) value_type(std::forward<Ts>(args)...);
+    new(&value_) value_type(std::forward<Ts>(args)...);
   }
 
   StatusOr(T&& value) : code_(Code::cOK) { // NOLINT
-    new(value_or_error_) value_type(std::move(value));
+    new(&value_) value_type(std::move(value));
   }
 
   StatusOr(const T& value) : code_(Code::cOK) { // NOLINT
-    new(value_or_error_) value_type(value);
+    new(&value_) value_type(value);
   }
 
   StatusOr(const StatusOr&) = delete;
@@ -165,16 +165,16 @@ struct StatusOr {
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     if (code_ == Code::cOK) {
-      new(value_or_error_) value_type(std::move(other.getValue()));
+      new(&value_) value_type(std::move(other.value_));
     } else {
-      new(value_or_error_) error_type(std::move(other.getError()));
+      new(&error_) error_type(std::move(other.error_));
     }
   }
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     CHECK(code_ != Code::cOK);
-    new(value_or_error_) error_type(std::move(other.getError()));
+    new(&error_) error_type(std::move(other.error_));
   }
 
   Status& operator=(const Status&) = delete;
@@ -187,12 +187,12 @@ struct StatusOr {
 
   Status ToStatus() const& {
     if (*this) return Status::OK();
-    return Status(code_, *getError());
+    return Status(code_, *error_);
   }
 
   Status ToStatus() && {
     if (*this) return Status::OK();
-    return Status(code_, std::move(*getError()));
+    return Status(code_, std::move(*error_));
   }
 
   Code GetCode() const {
@@ -201,17 +201,17 @@ struct StatusOr {
 
   value_type& GetValue() & {
     CHECK(*this);
-    return getValue();
+    return value_;
   }
 
   value_type&& GetValue() && {
     CHECK(*this);
-    return std::move(getValue());
+    return std::move(value_);
   }
 
   const value_type& GetValue() const& {
     CHECK(*this);
-    return getValue();
+    return value_;
   }
 
   value_type& operator*() & {
@@ -236,46 +236,28 @@ struct StatusOr {
 
   std::string Msg() const& {
     if (*this) return Status::ok_msg;
-    return *getError();
+    return *error_;
   }
 
   std::string Msg() && {
     if (*this) return Status::ok_msg;
-    return std::move(*getError());
+    return std::move(*error_);
   }
 
   ~StatusOr() {
     if (*this) {
-      getValue().~value_type();
+      value_.~value_type();
     } else {
-      getError().~error_type();
+      error_.~error_type();
     }
   }
 
  private:
   Status::Code code_;
-  alignas(value_type) alignas(error_type) unsigned char value_or_error_
-    [sizeof(value_type) < sizeof(error_type) ? sizeof(error_type) : sizeof(value_type)];
-
-  value_type& getValue() {
-    auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<value_type*>(value_or_error_);
-    return *ptr;
-  }
-
-  const value_type& getValue() const {
-    const auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<const value_type*>(value_or_error_);
-    return *ptr;
-  }
-
-  error_type& getError() {
-    auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<error_type*>(value_or_error_);
-    return *ptr;
-  }
-
-  const error_type& getError() const {
-    const auto* __attribute__((__may_alias__)) ptr = reinterpret_cast<const error_type*>(value_or_error_);
-    return *ptr;
-  }
+  union {
+    value_type value_;
+    error_type error_;
+  };
 
   template <typename>
   friend struct StatusOr;

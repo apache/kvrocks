@@ -20,9 +20,11 @@
 
 #pragma once
 
-#include <limits>
-#include <status.h>
 #include <cstdlib>
+#include <limits>
+#include <string>
+#include <tuple>
+#include <status.h>
 
 namespace details {
 
@@ -30,7 +32,7 @@ template <typename>
 struct ParseIntFunc;
 
 template <>
-struct ParseIntFunc<short> {
+struct ParseIntFunc<short> { // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
@@ -40,17 +42,17 @@ struct ParseIntFunc<int> {
 };
 
 template <>
-struct ParseIntFunc<long> {
+struct ParseIntFunc<long> { // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
 template <>
-struct ParseIntFunc<long long> {
+struct ParseIntFunc<long long> { // NOLINT
   constexpr static const auto value = std::strtoll;
 };
 
 template <>
-struct ParseIntFunc<unsigned short> {
+struct ParseIntFunc<unsigned short> { // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 
@@ -60,36 +62,36 @@ struct ParseIntFunc<unsigned> {
 };
 
 template <>
-struct ParseIntFunc<unsigned long> {
+struct ParseIntFunc<unsigned long> { // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 
 template <>
-struct ParseIntFunc<unsigned long long> {
+struct ParseIntFunc<unsigned long long> { // NOLINT
   constexpr static const auto value = std::strtoull;
 };
 
-}
+} // namespace details
 
 template <typename T>
 using ParseResultAndPos = std::tuple<T, const char *>;
 
-template <typename T = long long>
+template <typename T = long long> // NOLINT
 StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   char *end;
 
   errno = 0;
   auto res = details::ParseIntFunc<T>::value(v, &end, base);
 
-  if(v == end) {
+  if (v == end) {
     return {Status::NotOK, "TryParseInt: not started as an integer"};
   }
 
-  if(errno) {
+  if (errno) {
     return {Status::NotOK, std::string{"TryParseInt: "} + std::strerror(errno)};
   }
 
-  if(!std::is_same<T, decltype(res)>::value &&
+  if (!std::is_same<T, decltype(res)>::value &&
     (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
     return {Status::NotOK, "TryParseInt: out of range of integer type"};
   }
@@ -97,14 +99,14 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   return ParseResultAndPos<T>{res, end};
 }
 
-template <typename T = long long>
+template <typename T = long long> // NOLINT
 StatusOr<T> ParseInt(const std::string& v, int base = 0) {
   const char *begin = v.c_str();
   auto res = TryParseInt<T>(begin, base);
 
-  if(!res) return res;
+  if (!res) return res;
 
-  if(std::get<1>(*res) != begin + v.size()) {
+  if (std::get<1>(*res) != begin + v.size()) {
     return {Status::NotOK, "ParseInt: encounter non-integer characters"};
   }
 
@@ -114,13 +116,13 @@ StatusOr<T> ParseInt(const std::string& v, int base = 0) {
 template <typename T>
 using NumericRange = std::tuple<T, T>;
 
-template <typename T = long long>
+template <typename T = long long> // NOLINT
 StatusOr<T> ParseInt(const std::string& v, NumericRange<T> range, int base = 0) {
   auto res = ParseInt<T>(v, base);
 
-  if(!res) return res;
+  if (!res) return res;
 
-  if(*res < std::get<0>(range) || *res > std::get<1>(range)) {
+  if (*res < std::get<0>(range) || *res > std::get<1>(range)) {
     return {Status::NotOK, "ParseInt: out of numeric range"};
   }
 

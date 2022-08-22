@@ -69,7 +69,7 @@ Kvrocks has the following key features:
 ```shell
 # CentOS / RedHat
 sudo yum install -y epel-release
-sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
+sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static
 
 # Ubuntu / Debian
 sudo apt update
@@ -122,7 +122,7 @@ $ ./unittest
 ### Supported platforms
 
 * Linux distributions
-  * CentOS 6 or 7
+  * CentOS
   * Ubuntu
   * and most other distros
 * macOS

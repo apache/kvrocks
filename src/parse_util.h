@@ -71,7 +71,7 @@ struct ParseIntFunc<unsigned long long> { // NOLINT
   constexpr static const auto value = std::strtoull;
 };
 
-} // namespace details
+}  // namespace details
 
 template <typename T>
 using ParseResultAndPos = std::tuple<T, const char *>;
@@ -88,7 +88,7 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   }
 
   if (errno) {
-    return {Status::NotOK, std::string{"TryParseInt: "} + std::strerror(errno)};
+    return {Status::NotOK, std::string {"TryParseInt: "} + std::strerror(errno)};
   }
 
   if (!std::is_same<T, decltype(res)>::value &&

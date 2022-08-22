@@ -38,7 +38,11 @@ TEST(ParseUtil, TryParseInt) {
 TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(*ParseInt("-2333"), -2333);
   ASSERT_EQ(*ParseInt("0x1a"), 26);
+  ASSERT_EQ(*ParseInt("011"), 9);
   ASSERT_EQ(*ParseInt("111", 2), 7);
+  ASSERT_EQ(*ParseInt("11", 010), 9);
+  ASSERT_EQ(*ParseInt("11", 10), 11);
+  ASSERT_EQ(*ParseInt("11", 0x10), 17);
 
   ASSERT_EQ(ParseInt("hello").Msg(), "TryParseInt: not started as an integer");
   ASSERT_EQ(ParseInt("123hello").Msg(), "ParseInt: encounter non-integer characters");

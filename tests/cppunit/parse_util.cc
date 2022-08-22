@@ -43,9 +43,11 @@ TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(ParseInt("hello").Msg(), "TryParseInt: not started as an integer");
   ASSERT_EQ(ParseInt("123hello").Msg(), "ParseInt: encounter non-integer characters");
   ASSERT_FALSE(ParseInt("9999999999999999999999999999999999"));
+  ASSERT_EQ(ParseInt<short>("99999").Msg(), "TryParseInt: out of range of integer type");
+  ASSERT_EQ(*ParseInt<short>("30000"), 30000);
+  ASSERT_EQ(*ParseInt<int>("99999"), 99999);
+  ASSERT_EQ(ParseInt<int>("3000000000").Msg(), "TryParseInt: out of range of integer type");
 
   ASSERT_EQ(*ParseInt("123", {0, 123}), 123);
   ASSERT_EQ(ParseInt("124", {0, 123}).Msg(), "ParseInt: out of numeric range");
-  ASSERT_EQ(*ParseInt("127", GetMaxNumericRange<long long, signed char>()), 127);
-  ASSERT_EQ(ParseInt("128", GetMaxNumericRange<long long, signed char>()).Msg(), "ParseInt: out of numeric range");
 }

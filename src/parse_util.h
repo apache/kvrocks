@@ -30,6 +30,16 @@ template <typename>
 struct ParseIntFunc;
 
 template <>
+struct ParseIntFunc<short> {
+  constexpr static const auto value = std::strtol;
+};
+
+template <>
+struct ParseIntFunc<int> {
+  constexpr static const auto value = std::strtol;
+};
+
+template <>
 struct ParseIntFunc<long> {
   constexpr static const auto value = std::strtol;
 };
@@ -37,6 +47,16 @@ struct ParseIntFunc<long> {
 template <>
 struct ParseIntFunc<long long> {
   constexpr static const auto value = std::strtoll;
+};
+
+template <>
+struct ParseIntFunc<unsigned short> {
+  constexpr static const auto value = std::strtoul;
+};
+
+template <>
+struct ParseIntFunc<unsigned> {
+  constexpr static const auto value = std::strtoul;
 };
 
 template <>
@@ -69,6 +89,11 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
     return {Status::NotOK, std::string{"TryParseInt: "} + std::strerror(errno)};
   }
 
+  if(!std::is_same<T, decltype(res)>::value &&
+    (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
+    return {Status::NotOK, "TryParseInt: out of range of integer type"};
+  }
+
   return ParseResultAndPos<T>{res, end};
 }
 
@@ -88,11 +113,6 @@ StatusOr<T> ParseInt(const std::string& v, int base = 0) {
 
 template <typename T>
 using NumericRange = std::tuple<T, T>;
-
-template <typename T, typename U>
-constexpr NumericRange<T> GetMaxNumericRange() {
-  return {std::numeric_limits<U>::min(), std::numeric_limits<U>::max()};
-}
 
 template <typename T = long long>
 StatusOr<T> ParseInt(const std::string& v, NumericRange<T> range, int base = 0) {

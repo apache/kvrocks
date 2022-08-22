@@ -27,7 +27,7 @@ Server *GetServer() {
 }
 
 int main(int argc, char **argv) {
-//  gflags::SetUsageMessage("kvrocks unittest");
   testing::InitGoogleTest(&argc, argv);
+  google::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }

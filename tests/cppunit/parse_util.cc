@@ -30,7 +30,7 @@ TEST(ParseUtil, TryParseInt) {
   ASSERT_EQ(v, 12345);
   ASSERT_EQ(end - str, 5);
 
-  ASSERT_EQ(TryParseInt("hello").Msg(), "TryParseInt: not started as an integer");
+  ASSERT_EQ(TryParseInt("hello").Msg(), "not started as an integer");
   ASSERT_FALSE(TryParseInt("9999999999999999999999999999999999"));
   ASSERT_FALSE(TryParseInt("1", 100));
 }
@@ -44,14 +44,14 @@ TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(*ParseInt("11", 10), 11);
   ASSERT_EQ(*ParseInt("11", 0x10), 17);
 
-  ASSERT_EQ(ParseInt("hello").Msg(), "TryParseInt: not started as an integer");
-  ASSERT_EQ(ParseInt("123hello").Msg(), "ParseInt: encounter non-integer characters");
+  ASSERT_EQ(ParseInt("hello").Msg(), "not started as an integer");
+  ASSERT_EQ(ParseInt("123hello").Msg(), "encounter non-integer characters");
   ASSERT_FALSE(ParseInt("9999999999999999999999999999999999"));
-  ASSERT_EQ(ParseInt<short>("99999").Msg(), "TryParseInt: out of range of integer type");
+  ASSERT_EQ(ParseInt<short>("99999").Msg(), "out of range of integer type");
   ASSERT_EQ(*ParseInt<short>("30000"), 30000);
   ASSERT_EQ(*ParseInt<int>("99999"), 99999);
-  ASSERT_EQ(ParseInt<int>("3000000000").Msg(), "TryParseInt: out of range of integer type");
+  ASSERT_EQ(ParseInt<int>("3000000000").Msg(), "out of range of integer type");
 
   ASSERT_EQ(*ParseInt("123", {0, 123}), 123);
-  ASSERT_EQ(ParseInt("124", {0, 123}).Msg(), "ParseInt: out of numeric range");
+  ASSERT_EQ(ParseInt("124", {0, 123}).Msg(), "out of numeric range");
 }

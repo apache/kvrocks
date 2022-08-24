@@ -69,11 +69,11 @@ Kvrocks has the following key features:
 ```shell
 # CentOS / RedHat
 sudo yum install -y epel-release
-sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static
+sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static python3
 
 # Ubuntu / Debian
 sudo apt update
-sudo apt install -y gcc g++ make cmake autoconf automake libtool
+sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3
 
 # macOS
 brew install autoconf automake libtool cmake

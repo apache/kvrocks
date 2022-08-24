@@ -67,7 +67,7 @@ def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any)
     return p
 
 def run_pipe(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> TextIO:
-    p = run(*args, msg=msg, verbose=verbose, stdout=PIPE, text=True, **kwargs)
+    p = run(*args, msg=msg, verbose=verbose, stdout=PIPE, universal_newlines=True, **kwargs)
     return p.stdout # type: ignore
 
 def find_command(command: str, msg: Optional[str]=None) -> str:

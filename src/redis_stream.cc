@@ -21,6 +21,8 @@
 #include "redis_stream.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include <glog/logging.h>
 #include <rocksdb/status.h>
@@ -322,13 +324,19 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
       return rocksdb::Status::OK();
     }
 
-    std::string value;
-    auto s = db_->Get(rocksdb::ReadOptions(), stream_cf_handle_, start_key, &value);
+    std::string entry_value;
+    auto s = db_->Get(rocksdb::ReadOptions(), stream_cf_handle_, start_key, &entry_value);
     if (!s.ok()) {
       return s.IsNotFound() ? rocksdb::Status::OK() : s;
     }
 
-    entries->emplace_back(options.start.ToString(), DecodeRawStreamEntryValue(value));
+    std::vector<std::string> values;
+    auto rv = DecodeRawStreamEntryValue(entry_value, &values);
+    if (!rv.IsOK()) {
+      return rocksdb::Status::InvalidArgument(rv.Msg());
+    }
+
+    entries->emplace_back(options.start.ToString(), std::move(values));
     return rocksdb::Status::OK();
   }
 
@@ -368,8 +376,13 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
       break;
     }
 
-    entries->emplace_back(entryIDFromInternalKey(iter->key()).ToString(),
-                          DecodeRawStreamEntryValue(iter->value().ToString()));
+    std::vector<std::string> values;
+    auto rv = DecodeRawStreamEntryValue(iter->value().ToString(), &values);
+    if (!rv.IsOK()) {
+      return rocksdb::Status::InvalidArgument(rv.Msg());
+    }
+
+    entries->emplace_back(entryIDFromInternalKey(iter->key()).ToString(), std::move(values));
 
     if (options.with_count && entries->size() == options.count) {
       break;
@@ -429,16 +442,27 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
     if (!s.ok()) {
       return s;
     }
-    info->first_entry = Util::MakeUnique<StreamEntry>(
-          metadata.first_entry_id.ToString(), DecodeRawStreamEntryValue(first_value));
+
+    std::vector<std::string> values;
+    auto rv = DecodeRawStreamEntryValue(first_value, &values);
+    if (!rv.IsOK()) {
+      return rocksdb::Status::InvalidArgument(rv.Msg());
+    }
+
+    info->first_entry = Util::MakeUnique<StreamEntry>(metadata.first_entry_id.ToString(), std::move(values));
 
     std::string last_value;
     s = getEntryRawValue(ns_key, metadata, metadata.last_entry_id, &last_value);
     if (!s.ok()) {
       return s;
     }
-    info->last_entry = Util::MakeUnique<StreamEntry>(
-          metadata.last_entry_id.ToString(), DecodeRawStreamEntryValue(last_value));
+
+    rv = DecodeRawStreamEntryValue(last_value, &values);
+    if (!rv.IsOK()) {
+      return rocksdb::Status::InvalidArgument(rv.Msg());
+    }
+
+    info->last_entry = Util::MakeUnique<StreamEntry>(metadata.last_entry_id.ToString(), std::move(values));
   }
 
   return rocksdb::Status::OK();

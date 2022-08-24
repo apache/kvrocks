@@ -145,7 +145,7 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id);
 Status ParseRangeStart(const std::string &input, StreamEntryID *id);
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id);
 std::string EncodeStreamEntryValue(const std::vector<std::string> &args);
-std::vector<std::string> DecodeRawStreamEntryValue(const std::string &value);
+Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::string> *result);
 
 
 }  // namespace Redis

@@ -55,6 +55,15 @@ protected:
   Redis::Stream *stream;
 };
 
+TEST_F(RedisStreamTest, EncodeDecodeEntryValue) {
+  std::vector<std::string> values = {"day", "first", "month", "eleventh", "epoch", "fairly-very-old-one"};
+  auto encoded = Redis::EncodeStreamEntryValue(values);
+  std::vector<std::string> decoded;
+  auto s = Redis::DecodeRawStreamEntryValue(encoded, &decoded);
+  EXPECT_TRUE(s.IsOK());
+  checkStreamEntryValues(decoded, values);
+}
+
 TEST_F(RedisStreamTest, AddEntryToNonExistingStreamWithNomkstreamOption) {
   Redis::StreamAddOptions options;
   options.nomkstream = true;

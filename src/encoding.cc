@@ -292,7 +292,7 @@ void PutVarint32(std::string *dst, uint32_t v) {
 const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *value) {
   uint32_t result = 0;
   for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
-    uint32_t byte = *(reinterpret_cast<const unsigned char*>(p));
+    uint32_t byte = static_cast<unsigned char>(*p);
     p++;
     if (byte & 0x80) {
       // More bytes are present
@@ -308,7 +308,7 @@ const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *v
 
 const char* GetVarint32Ptr(const char *p, const char *limit, uint32_t *value) {
   if (p < limit) {
-    uint32_t result = *(reinterpret_cast<const unsigned char*>(p));
+    uint32_t result = static_cast<unsigned char>(*p);
     if ((result & 0x80) == 0) {
       *value = result;
       return p + 1;

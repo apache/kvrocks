@@ -300,7 +300,7 @@ const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *v
     } else {
       result |= (byte << shift);
       *value = result;
-      return reinterpret_cast<const char*>(p);
+      return p;
     }
   }
   return nullptr;

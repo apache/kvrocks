@@ -272,38 +272,21 @@ double DecodeDouble(const char *ptr) {
   return value;
 }
 
-char* EncodeVarint32(char *dst, uint32_t v) {
+uint8_t* EncodeVarint32(uint8_t *dst, uint32_t v) {
   // Operate on characters as unsigneds
-  unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
-  static const int B = 128;
-  if (v < (1 << 7)) {
-    *(ptr++) = v;
-  } else if (v < (1 << 14)) {
-    *(ptr++) = v | B;
-    *(ptr++) = v >> 7;
-  } else if (v < (1 << 21)) {
-    *(ptr++) = v | B;
-    *(ptr++) = (v >> 7) | B;
-    *(ptr++) = v >> 14;
-  } else if (v < (1 << 28)) {
-    *(ptr++) = v | B;
-    *(ptr++) = (v >> 7) | B;
-    *(ptr++) = (v >> 14) | B;
-    *(ptr++) = v >> 21;
-  } else {
-    *(ptr++) = v | B;
-    *(ptr++) = (v >> 7) | B;
-    *(ptr++) = (v >> 14) | B;
-    *(ptr++) = (v >> 21) | B;
-    *(ptr++) = v >> 28;
-  }
-  return reinterpret_cast<char*>(ptr);
+  uint8_t* ptr = dst;
+  do {
+    *ptr = 0x80 | v;
+    v >>= 7, ++ptr;
+  } while (v != 0);
+  *(ptr - 1) &= 0x7F;
+  return ptr;
 }
 
 void PutVarint32(std::string *dst, uint32_t v) {
-  char buf[5];
-  char* ptr = EncodeVarint32(buf, v);
-  dst->append(buf, static_cast<size_t>(ptr - buf));
+  uint8_t buf[5];
+  uint8_t* ptr = EncodeVarint32(buf, v);
+  dst->append(reinterpret_cast<char*>(buf), static_cast<size_t>(ptr - buf));
 }
 
 const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *value) {
@@ -311,9 +294,9 @@ const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *v
   for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
     uint32_t byte = *(reinterpret_cast<const unsigned char*>(p));
     p++;
-    if (byte & 128) {
+    if (byte & 0x80) {
       // More bytes are present
-      result |= ((byte & 127) << shift);
+      result |= ((byte & 0x7F) << shift);
     } else {
       result |= (byte << shift);
       *value = result;
@@ -326,7 +309,7 @@ const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *v
 const char* GetVarint32Ptr(const char *p, const char *limit, uint32_t *value) {
   if (p < limit) {
     uint32_t result = *(reinterpret_cast<const unsigned char*>(p));
-    if ((result & 128) == 0) {
+    if ((result & 0x80) == 0) {
       *value = result;
       return p + 1;
     }

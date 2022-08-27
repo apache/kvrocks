@@ -393,11 +393,22 @@ start_server {tags {"scripting"}} {
         assert_equal bar [r eval_ro {return redis.call('get', KEYS[1]);} 1 foo]
     }
 
+    test {EVALSHA_RO - Successful case} {
+        r set foo bar
+        assert_equal bar [r evalsha_ro 796941151549c416aa77522fb347487236c05e46 1 foo]
+    }
+
     test {EVAL_RO - Cannot run write commands} {
         r set foo bar
         catch {r eval_ro {redis.call('del', KEYS[1]);} 1 foo} e
         set e
-    } {ERR Write commands are not allowed from read-only scripts*}
+    } {ERR * Write commands are not allowed from read-only scripts}
+
+    test {EVALSHA_RO - Cannot run write commands} {
+        r set foo bar
+        catch {r evalsha_ro a1e63e1cd1bd1d5413851949332cfb9da4ee6dc0 1 foo} e
+        set e
+    } {ERR * Write commands are not allowed from read-only scripts}
 }
 
 start_server {tags {"repl"}} {

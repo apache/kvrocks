@@ -355,18 +355,25 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
-    } else if (attributes->is_exclusive() ||
-        (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-        (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster")
-         && cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+    } else if ((cmd_name == "config" && cmd_tokens.size() == 2 &&
+                !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
+               (config->cluster_enabled &&
+                (cmd_name == "clusterx" || cmd_name == "cluster") &&
+                cmd_tokens.size() >= 2 &&
+                Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
-
-      // When executing lua script commands that have "exclusive" attribute,
-      // we need to know current connection, but we should set current connection
-      // after acquiring the WorkExclusivityGuard to make it thread-safe
-      svr_->SetCurrentConnection(this);
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
+    }
+
+    if (attributes->is_exclusive()) {
+      // When executing lua script commands that have "exclusive" attribute,
+      // we need to know current connection, but we should set current
+      // connection after acquiring the WorkExclusivityGuard to make it
+      // thread-safe
+      // if executing read only lua script commands, only set current
+      // connection.
+      svr_->SetCurrentConnection(this);
     }
 
     if (svr_->IsLoading() && attributes->is_ok_loading() == false) {

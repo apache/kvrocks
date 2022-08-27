@@ -245,12 +245,10 @@ namespace Lua {
     int64_t numkeys = 0;
     char funcname[43];
     Server *srv = conn->GetServer();
-    lua_State *lua = NULL;
+    lua_State *lua = srv->Lua();
     if (read_only) {
-      // use worker's lua VM
+      // Use the worker's private Lua VM when entering the read-only mode
       lua = conn->Owner()->Lua();
-    } else {
-      lua = srv->Lua();
     }
 
     auto s = Util::DecimalStringToNum(args[2], &numkeys);
@@ -921,9 +919,6 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha,
   funcdef += body;
   funcdef += "\nend";
 
-  if (!lua) {
-    lua = srv->Lua();
-  }
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);

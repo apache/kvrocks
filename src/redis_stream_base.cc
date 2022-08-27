@@ -26,6 +26,7 @@ namespace Redis {
 
 const char* kErrLastEntryIdReached = "last possible entry id reached";
 const char* kErrInvalidEntryIdSpecified = "Invalid stream ID specified as stream command argument";
+const char* kErrDecodingStreamEntryValueFailure = "failed to decode stream entry value";
 
 rocksdb::Status IncrementStreamEntryID(StreamEntryID *id) {
   if (id->seq == UINT64_MAX) {
@@ -99,7 +100,7 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
     return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
   }
 
-  return Status();
+  return Status::OK();
 }
 
 Status ParseRangeStart(const std::string &input, StreamEntryID *id) {
@@ -123,30 +124,32 @@ Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
     return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
   }
 
-  return Status();
+  return Status::OK();
 }
 
 std::string EncodeStreamEntryValue(const std::vector<std::string> &args) {
   std::string dst;
   for (auto const &v : args) {
-    PutFixed32(&dst, v.size());
+    PutVarint32(&dst, v.size());
     dst.append(v);
   }
   return dst;
 }
 
-std::vector<std::string> DecodeRawStreamEntryValue(const std::string &value) {
-  std::vector<std::string> result;
+Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::string> *result) {
+  result->clear();
   rocksdb::Slice s(value);
 
   while (!s.empty()) {
     uint32_t len;
-    GetFixed32(&s, &len);
-    result.emplace_back(s.data(), len);
+    if (!GetVarint32(&s, &len)) {
+      return Status(Status::RedisParseErr, kErrDecodingStreamEntryValueFailure);
+    }
+    result->emplace_back(s.data(), len);
     s.remove_prefix(len);
   }
 
-  return result;
+  return Status::OK();
 }
 
 }  // namespace Redis

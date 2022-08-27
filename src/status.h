@@ -80,12 +80,12 @@ class Status {
   }
 
   std::string Msg() const& {
-    if (*this) return ok_msg();
+    if (*this) return ok_msg;
     return msg_;
   }
 
   std::string Msg() && {
-    if (*this) return ok_msg();
+    if (*this) return ok_msg;
     return std::move(msg_);
   }
 
@@ -95,11 +95,9 @@ class Status {
   Code code_;
   std::string msg_;
 
-  static constexpr const char* ok_msg() {
-    return "ok";
-  }
+  static constexpr const char* ok_msg = "ok";
 
-  template <typename T>
+  template <typename>
   friend struct StatusOr;
 };
 
@@ -109,10 +107,10 @@ using first_element = typename std::tuple_element<0, std::tuple<Ts...>>::type;
 template <typename T>
 using remove_cvref_t = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-template <typename T>
+template <typename>
 struct StatusOr;
 
-template <typename T>
+template <typename>
 struct IsStatusOr : std::integral_constant<bool, false> {};
 
 template <typename T>
@@ -134,12 +132,12 @@ struct StatusOr {
 
   explicit StatusOr(Status s) : code_(s.code_) {
     CHECK(!s);
-    new(value_or_error_) error_type(new std::string(std::move(s.msg_)));
+    new(&error_) error_type(new std::string(std::move(s.msg_)));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) { // NOLINT
     CHECK(code != Code::cOK);
-    new(value_or_error_) error_type(new std::string(std::move(msg)));
+    new(&error_) error_type(new std::string(std::move(msg)));
   }
 
   template <typename ...Ts,
@@ -151,24 +149,32 @@ struct StatusOr {
         !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value
       ), int>::type = 0> // NOLINT
   explicit StatusOr(Ts && ... args) : code_(Code::cOK) {
-    new(value_or_error_) value_type(std::forward<Ts>(args)...);
+    new(&value_) value_type(std::forward<Ts>(args)...);
   }
 
   StatusOr(T&& value) : code_(Code::cOK) { // NOLINT
-    new(value_or_error_) value_type(std::move(value));
+    new(&value_) value_type(std::move(value));
   }
 
   StatusOr(const T& value) : code_(Code::cOK) { // NOLINT
-    new(value_or_error_) value_type(value);
+    new(&value_) value_type(value);
   }
 
   StatusOr(const StatusOr&) = delete;
-  StatusOr(StatusOr&& other) : code_(other.code_) {
+
+  template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     if (code_ == Code::cOK) {
-      new(value_or_error_) value_type(std::move(other.getValue()));
+      new(&value_) value_type(std::move(other.value_));
     } else {
-      new(value_or_error_) error_type(std::move(other.getError()));
+      new(&error_) error_type(std::move(other.error_));
     }
+  }
+
+  template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
+    CHECK(code_ != Code::cOK);
+    new(&error_) error_type(std::move(other.error_));
   }
 
   Status& operator=(const Status&) = delete;
@@ -181,12 +187,12 @@ struct StatusOr {
 
   Status ToStatus() const& {
     if (*this) return Status::OK();
-    return Status(code_, *getError());
+    return Status(code_, *error_);
   }
 
   Status ToStatus() && {
     if (*this) return Status::OK();
-    return Status(code_, std::move(*getError()));
+    return Status(code_, std::move(*error_));
   }
 
   Code GetCode() const {
@@ -195,17 +201,17 @@ struct StatusOr {
 
   value_type& GetValue() & {
     CHECK(*this);
-    return getValue();
+    return value_;
   }
 
   value_type&& GetValue() && {
     CHECK(*this);
-    return std::move(getValue());
+    return std::move(value_);
   }
 
   const value_type& GetValue() const& {
     CHECK(*this);
-    return getValue();
+    return value_;
   }
 
   value_type& operator*() & {
@@ -229,41 +235,30 @@ struct StatusOr {
   }
 
   std::string Msg() const& {
-    if (*this) return Status::ok_msg();
-    return *getError();
+    if (*this) return Status::ok_msg;
+    return *error_;
   }
 
   std::string Msg() && {
-    if (*this) return Status::ok_msg();
-    return std::move(*getError());
+    if (*this) return Status::ok_msg;
+    return std::move(*error_);
   }
 
   ~StatusOr() {
     if (*this) {
-      getValue().~value_type();
+      value_.~value_type();
     } else {
-      getError().~error_type();
+      error_.~error_type();
     }
   }
 
  private:
   Status::Code code_;
-  alignas(value_type) alignas(error_type) unsigned char value_or_error_
-    [sizeof(value_type) < sizeof(error_type) ? sizeof(error_type) : sizeof(value_type)];
+  union {
+    value_type value_;
+    error_type error_;
+  };
 
-  value_type& getValue() {
-    return *reinterpret_cast<value_type*>(value_or_error_);
-  }
-
-  const value_type& getValue() const {
-    return *reinterpret_cast<const value_type*>(value_or_error_);
-  }
-
-  error_type& getError() {
-    return *reinterpret_cast<error_type*>(value_or_error_);
-  }
-
-  const error_type& getError() const {
-    return *reinterpret_cast<const error_type*>(value_or_error_);
-  }
+  template <typename>
+  friend struct StatusOr;
 };

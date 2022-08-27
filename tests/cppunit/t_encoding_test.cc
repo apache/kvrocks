@@ -21,7 +21,13 @@
 #include <gtest/gtest.h>
 #include "encoding.h"
 
+#include <cstdint>
 #include <limits>
+#include <string>
+#include <vector>
+
+#include <rocksdb/slice.h>
+
 TEST(Util, EncodeAndDecodeDouble) {
   std::vector<double> values = {-1234, -100.1234, -1.2345, 0, 1.2345, 100.1234, 1234};
   std::string prev_bytes;
@@ -34,5 +40,19 @@ TEST(Util, EncodeAndDecodeDouble) {
     }
     prev_bytes.assign(bytes);
     ASSERT_EQ(value, got);
+  }
+}
+
+TEST(Util, EncodeAndDecodeInt32AsVarint32) {
+  std::vector<uint32_t> values = {200, 65000, 16700000, 4294000000};
+  std::vector<size_t> encoded_sizes = {2, 3, 4, 5};
+  for (size_t i = 0; i < values.size(); ++i) {
+    std::string buf;
+    PutVarint32(&buf, values[i]);
+    EXPECT_EQ(buf.size(), encoded_sizes[i]);
+    uint32_t result;
+    rocksdb::Slice s(buf);
+    GetVarint32(&s, &result);
+    ASSERT_EQ(result, values[i]);
   }
 }

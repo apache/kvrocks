@@ -122,8 +122,9 @@ int getLocalPort(evutil_socket_t fd) {
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
                               sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
+  int local_port = getLocalPort(fd);
   DLOG(INFO) << "[worker] New connection: fd=" << fd
-              << " from port: " << worker->svr_->GetConfig()->port << " thread #"
+              << " from port: " << local_port << " thread #"
               << worker->tid_;
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
@@ -140,7 +141,6 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   event_base *base = evconnlistener_get_base(listener);
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
 
-  int local_port = getLocalPort(fd);
   bufferevent *bev;
   if (local_port == worker->ssl_port_) {
     bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);

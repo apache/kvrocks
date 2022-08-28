@@ -126,7 +126,7 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install cmake gcc autoconf automake libtool
+          brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
 
       - name: Setup Linux

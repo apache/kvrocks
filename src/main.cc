@@ -45,6 +45,10 @@
 #define HAVE_BACKTRACE 1
 #endif
 
+namespace google {
+bool Symbolize(void* pc, char* out, size_t out_size);
+} // namespace google
+
 std::function<void()> hup_handler;
 
 struct Options {
@@ -96,20 +100,25 @@ void *getMcontextEip(ucontext_t *uc) {
 
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
-  char **messages = nullptr;
-  struct sigaction act;
   auto uc = reinterpret_cast<ucontext_t*>(secret);
 
-  LOG(WARNING) << "======= Ooops! kvrocks "<< VERSION << " got signal: "  << sig << " =======";
-  int trace_size = backtrace(trace, 100);
+  LOG(WARNING) << "======= Ooops! kvrocks "<< VERSION << " @" << GIT_COMMIT << " got signal "  << sig << " =======";
+  int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   /* overwrite sigaction with caller's address */
   if (getMcontextEip(uc) != nullptr) {
     trace[1] = getMcontextEip(uc);
   }
-  messages = backtrace_symbols(trace, trace_size);
-  for (int i = 1; i < trace_size; ++i) {
-    LOG(WARNING) << messages[i];
+  char **messages = backtrace_symbols(trace, trace_size);
+  for (int i = 2; i < trace_size; ++i) {
+    char func_info[1024] = {};
+    if(google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
+      LOG(WARNING) << messages[i] << ": " << func_info;
+    } else {
+      LOG(WARNING) << messages[i];
+    }
   }
+
+  struct sigaction act;
   /* Make sure we exit with the right signal at the end. So for instance
    * the core will be dumped if enabled.
    */

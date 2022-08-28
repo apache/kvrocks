@@ -47,7 +47,7 @@
 
 namespace google {
 bool Symbolize(void* pc, char* out, size_t out_size);
-} // namespace google
+}  // namespace google
 
 std::function<void()> hup_handler;
 
@@ -111,7 +111,7 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   char **messages = backtrace_symbols(trace, trace_size);
   for (int i = 2; i < trace_size; ++i) {
     char func_info[1024] = {};
-    if(google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
+    if (google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
       LOG(WARNING) << messages[i] << ": " << func_info;
     } else {
       LOG(WARNING) << messages[i];

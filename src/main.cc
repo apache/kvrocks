@@ -337,7 +337,7 @@ int main(int argc, char* argv[]) {
   }
 
   // initialize OpenSSL
-  if(config.tls_port) {
+  if (config.tls_port) {
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();

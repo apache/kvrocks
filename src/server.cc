@@ -51,9 +51,9 @@ Server::Server(Engine::Storage *storage, Config *config) :
   }
 
   // init ssl context
-  if(config->tls_port) {
+  if (config->tls_port) {
     ssl_ctx_ = SSL_CTX_new(TLS_server_method());
-    if(!ssl_ctx_) {
+    if (!ssl_ctx_) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }
@@ -62,22 +62,22 @@ Server::Server(Engine::Storage *storage, Config *config) :
 
     SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
 
-    if(SSL_CTX_load_verify_locations(ssl_ctx_, config->tls_ca_cert_file.c_str(), nullptr) != 1) {
+    if (SSL_CTX_load_verify_locations(ssl_ctx_, config->tls_ca_cert_file.c_str(), nullptr) != 1) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }
 
-    if(SSL_CTX_use_certificate_chain_file(ssl_ctx_, config->tls_cert_file.c_str()) != 1) {
+    if (SSL_CTX_use_certificate_chain_file(ssl_ctx_, config->tls_cert_file.c_str()) != 1) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }
 
-    if(SSL_CTX_use_PrivateKey_file(ssl_ctx_, config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }
 
-    if(SSL_CTX_check_private_key(ssl_ctx_) != 1) {
+    if (SSL_CTX_check_private_key(ssl_ctx_) != 1) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }

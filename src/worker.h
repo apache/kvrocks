@@ -114,9 +114,9 @@ struct ssl_errors {
 };
 
 struct ssl_error {
-  ssl_error(unsigned long err) : err(err) {}
+  explicit ssl_error(unsigned long err) : err(err) {} // NOLINT
 
   friend std::ostream& operator<<(std::ostream&, ssl_error);
 
-  unsigned long err;
+  unsigned long err; // NOLINT
 };

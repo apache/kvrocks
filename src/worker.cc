@@ -49,11 +49,11 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   evtimer_add(timer_, &tm);
 
   ssl_port_ = config->tls_port;
-  if(ssl_port_) {
+  if (ssl_port_) {
     ssl_ctx_ = svr->ssl_ctx_;
 
     ssl_ = SSL_new(ssl_ctx_);
-    if(!ssl_) {
+    if (!ssl_) {
       LOG(ERROR) << ssl_errors{};
       exit(1);
     }
@@ -62,7 +62,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   int ports[3] = {config->port, ssl_port_, 0};
   auto binds = config->binds;
 
-  for(int* port = ports; *port; ++port) {
+  for (int* port = ports; *port; ++port) {
     for (const auto &bind : binds) {
       Status s = listenTCP(bind, *port, config->backlog);
       if (!s.IsOK()) {
@@ -142,12 +142,12 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
 
   int local_port = getLocalPort(fd);
   bufferevent *bev;
-  if(local_port == worker->ssl_port_) {
+  if (local_port == worker->ssl_port_) {
     bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
   } else {
     bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   }
-  if(!bev) {
+  if (!bev) {
     LOG(ERROR) << "bufferevent error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
     return;
   }

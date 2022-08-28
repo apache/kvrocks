@@ -65,6 +65,10 @@ struct Config{
   Config();
   ~Config() = default;
   int port = 6666;
+  int tls_port = 0;
+  std::string tls_cert_file;
+  std::string tls_key_file;
+  std::string tls_ca_cert_file;
   int workers = 0;
   int timeout = 0;
   int loglevel = 0;

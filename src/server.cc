@@ -50,6 +50,39 @@ Server::Server(Engine::Storage *storage, Config *config) :
     stats_.commands_stats[iter.first].latency = 0;
   }
 
+  // init ssl context
+  if(config->tls_port) {
+    ssl_ctx_ = SSL_CTX_new(TLS_server_method());
+    if(!ssl_ctx_) {
+      LOG(ERROR) << ssl_errors{};
+      exit(1);
+    }
+
+    SSL_CTX_set_options(ssl_ctx_, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+
+    SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
+
+    if(SSL_CTX_load_verify_locations(ssl_ctx_, config->tls_ca_cert_file.c_str(), nullptr) != 1) {
+      LOG(ERROR) << ssl_errors{};
+      exit(1);
+    }
+
+    if(SSL_CTX_use_certificate_chain_file(ssl_ctx_, config->tls_cert_file.c_str()) != 1) {
+      LOG(ERROR) << ssl_errors{};
+      exit(1);
+    }
+
+    if(SSL_CTX_use_PrivateKey_file(ssl_ctx_, config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
+      LOG(ERROR) << ssl_errors{};
+      exit(1);
+    }
+
+    if(SSL_CTX_check_private_key(ssl_ctx_) != 1) {
+      LOG(ERROR) << ssl_errors{};
+      exit(1);
+    }
+  }
+
   // Init cluster
   cluster_ = Util::MakeUnique<Cluster>(this, config_->binds, config_->port);
 
@@ -81,6 +114,7 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
+  if (ssl_ctx_) SSL_CTX_free(ssl_ctx_);
 
   // Wait for all fetch file threads stop and exit and force destroy
   // the server after 60s.

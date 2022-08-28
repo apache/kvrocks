@@ -336,6 +336,13 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
+  // initialize OpenSSL
+  if(config.tls_port) {
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+  }
+
   Engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {

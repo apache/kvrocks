@@ -30,7 +30,11 @@
 #include <utility>
 #include <algorithm>
 #include <glog/logging.h>
+#include <event2/bufferevent_ssl.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
+#include "event2/util.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "server.h"
@@ -44,15 +48,28 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
-  Status s;
-  int port = config->port;
-  auto binds = config->binds;
-  for (const auto &bind : binds) {
-    s = listenTCP(bind, port, config->backlog);
-    if (!s.IsOK()) {
-      LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
-                 << ", encounter error: " << s.Msg();
+  ssl_port_ = config->tls_port;
+  if(ssl_port_) {
+    ssl_ctx_ = svr->ssl_ctx_;
+
+    ssl_ = SSL_new(ssl_ctx_);
+    if(!ssl_) {
+      LOG(ERROR) << ssl_errors{};
       exit(1);
+    }
+  }
+
+  int ports[3] = {config->port, ssl_port_, 0};
+  auto binds = config->binds;
+
+  for(int* port = ports; *port; ++port) {
+    for (const auto &bind : binds) {
+      Status s = listenTCP(bind, *port, config->backlog);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << *port
+                  << ", encounter error: " << s.Msg();
+        exit(1);
+      }
     }
   }
 }
@@ -76,6 +93,7 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
+  if (ssl_) SSL_free(ssl_);
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
@@ -83,6 +101,22 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
   auto config = worker->svr_->GetConfig();
   if (config->timeout == 0) return;
   worker->KickoutIdleClients(config->timeout);
+}
+
+int getLocalPort(evutil_socket_t fd) {
+  sockaddr_in6 address;
+  socklen_t len = sizeof(address);
+  if (getsockname(fd, (struct sockaddr *)&address, &len) == -1) {
+    return 0;
+  }
+
+  if (address.sin6_family == AF_INET) {
+    return ntohs(reinterpret_cast<sockaddr_in *>(&address)->sin_port);
+  } else if (address.sin6_family == AF_INET6) {
+    return ntohs(address.sin6_port);
+  }
+
+  return 0;
 }
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
@@ -105,9 +139,18 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   }
   event_base *base = evconnlistener_get_base(listener);
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
-  bufferevent *bev = bufferevent_socket_new(base,
-                                            fd,
-                                            evThreadSafeFlags);
+
+  int local_port = getLocalPort(fd);
+  bufferevent *bev;
+  if(local_port == worker->ssl_port_) {
+    bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
+  } else {
+    bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+  }
+  if(!bev) {
+    LOG(ERROR) << "bufferevent error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    return;
+  }
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);
@@ -451,4 +494,19 @@ void WorkerThread::Stop() {
 
 void WorkerThread::Join() {
   if (t_.joinable()) t_.join();
+}
+
+std::ostream& operator<<(std::ostream& os, ssl_errors) {
+  ERR_print_errors_cb([](const char *str, size_t len, void *pos){
+    *reinterpret_cast<std::ostream*>(pos) << "OpenSSL error: " << std::string(str, len);
+    return 0;
+  }, reinterpret_cast<void *>(&os));
+
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, ssl_error e) {
+  char msg[1024] = {};
+  ERR_error_string_n(e.err, msg, sizeof(msg) - 1);
+  return os << msg;
 }

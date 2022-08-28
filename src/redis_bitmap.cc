@@ -144,8 +144,15 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
                           static_cast<size_t>(kBitmapSegmentBytes),
                           static_cast<size_t>(metadata.size - frag_index)});
 
-    //  If you setbit bit 0 1, the value is stored as 0x01 in Kvrocks but 0x80 in Redis.
-    // So we need to swap bits is to keep the same return value as Redis.
+   /* 
+    * If you setbit bit 0 1, the value is stored as 0x01 in Kvrocks but 0x80 in Redis.
+    * So we need to swap bits is to keep the same return value as Redis.
+    * This swap table is generated according to the following mapping definition.
+    * swap_table(x) =  ((x & 0x80) >> 7)| ((x & 0x40) >> 5)|\
+    *                  ((x & 0x20) >> 3)| ((x & 0x10) >> 1)|\
+    *                  ((x & 0x08) << 1)| ((x & 0x04) << 3)|\
+    *                  ((x & 0x02) << 5)| ((x & 0x01) << 7); 
+    */
     static const uint8_t swap_table[256] = {
         0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0, 0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0,
         0x08, 0x88, 0x48, 0xC8, 0x28, 0xA8, 0x68, 0xE8, 0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8,

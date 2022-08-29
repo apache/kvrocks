@@ -20,6 +20,7 @@
 
 #include <getopt.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -32,7 +33,6 @@
 #include <signal.h>
 #include <execinfo.h>
 #include <ucontext.h>
-#include <string.h>
 #include <event2/thread.h>
 #include <glog/logging.h>
 #include "worker.h"

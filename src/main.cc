@@ -20,6 +20,7 @@
 
 #include <getopt.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -41,9 +42,9 @@
 #include "server.h"
 #include "util.h"
 
-#if defined(__APPLE__) || defined(__linux__)
-#define HAVE_BACKTRACE 1
-#endif
+namespace google {
+bool Symbolize(void* pc, char* out, size_t out_size);
+}  // namespace google
 
 std::function<void()> hup_handler;
 
@@ -62,54 +63,23 @@ extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
 }
 
-#ifdef HAVE_BACKTRACE
-void *getMcontextEip(ucontext_t *uc) {
-#ifdef __x86_64__
-#define REG_EIP REG_RIP
-#endif
-#if defined(__FreeBSD__)
-        return reinterpret_cast<void*>(uc->uc_mcontext.mc_eip);
-#elif defined(__dietlibc__)
-        return reinterpret_cast<void*>(uc->uc_mcontext.eip);
-#elif defined(__APPLE__) && !defined(MAC_OS_X_VERSION_10_6)
-#if __x86_64__
-        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
-#else
-        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__eip);
-#endif
-#elif defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)
-#if defined(_STRUCT_X86_THREAD_STATE64) && !defined(__i386__)
-        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
-#elif defined(__i386__)
-        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__eip);
-#else
-        // OSX ARM64
-        return reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
-#endif
-#elif defined(__i386__) || defined(__X86_64__) || defined(__x86_64__)
-        return reinterpret_cast<void*>(uc->uc_mcontext.gregs[REG_EIP]); /* Linux 32/64 bit */
-#elif defined(__ia64__) /* Linux IA64 */
-        return reinterpret_cast<void*>(uc->uc_mcontext.sc_ip);
-#endif
-  return nullptr;
-}
-
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
-  char **messages = nullptr;
-  struct sigaction act;
-  auto uc = reinterpret_cast<ucontext_t*>(secret);
 
-  LOG(WARNING) << "======= Ooops! kvrocks "<< VERSION << " got signal: "  << sig << " =======";
-  int trace_size = backtrace(trace, 100);
-  /* overwrite sigaction with caller's address */
-  if (getMcontextEip(uc) != nullptr) {
-    trace[1] = getMcontextEip(uc);
-  }
-  messages = backtrace_symbols(trace, trace_size);
+  LOG(ERROR) << "======= Ooops! kvrocks "<< VERSION << " @" << GIT_COMMIT
+    << " got signal: " << strsignal(sig) << " (" << sig << ") =======";
+  int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
+  char **messages = backtrace_symbols(trace, trace_size);
   for (int i = 1; i < trace_size; ++i) {
-    LOG(WARNING) << messages[i];
+    char func_info[1024] = {};
+    if (google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
+      LOG(ERROR) << messages[i] << ": " << func_info;
+    } else {
+      LOG(ERROR) << messages[i];
+    }
   }
+
+  struct sigaction act;
   /* Make sure we exit with the right signal at the end. So for instance
    * the core will be dumped if enabled.
    */
@@ -135,17 +105,13 @@ void setupSigSegvAction() {
   sigaction(SIGBUS, &act, nullptr);
   sigaction(SIGFPE, &act, nullptr);
   sigaction(SIGILL, &act, nullptr);
+  sigaction(SIGABRT, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
   act.sa_handler = signal_handler;
   sigaction(SIGTERM, &act, nullptr);
   sigaction(SIGINT, &act, nullptr);
 }
-
-#else /* HAVE_BACKTRACE */
-void setupSigSegvAction() {
-}
-#endif /* HAVE_BACKTRACE */
 
 static void usage(const char* program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"

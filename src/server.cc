@@ -63,7 +63,8 @@ Server::Server(Engine::Storage *storage, Config *config) :
 
     SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
 
-    if (SSL_CTX_load_verify_locations(ssl_ctx_, config->tls_ca_cert_file.c_str(), config->tls_ca_cert_dir.c_str()) != 1) {
+    if (SSL_CTX_load_verify_locations(ssl_ctx_,
+      config->tls_ca_cert_file.c_str(), config->tls_ca_cert_dir.c_str()) != 1) {
       LOG(ERROR) << "Failed to load CA certificates: " << ssl_errors{};
       exit(1);
     }

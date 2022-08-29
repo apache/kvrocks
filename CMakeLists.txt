@@ -155,6 +155,9 @@ target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(FOUND_UNWIND_LIB)
     target_link_libraries(kvrocks_objs PUBLIC ${FOUND_UNWIND_LIB})
 endif()
+if(ENABLE_OPENSSL)
+    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+endif()
 
 # kvrocks main target
 add_executable(kvrocks src/main.cc)

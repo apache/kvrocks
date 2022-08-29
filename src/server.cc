@@ -21,7 +21,6 @@
 #include "server.h"
 
 #include <fcntl.h>
-#include <openssl/crypto.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>

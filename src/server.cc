@@ -21,6 +21,7 @@
 #include "server.h"
 
 #include <fcntl.h>
+#include <openssl/crypto.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
@@ -59,7 +60,28 @@ Server::Server(Engine::Storage *storage, Config *config) :
       exit(1);
     }
 
-    SSL_CTX_set_options(ssl_ctx_, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    auto ssl_ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+    if (config->tls_protocols.empty()) {
+      ssl_ctx_options |= SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
+    } else {
+      auto protocols = Util::Split(Util::ToLower(config->tls_protocols), " ");
+      if (std::find(protocols.begin(), protocols.end(), "tlsv1") == protocols.end()) {
+        ssl_ctx_options |= SSL_OP_NO_TLSv1;
+      }
+      if (std::find(protocols.begin(), protocols.end(), "tlsv1.1") == protocols.end()) {
+        ssl_ctx_options |= SSL_OP_NO_TLSv1_1;
+      }
+      if (std::find(protocols.begin(), protocols.end(), "tlsv1.2") == protocols.end()) {
+        ssl_ctx_options |= SSL_OP_NO_TLSv1_2;
+      }
+#ifdef SSL_OP_NO_TLSv1_3
+      if (std::find(protocols.begin(), protocols.end(), "tlsv1.3") == protocols.end()) {
+        ssl_ctx_options |= SSL_OP_NO_TLSv1_3;
+      }
+#endif
+    }
+
+    SSL_CTX_set_options(ssl_ctx_, ssl_ctx_options);
 
     if (config->tls_session_caching) {
       SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_SERVER);

@@ -31,6 +31,7 @@
 #include <rocksdb/env.h>
 
 #include "config.h"
+#include "config_type.h"
 #include "util.h"
 #include "status.h"
 #include "cron.h"
@@ -102,6 +103,7 @@ Config::Config() {
       {"tls-key-file", true, new StringField(&tls_key_file, "")},
       {"tls-ca-cert-file", true, new StringField(&tls_ca_cert_file, "")},
       {"tls-ca-cert-dir", true, new StringField(&tls_ca_cert_dir, "")},
+      {"tls-protocols", true, new StringField(&tls_protocols, "")},
       {"tls-session-caching", true, new YesNoField(&tls_session_caching, true)},
       {"tls-session-cache-timeout", true, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
 #endif

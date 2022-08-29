@@ -114,6 +114,7 @@ jobs:
             compiler: gcc
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-18.04
+            compiler: gcc
             without_openssl: -DENABLE_OPENSSL=OFF
 
     runs-on: ${{ matrix.os }}

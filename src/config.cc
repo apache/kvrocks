@@ -100,6 +100,7 @@ Config::Config() {
       {"tls-cert-file", true, new StringField(&tls_cert_file, "")},
       {"tls-key-file", true, new StringField(&tls_key_file, "")},
       {"tls-ca-cert-file", true, new StringField(&tls_ca_cert_file, "")},
+      {"tls-ca-cert-dir", true, new StringField(&tls_ca_cert_dir, "")},
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},

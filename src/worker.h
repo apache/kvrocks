@@ -32,8 +32,9 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/util.h>
+#ifdef ENABLE_OPENSSL
 #include <openssl/ssl.h>
-
+#endif
 #include "storage.h"
 #include "redis_connection.h"
 
@@ -85,9 +86,10 @@ class Worker {
   std::map<int, Redis::Connection*> monitor_conns_;
   int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
 
-  SSL_CTX *ssl_ctx_ = nullptr;
+#ifdef ENABLE_OPENSSL
   SSL *ssl_ = nullptr;
   int ssl_port_;
+#endif
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
@@ -109,6 +111,7 @@ class WorkerThread {
   std::unique_ptr<Worker> worker_;
 };
 
+#ifdef ENABLE_OPENSSL
 struct ssl_errors {
   friend std::ostream& operator<<(std::ostream&, ssl_errors);
 };
@@ -120,3 +123,4 @@ struct ssl_error {
 
   unsigned long err; // NOLINT
 };
+#endif

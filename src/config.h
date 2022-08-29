@@ -69,6 +69,7 @@ struct Config{
   std::string tls_cert_file;
   std::string tls_key_file;
   std::string tls_ca_cert_file;
+  std::string tls_ca_cert_dir;
   int workers = 0;
   int timeout = 0;
   int loglevel = 0;

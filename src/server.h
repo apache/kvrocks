@@ -220,7 +220,9 @@ class Server {
   std::unique_ptr<class SlotMigrate> slot_migrate_;
   class SlotImport *slot_import_ = nullptr;
 
+#ifdef ENABLE_OPENSSL
   SSL_CTX *ssl_ctx_ = nullptr;
+#endif
 
  private:
   void cron();

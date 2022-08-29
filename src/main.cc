@@ -327,7 +327,7 @@ int main(int argc, char* argv[]) {
   for(int *port = ports; *port; ++port) {
     if (Util::IsPortInUse(*port)) {
       LOG(ERROR)<< "Could not create server TCP since the specified port["
-                << config.port << "] is already in use" << std::endl;
+                << *port << "] is already in use" << std::endl;
       exit(1);
     }
   }
@@ -339,12 +339,14 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
+#ifdef ENABLE_OPENSSL
   // initialize OpenSSL
   if (config.tls_port) {
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
   }
+#endif
 
   Engine::Storage storage(&config);
   s = storage.Open();

@@ -30,11 +30,14 @@
 #include <utility>
 #include <algorithm>
 #include <glog/logging.h>
+#include <event2/util.h>
+
+#ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#endif
 
-#include "event2/util.h"
 #include "redis_request.h"
 #include "redis_connection.h"
 #include "server.h"
@@ -48,18 +51,18 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
+#ifdef ENABLE_OPENSSL
   ssl_port_ = config->tls_port;
   if (ssl_port_) {
-    ssl_ctx_ = svr->ssl_ctx_;
-
-    ssl_ = SSL_new(ssl_ctx_);
+    ssl_ = SSL_new(svr->ssl_ctx_);
     if (!ssl_) {
-      LOG(ERROR) << ssl_errors{};
+      LOG(ERROR) << "Failed to construct SSL state: " << ssl_errors{};
       exit(1);
     }
   }
+#endif
 
-  int ports[3] = {config->port, ssl_port_, 0};
+  int ports[3] = {config->port, config->tls_port, 0};
   auto binds = config->binds;
 
   for (int* port = ports; *port; ++port) {
@@ -93,7 +96,9 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
+#ifdef ENABLE_OPENSSL
   if (ssl_) SSL_free(ssl_);
+#endif
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
@@ -142,13 +147,22 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
 
   bufferevent *bev;
+#ifdef ENABLE_OPENSSL
   if (local_port == worker->ssl_port_) {
     bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
   } else {
     bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   }
+#else
+  bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+#endif
   if (!bev) {
-    LOG(ERROR) << "bufferevent error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+    auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+#ifdef ENABLE_OPENSSL
+    LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err << ", SSL error: " << ssl_errors{};
+#else
+    LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err;
+#endif
     return;
   }
   auto conn = new Redis::Connection(bev, worker);
@@ -496,9 +510,10 @@ void WorkerThread::Join() {
   if (t_.joinable()) t_.join();
 }
 
+#ifdef ENABLE_OPENSSL
 std::ostream& operator<<(std::ostream& os, ssl_errors) {
   ERR_print_errors_cb([](const char *str, size_t len, void *pos){
-    *reinterpret_cast<std::ostream*>(pos) << "OpenSSL error: " << std::string(str, len);
+    *reinterpret_cast<std::ostream*>(pos) << std::string(str, len) << ";";
     return 0;
   }, reinterpret_cast<void *>(&os));
 
@@ -510,3 +525,4 @@ std::ostream& operator<<(std::ostream& os, ssl_error e) {
   ERR_error_string_n(e.err, msg, sizeof(msg) - 1);
   return os << msg;
 }
+#endif

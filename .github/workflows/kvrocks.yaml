@@ -112,6 +112,9 @@ jobs:
             os: ubuntu-18.04
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: gcc
+          - name: Ubuntu GCC without OpenSSL
+            os: ubuntu-18.04
+            without_openssl: -DENABLE_OPENSSL=OFF
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -154,7 +157,7 @@ jobs:
           python-version: 3.x
 
       - name: Build Kvrocks
-        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} $CMAKE_EXTRA_DEFS
+        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_openssl }} ${{ matrix.without_luajit }} $CMAKE_EXTRA_DEFS
 
       - name: Run Unit Test
         run: |

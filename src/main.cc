@@ -324,7 +324,7 @@ int main(int argc, char* argv[]) {
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
   int ports[] = {config.port, config.tls_port, 0};
-  for(int *port = ports; *port; ++port) {
+  for (int *port = ports; *port; ++port) {
     if (Util::IsPortInUse(*port)) {
       LOG(ERROR)<< "Could not create server TCP since the specified port["
                 << *port << "] is already in use" << std::endl;

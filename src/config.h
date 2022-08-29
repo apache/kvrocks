@@ -70,6 +70,8 @@ struct Config{
   std::string tls_key_file;
   std::string tls_ca_cert_file;
   std::string tls_ca_cert_dir;
+  bool tls_session_caching = true;
+  int tls_session_cache_timeout = 300;
   int workers = 0;
   int timeout = 0;
   int loglevel = 0;

@@ -61,6 +61,13 @@ Server::Server(Engine::Storage *storage, Config *config) :
 
     SSL_CTX_set_options(ssl_ctx_, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 
+    if (config->tls_session_caching) {
+      SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_SERVER);
+      SSL_CTX_set_timeout(ssl_ctx_, config->tls_session_cache_timeout);
+    } else {
+      SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_OFF);
+    }
+
     SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
 
     if (SSL_CTX_load_verify_locations(ssl_ctx_,

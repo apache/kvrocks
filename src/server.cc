@@ -28,6 +28,9 @@
 #include <utility>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
+#ifdef ENABLE_OPENSSL
+#include <openssl/ssl.h>
+#endif
 
 #include "util.h"
 #include "worker.h"
@@ -85,14 +88,16 @@ Server::Server(Engine::Storage *storage, Config *config) :
     if (config->tls_session_caching) {
       SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_SERVER);
       SSL_CTX_set_timeout(ssl_ctx_, config->tls_session_cache_timeout);
+      SSL_CTX_sess_set_cache_size(ssl_ctx_, config->tls_session_cache_size);
     } else {
       SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_OFF);
     }
 
     SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
 
-    if (SSL_CTX_load_verify_locations(ssl_ctx_,
-      config->tls_ca_cert_file.c_str(), config->tls_ca_cert_dir.c_str()) != 1) {
+    auto ca_file = config->tls_ca_cert_file.empty() ? nullptr : config->tls_ca_cert_file.c_str();
+    auto ca_dir = config->tls_ca_cert_dir.empty() ? nullptr : config->tls_ca_cert_dir.c_str();
+    if (SSL_CTX_load_verify_locations(ssl_ctx_, ca_file, ca_dir) != 1) {
       LOG(ERROR) << "Failed to load CA certificates: " << ssl_errors{};
       exit(1);
     }
@@ -100,6 +105,15 @@ Server::Server(Engine::Storage *storage, Config *config) :
     if (SSL_CTX_use_certificate_chain_file(ssl_ctx_, config->tls_cert_file.c_str()) != 1) {
       LOG(ERROR) << "Failed to load SSL certificate file: " << ssl_errors{};
       exit(1);
+    }
+
+    if (!config->tls_key_file_pass.empty()) {
+      SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx_, config);
+      SSL_CTX_set_default_passwd_cb(ssl_ctx_, [](char *buf, int size, int, void *cfg) -> int {
+        strncpy(buf, static_cast<Config *>(cfg)->tls_key_file_pass.c_str(), size);
+        buf[size - 1] = '\0';
+        return strlen(buf);
+      });
     }
 
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {

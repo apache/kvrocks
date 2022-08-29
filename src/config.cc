@@ -101,10 +101,13 @@ Config::Config() {
       {"tls-port", true, new IntField(&tls_port, 0, 0, 65535)},
       {"tls-cert-file", true, new StringField(&tls_cert_file, "")},
       {"tls-key-file", true, new StringField(&tls_key_file, "")},
+      {"tls-key-file-pass", true, new StringField(&tls_key_file_pass, "")},
       {"tls-ca-cert-file", true, new StringField(&tls_ca_cert_file, "")},
       {"tls-ca-cert-dir", true, new StringField(&tls_ca_cert_dir, "")},
       {"tls-protocols", true, new StringField(&tls_protocols, "")},
       {"tls-session-caching", true, new YesNoField(&tls_session_caching, true)},
+      {"tls-session-cache-size", true,
+        new IntField(&tls_session_cache_size, 1024 * 20, 0, INT_MAX)},
       {"tls-session-cache-timeout", true, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
 #endif
       {"workers", true, new IntField(&workers, 8, 1, 256)},

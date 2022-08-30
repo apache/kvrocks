@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "tls_util.h"
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
@@ -45,6 +44,9 @@
 #include "cluster.h"
 #include "slot_migrate.h"
 #include "slot_import.h"
+#ifdef ENABLE_OPENSSL
+#include "tls_util.h"
+#endif
 
 struct DBScanInfo {
   time_t last_scan_time = 0;

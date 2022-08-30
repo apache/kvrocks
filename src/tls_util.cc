@@ -19,8 +19,8 @@
  */
 
 #include <tls_util.h>
-#include <openssl/err.h>
 #include <string>
+#include <openssl/err.h>
 #include "config.h"
 
 
@@ -120,7 +120,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
   if (!config->tls_key_file_pass.empty()) {
-    SSL_CTX_set_default_passwd_cb_userdata( ssl_ctx.get(), static_cast<void *>(const_cast<Config *>(config)));
+    SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx.get(), static_cast<void *>(const_cast<Config *>(config)));
     SSL_CTX_set_default_passwd_cb(ssl_ctx.get(), [](char *buf, int size, int, void *cfg) -> int {
       strncpy(buf, static_cast<const Config *>(cfg)->tls_key_file_pass.c_str(), size);
       buf[size - 1] = '\0';

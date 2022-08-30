@@ -34,7 +34,7 @@ struct UniqueSSLContext : std::unique_ptr<SSL_CTX, StaticSSLCTXFree> {
 
     using base_type::base_type;
 
-    UniqueSSLContext(const SSL_METHOD *method = TLS_method()) : base_type(SSL_CTX_new(method)) {}
+    explicit UniqueSSLContext(const SSL_METHOD *method = TLS_method()) : base_type(SSL_CTX_new(method)) {}
 };
 
 UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method = TLS_method());
@@ -46,7 +46,7 @@ struct UniqueSSL : std::unique_ptr<SSL, StaticSSLFree> {
 
     using base_type::base_type;
 
-    UniqueSSL(SSL_CTX *ctx) : base_type(SSL_new(ctx)) {}
+    explicit UniqueSSL(SSL_CTX *ctx) : base_type(SSL_new(ctx)) {}
 };
 
 struct SSLErrors {

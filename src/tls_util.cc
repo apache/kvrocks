@@ -18,8 +18,7 @@
  *
  */
 
-#include <tls_util.h>
-#include <string.h>
+#include "tls_util.h"
 #include <string>
 #include <openssl/err.h>
 #include "config.h"

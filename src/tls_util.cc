@@ -19,6 +19,7 @@
  */
 
 #include "tls_util.h"
+#include <bitset>
 #include <string>
 #include <openssl/err.h>
 #include "config.h"
@@ -29,6 +30,52 @@ void InitSSL() {
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
   ERR_load_crypto_strings();
+}
+
+StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {
+  unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+
+  if (protocols.empty()) {
+    return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
+  }
+
+  auto protos = Util::Split(Util::ToLower(protocols), " ");
+
+  std::bitset<4> has_protocol;
+  for (const auto& proto : protos) {
+    if (proto == "tlsv1") {
+      has_protocol[0] = true;
+    } else if (proto == "tlsv1.1") {
+      has_protocol[1] = true;
+    } else if (proto == "tlsv1.2") {
+      has_protocol[2] = true;
+    } else if (proto == "tlsv1.3") {
+      has_protocol[3] = true;
+    } else {
+      return {Status::NotOK, "Failed to set SSL protocols: " + proto + " is not a valid protocol"};
+    }
+  }
+
+  if (!has_protocol[0]) {
+    ctx_options |= SSL_OP_NO_TLSv1;
+  }
+  if (!has_protocol[1]) {
+    ctx_options |= SSL_OP_NO_TLSv1_1;
+  }
+  if (!has_protocol[2]) {
+    ctx_options |= SSL_OP_NO_TLSv1_2;
+  }
+#ifdef SSL_OP_NO_TLSv1_3
+  if (!has_protocol[3]) {
+    ctx_options |= SSL_OP_NO_TLSv1_3;
+  }
+#endif
+
+ if (has_protocol.none()) {
+    return {Status::NotOK, "Failed to set SSL protocols: no protocol is enabled"};
+ }
+
+  return ctx_options;
 }
 
 UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method) {
@@ -43,7 +90,19 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
     return nullptr;
   }
 
-  auto ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+  auto proto_status = ParseSSLProtocols(config->tls_protocols);
+  if (!proto_status) {
+    LOG(ERROR) << proto_status.Msg();
+    return nullptr;
+  }
+
+  auto ctx_options = *proto_status;
+
+#ifdef SSL_OP_NO_TLSv1_3
+  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
+  // is weird in TLS eventbuffer.
+  ctx_options |= SSL_OP_NO_TLSv1_3;
+#endif
 
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
   ctx_options |= SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
@@ -57,26 +116,6 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
 
   if (config->tls_prefer_server_ciphers) {
     ctx_options |= SSL_OP_CIPHER_SERVER_PREFERENCE;
-  }
-
-  if (config->tls_protocols.empty()) {
-    ctx_options |= SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
-  } else {
-    auto protocols = Util::Split(Util::ToLower(config->tls_protocols), " ");
-    if (std::find(protocols.begin(), protocols.end(), "tlsv1") == protocols.end()) {
-      ctx_options |= SSL_OP_NO_TLSv1;
-    }
-    if (std::find(protocols.begin(), protocols.end(), "tlsv1.1") == protocols.end()) {
-      ctx_options |= SSL_OP_NO_TLSv1_1;
-    }
-    if (std::find(protocols.begin(), protocols.end(), "tlsv1.2") == protocols.end()) {
-      ctx_options |= SSL_OP_NO_TLSv1_2;
-    }
-#ifdef SSL_OP_NO_TLSv1_3
-    if (std::find(protocols.begin(), protocols.end(), "tlsv1.3") == protocols.end()) {
-      ctx_options |= SSL_OP_NO_TLSv1_3;
-    }
-#endif
   }
 
   SSL_CTX_set_options(ssl_ctx.get(), ctx_options);

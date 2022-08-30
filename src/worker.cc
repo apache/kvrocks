@@ -105,26 +105,10 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
   worker->KickoutIdleClients(config->timeout);
 }
 
-int getLocalPort(evutil_socket_t fd) {
-  sockaddr_in6 address;
-  socklen_t len = sizeof(address);
-  if (getsockname(fd, (struct sockaddr *)&address, &len) == -1) {
-    return 0;
-  }
-
-  if (address.sin6_family == AF_INET) {
-    return ntohs(reinterpret_cast<sockaddr_in *>(&address)->sin_port);
-  } else if (address.sin6_family == AF_INET6) {
-    return ntohs(address.sin6_port);
-  }
-
-  return 0;
-}
-
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
                               sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  int local_port = getLocalPort(fd);
+  int local_port = Util::GetLocalPort(fd);
   DLOG(INFO) << "[worker] New connection: fd=" << fd
               << " from port: " << local_port << " thread #"
               << worker->tid_;

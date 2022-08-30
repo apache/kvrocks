@@ -54,9 +54,9 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
 #ifdef ENABLE_OPENSSL
   ssl_port_ = config->tls_port;
   if (ssl_port_) {
-    ssl_ = SSL_new(svr->ssl_ctx_);
+    ssl_ = UniqueSSL(svr->ssl_ctx_.get());
     if (!ssl_) {
-      LOG(ERROR) << "Failed to construct SSL state: " << ssl_errors{};
+      LOG(ERROR) << "Failed to construct SSL structure: " << SSLErrors{};
       exit(1);
     }
   }
@@ -96,9 +96,6 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
-#ifdef ENABLE_OPENSSL
-  if (ssl_) SSL_free(ssl_);
-#endif
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
@@ -149,7 +146,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   bufferevent *bev;
 #ifdef ENABLE_OPENSSL
   if (local_port == worker->ssl_port_) {
-    bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
+    bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_.get(), BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
   } else {
     bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   }
@@ -159,10 +156,11 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   if (!bev) {
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
 #ifdef ENABLE_OPENSSL
-    LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err << ", SSL error: " << ssl_errors{};
+    LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err << ", SSL error: " << SSLErrors{};
 #else
     LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err;
 #endif
+    evutil_closesocket(fd);
     return;
   }
   auto conn = new Redis::Connection(bev, worker);
@@ -509,20 +507,3 @@ void WorkerThread::Stop() {
 void WorkerThread::Join() {
   if (t_.joinable()) t_.join();
 }
-
-#ifdef ENABLE_OPENSSL
-std::ostream& operator<<(std::ostream& os, ssl_errors) {
-  ERR_print_errors_cb([](const char *str, size_t len, void *pos){
-    *reinterpret_cast<std::ostream*>(pos) << std::string(str, len) << ";";
-    return 0;
-  }, reinterpret_cast<void *>(&os));
-
-  return os;
-}
-
-std::ostream& operator<<(std::ostream& os, ssl_error e) {
-  char msg[1024] = {};
-  ERR_error_string_n(e.err, msg, sizeof(msg) - 1);
-  return os << msg;
-}
-#endif

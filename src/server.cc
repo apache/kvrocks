@@ -28,10 +28,10 @@
 #include <utility>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
-#ifdef ENABLE_OPENSSL
-#include <openssl/ssl.h>
-#endif
 
+#ifdef ENABLE_OPENSSL
+#include <tls_util.h>
+#endif
 #include "util.h"
 #include "worker.h"
 #include "version.h"
@@ -56,73 +56,8 @@ Server::Server(Engine::Storage *storage, Config *config) :
 #ifdef ENABLE_OPENSSL
   // init ssl context
   if (config->tls_port) {
-    ssl_ctx_ = SSL_CTX_new(TLS_server_method());
+    ssl_ctx_ = CreateSSLContext(config);
     if (!ssl_ctx_) {
-      LOG(ERROR) << "Failed to construct SSL context: " << ssl_errors{};
-      exit(1);
-    }
-
-    auto ssl_ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
-    if (config->tls_protocols.empty()) {
-      ssl_ctx_options |= SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
-    } else {
-      auto protocols = Util::Split(Util::ToLower(config->tls_protocols), " ");
-      if (std::find(protocols.begin(), protocols.end(), "tlsv1") == protocols.end()) {
-        ssl_ctx_options |= SSL_OP_NO_TLSv1;
-      }
-      if (std::find(protocols.begin(), protocols.end(), "tlsv1.1") == protocols.end()) {
-        ssl_ctx_options |= SSL_OP_NO_TLSv1_1;
-      }
-      if (std::find(protocols.begin(), protocols.end(), "tlsv1.2") == protocols.end()) {
-        ssl_ctx_options |= SSL_OP_NO_TLSv1_2;
-      }
-#ifdef SSL_OP_NO_TLSv1_3
-      if (std::find(protocols.begin(), protocols.end(), "tlsv1.3") == protocols.end()) {
-        ssl_ctx_options |= SSL_OP_NO_TLSv1_3;
-      }
-#endif
-    }
-
-    SSL_CTX_set_options(ssl_ctx_, ssl_ctx_options);
-
-    if (config->tls_session_caching) {
-      SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_SERVER);
-      SSL_CTX_set_timeout(ssl_ctx_, config->tls_session_cache_timeout);
-      SSL_CTX_sess_set_cache_size(ssl_ctx_, config->tls_session_cache_size);
-    } else {
-      SSL_CTX_set_session_cache_mode(ssl_ctx_, SSL_SESS_CACHE_OFF);
-    }
-
-    SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_PEER, nullptr);
-
-    auto ca_file = config->tls_ca_cert_file.empty() ? nullptr : config->tls_ca_cert_file.c_str();
-    auto ca_dir = config->tls_ca_cert_dir.empty() ? nullptr : config->tls_ca_cert_dir.c_str();
-    if (SSL_CTX_load_verify_locations(ssl_ctx_, ca_file, ca_dir) != 1) {
-      LOG(ERROR) << "Failed to load CA certificates: " << ssl_errors{};
-      exit(1);
-    }
-
-    if (SSL_CTX_use_certificate_chain_file(ssl_ctx_, config->tls_cert_file.c_str()) != 1) {
-      LOG(ERROR) << "Failed to load SSL certificate file: " << ssl_errors{};
-      exit(1);
-    }
-
-    if (!config->tls_key_file_pass.empty()) {
-      SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx_, config);
-      SSL_CTX_set_default_passwd_cb(ssl_ctx_, [](char *buf, int size, int, void *cfg) -> int {
-        strncpy(buf, static_cast<Config *>(cfg)->tls_key_file_pass.c_str(), size);
-        buf[size - 1] = '\0';
-        return strlen(buf);
-      });
-    }
-
-    if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
-      LOG(ERROR) << "Failed to load SSL private key file: " << ssl_errors{};
-      exit(1);
-    }
-
-    if (SSL_CTX_check_private_key(ssl_ctx_) != 1) {
-      LOG(ERROR) << "Failed to check the loaded private key: " << ssl_errors{};
       exit(1);
     }
   }
@@ -159,9 +94,6 @@ Server::~Server() {
   for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
-#ifdef ENABLE_OPENSSL
-  if (ssl_ctx_) SSL_CTX_free(ssl_ctx_);
-#endif
 
   // Wait for all fetch file threads stop and exit and force destroy
   // the server after 60s.

@@ -33,7 +33,7 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 #ifdef ENABLE_OPENSSL
-#include <openssl/ssl.h>
+#include <tls_util.h>
 #endif
 #include "storage.h"
 #include "redis_connection.h"
@@ -87,7 +87,7 @@ class Worker {
   int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
 
 #ifdef ENABLE_OPENSSL
-  SSL *ssl_ = nullptr;
+  UniqueSSL ssl_;
   int ssl_port_;
 #endif
 
@@ -110,17 +110,3 @@ class WorkerThread {
   std::thread t_;
   std::unique_ptr<Worker> worker_;
 };
-
-#ifdef ENABLE_OPENSSL
-struct ssl_errors {
-  friend std::ostream& operator<<(std::ostream&, ssl_errors);
-};
-
-struct ssl_error {
-  explicit ssl_error(unsigned long err) : err(err) {} // NOLINT
-
-  friend std::ostream& operator<<(std::ostream&, ssl_error);
-
-  unsigned long err; // NOLINT
-};
-#endif

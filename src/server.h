@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "tls_util.h"
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
@@ -221,7 +222,7 @@ class Server {
   class SlotImport *slot_import_ = nullptr;
 
 #ifdef ENABLE_OPENSSL
-  SSL_CTX *ssl_ctx_ = nullptr;
+  UniqueSSLContext ssl_ctx_;
 #endif
 
  private:

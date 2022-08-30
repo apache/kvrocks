@@ -163,6 +163,11 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
     evutil_closesocket(fd);
     return;
   }
+#ifdef ENABLE_OPENSSL
+  if (local_port == worker->ssl_port_) {
+    bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
+  }
+#endif
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                     Redis::Connection::OnEvent, conn);

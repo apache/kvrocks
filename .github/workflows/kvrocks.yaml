@@ -130,9 +130,9 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install cmake gcc autoconf automake libtool openssl@1.1
+          brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl@1.1" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -179,7 +179,11 @@ jobs:
             cp localhost/cert.pem tests/tcl/tests/tls/client.crt
             cp localhost/key.pem tests/tcl/tests/tls/client.key
             cp minica.pem tests/tcl/tests/tls/ca.crt
-            ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
+            if [[ "${{ matrix.os }}" == macos* ]]; then
+              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean --config tls-protocols "tlsv1 tlsv1.1 tlsv1.2 tlsv1.3"
+            else
+              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
+            fi
           fi
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then

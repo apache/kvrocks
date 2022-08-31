@@ -180,7 +180,7 @@ jobs:
             cp localhost/key.pem tests/tcl/tests/tls/client.key
             cp minica.pem tests/tcl/tests/tls/ca.crt
             if [[ "${{ matrix.os }}" == macos* ]]; then
-              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean --config tls-ciphers ALL --config tls-protocols "tlsv1 tlsv1.1 tlsv1.2 tlsv1.3"
+              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean --config tls-prefer-server-ciphers yes --config tls-protocols "tlsv1 tlsv1.1 tlsv1.2 tlsv1.3"
             else
               ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
             fi

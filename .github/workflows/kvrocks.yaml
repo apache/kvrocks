@@ -169,6 +169,18 @@ jobs:
         run: |
           export ${{ matrix.runtime_env_vars }}
           ./x.py test tcl build --cli-path $HOME/local/bin/redis-cli --dont-clean
+          if [[ -z "${{ matrix.without_openssl }}" ]]; then
+            git clone https://github.com/jsha/minica
+            cd minica && go build && cd ..
+            ./minica/minica --domains localhost
+            mkdir -p tests/tcl/tests/tls
+            cp localhost/cert.pem tests/tcl/tests/tls/server.crt
+            cp localhost/key.pem tests/tcl/tests/tls/server.key
+            cp localhost/cert.pem tests/tcl/tests/tls/client.crt
+            cp localhost/key.pem tests/tcl/tests/tls/client.key
+            cp minica.pem tests/tcl/tests/tls/ca.crt
+            ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
+          fi
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"

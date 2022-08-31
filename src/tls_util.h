@@ -48,6 +48,8 @@ struct UniqueSSL : std::unique_ptr<SSL, StaticSSLFree> {
 
     using base_type::base_type;
 
+    UniqueSSL() : base_type() {}
+
     explicit UniqueSSL(SSL_CTX *ctx) : base_type(SSL_new(ctx)) {}
 };
 

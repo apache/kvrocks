@@ -25,6 +25,7 @@
 #include <bitset>
 #include <string>
 #include <mutex>
+#include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/opensslv.h>
@@ -66,6 +67,12 @@ void InitSSL() {
 StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOLINT
   unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3; // NOLINT
 
+#ifdef SSL_OP_NO_TLSv1_3
+  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
+  // is weird in TLS eventbuffer.
+  ctx_options |= SSL_OP_NO_TLSv1_3;
+#endif
+
   if (protocols.empty()) {
     return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
   }
@@ -80,8 +87,10 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
       has_protocol[1] = true;
     } else if (proto == "tlsv1.2") {
       has_protocol[2] = true;
+#ifdef SSL_OP_NO_TLSv1_3
     } else if (proto == "tlsv1.3") {
       has_protocol[3] = true;
+#endif
     } else {
       return {Status::NotOK, "Failed to set SSL protocols: " + proto + " is not a valid protocol"};
     }
@@ -101,12 +110,6 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
   if (!has_protocol[3]) {
     ctx_options |= SSL_OP_NO_TLSv1_3;
   }
-#endif
-
-#ifdef SSL_OP_NO_TLSv1_3
-  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
-  // is weird in TLS eventbuffer.
-  ctx_options |= SSL_OP_NO_TLSv1_3;
 #endif
 
   if (has_protocol.none()) {

@@ -32,7 +32,6 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/util.h>
-#include <tls_util.h>
 #include "storage.h"
 #include "redis_connection.h"
 
@@ -83,11 +82,6 @@ class Worker {
   std::map<int, Redis::Connection*> conns_;
   std::map<int, Redis::Connection*> monitor_conns_;
   int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
-
-#ifdef ENABLE_OPENSSL
-  UniqueSSL ssl_;
-  int ssl_port_;
-#endif
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;

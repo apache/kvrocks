@@ -67,12 +67,6 @@ void InitSSL() {
 StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOLINT
   unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3; // NOLINT
 
-#ifdef SSL_OP_NO_TLSv1_3
-  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
-  // is weird in TLS eventbuffer.
-  ctx_options |= SSL_OP_NO_TLSv1_3;
-#endif
-
   if (protocols.empty()) {
     return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
   }
@@ -105,7 +99,6 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
   if (!has_protocol[2]) {
     ctx_options |= SSL_OP_NO_TLSv1_2;
   }
-
 #ifdef SSL_OP_NO_TLSv1_3
   if (!has_protocol[3]) {
     ctx_options |= SSL_OP_NO_TLSv1_3;

@@ -51,17 +51,6 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
-#ifdef ENABLE_OPENSSL
-  ssl_port_ = config->tls_port;
-  if (ssl_port_) {
-    ssl_ = UniqueSSL(svr->ssl_ctx_.get());
-    if (!ssl_) {
-      LOG(ERROR) << "Failed to construct SSL structure: " << SSLErrors{};
-      exit(1);
-    }
-  }
-#endif
-
   int ports[3] = {config->port, config->tls_port, 0};
   auto binds = config->binds;
 
@@ -129,8 +118,14 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
 
   bufferevent *bev;
 #ifdef ENABLE_OPENSSL
-  if (local_port == worker->ssl_port_) {
-    bev = bufferevent_openssl_socket_new(base, fd, worker->ssl_.get(), BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
+  if (local_port == worker->svr_->GetConfig()->tls_port) {
+    auto ssl = SSL_new(worker->svr_->ssl_ctx_.get());
+    if (!ssl) {
+      LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
+      evutil_closesocket(fd);
+      return;
+    }
+    bev = bufferevent_openssl_socket_new(base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
   } else {
     bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   }
@@ -148,7 +143,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
     return;
   }
 #ifdef ENABLE_OPENSSL
-  if (local_port == worker->ssl_port_) {
+  if (local_port == worker->svr_->GetConfig()->tls_port) {
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif
@@ -346,6 +341,11 @@ void Worker::FreeConnection(Redis::Connection *conn) {
   if (rate_limit_group_ != nullptr) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
+#ifdef ENABLE_OPENSSL
+  if (SSL *ssl = bufferevent_openssl_get_ssl(conn->GetBufferEvent())) {
+    SSL_free(ssl);
+  }
+#endif
   delete conn;
 }
 

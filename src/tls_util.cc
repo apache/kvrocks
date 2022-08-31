@@ -22,12 +22,12 @@
 
 #include "tls_util.h"
 #include <bitset>
-#include <openssl/opensslv.h>
 #include <string>
 #include <mutex>
 #include <pthread.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/opensslv.h>
 #include "config.h"
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -103,6 +103,12 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
   }
 #endif
 
+#ifdef SSL_OP_NO_TLSv1_3
+  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
+  // is weird in TLS eventbuffer.
+  ctx_options |= SSL_OP_NO_TLSv1_3;
+#endif
+
  if (has_protocol.none()) {
     return {Status::NotOK, "Failed to set SSL protocols: no protocol is enabled"};
  }
@@ -129,12 +135,6 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
   auto ctx_options = *proto_status;
-
-#ifdef SSL_OP_NO_TLSv1_3
-  // we temporarily disable TLSv1.3 in OpenSSL because its behavior
-  // is weird in TLS eventbuffer.
-  ctx_options |= SSL_OP_NO_TLSv1_3;
-#endif
 
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
   ctx_options |= SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;

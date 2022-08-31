@@ -21,10 +21,10 @@
 #ifdef ENABLE_OPENSSL
 
 #include "tls_util.h"
+#include <pthread.h>
 #include <bitset>
 #include <string>
 #include <mutex>
-#include <pthread.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/opensslv.h>
@@ -109,9 +109,9 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
   ctx_options |= SSL_OP_NO_TLSv1_3;
 #endif
 
- if (has_protocol.none()) {
+  if (has_protocol.none()) {
     return {Status::NotOK, "Failed to set SSL protocols: no protocol is enabled"};
- }
+  }
 
   return ctx_options;
 }

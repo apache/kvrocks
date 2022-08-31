@@ -65,10 +65,10 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang
-            os: macos-latest
+            os: macos-12
             compiler: auto
           - name: Darwin Clang without Jemalloc
-            os: macos-latest
+            os: macos-12
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Ubuntu GCC
@@ -179,11 +179,7 @@ jobs:
             cp localhost/cert.pem tests/tcl/tests/tls/client.crt
             cp localhost/key.pem tests/tcl/tests/tls/client.key
             cp minica.pem tests/tcl/tests/tls/ca.crt
-            if [[ "${{ matrix.os }}" == macos* ]]; then
-              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean --config tls-prefer-server-ciphers yes --config tls-protocols "tlsv1 tlsv1.1 tlsv1.2 tlsv1.3"
-            else
-              ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
-            fi
+            ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
           fi
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then

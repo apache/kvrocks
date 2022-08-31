@@ -4793,7 +4793,7 @@ class CommandXAdd : public Commander {
     stream_name_ = args[1];
 
     for (size_t i = 2; i < args.size(); ) {
-      auto val = Util::ToLower(args[i]);
+      auto val = entry_id_found ? args[i] : Util::ToLower(args[i]);
 
       if (val == "nomkstream" && !entry_id_found) {
         nomkstream_ = true;

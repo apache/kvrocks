@@ -20,6 +20,8 @@
 
 #pragma once
 
+#ifdef ENABLE_OPENSSL
+
 #include <memory>
 #include <openssl/ssl.h>
 #include <config.h>
@@ -60,3 +62,5 @@ struct SSLError {
 
   unsigned long err; // NOLINT
 };
+
+#endif

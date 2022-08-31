@@ -29,9 +29,7 @@
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 
-#ifdef ENABLE_OPENSSL
 #include <tls_util.h>
-#endif
 #include "util.h"
 #include "worker.h"
 #include "version.h"

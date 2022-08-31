@@ -18,22 +18,53 @@
  *
  */
 
+#ifdef ENABLE_OPENSSL
+
 #include "tls_util.h"
 #include <bitset>
+#include <openssl/opensslv.h>
 #include <string>
+#include <mutex>
+#include <pthread.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include "config.h"
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+std::unique_ptr<std::mutex[]> ssl_mutexes;
+#endif
 
 void InitSSL() {
   SSL_library_init();
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
   ERR_load_crypto_strings();
+
+  if (!RAND_poll()) {
+    LOG(ERROR) << "OpenSSL failed to generate random seed";
+    exit(1);
+  }
+
+  // OpenSSL do not provide builtin thread safety until 1.1.0
+  // so we need to use CRYPTO_set_locking_callback
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  ssl_mutexes = std::unique_ptr<std::mutex[]>(new std::mutex[CRYPTO_num_locks()]);
+
+  CRYPTO_set_locking_callback([](int mode, int n, const char *, int) {
+    if (mode & CRYPTO_LOCK) {
+      ssl_mutexes[n].lock();
+    } else {
+      ssl_mutexes[n].unlock();
+    }
+  });
+
+  CRYPTO_set_id_callback([]{ return (unsigned long)pthread_self(); }); // NOLINT
+#endif
 }
 
-StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {
-  unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOLINT
+  unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3; // NOLINT
 
   if (protocols.empty()) {
     return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
@@ -65,6 +96,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {
   if (!has_protocol[2]) {
     ctx_options |= SSL_OP_NO_TLSv1_2;
   }
+
 #ifdef SSL_OP_NO_TLSv1_3
   if (!has_protocol[3]) {
     ctx_options |= SSL_OP_NO_TLSv1_3;
@@ -209,3 +241,5 @@ std::ostream &operator<<(std::ostream &os, SSLError e) {
   ERR_error_string_n(e.err, msg, sizeof(msg) - 1);
   return os << msg;
 }
+
+#endif

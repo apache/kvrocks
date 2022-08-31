@@ -26,6 +26,8 @@
 
 namespace Redis {
 
+extern const uint8_t kNum2Bits[256];
+
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   uint32_t byte_index = offset >> 3;
@@ -136,18 +138,10 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
 size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   size_t bits = 0;
   uint32_t *p4;
-  static const unsigned char bitsinbyte[256] =
-      {0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3,
-       3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4,
-       3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4,
-       4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5,
-       3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6,
-       6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5,
-       4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
 
   /* Count initial bytes not aligned to 32 bit. */
   while (reinterpret_cast<uint64_t>(p) & 3 && count) {
-    bits += bitsinbyte[*p++];
+    bits += kNum2Bits[*p++];
     count--;
   }
 
@@ -189,7 +183,7 @@ size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   }
   /* Count the remaining bytes. */
   p = (unsigned char *) p4;
-  while (count--) bits += bitsinbyte[*p++];
+  while (count--) bits += kNum2Bits[*p++];
   return bits;
 }
 

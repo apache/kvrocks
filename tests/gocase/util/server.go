@@ -81,8 +81,8 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 		cmd: cmd,
 		r:   r,
 		clean: func() {
-			stdout.Close()
-			stderr.Close()
+			require.NoError(t, stdout.Close())
+			require.NoError(t, stderr.Close())
 		},
 	}, nil
 }

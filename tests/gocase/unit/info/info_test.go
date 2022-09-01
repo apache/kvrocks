@@ -3,8 +3,8 @@ package command
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
+	"gocase/util"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,9 +12,13 @@ import (
 	"time"
 )
 
-func TestCommand(t *testing.T) {
+func TestInfo(t *testing.T) {
+	srv, err := util.StartServer(t, map[string]string{})
+	require.NoError(t, err)
+	defer srv.Close()
+
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6666"})
+	rdb := srv.Client()
 
 	FindInfoEntry := func(t *testing.T, section string, key string) string {
 		r := rdb.Info(ctx, section)

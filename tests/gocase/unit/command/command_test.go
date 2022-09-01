@@ -2,14 +2,18 @@ package command
 
 import (
 	"context"
-	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
+	"gocase/util"
 	"testing"
 )
 
 func TestCommand(t *testing.T) {
+	srv, err := util.StartServer(t, map[string]string{})
+	require.NoError(t, err)
+	defer srv.Close()
+
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6666"})
+	rdb := srv.Client()
 
 	t.Run("Kvrocks supports 180 commands currently", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "COUNT")

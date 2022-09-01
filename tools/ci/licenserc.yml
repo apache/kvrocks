@@ -24,11 +24,10 @@ header:
     - '**/CMakeLists.txt'
     - '**/*.cc'
     - '**/*.cmake'
+    - '**/*.go'
     - '**/*.h'
     - '**/*.py'
     - '**/*.sh'
     - '**/*.tcl'
     - '**/*.yml'
     - '**/*.yaml'
-  paths-ignore:
-    - 'external/'

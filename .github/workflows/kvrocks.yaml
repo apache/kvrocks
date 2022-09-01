@@ -65,10 +65,10 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang
-            os: macos-12
+            os: macos-11
             compiler: auto
           - name: Darwin Clang without Jemalloc
-            os: macos-12
+            os: macos-11
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Ubuntu GCC
@@ -132,7 +132,7 @@ jobs:
         run: |
           brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DMACOSX_DEPLOYMENT_TARGET=10.3" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}

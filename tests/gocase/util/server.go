@@ -47,6 +47,7 @@ func (s *KvrocksServer) Client() *redis.Client {
 func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Kill())
 	require.EqualError(s.t, s.cmd.Wait(), "signal: killed")
+	s.clean()
 }
 
 func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error) {

@@ -90,6 +90,15 @@ start_server {
         assert_equal [lindex $items 1 1] {item 2 value b}
     }
 
+    test {XADD stores entry value with respect to case sensitivity } {
+        r XADD myStream * iTeM 1 vAluE a
+        r XADD myStream * ItEm 2 VaLUe B
+        assert_equal 2 [r XLEN myStream]
+        set items [r XRANGE myStream - +]
+        assert_equal [lindex $items 0 1] {iTeM 1 vAluE a}
+        assert_equal [lindex $items 1 1] {ItEm 2 VaLUe B}
+    }
+
     test {XADD IDs are incremental} {
         set id1 [r XADD mystream * item 1 value a]
         set id2 [r XADD mystream * item 2 value b]

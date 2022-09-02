@@ -23,13 +23,15 @@ package util
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v9"
-	"github.com/stretchr/testify/require"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/go-redis/redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 type KvrocksServer struct {
@@ -67,7 +69,7 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 	require.NoError(t, err)
 	configs["dir"] = dir
 
-	f, err := os.CreateTemp(dir, "*.conf")
+	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
 	if err != nil {
 		return nil, err
 	}

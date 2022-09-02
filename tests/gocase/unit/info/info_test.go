@@ -23,13 +23,14 @@ package command
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/require"
-	"gocase/util"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInfo(t *testing.T) {

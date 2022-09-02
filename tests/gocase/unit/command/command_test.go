@@ -22,9 +22,10 @@ package command
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
-	"gocase/util"
 	"testing"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCommand(t *testing.T) {

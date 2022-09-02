@@ -83,10 +83,10 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 
 	cmd.Args = append(cmd.Args, "-c", f.Name())
 
-	stdout, err := os.Create(fmt.Sprintf("%s/%s", dir, "stdout"))
+	stdout, err := os.Create(filepath.Join(dir, "stdout"))
 	require.NoError(t, err)
 	cmd.Stdout = stdout
-	stderr, err := os.Create(fmt.Sprintf("%s/%s", dir, "stderr"))
+	stderr, err := os.Create(filepath.Join(dir, "stderr"))
 	require.NoError(t, err)
 	cmd.Stderr = stderr
 

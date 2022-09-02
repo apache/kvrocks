@@ -15,18 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# used for `find_package(Gflags)` mechanism in snappy
 
-include(cmake/utils.cmake)
-
-FetchContent_DeclareGitHubWithMirror(snappy
-  google/snappy 1.1.7
-  MD5=40a371a653b7bb5a47df59b937b78557
-)
-
-FetchContent_MakeAvailableWithArgs(snappy
-  CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/modules
-  SNAPPY_BUILD_TESTS=OFF
-  SNAPPY_BUILD_BENCHMARKS=OFF
-  BUILD_SHARED_LIBS=OFF
-)
+set(GFLAGS_FOUND FALSE)

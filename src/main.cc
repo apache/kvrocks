@@ -285,11 +285,11 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   initGoogleLog(&config);
-  LOG(INFO)<< "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
+  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
-  if (Util::IsPortInUse(config.port)) {
+  if (config.port != 0 && Util::IsPortInUse(config.port)) {
     LOG(ERROR)<< "Could not create server TCP since the specified port["
               << config.port << "] is already in use" << std::endl;
     exit(1);

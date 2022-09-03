@@ -44,6 +44,8 @@ const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes firs
 const char *errNotSetLevelCompactionDynamicLevelBytes =
             "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
+const char *kDefaultBindAddress = "0.0.0.0";
+
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
@@ -94,8 +96,8 @@ Config::Config() {
   };
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
-      {"bind", true, new StringField(&binds_, "127.0.0.1")},
-      {"port", true, new IntField(&port, 6666, 1, 65535)},
+      {"bind", true, new StringField(&binds_, "")},
+      {"port", true, new IntField(&port, 0, 0, 65535)},
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
@@ -538,6 +540,21 @@ Status Config::finish() {
   }
   if ((cluster_enabled) && !tokens.empty()) {
     return Status(Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists");
+  }
+  if (unixsocket.empty()) {
+    if (binds.size() == 0) {
+      binds.emplace_back(kDefaultBindAddress);
+    }
+    if (port == 0) {
+      port = kDefaultPort;
+    }
+  }
+  if (cluster_enabled && binds.size() == 0) {
+    return Status(Status::NotOK, "node is in cluster mode, but TCP listen address "
+                                 "wasn't specified via configuration file.");
+  }
+  if (master_port != 0 && binds.size() == 0) {
+    return Status(Status::NotOK, "replication doesn't supports unix socket.");
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";

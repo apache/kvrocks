@@ -160,6 +160,27 @@ jobs:
           export ${{ matrix.runtime_env_vars }}
           ./build/unittest
 
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.x
+
+      - name: Run Go Integration Cases
+        working-directory: tests/gocase
+        run: |
+          export ${{ matrix.runtime_env_vars }}
+          export KVROCKS_BIN_PATH="$GITHUB_WORKSPACE/build/kvrocks"
+          export GO_CASE_WORKSPACE="$GITHUB_WORKSPACE/tests/gocase/workspace"
+          go test -v ./...
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" workspace -r || true)
+          if [[ $SANITIZER_OUTPUT ]]; then
+            echo "$SANITIZER_OUTPUT"
+            echo "\ndetail reports:\n"
+            cat $(find workspace -iname stderr)
+            echo "sanitizer error was reported, exiting..."
+            exit 1
+          fi
+
       - name: Run Redis Tcl Test
         run: |
           export ${{ matrix.runtime_env_vars }}

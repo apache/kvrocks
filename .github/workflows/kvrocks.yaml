@@ -131,8 +131,8 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           brew install cmake gcc autoconf automake libtool openssl
-          brew link --force openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -161,7 +161,8 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler \
             ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} \
-            ${{ matrix.without_jemalloc }} ${{ matrix.without_openssl }} ${{ matrix.without_luajit }}
+            ${{ matrix.without_jemalloc }} ${{ matrix.without_openssl }} ${{ matrix.without_luajit }} \
+            ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Run Unit Test
         run: |

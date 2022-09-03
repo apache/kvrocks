@@ -39,7 +39,8 @@ func TestInfo(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := srv.Client()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
 	FindInfoEntry := func(t *testing.T, section string, key string) string {
 		r := rdb.Info(ctx, section)

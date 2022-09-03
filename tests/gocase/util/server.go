@@ -35,15 +35,15 @@ import (
 )
 
 type KvrocksServer struct {
-	t   *testing.T
-	cmd *exec.Cmd
-	r   *redis.Client
+	t    *testing.T
+	cmd  *exec.Cmd
+	addr net.Addr
 
 	clean func()
 }
 
-func (s *KvrocksServer) Client() *redis.Client {
-	return s.r
+func (s *KvrocksServer) NewClient() *redis.Client {
+	return redis.NewClient(&redis.Options{Addr: s.addr.String()})
 }
 
 func (s *KvrocksServer) Close() {
@@ -94,15 +94,16 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 		return nil, err
 	}
 
-	r := redis.NewClient(&redis.Options{Addr: addr.String()})
+	c := redis.NewClient(&redis.Options{Addr: addr.String()})
+	defer func() { require.NoError(t, c.Close()) }()
 	require.Eventually(t, func() bool {
-		return r.Ping(context.Background()).Err() == nil
+		return c.Ping(context.Background()).Err() == nil
 	}, time.Minute, time.Second)
 
 	return &KvrocksServer{
-		t:   t,
-		cmd: cmd,
-		r:   r,
+		t:    t,
+		cmd:  cmd,
+		addr: addr,
 		clean: func() {
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())

@@ -34,7 +34,8 @@ func TestCommand(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := srv.Client()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Kvrocks supports 180 commands currently", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "COUNT")

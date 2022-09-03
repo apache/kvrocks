@@ -43,7 +43,16 @@ Status Request::Tokenize(evbuffer *input) {
   while (true) {
     switch (state_) {
       case ArrayLen: {
-        UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
+        bool isOnlyLF = true;
+        // We don't use the `EVBUFFER_EOL_CRLF_STRICT` here since only LF is allowed in INLINE protocol.
+        // So we need to search LF EOL and figure out current line has CR or not.
+        UniqueEvbufReadln line(input, EVBUFFER_EOL_LF);
+        if (line && line.length > 0 && line[line.length-1] == '\r') {
+          // remove `\r` if exists
+          --line.length;
+          isOnlyLF = false;
+        }
+
         if (!line || line.length <= 0) {
           if (pipeline_size > 128) {
             LOG(INFO) << "Large pipeline detected: " << pipeline_size;
@@ -53,6 +62,7 @@ Status Request::Tokenize(evbuffer *input) {
           }
           return Status::OK();
         }
+
         pipeline_size++;
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] == '*') {
@@ -61,12 +71,12 @@ Status Request::Tokenize(evbuffer *input) {
           } catch (std::exception &e) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
+          if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
+            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+          }
           if (multi_bulk_len_ <= 0) {
               multi_bulk_len_ = 0;
               continue;
-          }
-          if (multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
-            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
           state_ = BulkLen;
         } else {

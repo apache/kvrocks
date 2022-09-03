@@ -82,6 +82,29 @@ start_server {tags {"protocol network"}} {
         r flush
         assert_equal "OK" [r read]
     }
+
+    test "Allow only LF protocol separator" {
+        reconnect
+        r write "set foo 123\n"
+        r flush
+        assert_equal "OK" [r read]
+    }
+
+    test "Mix LF/CRLF protocol separator" {
+        reconnect
+        r write "*-1\r\nset foo 123\nget foo\r\n*3\r\n\$3\r\nset\r\n\$3\r\nkey\r\n\$3\r\nval\r\n"
+        r flush
+        assert_equal "OK" [r read]
+        assert_equal "123" [r read]
+        assert_equal "OK" [r read]
+    }
+
+    test "invalid LF in multi bulk protocol" {
+        reconnect
+        r write "*3\n\$3\r\nset\r\n\$3\r\nkey\r\n\$3\r\nval\r\n"
+        r flush
+        assert_error "*invalid multibulk length*" {r read}
+    }
 }
 
 start_server {tags {"regression"}} {

@@ -137,7 +137,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
 #ifdef ENABLE_OPENSSL
     LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err << ", SSL error: " << SSLErrors{};
-    if(ssl) SSL_free(ssl);
+    if (ssl) SSL_free(ssl);
 #else
     LOG(ERROR) << "Failed to construct socket for new connection: " << socket_err;
 #endif

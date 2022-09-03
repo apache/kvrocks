@@ -77,6 +77,9 @@ sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3 lib
 
 # macOS
 brew install autoconf automake libtool cmake openssl
+
+# Please force linking the openssl if still can't find after installing openssl
+brew link --force openssl
 ```
 
 ### Build

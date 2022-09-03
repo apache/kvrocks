@@ -183,7 +183,7 @@ jobs:
             cp localhost/cert.pem tests/tcl/tests/tls/client.crt
             cp localhost/key.pem tests/tcl/tests/tls/client.key
             cp minica.pem tests/tcl/tests/tls/ca.crt
-            ./x.py test tcl build --tls --single unit/tls --single unit/command --dont-clean
+            ./x.py test tcl build --tls --single unit/tls --dont-clean
           fi
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then

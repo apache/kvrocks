@@ -15,7 +15,6 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
  */
 
 package util
@@ -44,6 +43,12 @@ type KvrocksServer struct {
 
 func (s *KvrocksServer) NewClient() *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: s.addr.String()})
+}
+
+func (s *KvrocksServer) NewTcpClient() *tcpClient {
+	c, err := net.Dial(s.addr.Network(), s.addr.String())
+	require.NoError(s.t, err)
+	return newTcpClient(c)
 }
 
 func (s *KvrocksServer) Close() {

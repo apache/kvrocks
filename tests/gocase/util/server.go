@@ -57,33 +57,27 @@ func (s *KvrocksServer) Close() {
 	s.clean()
 }
 
-func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error) {
+func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
 	b := os.Getenv("KVROCKS_BIN_PATH")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	configs["bind"] = addr.IP.String()
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := os.Getenv("GO_CASE_WORKSPACE")
 	require.NoError(t, err)
-	dir, err = os.MkdirTemp(dir, "Server-*")
+	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
 
 	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
 	for k := range configs {
 		_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))
-		if err != nil {
-			return nil, err
-		}
+		require.NoError(t, err)
 	}
 
 	cmd.Args = append(cmd.Args, "-c", f.Name())
@@ -95,9 +89,7 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 	require.NoError(t, err)
 	cmd.Stderr = stderr
 
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
+	require.NoError(t, cmd.Start())
 
 	c := redis.NewClient(&redis.Options{Addr: addr.String()})
 	defer func() { require.NoError(t, c.Close()) }()
@@ -113,7 +105,7 @@ func StartServer(t *testing.T, configs map[string]string) (*KvrocksServer, error
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())
 		},
-	}, nil
+	}
 }
 
 func findFreePort() (*net.TCPAddr, error) {

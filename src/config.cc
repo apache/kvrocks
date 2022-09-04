@@ -61,8 +61,6 @@ configEnum supervised_mode_enum[] = {
     {nullptr, 0}
 };
 
-ConfigField::~ConfigField() = default;
-
 std::string trimRocksDBPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8)) return s;
   return s.substr(8, s.size()-8);
@@ -90,8 +88,7 @@ Config::Config() {
     bool readonly;
     std::unique_ptr<ConfigField> field;
 
-    FieldWrapper(std::string name, bool readonly,
-                 ConfigField* field)
+    FieldWrapper(std::string name, bool readonly, ConfigField *field)
         : name(std::move(name)), readonly(readonly), field(field) {}
   };
   FieldWrapper fields[] = {

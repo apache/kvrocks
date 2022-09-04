@@ -22,6 +22,7 @@ package util
 import (
 	"bufio"
 	"net"
+	"strings"
 )
 
 type tcpClient struct {
@@ -47,10 +48,7 @@ func (c *tcpClient) ReadLine() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(r) > 0 && r[len(r)-1] == '\r' {
-		r = r[:len(r)-1]
-	}
-	return r, nil
+	return strings.TrimSuffix(r, "\r\n"), nil
 }
 
 func (c *tcpClient) Write(s string) error {

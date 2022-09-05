@@ -543,10 +543,10 @@ Status Config::finish() {
   }
   if (cluster_enabled && binds.size() == 0) {
     return Status(Status::NotOK, "node is in cluster mode, but TCP listen address "
-                                 "wasn't specified via configuration file.");
+                                 "wasn't specified via configuration file");
   }
   if (master_port != 0 && binds.size() == 0) {
-    return Status(Status::NotOK, "replication doesn't supports unix socket.");
+    return Status(Status::NotOK, "replication doesn't supports unix socket");
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";

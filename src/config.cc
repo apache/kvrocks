@@ -94,7 +94,7 @@ Config::Config() {
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
-      {"port", true, new IntField(&port, 0, 0, 65535)},
+      {"port", true, new IntField(&port, kDefaultPort, 1, 65535)},
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
@@ -541,9 +541,6 @@ Status Config::finish() {
   if (unixsocket.empty()) {
     if (binds.size() == 0) {
       binds.emplace_back(kDefaultBindAddress);
-    }
-    if (port == 0) {
-      port = kDefaultPort;
     }
   }
   if (cluster_enabled && binds.size() == 0) {

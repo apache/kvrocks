@@ -44,7 +44,7 @@ const char *errNotEnableBlobDB = "Must set rocksdb.enable_blob_files to yes firs
 const char *errNotSetLevelCompactionDynamicLevelBytes =
             "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
-const char *kDefaultBindAddress = "0.0.0.0";
+const char *kDefaultBindAddress = "127.0.0.1";
 
 configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
@@ -538,10 +538,8 @@ Status Config::finish() {
   if ((cluster_enabled) && !tokens.empty()) {
     return Status(Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists");
   }
-  if (unixsocket.empty()) {
-    if (binds.size() == 0) {
-      binds.emplace_back(kDefaultBindAddress);
-    }
+  if (unixsocket.empty() && binds.size() == 0) {
+    binds.emplace_back(kDefaultBindAddress);
   }
   if (cluster_enabled && binds.size() == 0) {
     return Status(Status::NotOK, "node is in cluster mode, but TCP listen address "

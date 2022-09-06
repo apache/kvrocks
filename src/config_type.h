@@ -42,7 +42,7 @@ const char *configEnumGetName(configEnum *ce, int val);
 class ConfigField {
  public:
   ConfigField() = default;
-  virtual ~ConfigField() = 0;
+  virtual ~ConfigField() = default;
   virtual std::string ToString() = 0;
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) { return Status(Status::NotOK, "not supported"); }

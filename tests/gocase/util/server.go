@@ -68,7 +68,7 @@ func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NotEmpty(t, b, "please set the environment variable `GO_CASE_WORKSPACE`")
+	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir

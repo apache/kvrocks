@@ -316,6 +316,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
         !IsFlagEnabled(Connection::kMultiExec)) break;
+
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
+    if (!s.IsOK()) {
+      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+      Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));
+      continue;
+    }
+
     if (GetNamespace().empty()) {
       if (!password.empty() && Util::ToLower(cmd_tokens.front()) != "auth") {
         Reply(Redis::Error("NOAUTH Authentication required."));
@@ -327,12 +335,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
     }
 
-    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
-    if (!s.IsOK()) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));
-      continue;
-    }
     const auto attributes = current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
 

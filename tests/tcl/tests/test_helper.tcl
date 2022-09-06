@@ -33,7 +33,6 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 set ::all_tests {
-    unit/auth
     unit/keyspace
     unit/scan
     unit/type/string

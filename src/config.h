@@ -50,6 +50,7 @@ class Storage;
 const size_t KiB = 1024L;
 const size_t MiB = 1024L * KiB;
 const size_t GiB = 1024L * MiB;
+const int kDefaultPort = 6666;
 
 extern const char *kDefaultNamespace;
 
@@ -67,7 +68,7 @@ struct Config{
  public:
   Config();
   ~Config() = default;
-  int port = 6666;
+  int port = 0;
   int tls_port = 0;
   std::string tls_cert_file;
   std::string tls_key_file;

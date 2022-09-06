@@ -62,6 +62,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
                   << ", encounter error: " << s.Msg();
         exit(1);
       }
+      LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
 }

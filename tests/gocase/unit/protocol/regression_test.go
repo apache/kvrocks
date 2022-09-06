@@ -17,17 +17,18 @@
  * under the License.
  */
 
-package command
+package protocol
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCommand(t *testing.T) {
+func TestRegression(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -35,41 +36,29 @@ func TestCommand(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Kvrocks supports 180 commands currently", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "COUNT")
-		v, err := r.Int()
-		require.NoError(t, err)
-		require.Equal(t, 180, v)
-	})
+	c := srv.NewTcpClient()
+	defer func() { require.NoError(t, c.Close()) }()
 
-	t.Run("acquire GET command info by COMMAND INFO", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "INFO", "GET")
-		vs, err := r.Slice()
-		require.NoError(t, err)
-		require.Len(t, vs, 1)
-		v := vs[0].([]interface{})
-		require.Len(t, v, 6)
-		require.Equal(t, "get", v[0])
-		require.EqualValues(t, 2, v[1])
-		require.Equal(t, []interface{}{"readonly"}, v[2])
-		require.EqualValues(t, 1, v[3])
-		require.EqualValues(t, 1, v[4])
-		require.EqualValues(t, 1, v[5])
-	})
+	proto := "*3\r\n$5\r\nBLPOP\r\n$6\r\nhandle\r\n$1\r\n0\r\n"
+	require.NoError(t, c.Write(fmt.Sprintf("%s%s", proto, proto)))
 
-	t.Run("command entry length check", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND")
-		vs, err := r.Slice()
-		require.NoError(t, err)
-		v := vs[0].([]interface{})
-		require.Len(t, v, 6)
-	})
+	resList := []string{"*2", "$6", "handle", "$1", "a"}
 
-	t.Run("get keys of commands by COMMAND GETKEYS", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GET", "test")
-		vs, err := r.Slice()
+	v := rdb.RPush(ctx, "handle", "a")
+	require.EqualValues(t, 1, v.Val())
+	for _, res := range resList {
+		r, err := c.ReadLine()
 		require.NoError(t, err)
-		require.Len(t, vs, 1)
-		require.Equal(t, "test", vs[0])
-	})
+		require.Equal(t, res, r)
+	}
+
+	v = rdb.RPush(ctx, "handle", "a")
+	require.EqualValues(t, 1, v.Val())
+
+	// TODO should read the second pushed element
+	//for _, res := range resList {
+	//	r, err := c.ReadLine()
+	//	require.NoError(t, err)
+	//	require.Equal(t, res, r)
+	//}
 }

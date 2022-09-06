@@ -15,7 +15,6 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
  */
 
 package command
@@ -34,8 +33,7 @@ import (
 )
 
 func TestInfo(t *testing.T) {
-	srv, err := util.StartServer(t, map[string]string{})
-	require.NoError(t, err)
+	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
 	ctx := context.Background()

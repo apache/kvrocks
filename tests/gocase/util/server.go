@@ -94,7 +94,8 @@ func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
 	c := redis.NewClient(&redis.Options{Addr: addr.String()})
 	defer func() { require.NoError(t, c.Close()) }()
 	require.Eventually(t, func() bool {
-		return c.Ping(context.Background()).Err() == nil
+		err := c.Ping(context.Background()).Err()
+		return err == nil || err.Error() == "NOAUTH Authentication required."
 	}, time.Minute, time.Second)
 
 	return &KvrocksServer{

@@ -48,6 +48,7 @@ function(FetchContent_DeclareWithMirror dep url hash)
   FetchContent_Declare(${dep}
     URL ${DEPS_FETCH_PROXY}${url}
     URL_HASH ${hash}
+    DOWNLOAD_EXTRACT_TIMESTAMP NEW
   )
 endfunction()
 

@@ -20,6 +20,7 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
 from os import makedirs
+import os
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
@@ -222,6 +223,19 @@ def test_tcl(dir: str, rest: List[str]) -> None:
         cwd=str(tcldir), verbose=True
     )
 
+def test_go(dir: str, rest: List[str]) -> None:
+    go = find_command('go', msg='go is required for testing')
+
+    godir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
+    goenv = {
+        'KVROCKS_BIN_PATH': str(Path(dir).absolute() / 'kvrocks'),
+        'GO_CASE_WORKSPACE': str(godir / 'workspace'),
+    }
+    goenv = {**os.environ, **goenv}
+    run(go, 'test', '-v', './...', *rest, 
+        env=goenv, cwd=str(godir), verbose=True
+    )
+
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.set_defaults(func=parser.print_help)
@@ -305,6 +319,15 @@ if __name__ == '__main__':
     parser_test_tcl.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
     parser_test_tcl.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to TCL scripts")
     parser_test_tcl.set_defaults(func=test_tcl)
+
+    parser_test_go = parser_test_subparsers.add_parser(
+        'go',
+        description="Test kvrocks via go test cases",
+        help="Test kvrocks via go test cases",
+    )
+    parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
+    parser_test_go.set_defaults(func=test_go)
 
     args = parser.parse_args()
 

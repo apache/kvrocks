@@ -60,10 +60,11 @@ Server::Server(Engine::Storage *storage, Config *config) :
     if (!config->unixsocket.empty() && i == 0) {
       Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
       if (!s.IsOK()) {
-        LOG(ERROR) << "[server] Failed to listen on unix socket: "<< config->unixsocket
+        LOG(ERROR) << "[server] Failed to listen on unix socket: " << config->unixsocket
                    << ", encounter error: " << s.Msg();
         exit(1);
       }
+      LOG(INFO) << "[server] Listening on unix socket: " << config->unixsocket;
     }
     worker_threads_.emplace_back(Util::MakeUnique<WorkerThread>(std::move(worker)));
   }

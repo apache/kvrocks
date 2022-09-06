@@ -50,10 +50,11 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   for (const auto &bind : binds) {
     s = listenTCP(bind, port, config->backlog);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << port
+      LOG(ERROR) << "[worker] Failed to listen on: " << bind << ":" << port
                  << ", encounter error: " << s.Msg();
       exit(1);
     }
+    LOG(INFO) << "[worker] Listening on: " << bind << ":" << port;
   }
 }
 

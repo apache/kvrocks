@@ -47,6 +47,7 @@ class Storage;
 const size_t KiB = 1024L;
 const size_t MiB = 1024L * KiB;
 const size_t GiB = 1024L * MiB;
+const int kDefaultPort = 6666;
 
 extern const char *kDefaultNamespace;
 
@@ -64,7 +65,8 @@ struct Config{
  public:
   Config();
   ~Config() = default;
-  int port = 6666;
+
+  int port = 0;
   int workers = 0;
   int timeout = 0;
   int loglevel = 0;

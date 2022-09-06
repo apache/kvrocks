@@ -60,6 +60,10 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Set cmake_policies
+include(cmake/policy.cmake)
+kvrocks_policy()
+
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)

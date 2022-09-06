@@ -31,7 +31,6 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
-
 set(DEPS_FETCH_PROXY "" CACHE STRING
     "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
      https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
@@ -64,10 +63,6 @@ if(ENABLE_TSAN)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Set cmake_policies
-include(cmake/policy.cmake)
-kvrocks_policy()
 
 # GLIBC < 2.17 should explict specify the real time library when use clock_*
 find_library(REALTIME_LIB rt)

@@ -41,7 +41,7 @@ func min(a, b int) int {
 	return b
 }
 
-func Test(t *testing.T) {
+func TestListLTRIM(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()

@@ -171,7 +171,7 @@ jobs:
           export ${{ matrix.runtime_env_vars }}
           export KVROCKS_BIN_PATH="$GITHUB_WORKSPACE/build/kvrocks"
           export GO_CASE_WORKSPACE="$GITHUB_WORKSPACE/tests/gocase/workspace"
-          go test -v ./...
+          go test -v -bench=. ./...
           SANITIZER_OUTPUT=$(grep "Sanitizer:" workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"

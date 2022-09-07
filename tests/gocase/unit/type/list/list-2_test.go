@@ -31,7 +31,9 @@ import (
 )
 
 func TestListLTRIM(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{
+		"list-max-ziplist-size": "4",
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()

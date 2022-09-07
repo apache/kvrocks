@@ -15,12 +15,6 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
- * Copyright (c) 2006-2020, Salvatore Sanfilippo
- * See bundled license file licenses/LICENSE.redis for details.
- *
- * This file is copied and modified from the Redis project,
- * which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/type/list-2.tcl
  */
 
 package list

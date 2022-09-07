@@ -232,7 +232,7 @@ def test_go(dir: str, rest: List[str]) -> None:
         'GO_CASE_WORKSPACE': str(godir / 'workspace'),
     }
     goenv = {**os.environ, **goenv}
-    run(go, 'test', '-v', './...', *rest, 
+    run(go, 'test', '-v', '-bench=.', './...', *rest,
         env=goenv, cwd=str(godir), verbose=True
     )
 

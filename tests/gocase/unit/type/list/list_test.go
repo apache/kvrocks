@@ -209,4 +209,31 @@ func TestZipList(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("ziplist implementation: encoding stress testing", func(t *testing.T) {
+		// TODO: check --accurate options for go test
+		key := "l"
+		for j := 0; j < 200; j++ {
+			require.NoError(t, rdb.Del(ctx, key).Err())
+			lis := []string{}
+			length := int(rand.Int31n(400))
+			for i := 0; i < int(length); i++ {
+				rv := util.RandomValue()
+				util.RandPathNoResult(
+					func() {
+						lis = append(lis, rv)
+						require.NoError(t, rdb.RPush(ctx, key, rv).Err())
+					},
+					func() {
+						lis = append([]string{rv}, lis...)
+						require.NoError(t, rdb.LPush(ctx, key, rv).Err())
+					},
+				)
+			}
+			require.Equal(t, int64(len(lis)), rdb.LLen(ctx, key).Val())
+			for i := int(0); i < length; i++ {
+				require.Equal(t, lis[i], rdb.LIndex(ctx, key, int64(i)).Val())
+			}
+		}
+	})
 }

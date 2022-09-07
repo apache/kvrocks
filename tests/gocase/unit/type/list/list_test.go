@@ -174,17 +174,15 @@ func TestZipList(t *testing.T) {
 				data := ""
 				switch op {
 				case 0:
-					data = strings.Repeat("x", int(rand.Int31n(1000000)))
+					data = strings.Repeat("x", int(rand.Int63n(1000000)))
 				case 1:
 					data = fmt.Sprintf("%d", rand.Int63n(65536))
 				case 2:
 					data = fmt.Sprintf("%d", rand.Int63n(4294967296))
 				case 3:
-					// TODO: the original code uses 18446744073709551616
-					// but in Go we cannot have this
 					data = fmt.Sprintf("%d", rand.Uint64())
 				case 4:
-					data = fmt.Sprintf("-%d", rand.Int31n(65536))
+					data = fmt.Sprintf("-%d", rand.Int63n(65536))
 					if data == "-0" {
 						data = "0"
 					}
@@ -216,7 +214,7 @@ func TestZipList(t *testing.T) {
 		for j := 0; j < 200; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())
 			lis := []string{}
-			length := int(rand.Int31n(400))
+			length := int(rand.Int63n(400))
 			for i := 0; i < int(length); i++ {
 				rv := util.RandomValue()
 				util.RandPathNoResult(

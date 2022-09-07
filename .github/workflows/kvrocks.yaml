@@ -56,6 +56,7 @@ jobs:
         run: |
           ./x.py check cpplint
           ./x.py check cppcheck
+          ./x.py check golangci-lint
 
   build-and-test:
     name: Build and test

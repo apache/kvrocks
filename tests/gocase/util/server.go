@@ -45,10 +45,10 @@ func (s *KvrocksServer) NewClient() *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: s.addr.String()})
 }
 
-func (s *KvrocksServer) NewTcpClient() *tcpClient {
+func (s *KvrocksServer) NewTCPClient() *tcpClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
 	require.NoError(s.t, err)
-	return newTcpClient(c)
+	return newTCPClient(c)
 }
 
 func (s *KvrocksServer) Close() {

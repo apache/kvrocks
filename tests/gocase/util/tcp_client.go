@@ -31,7 +31,7 @@ type tcpClient struct {
 	w *bufio.Writer
 }
 
-func newTcpClient(c net.Conn) *tcpClient {
+func newTCPClient(c net.Conn) *tcpClient {
 	return &tcpClient{
 		c: c,
 		r: bufio.NewReader(c),

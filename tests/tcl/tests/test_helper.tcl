@@ -38,7 +38,6 @@ set ::all_tests {
     unit/type/string
     unit/type/incr
     unit/type/list
-    unit/type/list-2
     unit/type/list-3
     unit/type/set
     unit/type/zset

@@ -34,7 +34,7 @@ import (
 )
 
 type KvrocksServer struct {
-	t    *testing.T
+	t    testing.TB
 	cmd  *exec.Cmd
 	addr net.Addr
 
@@ -57,7 +57,7 @@ func (s *KvrocksServer) Close() {
 	s.clean()
 }
 
-func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
+func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	b := os.Getenv("KVROCKS_BIN_PATH")
 	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
 	cmd := exec.Command(b)

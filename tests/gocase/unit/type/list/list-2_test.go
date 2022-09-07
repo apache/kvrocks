@@ -27,6 +27,7 @@ import (
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
+	"modernc.org/mathutil"
 )
 
 func TestListLTRIM(t *testing.T) {
@@ -53,7 +54,7 @@ func TestListLTRIM(t *testing.T) {
 			for i := 0; i < 1000; i++ {
 				low := int(rand.Float64() * float64(startLen))
 				high := int(float64(low) + rand.Float64()*float64(startLen))
-				myList = myList[low:util.Min(high+1, len(myList))]
+				myList = myList[low:mathutil.Min(high+1, len(myList))]
 				rdb.Do(ctx, "LTRIM", key, low, high)
 				require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
 				starting := rdb.LLen(ctx, key).Val()

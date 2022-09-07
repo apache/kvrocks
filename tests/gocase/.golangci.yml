@@ -28,7 +28,6 @@ linters:
     - exportloopref
     - gofmt
     - goimports
-    - gosec
     - gosimple
     - ineffassign
     - makezero

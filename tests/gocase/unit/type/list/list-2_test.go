@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
@@ -49,7 +50,7 @@ func TestListLTRIM(t *testing.T) {
 			rdb.RPush(ctx, key, largeStr)
 			myList = append(myList, largeStr)
 			for i := 0; i < 1000; i++ {
-				s := util.RandInt64Str()
+				s := strconv.FormatInt(rand.Int63(), 10)
 				rdb.RPush(ctx, key, s)
 				myList = append(myList, s)
 			}
@@ -61,7 +62,7 @@ func TestListLTRIM(t *testing.T) {
 				require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
 				starting := rdb.LLen(ctx, key).Val()
 				for j := starting; j < int64(startLen); j++ {
-					s := util.RandInt64Str()
+					s := strconv.FormatInt(rand.Int63(), 10)
 					rdb.RPush(ctx, key, s)
 					myList = append(myList, s)
 					require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")

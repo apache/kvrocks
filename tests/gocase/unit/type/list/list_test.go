@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
@@ -31,44 +32,55 @@ import (
 	"modernc.org/mathutil"
 )
 
-func TestListLTRIM(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+// We need a value larger than list-max-ziplist-value to make sure
+// the list has the right encoding when it is swapped in again.
+var largeValue = map[string]string{
+	"zipList":    "hello",
+	"linkedList": strings.Repeat("hello", 4),
+}
+
+func BenchmarkLTRIM(b *testing.B) {
+	srv := util.StartServer(b, map[string]string{
 		"list-max-ziplist-size": "4",
 	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
+	defer func() { require.NoError(b, rdb.Close()) }()
 
 	key := "myList"
+	startLen := int64(32)
+
 	rand.Seed(0)
-	for typ, largeStr := range LargeValue {
-		t.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(t *testing.T) {
-			myList := []string{}
-			startLen := 32
-			rdb.Del(ctx, key)
-			rdb.RPush(ctx, key, largeStr)
-			myList = append(myList, largeStr)
-			for i := 0; i < 1000; i++ {
+	for typ, value := range largeValue {
+		b.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(b *testing.B) {
+			var myList []string
+			require.NoError(b, rdb.Del(ctx, key).Err())
+			require.NoError(b, rdb.RPush(ctx, key, value).Err())
+			myList = append(myList, value)
+
+			for i := int64(0); i < startLen; i++ {
 				s := strconv.FormatInt(rand.Int63(), 10)
-				rdb.RPush(ctx, key, s)
+				require.NoError(b, rdb.RPush(ctx, key, s).Err())
 				myList = append(myList, s)
 			}
+
 			for i := 0; i < 1000; i++ {
-				low := int(rand.Float64() * float64(startLen))
-				high := int(float64(low) + rand.Float64()*float64(startLen))
-				myList = myList[low:mathutil.Min(high+1, len(myList))]
-				rdb.Do(ctx, "LTRIM", key, low, high)
-				require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
+				lo := int64(rand.Float64() * float64(startLen))
+				hi := int64(float64(lo) + rand.Float64()*float64(startLen))
+
+				myList = myList[lo:mathutil.Min(int(hi+1), len(myList))]
+				require.NoError(b, rdb.LTrim(ctx, key, lo, hi).Err())
+				require.Equal(b, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
+
 				starting := rdb.LLen(ctx, key).Val()
-				for j := starting; j < int64(startLen); j++ {
+				for j := starting; j < startLen; j++ {
 					s := strconv.FormatInt(rand.Int63(), 10)
-					rdb.RPush(ctx, key, s)
+					require.NoError(b, rdb.RPush(ctx, key, s).Err())
 					myList = append(myList, s)
-					require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")
+					require.Equal(b, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")
 				}
 			}
 		})
 	}
-
 }

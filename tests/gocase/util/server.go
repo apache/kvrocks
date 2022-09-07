@@ -59,6 +59,7 @@ func (s *KvrocksServer) Close() {
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	b := os.Getenv("KVROCKS_BIN_PATH")
+	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -67,7 +68,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NoError(t, err)
+	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
@@ -115,6 +116,9 @@ func findFreePort() (*net.TCPAddr, error) {
 		return nil, err
 	}
 	lis, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = lis.Close() }()
 	return lis.Addr().(*net.TCPAddr), nil
 }

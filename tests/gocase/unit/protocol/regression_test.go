@@ -36,7 +36,7 @@ func TestRegression(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	c := srv.NewTcpClient()
+	c := srv.NewTCPClient()
 	defer func() { require.NoError(t, c.Close()) }()
 
 	proto := "*3\r\n$5\r\nBLPOP\r\n$6\r\nhandle\r\n$1\r\n0\r\n"

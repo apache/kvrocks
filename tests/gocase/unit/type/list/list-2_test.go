@@ -23,23 +23,11 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"strconv"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
-
-func randInt64Str() string {
-	return strconv.FormatInt(rand.Int63(), 10)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 func TestListLTRIM(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
@@ -58,19 +46,19 @@ func TestListLTRIM(t *testing.T) {
 			rdb.RPush(ctx, key, largeStr)
 			myList = append(myList, largeStr)
 			for i := 0; i < 1000; i++ {
-				s := randInt64Str()
+				s := util.RandInt64Str()
 				rdb.RPush(ctx, key, s)
 				myList = append(myList, s)
 			}
 			for i := 0; i < 1000; i++ {
 				low := int(rand.Float64() * float64(startLen))
 				high := int(float64(low) + rand.Float64()*float64(startLen))
-				myList = myList[low:min(high+1, len(myList))]
+				myList = myList[low:util.Min(high+1, len(myList))]
 				rdb.Do(ctx, "LTRIM", key, low, high)
 				require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
 				starting := rdb.LLen(ctx, key).Val()
 				for j := starting; j < int64(startLen); j++ {
-					s := randInt64Str()
+					s := util.RandInt64Str()
 					rdb.RPush(ctx, key, s)
 					myList = append(myList, s)
 					require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")

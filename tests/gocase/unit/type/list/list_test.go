@@ -129,7 +129,7 @@ func TestZipList(t *testing.T) {
 	t.Run("Stress tester for #3343-alike bugs", func(t *testing.T) {
 		key := "key"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		for j := 0; j < 10000; j++ {
+		for i := 0; i < 10000; i++ {
 			op := rand.Int63n(6)
 			randCnt := 5 - rand.Int63n(10)
 			var ele string
@@ -158,6 +158,54 @@ func TestZipList(t *testing.T) {
 					where = "after"
 				}
 				require.NoError(t, rdb.LInsert(ctx, key, where, otherEle, ele).Err())
+			}
+		}
+	})
+
+	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
+		// TODO: check --accurate options for go test
+		iterations := 10
+		key := "l"
+		for j := 0; j < iterations; j++ {
+			require.NoError(t, rdb.Del(ctx, key).Err())
+			lis := []string{}
+			for i := 0; i < 200; i++ {
+				op := rand.Int63n(7)
+				data := ""
+				switch op {
+				case 0:
+					data = strings.Repeat("x", int(rand.Int31n(1000000)))
+				case 1:
+					data = fmt.Sprintf("%d", rand.Int63n(65536))
+				case 2:
+					data = fmt.Sprintf("%d", rand.Int63n(4294967296))
+				case 3:
+					// TODO: the original code uses 18446744073709551616
+					// but in Go we cannot have this
+					data = fmt.Sprintf("%d", rand.Uint64())
+				case 4:
+					data = fmt.Sprintf("-%d", rand.Int31n(65536))
+					if data == "-0" {
+						data = "0"
+					}
+				case 5:
+					data = fmt.Sprintf("-%d", rand.Int63n(4294967296))
+					if data == "-0" {
+						data = "0"
+					}
+				case 6:
+					data = fmt.Sprintf("-%d", rand.Uint64())
+					if data == "-0" {
+						data = "0"
+					}
+				}
+				lis = append(lis, data)
+				require.NoError(t, rdb.RPush(ctx, key, data).Err())
+			}
+			require.Equal(t, int64(len(lis)), rdb.LLen(ctx, key).Val())
+
+			for i := int64(199); i >= 0; i-- {
+				require.Equal(t, lis[i], rdb.LIndex(ctx, key, i).Val())
 			}
 		}
 	})

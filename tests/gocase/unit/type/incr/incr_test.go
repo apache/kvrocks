@@ -139,20 +139,10 @@ func TestIncr(t *testing.T) {
 		require.ErrorContains(t, r.Err(), "ERR Invalid argument: increment would produce NaN or Infinity")
 	})
 
-	//t.Run("INCRBYFLOAT precision for human friendly", func(t *testing.T) {
-	//	require.NoError(t, rdb.Set(ctx, "foo", 1.1, 0).Err())
-	//	require.NoError(t, rdb.IncrByFloat(ctx, "foo", -1.0).Err())
-	//	result := rdb.Get(ctx, "foo")
-	//	value, err := result.Float64()
-	//	require.NoError(t, err)
-	//	require.Equal(t, 0.1, value)
-	//})
-
-	//# TODO: INCRBYFLOAT precision for human friendly
-	//# test {INCRBYFLOAT decrement} {
-	//	#     r set foo 1
-	//	#     roundFloat [r incrbyfloat foo -1.1]
-	//# } {-0.1}
+	t.Run("INCRBYFLOAT decrement", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "foo", 1, 0).Err())
+		require.InDelta(t, -0.1, rdb.IncrByFloat(ctx, "foo", -1.1).Val(), util.DefaultDelta)
+	})
 
 	t.Run("string to double with null terminator", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", 1, 0).Err())

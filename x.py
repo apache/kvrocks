@@ -20,6 +20,7 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
 from os import makedirs
+import os
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
@@ -55,7 +56,7 @@ def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any)
     sys.stdout.flush()
     if verbose:
         print(f"$ {' '.join(args)}")
-    
+
     p = Popen(args, **kwargs)
     code = p.wait()
     if code != 0:
@@ -63,7 +64,7 @@ def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any)
         if msg:
             err += f"error message: {msg}\n"
         raise RuntimeError(err)
-    
+
     return p
 
 def run_pipe(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> TextIO:
@@ -137,14 +138,25 @@ def cppcheck() -> None:
 
     run(command, *options, *sources, verbose=True)
 
+def golangci_lint() -> None:
+    go = find_command('go', msg='go is required for testing')
+    gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
+    bindir = Path(gopath).absolute() / 'bin'
+    binpath = bindir / 'golangci-lint'
+    if not binpath.exists():
+        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh', verbose=True)
+        run('sh', '-s', '--', '-b', str(bindir), 'v1.49.0', verbose=True, stdin=output)
+    basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
+    run(str(binpath), 'run', '-v', './...', cwd=str(basedir), verbose=True)
+
 def write_version(release_version: str) -> str:
     version = release_version.strip()
     if SEMVER_REGEX.match(version) is None:
         raise RuntimeError(f"Kvrocks version should follow semver spec, got: {version}")
-    
+
     with open('VERSION', 'w+') as f:
         f.write(version)
-    
+
     return version
 
 def package_source(release_version: str) -> None:
@@ -218,8 +230,23 @@ def test_tcl(dir: str, rest: List[str]) -> None:
     check_version(tcl_version, TCL_REQUIRE_VERSION, "tclsh")
 
     tcldir = Path(__file__).parent.absolute() / 'tests' / 'tcl'
-    run(tclsh, 'tests/test_helper.tcl', '--server-path', str(Path(dir).absolute() / 'kvrocks'), *rest, 
+    run(tclsh, 'tests/test_helper.tcl', '--server-path', str(Path(dir).absolute() / 'kvrocks'), *rest,
         cwd=str(tcldir), verbose=True
+    )
+
+def test_go(dir: str, rest: List[str]) -> None:
+    go = find_command('go', msg='go is required for testing')
+
+    binpath = Path(dir).absolute() / 'kvrocks'
+    basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
+    worksapce = basedir / 'workspace'
+    goenv = {
+        'KVROCKS_BIN_PATH': str(binpath),
+        'GO_CASE_WORKSPACE': str(worksapce),
+    }
+    goenv = {**os.environ, **goenv}
+    run(go, 'test', '-v', '-bench=.', './...', *rest,
+        env=goenv, cwd=str(basedir), verbose=True
     )
 
 if __name__ == '__main__':
@@ -246,6 +273,13 @@ if __name__ == '__main__':
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
     parser_check_cppcheck.set_defaults(func=cppcheck)
+    parser_check_golangci_lint = parser_check_subparsers.add_parser(
+        'golangci-lint',
+        description="Check code with golangci-lint (https://golangci-lint.run/)",
+        help="Check code with golangci-lint (https://golangci-lint.run/)",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    parser_check_golangci_lint.set_defaults(func=golangci_lint)
 
     parser_build = subparsers.add_parser(
         'build',
@@ -305,6 +339,15 @@ if __name__ == '__main__':
     parser_test_tcl.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
     parser_test_tcl.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to TCL scripts")
     parser_test_tcl.set_defaults(func=test_tcl)
+
+    parser_test_go = parser_test_subparsers.add_parser(
+        'go',
+        description="Test kvrocks via go test cases",
+        help="Test kvrocks via go test cases",
+    )
+    parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
+    parser_test_go.set_defaults(func=test_go)
 
     args = parser.parse_args()
 

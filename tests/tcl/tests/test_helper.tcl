@@ -33,13 +33,11 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 set ::all_tests {
-    unit/auth
     unit/keyspace
     unit/scan
     unit/type/string
     unit/type/incr
     unit/type/list
-    unit/type/list-2
     unit/type/list-3
     unit/type/set
     unit/type/zset

@@ -34,7 +34,7 @@ import (
 )
 
 type KvrocksServer struct {
-	t    *testing.T
+	t    testing.TB
 	cmd  *exec.Cmd
 	addr net.Addr
 
@@ -45,10 +45,10 @@ func (s *KvrocksServer) NewClient() *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: s.addr.String()})
 }
 
-func (s *KvrocksServer) NewTcpClient() *tcpClient {
+func (s *KvrocksServer) NewTCPClient() *tcpClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
 	require.NoError(s.t, err)
-	return newTcpClient(c)
+	return newTCPClient(c)
 }
 
 func (s *KvrocksServer) Close() {
@@ -57,8 +57,9 @@ func (s *KvrocksServer) Close() {
 	s.clean()
 }
 
-func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
+func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	b := os.Getenv("KVROCKS_BIN_PATH")
+	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -67,7 +68,7 @@ func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NoError(t, err)
+	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
@@ -94,7 +95,8 @@ func StartServer(t *testing.T, configs map[string]string) *KvrocksServer {
 	c := redis.NewClient(&redis.Options{Addr: addr.String()})
 	defer func() { require.NoError(t, c.Close()) }()
 	require.Eventually(t, func() bool {
-		return c.Ping(context.Background()).Err() == nil
+		err := c.Ping(context.Background()).Err()
+		return err == nil || err.Error() == "NOAUTH Authentication required."
 	}, time.Minute, time.Second)
 
 	return &KvrocksServer{
@@ -114,6 +116,9 @@ func findFreePort() (*net.TCPAddr, error) {
 		return nil, err
 	}
 	lis, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = lis.Close() }()
 	return lis.Addr().(*net.TCPAddr), nil
 }

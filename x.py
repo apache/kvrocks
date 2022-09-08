@@ -257,8 +257,8 @@ if __name__ == '__main__':
 
     parser_check = subparsers.add_parser(
         'check',
-        description="Check code with cpplint or cppcheck",
-        help="Check code with cpplint or cppcheck")
+        description="Check code with cpplint or cppcheck or golangci-lint",
+        help="Check code with cpplint or cppcheck or golangci-lint")
     parser_check.set_defaults(func=parser_check.print_help)
     parser_check_subparsers = parser_check.add_subparsers()
     parser_check_cpplint = parser_check_subparsers.add_parser(

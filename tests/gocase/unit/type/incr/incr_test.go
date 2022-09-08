@@ -60,22 +60,22 @@ func TestIncr(t *testing.T) {
 
 	t.Run("INCR fails against key with spaces (left)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "    11", 0).Err())
-		require.ErrorContains(t, rdb.Incr(ctx, "novar").Err(), "ERR Invalid argument: value is not an integer")
+		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against key with spaces (right)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "11    ", 0).Err())
-		require.ErrorContains(t, rdb.Incr(ctx, "novar").Err(), "ERR Invalid argument: value is not an integer")
+		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against key with spaces (both)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "   11    ", 0).Err())
-		require.ErrorContains(t, rdb.Incr(ctx, "novar").Err(), "ERR Invalid argument: value is not an integer")
+		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against a key holding a list", func(t *testing.T) {
 		require.NoError(t, rdb.RPush(ctx, "mylist", 1).Err())
-		require.ErrorContains(t, rdb.Incr(ctx, "novar").Err(), "ERR Invalid argument: value is not an integer")
+		require.ErrorContains(t, rdb.Incr(ctx, "mylist").Err(), "WRONGTYPE")
 		require.NoError(t, rdb.RPop(ctx, "mylist").Err())
 	})
 
@@ -113,30 +113,29 @@ func TestIncr(t *testing.T) {
 
 	t.Run("INCRBYFLOAT fails against key with spaces (left)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "    11", 0).Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR Invalid argument: value is not an float")
+		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against key with spaces (right)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "11  ", 0).Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR Invalid argument: value is not an float")
+		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against key with spaces (both)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "  11  ", 0).Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR Invalid argument: value is not an float")
+		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against a key holding a list", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mylist").Err())
 		require.NoError(t, rdb.RPush(ctx, "mylist", 1).Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "mylist", 1.0).Err(), "ERR Invalid argument: WRONGTYPE Operation against a key holding the wrong kind of value")
+		require.ErrorContains(t, rdb.IncrByFloat(ctx, "mylist", 1.0).Err(), "WRONGTYPE")
 		require.NoError(t, rdb.Del(ctx, "mylist").Err())
 	})
 
 	t.Run("INCRBYFLOAT does not allow NaN or Infinity", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", 0, 0).Err())
-		r := rdb.Do(ctx, "INCRBYFLOAT", "foo", "+inf")
-		require.ErrorContains(t, r.Err(), "ERR Invalid argument: increment would produce NaN or Infinity")
+		util.ErrorRegexp(t, rdb.Do(ctx, "INCRBYFLOAT", "foo", "+inf").Err(), "ERR.*would produce.*")
 	})
 
 	t.Run("INCRBYFLOAT decrement", func(t *testing.T) {
@@ -147,6 +146,6 @@ func TestIncr(t *testing.T) {
 	t.Run("string to double with null terminator", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", 1, 0).Err())
 		require.NoError(t, rdb.SetRange(ctx, "foo", 2, "2").Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "foo", 1.0).Err(), "ERR Invalid argument: value is not an float")
+		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "foo", 1.0).Err(), "ERR.*valid.*")
 	})
 }

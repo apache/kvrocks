@@ -20,8 +20,9 @@
 package util
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interface{}) {

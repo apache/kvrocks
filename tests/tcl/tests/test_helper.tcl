@@ -41,7 +41,6 @@ set ::all_tests {
     unit/type/set
     unit/type/zset
     unit/type/hash
-    unit/type/sint
     unit/type/bitmap
     unit/type/stream
     unit/multi

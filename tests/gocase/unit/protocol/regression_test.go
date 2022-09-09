@@ -55,10 +55,9 @@ func TestRegression(t *testing.T) {
 	v = rdb.RPush(ctx, "handle", "a")
 	require.EqualValues(t, 1, v.Val())
 
-	// TODO should read the second pushed element
-	//for _, res := range resList {
-	//	r, err := c.ReadLine()
-	//	require.NoError(t, err)
-	//	require.Equal(t, res, r)
-	//}
+	for _, res := range resList {
+		r, err := c.ReadLine()
+		require.NoError(t, err)
+		require.Equal(t, res, r)
+	}
 }

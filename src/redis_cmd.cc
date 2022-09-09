@@ -1635,12 +1635,13 @@ class CommandBPop : public Commander {
   static void WriteCB(bufferevent *bev, void *ctx) {
     auto self = reinterpret_cast<CommandBPop *>(ctx);
     auto s = self->TryPopFromList();
-    // if pop fail ,currently we compromised to close bpop request
     if (s.IsNotFound()) {
-      self->conn_->Reply(Redis::NilString());
-      LOG(ERROR) << "[BPOP] Failed to execute redis command: " << self->conn_->current_cmd_->GetAttributes()->name
-                 << ", err: another concurrent pop request must have stole the data before this bpop request"
-                 << " or bpop is in a pipeline cmd list(cmd before bpop replyed trigger this writecb)";
+      // The connection may be waked up but can't pop from list. For example,
+      // connection A is blocking on list and connection B push a new element
+      // then wake up the connection A, but this element may be token by other connection C.
+      // So we need to wait for the wake event again by disabling the WRITE event.
+      bufferevent_disable(bev, EV_WRITE);
+      return;
     }
     if (self->timer_ != nullptr) {
       event_free(self->timer_);
@@ -1650,6 +1651,10 @@ class CommandBPop : public Commander {
     bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
                       Redis::Connection::OnEvent, self->conn_);
     bufferevent_enable(bev, EV_READ);
+    // We need to manually trigger the read event since we will stop processing commands
+    // in connection after the blocking command, so there may have some commands to be processed.
+    // Related issue: https://github.com/apache/incubator-kvrocks/issues/831
+    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 
   static void EventCB(bufferevent *bev, int16_t events, void *ctx) {

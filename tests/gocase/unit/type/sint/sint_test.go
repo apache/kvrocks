@@ -35,31 +35,18 @@ func TestSint(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("sorted-int", func(t *testing.T) {
-
 		require.EqualValues(t, 1, rdb.Do(ctx, "SIADD", "mysi", 1).Val())
-
 		require.EqualValues(t, 1, rdb.Do(ctx, "SIADD", "mysi", 2).Val())
-
 		require.EqualValues(t, 0, rdb.Do(ctx, "SIADD", "mysi", 2).Val())
-
 		require.EqualValues(t, 5, rdb.Do(ctx, "SIADD", "mysi", 3, 4, 5, 123, 245).Val())
-
 		require.EqualValues(t, 7, rdb.Do(ctx, "SICARD", "mysi").Val())
-
 		require.EqualValues(t, []interface{}{"245", "123", "5"}, rdb.Do(ctx, "SIREVRANGE", "mysi", 0, 3).Val())
-
 		require.EqualValues(t, []interface{}{"4", "3", "2"}, rdb.Do(ctx, "SIREVRANGE", "mysi", 0, 3, "cursor", 5).Val())
-
 		require.EqualValues(t, []interface{}{"245"}, rdb.Do(ctx, "SIRANGE", "mysi", 0, 3, "cursor", 123).Val())
-
 		require.EqualValues(t, []interface{}{"1", "2", "3", "4"}, rdb.Do(ctx, "SIRANGEBYVALUE", "mysi", 1, "(5").Val())
-
 		require.EqualValues(t, []interface{}{"5", "4", "3", "2"}, rdb.Do(ctx, "SIREVRANGEBYVALUE", "mysi", 5, "(1").Val())
-
 		require.EqualValues(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "SIEXISTS", "mysi", 1, 88, 2).Val())
-
 		require.EqualValues(t, 1, rdb.Do(ctx, "SIREM", "mysi", 2).Val())
-
 	})
 
 }

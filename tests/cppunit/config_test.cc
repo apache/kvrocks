@@ -276,3 +276,37 @@ TEST(Namespace, RewriteNamespaces) {
   EXPECT_FALSE(new_config.GetNamespace("to-be-deleted-ns", &token).IsOK());
   unlink(path);
 }
+
+TEST(Config, ParseConfigLine) {
+  ASSERT_EQ(*ParseConfigLine(""), std::vector<std::string>{});
+  ASSERT_EQ(*ParseConfigLine("# hello"), std::vector<std::string>{});
+  ASSERT_EQ(*ParseConfigLine("       #x y z "), std::vector<std::string>{});
+  ASSERT_EQ(*ParseConfigLine("key value"), (std::vector<std::string>{"key", "value"}));
+  ASSERT_EQ(*ParseConfigLine("key"), std::vector<std::string>{"key"});
+  ASSERT_EQ(*ParseConfigLine("    key    value1   value2   "), (std::vector<std::string>{"key", "value1", "value2"}));
+  ASSERT_EQ(*ParseConfigLine(" #"), std::vector<std::string>{});
+  ASSERT_EQ(*ParseConfigLine("  key val ue #h e l l o"), (std::vector<std::string>{"key", "val", "ue"}));
+  ASSERT_EQ(*ParseConfigLine("key 'val ue'"), (std::vector<std::string>{"key", "val ue"}));
+  ASSERT_EQ(*ParseConfigLine(R"(key ' value\'\'v a l ')"), (std::vector<std::string>{"key", " value''v a l "}));
+  ASSERT_EQ(*ParseConfigLine(R"( key "val # hi" "hello hi'\" hi" # hello!)"), (std::vector<std::string>{"key", "val # hi", R"(hello hi'" hi)"}));
+  ASSERT_EQ(*ParseConfigLine(R"(key "\n \r \t " '\'' \n\r\t)"), (std::vector<std::string>{"key", "\n \r \t ", "'", "\\n\\r\\t"}));
+  ASSERT_EQ(*ParseConfigLine(" 1 2 3 4 5 6"), (std::vector<std::string>{"1", "2", "3", "4", "5", "6"}));
+  ASSERT_EQ(*ParseConfigLine("key '' \"\""), (std::vector<std::string>{"key", "", ""}));
+  ASSERT_FALSE(ParseConfigLine("'"));
+  ASSERT_FALSE(ParseConfigLine("key \"hello "));
+  ASSERT_FALSE(ParseConfigLine("key \'\\"));
+  ASSERT_FALSE(ParseConfigLine("key \""));
+}
+
+TEST(Config, DumpConfigLine) {
+  ASSERT_EQ(DumpConfigLine({}), "");
+  ASSERT_EQ(DumpConfigLine({"key", "value"}), "key value");
+  ASSERT_EQ(DumpConfigLine({"key", " v a l "}), R"(key " v a l ")");
+  ASSERT_EQ(DumpConfigLine({"a", "b", "c"}), "a b c");
+  ASSERT_EQ(DumpConfigLine({"a", "'b"}), "a \"\\'b\"");
+  ASSERT_EQ(DumpConfigLine({"a", "x#y"}), "a \"x#y\"");
+  ASSERT_EQ(DumpConfigLine({"a", "x y"}), "a \"x y\"");
+  ASSERT_EQ(DumpConfigLine({"a", "xy"}), "a xy");
+  ASSERT_EQ(DumpConfigLine({"a", "x\n"}), "a \"x\\n\"");
+  ASSERT_EQ(DumpConfigLine({"a", "", ""}), "a \"\" \"\"");
+}

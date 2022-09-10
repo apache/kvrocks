@@ -186,7 +186,18 @@ struct Config{
 
   void initFieldValidator();
   void initFieldCallback();
-  Status parseConfigFromString(std::string input, int line_number);
+  Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
   Status isNamespaceLegal(const std::string &ns);
 };
+
+// refer to https://redis.io/docs/manual/config
+// format: key value1 value2 ... valueN
+// inline comment: key value... # comment
+// quoted string: key "hello world" 'hi kvrocks'
+// e.g. `key "hello # world\"" v "x#x" # " # hi` -> key: hello # world", v, x#x
+StatusOr<std::vector<std::string>> ParseConfigLine(const std::string &line);
+
+// dump a config item to a string line
+// e.g. {'a', 'b c', 'd'} -> "a 'b c' d"
+std::string DumpConfigLine(const std::vector<std::string> &config);

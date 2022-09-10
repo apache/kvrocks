@@ -18,6 +18,8 @@
  *
  */
 
+#include <algorithm>
+#include <cctype>
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
@@ -504,14 +506,14 @@ void Config::ClearMaster() {
   }
 }
 
-Status Config::parseConfigFromString(std::string input, int line_number) {
-  std::vector<std::string> kv = Util::Split2KV(input, " \t");
+Status Config::parseConfigFromString(const std::string &input, int line_number) {
+  auto parsed = ParseConfigLine(input);
+  if (!parsed) return parsed.ToStatus();
 
-  // skip the comment and empty line
-  if (kv.empty() || kv[0].front() == '#') return Status::OK();
+  auto kv = *parsed;
 
   if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
-  if (kv[1] == "\"\"") return Status::OK();
+  if (kv[1] == "") return Status::OK();
 
   std::string field_key = Util::ToLower(kv[0]);
   const char ns_str[] = "namespace.";
@@ -657,20 +659,15 @@ Status Config::Rewrite() {
 
   std::ifstream file(path_);
   if (file.is_open()) {
-    std::string raw_line, trim_line, new_value;
-    std::vector<std::string> kv;
+    std::string raw_line;
     while (!file.eof()) {
       std::getline(file, raw_line);
-      trim_line = Util::Trim(raw_line, " \t\r\n");
-      if (trim_line.empty() || trim_line.front() == '#') {
+      auto parsed = ParseConfigLine(raw_line);
+      if (!parsed || parsed->size() != 2) {
         lines.emplace_back(raw_line);
         continue;
       }
-      kv = Util::Split2KV(trim_line, " \t");
-      if (kv.size() != 2) {
-        lines.emplace_back(raw_line);
-        continue;
-      }
+      auto kv = *parsed;
       if (Util::HasPrefix(kv[0], namespacePrefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
@@ -804,4 +801,138 @@ Status Config::isNamespaceLegal(const std::string &ns) {
     return Status(Status::NotOK, std::string("namespace contain illegal letter"));
   }
   return Status::OK();
+}
+
+StatusOr<std::vector<std::string>> ParseConfigLine(const std::string& line) {
+  enum { NORMAL, QUOTED, SPACE, ESCAPE, COMMENT } state = SPACE;
+  
+  char quote; // single or double quote
+  std::string current_str;
+  std::vector<std::string> res;
+
+  for (auto i = line.begin(); i != line.end();) {
+    switch (state) {
+      case NORMAL:
+        if (std::isspace(*i)) {
+          res.push_back(current_str);
+          current_str = "";
+          state = SPACE;
+        } else if (*i == '#') {
+          res.push_back(current_str);
+          state = COMMENT;
+        } else {
+          current_str.push_back(*i);
+          i++;
+        }
+        break;
+      case QUOTED:
+        if (*i == '\\') {
+          state = ESCAPE;
+        } else if (*i == quote) {
+          res.push_back(current_str);
+          current_str = "";
+          state = SPACE;
+        } else {
+          current_str.push_back(*i);
+        }
+        i++;
+        break;
+      case ESCAPE:
+        if (*i == '\'' || *i == '"' || *i == '\\') {
+          current_str.push_back(*i);
+        } else if (*i == 't') {
+          current_str.push_back('\t');
+        } else if (*i == 'r') {
+          current_str.push_back('\r');
+        } else if (*i == 'n') {
+          current_str.push_back('\n');
+        } else if (*i == 'v') {
+          current_str.push_back('\v');
+        } else if (*i == 'f') {
+          current_str.push_back('\f');
+        } else if (*i == 'b') {
+          current_str.push_back('\b');
+        }
+        state = QUOTED;
+        i++;
+        break;
+      case SPACE:
+        if (!std::isspace(*i)) {
+          if (*i == '"' || *i == '\'') {
+            state = QUOTED;
+            quote = *i;
+            i++;
+          } else if (*i == '#') {
+            state = COMMENT;
+          } else {
+            state = NORMAL;
+          }
+        } else {
+          i++;
+        }
+        break;
+      case COMMENT:
+        i++;
+        break;
+    }
+  }
+
+  if (state == NORMAL) {
+    res.push_back(current_str);
+    state = SPACE;
+  }
+
+  if (state != SPACE && state != COMMENT) {
+    return {Status::NotOK, "config line ends unexpectedly"};
+  }
+
+  return res;
+}
+
+std::string DumpConfigLine(const std::vector<std::string> &config) {
+  std::string res;
+
+  if (config.empty()) return res;
+
+  res += config[0];
+
+  for (size_t i = 1; i < config.size(); ++i) {
+    res += " ";
+
+    if (std::any_of(config[i].begin(), config[i].end(), [](char c) {
+      return std::isspace(c) || c == '"' || c == '\'' || c == '#';
+    })) {
+      res += '"';
+      for (char c : config[i]) {
+        if (c == '\\') {
+          res += "\\\\";
+        } else if (c == '\'') {
+          res += "\\'";
+        } else if (c == '"') {
+          res += "\\\"";
+        } else if (c == '\t') {
+          res += "\\t";
+        } else if (c == '\r') {
+          res += "\\r";
+        } else if (c == '\n') {
+          res += "\\n";
+        } else if (c == '\v') {
+          res += "\\v";
+        } else if (c == '\f') {
+          res += "\\f";
+        } else if (c == '\b') {
+          res += "\\b";
+        } else {
+          res += c;
+        }
+      }
+      res += '"';
+    } else if (config[i].empty()) {
+      res += "\"\"";
+    } else {
+      res += config[i];
+    }
+  }
+
+  return res;
 }

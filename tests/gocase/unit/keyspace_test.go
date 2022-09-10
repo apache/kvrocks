@@ -126,16 +126,21 @@ func TestKeyspace(t *testing.T) {
 		assert.Nil(t, rdb.Set(ctx, "foo", "x", 0).Err())
 		assert.Nil(t, rdb.Set(ctx, "bar", "y", 0).Err())
 
-		fooSeen := false
-		barSeen := false
+		fooSeen := 0
+		barSeen := 0
 		for i := 0; i < 1000; i++ {
-			if rdb.RandomKey(ctx).Val() == "foo" {
-				fooSeen = true
-			} else if rdb.RandomKey(ctx).Val() == "bar" {
-				barSeen = true
+			randomKey := rdb.RandomKey(ctx).Val()
+			if randomKey == "foo" {
+				fooSeen = 1
+			} else if randomKey == "bar" {
+				barSeen = 1
 			}
+			if fooSeen == 1 || barSeen == 1 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		assert.True(t, fooSeen || barSeen)
+		assert.Greater(t, fooSeen+barSeen, 0)
 	})
 
 	t.Run("RANDOMKEY against empty DB", func(t *testing.T) {

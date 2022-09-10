@@ -19,6 +19,10 @@ include_guard()
 
 include(cmake/utils.cmake)
 
+if((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
+  message(FATAL_ERROR "The CMake option `CMAKE_OSX_DEPLOYMENT_TARGET` need to be specified, e.g. `-DCMAKE_OSX_DEPLOYMENT_TARGET=10.3`")
+endif()
+
 FetchContent_DeclareGitHubWithMirror(luajit
   KvrocksLabs/LuaJIT b80ea0e44bd259646d988324619612f645e4b637
   MD5=f9566c424fb57b226066e3a39a10ec8d

@@ -156,6 +156,7 @@ func TestKeyspace(t *testing.T) {
 		rdb.FlushDB(ctx)
 		require.NoError(t, rdb.Set(ctx, "dlskeriewrioeuwqoirueioqwrueoqwrueqw", "test", 0).Err())
 		require.Equal(t, []string{"dlskeriewrioeuwqoirueioqwrueoqwrueqw"}, rdb.Keys(ctx, "*").Val())
+		require.Equal(t, []string{"dlskeriewrioeuwqoirueioqwrueoqwrueqw"}, rdb.Keys(ctx, "*").Val())
 	})
 
 	t.Run("KEYS with multi namespace", func(t *testing.T) {

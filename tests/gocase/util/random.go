@@ -43,18 +43,26 @@ func randomSignedInt(max int) int32 {
 	return i
 }
 
-func RandString(min, max int, typ string) string {
+type RandStringType string
+
+const (
+	Alpha  RandStringType = "alpha"
+	Binary RandStringType = "binary"
+	Compr  RandStringType = "compr"
+)
+
+func RandString(min, max int, typ RandStringType) string {
 	length := min + int(rand.Float64()*float64(max-min+1))
 
 	var minVal, maxVal int
 	var sb strings.Builder
 
 	switch typ {
-	case "binary":
+	case Binary:
 		minVal, maxVal = 0, 255
-	case "alpha":
+	case Alpha:
 		minVal, maxVal = 48, 122
-	case "compr":
+	case Compr:
 		minVal, maxVal = 48, 52
 	}
 	for ; length > 0; length-- {
@@ -89,13 +97,13 @@ func RandomValue() string {
 		func() string {
 			return RandPath(
 				func() string {
-					return RandString(0, 256, "alpha")
+					return RandString(0, 256, Alpha)
 				},
 				func() string {
-					return RandString(0, 256, "compr")
+					return RandString(0, 256, Compr)
 				},
 				func() string {
-					return RandString(0, 256, "binary")
+					return RandString(0, 256, Binary)
 				},
 			)
 		},

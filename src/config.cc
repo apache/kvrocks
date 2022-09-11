@@ -510,8 +510,9 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
   auto parsed = ParseConfigLine(input);
   if (!parsed) return parsed.ToStatus();
 
-  auto kv = *parsed;
+  auto kv = std::move(*parsed);
 
+  if (kv.empty()) return Status::OK();
   if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
   if (kv[1] == "") return Status::OK();
 
@@ -667,7 +668,7 @@ Status Config::Rewrite() {
         lines.emplace_back(raw_line);
         continue;
       }
-      auto kv = *parsed;
+      auto kv = std::move(*parsed);
       if (Util::HasPrefix(kv[0], namespacePrefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;

@@ -22,6 +22,7 @@ package util
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 )
 
 func RandPath[T any](funcs ...func() T) T {
@@ -40,6 +41,27 @@ func randomSignedInt(max int) int32 {
 		return -i
 	}
 	return i
+}
+
+func RandString(min, max int, typ string) string {
+	len := min + int(rand.Float64()*float64(max-min+1))
+	minVal, maxVal := 0, 0
+
+	var sb strings.Builder
+
+	switch typ {
+	case "binary":
+		minVal, maxVal = 0, 255
+	case "alpha":
+		minVal, maxVal = 48, 122
+	case "compr":
+		minVal, maxVal = 48, 52
+	}
+	for ; len > 0; len-- {
+		s := fmt.Sprintf("%c", minVal+int(rand.Float64()*float64(maxVal-minVal+1)))
+		sb.WriteString(s)
+	}
+	return sb.String()
 }
 
 func RandomValue() string {
@@ -67,8 +89,13 @@ func RandomValue() string {
 		func() string {
 			return RandPath(
 				func() string {
-					// TODO implement random string
-					return ""
+					return RandString(0, 256, "alpha")
+				},
+				func() string {
+					return RandString(0, 256, "compr")
+				},
+				func() string {
+					return RandString(0, 256, "binary")
 				},
 			)
 		},

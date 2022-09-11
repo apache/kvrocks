@@ -213,9 +213,9 @@ func TestZipList(t *testing.T) {
 		key := "l"
 		for j := 0; j < 200; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())
-			lis := []string{}
-			length := int(rand.Int63n(400))
-			for i := 0; i < int(length); i++ {
+			var lis []string{}
+			l := int(rand.Int63n(400))
+			for i := 0; i < l; i++ {
 				rv := util.RandomValue()
 				util.RandPathNoResult(
 					func() {

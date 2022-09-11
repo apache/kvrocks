@@ -513,6 +513,11 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
   auto kv = std::move(*parsed);
 
   if (kv.empty()) return Status::OK();
+  if (kv[0] == "rename-command" && kv.size() == 3) {
+    kv[1] = kv[1] + " " + kv[2];
+    kv.resize(2);
+  }
+
   if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
   if (kv[1] == "") return Status::OK();
 

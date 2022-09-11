@@ -27,5 +27,5 @@ import (
 
 func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interface{}) {
 	require.Error(t, err, msgAndArgs)
-	require.Regexp(t, rx, err.Error())
+	require.Regexp(t, rx, err.Error(), msgAndArgs)
 }

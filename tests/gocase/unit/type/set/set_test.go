@@ -391,12 +391,12 @@ func TestSet(t *testing.T) {
 		for j := 0; j < 100; j++ {
 			s := make(map[string]bool)
 			var args []string
-			num_sets := util.RandomInt(10) + 1
-			for i := 0; i < int(num_sets); i++ {
-				num_elements := util.RandomInt(100)
+			numSets := util.RandomInt(10) + 1
+			for i := 0; i < int(numSets); i++ {
+				numElements := util.RandomInt(100)
 				require.NoError(t, rdb.Del(ctx, "set_"+strconv.Itoa(i)).Err())
 				args = append(args, "set_"+strconv.Itoa(i))
-				for num_elements > 0 {
+				for numElements > 0 {
 					ele := util.RandomValue()
 					require.NoError(t, rdb.SAdd(ctx, "set_"+strconv.Itoa(i), ele).Err())
 					if i == 0 {
@@ -404,7 +404,7 @@ func TestSet(t *testing.T) {
 					} else {
 						delete(s, ele)
 					}
-					num_elements -= 1
+					numElements -= 1
 				}
 			}
 			cmd := rdb.SDiff(ctx, args...)
@@ -709,8 +709,8 @@ func TestSet(t *testing.T) {
 		for j := 0; j < 20; j++ {
 			s := make(map[string]bool)
 			require.NoError(t, rdb.Del(ctx, "s").Err())
-			op_num := util.RandomInt(1024)
-			for i := 0; i < int(op_num); i++ {
+			opNum := util.RandomInt(1024)
+			for i := 0; i < int(opNum); i++ {
 				data := util.RandomValue()
 				s[data] = true
 				require.NoError(t, rdb.SAdd(ctx, "s", data).Err())
@@ -726,8 +726,8 @@ func TestSet(t *testing.T) {
 			sort.Strings(expect)
 			require.EqualValues(t, expect, cmd.Val())
 
-			op_num = int64(len(expect))
-			for i := 0; i < int(op_num); i++ {
+			opNum = int64(len(expect))
+			for i := 0; i < int(opNum); i++ {
 				cmd := rdb.SPop(ctx, "s")
 				require.NoError(t, cmd.Err())
 				if _, ok := s[cmd.Val()]; !ok {

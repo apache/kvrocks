@@ -48,7 +48,6 @@ set ::all_tests {
     unit/slowlog
     unit/pubsub
     unit/introspection
-    unit/limits
     unit/geo
     unit/config
     unit/scripting

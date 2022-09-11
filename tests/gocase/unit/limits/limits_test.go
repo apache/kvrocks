@@ -17,15 +17,44 @@
  * under the License.
  */
 
-package util
+package limits
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
 
-func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interface{}) {
-	require.Error(t, err, msgAndArgs)
-	require.Regexp(t, rx, err.Error(), msgAndArgs)
+func TestNetworkLimits(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"maxclients": "10",
+	})
+	defer srv.Close()
+
+	t.Run("check if maxclients works refusing connections", func(t *testing.T) {
+		var clean []func()
+		defer func() {
+			for _, f := range clean {
+				f()
+			}
+		}()
+
+		for i := 0; i < 50; i++ {
+			c := srv.NewTCPClient()
+			clean = append(clean, func() { require.NoError(t, c.Close()) })
+			require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
+			r, err := c.ReadLine()
+			require.NoError(t, err)
+			if strings.Contains(r, "ERR") {
+				require.Regexp(t, ".*ERR max.*reached.*", r)
+				require.Contains(t, []int{9, 10}, i)
+				return
+			}
+			require.Equal(t, "+PONG", r)
+		}
+
+		require.Fail(t, "maxclients doesn't work refusing connections")
+	})
 }

@@ -35,8 +35,6 @@ WORKDIR /kvrocks
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 COPY ./kvrocks.conf  ./conf/
-RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' ./conf/kvrocks.conf
-VOLUME /var/lib/kvrocks
+COPY docker/ /kvrocks
 
-EXPOSE 6666:6666 
-ENTRYPOINT ["./bin/kvrocks", "-c", "./conf/kvrocks.conf"]
+ENTRYPOINT ["/kvrocks/run.sh"]

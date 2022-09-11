@@ -38,7 +38,7 @@ Kvrocks has the following key features:
 * High Available, supports redis sentinel to failover when master or slave was failed
 * Cluster mode, centralized management but compatible with Redis cluster client access
 
-> Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
+> Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @ 范世丽 contribute the kvrocks logo for us.
 
 ## Who uses kvrocks 
 
@@ -102,6 +102,35 @@ $ ./build/kvrocks -c kvrocks.conf
 $ docker run -it -p 6666:6666 kvrocks/kvrocks
 ```
 
+When use docker, some configure, such as : port, masterauth password, log directory, can be set by environment variables ( see [docker/run.sh](./docker/run.sh) for details ) .
+
+For example , in your `docker-compose.yml` , you can write :
+
+```yaml
+version: '3'
+
+services:
+  kvrocks:
+    image: kvrocks/kvrocks
+    restart: always
+    environment:
+      kvrocks_masterauth: ${KVROCKS_PASSWORD}
+      kvrocks_port: ${KVROCKS_PORT}
+      kvrocks_log_dir: /log
+    volumes:
+      - ./data/kvrocks:/var/lib/kvrocks
+      - /var/log/docker/api.user.tax/kvrocks:/log
+    ports:
+      - ${KVROCKS_PORT}:${KVROCKS_PORT}
+```
+
+with a `.env` file like :
+
+```
+KVROCKS_PASSWORD=xxx
+KVROCKS_PORT=9998
+```
+
 ### Connect kvrocks service
 
 ```
@@ -127,7 +156,7 @@ $ ./unittest
   * and most other distros
 * macOS
 
-##  Namespace
+## Namespace
 
 Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc..
 
@@ -179,7 +208,7 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/s
 * NET:  Intel Corporation I350 Gigabit Network Connection
 * DISK: 2TB NVMe Intel SSD DC P4600
 
->  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
+> Benchmark Client:  multi-thread redis-benchmark(unstable branch)
 
 ### 1. Commands QPS
 

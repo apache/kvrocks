@@ -163,7 +163,6 @@ func TestZipList(t *testing.T) {
 	})
 
 	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
-		// TODO: check --accurate options for go test
 		iterations := 10
 		key := "l"
 		for j := 0; j < iterations; j++ {
@@ -212,7 +211,7 @@ func TestZipList(t *testing.T) {
 		key := "l"
 		for j := 0; j < 200; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())
-			var lis []string{}
+			var lis []string
 			l := int(rand.Int63n(400))
 			for i := 0; i < l; i++ {
 				rv := util.RandomValue()

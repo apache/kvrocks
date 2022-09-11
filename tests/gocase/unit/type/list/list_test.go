@@ -209,7 +209,6 @@ func TestZipList(t *testing.T) {
 	})
 
 	t.Run("ziplist implementation: encoding stress testing", func(t *testing.T) {
-		// TODO: check --accurate options for go test
 		key := "l"
 		for j := 0; j < 200; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())

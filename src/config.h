@@ -44,6 +44,9 @@ class Storage;
 #define SUPERVISED_SYSTEMD 2
 #define SUPERVISED_UPSTART 3
 
+#define TLS_AUTH_CLIENTS_NO "no"
+#define TLS_AUTH_CLIENTS_OPTIONAL "optional"
+
 const size_t KiB = 1024L;
 const size_t MiB = 1024L * KiB;
 const size_t GiB = 1024L * MiB;
@@ -65,8 +68,21 @@ struct Config{
  public:
   Config();
   ~Config() = default;
-
   int port = 0;
+  int tls_port = 0;
+  std::string tls_cert_file;
+  std::string tls_key_file;
+  std::string tls_key_file_pass;
+  std::string tls_ca_cert_file;
+  std::string tls_ca_cert_dir;
+  std::string tls_auth_clients;
+  bool tls_prefer_server_ciphers = false;
+  std::string tls_ciphers;
+  std::string tls_ciphersuites;
+  std::string tls_protocols;
+  bool tls_session_caching = true;
+  int tls_session_cache_size = 1024 * 20;
+  int tls_session_cache_timeout = 300;
   int workers = 0;
   int timeout = 0;
   int loglevel = 0;

@@ -42,7 +42,7 @@ func TestKeyspace(t *testing.T) {
 		value := "foo"
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
-		require.Equal(t, int64(1), rdb.Del(ctx, key).Val())
+		require.EqualValues(t, 1, rdb.Del(ctx, key).Val())
 		require.Equal(t, "", rdb.Get(ctx, key).Val())
 	})
 
@@ -50,7 +50,7 @@ func TestKeyspace(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo1", "a", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "foo2", "b", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "foo3", "c", 0).Err())
-		require.Equal(t, int64(3), rdb.Del(ctx, "foo1", "foo2", "foo3").Val())
+		require.EqualValues(t, 3, rdb.Del(ctx, "foo1", "foo2", "foo3").Val())
 		require.Equal(t, []interface{}{nil, nil, nil}, rdb.MGet(ctx, "foo1", "foo2", "foo3").Val())
 	})
 
@@ -76,31 +76,31 @@ func TestKeyspace(t *testing.T) {
 	t.Run("DBSize", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "dbsize", "scan").Err())
 		time.Sleep(100 * time.Millisecond)
-		require.Equal(t, int64(6), rdb.Do(ctx, "dbsize").Val())
+		require.EqualValues(t, 6, rdb.Do(ctx, "dbsize").Val())
 	})
 
 	t.Run("DEL all keys", func(t *testing.T) {
 		vals := rdb.Keys(ctx, "*").Val()
-		require.Equal(t, int64(len(vals)), rdb.Del(ctx, vals...).Val())
+		require.EqualValues(t, len(vals), rdb.Del(ctx, vals...).Val())
 		require.NoError(t, rdb.Do(ctx, "dbsize", "scan").Err())
 		time.Sleep(100 * time.Millisecond)
-		require.Equal(t, int64(0), rdb.Do(ctx, "dbsize").Val())
+		require.EqualValues(t, 0, rdb.Do(ctx, "dbsize").Val())
 	})
 
 	t.Run("EXISTS", func(t *testing.T) {
 		newKey := "newkey"
 		require.NoError(t, rdb.Set(ctx, newKey, "test", 0).Err())
-		require.Equal(t, int64(1), rdb.Exists(ctx, newKey).Val())
-		require.Equal(t, int64(1), rdb.Del(ctx, newKey).Val())
-		require.Equal(t, int64(0), rdb.Exists(ctx, newKey).Val())
+		require.EqualValues(t, 1, rdb.Exists(ctx, newKey).Val())
+		require.EqualValues(t, 1, rdb.Del(ctx, newKey).Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, newKey).Val())
 	})
 
 	t.Run("Zero length value in key. SET/GET/EXISTS", func(t *testing.T) {
 		emptyKey := "emptykey"
 		require.NoError(t, rdb.Set(ctx, emptyKey, nil, 0).Err())
-		require.Equal(t, int64(1), rdb.Exists(ctx, emptyKey).Val())
-		require.Equal(t, int64(1), rdb.Del(ctx, emptyKey).Val())
-		require.Equal(t, int64(0), rdb.Exists(ctx, emptyKey).Val())
+		require.EqualValues(t, 1, rdb.Exists(ctx, emptyKey).Val())
+		require.EqualValues(t, 1, rdb.Del(ctx, emptyKey).Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, emptyKey).Val())
 	})
 
 	t.Run("Commands pipelining", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestKeyspace(t *testing.T) {
 	t.Run("RANDOMKEY regression 1", func(t *testing.T) {
 		rdb.FlushDB(ctx)
 		require.NoError(t, rdb.Set(ctx, "x", 10, 0).Err())
-		require.Equal(t, int64(1), rdb.Del(ctx, "x").Val())
+		require.EqualValues(t, 1, rdb.Del(ctx, "x").Val())
 		require.Equal(t, "", rdb.RandomKey(ctx).Val())
 	})
 

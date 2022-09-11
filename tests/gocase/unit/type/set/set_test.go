@@ -386,28 +386,38 @@ func TestSet(t *testing.T) {
 		sort.Strings(cmd.Val())
 		require.EqualValues(t, []string{}, cmd.Val())
 	})
-	// TODO: waiting random.go merge
-	// t.Run("SDIFF fuzzing", func(t *testing.T) {
-	// 	rand.Seed(0)
-	// 	for j := 0; j < 100; j++ {
-	// 		var args []string
-	// 		var s []string
-	// 		var num_sets int = int(rand.Int31()%10 + 1)
-	// 		for i := 0; i < num_sets; i++ {
-	// 			var num_elements int = int(rand.Int31() % 100)
-	// 			require.NoError(t, rdb.Del(ctx, "set_"+strconv.Itoa(i)).Err())
-	// 			args = append(args, "set_"+strconv.Itoa(i))
-	// 			for num_elements > 0 {
-	// 				var ele int = rand.Int()
-	// 				require.NoError(t, rdb.SAdd(ctx, "set_"+strconv.Itoa(i), ele).Err())
-	// 				if i == 0 {
 
-	// 				}
-	// 				num_elements -= 1
-	// 			}
-	// 		}
-	// 	}
-	// })
+	t.Run("SDIFF fuzzing", func(t *testing.T) {
+		for j := 0; j < 100; j++ {
+			s := make(map[string]bool)
+			var args []string
+			num_sets := util.RandomInt(10) + 1
+			for i := 0; i < int(num_sets); i++ {
+				num_elements := util.RandomInt(100)
+				require.NoError(t, rdb.Del(ctx, "set_"+strconv.Itoa(i)).Err())
+				args = append(args, "set_"+strconv.Itoa(i))
+				for num_elements > 0 {
+					ele := util.RandomValue()
+					require.NoError(t, rdb.SAdd(ctx, "set_"+strconv.Itoa(i), ele).Err())
+					if i == 0 {
+						s[ele] = true
+					} else {
+						delete(s, ele)
+					}
+					num_elements -= 1
+				}
+			}
+			cmd := rdb.SDiff(ctx, args...)
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			expect := make([]string, 0, 12)
+			for key := range s {
+				expect = append(expect, key)
+			}
+			sort.Strings(expect)
+			require.EqualValues(t, expect, cmd.Val())
+		}
+	})
 
 	t.Run("SINTER against non-set should throw error", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "x", 0).Err())
@@ -694,41 +704,39 @@ func TestSet(t *testing.T) {
 		sort.Strings(cmd.Val())
 		require.EqualValues(t, []string{"a", "b", "c"}, cmd.Val())
 	})
-	// TODO: waiting random.go merge
-	// tags {slow} {
-	//     test {intsets implementation stress testing} {
-	//         for {set j 0} {$j < 20} {incr j} {
-	//             unset -nocomplain s
-	//             array set s {}
-	//             r del s
-	//             set len [randomInt 1024]
-	//             for {set i 0} {$i < $len} {incr i} {
-	//                 randpath {
-	//                     set data [randomInt 65536]
-	//                 } {
-	//                     set data [randomInt 4294967296]
-	//                 } {
-	//                     set data [randomInt 18446744073709551616]
-	//                 }
-	//                 set s($data) {}
-	//                 r sadd s $data
-	//             }
-	//             assert_equal [lsort [r smembers s]] [lsort [array names s]]
-	//             set len [array size s]
-	//             for {set i 0} {$i < $len} {incr i} {
-	//                 set e [r spop s]
-	//                 if {![info exists s($e)]} {
-	//                     puts "Can't find '$e' on local array"
-	//                     puts "Local array: [lsort [r smembers s]]"
-	//                     puts "Remote array: [lsort [array names s]]"
-	//                     error "exception"
-	//                 }
-	//                 array unset s $e
-	//             }
-	//             assert_equal [r scard s] 0
-	//             assert_equal [array size s] 0
-	//         }
-	//     }
-	// }
 
+	t.Run("intsets implementation stress testing", func(t *testing.T) {
+		for j := 0; j < 20; j++ {
+			s := make(map[string]bool)
+			require.NoError(t, rdb.Del(ctx, "s").Err())
+			op_num := util.RandomInt(1024)
+			for i := 0; i < int(op_num); i++ {
+				data := util.RandomValue()
+				s[data] = true
+				require.NoError(t, rdb.SAdd(ctx, "s", data).Err())
+			}
+			cmd := rdb.SMembers(ctx, "s")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+
+			expect := make([]string, 0, 1025)
+			for key := range s {
+				expect = append(expect, key)
+			}
+			sort.Strings(expect)
+			require.EqualValues(t, expect, cmd.Val())
+
+			op_num = int64(len(expect))
+			for i := 0; i < int(op_num); i++ {
+				cmd := rdb.SPop(ctx, "s")
+				require.NoError(t, cmd.Err())
+				if _, ok := s[cmd.Val()]; !ok {
+					t.FailNow()
+				}
+				delete(s, cmd.Val())
+			}
+			require.EqualValues(t, 0, rdb.SCard(ctx, "s").Val())
+			require.EqualValues(t, 0, len(s))
+		}
+	})
 }

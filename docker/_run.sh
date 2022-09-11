@@ -3,7 +3,7 @@ set -ex
 
 cd /kvrocks
 
-if [ -n $1 ]; then
+if [ -n "$1" ]; then
 args=$@
 else
 args="-c ./conf/kvrocks.conf"

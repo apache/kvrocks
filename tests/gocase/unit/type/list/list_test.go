@@ -163,7 +163,7 @@ func TestZipList(t *testing.T) {
 	})
 
 	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
-		iterations := 10
+		iterations := 100
 		key := "l"
 		for j := 0; j < iterations; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())

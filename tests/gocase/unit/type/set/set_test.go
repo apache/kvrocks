@@ -1,0 +1,740 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package set
+
+import (
+	"context"
+	"sort"
+	"strconv"
+	"testing"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
+	"github.com/stretchr/testify/require"
+)
+
+func create_set(t *testing.T, rdb *redis.Client, ctx context.Context, key string, entries []interface{}) {
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	for _, entry := range entries {
+		switch entry.(type) {
+		case string:
+			require.NoError(t, rdb.SAdd(ctx, key, entry.(string)).Err())
+		case int:
+			require.NoError(t, rdb.SAdd(ctx, key, entry.(int)).Err())
+		}
+	}
+}
+
+func TestSet(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("SADD, SCARD, SISMEMBER, SMISMEMBER, SMEMBERS basics - regular set", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"foo"})
+		require.EqualValues(t, 1, rdb.SAdd(ctx, "myset", "bar").Val())
+		require.EqualValues(t, 0, rdb.SAdd(ctx, "myset", "bar").Val())
+		require.EqualValues(t, 2, rdb.SCard(ctx, "myset").Val())
+		require.EqualValues(t, true, rdb.SIsMember(ctx, "myset", "foo").Val())
+		require.EqualValues(t, true, rdb.SIsMember(ctx, "myset", "bar").Val())
+		require.EqualValues(t, false, rdb.SIsMember(ctx, "myset", "bla").Val())
+		require.EqualValues(t, []bool{true}, rdb.SMIsMember(ctx, "myset", "foo").Val())
+		require.EqualValues(t, []bool{true, true}, rdb.SMIsMember(ctx, "myset", "foo", "bar").Val())
+		require.EqualValues(t, []bool{true, false}, rdb.SMIsMember(ctx, "myset", "foo", "bla").Val())
+		require.EqualValues(t, []bool{false, true}, rdb.SMIsMember(ctx, "myset", "bla", "foo").Val())
+		require.EqualValues(t, []bool{false}, rdb.SMIsMember(ctx, "myset", "bla").Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"bar", "foo"}, cmd.Val())
+	})
+
+	t.Run("SADD, SCARD, SISMEMBER, SMISMEMBER, SMEMBERS basics - intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{17})
+		require.EqualValues(t, 1, rdb.SAdd(ctx, "myset", 16).Val())
+		require.EqualValues(t, 0, rdb.SAdd(ctx, "myset", 16).Val())
+		require.EqualValues(t, 2, rdb.SCard(ctx, "myset").Val())
+		require.EqualValues(t, true, rdb.SIsMember(ctx, "myset", 16).Val())
+		require.EqualValues(t, true, rdb.SIsMember(ctx, "myset", 17).Val())
+		require.EqualValues(t, false, rdb.SIsMember(ctx, "myset", 18).Val())
+		require.EqualValues(t, []bool{true}, rdb.SMIsMember(ctx, "myset", 16).Val())
+		require.EqualValues(t, []bool{true, true}, rdb.SMIsMember(ctx, "myset", 16, 17).Val())
+		require.EqualValues(t, []bool{true, false}, rdb.SMIsMember(ctx, "myset", 16, 18).Val())
+		require.EqualValues(t, []bool{false, true}, rdb.SMIsMember(ctx, "myset", 18, 16).Val())
+		require.EqualValues(t, []bool{false}, rdb.SMIsMember(ctx, "myset", 18).Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"16", "17"}, cmd.Val())
+	})
+
+	t.Run("SMISMEMBER against non set", func(t *testing.T) {
+		require.ErrorContains(t, rdb.LPush(ctx, "myset", "foo").Err(), "WRONGTYPE")
+	})
+
+	t.Run("SMISMEMBER non existing key", func(t *testing.T) {
+		require.EqualValues(t, []bool{false}, rdb.SMIsMember(ctx, "myset1", "foo").Val())
+		require.EqualValues(t, []bool{false, false}, rdb.SMIsMember(ctx, "myset1", "foo", "bar").Val())
+	})
+
+	t.Run("SMISMEMBER requires one or more members", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zmscoretest").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zmscoretest", redis.Z{Score: 10, Member: "x"}).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zmscoretest", redis.Z{Score: 20, Member: "y"}).Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "smismember", "zmscoretest").Err(), ".*ERR.*wrong.*number.*arg.*")
+	})
+
+	t.Run("SADD against non set", func(t *testing.T) {
+		require.NoError(t, rdb.LPush(ctx, "mylist", "foo").Err())
+		util.ErrorRegexp(t, rdb.SAdd(ctx, "mylist", "bar").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("SADD a non-integer against an intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3})
+		require.EqualValues(t, 1, rdb.SAdd(ctx, "myset", "a").Val())
+	})
+
+	t.Run("SADD an integer larger than 64 bits", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"213244124402402314402033402"})
+		require.EqualValues(t, true, rdb.SIsMember(ctx, "myset", "213244124402402314402033402").Val())
+		require.EqualValues(t, []bool{true}, rdb.SMIsMember(ctx, "myset", "213244124402402314402033402").Val())
+	})
+
+	t.Run("SADD overflows the maximum allowed integers in an intset", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "myset").Err())
+		for i := 0; i < 512; i++ {
+			require.NoError(t, rdb.SAdd(ctx, "myset", i).Err())
+		}
+		require.EqualValues(t, 1, rdb.SAdd(ctx, "myset", 512).Val())
+	})
+
+	t.Run("Variadic SADD", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "myset").Err())
+		require.EqualValues(t, 3, rdb.SAdd(ctx, "myset", "a", "b", "c").Val())
+		require.EqualValues(t, 2, rdb.SAdd(ctx, "myset", "A", "a", "b", "c", "B").Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"A", "B", "a", "b", "c"}, cmd.Val())
+	})
+
+	t.Run("SREM basics - regular set", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"foo", "bar", "ciao"})
+		require.EqualValues(t, 0, rdb.SRem(ctx, "myset", "qux").Val())
+		require.EqualValues(t, 1, rdb.SRem(ctx, "myset", "foo").Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"bar", "ciao"}, cmd.Val())
+	})
+
+	t.Run("SREM basics - intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{3, 4, 5})
+		require.EqualValues(t, 0, rdb.SRem(ctx, "myset", 6).Val())
+		require.EqualValues(t, 1, rdb.SRem(ctx, "myset", 4).Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"3", "5"}, cmd.Val())
+	})
+
+	t.Run("SREM with multiple arguments", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"a", "b", "c", "d"})
+		require.EqualValues(t, 0, rdb.SRem(ctx, "myset", "k", "k", "k").Val())
+		require.EqualValues(t, 2, rdb.SRem(ctx, "myset", "b", "d", "x", "y").Val())
+		cmd := rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a", "c"}, cmd.Val())
+	})
+
+	t.Run("SREM variadic version with more args needed to destroy the key", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3})
+		require.EqualValues(t, 3, rdb.SRem(ctx, "myset", 1, 2, 3, 4, 5, 6, 7, 8).Val())
+	})
+
+	t.Run("SREM variadic version with more args needed to destroy the key", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3})
+		require.EqualValues(t, 3, rdb.SRem(ctx, "myset", 1, 2, 3, 4, 5, 6, 7, 8).Val())
+	})
+
+	for _, dstype := range [2]string{"hashtable", "intset"} {
+		for i := 1; i <= 5; i++ {
+			require.NoError(t, rdb.Del(ctx, "set"+strconv.Itoa(i)).Err())
+		}
+		for i := 0; i < 200; i++ {
+			require.NoError(t, rdb.SAdd(ctx, "set1", i).Err())
+			require.NoError(t, rdb.SAdd(ctx, "set2", i+195).Err())
+		}
+		for _, i := range []int{199, 195, 100, 2000} {
+			require.NoError(t, rdb.SAdd(ctx, "set3", i).Err())
+		}
+		for i := 5; i < 200; i++ {
+			require.NoError(t, rdb.SAdd(ctx, "set4", i).Err())
+		}
+		var larger interface{}
+		larger = 200
+		require.NoError(t, rdb.SAdd(ctx, "set5", 0).Err())
+		if dstype == "hashtable" {
+			larger = "foo"
+		}
+		for i := 1; i <= 5; i++ {
+			switch larger.(type) {
+			case int:
+				require.NoError(t, rdb.SAdd(ctx, "set"+strconv.Itoa(i), larger.(int)).Err())
+			case string:
+				require.NoError(t, rdb.SAdd(ctx, "set"+strconv.Itoa(i), larger.(string)).Err())
+			}
+		}
+		t.Run("SINTER with two sets - "+dstype, func(t *testing.T) {
+			cmd := rdb.SInter(ctx, "set1", "set2")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			switch larger.(type) {
+			case int:
+				require.EqualValues(t, []string{"195", "196", "197", "198", "199", strconv.Itoa(larger.(int))}, cmd.Val())
+			case string:
+				require.EqualValues(t, []string{"195", "196", "197", "198", "199", larger.(string)}, cmd.Val())
+			}
+		})
+
+		t.Run("SINTERSTORE with two sets - "+dstype, func(t *testing.T) {
+			require.NoError(t, rdb.SInterStore(ctx, "setres", "set1", "set2").Err())
+			cmd := rdb.SMembers(ctx, "setres")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+
+			switch larger.(type) {
+			case int:
+				require.EqualValues(t, []string{"195", "196", "197", "198", "199", strconv.Itoa(larger.(int))}, cmd.Val())
+			case string:
+				require.EqualValues(t, []string{"195", "196", "197", "198", "199", larger.(string)}, cmd.Val())
+			}
+		})
+
+		t.Run("SUNION with two sets - "+dstype, func(t *testing.T) {
+			set1 := rdb.SMembers(ctx, "set1")
+			require.NoError(t, set1.Err())
+			set2 := rdb.SMembers(ctx, "set2")
+			require.NoError(t, set2.Err())
+			var expect []string
+			var vis map[string]bool = make(map[string]bool)
+			for _, i := range set1.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+			for _, i := range set2.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+
+			sort.Strings(expect)
+			cmd := rdb.SUnion(ctx, "set1", "set2")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, expect, cmd.Val())
+		})
+
+		t.Run("SUNIONSTORE with two sets - "+dstype, func(t *testing.T) {
+			set1 := rdb.SMembers(ctx, "set1")
+			require.NoError(t, set1.Err())
+			set2 := rdb.SMembers(ctx, "set2")
+			require.NoError(t, set2.Err())
+			var expect []string
+			var vis map[string]bool = make(map[string]bool)
+			for _, i := range set1.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+			for _, i := range set2.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+			sort.Strings(expect)
+			require.NoError(t, rdb.SUnionStore(ctx, "setres", "set1", "set2").Err())
+			cmd := rdb.SMembers(ctx, "setres")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, expect, cmd.Val())
+		})
+
+		t.Run("SINTER against three sets - "+dstype, func(t *testing.T) {
+			cmd := rdb.SInter(ctx, "set1", "set2", "set3")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			switch larger.(type) {
+			case int:
+				require.EqualValues(t, []string{"195", "199", strconv.Itoa(larger.(int))}, cmd.Val())
+			case string:
+				require.EqualValues(t, []string{"195", "199", larger.(string)}, cmd.Val())
+			}
+		})
+
+		t.Run("SINTERSTORE with three sets - "+dstype, func(t *testing.T) {
+			require.NoError(t, rdb.SInterStore(ctx, "setres", "set1", "set2", "set3").Err())
+			cmd := rdb.SMembers(ctx, "setres")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			switch larger.(type) {
+			case int:
+				require.EqualValues(t, []string{"195", "199", strconv.Itoa(larger.(int))}, cmd.Val())
+			case string:
+				require.EqualValues(t, []string{"195", "199", larger.(string)}, cmd.Val())
+			}
+		})
+
+		t.Run("SUNION with non existing keys - "+dstype, func(t *testing.T) {
+			set1 := rdb.SMembers(ctx, "set1")
+			require.NoError(t, set1.Err())
+			set2 := rdb.SMembers(ctx, "set2")
+			require.NoError(t, set2.Err())
+			var expect []string
+			var vis map[string]bool = make(map[string]bool)
+			for _, i := range set1.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+			for _, i := range set2.Val() {
+				_, ok := vis[i]
+				if ok {
+					continue
+				}
+				vis[i] = true
+				expect = append(expect, i)
+			}
+			sort.Strings(expect)
+
+			cmd := rdb.SUnion(ctx, "nokey1", "set1", "set2", "nokey2")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, expect, cmd.Val())
+		})
+
+		t.Run("SDIFF with two sets - "+dstype, func(t *testing.T) {
+			cmd := rdb.SDiff(ctx, "set1", "set4")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, []string{"0", "1", "2", "3", "4"}, cmd.Val())
+		})
+
+		t.Run("SDIFF with three sets - "+dstype, func(t *testing.T) {
+			cmd := rdb.SDiff(ctx, "set1", "set4", "set5")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, []string{"1", "2", "3", "4"}, cmd.Val())
+		})
+
+		t.Run("SDIFFSTORE with three sets - "+dstype, func(t *testing.T) {
+			require.NoError(t, rdb.SDiffStore(ctx, "setres", "set1", "set4", "set5").Err())
+			cmd := rdb.SMembers(ctx, "setres")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, []string{"1", "2", "3", "4"}, cmd.Val())
+		})
+	}
+
+	t.Run("SDIFF with first set empty", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set1", "set2", "set3").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set2", 1, 2, 3, 4).Err())
+		require.NoError(t, rdb.SAdd(ctx, "set3", "a", "b", "c", "d").Err())
+		cmd := rdb.SDiff(ctx, "set1", "set2", "set3")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{}, cmd.Val())
+	})
+
+	t.Run("SDIFF with same set two times", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set1").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set1", "a", "b", "c", 1, 2, 3, 4, 5, 6).Err())
+		cmd := rdb.SDiff(ctx, "set1", "set1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{}, cmd.Val())
+	})
+	// TODO: waiting random.go merge
+	// t.Run("SDIFF fuzzing", func(t *testing.T) {
+	// 	rand.Seed(0)
+	// 	for j := 0; j < 100; j++ {
+	// 		var args []string
+	// 		var s []string
+	// 		var num_sets int = int(rand.Int31()%10 + 1)
+	// 		for i := 0; i < num_sets; i++ {
+	// 			var num_elements int = int(rand.Int31() % 100)
+	// 			require.NoError(t, rdb.Del(ctx, "set_"+strconv.Itoa(i)).Err())
+	// 			args = append(args, "set_"+strconv.Itoa(i))
+	// 			for num_elements > 0 {
+	// 				var ele int = rand.Int()
+	// 				require.NoError(t, rdb.SAdd(ctx, "set_"+strconv.Itoa(i), ele).Err())
+	// 				if i == 0 {
+
+	// 				}
+	// 				num_elements -= 1
+	// 			}
+	// 		}
+	// 	}
+	// })
+
+	t.Run("SINTER against non-set should throw error", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "key1", "x", 0).Err())
+		util.ErrorRegexp(t, rdb.SInter(ctx, "key1", "noset").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("SUNION against non-set should throw error", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "key1", "x", 0).Err())
+		util.ErrorRegexp(t, rdb.SUnion(ctx, "key1", "noset").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("SINTER should handle non existing key as empty", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set1", "set2", "set3").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set1", "a", "b", "c").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set2", "b", "c", "d").Err())
+		require.EqualValues(t, []string{}, rdb.SInter(ctx, "set1", "set2", "key3").Val())
+	})
+
+	t.Run("SINTER with same integer elements but different encoding", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set1", "set2").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set1", 1, 2, 3).Err())
+		require.NoError(t, rdb.SAdd(ctx, "set2", 1, 2, 3, "a").Err())
+		require.NoError(t, rdb.SRem(ctx, "set2", "a").Err())
+		require.EqualValues(t, []string{"1", "2", "3"}, rdb.SInter(ctx, "set1", "set2").Val())
+	})
+
+	t.Run("SINTERSTORE against non existing keys should delete dstkey", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "setres", "xxx", 0).Err())
+		require.EqualValues(t, 0, rdb.SInterStore(ctx, "setres", "foo111", "bar222").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "setres").Val())
+	})
+
+	t.Run("SUNIONSTORE against non existing keys should delete dstkey", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "setres", "xxx", 0).Err())
+		require.EqualValues(t, 0, rdb.SUnionStore(ctx, "setres", "foo111", "bar222").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "setres").Val())
+	})
+
+	t.Run("SPOP basics - hashtable", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"a", "b", "c"})
+		var array []string
+		for i := 0; i < 3; i++ {
+			cmd := rdb.SPop(ctx, "myset")
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val())
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"a", "b", "c"}, array)
+	})
+
+	t.Run("SPOP with <count>=1 - hashtable", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"a", "b", "c"})
+		var array []string
+		for i := 0; i < 3; i++ {
+			cmd := rdb.SPopN(ctx, "myset", 1)
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val()...)
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"a", "b", "c"}, array)
+		require.EqualValues(t, 0, rdb.SCard(ctx, "myset").Val())
+	})
+
+	t.Run("SPOP basics - intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3})
+		var array []string
+		for i := 0; i < 3; i++ {
+			cmd := rdb.SPop(ctx, "myset")
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val())
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"1", "2", "3"}, array)
+	})
+
+	t.Run("SPOP with <count>=1 - intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3})
+		var array []string
+		for i := 0; i < 3; i++ {
+			cmd := rdb.SPopN(ctx, "myset", 1)
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val()...)
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"1", "2", "3"}, array)
+		require.EqualValues(t, 0, rdb.SCard(ctx, "myset").Val())
+	})
+
+	t.Run("SPOP with <count> hashtable", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"})
+		var array []string
+		var popNum []int64 = []int64{11, 9, 0, 4, 1, 0, 1, 9}
+		for _, i := range popNum {
+			cmd := rdb.SPopN(ctx, "myset", i)
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val()...)
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, array)
+		require.EqualValues(t, 0, rdb.SCard(ctx, "myset").Val())
+	})
+
+	t.Run("SPOP with <count> intset", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2, 20, 21, 22, 23, 24, 25, 26, 3, 4, 5, 6, 7, 8, 9})
+		var array []string
+		var popNum []int64 = []int64{11, 9, 0, 4, 1, 0, 1, 9}
+		for _, i := range popNum {
+			cmd := rdb.SPopN(ctx, "myset", i)
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val()...)
+		}
+		sort.Strings(array)
+		require.EqualValues(t, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "2", "20", "21", "22", "23", "24", "25", "26", "3", "4", "5", "6", "7", "8", "9"}, array)
+		require.EqualValues(t, 0, rdb.SCard(ctx, "myset").Val())
+	})
+
+	t.Run("SPOP using integers, testing Knuth's and Floyd's algorithm", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		var array []string
+		var popNum []int64 = []int64{1, 2, 3, 4, 10, 10}
+		var nowsize int = 20
+		for _, i := range popNum {
+			require.EqualValues(t, nowsize, rdb.SCard(ctx, "myset").Val())
+			cmd := rdb.SPopN(ctx, "myset", i)
+			require.NoError(t, cmd.Err())
+			array = append(array, cmd.Val()...)
+			nowsize -= len(cmd.Val())
+		}
+		require.EqualValues(t, nowsize, rdb.SCard(ctx, "myset").Val())
+	})
+
+	t.Run("SPOP using integers with Knuth's algorithm", func(t *testing.T) {
+		require.EqualValues(t, []string{}, rdb.SPopN(ctx, "nonexisting_key", 100).Val())
+	})
+
+	t.Run("SPOP new implementation: code path #1", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		cmd := rdb.SPopN(ctx, "myset", 30)
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "2", "20", "3", "4", "5", "6", "7", "8", "9"}, cmd.Val())
+	})
+
+	t.Run("SPOP new implementation: code path #2", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		cmd := rdb.SPopN(ctx, "myset", 2)
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, len(cmd.Val()))
+		require.EqualValues(t, 18, rdb.SCard(ctx, "myset").Val())
+		var array []string = cmd.Val()
+		cmd = rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		array = append(array, cmd.Val()...)
+		sort.Strings(array)
+		require.EqualValues(t, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "2", "20", "3", "4", "5", "6", "7", "8", "9"}, array)
+	})
+
+	t.Run("SPOP new implementation: code path #3", func(t *testing.T) {
+		create_set(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		cmd := rdb.SPopN(ctx, "myset", 18)
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 18, len(cmd.Val()))
+		require.EqualValues(t, 2, rdb.SCard(ctx, "myset").Val())
+		var array []string = cmd.Val()
+		cmd = rdb.SMembers(ctx, "myset")
+		require.NoError(t, cmd.Err())
+		array = append(array, cmd.Val()...)
+		sort.Strings(array)
+		require.EqualValues(t, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "2", "20", "3", "4", "5", "6", "7", "8", "9"}, array)
+	})
+
+	t.Run("SRANDMEMBER with <count> against non existing key", func(t *testing.T) {
+		require.EqualValues(t, "", rdb.SRandMember(ctx, "nonexisting_key").Val())
+	})
+
+	setup_move := func() {
+		require.NoError(t, rdb.Del(ctx, "myset3", "myset4").Err())
+		create_set(t, rdb, ctx, "myset1", []interface{}{1, "a", "b"})
+		create_set(t, rdb, ctx, "myset2", []interface{}{2, 3, 4})
+	}
+
+	t.Run("SMOVE basics - from regular set to intset", func(t *testing.T) {
+		// move a non-integer element to an intset should convert encoding
+		setup_move()
+		require.EqualValues(t, true, rdb.SMove(ctx, "myset1", "myset2", "a").Val())
+		cmd := rdb.SMembers(ctx, "myset1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "b"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"2", "3", "4", "a"}, cmd.Val())
+		setup_move()
+		// move an integer element should not convert the encoding
+		require.EqualValues(t, true, rdb.SMove(ctx, "myset1", "myset2", 1).Val())
+		cmd = rdb.SMembers(ctx, "myset1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a", "b"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "2", "3", "4"}, cmd.Val())
+		setup_move()
+	})
+
+	t.Run("SMOVE basics - from intset to regular set", func(t *testing.T) {
+		setup_move()
+		require.EqualValues(t, true, rdb.SMove(ctx, "myset2", "myset1", 2).Val())
+		cmd := rdb.SMembers(ctx, "myset1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "2", "a", "b"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"3", "4"}, cmd.Val())
+	})
+
+	t.Run("SMOVE non existing key", func(t *testing.T) {
+		setup_move()
+		require.EqualValues(t, false, rdb.SMove(ctx, "myset1", "myset2", "foo").Val())
+		require.EqualValues(t, false, rdb.SMove(ctx, "myset1", "myset1", "foo").Val())
+		cmd := rdb.SMembers(ctx, "myset1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "a", "b"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"2", "3", "4"}, cmd.Val())
+	})
+
+	t.Run("SMOVE non existing src set", func(t *testing.T) {
+		setup_move()
+		require.EqualValues(t, false, rdb.SMove(ctx, "noset", "myset2", "foo").Val())
+		cmd := rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"2", "3", "4"}, cmd.Val())
+	})
+
+	t.Run("SMOVE from regular set to non existing destination set", func(t *testing.T) {
+		setup_move()
+		require.EqualValues(t, true, rdb.SMove(ctx, "myset1", "myset3", "a").Val())
+		cmd := rdb.SMembers(ctx, "myset1")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"1", "b"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset3")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a"}, cmd.Val())
+	})
+
+	t.Run("SMOVE from intset to non existing destination set", func(t *testing.T) {
+		setup_move()
+		require.EqualValues(t, true, rdb.SMove(ctx, "myset2", "myset3", 2).Val())
+		cmd := rdb.SMembers(ctx, "myset2")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"3", "4"}, cmd.Val())
+		cmd = rdb.SMembers(ctx, "myset3")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"2"}, cmd.Val())
+	})
+
+	t.Run("SMOVE wrong src key type", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 10, 0).Err())
+		util.ErrorRegexp(t, rdb.SMove(ctx, "x", "myset2", "foo").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("SMOVE wrong dst key type", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", 10, 0).Err())
+		util.ErrorRegexp(t, rdb.SMove(ctx, "myset2", "str", "foo").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("SMOVE with identical source and destination", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set", "a", "b", "c").Err())
+		require.NoError(t, rdb.SMove(ctx, "set", "set", "b").Err())
+		cmd := rdb.SMembers(ctx, "set")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a", "b", "c"}, cmd.Val())
+	})
+	// TODO: waiting random.go merge
+	// tags {slow} {
+	//     test {intsets implementation stress testing} {
+	//         for {set j 0} {$j < 20} {incr j} {
+	//             unset -nocomplain s
+	//             array set s {}
+	//             r del s
+	//             set len [randomInt 1024]
+	//             for {set i 0} {$i < $len} {incr i} {
+	//                 randpath {
+	//                     set data [randomInt 65536]
+	//                 } {
+	//                     set data [randomInt 4294967296]
+	//                 } {
+	//                     set data [randomInt 18446744073709551616]
+	//                 }
+	//                 set s($data) {}
+	//                 r sadd s $data
+	//             }
+	//             assert_equal [lsort [r smembers s]] [lsort [array names s]]
+	//             set len [array size s]
+	//             for {set i 0} {$i < $len} {incr i} {
+	//                 set e [r spop s]
+	//                 if {![info exists s($e)]} {
+	//                     puts "Can't find '$e' on local array"
+	//                     puts "Local array: [lsort [r smembers s]]"
+	//                     puts "Remote array: [lsort [array names s]]"
+	//                     error "exception"
+	//                 }
+	//                 array unset s $e
+	//             }
+	//             assert_equal [r scard s] 0
+	//             assert_equal [array size s] 0
+	//         }
+	//     }
+	// }
+
+}

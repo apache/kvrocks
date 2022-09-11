@@ -44,7 +44,7 @@ func randomSignedInt(max int) int32 {
 }
 
 func RandString(min, max int, typ string) string {
-	len := min + int(rand.Float64()*float64(max-min+1))
+	length := min + int(rand.Float64()*float64(max-min+1))
 
 	var minVal, maxVal int
 	var sb strings.Builder
@@ -57,7 +57,7 @@ func RandString(min, max int, typ string) string {
 	case "compr":
 		minVal, maxVal = 48, 52
 	}
-	for ; len > 0; len-- {
+	for ; length > 0; length-- {
 		s := fmt.Sprintf("%c", minVal+int(rand.Float64()*float64(maxVal-minVal+1)))
 		sb.WriteString(s)
 	}

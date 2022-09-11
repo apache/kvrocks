@@ -202,8 +202,8 @@ func TestZipList(t *testing.T) {
 			}
 			require.Equal(t, int64(len(lis)), rdb.LLen(ctx, key).Val())
 
-			for i := int64(199); i >= 0; i-- {
-				require.Equal(t, lis[i], rdb.LIndex(ctx, key, i).Val())
+			for i := 199; i >= 0; i-- {
+				require.Equal(t, lis[i], rdb.LIndex(ctx, key, int64(i)).Val())
 			}
 		}
 	})

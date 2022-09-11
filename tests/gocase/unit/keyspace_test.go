@@ -73,6 +73,12 @@ func TestKeyspace(t *testing.T) {
 		require.Equal(t, []string{"foo_a", "foo_b", "foo_c", "key_x", "key_y", "key_z"}, keys)
 	})
 
+	t.Run("DBSize", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "dbsize", "scan").Err())
+		time.Sleep(100 * time.Millisecond)
+		require.Equal(t, int64(6), rdb.Do(ctx, "dbsize").Val())
+	})
+
 	t.Run("DEL all keys", func(t *testing.T) {
 		vals := rdb.Keys(ctx, "*").Val()
 		require.Equal(t, int64(len(vals)), rdb.Del(ctx, vals...).Val())
@@ -116,7 +122,7 @@ func TestKeyspace(t *testing.T) {
 	})
 
 	t.Run("Non existing command", func(t *testing.T) {
-		require.Contains(t, rdb.Do(ctx, "foobaredcommand").Err().Error(), "ERR")
+		util.ErrorRegexp(t, rdb.Do(ctx, "foobaredcommand").Err(), "ERR.*")
 	})
 
 	t.Run("RANDOMKEY", func(t *testing.T) {
@@ -124,21 +130,14 @@ func TestKeyspace(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "x", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "bar", "y", 0).Err())
 
-		fooSeen := 0
-		barSeen := 0
 		for i := 0; i < 1000; i++ {
 			randomKey := rdb.RandomKey(ctx).Val()
-			if randomKey == "foo" {
-				fooSeen = 1
-			} else if randomKey == "bar" {
-				barSeen = 1
+			switch randomKey {
+			case "foo", "bar":
+				return
 			}
-			if fooSeen == 1 || barSeen == 1 {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
 		}
-		require.Greater(t, fooSeen+barSeen, 0)
+		require.Fail(t, "RANDOMKEY never hits foo or bar")
 	})
 
 	t.Run("RANDOMKEY against empty DB", func(t *testing.T) {
@@ -153,9 +152,9 @@ func TestKeyspace(t *testing.T) {
 		require.Equal(t, "", rdb.RandomKey(ctx).Val())
 	})
 
-	t.Run("KEYS * two times with long key, Github issue #1208", func(t *testing.T) {
+	t.Run("KEYS * two times with long key - RedisGithub issue #1208", func(t *testing.T) {
 		rdb.FlushDB(ctx)
-		require.NoError(t, rdb.Set(ctx, "dlskeriewrioeuwqoirueioqwrueoqwrueqw", "teset", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "dlskeriewrioeuwqoirueioqwrueoqwrueqw", "test", 0).Err())
 		require.Equal(t, []string{"dlskeriewrioeuwqoirueioqwrueoqwrueqw"}, rdb.Keys(ctx, "*").Val())
 	})
 

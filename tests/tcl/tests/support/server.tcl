@@ -388,7 +388,8 @@ proc start_server {options {code undefined}} {
     # start every server on a different port
     set port [find_available_port $::baseport $::portcount]
     if {$::tls} {
-        dict set config "port" 0
+        set notls_port [find_available_port $::baseport $::portcount]
+        dict set config "port" $notls_port
         dict set config "tls-port" $port
         dict set config "tls-cluster" "yes"
         dict set config "tls-replication" "yes"

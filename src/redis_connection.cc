@@ -21,10 +21,14 @@
 #include <rocksdb/perf_context.h>
 #include <rocksdb/iostats_context.h>
 #include <glog/logging.h>
+#ifdef ENABLE_OPENSSL
+#include <event2/bufferevent_ssl.h>
+#endif
 
 #include "redis_connection.h"
 #include "worker.h"
 #include "server.h"
+#include "tls_util.h"
 
 namespace Redis {
 
@@ -105,7 +109,11 @@ void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   if (events & BEV_EVENT_ERROR) {
     LOG(ERROR) << "[connection] Going to remove the client: " << conn->GetAddr()
                << ", while encounter error: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
+#ifdef ENABLE_OPENSSL
+               << ", SSL Error: " << SSLError(bufferevent_get_openssl_error(bev)) // NOLINT
+#endif
+               ; // NOLINT
     conn->Close();
     return;
   }

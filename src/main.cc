@@ -289,10 +289,15 @@ int main(int argc, char* argv[]) {
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
-  if (config.binds.size() != 0 && Util::IsPortInUse(config.port)) {
-    LOG(ERROR)<< "Could not create server TCP since the specified port["
-              << config.port << "] is already in use" << std::endl;
-    exit(1);
+  if (!config.binds.empty()) {
+    int ports[] = {config.port, config.tls_port, 0};
+    for (int *port = ports; *port; ++port) {
+      if (Util::IsPortInUse(*port)) {
+        LOG(ERROR)<< "Could not create server TCP since the specified port["
+                  << *port << "] is already in use" << std::endl;
+        exit(1);
+      }
+    }
   }
   bool is_supervised = isSupervisedMode(config.supervised_mode);
   if (config.daemonize && !is_supervised) daemonize();
@@ -301,6 +306,13 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     exit(1);
   }
+
+#ifdef ENABLE_OPENSSL
+  // initialize OpenSSL
+  if (config.tls_port) {
+    InitSSL();
+  }
+#endif
 
   Engine::Storage storage(&config);
   s = storage.Open();

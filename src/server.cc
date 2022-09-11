@@ -29,6 +29,7 @@
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 
+#include <tls_util.h>
 #include "util.h"
 #include "worker.h"
 #include "version.h"
@@ -49,6 +50,16 @@ Server::Server(Engine::Storage *storage, Config *config) :
     stats_.commands_stats[iter.first].calls = 0;
     stats_.commands_stats[iter.first].latency = 0;
   }
+
+#ifdef ENABLE_OPENSSL
+  // init ssl context
+  if (config->tls_port) {
+    ssl_ctx_ = CreateSSLContext(config);
+    if (!ssl_ctx_) {
+      exit(1);
+    }
+  }
+#endif
 
   // Init cluster
   cluster_ = Util::MakeUnique<Cluster>(this, config_->binds, config_->port);

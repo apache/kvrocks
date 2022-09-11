@@ -70,10 +70,10 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang
-            os: macos-latest
+            os: macos-11
             compiler: auto
           - name: Darwin Clang without Jemalloc
-            os: macos-latest
+            os: macos-11
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Ubuntu GCC
@@ -117,6 +117,10 @@ jobs:
             os: ubuntu-18.04
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: gcc
+          - name: Ubuntu GCC without OpenSSL
+            os: ubuntu-18.04
+            compiler: gcc
+            without_openssl: -DENABLE_OPENSSL=OFF
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -131,14 +135,15 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install cmake gcc autoconf automake libtool
+          brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.5 ninja-build
+          sudo apt install -y tcl8.5 ninja-build tcl-tls
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis
@@ -158,7 +163,11 @@ jobs:
           python-version: 3.x
 
       - name: Build Kvrocks
-        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler \
+            ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} \
+            ${{ matrix.without_jemalloc }} ${{ matrix.without_openssl }} ${{ matrix.without_luajit }} \
+            ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Run Unit Test
         run: |
@@ -187,6 +196,18 @@ jobs:
         run: |
           export ${{ matrix.runtime_env_vars }}
           ./x.py test tcl build --cli-path $HOME/local/bin/redis-cli --dont-clean
+          if [[ -z "${{ matrix.without_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            git clone https://github.com/jsha/minica
+            cd minica && go build && cd ..
+            ./minica/minica --domains localhost
+            mkdir -p tests/tcl/tests/tls
+            cp localhost/cert.pem tests/tcl/tests/tls/server.crt
+            cp localhost/key.pem tests/tcl/tests/tls/server.key
+            cp localhost/cert.pem tests/tcl/tests/tls/client.crt
+            cp localhost/key.pem tests/tcl/tests/tls/client.key
+            cp minica.pem tests/tcl/tests/tls/ca.crt
+            ./x.py test tcl build --tls --single unit/tls --dont-clean
+          fi
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"

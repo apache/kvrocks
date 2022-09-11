@@ -46,6 +46,7 @@ Status SockReadLine(int fd, std::string *data);
 Status SockSendFile(int out_fd, int in_fd, size_t size);
 Status SockSetBlocking(int fd, int blocking);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
+int GetLocalPort(int fd);
 bool IsPortInUse(int port);
 
 // string util

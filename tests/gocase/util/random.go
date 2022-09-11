@@ -45,8 +45,8 @@ func randomSignedInt(max int) int32 {
 
 func RandString(min, max int, typ string) string {
 	len := min + int(rand.Float64()*float64(max-min+1))
-	minVal, maxVal := 0, 0
 
+	var minVal, maxVal int
 	var sb strings.Builder
 
 	switch typ {

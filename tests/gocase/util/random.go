@@ -35,6 +35,7 @@ func RandPathNoResult(funcs ...func()) {
 	funcs[index]()
 }
 
+// Random signed integer between -max and max (both extremes excluded).
 func randomSignedInt(max int) int32 {
 	i := rand.Int31n(int32(max))
 	if rand.Float64() > 0.5 {
@@ -46,7 +47,7 @@ func randomSignedInt(max int) int32 {
 type RandStringType int
 
 const (
-	Alpha  RandStringType = iota
+	Alpha RandStringType = iota
 	Binary
 	Compr
 )

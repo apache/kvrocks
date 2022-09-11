@@ -20,10 +20,11 @@
 package limits
 
 import (
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNetworkLimits(t *testing.T) {

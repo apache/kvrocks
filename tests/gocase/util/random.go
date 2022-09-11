@@ -43,12 +43,12 @@ func randomSignedInt(max int) int32 {
 	return i
 }
 
-type RandStringType string
+type RandStringType int
 
 const (
-	Alpha  RandStringType = "alpha"
-	Binary RandStringType = "binary"
-	Compr  RandStringType = "compr"
+	Alpha  RandStringType = iota
+	Binary
+	Compr
 )
 
 func RandString(min, max int, typ RandStringType) string {

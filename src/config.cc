@@ -18,8 +18,6 @@
  *
  */
 
-#include <algorithm>
-#include <cctype>
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
@@ -29,6 +27,8 @@
 #include <vector>
 #include <utility>
 #include <limits>
+#include <algorithm>
+#include <cctype>
 #include <glog/logging.h>
 #include <rocksdb/env.h>
 
@@ -805,8 +805,8 @@ Status Config::isNamespaceLegal(const std::string &ns) {
 
 StatusOr<std::vector<std::string>> ParseConfigLine(const std::string& line) {
   enum { NORMAL, QUOTED, SPACE, ESCAPE, COMMENT } state = SPACE;
-  
-  char quote; // single or double quote
+
+  char quote;  // single or double quote
   std::string current_str;
   std::vector<std::string> res;
 

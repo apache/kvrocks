@@ -53,11 +53,9 @@ const (
 )
 
 func RandString(min, max int, typ RandStringType) string {
-	length := min + int(rand.Float64()*float64(max-min+1))
+	length := min + rand.Intn(max-min+1)
 
 	var minVal, maxVal int
-	var sb strings.Builder
-
 	switch typ {
 	case Binary:
 		minVal, maxVal = 0, 255
@@ -66,8 +64,10 @@ func RandString(min, max int, typ RandStringType) string {
 	case Compr:
 		minVal, maxVal = 48, 52
 	}
+
+	var sb strings.Builder
 	for ; length > 0; length-- {
-		s := fmt.Sprintf("%c", minVal+int(rand.Float64()*float64(maxVal-minVal+1)))
+		s := fmt.Sprintf("%c", minVal+rand.Intn(maxVal-minVal+1))
 		sb.WriteString(s)
 	}
 	return sb.String()

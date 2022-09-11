@@ -36,12 +36,8 @@ func RandPathNoResult(funcs ...func()) {
 }
 
 // Random signed integer between -max and max (both extremes excluded).
-func randomSignedInt(max int) int32 {
-	i := rand.Int31n(int32(max))
-	if rand.Float64() > 0.5 {
-		return -i
-	}
-	return i
+func randomSignedInt(max int32) int64 {
+	return rand.Int63n(int64(max)*2+1) - int64(max)
 }
 
 type RandStringType int

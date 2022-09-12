@@ -718,14 +718,12 @@ func TestSet(t *testing.T) {
 			cmd := rdb.SMembers(ctx, "s")
 			require.NoError(t, cmd.Err())
 			sort.Strings(cmd.Val())
-
 			expect := make([]string, 0, 1025)
 			for key := range s {
 				expect = append(expect, key)
 			}
 			sort.Strings(expect)
 			require.EqualValues(t, expect, cmd.Val())
-
 			opNum = int64(len(expect))
 			for i := 0; i < int(opNum); i++ {
 				cmd := rdb.SPop(ctx, "s")

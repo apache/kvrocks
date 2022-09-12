@@ -79,6 +79,38 @@ func TestList(t *testing.T) {
 		require.EqualValues(t, "a", rdb.RPop(ctx, myZipList2).Val())
 		require.EqualValues(t, "c", rdb.LPop(ctx, myZipList2).Val())
 	})
+
+	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - regular list", func(t *testing.T) {
+		myList1 := "mylist1"
+		myList2 := "mylist2"
+
+		linkedListValue := largeValue["linkedList"]
+
+		// first lpush then rpush
+		require.EqualValues(t, 1, rdb.LPush(ctx, myList1, linkedListValue).Val())
+		require.EqualValues(t, 2, rdb.RPush(ctx, myList1, "b").Val())
+		require.EqualValues(t, 3, rdb.RPush(ctx, myList1, "c").Val())
+		require.EqualValues(t, 3, rdb.LLen(ctx, myList1).Val())
+		require.EqualValues(t, linkedListValue, rdb.LIndex(ctx, myList1, 0).Val())
+		require.EqualValues(t, "b", rdb.LIndex(ctx, myList1, 1).Val())
+		require.EqualValues(t, "c", rdb.LIndex(ctx, myList1, 2).Val())
+		require.EqualValues(t, "", rdb.LIndex(ctx, myList1, 3).Val())
+		require.EqualValues(t, "c", rdb.RPop(ctx, myList1).Val())
+		require.EqualValues(t, linkedListValue, rdb.LPop(ctx, myList1).Val())
+
+		// first rpush then lpush
+		require.EqualValues(t, 1, rdb.RPush(ctx, myList2, linkedListValue).Val())
+		require.EqualValues(t, 2, rdb.LPush(ctx, myList2, "b").Val())
+		require.EqualValues(t, 3, rdb.LPush(ctx, myList2, "c").Val())
+		require.EqualValues(t, 3, rdb.LLen(ctx, myList2).Val())
+
+		require.EqualValues(t, "c", rdb.LIndex(ctx, myList2, 0).Val())
+		require.EqualValues(t, "b", rdb.LIndex(ctx, myList2, 1).Val())
+		require.EqualValues(t, linkedListValue, rdb.LIndex(ctx, myList2, 2).Val())
+		require.EqualValues(t, "", rdb.LIndex(ctx, myList2, 3).Val())
+		require.EqualValues(t, linkedListValue, rdb.RPop(ctx, myList2).Val())
+		require.EqualValues(t, "c", rdb.LPop(ctx, myList2).Val())
+	})
 }
 
 func BenchmarkLTRIM(b *testing.B) {

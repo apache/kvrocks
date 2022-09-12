@@ -40,6 +40,22 @@ func CreateSet(t *testing.T, rdb *redis.Client, ctx context.Context, key string,
 	}
 }
 
+func GetArrayUnion(arrays ...[]string) []string {
+	result := []string{}
+	var vis = make(map[string]bool)
+	for _, array := range arrays {
+		for _, value := range array {
+			_, ok := vis[value]
+			if ok {
+				continue
+			}
+			vis[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 func TestSet(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -232,25 +248,7 @@ func TestSet(t *testing.T) {
 			require.NoError(t, set1.Err())
 			set2 := rdb.SMembers(ctx, "set2")
 			require.NoError(t, set2.Err())
-			var expect []string
-			var vis = make(map[string]bool)
-			for _, i := range set1.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
-			for _, i := range set2.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
-
+			expect := GetArrayUnion(set1.Val(), set2.Val())
 			sort.Strings(expect)
 			cmd := rdb.SUnion(ctx, "set1", "set2")
 			require.NoError(t, cmd.Err())
@@ -263,24 +261,7 @@ func TestSet(t *testing.T) {
 			require.NoError(t, set1.Err())
 			set2 := rdb.SMembers(ctx, "set2")
 			require.NoError(t, set2.Err())
-			var expect []string
-			var vis = make(map[string]bool)
-			for _, i := range set1.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
-			for _, i := range set2.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
+			expect := GetArrayUnion(set1.Val(), set2.Val())
 			sort.Strings(expect)
 			require.NoError(t, rdb.SUnionStore(ctx, "setres", "set1", "set2").Err())
 			cmd := rdb.SMembers(ctx, "setres")
@@ -319,26 +300,8 @@ func TestSet(t *testing.T) {
 			require.NoError(t, set1.Err())
 			set2 := rdb.SMembers(ctx, "set2")
 			require.NoError(t, set2.Err())
-			var expect []string
-			var vis = make(map[string]bool)
-			for _, i := range set1.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
-			for _, i := range set2.Val() {
-				_, ok := vis[i]
-				if ok {
-					continue
-				}
-				vis[i] = true
-				expect = append(expect, i)
-			}
+			expect := GetArrayUnion(set1.Val(), set2.Val())
 			sort.Strings(expect)
-
 			cmd := rdb.SUnion(ctx, "nokey1", "set1", "set2", "nokey2")
 			require.NoError(t, cmd.Err())
 			sort.Strings(cmd.Val())

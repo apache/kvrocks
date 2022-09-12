@@ -724,6 +724,7 @@ func TestSet(t *testing.T) {
 			}
 			sort.Strings(expect)
 			require.EqualValues(t, expect, cmd.Val())
+
 			opNum = int64(len(expect))
 			for i := 0; i < int(opNum); i++ {
 				cmd := rdb.SPop(ctx, "s")

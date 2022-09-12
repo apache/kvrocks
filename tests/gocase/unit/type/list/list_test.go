@@ -137,12 +137,18 @@ func TestList(t *testing.T) {
 			require.NoError(t, rdb.RPush(ctx, key, v).Err())
 		}
 	}
-	var _ = createList
-	// for typ, value := range largeValue {
-	// 	t.Run(fmt.Sprintf("BLPOP, BRPOP: single existing list - %s", typ), func(t *testing.T) {
 
-	// 	})
-	// }
+	for typ, value := range largeValue {
+		t.Run(fmt.Sprintf("BLPOP, BRPOP: single existing list - %s", typ), func(t *testing.T) {
+			c := srv.NewTCPClient()
+			defer func() { require.NoError(t, c.Close()) }()
+			createList("blist", []string{"a", "b", value, "c", "d"})
+			res := rdb.LRange(ctx, "blist", 0, -1).Val()
+			fmt.Println(res)
+			require.NoError(t, c.Write("*3\r\n$5\r\nBLPOP\r\n$5\r\nblist\r\n$1\r\n1\r\n"))
+			// TODO: finish this case
+		})
+	}
 }
 
 func BenchmarkLTRIM(b *testing.B) {

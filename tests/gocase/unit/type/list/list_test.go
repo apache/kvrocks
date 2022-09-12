@@ -39,6 +39,21 @@ var largeValue = map[string]string{
 	"linkedList": strings.Repeat("hello", 4),
 }
 
+func TestList(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	rand.Seed(0)
+
+	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - ziplist", func(t *testing.T) {
+		myZipList1 := "myziplist1"
+		require.Equal(t, 1, rdb.LPush(ctx, myZipList1, "aa").Val())
+	})
+}
+
 func BenchmarkLTRIM(b *testing.B) {
 	srv := util.StartServer(b, map[string]string{
 		"list-max-ziplist-size": "4",

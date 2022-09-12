@@ -115,6 +115,14 @@ func TestList(t *testing.T) {
 	t.Run("R&LPOP against empty list", func(t *testing.T) {
 		require.Error(t, rdb.LPop(ctx, "non-existing-list").Err())
 	})
+
+	t.Run("Variadic RPUSH&LPUSH", func(t *testing.T) {
+		myList := "mylist"
+		require.NoError(t, rdb.Del(ctx, myList).Err())
+		require.EqualValues(t, 4, rdb.LPush(ctx, myList, "a", "b", "c", "d").Val())
+		require.EqualValues(t, 8, rdb.RPush(ctx, myList, "0", "1", "2", "3").Val())
+		require.Equal(t, []string{"d", "c", "b", "a", "0", "1", "2", "3"}, rdb.LRange(ctx, myList, 0, -1).Val())
+	})
 }
 
 func BenchmarkLTRIM(b *testing.B) {

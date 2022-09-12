@@ -26,13 +26,6 @@ start_server {
 } {
     source "tests/unit/type/list-common.tcl"
 
-    test {Variadic RPUSH/LPUSH} {
-        r del mylist
-        assert_equal 4 [r lpush mylist a b c d]
-        assert_equal 8 [r rpush mylist 0 1 2 3]
-        assert_equal {d c b a 0 1 2 3} [r lrange mylist 0 -1]
-    }
-
     test {DEL a list} {
         assert_equal 1 [r del mylist2]
         assert_equal 0 [r exists mylist2]

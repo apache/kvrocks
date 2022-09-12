@@ -123,6 +123,13 @@ func TestList(t *testing.T) {
 		require.EqualValues(t, 8, rdb.RPush(ctx, myList, "0", "1", "2", "3").Val())
 		require.Equal(t, []string{"d", "c", "b", "a", "0", "1", "2", "3"}, rdb.LRange(ctx, myList, 0, -1).Val())
 	})
+
+	t.Run("DEL a list", func(t *testing.T) {
+		myList2 := "mylist2"
+		require.EqualValues(t, 1, rdb.Del(ctx, myList2).Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, myList2).Val())
+		require.EqualValues(t, 0, rdb.LLen(ctx, myList2).Val())
+	})
 }
 
 func BenchmarkLTRIM(b *testing.B) {

@@ -26,12 +26,6 @@ start_server {
 } {
     source "tests/unit/type/list-common.tcl"
 
-    test {DEL a list} {
-        assert_equal 1 [r del mylist2]
-        assert_equal 0 [r exists mylist2]
-        assert_equal 0 [r llen mylist2]
-    }
-
     proc create_list {key entries} {
         r del $key
         foreach entry $entries { r rpush $key $entry }

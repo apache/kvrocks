@@ -130,6 +130,19 @@ func TestList(t *testing.T) {
 		require.EqualValues(t, 0, rdb.Exists(ctx, myList2).Val())
 		require.EqualValues(t, 0, rdb.LLen(ctx, myList2).Val())
 	})
+
+	createList := func(key string, entries []string) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		for _, v := range entries {
+			require.NoError(t, rdb.RPush(ctx, key, v).Err())
+		}
+	}
+	var _ = createList
+	// for typ, value := range largeValue {
+	// 	t.Run(fmt.Sprintf("BLPOP, BRPOP: single existing list - %s", typ), func(t *testing.T) {
+
+	// 	})
+	// }
 }
 
 func BenchmarkLTRIM(b *testing.B) {

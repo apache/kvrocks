@@ -50,7 +50,7 @@ func TestList(t *testing.T) {
 
 	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - ziplist", func(t *testing.T) {
 		myZipList1 := "myziplist1"
-		require.Equal(t, 1, rdb.LPush(ctx, myZipList1, "aa").Val())
+		require.EqualValues(t, 1, rdb.LPush(ctx, myZipList1, "aa").Val())
 	})
 }
 

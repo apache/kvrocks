@@ -50,7 +50,34 @@ func TestList(t *testing.T) {
 
 	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - ziplist", func(t *testing.T) {
 		myZipList1 := "myziplist1"
+		myZipList2 := "myziplist2"
+
+		// first lpush then rpush
 		require.EqualValues(t, 1, rdb.LPush(ctx, myZipList1, "aa").Val())
+		require.EqualValues(t, 2, rdb.RPush(ctx, myZipList1, "bb").Val())
+		require.EqualValues(t, 3, rdb.RPush(ctx, myZipList1, "cc").Val())
+		require.EqualValues(t, 3, rdb.LLen(ctx, myZipList1).Val())
+		require.EqualValues(t, "aa", rdb.LIndex(ctx, myZipList1, 0).Val())
+		require.EqualValues(t, "bb", rdb.LIndex(ctx, myZipList1, 1).Val())
+		require.EqualValues(t, "cc", rdb.LIndex(ctx, myZipList1, 2).Val())
+		require.EqualValues(t, "", rdb.LIndex(ctx, myZipList2, 3).Val())
+
+		require.EqualValues(t, "cc", rdb.RPop(ctx, myZipList1).Val())
+		require.EqualValues(t, "aa", rdb.LPop(ctx, myZipList1).Val())
+
+		// first rpush then lpush
+		require.EqualValues(t, 1, rdb.RPush(ctx, myZipList2, "a").Val())
+		require.EqualValues(t, 2, rdb.LPush(ctx, myZipList2, "b").Val())
+		require.EqualValues(t, 3, rdb.LPush(ctx, myZipList2, "c").Val())
+		require.EqualValues(t, 3, rdb.LLen(ctx, myZipList2).Val())
+
+		require.EqualValues(t, "c", rdb.LIndex(ctx, myZipList2, 0).Val())
+		require.EqualValues(t, "b", rdb.LIndex(ctx, myZipList2, 1).Val())
+		require.EqualValues(t, "a", rdb.LIndex(ctx, myZipList2, 2).Val())
+		require.EqualValues(t, "", rdb.LIndex(ctx, myZipList2, 3).Val())
+
+		require.EqualValues(t, "a", rdb.RPop(ctx, myZipList2).Val())
+		require.EqualValues(t, "c", rdb.LPop(ctx, myZipList2).Val())
 	})
 }
 

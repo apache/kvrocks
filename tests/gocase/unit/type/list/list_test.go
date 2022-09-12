@@ -111,6 +111,10 @@ func TestList(t *testing.T) {
 		require.EqualValues(t, linkedListValue, rdb.RPop(ctx, myList2).Val())
 		require.EqualValues(t, "c", rdb.LPop(ctx, myList2).Val())
 	})
+
+	t.Run("R&LPOP against empty list", func(t *testing.T) {
+		require.Error(t, rdb.LPop(ctx, "non-existing-list").Err())
+	})
 }
 
 func BenchmarkLTRIM(b *testing.B) {

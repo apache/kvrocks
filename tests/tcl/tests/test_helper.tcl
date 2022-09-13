@@ -47,7 +47,6 @@ set ::all_tests {
     unit/pubsub
     unit/introspection
     unit/geo
-    unit/config
     unit/scripting
     integration/slotmigrate
     integration/slotimport

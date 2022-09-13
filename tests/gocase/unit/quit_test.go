@@ -21,10 +21,11 @@ package unit
 
 import (
 	"fmt"
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
 )
 
 func formatCommand(args []string) string {

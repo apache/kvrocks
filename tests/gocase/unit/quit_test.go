@@ -29,11 +29,9 @@ import (
 )
 
 func formatCommand(args []string) string {
-	suffix := "\r\n"
-	str := "*" + fmt.Sprintf("%d", len(args)) + suffix
+	str := fmt.Sprintf("*%d\r\n", len(args))
 	for _, arg := range args {
-		str += "$" + fmt.Sprintf("%d", len(arg)) + suffix
-		str += arg + suffix
+		str += fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
 	}
 	return str
 }

@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 	"modernc.org/mathutil"
 )
@@ -91,7 +92,9 @@ func TestZipList(t *testing.T) {
 	})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		MaxRetries: -1,
+	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	rand.Seed(0)
@@ -167,7 +170,7 @@ func TestZipList(t *testing.T) {
 		key := "l"
 		for j := 0; j < iterations; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())
-			lis := []string{}
+			var lis []string
 			for i := 0; i < 200; i++ {
 				op := rand.Int63n(7)
 				data := ""

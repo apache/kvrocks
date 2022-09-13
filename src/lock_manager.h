@@ -25,7 +25,6 @@
 #include <string>
 #include <functional>
 
-
 #include <rocksdb/db.h>
 
 class LockManager {

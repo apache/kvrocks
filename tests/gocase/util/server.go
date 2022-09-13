@@ -42,7 +42,14 @@ type KvrocksServer struct {
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: s.addr.String()})
+	return s.NewClientWithOption(&redis.Options{Addr: s.addr.String()})
+}
+
+func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
+	if options.Addr == "" {
+		options.Addr = s.addr.String()
+	}
+	return redis.NewClient(options)
 }
 
 func (s *KvrocksServer) NewTCPClient() *tcpClient {

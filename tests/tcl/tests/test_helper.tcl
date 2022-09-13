@@ -36,7 +36,6 @@ set ::all_tests {
     unit/scan
     unit/type/string
     unit/type/list
-    unit/type/set
     unit/type/zset
     unit/type/hash
     unit/type/bitmap

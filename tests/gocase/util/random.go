@@ -40,6 +40,11 @@ func randomSignedInt(max int32) int64 {
 	return rand.Int63n(int64(max)*2-1) - int64(max) + 1
 }
 
+// Random integer in [0, max)
+func RandomInt(max int64) int64 {
+	return rand.Int63() % int64(max)
+}
+
 type RandStringType int
 
 const (

@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 	"modernc.org/mathutil"
 )
@@ -39,29 +40,29 @@ var largeValue = map[string]string{
 	"linkedList": strings.Repeat("hello", 4),
 }
 
-func BenchmarkLTRIM(b *testing.B) {
-	srv := util.StartServer(b, map[string]string{
+func TestLTRIM(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
 		"list-max-ziplist-size": "4",
 	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
-	defer func() { require.NoError(b, rdb.Close()) }()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
 	key := "myList"
 	startLen := int64(32)
 
 	rand.Seed(0)
 	for typ, value := range largeValue {
-		b.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(b *testing.B) {
+		t.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(t *testing.T) {
 			var myList []string
-			require.NoError(b, rdb.Del(ctx, key).Err())
-			require.NoError(b, rdb.RPush(ctx, key, value).Err())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+			require.NoError(t, rdb.RPush(ctx, key, value).Err())
 			myList = append(myList, value)
 
 			for i := int64(0); i < startLen; i++ {
 				s := strconv.FormatInt(rand.Int63(), 10)
-				require.NoError(b, rdb.RPush(ctx, key, s).Err())
+				require.NoError(t, rdb.RPush(ctx, key, s).Err())
 				myList = append(myList, s)
 			}
 
@@ -70,15 +71,15 @@ func BenchmarkLTRIM(b *testing.B) {
 				hi := int64(float64(lo) + rand.Float64()*float64(startLen))
 
 				myList = myList[lo:mathutil.Min(int(hi+1), len(myList))]
-				require.NoError(b, rdb.LTrim(ctx, key, lo, hi).Err())
-				require.Equal(b, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
+				require.NoError(t, rdb.LTrim(ctx, key, lo, hi).Err())
+				require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed trim")
 
 				starting := rdb.LLen(ctx, key).Val()
 				for j := starting; j < startLen; j++ {
 					s := strconv.FormatInt(rand.Int63(), 10)
-					require.NoError(b, rdb.RPush(ctx, key, s).Err())
+					require.NoError(t, rdb.RPush(ctx, key, s).Err())
 					myList = append(myList, s)
-					require.Equal(b, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")
+					require.Equal(t, myList, rdb.LRange(ctx, key, 0, -1).Val(), "failed append match")
 				}
 			}
 		})
@@ -91,7 +92,9 @@ func TestZipList(t *testing.T) {
 	})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		MaxRetries: -1,
+	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	rand.Seed(0)
@@ -167,7 +170,7 @@ func TestZipList(t *testing.T) {
 		key := "l"
 		for j := 0; j < iterations; j++ {
 			require.NoError(t, rdb.Del(ctx, key).Err())
-			lis := []string{}
+			var lis []string
 			for i := 0; i < 200; i++ {
 				op := rand.Int63n(7)
 				data := ""

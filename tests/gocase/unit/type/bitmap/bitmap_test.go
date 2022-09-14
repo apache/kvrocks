@@ -56,7 +56,7 @@ func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...str
 	}
 	return buf
 }
-func TestSet(t *testing.T) {
+func TestBitmap(t *testing.T) {
 
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()

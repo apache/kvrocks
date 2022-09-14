@@ -43,14 +43,12 @@ func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string
 	for _, v := range bs {
 		buf.WriteString(fmt.Sprintf("%08b", v))
 	}
-	// t.Log(buf, bs)
 	for index, value := range buf.String() {
-		// t.Log(index, int(value)-int('0'))
 		require.NoError(t, rdb.SetBit(ctx, key, int64(index), int(value)-int('0')).Err())
 	}
 }
 func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...string) []string {
-	var buf []string
+	buf := []string{}
 	for _, key := range keys {
 		cmd := rdb.Get(ctx, key)
 		require.NoError(t, cmd.Err())
@@ -78,5 +76,52 @@ func TestSet(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "config", "set", "max-bitmap-to-string-mb", 1).Err())
 		require.NoError(t, rdb.SetBit(ctx, "b0", 8388609, 0).Err())
 		util.ErrorRegexp(t, rdb.Get(ctx, "b0").Err(), "ERR Operation aborted: The size of the bitmap .*")
+	})
+
+	t.Run("SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type bitmap)", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "b0").Err())
+		maxOffset := 4*1024*1024*1024 - 1
+		util.ErrorRegexp(t, rdb.SetBit(ctx, "b0", int64(maxOffset)+1, 1).Err(), ".*out of range.*")
+		require.NoError(t, rdb.SetBit(ctx, "b0", int64(maxOffset), 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "b0", int64(maxOffset)).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: int64(maxOffset) / 8}).Val())
+		require.EqualValues(t, maxOffset, rdb.BitPos(ctx, "b0", 1).Val())
+	})
+
+	t.Run("BITOP NOT (known string)", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "s", []byte("\xaa\x00\xff\x55"))
+		require.NoError(t, rdb.BitOpNot(ctx, "dest", "s").Err())
+		require.EqualValues(t, []string{"\x55\xff\x00\xaa"}, GetBitmap(t, rdb, ctx, "dest"))
+	})
+
+	t.Run("BITOP where dest and target are the same key", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "s", []byte("\xaa\x00\xff\x55"))
+		require.NoError(t, rdb.BitOpNot(ctx, "s", "s").Err())
+		require.EqualValues(t, []string{"\x55\xff\x00\xaa"}, GetBitmap(t, rdb, ctx, "s"))
+	})
+
+	t.Run("BITOP AND|OR|XOR don't change the string with single input key", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x02\xff"))
+		require.NoError(t, rdb.BitOpAnd(ctx, "res1", "a").Err())
+		require.NoError(t, rdb.BitOpOr(ctx, "res2", "a").Err())
+		require.NoError(t, rdb.BitOpXor(ctx, "res3", "a").Err())
+		require.EqualValues(t, []string{"\x01\x02\xff", "\x01\x02\xff", "\x01\x02\xff"}, GetBitmap(t, rdb, ctx, "res1", "res2", "res3"))
+	})
+
+	t.Run("BITOP missing key is considered a stream of zero", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x02\xff"))
+		require.NoError(t, rdb.BitOpAnd(ctx, "res1", "no-suck-key", "a").Err())
+		require.NoError(t, rdb.BitOpOr(ctx, "res2", "no-suck-key", "a", "no-suck-key").Err())
+		require.NoError(t, rdb.BitOpXor(ctx, "res3", "no-suck-key", "a").Err())
+		require.EqualValues(t, []string{"\x00\x00\x00", "\x01\x02\xff", "\x01\x02\xff"}, GetBitmap(t, rdb, ctx, "res1", "res2", "res3"))
+	})
+
+	t.Run("BITOP shorter keys are zero-padded to the key with max length", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x02\xff\xff"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x01\x02\xff"))
+		require.NoError(t, rdb.BitOpAnd(ctx, "res1", "a", "b").Err())
+		require.NoError(t, rdb.BitOpOr(ctx, "res2", "a", "b").Err())
+		require.NoError(t, rdb.BitOpXor(ctx, "res3", "a", "b").Err())
+		require.EqualValues(t, []string{"\x01\x02\xff\x00", "\x01\x02\xff\xff", "\x00\x00\x00\xff"}, GetBitmap(t, rdb, ctx, "res1", "res2", "res3"))
 	})
 }

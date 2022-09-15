@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
@@ -36,6 +38,7 @@ const (
 	AND BITOP = 0
 	OR  BITOP = 1
 	XOR BITOP = 2
+	NOT BITOP = 3
 )
 
 func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string, bs []byte) {
@@ -56,14 +59,69 @@ func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...str
 	}
 	return buf
 }
-func TestBitmap(t *testing.T) {
+func SimulateBitOp(op BITOP, values ...[]byte) string {
+	maxlen := 0
+	binarayArray := []string{}
+	for _, value := range values {
+		if maxlen < len(value)*8 {
+			maxlen = len(value) * 8
+		}
+	}
+	for _, value := range values {
+		buf := bytes.NewBuffer([]byte{})
+		for _, v := range value {
+			buf.WriteString(fmt.Sprintf("%08b", v))
+		}
+		tmp := buf.String() + strings.Repeat("0", maxlen-len(buf.String()))
+		binarayArray = append(binarayArray, tmp)
+	}
+	var binarayResult []byte
+	for i := 0; i < maxlen; i++ {
+		x := binarayArray[0][i]
+		if op == NOT {
+			if x == '0' {
+				x = '1'
+			} else {
+				x = '0'
+			}
+		}
+		for j := 1; j < len(binarayArray); j++ {
+			left := int(x - '0')
+			right := int(binarayArray[j][i] - '0')
+			switch op {
+			case AND:
+				left = left & right
+			case XOR:
+				left = left ^ right
+			case OR:
+				left = left | right
+			}
+			if left == 0 {
+				x = '0'
+			} else {
+				x = '1'
+			}
+		}
+		binarayResult = append(binarayResult, x)
+	}
 
+	result := []byte{}
+	for i := 0; i < len(binarayResult); i += 8 {
+		sum := 0
+		for j := 0; j < 8; j++ {
+			sum = sum*2 + int(binarayResult[i+j]-'0')
+		}
+		result = append(result, byte(sum))
+	}
+	return string(result)
+}
+
+func TestBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-
 	t.Run("GET bitmap string after setbit", func(t *testing.T) {
 		require.NoError(t, rdb.SetBit(ctx, "b0", 0, 0).Err())
 		require.NoError(t, rdb.SetBit(ctx, "b1", 35, 0).Err())
@@ -123,5 +181,58 @@ func TestBitmap(t *testing.T) {
 		require.NoError(t, rdb.BitOpOr(ctx, "res2", "a", "b").Err())
 		require.NoError(t, rdb.BitOpXor(ctx, "res3", "a", "b").Err())
 		require.EqualValues(t, []string{"\x01\x02\xff\x00", "\x01\x02\xff\xff", "\x00\x00\x00\xff"}, GetBitmap(t, rdb, ctx, "res1", "res2", "res3"))
+	})
+
+	for _, op := range []BITOP{AND, OR, XOR} {
+		t.Run("BITOP fuzzing "+strconv.Itoa(int(op)), func(t *testing.T) {
+			for i := 0; i < 10; i++ {
+				require.NoError(t, rdb.FlushAll(ctx).Err())
+				numVec := util.RandomInt(10) + 1
+				var vec [][]byte
+				var veckeys []string
+				for j := 0; j < int(numVec); j++ {
+					str := util.RandString(0, 1000, util.Binary)
+					vec = append(vec, []byte(str))
+					veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+					Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+				}
+				switch op {
+				case AND:
+					require.NoError(t, rdb.BitOpAnd(ctx, "target", veckeys...).Err())
+					require.EqualValues(t, SimulateBitOp(AND, vec...), rdb.Get(ctx, "target").Val())
+				case OR:
+					require.NoError(t, rdb.BitOpOr(ctx, "target", veckeys...).Err())
+					require.EqualValues(t, SimulateBitOp(OR, vec...), rdb.Get(ctx, "target").Val())
+				case XOR:
+					require.NoError(t, rdb.BitOpXor(ctx, "target", veckeys...).Err())
+					require.EqualValues(t, SimulateBitOp(XOR, vec...), rdb.Get(ctx, "target").Val())
+				}
+
+			}
+		})
+	}
+
+	t.Run("BITOP NOT fuzzing", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.Del(ctx, "str").Err())
+			str := util.RandString(0, 1000, util.Binary)
+			Set2SetBit(t, rdb, ctx, "str", []byte(str))
+			require.NoError(t, rdb.BitOpNot(ctx, "target", "str").Err())
+			require.EqualValues(t, SimulateBitOp(NOT, []byte(str)), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP with non string source key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "c").Err())
+		Set2SetBit(t, rdb, ctx, "a", []byte("\xaa\x00\xff\x55"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\xaa\x00\xff\x55"))
+		require.NoError(t, rdb.LPush(ctx, "c", "foo").Err())
+		util.ErrorRegexp(t, rdb.BitOpXor(ctx, "dest", "a", "b", "c", "d").Err(), ".*WRONGTYPE.*")
+	})
+
+	t.Run("BITOP with empty string after non empty string (Redis issue #529)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
+		require.EqualValues(t, 32, rdb.BitOpOr(ctx, "x", "a", "b").Val())
 	})
 }

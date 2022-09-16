@@ -4132,6 +4132,52 @@ class CommandEcho : public Commander {
   }
 };
 
+class CommandHello final : public Commander {
+public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::cout << "Execute is called" << std::endl;
+    if (args_.size() == 2) {
+      int64_t protocol;
+      try {
+        protocol = std::stoll(args_[1]);
+      } catch (std::exception& e) {
+        // std::invalid_argument or std::out_of_range
+        *output = Redis::Error("Protocol version is not an integer or out of range");
+        return Status::OK();
+      }
+
+      // In redis, it will check protocol < 2 or protocol > 3,
+      // but kvrocks only supports REPL2 by now.
+      if (protocol != 2) {
+        *output = Redis::Error("-NOPROTO unsupported protocol version");
+        return Status::OK();
+      }
+    }
+
+    // TODO(mapleFU): do we need to implement auth and setname?
+
+    std::vector<std::string> output_list;
+    output_list.push_back(Redis::BulkString("server"));
+    output_list.push_back(Redis::BulkString("redis"));
+    output_list.push_back(Redis::BulkString("version"));
+    output_list.push_back(Redis::BulkString("")); // TODO(mapleFU): change it to the real redis version
+    output_list.push_back(Redis::BulkString("proto"));
+    output_list.push_back(Redis::Integer(2));
+    output_list.push_back(Redis::BulkString("id"));
+    output_list.push_back(Redis::Integer(2)); // TODO(mapleFU): fix this
+
+    output_list.push_back(Redis::BulkString("mode"));
+    // Note: sentinel is not supported.
+    if (svr->GetConfig()->cluster_enabled) {
+      output_list.push_back(Redis::BulkString("cluster"));
+    } else {
+      output_list.push_back(Redis::BulkString("standalone"));
+    }
+    *output = Redis::Array(output_list);
+    return Status::OK();
+  }
+};
+
 class CommandScanBase : public Commander {
  public:
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {
@@ -5680,6 +5726,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
     ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
+    ADD_CMD("hello", -1, "read-only", 0, 0, 0, CommandHello),
 
     ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),

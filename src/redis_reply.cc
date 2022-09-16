@@ -45,36 +45,43 @@ std::string MultiLen(int64_t len) {
   return "*"+std::to_string(len)+"\r\n";
 }
 
-std::string MultiBulkString(std::vector<std::string> values, bool output_nil_for_empty_string) {
+std::string MultiBulkString(const std::vector<std::string>& values, bool output_nil_for_empty_string) {
+  std::vector<std::string> copiedStrings;
+  copiedStrings.resize(values.size());
   for (size_t i = 0; i < values.size(); i++) {
     if (values[i].empty() && output_nil_for_empty_string) {
-      values[i] = NilString();
+      copiedStrings[i] = NilString();
     }  else {
-      values[i] = BulkString(values[i]);
+      copiedStrings[i] = BulkString(values[i]);
     }
   }
-  return Array(values);
+  return Array(copiedStrings);
 }
 
 
-std::string MultiBulkString(std::vector<std::string> values, const std::vector<rocksdb::Status> &statuses) {
+std::string MultiBulkString(const std::vector<std::string>& values, const std::vector<rocksdb::Status> &statuses) {
+  std::vector<std::string> copiedStrings;
+  copiedStrings.resize(values.size());
   for (size_t i = 0; i < values.size(); i++) {
     if (i < statuses.size() && !statuses[i].ok()) {
-      values[i] = NilString();
+      copiedStrings[i] = NilString();
     } else {
-      values[i] = BulkString(values[i]);
+      copiedStrings[i] = BulkString(values[i]);
     }
   }
-  return Array(values);
+  return Array(copiedStrings);
 }
-std::string Array(std::vector<std::string> list) {
+
+std::string Array(const std::vector<std::string>& list) {
   std::string::size_type n = std::accumulate(
     list.begin(), list.end(), std::string::size_type(0),
     [] ( std::string::size_type n, const std::string &s ) { return ( n += s.size() ); });
   std::string result = "*" + std::to_string(list.size()) + CRLF;
-  result.reserve(n);
-  return std::accumulate(list.begin(), list.end(), result,
+  std::string::size_type final_size = result.size() + n;
+  result.reserve(final_size);
+  auto s = std::accumulate(list.begin(), list.end(), result,
     [](std::string &dest, std::string const &item) -> std::string& {dest += item; return dest;});
+  return s;
 }
 
 std::string Command2RESP(const std::vector<std::string> &cmd_args) {

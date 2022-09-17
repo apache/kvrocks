@@ -153,7 +153,7 @@ rocksdb::Status Disk::GetSortedintSize(const Slice &ns_key, uint64_t *key_size) 
   SortedintMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisSortedint, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  std::string prefix_key, next_version_prefix_key, start_buf;
+  std::string start_buf;
   PutFixed64(&start_buf, 0);
   return GetApproximateSizes(metadata, ns_key,
                              storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),

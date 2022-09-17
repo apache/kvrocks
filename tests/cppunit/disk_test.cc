@@ -19,10 +19,10 @@
  */
 
 #include <chrono>
-#include <gtest/gtest.h>
 #include <memory>
 #include <vector>
 #include <thread>
+#include <gtest/gtest.h>
 #include "redis_metadata.h"
 #include "test_base.h"
 #include "redis_string.h"
@@ -57,7 +57,6 @@ TEST_F(RedisDiskTest, StringDisk) {
     uint64_t result = 0;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
     EXPECT_GE(result, p);
-    break;
   }
   string->Del(key_);
 }
@@ -119,7 +118,7 @@ TEST_F(RedisDiskTest, ListDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_list");
   key_ = "listdisk_key";
   values_.resize(2);
-  std::vector<int>value_size{1,1024};
+  std::vector<int>value_size{1, 1024};
   for(int i = 0;i < int(values_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
@@ -144,7 +143,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
   std::vector<MemberScore> mscores(2);
-  std::vector<int>value_size{1,1024};
+  std::vector<int>value_size{1, 1024};
   for(int i = 0;i < int(value_size.size()); i++){
     mscores[i].member = std::string(value_size[i],'a');
     mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];
@@ -169,7 +168,7 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   std::unique_ptr<Redis::Bitmap> bitmap = Util::MakeUnique<Redis::Bitmap>(storage_, "disk_ns_bitmap");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_bitmap");
   key_ = "bitmapdisk_key";
-  uint32_t offsets[] = {0, 123, 1024*8, 1024*8+1, 3*1024*8,  3*1024*8+1};
+  uint32_t offsets[] = {0, 123, 1024*8, 1024*8+1, 3*1024*8, 3*1024*8+1};
 
   for (int i = 0; i < 6 ;i++) {
     bool bit = false;

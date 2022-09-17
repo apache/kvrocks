@@ -56,6 +56,7 @@
 #include "scripting.h"
 #include "slot_import.h"
 #include "slot_migrate.h"
+#include "parse_util.h"
 
 namespace Redis {
 
@@ -73,29 +74,47 @@ const char *errUnbalacedStreamList =
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
 
+enum class AuthResult {
+  OK,
+  INVALID_PASSWORD,
+  NO_REQUIRE_PASS,
+};
+
+AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string& user_password) {
+  auto iter = config->tokens.find(user_password);
+  if (iter != config->tokens.end()) {
+    conn->SetNamespace(iter->second);
+    conn->BecomeUser();
+    return AuthResult::OK;
+  }
+  const auto& requirepass = config->requirepass;
+  if (!requirepass.empty() && user_password != requirepass) {
+    return AuthResult::INVALID_PASSWORD;
+  }
+  conn->SetNamespace(kDefaultNamespace);
+  conn->BecomeAdmin();
+  if (requirepass.empty()) {
+    return AuthResult::NO_REQUIRE_PASS;
+  }
+  return AuthResult::OK;
+}
+
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Config *config = svr->GetConfig();
-    auto user_password = args_[1];
-    auto iter = config->tokens.find(user_password);
-    if (iter != config->tokens.end()) {
-      conn->SetNamespace(iter->second);
-      conn->BecomeUser();
+    auto& user_password = args_[1];
+    AuthResult result = AuthenticateUser(conn, config, user_password);
+    switch (result) {
+    case AuthResult::OK:
       *output = Redis::SimpleString("OK");
-      return Status::OK();
-    }
-    const auto requirepass = config->requirepass;
-    if (!requirepass.empty() && user_password != requirepass) {
+      break;
+    case AuthResult::INVALID_PASSWORD:
       *output = Redis::Error("ERR invalid password");
-      return Status::OK();
-    }
-    conn->SetNamespace(kDefaultNamespace);
-    conn->BecomeAdmin();
-    if (requirepass.empty()) {
+      break;
+    case AuthResult::NO_REQUIRE_PASS:
       *output = Redis::Error("ERR Client sent AUTH, but no password is set");
-    } else {
-      *output = Redis::SimpleString("OK");
+      break;
     }
     return Status::OK();
   }
@@ -4132,19 +4151,20 @@ class CommandEcho : public Commander {
   }
 };
 
+/* HELLO [<protocol-version> [AUTH <password>] [SETNAME <name>] ] */
 class CommandHello final : public Commander {
 public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::cout << "Execute is called" << std::endl;
-    if (args_.size() == 2) {
+    size_t next_arg = 1;
+    if (args_.size() >= 2) {
       int64_t protocol;
-      try {
-        protocol = std::stoll(args_[1]);
-      } catch (std::exception& e) {
-        // std::invalid_argument or std::out_of_range
+      auto parseResult = ParseInt<int64_t>(args_[next_arg], /* base= */ 10);
+      ++next_arg;
+      if (!parseResult.IsOK()) {
         *output = Redis::Error("Protocol version is not an integer or out of range");
-        return Status::OK();
+        return parseResult.ToStatus();
       }
+      protocol = parseResult.GetValue();
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // but kvrocks only supports REPL2 by now.
@@ -4154,20 +4174,45 @@ public:
       }
     }
 
-    // TODO(mapleFU): do we need to implement auth and setname?
+    // Handling AUTH and SETNAME
+    for (; next_arg < args_.size(); ++next_arg) {
+      size_t moreargs = args_.size() - next_arg - 1;
+      const std::string& opt = args_[next_arg];
+      if (opt == "AUTH" && moreargs != 0) {
+        const auto& user_password = args_[next_arg + 1];
+        auto authResult = AuthenticateUser(conn, svr->GetConfig(), user_password);
+        switch (authResult) {
+        case AuthResult::INVALID_PASSWORD:
+          *output = Redis::Error("ERR invalid password");
+          break;
+        case AuthResult::NO_REQUIRE_PASS:
+          *output = Redis::Error("ERR Client sent AUTH, but no password is set");
+          break;
+        case AuthResult::OK:
+          break;
+        }
+        if (authResult != AuthResult::OK) {
+          return Status::OK();
+        }
+        next_arg += 1;
+      } else if (opt == "SETNAME" && moreargs != 0) {
+        const std::string& ns = args_[next_arg + 1];
+        conn->SetNamespace(ns);
+        next_arg += 1;
+      } else {
+        *output = Redis::Error("Syntax error in HELLO option " + opt);
+        return Status::OK();
+      }
+    }
 
     std::vector<std::string> output_list;
     output_list.push_back(Redis::BulkString("server"));
     output_list.push_back(Redis::BulkString("redis"));
-    output_list.push_back(Redis::BulkString("version"));
-    output_list.push_back(Redis::BulkString("")); // TODO(mapleFU): change it to the real redis version
     output_list.push_back(Redis::BulkString("proto"));
     output_list.push_back(Redis::Integer(2));
-    output_list.push_back(Redis::BulkString("id"));
-    output_list.push_back(Redis::Integer(2)); // TODO(mapleFU): fix this
 
     output_list.push_back(Redis::BulkString("mode"));
-    // Note: sentinel is not supported.
+    // Note: sentinel is not supported in kvrocks.
     if (svr->GetConfig()->cluster_enabled) {
       output_list.push_back(Redis::BulkString("cluster"));
     } else {

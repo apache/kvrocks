@@ -73,15 +73,13 @@ std::string MultiBulkString(const std::vector<std::string>& values, const std::v
 }
 
 std::string Array(const std::vector<std::string>& list) {
-  std::string::size_type n = std::accumulate(
-    list.begin(), list.end(), std::string::size_type(0),
-    [] ( std::string::size_type n, const std::string &s ) { return ( n += s.size() ); });
+  size_t n = std::accumulate(
+      list.begin(), list.end(), 0, [] (size_t n, const std::string &s) { return n + s.size(); });
   std::string result = "*" + std::to_string(list.size()) + CRLF;
   std::string::size_type final_size = result.size() + n;
   result.reserve(final_size);
-  auto s = std::accumulate(list.begin(), list.end(), result,
-    [](std::string &dest, std::string const &item) -> std::string& {dest += item; return dest;});
-  return s;
+  for(const auto& i : list) result += i;
+  return result;
 }
 
 std::string Command2RESP(const std::vector<std::string> &cmd_args) {

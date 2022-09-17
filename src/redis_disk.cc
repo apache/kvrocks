@@ -41,7 +41,7 @@ rocksdb::Status Disk::GetStringSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 rocksdb::Status Disk::GetHashSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     HashMetadata metadata(false);
@@ -59,7 +59,7 @@ rocksdb::Status Disk::GetHashSize(const Slice &user_key, uint64_t *key_size) {
 
 
 rocksdb::Status Disk::GetSetSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     HashMetadata metadata(false);
@@ -76,7 +76,7 @@ rocksdb::Status Disk::GetSetSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     ListMetadata metadata(false);
@@ -95,7 +95,7 @@ rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     ZSetMetadata metadata(false);
@@ -127,7 +127,7 @@ rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     BitmapMetadata metadata(false);
@@ -146,7 +146,7 @@ rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 rocksdb::Status Disk::GetSortedintSize(const Slice &user_key, uint64_t *key_size) {
-    key_size = 0;
+    *key_size = 0;
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
     SortedintMetadata metadata(false);

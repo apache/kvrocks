@@ -52,7 +52,7 @@ TEST_F(RedisDiskTest, StringDisk) {
     std::string value;
     string->Get(key_, &value);
     uint64_t result = 0;
-    EXPECT_TRUE(disk->GetStringSize(key_, result).ok());
+    EXPECT_TRUE(disk->GetStringSize(key_, &result).ok());
     EXPECT_GE(result, p);
     break;
   }
@@ -79,7 +79,7 @@ TEST_F(RedisDiskTest, HashDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetHashSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetHashSize(key_, &key_size).ok());
     EXPECT_GE(key_size, sum);
   }
   hash->Del(key_);
@@ -106,7 +106,7 @@ TEST_F(RedisDiskTest, SetDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetSetSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetSetSize(key_, &key_size).ok());
     EXPECT_GE(key_size, sum);
   }
   set->Del(key_);
@@ -132,7 +132,7 @@ TEST_F(RedisDiskTest, ListDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetListSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetListSize(key_, &key_size).ok());
     EXPECT_GE(key_size, sum);
   }
   list->Del(key_);
@@ -158,7 +158,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetZsetSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetZsetSize(key_, &key_size).ok());
     EXPECT_GE(key_size, sum);
   }
   zset->Del(key_);
@@ -180,7 +180,7 @@ TEST_F(RedisDiskTest, BitmapDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetBitmapSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetBitmapSize(key_, &key_size).ok());
     EXPECT_GE(key_size, i + 1);
   }
   bitmap->Del(key_);
@@ -196,7 +196,7 @@ TEST_F(RedisDiskTest, SortedintDisk) {
     // waiting for data write
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
-    EXPECT_TRUE(disk->GetSortedintSize(key_, key_size).ok());
+    EXPECT_TRUE(disk->GetSortedintSize(key_, &key_size).ok());
     // May be compressed, So we need to multiply by a factor 0.8
     EXPECT_GE(key_size, 64 * (i + 1) * 0.8);
   }

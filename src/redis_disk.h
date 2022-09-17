@@ -18,6 +18,9 @@
  *
  */
  
+#pragma once
+
+#include <string>
 #include "redis_db.h"
 #include "redis_metadata.h"
 
@@ -25,18 +28,18 @@ namespace Redis {
 
 class Disk : public Database {
  public:
-  explicit Disk(Engine::Storage *storage, const std::string &ns=""): Database(storage, ns) {
+  explicit Disk(Engine::Storage *storage, const std::string &ns): Database(storage, ns) {
     this->option.include_memtabtles = true;
     this->option.include_files = true;
   }
-  rocksdb::Status GetStringSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetHashSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetSetSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetListSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetZsetSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetBitmapSize(const Slice &user_key, uint64_t &key_size);
-  rocksdb::Status GetSortedintSize(const Slice &user_key, uint64_t &key_size);
-  private:
+  rocksdb::Status GetStringSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetHashSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetSetSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetListSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetZsetSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetBitmapSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetSortedintSize(const Slice &user_key, uint64_t *key_size);
+ private:
     rocksdb::SizeApproximationOptions option;
 };
 

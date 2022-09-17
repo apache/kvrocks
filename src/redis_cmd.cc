@@ -3378,7 +3378,7 @@ class CommandDisk : public Commander {
     std::string opname = Util::ToLower(args[1]);
     if (opname != "usage")
       return Status(Status::RedisInvalidCmd, "Unknown operation");
-    if (args.size() != 3) 
+    if (args.size() != 3)
       return Status(Status::RedisInvalidCmd, "Incorrect number of parameters");
     return Commander::Parse(args);
   }
@@ -3390,30 +3390,30 @@ class CommandDisk : public Commander {
     if (!s.ok())return Status(Status::RedisExecErr, s.ToString());
 
     uint64_t result;
-    switch (type){
+    switch (type) {
       case RedisType::kRedisString:
-        disk_db.GetStringSize(args_[2], result);
+        disk_db.GetStringSize(args_[2], &result);
         break;
       case RedisType::kRedisHash:
-        disk_db.GetHashSize(args_[2], result);
+        disk_db.GetHashSize(args_[2], &result);
         break;
       case RedisType::kRedisBitmap:
-        disk_db.GetBitmapSize(args_[2], result);
+        disk_db.GetBitmapSize(args_[2], &result);
         break;
       case RedisType::kRedisList:
-        disk_db.GetListSize(args_[2], result);
+        disk_db.GetListSize(args_[2], &result);
         break;
       case RedisType::kRedisSet:
-        disk_db.GetSetSize(args_[2], result);
+        disk_db.GetSetSize(args_[2], &result);
         break;
       case RedisType::kRedisSortedint:
-        disk_db.GetSortedintSize(args_[2], result);
+        disk_db.GetSortedintSize(args_[2], &result);
         break;
       case RedisType::kRedisZSet:
-        disk_db.GetZsetSize(args_[2], result);
+        disk_db.GetZsetSize(args_[2], &result);
         break;
       case RedisType::kRedisNone:
-        return Status(Status::NotFound," Not found " + args_[2]);
+        return Status(Status::NotFound, " Not found " + args_[2]);
         break;
       case RedisType::kRedisStream:
         return Status(Status::RedisInvalidCmd, "not support stream");

@@ -4182,16 +4182,11 @@ class CommandHello final : public Commander {
         auto authResult = AuthenticateUser(conn, svr->GetConfig(), user_password);
         switch (authResult) {
         case AuthResult::INVALID_PASSWORD:
-          *output = Redis::Error("ERR invalid password");
-          break;
+          return Status(Status::NotOK, "invalid password");
         case AuthResult::NO_REQUIRE_PASS:
-          *output = Redis::Error("ERR Client sent AUTH, but no password is set");
-          break;
+          return Status(Status::NotOK, "Client sent AUTH, but no password is set");
         case AuthResult::OK:
           break;
-        }
-        if (authResult != AuthResult::OK) {
-          return Status::OK();
         }
         next_arg += 1;
       } else if (opt == "SETNAME" && moreargs != 0) {

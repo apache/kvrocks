@@ -450,4 +450,4 @@ void Connection::ResetMultiExec() {
   DisableFlag(Connection::kMultiExec);
 }
 
-} // namespace Redis
+}  // namespace Redis

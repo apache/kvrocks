@@ -4161,16 +4161,15 @@ class CommandHello final : public Commander {
       auto parseResult = ParseInt<int64_t>(args_[next_arg], /* base= */ 10);
       ++next_arg;
       if (!parseResult.IsOK()) {
-        *output = Redis::Error("Protocol version is not an integer or out of range");
-        return parseResult.ToStatus();
+        return Status(Status::NotOK, "Protocol version is not an integer or out of range");
       }
       protocol = parseResult.GetValue();
 
       // In redis, it will check protocol < 2 or protocol > 3,
-      // but kvrocks only supports REPL2 by now.
-      if (protocol != 2) {
-        *output = Redis::Error("-NOPROTO unsupported protocol version");
-        return Status::OK();
+      // kvrocks only supports REPL2 by now, but for supporting some
+      // `hello 3`, it will not report error when using 3.
+      if (protocol < 2 || protocol > 3) {
+        return Status(Status::NotOK, "-NOPROTO unsupported protocol version");
       }
     }
 
@@ -5771,7 +5770,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
     ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
-    ADD_CMD("hello", -1, "read-only", 0, 0, 0, CommandHello),
+    ADD_CMD("hello", -1,  "read-only ok-loading", 0, 0, 0, CommandHello),
 
     ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),

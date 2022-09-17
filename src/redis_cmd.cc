@@ -3387,38 +3387,12 @@ class CommandDisk : public Commander {
     RedisType type;
     Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = disk_db.Type(args_[2], &type);
-    if (!s.ok())return Status(Status::RedisExecErr, s.ToString());
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
 
     uint64_t result = 0;
-    switch (type) {
-      case RedisType::kRedisString:
-        disk_db.GetStringSize(args_[2], &result);
-        break;
-      case RedisType::kRedisHash:
-        disk_db.GetHashSize(args_[2], &result);
-        break;
-      case RedisType::kRedisBitmap:
-        disk_db.GetBitmapSize(args_[2], &result);
-        break;
-      case RedisType::kRedisList:
-        disk_db.GetListSize(args_[2], &result);
-        break;
-      case RedisType::kRedisSet:
-        disk_db.GetSetSize(args_[2], &result);
-        break;
-      case RedisType::kRedisSortedint:
-        disk_db.GetSortedintSize(args_[2], &result);
-        break;
-      case RedisType::kRedisZSet:
-        disk_db.GetZsetSize(args_[2], &result);
-        break;
-      case RedisType::kRedisNone:
-        return Status(Status::NotFound, " Not found " + args_[2]);
-        break;
-      case RedisType::kRedisStream:
-        return Status(Status::RedisInvalidCmd, "not support stream");
-        break;
-    }
+    s = disk_db.GetKeySize(args_[2], type, &result);
+
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(result);
     return Status::OK();
   }

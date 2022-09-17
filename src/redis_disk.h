@@ -43,6 +43,7 @@ class Disk : public Database {
   rocksdb::Status GetZsetSize(const Slice &user_key, uint64_t *key_size);
   rocksdb::Status GetBitmapSize(const Slice &user_key, uint64_t *key_size);
   rocksdb::Status GetSortedintSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size);
  private:
     rocksdb::SizeApproximationOptions option_;
 };

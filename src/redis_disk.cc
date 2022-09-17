@@ -51,17 +51,49 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
   *key_size += tmp_size;
   return rocksdb::Status::OK();
 }
-rocksdb::Status Disk::GetStringSize(const Slice &user_key, uint64_t *key_size) {
+rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size) {
+  *key_size = 0;
   std::string ns_key;
+  rocksdb::Status s;
   AppendNamespacePrefix(user_key, &ns_key);
-  auto key_range = rocksdb::Range(Slice(ns_key), Slice(ns_key + static_cast<char>(0)));
+    switch (type) {
+      case RedisType::kRedisString:
+        s = GetStringSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisHash:
+        s = GetHashSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisBitmap:
+        s = GetBitmapSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisList:
+        s = GetListSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisSet:
+        s = GetSetSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisSortedint:
+        s = GetSortedintSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisZSet:
+        s = GetZsetSize(ns_key, key_size);
+        break;
+      case RedisType::kRedisNone:
+        s = GetHashSize(ns_key, key_size);
+        return rocksdb::Status::NotFound("Not found ", user_key);
+        break;
+      case RedisType::kRedisStream:
+        return rocksdb::Status::NotSupported("Not support stream");
+        break;
+    }
+    return s;
+}
+rocksdb::Status Disk::GetStringSize(const Slice &ns_key, uint64_t *key_size) {
+  auto key_range = rocksdb::Range(Slice(ns_key), Slice(ns_key.ToString() + static_cast<char>(0)));
   return db_->GetApproximateSizes(option_, metadata_cf_handle_, &key_range, 1, key_size);
 }
 
-rocksdb::Status Disk::GetHashSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+rocksdb::Status Disk::GetHashSize(const Slice &ns_key, uint64_t *key_size) {
   HashMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisHash, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -71,11 +103,8 @@ rocksdb::Status Disk::GetHashSize(const Slice &user_key, uint64_t *key_size) {
 }
 
 
-rocksdb::Status Disk::GetSetSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata(false);
+rocksdb::Status Disk::GetSetSize(const Slice &ns_key, uint64_t *key_size) {
+  SetMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisSet, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   return GetApproximateSizes(metadata, ns_key,
@@ -83,10 +112,7 @@ rocksdb::Status Disk::GetSetSize(const Slice &user_key, uint64_t *key_size) {
                              key_size);
 }
 
-rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+rocksdb::Status Disk::GetListSize(const Slice &ns_key, uint64_t *key_size) {
   ListMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisList, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -97,10 +123,7 @@ rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
                              key_size, buf);
 }
 
-rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+rocksdb::Status Disk::GetZsetSize(const Slice &ns_key, uint64_t *key_size) {
   ZSetMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisZSet, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -115,10 +138,7 @@ rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
                              key_size);
 }
 
-rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+rocksdb::Status Disk::GetBitmapSize(const Slice &ns_key, uint64_t *key_size) {
   BitmapMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisBitmap, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -129,10 +149,7 @@ rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
                              key_size, std::to_string(0), std::to_string(0));
 }
 
-rocksdb::Status Disk::GetSortedintSize(const Slice &user_key, uint64_t *key_size) {
-  *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+rocksdb::Status Disk::GetSortedintSize(const Slice &ns_key, uint64_t *key_size) {
   SortedintMetadata metadata(false);
   rocksdb::Status s = Database::GetMetadata(kRedisSortedint, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

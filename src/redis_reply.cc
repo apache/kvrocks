@@ -46,30 +46,28 @@ std::string MultiLen(int64_t len) {
 }
 
 std::string MultiBulkString(const std::vector<std::string>& values, bool output_nil_for_empty_string) {
-  std::vector<std::string> copiedStrings;
-  copiedStrings.resize(values.size());
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (size_t i = 0; i < values.size(); i++) {
     if (values[i].empty() && output_nil_for_empty_string) {
-      copiedStrings[i] = NilString();
+      result += NilString();
     }  else {
-      copiedStrings[i] = BulkString(values[i]);
+      result += BulkString(values[i]);
     }
   }
-  return Array(copiedStrings);
+  return result;
 }
 
 
 std::string MultiBulkString(const std::vector<std::string>& values, const std::vector<rocksdb::Status> &statuses) {
-  std::vector<std::string> copiedStrings;
-  copiedStrings.resize(values.size());
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (size_t i = 0; i < values.size(); i++) {
     if (i < statuses.size() && !statuses[i].ok()) {
-      copiedStrings[i] = NilString();
+      result += NilString();
     } else {
-      copiedStrings[i] = BulkString(values[i]);
+      result += BulkString(values[i]);
     }
   }
-  return Array(copiedStrings);
+  return result
 }
 
 std::string Array(const std::vector<std::string>& list) {

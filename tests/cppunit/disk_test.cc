@@ -191,7 +191,7 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
   int ret;
-  for(int i=0;i<10;i++){
+  for(int i = 0; i < 10 ;i++){
     EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok()&&ret==1);
   }
   uint64_t key_size;

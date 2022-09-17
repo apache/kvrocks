@@ -45,11 +45,12 @@ TEST_F(RedisDiskTest, StringDisk) {
   key_ = "stringdisk_key";
   std::unique_ptr<Redis::String> string = Util::MakeUnique<Redis::String>(storage_, "disk_ns_string");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_string");
-  std::vector<int> value_size{1, 1024, 1024*1024};
+  std::vector<int> value_size{1, 1024};
   for(auto &p : value_size){
     EXPECT_TRUE(string->Set(key_, std::string(p, 'a')).ok());
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::string got_value;
+    EXPECT_TRUE(string->Get(key_,  &got_value).ok());
+    EXPECT_EQ(got_value, std::string(p, 'a'));
     std::string value;
     string->Get(key_, &value);
     uint64_t result = 0;
@@ -64,9 +65,9 @@ TEST_F(RedisDiskTest, HashDisk) {
   std::unique_ptr<Redis::Hash> hash = Util::MakeUnique<Redis::Hash>(storage_, "disk_ns_hash");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_hash");
   key_ = "hashdisk_key";
-  fields_ = {"hashdisk_kkey1", "hashdisk_kkey2", "hashdisk_kkey3"};
-  values_.resize(3);
-  std::vector<int>value_size{1, 1024, 1024*1024};
+  fields_ = {"hashdisk_kkey1", "hashdisk_kkey2"};
+  values_.resize(2);
+  std::vector<int>value_size{1, 1024};
   for(int i = 0 ;i < int(fields_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
@@ -89,8 +90,8 @@ TEST_F(RedisDiskTest, SetDisk) {
   std::unique_ptr<Redis::Set> set = Util::MakeUnique<Redis::Set>(storage_, "disk_ns_set");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_set");
   key_ = "setdisk_key";
-  values_.resize(3);
-  std::vector<int>value_size{1, 1024, 1024*1024};
+  values_.resize(2);
+  std::vector<int>value_size{1, 1024};
   for(int i = 0;i < int(values_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
@@ -116,8 +117,8 @@ TEST_F(RedisDiskTest, ListDisk) {
   std::unique_ptr<Redis::List> list = Util::MakeUnique<Redis::List>(storage_, "disk_ns_list");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_list");
   key_ = "listdisk_key";
-  values_.resize(3);
-  std::vector<int>value_size{1,1024,1024*1024};
+  values_.resize(2);
+  std::vector<int>value_size{1,1024};
   for(int i = 0;i < int(values_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
@@ -141,8 +142,8 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::unique_ptr<Redis::ZSet> zset = Util::MakeUnique<Redis::ZSet>(storage_, "disk_ns_zet");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
-  std::vector<MemberScore> mscores(4);
-  std::vector<int>value_size{1,1024,1024*1024};
+  std::vector<MemberScore> mscores(2);
+  std::vector<int>value_size{1,1024};
   for(int i = 0;i < int(value_size.size()); i++){
     mscores[i].member = std::string(value_size[i],'a');
     mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];

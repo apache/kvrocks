@@ -3389,7 +3389,7 @@ class CommandDisk : public Commander {
     rocksdb::Status s = disk_db.Type(args_[2], &type);
     if (!s.ok())return Status(Status::RedisExecErr, s.ToString());
 
-    uint64_t result;
+    uint64_t result = 0;
     switch (type) {
       case RedisType::kRedisString:
         disk_db.GetStringSize(args_[2], &result);
@@ -3419,7 +3419,7 @@ class CommandDisk : public Commander {
         return Status(Status::RedisInvalidCmd, "not support stream");
         break;
     }
-    *output= Redis::Integer(result);
+    *output = Redis::Integer(result);
     return Status::OK();
   }
 };

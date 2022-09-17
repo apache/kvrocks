@@ -31,8 +31,26 @@
 #include "redis_zset.h"
 #include "redis_bitmap.h"
 #include "redis_disk.h"
+#include "status.h"
 
 namespace Redis {
+rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
+                                          rocksdb::ColumnFamilyHandle *column_family,
+                                          uint64_t *key_size, Slice subkeyleft ,
+                                          Slice subkeyright) {
+    std::string prefix_key, next_version_prefix_key;
+    InternalKey(ns_key, subkeyleft, metadata.version,
+                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+    InternalKey(ns_key, subkeyright, metadata.version + 1,
+                storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+    auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
+    uint64_t tmp_size = 0;
+    rocksdb::Status s = db_->GetApproximateSizes(this->option, column_family,
+                                                 &key_range, 1, &tmp_size);
+    if(!s.ok())return s;
+    *key_size += tmp_size;
+    return rocksdb::Status::OK();
+}
 rocksdb::Status Disk::GetStringSize(const Slice &user_key, uint64_t *key_size) {
     std::string ns_key;
     AppendNamespacePrefix(user_key, &ns_key);
@@ -47,14 +65,9 @@ rocksdb::Status Disk::GetHashSize(const Slice &user_key, uint64_t *key_size) {
     HashMetadata metadata(false);
     rocksdb::Status s = Database::GetMetadata(kRedisHash, ns_key, &metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-    std::string prefix_key, next_version_prefix_key;
-    InternalKey(ns_key, "", metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, "", metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-    auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
-    return db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                    &key_range, 1, key_size);
+    return this->GetApproximateSizes(metadata, ns_key,
+                                     storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                     key_size);
 }
 
 
@@ -65,14 +78,9 @@ rocksdb::Status Disk::GetSetSize(const Slice &user_key, uint64_t *key_size) {
     HashMetadata metadata(false);
     rocksdb::Status s = Database::GetMetadata(kRedisSet, ns_key, &metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-    std::string prefix_key, next_version_prefix_key;
-    InternalKey(ns_key, "", metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, "", metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-    auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
-    return db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                    &key_range, 1, key_size);
+    return this->GetApproximateSizes(metadata, ns_key,
+                                     storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                     key_size);
 }
 
 rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
@@ -84,14 +92,9 @@ rocksdb::Status Disk::GetListSize(const Slice &user_key, uint64_t *key_size) {
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     std::string buf;
     PutFixed64(&buf, metadata.head);
-    std::string prefix_key, next_version_prefix_key;
-    InternalKey(ns_key, buf, metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, "", metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-    auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
-    return db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                    &key_range, 1, key_size);
+    return this->GetApproximateSizes(metadata, ns_key,
+                                     storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                     key_size, buf);
 }
 
 rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
@@ -103,27 +106,13 @@ rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     std::string score_bytes;
     PutDouble(&score_bytes, kMinScore);
-    std::string prefix_key, next_verison_prefix_key, score_prefix_key, next_version_score_prefix_key;
-    InternalKey(ns_key, score_bytes, metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&score_prefix_key);
-    InternalKey(ns_key, score_bytes, metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_version_score_prefix_key);
-
-    InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
-
-    uint64_t tmp_size = 0;
-    auto key_range = rocksdb::Range(prefix_key, next_verison_prefix_key);
-    s = db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                &key_range, 1, &tmp_size);
-    *key_size += tmp_size;
-    if (!s.ok())return s;
-    key_range = rocksdb::Range(score_prefix_key, next_version_score_prefix_key);
-    s = db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kZSetScoreColumnFamilyName),
-                                &key_range, 1, &tmp_size);
-    *key_size += tmp_size;
-    if (!s.ok())return s;
-    return rocksdb::Status::OK();
+    s = this->GetApproximateSizes(metadata, ns_key,
+                                  storage_->GetCFHandle(Engine::kZSetScoreColumnFamilyName),
+                                  key_size, score_bytes, score_bytes);
+    if (!s.ok()) return s; 
+    return s = this->GetApproximateSizes(metadata, ns_key,
+                                         storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                         key_size);
 }
 
 rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
@@ -135,14 +124,9 @@ rocksdb::Status Disk::GetBitmapSize(const Slice &user_key, uint64_t *key_size) {
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     std::string score_bytes;
     PutDouble(&score_bytes, kMinScore);
-    std::string prefix_key, next_verison_prefix_key;
-    InternalKey(ns_key, std::to_string(0), metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, std::to_string(0), metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
-    auto key_range = rocksdb::Range(prefix_key, next_verison_prefix_key);
-    return db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                    &key_range, 1, key_size);
+    return s = this->GetApproximateSizes(metadata, ns_key,
+                                         storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                         key_size, std::to_string(0), std::to_string(0));
 }
 
 rocksdb::Status Disk::GetSortedintSize(const Slice &user_key, uint64_t *key_size) {
@@ -154,13 +138,9 @@ rocksdb::Status Disk::GetSortedintSize(const Slice &user_key, uint64_t *key_size
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     std::string prefix_key, next_version_prefix_key, start_buf;
     PutFixed64(&start_buf, 0);
-    InternalKey(ns_key, start_buf, metadata.version,
-                storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-    InternalKey(ns_key, start_buf, metadata.version + 1,
-                storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-    auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
-    return db_->GetApproximateSizes(this->option, storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                    &key_range, 1, key_size);
+    return s = this->GetApproximateSizes(metadata, ns_key,
+                                         storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
+                                         key_size, start_buf, start_buf); 
 }
 
 }  // namespace Redis

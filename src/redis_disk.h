@@ -32,6 +32,10 @@ class Disk : public Database {
     this->option.include_memtabtles = true;
     this->option.include_files = true;
   }
+  rocksdb::Status GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
+                                      rocksdb::ColumnFamilyHandle *column_family,
+                                      uint64_t *key_size, Slice subkeyleft = Slice(),
+                                      Slice subkeyright = Slice());
   rocksdb::Status GetStringSize(const Slice &user_key, uint64_t *key_size);
   rocksdb::Status GetHashSize(const Slice &user_key, uint64_t *key_size);
   rocksdb::Status GetSetSize(const Slice &user_key, uint64_t *key_size);

@@ -20,82 +20,68 @@
 package quit
 
 import (
-	"fmt"
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
-func formatCommand(args []string) string {
-	str := fmt.Sprintf("*%d\r\n", len(args))
-	for _, arg := range args {
-		str += fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
+func reconnect(srv *util.KvrocksServer, rdb **redis.Client) error {
+	if err := (*rdb).Close(); err != nil {
+		return err
 	}
-	return str
+	*rdb = srv.NewClient()
+	return nil
 }
 
-func TestQuit(t *testing.T) {
+func TestPipeQuit(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
-	rdb := srv.NewTCPClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
+	rdb := srv.NewClient()
+	ctx := context.Background()
 
 	t.Run("QUIT returns OK", func(t *testing.T) {
-		// reconnect
-		require.NoError(t, rdb.Close())
-		rdb = srv.NewTCPClient()
-		require.NoError(t, rdb.Write(formatCommand([]string{"quit"})))
-		require.NoError(t, rdb.Write(formatCommand([]string{"ping"})))
-		resQuit, errQuit := rdb.ReadLine()
-		require.Equal(t, "+OK", resQuit)
-		require.NoError(t, errQuit)
-		resPing, errPing := rdb.ReadLine()
-		require.Equal(t, "", resPing)
-		require.Error(t, errPing)
+		require.NoError(t, reconnect(srv, &rdb))
+		pipe := rdb.Pipeline()
+		cmd1 := pipe.Do(ctx, "quit")
+		cmd2 := pipe.Do(ctx, "ping")
+		_, err := pipe.Exec(ctx)
+		require.Equal(t, "OK", cmd1.Val())
+		require.Equal(t, nil, cmd2.Val())
+		require.Error(t, err)
 	})
 
 	t.Run("Pipelined commands after QUIT must not be executed", func(t *testing.T) {
 		// reconnect
-		require.NoError(t, rdb.Close())
-		rdb = srv.NewTCPClient()
-		require.NoError(t, rdb.Write(formatCommand([]string{"quit"})))
-		require.NoError(t, rdb.Write(formatCommand([]string{"set", "foo", "bar"})))
-		resQuit, errQuit := rdb.ReadLine()
-		require.Equal(t, "+OK", resQuit)
-		require.NoError(t, errQuit)
-		resSet, errSet := rdb.ReadLine()
-		require.Equal(t, "", resSet)
-		require.Error(t, errSet)
-		// reconnect
-		require.NoError(t, rdb.Close())
-		rdb = srv.NewTCPClient()
-		require.NoError(t, rdb.Write(formatCommand([]string{"get", "foo"})))
-		resGet, errGet := rdb.ReadLine()
-		require.Equal(t, "$-1", resGet)
-		require.NoError(t, errGet)
+		require.NoError(t, reconnect(srv, &rdb))
+		pipe := rdb.Pipeline()
+		cmd1 := pipe.Do(ctx, "quit")
+		cmd2 := pipe.Do(ctx, "set", "foo", "bar")
+		_, err := pipe.Exec(ctx)
+		require.Equal(t, "OK", cmd1.Val())
+		require.Equal(t, nil, cmd2.Val())
+		require.Error(t, err)
+		require.NoError(t, reconnect(srv, &rdb))
+		cmd3 := rdb.Get(ctx, "foo")
+		require.Equal(t, "", cmd3.Val())
 	})
 
 	t.Run("Pipelined commands after QUIT that exceed read buffer size", func(t *testing.T) {
-		// reconnect
-		require.NoError(t, rdb.Close())
-		rdb = srv.NewTCPClient()
-		require.NoError(t, rdb.Write(formatCommand([]string{"quit"})))
-		require.NoError(t, rdb.Write(formatCommand([]string{"set", "foo", strings.Repeat("x", 1024)})))
-		resQuit, errQuit := rdb.ReadLine()
-		require.Equal(t, "+OK", resQuit)
-		require.NoError(t, errQuit)
-		resSet, errSet := rdb.ReadLine()
-		require.Equal(t, "", resSet)
-		require.Error(t, errSet)
-		// reconnect
-		require.NoError(t, rdb.Close())
-		rdb = srv.NewTCPClient()
-		require.NoError(t, rdb.Write(formatCommand([]string{"get", "foo"})))
-		resGet, errGet := rdb.ReadLine()
-		require.Equal(t, "$-1", resGet)
-		require.NoError(t, errGet)
+		require.NoError(t, reconnect(srv, &rdb))
+		pipe := rdb.Pipeline()
+		cmd1 := pipe.Do(ctx, "quit")
+		cmd2 := pipe.Do(ctx, "set", "foo", strings.Repeat("x", 1024))
+		_, err := pipe.Exec(ctx)
+		require.Equal(t, "OK", cmd1.Val())
+		require.Equal(t, nil, cmd2.Val())
+		require.Error(t, err)
+		require.NoError(t, reconnect(srv, &rdb))
+		cmd3 := rdb.Get(ctx, "foo")
+		require.Equal(t, "", cmd3.Val())
 	})
 
+	require.NoError(t, rdb.Close())
 }

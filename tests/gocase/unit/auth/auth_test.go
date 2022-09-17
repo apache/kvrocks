@@ -73,33 +73,23 @@ func TestAuth(t *testing.T) {
 }
 
 func TestHello(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "foobar",
+	})
 	defer srv.Close()
 
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	//t.Run("AUTH succeeds when the right password is given", func(t *testing.T) {
-	//	r := rdb.Do(ctx, "AUTH", "foobar")
-	//	require.Equal(t, "OK", r.Val())
-	//})
-
-	// 	t.Run("HELLO", func(t *testing.T) {
-	// 		r := rdb.Do(ctx, "HELLO")
-	// 		// 		require
-	// 		fmt.Println(r)
-	// 	})
-	//
-	// 	t.Run("hello with protocol", func(t *testing.T) {
-	// 		r := rdb.Do(ctx, "HELLO 2")
-	// 		//         require.ErrorContains(t, r.Err(), "invalid password")
-	// 		fmt.Println(r)
-	// 	})
-
 	t.Run("hello with wrong protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO 3")
 		require.ErrorContains(t, r.Err(), "-NOPROTO unsupported protocol version")
+	})
+
+	t.Run("AUTH succeeds when the right password is given", func(t *testing.T) {
+		r := rdb.Do(ctx, "AUTH", "foobar")
+		require.Equal(t, "OK", r.Val())
 	})
 
 	t.Run("hello with wrong protocol", func(t *testing.T) {
@@ -111,25 +101,4 @@ func TestHello(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO AUTH")
 		require.ErrorContains(t, r.Err(), "Protocol version is not an integer or out of range")
 	})
-
-	// 	t.Run("hello with setname", func(t *testing.T) {
-	// 		r := rdb.Do(ctx, "HELLO 2 SETNAME testconn")
-	// 		// require
-	// 		// TODO: list testconn
-	// 		fmt.Println(r)
-	// 	})
-	//
-	// 	t.Run("hello with auth", func(t *testing.T) {
-	// 		r := rdb.Do(ctx, "HELLO 2 AUTH foobar")
-	// 		// require
-	// 		// TODO: list testconn
-	// 		fmt.Println(r)
-	// 	})
-	//
-	// 	t.Run("hello with auth and setname", func(t *testing.T) {
-	// 		r := rdb.Do(ctx, "HELLO 2 AUTH foobar")
-	// 		// require
-	// 		// TODO: list testconn
-	// 		fmt.Println(r)
-	// 	})
 }

@@ -44,18 +44,19 @@ func TestPipeQuit(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("QUIT returns OK", func(t *testing.T) {
-		require.NoError(t, reconnect(srv, &rdb))
-		pipe := rdb.Pipeline()
-		cmd1 := pipe.Do(ctx, "quit")
-		cmd2 := pipe.Do(ctx, "ping")
-		_, err := pipe.Exec(ctx)
-		require.Equal(t, "OK", cmd1.Val())
-		require.Equal(t, nil, cmd2.Val())
-		require.Error(t, err)
+		trdb := srv.NewTCPClient()
+		require.NoError(t, trdb.Write("*1\r\n$4\r\nquit\r\n"))
+		resQuit, errQuit := trdb.ReadLine()
+		require.Equal(t, "+OK", resQuit)
+		require.NoError(t, errQuit)
+		require.NoError(t, trdb.Write("*1\r\n$4\r\nping\r\n"))
+		resPing, errPing := trdb.ReadLine()
+		require.Equal(t, "", resPing)
+		require.Error(t, errPing)
+		require.NoError(t, trdb.Close())
 	})
 
 	t.Run("Pipelined commands after QUIT must not be executed", func(t *testing.T) {
-		// reconnect
 		require.NoError(t, reconnect(srv, &rdb))
 		pipe := rdb.Pipeline()
 		cmd1 := pipe.Do(ctx, "quit")

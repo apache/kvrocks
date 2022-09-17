@@ -79,12 +79,9 @@ rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t
         s = GetZsetSize(ns_key, key_size);
         break;
       case RedisType::kRedisNone:
-        s = GetHashSize(ns_key, key_size);
         return rocksdb::Status::NotFound("Not found ", user_key);
-        break;
       case RedisType::kRedisStream:
         return rocksdb::Status::NotSupported("Not support stream");
-        break;
     }
     return s;
 }

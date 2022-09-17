@@ -4196,8 +4196,8 @@ public:
         }
         next_arg += 1;
       } else if (opt == "SETNAME" && moreargs != 0) {
-        const std::string& ns = args_[next_arg + 1];
-        conn->SetNamespace(ns);
+        const std::string& name = args_[next_arg + 1];
+        conn->SetName(name);
         next_arg += 1;
       } else {
         *output = Redis::Error("Syntax error in HELLO option " + opt);

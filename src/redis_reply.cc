@@ -67,7 +67,7 @@ std::string MultiBulkString(const std::vector<std::string>& values, const std::v
       result += BulkString(values[i]);
     }
   }
-  return result
+  return result;
 }
 
 std::string Array(const std::vector<std::string>& list) {

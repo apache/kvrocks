@@ -35,6 +35,7 @@
 #include "redis_hash.h"
 #include "redis_bitmap.h"
 #include "redis_list.h"
+#include "redis_disk.h"
 #include "redis_reply.h"
 #include "redis_request.h"
 #include "redis_connection.h"
@@ -3371,6 +3372,58 @@ class CommandInfo : public Commander {
   }
 };
 
+class CommandDisk : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    std::string opname = Util::ToLower(args[1]);
+    if (opname != "usage")
+      return Status(Status::RedisInvalidCmd, "Unknown operation");
+    if (args.size() != 3) 
+      return Status(Status::RedisInvalidCmd, "Incorrect number of parameters");
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisType type;
+    Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = disk_db.Type(args_[2], &type);
+    if (!s.ok())return Status(Status::RedisExecErr, s.ToString());
+
+    uint64_t result;
+    switch (type){
+      case RedisType::kRedisString:
+        disk_db.GetStringSize(args_[2], result);
+        break;
+      case RedisType::kRedisHash:
+        disk_db.GetHashSize(args_[2], result);
+        break;
+      case RedisType::kRedisBitmap:
+        disk_db.GetBitmapSize(args_[2], result);
+        break;
+      case RedisType::kRedisList:
+        disk_db.GetListSize(args_[2], result);
+        break;
+      case RedisType::kRedisSet:
+        disk_db.GetSetSize(args_[2], result);
+        break;
+      case RedisType::kRedisSortedint:
+        disk_db.GetSortedintSize(args_[2], result);
+        break;
+      case RedisType::kRedisZSet:
+        disk_db.GetZsetSize(args_[2], result);
+        break;
+      case RedisType::kRedisNone:
+        return Status(Status::NotFound," Not found " + args_[2]);
+        break;
+      case RedisType::kRedisStream:
+        return Status(Status::RedisInvalidCmd, "not support stream");
+        break;
+    }
+    *output= Redis::Integer(result);
+    return Status::OK();
+  }
+};
+
 class CommandRole : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -5680,6 +5733,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
     ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
+    ADD_CMD("disk", 3, "read-only", 0, 0, 0, CommandDisk),
 
     ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
     ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),

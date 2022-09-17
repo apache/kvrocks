@@ -4153,7 +4153,7 @@ class CommandEcho : public Commander {
 
 /* HELLO [<protocol-version> [AUTH <password>] [SETNAME <name>] ] */
 class CommandHello final : public Commander {
-public:
+ public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
     if (args_.size() >= 2) {

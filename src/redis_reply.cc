@@ -76,7 +76,7 @@ std::string Array(const std::vector<std::string>& list) {
   std::string result = "*" + std::to_string(list.size()) + CRLF;
   std::string::size_type final_size = result.size() + n;
   result.reserve(final_size);
-  for(const auto& i : list) result += i;
+  for (const auto& i : list) result += i;
   return result;
 }
 

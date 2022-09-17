@@ -47,7 +47,7 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
     uint64_t tmp_size = 0;
     rocksdb::Status s = db_->GetApproximateSizes(this->option, column_family,
                                                  &key_range, 1, &tmp_size);
-    if(!s.ok())return s;
+    if (!s.ok()) return s;
     *key_size += tmp_size;
     return rocksdb::Status::OK();
 }
@@ -109,7 +109,7 @@ rocksdb::Status Disk::GetZsetSize(const Slice &user_key, uint64_t *key_size) {
     s = this->GetApproximateSizes(metadata, ns_key,
                                   storage_->GetCFHandle(Engine::kZSetScoreColumnFamilyName),
                                   key_size, score_bytes, score_bytes);
-    if (!s.ok()) return s; 
+    if (!s.ok()) return s;
     return s = this->GetApproximateSizes(metadata, ns_key,
                                          storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
                                          key_size);
@@ -140,7 +140,7 @@ rocksdb::Status Disk::GetSortedintSize(const Slice &user_key, uint64_t *key_size
     PutFixed64(&start_buf, 0);
     return s = this->GetApproximateSizes(metadata, ns_key,
                                          storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
-                                         key_size, start_buf, start_buf); 
+                                         key_size, start_buf, start_buf);
 }
 
 }  // namespace Redis

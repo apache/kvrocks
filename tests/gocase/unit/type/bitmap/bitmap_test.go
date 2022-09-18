@@ -61,7 +61,7 @@ func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...str
 }
 func SimulateBitOp(op BITOP, values ...[]byte) string {
 	maxlen := 0
-	binarayArray := []string{}
+	binaryArray := []string{}
 	for _, value := range values {
 		if maxlen < len(value)*8 {
 			maxlen = len(value) * 8
@@ -73,11 +73,11 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			buf.WriteString(fmt.Sprintf("%08b", v))
 		}
 		tmp := buf.String() + strings.Repeat("0", maxlen-len(buf.String()))
-		binarayArray = append(binarayArray, tmp)
+		binaryArray = append(binaryArray, tmp)
 	}
 	var binarayResult []byte
 	for i := 0; i < maxlen; i++ {
-		x := binarayArray[0][i]
+		x := binaryArray[0][i]
 		if op == NOT {
 			if x == '0' {
 				x = '1'
@@ -85,9 +85,9 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 				x = '0'
 			}
 		}
-		for j := 1; j < len(binarayArray); j++ {
+		for j := 1; j < len(binaryArray); j++ {
 			left := int(x - '0')
-			right := int(binarayArray[j][i] - '0')
+			right := int(binaryArray[j][i] - '0')
 			switch op {
 			case AND:
 				left = left & right

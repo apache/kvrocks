@@ -38,6 +38,7 @@
 #include "cron.h"
 #include "server.h"
 #include "log_collector.h"
+#include "config_util.h"
 
 const char *kDefaultNamespace = "__namespace";
 
@@ -512,28 +513,21 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 
   auto kv = std::move(*parsed);
 
-  if (kv.empty()) return Status::OK();
-  if (kv[0] == "rename-command" && kv.size() == 3) {
-    kv[1] = kv[1] + " " + kv[2];
-    kv.resize(2);
-  }
+  if (kv.first.empty() || kv.second.empty()) return Status::OK();
 
-  if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
-  if (kv[1] == "") return Status::OK();
-
-  std::string field_key = Util::ToLower(kv[0]);
+  std::string field_key = Util::ToLower(kv.first);
   const char ns_str[] = "namespace.";
   size_t ns_str_size = sizeof(ns_str) - 1;
-  if (!strncasecmp(kv[0].data(), ns_str, ns_str_size)) {
+  if (!strncasecmp(kv.first.data(), ns_str, ns_str_size)) {
       // namespace should keep key case-sensitive
-      field_key = kv[0];
-      tokens[kv[1]] = kv[0].substr(ns_str_size);
+      field_key = kv.first;
+      tokens[kv.second] = kv.first.substr(ns_str_size);
   }
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto& field = iter->second;
     field->line_number = line_number;
-    auto s = field->Set(kv[1]);
+    auto s = field->Set(kv.second);
     if (!s.IsOK()) return s;
   }
   return Status::OK();
@@ -669,18 +663,18 @@ Status Config::Rewrite() {
     while (!file.eof()) {
       std::getline(file, raw_line);
       auto parsed = ParseConfigLine(raw_line);
-      if (!parsed || parsed->size() != 2) {
+      if (!parsed || parsed->first.empty() || parsed->second.empty()) {
         lines.emplace_back(raw_line);
         continue;
       }
       auto kv = std::move(*parsed);
-      if (Util::HasPrefix(kv[0], namespacePrefix)) {
+      if (Util::HasPrefix(kv.first, namespacePrefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
       }
-      auto iter = new_config.find(Util::ToLower(kv[0]));
+      auto iter = new_config.find(Util::ToLower(kv.first));
       if (iter != new_config.end()) {
-        if (!iter->second.empty()) lines.emplace_back(iter->first + " " + iter->second);
+        if (!iter->second.empty()) lines.emplace_back(DumpConfigLine({iter->first, iter->second}));
         new_config.erase(iter);
       } else {
         lines.emplace_back(raw_line);
@@ -807,138 +801,4 @@ Status Config::isNamespaceLegal(const std::string &ns) {
     return Status(Status::NotOK, std::string("namespace contain illegal letter"));
   }
   return Status::OK();
-}
-
-StatusOr<std::vector<std::string>> ParseConfigLine(const std::string& line) {
-  enum { NORMAL, QUOTED, SPACE, ESCAPE, COMMENT } state = SPACE;
-
-  char quote;  // single or double quote
-  std::string current_str;
-  std::vector<std::string> res;
-
-  for (auto i = line.begin(); i != line.end();) {
-    switch (state) {
-      case NORMAL:
-        if (std::isspace(*i)) {
-          res.push_back(current_str);
-          current_str = "";
-          state = SPACE;
-        } else if (*i == '#') {
-          res.push_back(current_str);
-          state = COMMENT;
-        } else {
-          current_str.push_back(*i);
-          i++;
-        }
-        break;
-      case QUOTED:
-        if (*i == '\\') {
-          state = ESCAPE;
-        } else if (*i == quote) {
-          res.push_back(current_str);
-          current_str = "";
-          state = SPACE;
-        } else {
-          current_str.push_back(*i);
-        }
-        i++;
-        break;
-      case ESCAPE:
-        if (*i == '\'' || *i == '"' || *i == '\\') {
-          current_str.push_back(*i);
-        } else if (*i == 't') {
-          current_str.push_back('\t');
-        } else if (*i == 'r') {
-          current_str.push_back('\r');
-        } else if (*i == 'n') {
-          current_str.push_back('\n');
-        } else if (*i == 'v') {
-          current_str.push_back('\v');
-        } else if (*i == 'f') {
-          current_str.push_back('\f');
-        } else if (*i == 'b') {
-          current_str.push_back('\b');
-        }
-        state = QUOTED;
-        i++;
-        break;
-      case SPACE:
-        if (!std::isspace(*i)) {
-          if (*i == '"' || *i == '\'') {
-            state = QUOTED;
-            quote = *i;
-            i++;
-          } else if (*i == '#') {
-            state = COMMENT;
-          } else {
-            state = NORMAL;
-          }
-        } else {
-          i++;
-        }
-        break;
-      case COMMENT:
-        i++;
-        break;
-    }
-  }
-
-  if (state == NORMAL) {
-    res.push_back(current_str);
-    state = SPACE;
-  }
-
-  if (state != SPACE && state != COMMENT) {
-    return {Status::NotOK, "config line ends unexpectedly"};
-  }
-
-  return res;
-}
-
-std::string DumpConfigLine(const std::vector<std::string> &config) {
-  std::string res;
-
-  if (config.empty()) return res;
-
-  res += config[0];
-
-  for (size_t i = 1; i < config.size(); ++i) {
-    res += " ";
-
-    if (std::any_of(config[i].begin(), config[i].end(), [](char c) {
-      return std::isspace(c) || c == '"' || c == '\'' || c == '#';
-    })) {
-      res += '"';
-      for (char c : config[i]) {
-        if (c == '\\') {
-          res += "\\\\";
-        } else if (c == '\'') {
-          res += "\\'";
-        } else if (c == '"') {
-          res += "\\\"";
-        } else if (c == '\t') {
-          res += "\\t";
-        } else if (c == '\r') {
-          res += "\\r";
-        } else if (c == '\n') {
-          res += "\\n";
-        } else if (c == '\v') {
-          res += "\\v";
-        } else if (c == '\f') {
-          res += "\\f";
-        } else if (c == '\b') {
-          res += "\\b";
-        } else {
-          res += c;
-        }
-      }
-      res += '"';
-    } else if (config[i].empty()) {
-      res += "\"\"";
-    } else {
-      res += config[i];
-    }
-  }
-
-  return res;
 }

@@ -17,15 +17,27 @@
  * under the License.
  */
 
-package util
+package config
 
 import (
+	"context"
 	"testing"
 
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
 
-func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interface{}) {
-	require.Error(t, err, msgAndArgs)
-	require.Regexp(t, rx, err.Error(), msgAndArgs)
+func TestRenameCommand(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"rename-command": "KEYS KEYSNEW",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	err := rdb.Keys(ctx, "*").Err()
+	require.ErrorContains(t, err, "unknown command")
+	r := rdb.Do(ctx, "KEYSNEW", "*")
+	require.Equal(t, []interface{}{}, r.Val())
 }

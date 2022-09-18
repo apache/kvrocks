@@ -319,6 +319,11 @@ start_server {tags {"geo"}} {
         set e
     } {*syntax*}
 
+    test {GEORADIUS missing key} {
+        r del points
+        assert_equal {} [r georadius points 13.361389 38.115556 50 km]
+    }
+    
     # test {GEOSEARCHSTORE STORE option: syntax error} {
     #     catch {r geosearchstore abc points fromlonlat 13.361389 38.115556 byradius 50 km store abc} e
     #     set e

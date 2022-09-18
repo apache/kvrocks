@@ -26,6 +26,7 @@ option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" ON)
+option(ENABLE_OPENSSL "enable openssl to support tls connection" ON)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -81,10 +82,15 @@ endif()
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "do not build shared libs by default")
 
+if(ENABLE_OPENSSL)
+    find_package(OpenSSL REQUIRED)
+endif()
+
 include(cmake/gtest.cmake)
 include(cmake/glog.cmake)
 include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)
+include(cmake/zstd.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 
@@ -96,19 +102,22 @@ endif()
 
 find_package(Threads REQUIRED)
 
-list(APPEND EXTERNAL_LIBS PRIVATE glog)
-list(APPEND EXTERNAL_LIBS PRIVATE snappy)
-list(APPEND EXTERNAL_LIBS PRIVATE rocksdb_with_headers)
-list(APPEND EXTERNAL_LIBS PRIVATE event_with_headers)
-list(APPEND EXTERNAL_LIBS PRIVATE lz4)
+list(APPEND EXTERNAL_LIBS glog)
+list(APPEND EXTERNAL_LIBS snappy)
+list(APPEND EXTERNAL_LIBS rocksdb_with_headers)
+list(APPEND EXTERNAL_LIBS event_with_headers)
+list(APPEND EXTERNAL_LIBS lz4)
+list(APPEND EXTERNAL_LIBS zstd)
 if (USE_LUAJIT)
-list(APPEND EXTERNAL_LIBS PRIVATE luajit)
+list(APPEND EXTERNAL_LIBS luajit)
 else()
-list(APPEND EXTERNAL_LIBS PRIVATE lua)
+list(APPEND EXTERNAL_LIBS lua)
+endif()
+if (ENABLE_OPENSSL)
+list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
 
-
-list(APPEND EXTERNAL_LIBS PRIVATE Threads::Threads)
+list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
@@ -151,6 +160,9 @@ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(FOUND_UNWIND_LIB)
     target_link_libraries(kvrocks_objs PUBLIC ${FOUND_UNWIND_LIB})
+endif()
+if(ENABLE_OPENSSL)
+    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
 endif()
 
 # kvrocks main target

@@ -31,6 +31,8 @@
 #include <rocksdb/env.h>
 
 #include "config.h"
+#include "config_type.h"
+#include "tls_util.h"
 #include "util.h"
 #include "status.h"
 #include "cron.h"
@@ -50,6 +52,7 @@ configEnum compression_type_enum[] = {
     {"no", rocksdb::CompressionType::kNoCompression},
     {"snappy", rocksdb::CompressionType::kSnappyCompression},
     {"lz4", rocksdb::CompressionType::kLZ4Compression},
+    {"zstd", rocksdb::CompressionType::kZSTD},
     {nullptr, 0}
 };
 
@@ -95,6 +98,23 @@ Config::Config() {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
       {"port", true, new IntField(&port, kDefaultPort, 1, 65535)},
+#ifdef ENABLE_OPENSSL
+      {"tls-port", true, new IntField(&tls_port, 0, 0, 65535)},
+      {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
+      {"tls-key-file", false, new StringField(&tls_key_file, "")},
+      {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},
+      {"tls-ca-cert-file", false, new StringField(&tls_ca_cert_file, "")},
+      {"tls-ca-cert-dir", false, new StringField(&tls_ca_cert_dir, "")},
+      {"tls-protocols", false, new StringField(&tls_protocols, "")},
+      {"tls-auth-clients", false, new StringField(&tls_auth_clients, "")},
+      {"tls-ciphers", false, new StringField(&tls_ciphers, "")},
+      {"tls-ciphersuites", false, new StringField(&tls_ciphersuites, "")},
+      {"tls-prefer-server-ciphers", false, new YesNoField(&tls_prefer_server_ciphers, false)},
+      {"tls-session-caching", false, new YesNoField(&tls_session_caching, true)},
+      {"tls-session-cache-size", false,
+        new IntField(&tls_session_cache_size, 1024 * 20, 0, INT_MAX)},
+      {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
+#endif
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
@@ -281,6 +301,17 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
   };
+#ifdef ENABLE_OPENSSL
+  auto set_tls_option = [](Server* srv,  const std::string &k, const std::string& v) {
+    if (!srv) return Status::OK();  // srv is nullptr when load config from file
+    auto new_ctx = CreateSSLContext(srv->GetConfig());
+    if (!new_ctx) {
+      return Status(Status::NotOK, "Failed to configure SSL context, check server log for more details");
+    }
+    srv->ssl_ctx_ = std::move(new_ctx);
+    return Status::OK();
+  };
+#endif
 
   std::map<std::string, callback_fn> callbacks = {
       {"dir", [this](Server* srv,  const std::string &k, const std::string& v)->Status {
@@ -476,7 +507,22 @@ void Config::initFieldCallback() {
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
-      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb}
+      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
+#ifdef ENABLE_OPENSSL
+      {"tls-cert-file", set_tls_option},
+      {"tls-key-file", set_tls_option},
+      {"tls-key-file-pass", set_tls_option},
+      {"tls-ca-cert-file", set_tls_option},
+      {"tls-ca-cert-dir", set_tls_option},
+      {"tls-protocols", set_tls_option},
+      {"tls-auth-clients", set_tls_option},
+      {"tls-ciphers", set_tls_option},
+      {"tls-ciphersuites", set_tls_option},
+      {"tls-prefer-server-ciphers", set_tls_option},
+      {"tls-session-caching", set_tls_option},
+      {"tls-session-cache-size", set_tls_option},
+      {"tls-session-cache-timeout", set_tls_option},
+#endif
   };
   for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

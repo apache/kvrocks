@@ -19,28 +19,26 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(libevent
-  libevent/libevent release-2.1.12-stable
-  MD5=041edf4f20251f429d1674759ab6882c
+FetchContent_DeclareGitHubWithMirror(zstd
+  facebook/zstd v1.5.2
+  MD5=93220bc2dcb92e154f443d1a886ccd6c
 )
 
-set(libevent_disable_ssl ON)
-if(ENABLE_OPENSSL)
-  set(libevent_disable_ssl OFF)
+FetchContent_GetProperties(zstd)
+if(NOT zstd_POPULATED)
+  FetchContent_Populate(zstd)
+
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
+  endif()
+
+  add_custom_target(make_zstd COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
+    WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
+    BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
+  )
 endif()
 
-FetchContent_MakeAvailableWithArgs(libevent
-  EVENT__DISABLE_TESTS=ON
-  EVENT__DISABLE_REGRESS=ON
-  EVENT__DISABLE_SAMPLES=ON
-  EVENT__DISABLE_OPENSSL=${libevent_disable_ssl}
-  EVENT__LIBRARY_TYPE=STATIC
-  EVENT__DISABLE_BENCHMARK=ON
-)
-
-add_library(event_with_headers INTERFACE)
-target_include_directories(event_with_headers INTERFACE ${libevent_SOURCE_DIR}/include ${libevent_BINARY_DIR}/include)
-target_link_libraries(event_with_headers INTERFACE event event_pthreads)
-if(ENABLE_OPENSSL)
-  target_link_libraries(event_with_headers INTERFACE event_openssl)
-endif()
+add_library(zstd INTERFACE)
+target_include_directories(zstd INTERFACE $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib>)
+target_link_libraries(zstd INTERFACE $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib/libzstd.a>)
+add_dependencies(zstd make_zstd)

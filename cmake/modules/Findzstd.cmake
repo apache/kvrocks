@@ -15,10 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-start_server {tags {"config"} overrides {rename-command "KEYS KEYSNEW"}} {
-    test {Rename one command} {
-        catch {r KEYS *} e
-        assert_error "*invalid command name*" $e
-        assert_equal "" [r KEYSNEW *]
-    }
-}
+# used for `find_package(zstd)` mechanism in rocksdb
+
+if(zstd_SOURCE_DIR)
+  message(STATUS "Found zstd in ${zstd_SOURCE_DIR}")
+
+  add_library(zstd::zstd ALIAS zstd) # rocksdb use it
+  install(TARGETS zstd EXPORT RocksDBTargets) # export for install(...)
+endif()

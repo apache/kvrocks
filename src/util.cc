@@ -324,11 +324,27 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
   return 0;
 }
 
+int GetLocalPort(int fd) {
+  sockaddr_in6 address;
+  socklen_t len = sizeof(address);
+  if (getsockname(fd, (struct sockaddr *)&address, &len) == -1) {
+    return 0;
+  }
+
+  if (address.sin6_family == AF_INET) {
+    return ntohs(reinterpret_cast<sockaddr_in *>(&address)->sin_port);
+  } else if (address.sin6_family == AF_INET6) {
+    return ntohs(address.sin6_port);
+  }
+
+  return 0;
+}
+
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
   try {
     *n = static_cast<int64_t>(std::stoll(str));
     if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
+      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
     }
   } catch (std::exception &e) {
     return Status(Status::NotOK, "value is not an integer or out of range");
@@ -340,7 +356,7 @@ Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t
   try {
     *n = static_cast<int64_t>(std::stoll(str, nullptr, 8));
     if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value shoud between "+std::to_string(min)+" and "+std::to_string(max));
+      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
     }
   } catch (std::exception &e) {
     return Status(Status::NotOK, "value is not an integer or out of range");

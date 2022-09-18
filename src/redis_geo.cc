@@ -97,7 +97,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key,
   AppendNamespacePrefix(user_key, &ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   /* Get all neighbor geohash boxes for our radius search */
   GeoHashRadius georadius = GeoHashHelper::GetAreasByRadiusWGS84(longitude, latitude, radius_meters);

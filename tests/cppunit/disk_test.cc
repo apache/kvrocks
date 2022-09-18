@@ -52,9 +52,8 @@ TEST_F(RedisDiskTest, StringDisk) {
     std::string got_value;
     EXPECT_TRUE(string->Get(key_,  &got_value).ok());
     EXPECT_EQ(got_value, std::string(p, 'a'));
-    std::string value;
-    string->Get(key_, &value);
     uint64_t result = 0;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
     EXPECT_GE(result, p);
   }

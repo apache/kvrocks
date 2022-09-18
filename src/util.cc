@@ -18,6 +18,7 @@
  *
  */
 
+#include "fd_util.h"
 #define __STDC_FORMAT_MACROS
 #include <unistd.h>
 #include <sys/stat.h>
@@ -61,7 +62,7 @@
 
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {
-  int rv, cfd;
+  int rv;
   char portstr[6];  /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
 
@@ -75,22 +76,21 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   }
 
   for (p = servinfo; p != nullptr ; p = p->ai_next) {
-    if ((cfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
+    auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
+    if (*cfd == -1)
       continue;
-    if (connect(cfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(cfd);
+    if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
       continue;
     }
-    Status s = SockSetTcpKeepalive(cfd, 120);
+    Status s = SockSetTcpKeepalive(*cfd, 120);
     if (s.IsOK()) {
-      s = SockSetTcpNoDelay(cfd, 1);
+      s = SockSetTcpNoDelay(*cfd, 1);
     }
     if (!s.IsOK()) {
-      close(cfd);
       continue;
     }
 
-    *fd = cfd;
+    *fd = cfd.Release();
     freeaddrinfo(servinfo);
     return Status::OK();
   }

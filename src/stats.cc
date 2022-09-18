@@ -53,16 +53,18 @@ int64_t Stats::GetMemoryRSS() {
 #include <cstdio>
 #include <cstring>
 
+#include "fd_util.h"
+
 int64_t Stats::GetMemoryRSS() {
-  int fd, count;
+  int count;
   char buf[4096], filename[256];
   snprintf(filename, sizeof(filename), "/proc/%d/stat", getpid());
-  if ((fd = open(filename, O_RDONLY)) == -1) return 0;
-  if (read(fd, buf, sizeof(buf)) <= 0) {
-    close(fd);
+  auto fd = UniqueFD(open(filename, O_RDONLY));
+  if (*fd == NullFD) return 0;
+  if (read(*fd, buf, sizeof(buf)) <= 0) {
     return 0;
   }
-  close(fd);
+  fd.Reset();
 
   char *start = buf;
   count = 23;    // RSS is the 24th field in /proc/<pid>/stat

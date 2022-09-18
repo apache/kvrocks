@@ -663,7 +663,7 @@ Status Config::Rewrite() {
     while (!file.eof()) {
       std::getline(file, raw_line);
       auto parsed = ParseConfigLine(raw_line);
-      if (!parsed || parsed->first.empty() || parsed->second.empty()) {
+      if (!parsed || parsed->first.empty()) {
         lines.emplace_back(raw_line);
         continue;
       }

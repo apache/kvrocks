@@ -86,7 +86,6 @@ TEST(Cluster, CluseterSetNodes) {
     "master - 0-16383";
   s = cluster.SetClusterNodes(overlapped_slot_id, 1, false);
   ASSERT_FALSE(s.IsOK());
-  printf("%s\r\n", s.Msg().c_str());
   ASSERT_TRUE(s.Msg() == "Slot distribution is overlapped");
 
   const std::string right_nodes =

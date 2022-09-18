@@ -4561,7 +4561,7 @@ class CommandFetchFile : public Commander {
 
         // Send file size and content
         if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
-            Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
+            Util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
           LOG(INFO) << "[replication] Succeed sending file " << file << " to "
                     << ip;
         } else {

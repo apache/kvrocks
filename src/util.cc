@@ -18,7 +18,6 @@
  *
  */
 
-#include "fd_util.h"
 #define __STDC_FORMAT_MACROS
 #include <unistd.h>
 #include <sys/stat.h>
@@ -45,6 +44,7 @@
 #include "util.h"
 #include "status.h"
 #include "event_util.h"
+#include "fd_util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */

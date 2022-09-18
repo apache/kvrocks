@@ -60,7 +60,7 @@ int64_t Stats::GetMemoryRSS() {
   char buf[4096], filename[256];
   snprintf(filename, sizeof(filename), "/proc/%d/stat", getpid());
   auto fd = UniqueFD(open(filename, O_RDONLY));
-  if (*fd == NullFD) return 0;
+  if (!fd) return 0;
   if (read(*fd, buf, sizeof(buf)) <= 0) {
     return 0;
   }

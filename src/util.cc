@@ -77,7 +77,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
 
   for (p = servinfo; p != nullptr ; p = p->ai_next) {
     auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
-    if (*cfd == -1)
+    if (!cfd)
       continue;
     if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
       continue;

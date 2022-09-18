@@ -54,6 +54,10 @@ struct UniqueFD {
     if (old_fd != NullFD) close(old_fd);
   }
 
+  void Close() {
+    Reset();
+  }
+
   void Swap(UniqueFD& other) {
     std::swap(fd_, other.fd_);
   }

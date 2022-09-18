@@ -36,6 +36,7 @@
 #include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/convenience.h>
 
+#include "fd_util.h"
 #include "server.h"
 #include "config.h"
 #include "redis_db.h"
@@ -842,7 +843,7 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage,
   auto s = storage->env_->FileExists(abs_path);
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Data file [" << abs_path << "] not found";
-    return -1;
+    return NullFD;
   }
   storage->env_->GetFileSize(abs_path, file_size);
   auto rv = open(abs_path.c_str(), O_RDONLY);

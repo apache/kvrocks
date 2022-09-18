@@ -171,7 +171,7 @@ bool supervisedSystemd() {
   }
 
   auto fd = UniqueFD(socket(AF_UNIX, SOCK_DGRAM, 0));
-  if (*fd == -1) {
+  if (!fd) {
     LOG(WARNING) << "Can't connect to systemd socket " << notify_socket;
     return false;
   }
@@ -229,7 +229,7 @@ bool isSupervisedMode(int mode) {
 
 static Status createPidFile(const std::string &path) {
   auto fd = UniqueFD(open(path.data(), O_RDWR|O_CREAT, 0660));
-  if (*fd < 0) {
+  if (!fd) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());

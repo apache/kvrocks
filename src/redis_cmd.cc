@@ -30,6 +30,7 @@
 #include <memory>
 #include <glog/logging.h>
 
+#include "fd_util.h"
 #include "redis_db.h"
 #include "redis_cmd.h"
 #include "redis_hash.h"
@@ -4554,9 +4555,9 @@ class CommandFetchFile : public Commander {
               svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
-                                                                 file, &file_size);
-        if (fd < 0) break;
+        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
+                                                                 file, &file_size));
+        if (!fd) break;
 
         // Send file size and content
         if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
@@ -4566,10 +4567,9 @@ class CommandFetchFile : public Commander {
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to "
                        << ip << ", error: " << strerror(errno);
-          close(fd);
           break;
         }
-        close(fd);
+        fd.Reset();
 
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();

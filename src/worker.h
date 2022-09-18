@@ -36,7 +36,6 @@
 
 #include "lua.hpp"
 #include "redis_connection.h"
-#include "storage.h"
 
 class Server;
 

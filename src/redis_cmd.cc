@@ -5854,8 +5854,8 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
     ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
-    ADD_CMD("eval_ro", -3, "exclusive no-script", 0, 0, 0, CommandEvalRO),
-    ADD_CMD("evalsha_ro", -3, "exclusive no-script", 0, 0, 0, CommandEvalSHARO),
+    ADD_CMD("eval_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalRO),
+    ADD_CMD("evalsha_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalSHARO),
     ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),

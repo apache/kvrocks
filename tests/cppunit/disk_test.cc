@@ -46,7 +46,7 @@ TEST_F(RedisDiskTest, StringDisk) {
   key_ = "stringdisk_key";
   std::unique_ptr<Redis::String> string = Util::MakeUnique<Redis::String>(storage_, "disk_ns_string");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_string");
-  std::vector<int> value_size{1, 1024};
+  std::vector<int> value_size{100, 1024};
   for(auto &p : value_size){
     EXPECT_TRUE(string->Set(key_, std::string(p, 'a')).ok());
     std::string got_value;
@@ -67,8 +67,8 @@ TEST_F(RedisDiskTest, HashDisk) {
   key_ = "hashdisk_key";
   fields_ = {"hashdisk_kkey1", "hashdisk_kkey2"};
   values_.resize(2);
-  std::vector<int>value_size{1, 1024};
-  for(int i = 0 ;i < int(fields_.size()); i++){
+  std::vector<int>value_size{100, 1024};
+  for(int i = 0; i < int(fields_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
   int ret = 0;
@@ -77,8 +77,6 @@ TEST_F(RedisDiskTest, HashDisk) {
     sum += uint64_t(fields_[i].size()) + values_[i].size();
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisHash, &key_size).ok());
     EXPECT_GE(key_size, sum);
@@ -91,8 +89,8 @@ TEST_F(RedisDiskTest, SetDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_set");
   key_ = "setdisk_key";
   values_.resize(2);
-  std::vector<int>value_size{1, 1024};
-  for(int i = 0;i < int(values_.size()); i++){
+  std::vector<int>value_size{100, 1024};
+  for(int i = 0; i < int(values_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
 
@@ -103,8 +101,6 @@ TEST_F(RedisDiskTest, SetDisk) {
     sum += values_[i].size();
     rocksdb::Status s = set->Add(key_, tmpv, &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisSet, &key_size).ok());
     EXPECT_GE(key_size, sum);
@@ -118,8 +114,8 @@ TEST_F(RedisDiskTest, ListDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_list");
   key_ = "listdisk_key";
   values_.resize(2);
-  std::vector<int>value_size{1, 1024};
-  for(int i = 0;i < int(values_.size()); i++){
+  std::vector<int>value_size{100, 1024};
+  for(int i = 0; i < int(values_.size()); i++){
     values_[i] = std::string(value_size[i],'a');
   }
   int ret = 0;
@@ -129,8 +125,6 @@ TEST_F(RedisDiskTest, ListDisk) {
     sum += values_[i].size();
     rocksdb::Status s = list->Push(key_, tmpv, false, &ret);
     EXPECT_TRUE(s.ok() && ret == i + 1);
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisList, &key_size).ok());
     EXPECT_GE(key_size, sum);
@@ -143,8 +137,8 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
   std::vector<MemberScore> mscores(2);
-  std::vector<int>value_size{1, 1024};
-  for(int i = 0;i < int(value_size.size()); i++){
+  std::vector<int>value_size{100, 1024};
+  for(int i = 0; i < int(value_size.size()); i++){
     mscores[i].member = std::string(value_size[i],'a');
     mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];
   }
@@ -155,8 +149,6 @@ TEST_F(RedisDiskTest, ZsetDisk) {
     sum += 2 * mscores[i].member.size();
     rocksdb::Status s = zset->Add(key_, 0, &tmpv, &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisZSet, &key_size).ok());
     EXPECT_GE(key_size, sum);
@@ -170,15 +162,13 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   key_ = "bitmapdisk_key";
   uint32_t offsets[] = {0, 123, 1024*8, 1024*8+1, 3*1024*8, 3*1024*8+1};
 
-  for (int i = 0; i < 6 ;i++) {
+  for (int i = 0; i < 6; i++) {
     bool bit = false;
     bitmap->GetBit(key_, offsets[i], &bit);
     EXPECT_FALSE(bit);
     bitmap->SetBit(key_, offsets[i], true, &bit);
     bitmap->GetBit(key_, offsets[i], &bit);
     EXPECT_TRUE(bit);
-    // waiting for data write
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     uint64_t key_size;
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisBitmap, &key_size).ok());
     EXPECT_GE(key_size, i + 1);
@@ -191,7 +181,7 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
   int ret;
-  for(int i = 0; i < 10 ;i++){
+  for(int i = 0; i < 10; i++){
     EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok()&&ret==1);
   }
   uint64_t key_size;

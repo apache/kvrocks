@@ -29,6 +29,7 @@ jobs:
       arch: amd64
       script:
         - |
+          set -ex
           export TZ=Asia/Shanghai
           IMAGE_NAME="kvrocks/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
@@ -43,6 +44,7 @@ jobs:
     - arch: arm64
       script:
         - |
+          set -ex
           export TZ=Asia/Shanghai
           IMAGE_NAME="kvrocks/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
@@ -57,10 +59,11 @@ jobs:
     - stage: push
       script:
         - |
+          set -ex
           export TZ=Asia/Shanghai
-          IMAGE_NAME="kvrocks/kvrocks"
-          IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
           if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
+            IMAGE_NAME="kvrocks/kvrocks"
+            IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
             echo pushing $IMAGE_NAME:$IMAGE_TAG
             docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN
             docker manifest create $IMAGE_NAME:$IMAGE_TAG --amend $IMAGE_NAME:$IMAGE_TAG-amd64 --amend $IMAGE_NAME:$IMAGE_TAG-arm64

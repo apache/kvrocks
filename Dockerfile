@@ -22,7 +22,7 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update
-RUN apt install -y cmake make git autoconf libtool g++ python3
+RUN apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
 WORKDIR /kvrocks
 
 COPY . .

@@ -29,7 +29,7 @@ jobs:
       arch: amd64
       script:
         - |
-          set -e
+          set -ex
           export TZ=Asia/Shanghai
           IMAGE_NAME="kvrocks/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
@@ -44,7 +44,7 @@ jobs:
     - arch: arm64
       script:
         - |
-          set -e
+          set -ex
           export TZ=Asia/Shanghai
           IMAGE_NAME="kvrocks/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
@@ -59,7 +59,7 @@ jobs:
     - stage: push
       script:
         - |
-          set -e
+          set -ex
           export TZ=Asia/Shanghai
           IMAGE_NAME="kvrocks/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"

@@ -54,36 +54,27 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
 rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size) {
   *key_size = 0;
   std::string ns_key;
-  rocksdb::Status s;
   AppendNamespacePrefix(user_key, &ns_key);
-    switch (type) {
-      case RedisType::kRedisString:
-        s = GetStringSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisHash:
-        s = GetHashSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisBitmap:
-        s = GetBitmapSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisList:
-        s = GetListSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisSet:
-        s = GetSetSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisSortedint:
-        s = GetSortedintSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisZSet:
-        s = GetZsetSize(ns_key, key_size);
-        break;
-      case RedisType::kRedisNone:
-        return rocksdb::Status::NotFound("Not found ", user_key);
-      case RedisType::kRedisStream:
-        return rocksdb::Status::NotSupported("Not support stream");
-    }
-    return s;
+  switch (type) {
+    case RedisType::kRedisString:
+      return GetStringSize(ns_key, key_size);
+    case RedisType::kRedisHash:
+      return GetHashSize(ns_key, key_size);
+    case RedisType::kRedisBitmap:
+      return GetBitmapSize(ns_key, key_size);
+    case RedisType::kRedisList:
+      return GetListSize(ns_key, key_size);
+    case RedisType::kRedisSet:
+      return GetSetSize(ns_key, key_size);
+    case RedisType::kRedisSortedint:
+      return GetSortedintSize(ns_key, key_size);
+    case RedisType::kRedisZSet:
+      return GetZsetSize(ns_key, key_size);
+    case RedisType::kRedisNone:
+      return rocksdb::Status::NotFound("Not found ", user_key);
+    case RedisType::kRedisStream:
+      return rocksdb::Status::NotSupported("Not support stream");
+  }
 }
 rocksdb::Status Disk::GetStringSize(const Slice &ns_key, uint64_t *key_size) {
   auto key_range = rocksdb::Range(Slice(ns_key), Slice(ns_key.ToString() + static_cast<char>(0)));

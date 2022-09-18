@@ -33,12 +33,9 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 set ::all_tests {
-    unit/keyspace
     unit/scan
     unit/type/string
     unit/type/list
-    unit/type/list-3
-    unit/type/set
     unit/type/zset
     unit/type/hash
     unit/type/bitmap
@@ -49,9 +46,7 @@ set ::all_tests {
     unit/slowlog
     unit/pubsub
     unit/introspection
-    unit/limits
     unit/geo
-    unit/config
     unit/scripting
     integration/slotmigrate
     integration/slotimport

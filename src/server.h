@@ -44,6 +44,7 @@
 #include "cluster.h"
 #include "slot_migrate.h"
 #include "slot_import.h"
+#include "tls_util.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -219,6 +220,10 @@ class Server {
   static std::atomic<int> unix_time_;
   std::unique_ptr<class SlotMigrate> slot_migrate_;
   class SlotImport *slot_import_ = nullptr;
+
+#ifdef ENABLE_OPENSSL
+  UniqueSSLContext ssl_ctx_;
+#endif
 
  private:
   void cron();

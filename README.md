@@ -69,14 +69,17 @@ Kvrocks has the following key features:
 ```shell
 # CentOS / RedHat
 sudo yum install -y epel-release
-sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static python3
+sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static python3 which openssl-devel
 
 # Ubuntu / Debian
 sudo apt update
-sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3
+sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
 
 # macOS
-brew install autoconf automake libtool cmake
+brew install autoconf automake libtool cmake openssl
+
+# Please force linking the openssl if still can't find after installing openssl
+brew link --force openssl
 ```
 
 ### Build

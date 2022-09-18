@@ -3691,6 +3691,9 @@ class CommandSlaveOf : public Commander {
     if (svr->GetConfig()->cluster_enabled) {
       return Status(Status::RedisExecErr, "can't change to slave in cluster mode");
     }
+    if (svr->GetConfig()->RocksDB.write_options.disable_WAL) {
+      return Status(Status::RedisExecErr, "slaveof doesn't work with disable_wal option");
+    }
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();

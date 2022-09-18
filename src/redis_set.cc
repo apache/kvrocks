@@ -51,7 +51,7 @@ rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &m
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
@@ -83,7 +83,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
@@ -118,7 +118,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
       batch.Delete(metadata_cf_handle_, ns_key);
     }
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
@@ -244,7 +244,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {

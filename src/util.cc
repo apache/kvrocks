@@ -342,26 +342,20 @@ int GetLocalPort(int fd) {
 }
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parseResult = ParseInt<int64_t>(str, /* base= */ 10);
-  if (!parseResult.IsOK()) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parseResult = ParseInt<int64_t>(str, NumericRange<int64_t>{min,max}, 10);
+  if (!parseResult) {
+    return Status(Status::NotOK, parseResult.Msg());
   }
-  *n = parseResult.GetValue();
-  if (max > min && (*n < min || *n > max)) {
-    return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-  }
+  *n = *parseResult;
   return Status::OK();
 }
 
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parseResult = ParseInt<int64_t>(str, /* base= */ 8);
-  if (!parseResult.IsOK()) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parseResult = ParseInt<int64_t>(str, NumericRange<int64_t>{min,max}, 8);
+  if (!parseResult) {
+    return Status(Status::NotOK, parseResult.Msg());
   }
-  *n = parseResult.GetValue();
-  if (max > min && (*n < min || *n > max)) {
-    return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-  }
+  *n = *parseResult;
   return Status::OK();
 }
 

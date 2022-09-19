@@ -115,12 +115,11 @@ TEST_F(RedisHashTest, HIncr) {
   }
   std::string bytes;
   hash->Get(key_, field, &bytes);
-  auto parseResult = ParseInt<int64_t>(bytes, /* base= */ 10);
-  if (!parseResult.IsOK()) {
-    EXPECT_TRUE(false);
+  auto parseResult = ParseInt<int64_t>(bytes, 10);
+  if (!parseResult) {
+     FAIL();
   }
-  value = parseResult.GetValue();
-  EXPECT_EQ(32, value);
+  EXPECT_EQ(32, *parseResult);
   hash->Del(key_);
 }
 

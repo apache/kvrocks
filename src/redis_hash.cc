@@ -299,7 +299,7 @@ rocksdb::Status Hash::Range(const Slice &user_key, int start, int stop,
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   iter->Seek(prefix_key);
-  for (int i = 0; iter->Valid() && i < start; i++){
+  for (int i = 0; iter->Valid() && i < start; i++) {
     iter->Next();
   }
   stop -= start;

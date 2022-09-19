@@ -21,6 +21,8 @@ package util
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 )
@@ -57,4 +59,21 @@ func (c *tcpClient) Write(s string) error {
 		return err
 	}
 	return c.w.Flush()
+}
+
+func (c *tcpClient) WriteArgs(args ...string) error {
+	if args == nil {
+		return errors.New("args cannot be nil")
+	}
+
+	if len(args) == 0 {
+		return errors.New("args cannot be empty")
+	}
+
+	cmd := fmt.Sprintf("*%d\r\n", len(args))
+	for _, arg := range args {
+		cmd = cmd + fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
+	}
+
+	return c.Write(cmd)
 }

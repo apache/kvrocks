@@ -25,64 +25,61 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
-
-func reconnect(srv *util.KvrocksServer, rdb **redis.Client) error {
-	if err := (*rdb).Close(); err != nil {
-		return err
-	}
-	*rdb = srv.NewClient()
-	return nil
-}
 
 func TestPipeQuit(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
-	rdb := srv.NewClient()
+
 	ctx := context.Background()
 
 	t.Run("QUIT returns OK", func(t *testing.T) {
-		trdb := srv.NewTCPClient()
-		require.NoError(t, trdb.Write("*1\r\n$4\r\nquit\r\n"))
-		resQuit, errQuit := trdb.ReadLine()
-		require.Equal(t, "+OK", resQuit)
-		require.NoError(t, errQuit)
-		require.NoError(t, trdb.Write("*1\r\n$4\r\nping\r\n"))
-		resPing, errPing := trdb.ReadLine()
-		require.Equal(t, "", resPing)
-		require.Error(t, errPing)
-		require.NoError(t, trdb.Close())
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+
+		require.NoError(t, c.WriteArgs("QUIT"))
+		r, err := c.ReadLine()
+		require.NoError(t, err)
+		require.Equal(t, "+OK", r)
+
+		require.NoError(t, c.WriteArgs("PING"))
+		r, err = c.ReadLine()
+		require.EqualError(t, err, "EOF")
+		require.Empty(t, r)
 	})
 
 	t.Run("Pipelined commands after QUIT must not be executed", func(t *testing.T) {
-		require.NoError(t, reconnect(srv, &rdb))
-		pipe := rdb.Pipeline()
+		rdb1 := srv.NewClient()
+		defer func() { require.NoError(t, rdb1.Close()) }()
+		pipe := rdb1.Pipeline()
 		cmd1 := pipe.Do(ctx, "quit")
-		cmd2 := pipe.Do(ctx, "set", "foo", "bar")
+		cmd2 := pipe.Set(ctx, "foo", "bar", 0)
 		_, err := pipe.Exec(ctx)
-		require.Equal(t, "OK", cmd1.Val())
-		require.Equal(t, nil, cmd2.Val())
 		require.Error(t, err)
-		require.NoError(t, reconnect(srv, &rdb))
-		cmd3 := rdb.Get(ctx, "foo")
+		require.Equal(t, "OK", cmd1.Val())
+		require.Empty(t, cmd2.Val())
+		require.EqualError(t, cmd2.Err(), "EOF")
+		rdb2 := srv.NewClient()
+		defer func() { require.NoError(t, rdb2.Close()) }()
+		cmd3 := rdb2.Get(ctx, "foo")
 		require.Equal(t, "", cmd3.Val())
 	})
 
 	t.Run("Pipelined commands after QUIT that exceed read buffer size", func(t *testing.T) {
-		require.NoError(t, reconnect(srv, &rdb))
-		pipe := rdb.Pipeline()
+		rdb1 := srv.NewClient()
+		defer func() { require.NoError(t, rdb1.Close()) }()
+		pipe := rdb1.Pipeline()
 		cmd1 := pipe.Do(ctx, "quit")
-		cmd2 := pipe.Do(ctx, "set", "foo", strings.Repeat("x", 1024))
+		cmd2 := pipe.Set(ctx, "foo", strings.Repeat("x", 1024), 0)
 		_, err := pipe.Exec(ctx)
-		require.Equal(t, "OK", cmd1.Val())
-		require.Equal(t, nil, cmd2.Val())
 		require.Error(t, err)
-		require.NoError(t, reconnect(srv, &rdb))
-		cmd3 := rdb.Get(ctx, "foo")
+		require.Equal(t, "OK", cmd1.Val())
+		require.Empty(t, cmd2.Val())
+		require.EqualError(t, cmd2.Err(), "EOF")
+		rdb2 := srv.NewClient()
+		defer func() { require.NoError(t, rdb2.Close()) }()
+		cmd3 := rdb2.Get(ctx, "foo")
 		require.Equal(t, "", cmd3.Val())
 	})
-
-	require.NoError(t, rdb.Close())
 }

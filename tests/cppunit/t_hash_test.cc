@@ -116,7 +116,7 @@ TEST_F(RedisHashTest, HIncr) {
   std::string bytes;
   hash->Get(key_, field, &bytes);
   auto parseResult = ParseInt<int64_t>(bytes, /* base= */ 10);
-  if (!parseResult.IsOK()){
+  if (!parseResult.IsOK()) {
     EXPECT_TRUE(false);
   }
   value = parseResult.GetValue();

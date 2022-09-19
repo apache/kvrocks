@@ -277,7 +277,7 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
   int64_t n = 0;
   if (!value.empty()) {
     auto parseResult = ParseInt<int64_t>(value, /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return rocksdb::Status::InvalidArgument(parseResult.Msg());
     }
     n = parseResult.GetValue();

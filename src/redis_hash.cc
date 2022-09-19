@@ -78,7 +78,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       auto parseResult = ParseInt<int64_t>(value_bytes, /* base= */ 10);
-      if (!parseResult.IsOK()){
+      if (!parseResult.IsOK()) {
         return rocksdb::Status::InvalidArgument(parseResult.Msg());
       }
       old_value = parseResult.GetValue();

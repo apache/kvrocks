@@ -68,7 +68,7 @@ Status Request::Tokenize(evbuffer *input) {
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] == '*') {
           auto parseResult = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), /* base= */ 10);
-          if (!parseResult.IsOK()){
+          if (!parseResult.IsOK()) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
           multi_bulk_len_ = parseResult.GetValue();

@@ -343,7 +343,7 @@ int GetLocalPort(int fd) {
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
   auto parseResult = ParseInt<int64_t>(str, /* base= */ 10);
-  if (!parseResult.IsOK()){
+  if (!parseResult.IsOK()) {
     return Status(Status::NotOK, "value is not an integer or out of range");
   }
   *n = parseResult.GetValue();
@@ -355,7 +355,7 @@ Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64
 
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
   auto parseResult = ParseInt<int64_t>(str, /* base= */ 8);
-  if (!parseResult.IsOK()){
+  if (!parseResult.IsOK()) {
     return Status(Status::NotOK, "value is not an integer or out of range");
   }
   *n = parseResult.GetValue();

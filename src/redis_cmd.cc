@@ -674,7 +674,7 @@ class CommandIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto parseResult = ParseInt<int64_t>(args[2], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     increment_ = parseResult.GetValue();
@@ -722,7 +722,7 @@ class CommandDecrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto parseResult = ParseInt<int64_t>(args[2], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     increment_ = parseResult.GetValue();
@@ -817,7 +817,7 @@ class CommandDel : public Commander {
 
 Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
   auto parseResult = ParseInt<int64_t>(arg, /* base= */ 10);
-  if (!parseResult.IsOK()){
+  if (!parseResult.IsOK()) {
     return Status(Status::RedisParseErr, errValueNotInterger);
   }
   int64_t offset_arg = offset_arg = parseResult.GetValue();
@@ -913,7 +913,7 @@ class CommandBitCount : public Commander {
 
 class CommandBitPos: public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {    
+  Status Parse(const std::vector<std::string> &args) override {
     if (args.size() >= 4){
       auto parseArgs3Result = ParseInt<int64_t>(args[3], /* base= */ 10);
       if (!parseArgs3Result.IsOK()){
@@ -1110,7 +1110,7 @@ class CommandPExpire : public Commander {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
     auto parseResult = ParseInt<int64_t>(args[2], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     auto ttl_ms = parseResult.GetValue();
@@ -1173,7 +1173,7 @@ class CommandPExpireAt : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto parseResult = ParseInt<int64_t>(args[2], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     if (parseResult.GetValue()/1000 >= INT32_MAX) {
@@ -1307,7 +1307,7 @@ class CommandHIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto parseResult = ParseInt<int64_t>(args[3], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     increment_ = parseResult.GetValue();
@@ -1523,7 +1523,7 @@ class CommandPop : public Commander {
       return Status::OK();
     }
     auto parseResult = ParseInt<int64_t>(args[2], /* base= */ 10);
-    if (!parseResult.IsOK()){
+    if (!parseResult.IsOK()) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     int32_t v = parseResult.GetValue();
@@ -3968,7 +3968,7 @@ class CommandClient : public Commander {
           addr_ = args[i+1];
         } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
           auto parseResult = ParseInt<int64_t>(args[i+1], /* base= */ 10);
-          if (!parseResult.IsOK()){
+          if (!parseResult.IsOK()) {
             return Status(Status::RedisParseErr, errValueNotInterger);
           }
           id_ = parseResult.GetValue();
@@ -5370,7 +5370,7 @@ class CommandXRead : public Commander {
         }
         with_count_ = true;
         auto parseResult = ParseInt<int64_t>(args[i+1], /* base= */ 10);
-        if (!parseResult.IsOK()){
+        if (!parseResult.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
         count_ = static_cast<uint64_t>(parseResult.GetValue());
@@ -5385,7 +5385,7 @@ class CommandXRead : public Commander {
 
         block_ = true;
         auto parseResult = ParseInt<int64_t>(args[i+1], /* base= */ 10);
-        if (!parseResult.IsOK()){
+        if (!parseResult.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
         auto v = parseResult.GetValue();

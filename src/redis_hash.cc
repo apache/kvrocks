@@ -278,7 +278,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop,
                             int limit, std::vector<FieldValue> *field_values) {
   field_values->clear();
-  if (start.compare(stop)>=0) {
+  if (start.compare(stop) >= 0) {
     return rocksdb::Status::OK();
   }
   std::string ns_key;

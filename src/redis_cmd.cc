@@ -1491,6 +1491,7 @@ class CommandHRange : public Commander {
     }
     return Status::OK();
   }
+
  private:
   int start_ = 0, stop_ = 0, limit_ = -1;
 };

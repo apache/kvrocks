@@ -20,6 +20,7 @@
 
 #include "redis_hash.h"
 #include <utility>
+#include <algorithm>
 #include <limits>
 #include <cmath>
 #include <iostream>
@@ -274,7 +275,8 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::Range(const Slice &user_key, int start, int stop, int limit, std::vector<FieldValue> *field_values){
+rocksdb::Status Hash::Range(const Slice &user_key, int start, int stop,
+                            int limit, std::vector<FieldValue> *field_values) {
   field_values->clear();
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

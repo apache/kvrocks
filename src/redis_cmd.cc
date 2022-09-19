@@ -1462,14 +1462,10 @@ class CommandHRange : public Commander {
     if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
       return Status(Status::RedisInvalidCmd, errInvalidSyntax);
     }
-    try {
-      start_ = std::stol(args[2]);
-      stop_ = std::stol(args[3]);
-      if (args.size() == 6) {
-        limit_ = std::stol(args[5]);
-      }
-    } catch (const std::exception& ) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+    if (args.size() == 6) {
+      auto parseResult = ParseInt<int>(args_[5], /* base= */ 10);
+      if (!parseResult.IsOK())return Status(Status::RedisParseErr, errValueNotInterger);
+      limit_ = parseResult.GetValue();
     }
     return Commander::Parse(args);
   }
@@ -1480,7 +1476,7 @@ class CommandHRange : public Commander {
     }
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.Range(args_[1], start_, stop_, limit_, &field_values);
+    rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -1493,7 +1489,7 @@ class CommandHRange : public Commander {
   }
 
  private:
-  int start_ = 0, stop_ = 0, limit_ = -1;
+  int limit_ = -1;
 };
 
 class CommandPush : public Commander {

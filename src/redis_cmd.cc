@@ -914,16 +914,16 @@ class CommandBitCount : public Commander {
 class CommandBitPos: public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() >= 4){
+    if (args.size() >= 4) {
       auto parseArgs3Result = ParseInt<int64_t>(args[3], 10);
-      if (!parseArgs3Result){
+      if (!parseArgs3Result) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
       start_ = *parseArgs3Result;
     }
     if (args.size() >= 5) {
       auto parseArgs4Result = ParseInt<int64_t>(args[4], 10);
-      if (!parseArgs4Result){
+      if (!parseArgs4Result) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
       stop_given_ = true;

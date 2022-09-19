@@ -820,7 +820,7 @@ Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
   if (!parseResult) {
     return Status(Status::RedisParseErr, errValueNotInterger);
   }
-  int64_t offset_arg = offset_arg = *parseResult;
+  int64_t offset_arg = *parseResult;
   if (offset_arg < 0 || offset_arg > UINT_MAX) {
     return Status(Status::RedisParseErr, "bit offset is out of range");
   }

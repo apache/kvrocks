@@ -20,6 +20,9 @@
 
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
+#include <random>
+#include <algorithm>
 
 #include "test_base.h"
 #include "redis_hash.h"
@@ -153,4 +156,30 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   value = std::stof(bytes);
   EXPECT_FLOAT_EQ(32*1.2, value);
   hash->Del(key_);
+}
+
+TEST_F(RedisHashTest, HRange) {
+  int ret;
+  std::vector<FieldValue> fvs;
+  for (size_t i = 0; i < 10; i++) {
+    fvs.emplace_back(FieldValue{"key" + std::to_string(i), "value" + std::to_string(i)});
+  }
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::vector<FieldValue> tmp(fvs);
+  for (size_t i =0; i < 100 ; i ++) {
+    std::shuffle(tmp.begin(), tmp.end(), g);
+    rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+    EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+    s = hash->MSet(key_, fvs, false, &ret);
+    EXPECT_EQ(ret ,0);
+    std::vector<FieldValue> result;
+    s = hash->Range(key_, 0, -1, -1, &result);
+    EXPECT_TRUE(s.ok());
+    for (size_t j = 0 ;j < fvs.size(); j++) {
+      EXPECT_EQ(fvs[j].field, result[j].field);
+      EXPECT_EQ(fvs[j].value, result[j].value);
+    }
+    hash->Del(key_);
+  }
 }

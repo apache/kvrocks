@@ -1453,6 +1453,48 @@ class CommandHGetAll : public Commander {
   }
 };
 
+class CommandHRange : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 6 && args.size() != 4) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
+      return Status(Status::RedisInvalidCmd, errInvalidSyntax);
+    }
+    try {
+      start_ = std::stol(args[2]);
+      stop_ = std::stol(args[3]);
+      if (args.size() == 6) {
+        limit_ = std::stol(args[5]);
+      }
+    } catch (const std::exception& ) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_.size() == 6 && limit_ < 0) {
+      *output = "*" + std::to_string(0) + CRLF;
+      return Status::OK();
+    }
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    std::vector<FieldValue> field_values;
+    rocksdb::Status s = hash_db.Range(args_[1], start_, stop_, limit_, &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
+    for (const auto &fv : field_values) {
+      *output += Redis::BulkString(fv.field);
+      *output += Redis::BulkString(fv.value);
+    }
+    return Status::OK();
+  }
+ private:
+  int start_ = 0, stop_ = 0, limit_ = -1;
+};
+
 class CommandPush : public Commander {
  public:
   CommandPush(bool create_if_missing, bool left) {
@@ -5823,6 +5865,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
     ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
     ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
+    ADD_CMD("hrange", -4, "read-only", 1, 1, 1, CommandHRange),
 
     ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),

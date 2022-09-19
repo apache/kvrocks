@@ -274,6 +274,43 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
+rocksdb::Status Hash::Range(const Slice &user_key, int start, int stop, int limit, std::vector<FieldValue> *field_values){
+  field_values->clear();
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (start < 0) start = static_cast<int>(metadata.size) + start;
+  if (stop < 0) stop = static_cast<int>(metadata.size) + stop;
+  if (start >= static_cast<int>(metadata.size) || stop < 0 || start > stop) return rocksdb::Status::OK();
+  if (start < 0) start = 0;
+  if (limit == -1) limit = metadata.size;
+  std::string prefix_key, next_version_prefix_key;
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.fill_cache = false;
+
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  iter->Seek(prefix_key);
+  for (int i = 0; iter->Valid() && i < start; i++){
+    iter->Next();
+  }
+  stop -= start;
+  for (int i = 0; iter->Valid() && iter->key().starts_with(prefix_key) && i <= std::min(stop, limit - 1); i++) {
+    FieldValue tmp_field_value;
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    tmp_field_value.field = ikey.GetSubKey().ToString();
+    tmp_field_value.value = iter->value().ToString();
+    field_values->emplace_back(tmp_field_value);
+    iter->Next();
+  }
+  return rocksdb::Status::OK();
+}
 rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {
   field_values->clear();
 

@@ -23,6 +23,7 @@
 
 #include "test_base.h"
 #include "redis_hash.h"
+#include "parse_util.h"
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {
@@ -114,7 +115,11 @@ TEST_F(RedisHashTest, HIncr) {
   }
   std::string bytes;
   hash->Get(key_, field, &bytes);
-  value = std::stoll(bytes);
+  auto parseResult = ParseInt<int64_t>(bytes, /* base= */ 10);
+  if (!parseResult.IsOK()){
+    EXPECT_TRUE(false);
+  }
+  value = parseResult.GetValue();
   EXPECT_EQ(32, value);
   hash->Del(key_);
 }

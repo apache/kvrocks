@@ -25,6 +25,7 @@
 #include <iostream>
 #include <rocksdb/status.h>
 #include "db_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
@@ -73,18 +74,14 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
-    std::size_t idx = 0;
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      try {
-        old_value = std::stoll(value_bytes, &idx);
-      } catch (std::exception &e) {
-        return rocksdb::Status::InvalidArgument(e.what());
+      auto parseResult = ParseInt<int64_t>(value_bytes, /* base= */ 10);
+      if (!parseResult.IsOK()){
+        return rocksdb::Status::InvalidArgument(parseResult.Msg());
       }
-      if (isspace(value_bytes[0]) || idx != value_bytes.size()) {
-        return rocksdb::Status::InvalidArgument("value is not an integer");
-      }
+      old_value = parseResult.GetValue();
       exists = true;
     }
   }

@@ -32,6 +32,7 @@
 #include "server.h"
 #include "redis_slot.h"
 #include "event_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
@@ -66,11 +67,11 @@ Status Request::Tokenize(evbuffer *input) {
         pipeline_size++;
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] == '*') {
-          try {
-            multi_bulk_len_ = std::stoll(std::string(line.get() + 1, line.length - 1));
-          } catch (std::exception &e) {
+          auto parseResult = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), /* base= */ 10);
+          if (!parseResult.IsOK()){
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
+          multi_bulk_len_ = parseResult.GetValue();
           if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }

@@ -560,7 +560,7 @@ class CommandSetEX : public Commander {
 class CommandPSetEX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<int>(args[2], 10);
+    auto parseResult = ParseInt<long int>(args[2], 10);
     if (!parseResult) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
@@ -1109,7 +1109,7 @@ class CommandPExpire : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
-    auto parseResult = ParseInt<int64_t>(args[2], 10);
+    auto parseResult = ParseInt<long int>(args[2], 10);
     if (!parseResult) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
@@ -1522,7 +1522,7 @@ class CommandPop : public Commander {
     if (args.size() == 2) {
       return Status::OK();
     }
-    auto parseResult = ParseInt<int64_t>(args[2], 10);
+    auto parseResult = ParseInt<int32_t>(args[2], 10);
     if (!parseResult) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }

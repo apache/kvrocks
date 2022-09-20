@@ -22,9 +22,10 @@ package scripting
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestScripting(t *testing.T) {

@@ -276,14 +276,14 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size()-STRING_HDR_SIZE);
   int64_t n = 0;
   if (!value.empty()) {
-    auto parseResult = ParseInt<int64_t>(value, 10);
-    if (!parseResult) {
-      return rocksdb::Status::InvalidArgument(parseResult.Msg());
+    auto parse_result = ParseInt<int64_t>(value, 10);
+    if (!parse_result) {
+      return rocksdb::Status::InvalidArgument(parse_result.Msg());
     }
     if (isspace(value[0])) {
       return rocksdb::Status::InvalidArgument("value is not an integer");
     }
-    n = *parseResult;
+    n = *parse_result;
   }
   if ((increment < 0 && n <= 0 && increment < (LLONG_MIN-n))
       || (increment > 0 && n >= 0 && increment > (LLONG_MAX-n))) {

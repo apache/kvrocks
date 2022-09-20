@@ -489,11 +489,11 @@ class CommandSet : public Commander {
       } else if (opt == "px" && !ttl_ && !last_arg) {
         int64_t ttl_ms = 0;
         std::string s = args_[++i];
-        auto parseResult = ParseInt<int64_t>(s, 10);
-        if (!parseResult) {
+        auto parse_result = ParseInt<int64_t>(s, 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        ttl_ms = *parseResult;
+        ttl_ms = *parse_result;
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (ttl_ms > 0 && ttl_ms < 1000) {
           ttl_ = 1;  // round up the pttl to second
@@ -672,11 +672,11 @@ class CommandDecr : public Commander {
 class CommandIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<int64_t>(args[2], 10);
-    if (!parseResult) {
+    auto parse_result = ParseInt<int64_t>(args[2], 10);
+    if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    increment_ = *parseResult;
+    increment_ = *parse_result;
     return Commander::Parse(args);
   }
 
@@ -720,11 +720,11 @@ class CommandIncrByFloat : public Commander {
 class CommandDecrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<int64_t>(args[2], 10);
-    if (!parseResult) {
+    auto parse_result = ParseInt<int64_t>(args[2], 10);
+    if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    increment_ = *parseResult;
+    increment_ = *parse_result;
     return Commander::Parse(args);
   }
 
@@ -815,11 +815,11 @@ class CommandDel : public Commander {
 };
 
 Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
-  auto parseResult = ParseInt<int64_t>(arg, 10);
-  if (!parseResult) {
+  auto parse_result = ParseInt<int64_t>(arg, 10);
+  if (!parse_result) {
     return Status(Status::RedisParseErr, errValueNotInterger);
   }
-  int64_t offset_arg = *parseResult;
+  int64_t offset_arg = *parse_result;
   if (offset_arg < 0 || offset_arg > UINT_MAX) {
     return Status(Status::RedisParseErr, "bit offset is out of range");
   }
@@ -883,16 +883,16 @@ class CommandBitCount : public Commander {
       return Status(Status::RedisParseErr, errInvalidSyntax);
     }
     if (args.size() == 4) {
-      auto parseArgs2Result = ParseInt<int64_t>(args[2], 10);
-      if (!parseArgs2Result) {
+      auto parse_start = ParseInt<int64_t>(args[2], 10);
+      if (!parse_start) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
-      start_ = *parseArgs2Result;
-      auto parseArgs3Result = ParseInt<int64_t>(args[3], 10);
-      if (!parseArgs3Result) {
+      start_ = *parse_start;
+      auto parse_stop = ParseInt<int64_t>(args[3], 10);
+      if (!parse_stop) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
-      stop_ = *parseArgs3Result;
+      stop_ = *parse_stop;
     }
     return Commander::Parse(args);
   }
@@ -1170,14 +1170,14 @@ class CommandExpireAt : public Commander {
 class CommandPExpireAt : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<int64_t>(args[2], 10);
-    if (!parseResult) {
+    auto parse_result = ParseInt<int64_t>(args[2], 10);
+    if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    if (*parseResult/1000 >= INT32_MAX) {
+    if (*parse_result/1000 >= INT32_MAX) {
       return Status(Status::RedisParseErr, "the expire time was overflow");
     }
-    timestamp_ = static_cast<int>(*parseResult/1000);
+    timestamp_ = static_cast<int>(*parse_result/1000);
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1304,11 +1304,11 @@ class CommandHLen : public Commander {
 class CommandHIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<int64_t>(args[3], 10);
-    if (!parseResult) {
+    auto parse_result = ParseInt<int64_t>(args[3], 10);
+    if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    increment_ = *parseResult;
+    increment_ = *parse_result;
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -3964,11 +3964,11 @@ class CommandClient : public Commander {
         if (!strcasecmp(args[i].c_str(), "addr") && moreargs) {
           addr_ = args[i+1];
         } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
-          auto parseResult = ParseInt<int64_t>(args[i+1], 10);
-          if (!parseResult) {
+          auto parse_result = ParseInt<int64_t>(args[i+1], 10);
+          if (!parse_result) {
             return Status(Status::RedisParseErr, errValueNotInterger);
           }
-          id_ = *parseResult;
+          id_ = *parse_result;
         } else if (!strcasecmp(args[i].c_str(), "skipme") && moreargs) {
           if (!strcasecmp(args[i+1].c_str(), "yes")) {
             skipme_ = true;
@@ -4160,12 +4160,12 @@ class CommandHello final : public Commander {
     size_t next_arg = 1;
     if (args_.size() >= 2) {
       int64_t protocol;
-      auto parseResult = ParseInt<int64_t>(args_[next_arg], 10);
+      auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
       ++next_arg;
-      if (!parseResult) {
+      if (!parse_result) {
         return Status(Status::NotOK, "Protocol version is not an integer or out of range");
       }
-      protocol = *parseResult;
+      protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
@@ -5366,11 +5366,11 @@ class CommandXRead : public Commander {
           return Status(Status::RedisParseErr, errInvalidSyntax);
         }
         with_count_ = true;
-        auto parseResult = ParseInt<uint64_t>(args[i+1], 10);
-        if (!parseResult) {
+        auto parse_result = ParseInt<uint64_t>(args[i+1], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        count_ = *parseResult;
+        count_ = *parse_result;
         i += 2;
         continue;
       }
@@ -5381,14 +5381,14 @@ class CommandXRead : public Commander {
         }
 
         block_ = true;
-        auto parseResult = ParseInt<int64_t>(args[i+1], 10);
-        if (!parseResult) {
+        auto parse_result = ParseInt<int64_t>(args[i+1], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        if (*parseResult < 0) {
+        if (*parse_result < 0) {
           return Status(Status::RedisParseErr, errTimeoutIsNegative);
         }
-        block_timeout_ = *parseResult;
+        block_timeout_ = *parse_result;
         i += 2;
         continue;
       }

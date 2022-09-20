@@ -74,4 +74,14 @@ func TestHash(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limitzz", 10000).Err(), "ERR syntax")
 	})
 
+	t.Run("HRange wrong number of arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000, "a").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "HRange").Err(), "wrong number of arguments")
+	})
+
 }

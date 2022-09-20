@@ -554,10 +554,12 @@ Status SlotMigrate::MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slic
     return Status(Status::cOK, "empty");
   }
 
-  int64_t now;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
-  if (metadata.expire <= now) {
-    return Status(Status::cOK, "expired");
+  if (metadata.expire > 0) {
+    int64_t now;
+    rocksdb::Env::Default()->GetCurrentTime(&now);
+    if (metadata.expire <= now) {
+      return Status(Status::cOK, "expired");
+    }
   }
 
   // Construct command according to type of the key

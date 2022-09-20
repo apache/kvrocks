@@ -560,16 +560,15 @@ class CommandSetEX : public Commander {
 class CommandPSetEX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parseResult = ParseInt<long int>(args[2], 10);
-    if (!parseResult) {
+    auto ttl_ms = ParseInt<int64_t>(args[2], 10);
+    if (!ttl_ms) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    auto ttl_ms = *parseResult;
-    if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    if (ttl_ms > 0 && ttl_ms < 1000) {
+    if (*ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    if (*ttl_ms > 0 && *ttl_ms < 1000) {
       ttl_ = 1;
     } else {
-      ttl_ = ttl_ms / 1000;
+      ttl_ = *ttl_ms / 1000;
     }
     return Commander::Parse(args);
   }
@@ -1109,15 +1108,14 @@ class CommandPExpire : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     int64_t now;
     rocksdb::Env::Default()->GetCurrentTime(&now);
-    auto parseResult = ParseInt<long int>(args[2], 10);
-    if (!parseResult) {
+    auto ttl_ms = ParseInt<int64_t>(args[2], 10);
+    if (!ttl_ms) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    auto ttl_ms = *parseResult;
-    if (ttl_ms > 0 && ttl_ms < 1000) {
+    if (*ttl_ms > 0 && *ttl_ms < 1000) {
       seconds_ = 1;
     } else {
-      seconds_ = ttl_ms / 1000;
+      seconds_ = *ttl_ms / 1000;
       if (seconds_ >= INT32_MAX - now) {
         return Status(Status::RedisParseErr, "the expire time was overflow");
       }
@@ -1522,15 +1520,14 @@ class CommandPop : public Commander {
     if (args.size() == 2) {
       return Status::OK();
     }
-    auto parseResult = ParseInt<int32_t>(args[2], 10);
-    if (!parseResult) {
+    auto v = ParseInt<int32_t>(args[2], 10);
+    if (!v) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
-    int32_t v = *parseResult;
-    if (v < 0) {
+    if (*v < 0) {
       return Status(Status::RedisParseErr, errValueMustBePositive);
     }
-    count_ = v;
+    count_ = *v;
     with_count_ = true;
     return Status::OK();
   }

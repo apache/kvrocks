@@ -64,7 +64,7 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key,
   WriteBatchLogData log_data(kRedisString);
   batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, ns_key, *raw_value);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {

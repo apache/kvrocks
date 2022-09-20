@@ -65,6 +65,7 @@ class Storage {
   explicit Storage(Config *config);
   ~Storage();
 
+  void SetWriteOptions(const Config::RocksDB::WriteOptions& config);
   Status Open(bool read_only);
   Status Open();
   Status OpenForReadOnly();
@@ -86,6 +87,7 @@ class Storage {
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
+  const rocksdb::WriteOptions& DefaultWriteOptions() { return write_opts_; }
   rocksdb::Status Delete(const rocksdb::WriteOptions &options,
                          rocksdb::ColumnFamilyHandle *cf_handle,
                          const rocksdb::Slice &key);
@@ -187,6 +189,8 @@ class Storage {
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
+
+  rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };
 
 }  // namespace Engine

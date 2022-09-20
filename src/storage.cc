@@ -73,6 +73,7 @@ Storage::Storage(Config *config)
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
   backup_creating_time_ = std::time(nullptr);
+  SetWriteOptions(config->RocksDB.write_options);
 }
 
 Storage::~Storage() {
@@ -92,6 +93,14 @@ void Storage::CloseDB() {
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   delete db_;
   db_ = nullptr;
+}
+
+void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions& config) {
+  write_opts_.sync = config.sync;
+  write_opts_.disableWAL = config.disable_WAL;
+  write_opts_.no_slowdown = config.no_slowdown;
+  write_opts_.low_pri = config.low_pri;
+  write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
 }
 
 rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
@@ -533,7 +542,7 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
   if (!s.ok()) {
     return s;
   }
-  return Write(rocksdb::WriteOptions(), &batch);
+  return Write(write_opts_, &batch);
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -547,7 +556,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   if (!s.ok()) {
     return s;
   }
-  return Write(rocksdb::WriteOptions(), &batch);
+  return Write(options, &batch);
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -555,7 +564,7 @@ Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
     return Status(Status::NotOK, "reach space limit");
   }
   auto bat = rocksdb::WriteBatch(std::move(raw_batch));
-  auto s = db_->Write(rocksdb::WriteOptions(), &bat);
+  auto s = db_->Write(write_opts_, &bat);
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }
@@ -647,7 +656,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
 
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch.Put(cf, key, value);
-  auto s = Write(rocksdb::WriteOptions(), &batch);
+  auto s = Write(write_opts_, &batch);
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }

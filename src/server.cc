@@ -1444,7 +1444,7 @@ void Server::ScriptReset() {
 
 void Server::ScriptFlush() {
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  storage_->FlushScripts(rocksdb::WriteOptions(), cf);
+  storage_->FlushScripts(storage_->DefaultWriteOptions(), cf);
   ScriptReset();
 }
 

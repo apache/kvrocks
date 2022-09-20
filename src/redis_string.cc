@@ -103,7 +103,7 @@ rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::str
   WriteBatchLogData log_data(kRedisString);
   batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, ns_key, raw_value);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status String::Append(const std::string &user_key, const std::string &value, int *ret) {
@@ -173,7 +173,7 @@ rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) 
   rocksdb::Status s = getValue(ns_key, value);
   if (!s.ok()) return s;
 
-  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+  return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
@@ -357,7 +357,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     AppendNamespacePrefix(pair.key, &ns_key);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
@@ -398,7 +398,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     WriteBatchLogData log_data(kRedisString);
     batch.PutLogData(log_data.Encode());
     batch.Put(metadata_cf_handle_, ns_key, bytes);
-    auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
     if (!s.ok()) return s;
   }
   *ret = 1;
@@ -472,7 +472,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   }
 
   if (value == current_value) {
-    auto delete_status = storage_->Delete(rocksdb::WriteOptions(),
+    auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
                                           storage_->GetCFHandle(Engine::kMetadataColumnFamilyName),
                                           ns_key);
     if (!delete_status.ok()) {

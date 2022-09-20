@@ -155,7 +155,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& op
 
   *id = next_entry_id;
 
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
@@ -296,7 +296,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, uint64_t *ret) {
@@ -525,7 +525,7 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
 
-    return storage_->Write(rocksdb::WriteOptions(), &batch);
+    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
   }
 
   return rocksdb::Status::OK();

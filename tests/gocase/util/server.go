@@ -61,7 +61,10 @@ func (s *KvrocksServer) NewTCPClient() *tcpClient {
 
 func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
-	// A Pod is granted a term to terminate gracefully, which defaults to 30 seconds.
+	// Kubernetes will send a SIGTERM signal to the containers in the pod after deleting the pod.
+	// It waits for a specified time, called the termination grace period. By default, this is 30 seconds.
+	// If the containers are still running after the grace period,
+	// they are sent the SIGKILL signal and forcibly removed.
 	timer := time.AfterFunc(30*time.Second, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 	})

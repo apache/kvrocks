@@ -30,7 +30,9 @@ import (
 )
 
 func TestDisk(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{
+		"rocksdb.write_options.sync": "yes",
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()

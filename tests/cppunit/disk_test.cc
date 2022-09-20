@@ -36,6 +36,13 @@
 class RedisDiskTest : public TestBase {
 protected:
   explicit RedisDiskTest() : TestBase() {
+    Config::RocksDB::WriteOptions writeop;
+    writeop.sync = true;
+    writeop.disable_WAL = false;
+    writeop.low_pri = false;
+    writeop.memtable_insert_hint_per_batch = false;
+    writeop.no_slowdown = false;
+    storage_->SetWriteOptions(writeop);
   }
   ~RedisDiskTest() = default;
 
@@ -46,14 +53,13 @@ TEST_F(RedisDiskTest, StringDisk) {
   key_ = "stringdisk_key";
   std::unique_ptr<Redis::String> string = Util::MakeUnique<Redis::String>(storage_, "disk_ns_string");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_string");
-  std::vector<int> value_size{100, 1024};
+  std::vector<int> value_size{1, 1024};
   for(auto &p : value_size){
     EXPECT_TRUE(string->Set(key_, std::string(p, 'a')).ok());
     std::string got_value;
     EXPECT_TRUE(string->Get(key_,  &got_value).ok());
     EXPECT_EQ(got_value, std::string(p, 'a'));
     uint64_t result = 0;
-    std::this_thread::sleep_for(std::chrono::seconds(1));
     EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
     EXPECT_GE(result, p);
   }

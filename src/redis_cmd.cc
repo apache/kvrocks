@@ -23,8 +23,10 @@
 #include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <chrono>
+#include <vector>
 #include <thread>
 #include <utility>
 #include <memory>
@@ -1427,10 +1429,11 @@ class CommandHVals : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size()) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> values;
+    for (const auto &p : field_values) {
+      values.emplace_back(p.value);
     }
+    *output = MultiBulkString(values);
     return Status::OK();
   }
 };
@@ -1444,13 +1447,50 @@ class CommandHGetAll : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.field);
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> kv_pairs;
+    for (const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
     }
+    *output = MultiBulkString(kv_pairs);
     return Status::OK();
   }
+};
+
+class CommandHRange : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 6 && args.size() != 4) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
+      return Status(Status::RedisInvalidCmd, errInvalidSyntax);
+    }
+    if (args.size() == 6) {
+      auto parse_result = ParseInt<int64_t>(args_[5], 10);
+      if (!parse_result)return Status(Status::RedisParseErr, errValueNotInterger);
+      limit_ = *parse_result;
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    std::vector<FieldValue> field_values;
+    rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    std::vector<std::string> kv_pairs;
+    for (const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
+    }
+    *output = MultiBulkString(kv_pairs);
+    return Status::OK();
+  }
+
+ private:
+  int64_t limit_ = LONG_MAX;
 };
 
 class CommandPush : public Commander {
@@ -5823,6 +5863,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
     ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
     ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
+    ADD_CMD("hrange", -4, "read-only", 1, 1, 1, CommandHRange),
 
     ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),

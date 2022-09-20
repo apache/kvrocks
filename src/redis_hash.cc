@@ -276,16 +276,16 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 }
 
 rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop,
-                            int limit, std::vector<FieldValue> *field_values) {
+                            int64_t limit, std::vector<FieldValue> *field_values) {
   field_values->clear();
-  if (start.compare(stop) >= 0) {
+  if (start.compare(stop) >= 0 || limit <= 0) {
     return rocksdb::Status::OK();
   }
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (limit == -1) limit = metadata.size;
+  limit = std::min(static_cast<int64_t>(metadata.size), limit);
   std::string start_key, stop_key;
   InternalKey(ns_key, start, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, stop, metadata.version, storage_->IsSlotIdEncoded()).Encode(&stop_key);

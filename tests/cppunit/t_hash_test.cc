@@ -178,7 +178,7 @@ TEST_F(RedisHashTest, HRange) {
     s = hash->MSet(key_, fvs, false, &ret);
     EXPECT_EQ(ret ,0);
     std::vector<FieldValue> result;
-    s = hash->Range(key_, "key0", "key4", -1, &result);
+    s = hash->Range(key_, "key0", "key4", INT_MAX, &result);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(4, result.size());
     EXPECT_EQ("key0", result[0].field);

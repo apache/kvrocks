@@ -23,12 +23,14 @@
 #include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <chrono>
 #include <thread>
 #include <utility>
 #include <memory>
 #include <glog/logging.h>
+#include <vector>
 
 #include "redis_db.h"
 #include "redis_cmd.h"
@@ -1427,10 +1429,11 @@ class CommandHVals : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size()) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> values;
+    for(const auto &p : field_values) {
+      values.emplace_back(p.value);
     }
+    *output = MultiBulkString(values);
     return Status::OK();
   }
 };
@@ -1444,11 +1447,12 @@ class CommandHGetAll : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.field);
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> kv_pairs;
+    for(const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
     }
+    *output = MultiBulkString(kv_pairs);
     return Status::OK();
   }
 };
@@ -1463,33 +1467,30 @@ class CommandHRange : public Commander {
       return Status(Status::RedisInvalidCmd, errInvalidSyntax);
     }
     if (args.size() == 6) {
-      auto parseResult = ParseInt<int>(args_[5], /* base= */ 10);
-      if (!parseResult.IsOK())return Status(Status::RedisParseErr, errValueNotInterger);
-      limit_ = parseResult.GetValue();
+      auto parse_result = ParseInt<int64_t>(args_[5], 10);
+      if (!parse_result)return Status(Status::RedisParseErr, errValueNotInterger);
+      limit_ = *parse_result;
     }
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (args_.size() == 6 && limit_ < 0) {
-      *output = "*" + std::to_string(0) + CRLF;
-      return Status::OK();
-    }
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.field);
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> kv_pairs;
+    for(const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
     }
+    *output = MultiBulkString(kv_pairs);
     return Status::OK();
   }
 
  private:
-  int limit_ = -1;
+  int64_t limit_ = LONG_MAX;
 };
 
 class CommandPush : public Commander {

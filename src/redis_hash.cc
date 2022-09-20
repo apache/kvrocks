@@ -19,6 +19,7 @@
  */
 
 #include "redis_hash.h"
+#include <cctype>
 #include <utility>
 #include <limits>
 #include <cmath>
@@ -80,6 +81,9 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
       auto parseResult = ParseInt<int64_t>(value_bytes, 10);
       if (!parseResult) {
         return rocksdb::Status::InvalidArgument(parseResult.Msg());
+      }
+      if (isspace(value_bytes[0])) {
+        return rocksdb::Status::InvalidArgument("value is not an integer");
       }
       old_value = *parseResult;
       exists = true;

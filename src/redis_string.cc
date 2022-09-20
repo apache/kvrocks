@@ -280,6 +280,9 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
     if (!parseResult) {
       return rocksdb::Status::InvalidArgument(parseResult.Msg());
     }
+    if (isspace(value[0])) {
+      return rocksdb::Status::InvalidArgument("value is not an integer");
+    }
     n = *parseResult;
   }
   if ((increment < 0 && n <= 0 && increment < (LLONG_MIN-n))

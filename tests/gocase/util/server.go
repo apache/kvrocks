@@ -34,6 +34,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const k8sDefaultGracePeriod = 30
+
 type KvrocksServer struct {
 	t    testing.TB
 	cmd  *exec.Cmd
@@ -65,7 +67,7 @@ func (s *KvrocksServer) Close() {
 	// It waits for a specified time, called the termination grace period. By default, this is 30 seconds.
 	// If the containers are still running after the grace period,
 	// they are sent the SIGKILL signal and forcibly removed.
-	timer := time.AfterFunc(30*time.Second, func() {
+	timer := time.AfterFunc(k8sDefaultGracePeriod*time.Second, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()

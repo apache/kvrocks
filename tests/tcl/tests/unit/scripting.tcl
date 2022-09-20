@@ -108,21 +108,6 @@ start_server {tags {"scripting"}} {
         } 1 mykey
     } {string myval}
 
-    test {EVAL - Redis integer -> Lua type conversion} {
-        r set x 0
-        r eval {
-            local foo = redis.pcall('incr',KEYS[1])
-            return {type(foo),foo}
-        } 1 x
-    } {number 1}
-
-    test {EVAL - Redis bulk -> Lua type conversion} {
-        r set mykey myval
-        r eval {
-            local foo = redis.pcall('get',KEYS[1])
-            return {type(foo),foo}
-        } 1 mykey
-    } {string myval}
     test {EVAL - Redis multi bulk -> Lua type conversion} {
         r del mylist
         r rpush mylist a

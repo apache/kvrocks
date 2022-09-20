@@ -38,11 +38,9 @@ set ::all_tests {
     unit/type/list
     unit/type/zset
     unit/type/hash
-    unit/type/bitmap
     unit/type/stream
     unit/multi
     unit/expire
-    unit/quit
     unit/slowlog
     unit/pubsub
     unit/introspection

@@ -20,6 +20,7 @@
 
 #include "redis_hash.h"
 #include <utility>
+#include <algorithm>
 #include <limits>
 #include <cmath>
 #include <iostream>
@@ -274,6 +275,39 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(rocksdb::WriteOptions(), &batch);
 }
 
+rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop,
+                            int64_t limit, std::vector<FieldValue> *field_values) {
+  field_values->clear();
+  if (start.compare(stop) >= 0 || limit <= 0) {
+    return rocksdb::Status::OK();
+  }
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  limit = std::min(static_cast<int64_t>(metadata.size), limit);
+  std::string start_key, stop_key;
+  InternalKey(ns_key, start, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, stop, metadata.version, storage_->IsSlotIdEncoded()).Encode(&stop_key);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(stop_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.fill_cache = false;
+
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  iter->Seek(start_key);
+  for (int i = 0; iter->Valid() && i <= limit - 1; i++) {
+    FieldValue tmp_field_value;
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    tmp_field_value.field = ikey.GetSubKey().ToString();
+    tmp_field_value.value = iter->value().ToString();
+    field_values->emplace_back(tmp_field_value);
+    iter->Next();
+  }
+  return rocksdb::Status::OK();
+}
 rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {
   field_values->clear();
 

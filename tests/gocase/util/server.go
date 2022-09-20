@@ -26,9 +26,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
-	"syscall"
 
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
@@ -62,8 +62,8 @@ func (s *KvrocksServer) NewTCPClient() *tcpClient {
 func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
 	// A Pod is granted a term to terminate gracefully, which defaults to 30 seconds.
-	timer := time.AfterFunc(30 * time.Second, func() {
-    require.NoError(s.t, s.cmd.Process.Kill())
+	timer := time.AfterFunc(30*time.Second, func() {
+		require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()
 	require.NoError(s.t, s.cmd.Wait())

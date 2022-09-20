@@ -26,11 +26,11 @@
 #include <climits>
 #include <cmath>
 #include <chrono>
+#include <vector>
 #include <thread>
 #include <utility>
 #include <memory>
 #include <glog/logging.h>
-#include <vector>
 
 #include "redis_db.h"
 #include "redis_cmd.h"
@@ -1430,7 +1430,7 @@ class CommandHVals : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> values;
-    for(const auto &p : field_values) {
+    for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
     *output = MultiBulkString(values);
@@ -1448,7 +1448,7 @@ class CommandHGetAll : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> kv_pairs;
-    for(const auto &p : field_values) {
+    for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
@@ -1481,7 +1481,7 @@ class CommandHRange : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> kv_pairs;
-    for(const auto &p : field_values) {
+    for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }

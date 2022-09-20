@@ -63,7 +63,7 @@ func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
 	// A Pod is granted a term to terminate gracefully, which defaults to 30 seconds.
 	timer := time.AfterFunc(30 * time.Second, func() {
-    s.cmd.Process.Kill()
+    require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()
 	require.NoError(s.t, s.cmd.Wait())

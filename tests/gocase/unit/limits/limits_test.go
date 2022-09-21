@@ -44,7 +44,7 @@ func TestNetworkLimits(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			c := srv.NewTCPClient()
 			clean = append(clean, func() { require.NoError(t, c.Close()) })
-			require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
+			require.NoError(t, c.WriteArgs("PING"))
 			r, err := c.ReadLine()
 			require.NoError(t, err)
 			if strings.Contains(r, "ERR") {

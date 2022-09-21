@@ -206,6 +206,14 @@ Config::Config() {
         false, new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes",
         false, new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
+
+      /* rocksdb write options */
+      {"rocksdb.write_options.sync", true, new YesNoField(&RocksDB.write_options.sync, false)},
+      {"rocksdb.write_options.disable_wal", true, new YesNoField(&RocksDB.write_options.disable_WAL, false)},
+      {"rocksdb.write_options.no_slowdown", true, new YesNoField(&RocksDB.write_options.no_slowdown, false)},
+      {"rocksdb.write_options.low_pri", true, new YesNoField(&RocksDB.write_options.low_pri, false)},
+      {"rocksdb.write_options.memtable_insert_hint_per_batch",
+        true, new YesNoField(&RocksDB.write_options.memtable_insert_hint_per_batch, false)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;

@@ -4875,6 +4875,28 @@ class CommandEvalSHA : public Commander {
   }
 };
 
+class CommandEvalRO : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    return Lua::evalGenericCommand(conn, args_, false, output, true);
+  }
+};
+
+class CommandEvalSHARO : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args[1].size() != 40) {
+      return Status(Status::NotOK,
+                    "NOSCRIPT No matching script. Please use EVAL");
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    return Lua::evalGenericCommand(conn, args_, true, output, true);
+  }
+};
+
 class CommandScript : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -4904,7 +4926,7 @@ class CommandScript : public Commander {
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = Lua::createFunction(svr, args_[2], &sha);
+      auto s = Lua::createFunction(svr, args_[2], &sha, svr->Lua());
       if (!s.IsOK()) {
         return s;
       }
@@ -5962,6 +5984,8 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
     ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
+    ADD_CMD("eval_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalRO),
+    ADD_CMD("evalsha_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalSHARO),
     ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),

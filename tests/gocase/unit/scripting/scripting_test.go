@@ -446,6 +446,32 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_NOTICE, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
 		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_WARNING, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
 	})
+
+	t.Run("EVAL_RO - successful case", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		r := rdb.Do(ctx, "EVAL_RO", `return redis.call('get', KEYS[1]);`, "1", "foo")
+		require.NoError(t, r.Err())
+		require.Equal(t, "bar", r.Val())
+	})
+
+	t.Run("EVALSHA_RO - successful case", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		r := rdb.Do(ctx, "EVALSHA_RO", "796941151549c416aa77522fb347487236c05e46", "1", "foo")
+		require.NoError(t, r.Err())
+		require.Equal(t, "bar", r.Val())
+	})
+
+	t.Run("EVAL_RO - cannot run write commands", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		r := rdb.Do(ctx, "EVAL_RO", `redis.call('del', KEYS[1]);`, "1", "foo")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+	})
+
+	t.Run("EVALSHA_RO - cannot run write commands", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		r := rdb.Do(ctx, "EVALSHA_RO", "a1e63e1cd1bd1d5413851949332cfb9da4ee6dc0", "1", "foo")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+	})
 }
 
 func TestScriptingMasterSlave(t *testing.T) {

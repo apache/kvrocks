@@ -45,7 +45,7 @@ func TestPipeQuit(t *testing.T) {
 
 		require.NoError(t, c.WriteArgs("PING"))
 		r, err = c.ReadLine()
-		require.EqualError(t, err, "EOF")
+		require.Error(t, err)
 		require.Empty(t, r)
 	})
 

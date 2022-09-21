@@ -90,6 +90,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
 	require.NoError(t, err)
+	defer func() { require.NoError(t, f.Close()) }()
 
 	for k := range configs {
 		_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))

@@ -36,9 +36,17 @@ import (
 type KvrocksServer struct {
 	t    testing.TB
 	cmd  *exec.Cmd
-	addr net.Addr
+	addr *net.TCPAddr
 
 	clean func()
+}
+
+func (s *KvrocksServer) Host() string {
+	return s.addr.AddrPort().Addr().String()
+}
+
+func (s *KvrocksServer) Port() uint16 {
+	return s.addr.AddrPort().Port()
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
@@ -82,6 +90,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
 	require.NoError(t, err)
+	defer func() { require.NoError(t, f.Close()) }()
 
 	for k := range configs {
 		_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))

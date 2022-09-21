@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
@@ -93,7 +94,7 @@ func TestZipList(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{
-		MaxRetries: -1,
+		ReadTimeout: 10 * time.Second,
 	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 

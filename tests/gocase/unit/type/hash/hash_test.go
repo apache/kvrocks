@@ -30,7 +30,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
@@ -630,56 +629,56 @@ func TestHash(t *testing.T) {
 				require.Equal(t, int64(len(hash)), rdb.HLen(ctx, "hash").Val())
 			}
 		})
-    
-    	kvArray := []string{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key2", "value2", "key3", "value3", "key10", "value10", "z", "z", "x", "x"}
-	t.Run("HRange normal situation ", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10"}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key2", "limit", 100).Val())
-		require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key3", "limit", 100).Val())
-	})
 
-	t.Run("HRange stop <= start", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "key2", "key1", "limit", 100).Val())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key1", "limit", 100).Val())
-	})
+		kvArray := []string{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key2", "value2", "key3", "value3", "key10", "value10", "z", "z", "x", "x"}
+		t.Run("HRange normal situation ", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10"}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key2", "limit", 100).Val())
+			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key3", "limit", 100).Val())
+		})
 
-	t.Run("HRange limit", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 2).Val())
-		require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "a", "zzz", "limit", 10000).Val())
-	})
+		t.Run("HRange stop <= start", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "key2", "key1", "limit", 100).Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "key1", "key1", "limit", 100).Val())
+		})
 
-	t.Run("HRange limit is negative", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", -100).Val())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 0).Val())
-	})
+		t.Run("HRange limit", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 2).Val())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "a", "zzz", "limit", 10000).Val())
+		})
 
-	t.Run("HRange nonexistent key", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000).Val())
-		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000).Val())
-	})
+		t.Run("HRange limit is negative", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", -100).Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 0).Val())
+		})
 
-	t.Run("HRange limit typo", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limitzz", 10000).Err(), "ERR syntax")
-	})
+		t.Run("HRange nonexistent key", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000).Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000).Val())
+		})
 
-	t.Run("HRange wrong number of arguments", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-		require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000, "a").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "HRange").Err(), "wrong number of arguments")
-	})
-  
+		t.Run("HRange limit typo", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limitzz", 10000).Err(), "ERR syntax")
+		})
+
+		t.Run("HRange wrong number of arguments", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
+			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
+			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit", 10000, "a").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "limit").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HRange").Err(), "wrong number of arguments")
+		})
+	}
 }

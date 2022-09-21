@@ -75,11 +75,11 @@ enum {
 };
 
 namespace Lua {
-  lua_State* CreateState() {
+  lua_State *CreateState(bool read_only) {
     lua_State *lua = lua_open();
     loadLibraries(lua);
     removeUnsupportedFunctions(lua);
-    loadFuncs(lua);
+    loadFuncs(lua, read_only);
     enableGlobalsProtection(lua);
     return lua;
   }
@@ -89,7 +89,7 @@ namespace Lua {
     lua_close(lua);
   }
 
-  void loadFuncs(lua_State *lua) {
+  void loadFuncs(lua_State *lua, bool read_only) {
     lua_newtable(lua);
 
     /* redis.call */
@@ -135,6 +135,13 @@ namespace Lua {
     lua_pushstring(lua, "status_reply");
     lua_pushcfunction(lua, redisStatusReplyCommand);
     lua_settable(lua, -3);
+
+    if (read_only) {
+      /* redis.read_only */
+      lua_pushstring(lua, "read_only");
+      lua_pushboolean(lua, 1);
+      lua_settable(lua, -3);
+    }
 
     lua_setglobal(lua, "redis");
 
@@ -233,11 +240,16 @@ namespace Lua {
   Status evalGenericCommand(Redis::Connection *conn,
                             const std::vector<std::string> &args,
                             bool evalsha,
-                            std::string *output) {
+                            std::string *output,
+                            bool read_only) {
     int64_t numkeys = 0;
     char funcname[43];
     Server *srv = conn->GetServer();
     lua_State *lua = srv->Lua();
+    if (read_only) {
+      // Use the worker's private Lua VM when entering the read-only mode
+      lua = conn->Owner()->Lua();
+    }
 
     auto s = Util::DecimalStringToNum(args[2], &numkeys);
     if (!s.IsOK()) {
@@ -281,7 +293,7 @@ namespace Lua {
         body = args[1];
       }
       std::string sha;
-      s = createFunction(srv, body, &sha);
+      s = createFunction(srv, body, &sha, lua);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
         return s;
@@ -333,6 +345,10 @@ namespace Lua {
   int redisGenericCommand(lua_State *lua, int raise_error) {
     int j, argc = lua_gettop(lua);
     std::vector<std::string> args;
+    lua_getglobal(lua, "redis");
+    lua_getfield(lua, -1, "read_only");
+    int read_only = lua_toboolean(lua, -1);
+    lua_pop(lua, 2);
 
     if (argc == 0) {
       pushError(lua, "Please specify at least one argument for redis.call()");
@@ -364,6 +380,10 @@ namespace Lua {
       return raise_error ? raiseError(lua) : 1;
     }
     auto redisCmd = cmd_iter->second;
+    if (read_only && redisCmd->is_write()) {
+      pushError(lua, "Write commands are not allowed from read-only scripts");
+      return raise_error ? raiseError(lua) : 1;
+    }
     auto cmd = redisCmd->factory();
     cmd->SetAttributes(redisCmd);
     cmd->SetArgs(args);
@@ -883,7 +903,8 @@ int redisMathRandomSeed(lua_State *L) {
  *
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
-Status createFunction(Server *srv, const std::string &body, std::string *sha) {
+Status createFunction(Server *srv, const std::string &body, std::string *sha,
+                      lua_State *lua) {
   char funcname[43];
 
   funcname[0] = 'f';
@@ -898,7 +919,6 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha) {
   funcdef += body;
   funcdef += "\nend";
 
-  lua_State *lua = srv->Lua();
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);

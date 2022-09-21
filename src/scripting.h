@@ -29,10 +29,10 @@
 
 namespace Lua {
 
-lua_State* CreateState();
+lua_State* CreateState(bool read_only = false);
 void DestroyState(lua_State *lua);
 
-void loadFuncs(lua_State *lua);
+void loadFuncs(lua_State *lua, bool read_only = false);
 void loadLibraries(lua_State *lua);
 void removeUnsupportedFunctions(lua_State *lua);
 void enableGlobalsProtection(lua_State *lua);
@@ -42,13 +42,13 @@ int redisGenericCommand(lua_State *lua, int raise_error);
 int redisSha1hexCommand(lua_State *lua);
 int redisStatusReplyCommand(lua_State *lua);
 int redisErrorReplyCommand(lua_State *lua);
-Status createFunction(Server *srv, const std::string &body, std::string *sha);
+Status createFunction(Server *srv, const std::string &body, std::string *sha,
+                      lua_State *lua);
 
 int redisLogCommand(lua_State *lua);
 Status evalGenericCommand(Redis::Connection *conn,
-                          const std::vector<std::string> &args,
-                          bool evalsha,
-                          std::string *output);
+                          const std::vector<std::string> &args, bool evalsha,
+                          std::string *output, bool read_only = false);
 
 const char *redisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply);

@@ -817,15 +817,12 @@ class CommandDel : public Commander {
 };
 
 Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
-  auto parse_result = ParseInt<int64_t>(arg, 10);
+  auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
-    return Status(Status::RedisParseErr, errValueNotInterger);
+    return parse_result.ToStatus();
   }
-  int64_t offset_arg = *parse_result;
-  if (offset_arg < 0 || offset_arg > UINT_MAX) {
-    return Status(Status::RedisParseErr, "bit offset is out of range");
-  }
-  *offset = static_cast<uint32_t>(offset_arg);
+
+  *offset = *parse_result;
   return Status::OK();
 }
 
@@ -916,19 +913,19 @@ class CommandBitPos: public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() >= 4) {
-      auto parseArgs3Result = ParseInt<int64_t>(args[3], 10);
-      if (!parseArgs3Result) {
+      auto parse_start = ParseInt<int64_t>(args[3], 10);
+      if (!parse_start) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
-      start_ = *parseArgs3Result;
+      start_ = *parse_start;
     }
     if (args.size() >= 5) {
-      auto parseArgs4Result = ParseInt<int64_t>(args[4], 10);
-      if (!parseArgs4Result) {
+      auto parse_stop = ParseInt<int64_t>(args[4], 10);
+      if (!parse_stop) {
         return Status(Status::RedisParseErr, errValueNotInterger);
       }
       stop_given_ = true;
-      stop_ = *parseArgs4Result;
+      stop_ = *parse_stop;
     }
     if (args[2] == "0") {
       bit_ = false;
@@ -4007,7 +4004,7 @@ class CommandClient : public Commander {
         if (!strcasecmp(args[i].c_str(), "addr") && moreargs) {
           addr_ = args[i+1];
         } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
-          auto parse_result = ParseInt<int64_t>(args[i+1], 10);
+          auto parse_result = ParseInt<uint64_t>(args[i+1], 10);
           if (!parse_result) {
             return Status(Status::RedisParseErr, errValueNotInterger);
           }

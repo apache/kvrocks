@@ -278,7 +278,7 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
   if (!value.empty()) {
     auto parse_result = ParseInt<int64_t>(value, 10);
     if (!parse_result) {
-      return rocksdb::Status::InvalidArgument(parse_result.Msg());
+      return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
     }
     if (isspace(value[0])) {
       return rocksdb::Status::InvalidArgument("value is not an integer");

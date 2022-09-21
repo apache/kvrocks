@@ -30,7 +30,7 @@ StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
     PRE_KEY_SPACE,  // in whitespace characters before key
     AFTER_KEY_SPACE,  // in whitespace characters after key and before value
     AFTER_VAL_SPACE,  // in whitespace characters after value
-    ESCAPE, // in escape character of quoted string
+    ESCAPE,  // in escape character of quoted string
     ERROR  // error state, e.g. encounter more than one value
   } state = PRE_KEY_SPACE;
 

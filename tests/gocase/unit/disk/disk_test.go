@@ -31,7 +31,7 @@ import (
 
 func TestDisk(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
-		"rocksdb.write_options.sync": "yes",
+		"rocksdb.compression": "no",
 	})
 	defer srv.Close()
 	ctx := context.Background()

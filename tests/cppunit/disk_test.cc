@@ -43,6 +43,7 @@ protected:
     writeop.memtable_insert_hint_per_batch = false;
     writeop.no_slowdown = false;
     storage_->SetWriteOptions(writeop);
+  
   }
   ~RedisDiskTest() = default;
 

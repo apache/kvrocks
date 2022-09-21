@@ -36,9 +36,17 @@ import (
 type KvrocksServer struct {
 	t    testing.TB
 	cmd  *exec.Cmd
-	addr net.Addr
+	addr *net.TCPAddr
 
 	clean func()
+}
+
+func (s *KvrocksServer) Host() string {
+	return s.addr.AddrPort().Addr().String()
+}
+
+func (s *KvrocksServer) Port() uint16 {
+	return s.addr.AddrPort().Port()
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {

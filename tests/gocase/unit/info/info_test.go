@@ -22,9 +22,7 @@ package command
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -39,14 +37,6 @@ func TestInfo(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-
-	FindInfoEntry := func(t *testing.T, section string, key string) string {
-		r := rdb.Info(ctx, section)
-		p := regexp.MustCompile(fmt.Sprintf("%s:(.+)", key))
-		ms := p.FindStringSubmatch(r.Val())
-		require.Len(t, ms, 2)
-		return strings.TrimSpace(ms[1])
-	}
 
 	MustAtoi := func(t *testing.T, s string) int {
 		i, err := strconv.Atoi(s)
@@ -65,21 +55,21 @@ func TestInfo(t *testing.T) {
 			time.Sleep(time.Second)
 		}
 
-		r := FindInfoEntry(t, "rocksdb", "put_per_sec")
+		r := util.FindInfoEntry(t, ctx, rdb, "put_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = FindInfoEntry(t, "rocksdb", "get_per_sec")
+		r = util.FindInfoEntry(t, ctx, rdb, "get_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = FindInfoEntry(t, "rocksdb", "seek_per_sec")
+		r = util.FindInfoEntry(t, ctx, rdb, "seek_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = FindInfoEntry(t, "rocksdb", "next_per_sec")
+		r = util.FindInfoEntry(t, ctx, rdb, "next_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
 	})
 
 	t.Run("get bgsave information by INFO", func(t *testing.T) {
-		require.Equal(t, "0", FindInfoEntry(t, "persistence", "bgsave_in_progress"))
-		require.Equal(t, "-1", FindInfoEntry(t, "persistence", "last_bgsave_time"))
-		require.Equal(t, "ok", FindInfoEntry(t, "persistence", "last_bgsave_status"))
-		require.Equal(t, "-1", FindInfoEntry(t, "persistence", "last_bgsave_time_sec"))
+		require.Equal(t, "0", util.FindInfoEntry(t, ctx, rdb, "bgsave_in_progress", "persistence"))
+		require.Equal(t, "-1", util.FindInfoEntry(t, ctx, rdb, "last_bgsave_time", "persistence"))
+		require.Equal(t, "ok", util.FindInfoEntry(t, ctx, rdb, "last_bgsave_status", "persistence"))
+		require.Equal(t, "-1", util.FindInfoEntry(t, ctx, rdb, "last_bgsave_time_sec", "persistence"))
 
 		r := rdb.Do(ctx, "bgsave")
 		v, err := r.Text()
@@ -87,14 +77,14 @@ func TestInfo(t *testing.T) {
 		require.Equal(t, "OK", v)
 
 		require.Eventually(t, func() bool {
-			e := MustAtoi(t, FindInfoEntry(t, "persistence", "bgsave_in_progress"))
+			e := MustAtoi(t, util.FindInfoEntry(t, ctx, rdb, "bgsave_in_progress", "persistence"))
 			return e == 0
 		}, 5*time.Second, 100*time.Millisecond)
 
-		lastBgsaveTime := MustAtoi(t, FindInfoEntry(t, "persistence", "last_bgsave_time"))
+		lastBgsaveTime := MustAtoi(t, util.FindInfoEntry(t, ctx, rdb, "last_bgsave_time", "persistence"))
 		require.Greater(t, lastBgsaveTime, 1640507660)
-		require.Equal(t, "ok", FindInfoEntry(t, "persistence", "last_bgsave_status"))
-		lastBgsaveTimeSec := MustAtoi(t, FindInfoEntry(t, "persistence", "last_bgsave_time_sec"))
+		require.Equal(t, "ok", util.FindInfoEntry(t, ctx, rdb, "last_bgsave_status", "persistence"))
+		lastBgsaveTimeSec := MustAtoi(t, util.FindInfoEntry(t, ctx, rdb, "last_bgsave_time_sec", "persistence"))
 		require.GreaterOrEqual(t, lastBgsaveTimeSec, 0)
 		require.Less(t, lastBgsaveTimeSec, 3)
 	})

@@ -23,7 +23,16 @@
 
 
 StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
-  enum { KEY, NORMAL, QUOTED, PRE_KEY_SPACE, AFTER_KEY_SPACE, AFTER_VAL_SPACE, ESCAPE, ERROR } state = PRE_KEY_SPACE;
+  enum {
+    KEY,  // in (unquoted) key string
+    NORMAL,  // in unquoted value string
+    QUOTED,  // in quoted value string
+    PRE_KEY_SPACE,  // in whitespace characters before key
+    AFTER_KEY_SPACE,  // in whitespace characters after key and before value
+    AFTER_VAL_SPACE,  // in whitespace characters after value
+    ESCAPE, // in escape character of quoted string
+    ERROR  // error state, e.g. encounter more than one value
+  } state = PRE_KEY_SPACE;
 
   char quote;  // single or double quote
   std::string current_str;

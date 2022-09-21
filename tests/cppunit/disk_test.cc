@@ -36,14 +36,14 @@
 class RedisDiskTest : public TestBase {
 protected:
   explicit RedisDiskTest() : TestBase() {
-    Config::RocksDB::WriteOptions writeop;
-    writeop.sync = true;
-    writeop.disable_WAL = false;
-    writeop.low_pri = false;
-    writeop.memtable_insert_hint_per_batch = false;
-    writeop.no_slowdown = false;
-    storage_->SetWriteOptions(writeop);
-  
+    delete storage_;
+    config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
+    storage_ = new Engine::Storage(config_);
+    Status s = storage_->Open();
+    if (!s.IsOK()) {
+      std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
+      assert(s.IsOK());
+    }
   }
   ~RedisDiskTest() = default;
 

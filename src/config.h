@@ -210,7 +210,7 @@ struct Config{
 
   void initFieldValidator();
   void initFieldCallback();
-  Status parseConfigFromString(std::string input, int line_number);
+  Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
   Status isNamespaceLegal(const std::string &ns);
 };

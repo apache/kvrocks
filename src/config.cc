@@ -27,6 +27,8 @@
 #include <vector>
 #include <utility>
 #include <limits>
+#include <algorithm>
+#include <cctype>
 #include <glog/logging.h>
 #include <rocksdb/env.h>
 
@@ -38,6 +40,7 @@
 #include "cron.h"
 #include "server.h"
 #include "log_collector.h"
+#include "config_util.h"
 
 const char *kDefaultNamespace = "__namespace";
 
@@ -558,28 +561,27 @@ void Config::ClearMaster() {
   }
 }
 
-Status Config::parseConfigFromString(std::string input, int line_number) {
-  std::vector<std::string> kv = Util::Split2KV(input, " \t");
+Status Config::parseConfigFromString(const std::string &input, int line_number) {
+  auto parsed = ParseConfigLine(input);
+  if (!parsed) return parsed.ToStatus();
 
-  // skip the comment and empty line
-  if (kv.empty() || kv[0].front() == '#') return Status::OK();
+  auto kv = std::move(*parsed);
 
-  if (kv.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
-  if (kv[1] == "\"\"") return Status::OK();
+  if (kv.first.empty() || kv.second.empty()) return Status::OK();
 
-  std::string field_key = Util::ToLower(kv[0]);
+  std::string field_key = Util::ToLower(kv.first);
   const char ns_str[] = "namespace.";
   size_t ns_str_size = sizeof(ns_str) - 1;
-  if (!strncasecmp(kv[0].data(), ns_str, ns_str_size)) {
+  if (!strncasecmp(kv.first.data(), ns_str, ns_str_size)) {
       // namespace should keep key case-sensitive
-      field_key = kv[0];
-      tokens[kv[1]] = kv[0].substr(ns_str_size);
+      field_key = kv.first;
+      tokens[kv.second] = kv.first.substr(ns_str_size);
   }
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto& field = iter->second;
     field->line_number = line_number;
-    auto s = field->Set(kv[1]);
+    auto s = field->Set(kv.second);
     if (!s.IsOK()) return s;
   }
   return Status::OK();
@@ -711,27 +713,22 @@ Status Config::Rewrite() {
 
   std::ifstream file(path_);
   if (file.is_open()) {
-    std::string raw_line, trim_line, new_value;
-    std::vector<std::string> kv;
+    std::string raw_line;
     while (!file.eof()) {
       std::getline(file, raw_line);
-      trim_line = Util::Trim(raw_line, " \t\r\n");
-      if (trim_line.empty() || trim_line.front() == '#') {
+      auto parsed = ParseConfigLine(raw_line);
+      if (!parsed || parsed->first.empty()) {
         lines.emplace_back(raw_line);
         continue;
       }
-      kv = Util::Split2KV(trim_line, " \t");
-      if (kv.size() != 2) {
-        lines.emplace_back(raw_line);
-        continue;
-      }
-      if (Util::HasPrefix(kv[0], namespacePrefix)) {
+      auto kv = std::move(*parsed);
+      if (Util::HasPrefix(kv.first, namespacePrefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
       }
-      auto iter = new_config.find(Util::ToLower(kv[0]));
+      auto iter = new_config.find(Util::ToLower(kv.first));
       if (iter != new_config.end()) {
-        if (!iter->second.empty()) lines.emplace_back(iter->first + " " + iter->second);
+        if (!iter->second.empty()) lines.emplace_back(DumpConfigLine({iter->first, iter->second}));
         new_config.erase(iter);
       } else {
         lines.emplace_back(raw_line);

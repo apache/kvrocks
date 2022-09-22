@@ -140,9 +140,8 @@ bool SubKeyFilter::Filter(int level,
     return false;
   }
 
-  bool result = IsMetadataExpired(ikey, metadata) ||
+  return IsMetadataExpired(ikey, metadata) ||
     (metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value));
-  return result;
 }
 
 }  // namespace Engine

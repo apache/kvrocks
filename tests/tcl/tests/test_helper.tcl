@@ -44,7 +44,6 @@ set ::all_tests {
     unit/pubsub
     unit/introspection
     unit/geo
-    unit/scripting
     integration/slotmigrate
     integration/slotimport
     integration/redis-cli

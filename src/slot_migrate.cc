@@ -546,7 +546,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
 Status SlotMigrate::MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &value, std::string *restore_cmds) {
   std::string prefix_key;
   AppendNamespacePrefix(key, &prefix_key);
-  std::string bytes = value.ToString();
+  std::string bytes = std::move(value.ToString());
   Metadata metadata(kRedisNone, false);
   metadata.Decode(bytes);
   if (metadata.Type() != kRedisString && metadata.size == 0) {

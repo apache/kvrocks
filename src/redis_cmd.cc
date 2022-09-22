@@ -488,6 +488,36 @@ class CommandSet : public Commander {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          expire_ = std::stol(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
+        if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
+        uint64_t expire_ms = 0;
+        try {
+          std::string s = args_[++i];
+          std::string::size_type sz;
+          expire_ms = std::stoul(s, &sz);
+          if (sz != s.size()) {
+            return Status(Status::RedisParseErr, errValueNotInterger);
+          }
+        } catch (std::exception &e) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
+        if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+        if (expire_ms < 1000) {
+          expire_ = 1;
+        } else {
+          expire_ = static_cast<int64_t>(expire_ms/1000);
+        }
       } else if (opt == "px" && !ttl_ && !last_arg) {
         int64_t ttl_ms = 0;
         std::string s = args_[++i];
@@ -512,6 +542,18 @@ class CommandSet : public Commander {
     int ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s;
+
+    if (!ttl_ && expire_) {
+      int64_t now;
+      rocksdb::Env::Default()->GetCurrentTime(&now);
+      ttl_ = expire_ - now;
+      if (ttl_ <= 0) {
+        string_db.Del(args_[1]);
+        *output = Redis::SimpleString("OK");
+        return Status::OK();
+      }
+    }
+
     if (nx_) {
       s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
     } else if (xx_) {
@@ -534,6 +576,7 @@ class CommandSet : public Commander {
   bool xx_ = false;
   bool nx_ = false;
   int ttl_ = 0;
+  int64_t expire_ = 0;
 };
 
 class CommandSetEX : public Commander {

@@ -302,7 +302,7 @@ Status SlotMigrate::SendSnapshot(void) {
 
     // Add key's constructed cmd to restore_cmds, send pipeline
     // or not according to current_pipeline_size_
-    auto stat = MigrateOneKey(rocksdb::Slice(user_key), iter->value(), &restore_cmds);
+    auto stat = MigrateOneKey(user_key, iter->value(), &restore_cmds);
     if (stat.IsOK()) {
       if (stat.Msg() == "ok") migratedkey_cnt++;
       if (stat.Msg() == "expired") expiredkey_cnt++;

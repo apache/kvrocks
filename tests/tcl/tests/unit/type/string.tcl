@@ -556,17 +556,41 @@ start_server {tags {"string"}} {
         assert {$ttl <= 10 && $ttl > 5}
     }
 
-    # test "Extended SET EXAT option" {
-    #     r del foo
-    #     r set foo bar exat [expr [clock seconds] + 10]
-    #     assert_range [r ttl foo] 5 10
-    # }
+    test {Extended SET EXAT option} {
+        r del foo
+        r set foo bar exat [expr [clock seconds] + 10]
+        assert_range [r ttl foo] 5 10
+    }
 
-    # test "Extended SET PXAT option" {
-    #     r del foo
-    #     r set foo bar pxat [expr [clock milliseconds] + 10000]
-    #     assert_range [r ttl foo] 5 10
-    # }
+    test {Extended SET EXAT option with expired timestamp} {
+        r del foo
+        assert_equal [r set foo bar exat 1] OK
+        assert_equal [r get foo] {}
+
+        r set foo bar
+        assert_equal [r get foo] bar
+
+        assert_equal [r set foo bar exat [expr [clock seconds] - 5]] OK
+        assert_equal [r get foo] {}
+    }
+
+    test {Extended SET PXAT option} {
+        r del foo
+        r set foo bar pxat [expr [clock milliseconds] + 10000]
+        assert_range [r ttl foo] 5 10
+    }
+
+    test {Extended SET PXAT option with expired timestamp} {
+        r del foo
+        assert_equal [r set foo bar pxat 1] OK
+        assert_equal [r get foo] {}
+
+        r set foo bar
+        assert_equal [r get foo] bar
+
+        assert_equal [r set foo bar pxat [expr [clock milliseconds] - 5000]] OK
+        assert_equal [r get foo] {}
+    }
 
     test {Extended SET with incorrect use of multi options should result in syntax err} {
       catch {r set foo bar ex 10 px 10000} err1
@@ -576,8 +600,23 @@ start_server {tags {"string"}} {
 
     test {Extended SET with incorrect expire value} {
         catch {r set foo bar ex 1234xyz} e
-        set e
-    } {*not an integer*}
+        assert_match {*not an integer*} $e
+
+        catch {r set foo bar ex 0} e
+        assert_match {*invalid expire time*} $e
+
+        catch {r set foo bar exat 1234xyz} e
+        assert_match {*not an integer*} $e
+
+        catch {r set foo bar exat 0} e
+        assert_match {*invalid expire time*} $e
+
+        catch {r set foo bar pxat 1234xyz} e
+        assert_match {*not an integer*} $e
+
+        catch {r set foo bar pxat 0} e
+        assert_match {*invalid expire time*} $e
+    }
 
     test {Extended SET using multiple options at once} {
         r set foo val

@@ -50,14 +50,13 @@ bool MetadataFilter::Filter(int level,
   return metadata.Expired();
 }
 
-bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) const {
+Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata* metadata) const {
   std::string metadata_key;
 
   auto db = stor_->GetDB();
   const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column family handler and DB
-  if (!db || cf_handles->size() < 2)  return false;
-
+  if (!db || cf_handles->size() < 2)  return Status(Status::NotOK, "storage is closed");
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
@@ -70,36 +69,56 @@ bool SubKeyFilter::IsKeyExpired(const InternalKey &ikey, const Slice &value) con
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata
       cached_metadata_.clear();
-      return true;
+      return Status(Status::NotFound, "metadata is not found");
     } else {
-      LOG(ERROR) << "[compact_filter/subkey] Failed to fetch metadata"
-                 << ", namespace: " << ikey.GetNamespace().ToString()
-                 << ", key: " << ikey.GetKey().ToString()
-                 << ", err: " << s.ToString();
       cached_key_.clear();
       cached_metadata_.clear();
-      return false;
+      return Status(Status::NotOK, "fetch error: " + s.ToString());
     }
   }
   // the metadata was not found
-  if (cached_metadata_.empty()) return true;
+  if (cached_metadata_.empty()) return Status(Status::NotFound, "metadata is not found");
   // the metadata is cached
-  Metadata metadata(kRedisNone, false);
-  rocksdb::Status s = metadata.Decode(cached_metadata_);
+  rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    LOG(ERROR) << "[compact_filter/subkey] Failed to decode metadata"
-               << ", namespace: " << ikey.GetNamespace().ToString()
-               << ", key: " << ikey.GetKey().ToString()
-               << ", err: " << s.ToString();
-    return false;
+    return Status(Status::NotOK, "decode error: " + s.ToString());;
   }
+  return Status::OK();
+}
+
+bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata& metadata) const {
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
       || metadata.Expired()
       || ikey.GetVersion() != metadata.version) {
     return true;
   }
-  return metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value);
+  return false;
+}
+
+rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice &key,
+                                                                  std::string *new_value,
+                                                                  std::string *skip_until) const {
+  InternalKey ikey(key, stor_->IsSlotIdEncoded());
+  Metadata metadata(kRedisNone, false);
+  Status s = GetMetadata(ikey, &metadata);
+  if (s.Is<Status::NotFound>()) {
+    return rocksdb::CompactionFilter::Decision::kRemove;
+  }
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
+            << ", namespace: " << ikey.GetNamespace().ToString()
+            << ", key: " << ikey.GetKey().ToString()
+            << ", err: " << s.Msg();
+    return rocksdb::CompactionFilter::Decision::kKeep;
+  }
+  // bitmap will be checked in Filter
+  if (metadata.Type() == kRedisBitmap) {
+    return rocksdb::CompactionFilter::Decision::kUndetermined;
+  }
+
+  bool result = IsMetadataExpired(ikey, metadata);
+  return result ? rocksdb::CompactionFilter::Decision::kRemove : rocksdb::CompactionFilter::Decision::kKeep;
 }
 
 bool SubKeyFilter::Filter(int level,
@@ -108,13 +127,21 @@ bool SubKeyFilter::Filter(int level,
                                   std::string *new_value,
                                   bool *modified) const {
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
-  bool result = IsKeyExpired(ikey, value);
-  DLOG(INFO) << "[compact_filter/subkey] "
-             << "namespace: " << ikey.GetNamespace().ToString()
-             << ", metadata key: " << ikey.GetKey().ToString()
-             << ", subkey: " << ikey.GetSubKey().ToString()
-             << ", verison: " << ikey.GetVersion()
-             << ", result: " << (result ? "deleted" : "reserved");
-  return result;
+  Metadata metadata(kRedisNone, false);
+  Status s = GetMetadata(ikey, &metadata);
+  if (s.Is<Status::NotFound>()) {
+    return true;
+  }
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
+            << ", namespace: " << ikey.GetNamespace().ToString()
+            << ", key: " << ikey.GetKey().ToString()
+            << ", err: " << s.Msg();
+    return false;
+  }
+
+  return IsMetadataExpired(ikey, metadata) ||
+    (metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value));
 }
+
 }  // namespace Engine

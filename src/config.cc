@@ -483,7 +483,7 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
         }
 
-        double cutoff = val / 100;
+        double cutoff = val / 100.0;
         return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(cutoff));
       }},
       {"rocksdb.level_compaction_dynamic_level_bytes", [](Server* srv, const std::string &k,

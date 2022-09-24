@@ -93,6 +93,13 @@ $ ./x.py build # `./x.py build -h` to check more options;
                # especially, `./x.py build --ghproxy` will fetch dependencies via ghproxy.com.
 ```
 
+To build with TLS support, you'll need OpenSSL development libraries (e.g. libssl-dev on Debian/Ubuntu) and run:
+
+```shell
+$ ./x.py build -DENABLE_OPENSSL=ON
+```
+
+
 ### Running kvrocks
 
 ```shell

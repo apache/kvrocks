@@ -26,7 +26,7 @@ option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" ON)
-option(ENABLE_OPENSSL "enable openssl to support tls connection" ON)
+option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)

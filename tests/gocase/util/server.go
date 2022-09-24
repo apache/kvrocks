@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -67,8 +68,12 @@ func (s *KvrocksServer) NewTCPClient() *tcpClient {
 }
 
 func (s *KvrocksServer) Close() {
-	require.NoError(s.t, s.cmd.Process.Kill())
-	require.EqualError(s.t, s.cmd.Wait(), "signal: killed")
+	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
+	timer := time.AfterFunc(k8sDefaultGracePeriod*time.Second, func() {
+		require.NoError(s.t, s.cmd.Process.Kill())
+	})
+	defer timer.Stop()
+	require.NoError(s.t, s.cmd.Wait())
 	s.clean()
 }
 

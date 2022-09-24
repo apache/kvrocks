@@ -123,13 +123,28 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC without luajit
+          - name: Ubuntu GCC with luajit
             os: ubuntu-18.04
-            without_luajit: -DUSE_LUAJIT=OFF
             with_openssl: -DENABLE_OPENSSL=ON
+            with_luajit: -DUSE_LUAJIT=ON
             compiler: gcc
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-18.04
+            compiler: gcc
+            without_openssl: -DENABLE_OPENSSL=OFF
+          - name: Ubuntu GCC ASan -DUSE_LUAJIT=ON
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC TSan -DUSE_LUAJIT=ON
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_TSAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
 
     runs-on: ${{ matrix.os }}

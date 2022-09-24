@@ -35,13 +35,6 @@ func TestCommand(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Kvrocks supports 181 commands currently", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "COUNT")
-		v, err := r.Int()
-		require.NoError(t, err)
-		require.Equal(t, 181, v)
-	})
-
 	t.Run("acquire GET command info by COMMAND INFO", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "INFO", "GET")
 		vs, err := r.Slice()

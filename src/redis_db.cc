@@ -99,7 +99,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
-  s = storage_->Write(rocksdb::WriteOptions(), &batch);
+  s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
   delete[]buf;
   return s;
 }
@@ -117,7 +117,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+  return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {

@@ -23,8 +23,10 @@
 #include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <chrono>
+#include <vector>
 #include <thread>
 #include <utility>
 #include <memory>
@@ -1427,10 +1429,11 @@ class CommandHVals : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size()) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> values;
+    for (const auto &p : field_values) {
+      values.emplace_back(p.value);
     }
+    *output = MultiBulkString(values);
     return Status::OK();
   }
 };
@@ -1444,13 +1447,50 @@ class CommandHGetAll : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(field_values.size() * 2) + CRLF;
-    for (const auto &fv : field_values) {
-      *output += Redis::BulkString(fv.field);
-      *output += Redis::BulkString(fv.value);
+    std::vector<std::string> kv_pairs;
+    for (const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
     }
+    *output = MultiBulkString(kv_pairs);
     return Status::OK();
   }
+};
+
+class CommandHRange : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 6 && args.size() != 4) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
+      return Status(Status::RedisInvalidCmd, errInvalidSyntax);
+    }
+    if (args.size() == 6) {
+      auto parse_result = ParseInt<int64_t>(args_[5], 10);
+      if (!parse_result)return Status(Status::RedisParseErr, errValueNotInterger);
+      limit_ = *parse_result;
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    std::vector<FieldValue> field_values;
+    rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    std::vector<std::string> kv_pairs;
+    for (const auto &p : field_values) {
+      kv_pairs.emplace_back(p.field);
+      kv_pairs.emplace_back(p.value);
+    }
+    *output = MultiBulkString(kv_pairs);
+    return Status::OK();
+  }
+
+ private:
+  int64_t limit_ = LONG_MAX;
 };
 
 class CommandPush : public Commander {
@@ -3691,6 +3731,9 @@ class CommandSlaveOf : public Commander {
     if (svr->GetConfig()->cluster_enabled) {
       return Status(Status::RedisExecErr, "can't change to slave in cluster mode");
     }
+    if (svr->GetConfig()->RocksDB.write_options.disable_WAL) {
+      return Status(Status::RedisExecErr, "slaveof doesn't work with disable_wal option");
+    }
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
@@ -4832,6 +4875,28 @@ class CommandEvalSHA : public Commander {
   }
 };
 
+class CommandEvalRO : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    return Lua::evalGenericCommand(conn, args_, false, output, true);
+  }
+};
+
+class CommandEvalSHARO : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args[1].size() != 40) {
+      return Status(Status::NotOK,
+                    "NOSCRIPT No matching script. Please use EVAL");
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    return Lua::evalGenericCommand(conn, args_, true, output, true);
+  }
+};
+
 class CommandScript : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -4861,7 +4926,7 @@ class CommandScript : public Commander {
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = Lua::createFunction(svr, args_[2], &sha);
+      auto s = Lua::createFunction(svr, args_[2], &sha, svr->Lua());
       if (!s.IsOK()) {
         return s;
       }
@@ -5823,6 +5888,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
     ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
     ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
+    ADD_CMD("hrange", -4, "read-only", 1, 1, 1, CommandHRange),
 
     ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
     ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),
@@ -5918,6 +5984,8 @@ CommandAttributes redisCommandTable[] = {
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
     ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
+    ADD_CMD("eval_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalRO),
+    ADD_CMD("evalsha_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalSHARO),
     ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),

@@ -20,6 +20,7 @@
 package util
 
 const DefaultDelta = 0.000001
+const ErrRedisNil = "redis: nil"
 
 // Kubernetes will send a SIGTERM signal to the containers in the pod after deleting the pod.
 // It waits for a specified time, called the termination grace period. By default, this is 30 seconds.

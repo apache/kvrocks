@@ -18,12 +18,23 @@
  *
  */
 
-#include "redis_pubsub.h"
+#pragma once
 
-namespace Redis {
-rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
-  rocksdb::WriteBatch batch;
-  batch.Put(pubsub_cf_handle_, channel, value);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
-}
-}  // namespace Redis
+#include <string>
+#include <vector>
+#include <utility>
+
+#include "status.h"
+
+using ConfigKV = std::pair<std::string, std::string>;
+
+// refer to https://redis.io/docs/manual/config
+// format: key value
+// inline comment: key value # comment
+// quoted string: key "hello world"
+// e.g. `key "hello # world\""  # hi` -> key: hello # world"
+StatusOr<ConfigKV> ParseConfigLine(const std::string &line);
+
+// dump a config item to a string line
+// e.g. {'a', 'b c'} -> "a 'b c'"
+std::string DumpConfigLine(const ConfigKV &config);

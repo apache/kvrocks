@@ -64,7 +64,11 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
         stor_(storage) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
-  bool IsKeyExpired(const InternalKey &ikey, const Slice &value) const;
+  Status GetMetadata(const InternalKey &ikey, Metadata* metadata) const;
+  bool IsMetadataExpired(const InternalKey &ikey, const Metadata& metadata) const;
+  rocksdb::CompactionFilter::Decision FilterBlobByKey(int level, const Slice &key,
+                                  std::string *new_value,
+                                  std::string *skip_until) const override;
   bool Filter(int level, const Slice &key, const Slice &value,
               std::string *new_value, bool *modified) const override;
 

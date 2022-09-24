@@ -20,7 +20,7 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
-[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) 
+[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
 
 ---
@@ -40,7 +40,7 @@ Kvrocks has the following key features:
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
-## Who uses kvrocks 
+## Who uses kvrocks
 
 <table>
 <tr>
@@ -136,6 +136,13 @@ $ ./unittest
   * Ubuntu
   * and most other distros
 * macOS
+
+### Recommended for higher performance optimization
+* Lua
+  * Use luajit instead of lua
+  ```shell
+  ./x.py build -D USE_LUAJIT=ON
+  ```
 
 ##  Namespace
 

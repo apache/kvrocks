@@ -174,10 +174,8 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler \
-            ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
-            ${{ env.CMAKE_EXTRA_DEFS }}
+          ./x.py build -j$NPROC --unittest ${{ env.CMAKE_EXTRA_DEFS }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
+            --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }}
 
       - name: Run Unit Test
         run: |

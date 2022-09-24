@@ -173,7 +173,6 @@ src/scripting.* and some functions in src/util.cc are modified from Redis.
 We have added the Redis license notice in each file header, can also see bundled license file
 https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.redis for details.
 
-
 For the library LuaJIT(https://github.com/KvrocksLabs/LuaJIT) -- a Just-In-Time Compiler for Lua. https://luajit.org/
 
 LuaJIT is free software, released under the MIT license.

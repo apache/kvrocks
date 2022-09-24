@@ -34,8 +34,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const k8sDefaultGracePeriod = 30
-
 type KvrocksServer struct {
 	t    testing.TB
 	cmd  *exec.Cmd

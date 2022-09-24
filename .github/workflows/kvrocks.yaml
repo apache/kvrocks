@@ -81,6 +81,7 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-18.04
             compiler: gcc
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang
             os: ubuntu-18.04
             compiler: clang

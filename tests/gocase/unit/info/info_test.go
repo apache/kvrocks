@@ -31,7 +31,7 @@ import (
 )
 
 func TestInfo(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer srv.Close()
 
 	ctx := context.Background()

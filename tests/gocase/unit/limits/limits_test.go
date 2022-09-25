@@ -28,7 +28,7 @@ import (
 )
 
 func TestNetworkLimits(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"maxclients": "10",
 	})
 	defer srv.Close()

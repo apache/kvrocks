@@ -162,7 +162,7 @@ jobs:
           curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
           tar -xzvf redis-6.2.6.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli redis-server && mv src/redis-cli src/redis-server $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3
@@ -190,7 +190,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export ${{ matrix.runtime_env_vars }}
-          ./x.py test go build
+          ./x.py test go build $HOME/local/bin/redis-server
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"

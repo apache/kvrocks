@@ -28,124 +28,129 @@ import (
 )
 
 func TestIncr(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
-	defer srv.Close()
+	srvKvrocks := util.StartServer(t, util.TypeKvrocks, map[string]string{})
+	srvRedis := util.StartServer(t, util.TypeRedis, map[string]string{})
+	defer srvKvrocks.Close()
+	defer srvRedis.Close()
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	kdb := srvKvrocks.NewClient()
+	rdb := srvRedis.NewClient()
+
+	defer func() { require.NoError(t, kdb.Close()) }()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("INCR against non existing key", func(t *testing.T) {
-		require.EqualValues(t, 1, rdb.Incr(ctx, "novar").Val())
-		require.EqualValues(t, "1", rdb.Get(ctx, "novar").Val())
+		require.EqualValues(t, rdb.Incr(ctx, "novar").Val(), kdb.Incr(ctx, "novar").Val())
+		require.EqualValues(t, rdb.Get(ctx, "novar").Val(), kdb.Get(ctx, "novar").Val())
 	})
 
 	t.Run("INCR against key created by incr itself", func(t *testing.T) {
-		require.EqualValues(t, 2, rdb.Incr(ctx, "novar").Val())
+		require.EqualValues(t, 2, kdb.Incr(ctx, "novar").Val())
 	})
 
 	t.Run("INCR against key originally set with SET", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 100, 0).Err())
-		require.EqualValues(t, 101, rdb.Incr(ctx, "novar").Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 100, 0).Err())
+		require.EqualValues(t, 101, kdb.Incr(ctx, "novar").Val())
 	})
 
 	t.Run("INCR over 32bit value", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 17179869184, 0).Err())
-		require.EqualValues(t, 17179869185, rdb.Incr(ctx, "novar").Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 17179869184, 0).Err())
+		require.EqualValues(t, 17179869185, kdb.Incr(ctx, "novar").Val())
 	})
 
 	t.Run("INCRBY over 32bit value with over 32bit increment", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 17179869184, 0).Err())
-		require.EqualValues(t, 34359738368, rdb.IncrBy(ctx, "novar", 17179869184).Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 17179869184, 0).Err())
+		require.EqualValues(t, 34359738368, kdb.IncrBy(ctx, "novar", 17179869184).Val())
 	})
 
 	t.Run("INCR fails against key with spaces (left)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "    11", 0).Err())
-		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "    11", 0).Err())
+		util.ErrorRegexp(t, kdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against key with spaces (right)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "11    ", 0).Err())
-		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "11    ", 0).Err())
+		util.ErrorRegexp(t, kdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against key with spaces (both)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "   11    ", 0).Err())
-		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "   11    ", 0).Err())
+		util.ErrorRegexp(t, kdb.Incr(ctx, "novar").Err(), "ERR.*")
 	})
 
 	t.Run("INCR fails against a key holding a list", func(t *testing.T) {
-		require.NoError(t, rdb.RPush(ctx, "mylist", 1).Err())
-		require.ErrorContains(t, rdb.Incr(ctx, "mylist").Err(), "WRONGTYPE")
-		require.NoError(t, rdb.RPop(ctx, "mylist").Err())
+		require.NoError(t, kdb.RPush(ctx, "mylist", 1).Err())
+		require.ErrorContains(t, kdb.Incr(ctx, "mylist").Err(), "WRONGTYPE")
+		require.NoError(t, kdb.RPop(ctx, "mylist").Err())
 	})
 
 	t.Run("DECRBY over 32bit value with over 32bit increment, negative res", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 17179869184, 0).Err())
-		require.EqualValues(t, -1, rdb.DecrBy(ctx, "novar", 17179869185).Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 17179869184, 0).Err())
+		require.EqualValues(t, -1, kdb.DecrBy(ctx, "novar", 17179869185).Val())
 	})
 
 	t.Run("INCRBYFLOAT against non existing key", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "novar").Err())
-		require.EqualValues(t, 1, rdb.IncrByFloat(ctx, "novar", 1.0).Val())
-		r, err := rdb.Get(ctx, "novar").Float64()
+		require.NoError(t, kdb.Del(ctx, "novar").Err())
+		require.EqualValues(t, 1, kdb.IncrByFloat(ctx, "novar", 1.0).Val())
+		r, err := kdb.Get(ctx, "novar").Float64()
 		require.NoError(t, err)
 		require.EqualValues(t, 1, r)
-		require.EqualValues(t, 1.25, rdb.IncrByFloat(ctx, "novar", 0.25).Val())
-		r, err = rdb.Get(ctx, "novar").Float64()
+		require.EqualValues(t, 1.25, kdb.IncrByFloat(ctx, "novar", 0.25).Val())
+		r, err = kdb.Get(ctx, "novar").Float64()
 		require.NoError(t, err)
 		require.EqualValues(t, 1.25, r)
 	})
 
 	t.Run("INCRBYFLOAT against key originally set with SET", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 1.5, 0).Err())
-		require.EqualValues(t, 3, rdb.IncrByFloat(ctx, "novar", 1.5).Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 1.5, 0).Err())
+		require.EqualValues(t, 3, kdb.IncrByFloat(ctx, "novar", 1.5).Val())
 	})
 
 	t.Run("INCRBYFLOAT over 32bit value", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 17179869184, 0).Err())
-		require.EqualValues(t, 17179869185.5, rdb.IncrByFloat(ctx, "novar", 1.5).Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 17179869184, 0).Err())
+		require.EqualValues(t, 17179869185.5, kdb.IncrByFloat(ctx, "novar", 1.5).Val())
 	})
 
 	t.Run("INCRBYFLOAT over 32bit value with over 32bit increment", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", 17179869184, 0).Err())
-		require.EqualValues(t, 34359738368, rdb.IncrByFloat(ctx, "novar", 17179869184).Val())
+		require.NoError(t, kdb.Set(ctx, "novar", 17179869184, 0).Err())
+		require.EqualValues(t, 34359738368, kdb.IncrByFloat(ctx, "novar", 17179869184).Val())
 	})
 
 	t.Run("INCRBYFLOAT fails against key with spaces (left)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "    11", 0).Err())
-		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "    11", 0).Err())
+		util.ErrorRegexp(t, kdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against key with spaces (right)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "11  ", 0).Err())
-		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "11  ", 0).Err())
+		util.ErrorRegexp(t, kdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against key with spaces (both)", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "novar", "  11  ", 0).Err())
-		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
+		require.NoError(t, kdb.Set(ctx, "novar", "  11  ", 0).Err())
+		util.ErrorRegexp(t, kdb.IncrByFloat(ctx, "novar", 1.0).Err(), "ERR.*valid.*")
 	})
 
 	t.Run("INCRBYFLOAT fails against a key holding a list", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "mylist").Err())
-		require.NoError(t, rdb.RPush(ctx, "mylist", 1).Err())
-		require.ErrorContains(t, rdb.IncrByFloat(ctx, "mylist", 1.0).Err(), "WRONGTYPE")
-		require.NoError(t, rdb.Del(ctx, "mylist").Err())
+		require.NoError(t, kdb.Del(ctx, "mylist").Err())
+		require.NoError(t, kdb.RPush(ctx, "mylist", 1).Err())
+		require.ErrorContains(t, kdb.IncrByFloat(ctx, "mylist", 1.0).Err(), "WRONGTYPE")
+		require.NoError(t, kdb.Del(ctx, "mylist").Err())
 	})
 
 	t.Run("INCRBYFLOAT does not allow NaN or Infinity", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", 0, 0).Err())
-		util.ErrorRegexp(t, rdb.Do(ctx, "INCRBYFLOAT", "foo", "+inf").Err(), "ERR.*would produce.*")
+		require.NoError(t, kdb.Set(ctx, "foo", 0, 0).Err())
+		util.ErrorRegexp(t, kdb.Do(ctx, "INCRBYFLOAT", "foo", "+inf").Err(), "ERR.*would produce.*")
 	})
 
 	t.Run("INCRBYFLOAT decrement", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", 1, 0).Err())
-		require.InDelta(t, -0.1, rdb.IncrByFloat(ctx, "foo", -1.1).Val(), util.DefaultDelta)
+		require.NoError(t, kdb.Set(ctx, "foo", 1, 0).Err())
+		require.InDelta(t, -0.1, kdb.IncrByFloat(ctx, "foo", -1.1).Val(), util.DefaultDelta)
 	})
 
 	t.Run("string to double with null terminator", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", 1, 0).Err())
-		require.NoError(t, rdb.SetRange(ctx, "foo", 2, "2").Err())
-		util.ErrorRegexp(t, rdb.IncrByFloat(ctx, "foo", 1.0).Err(), "ERR.*valid.*")
+		require.NoError(t, kdb.Set(ctx, "foo", 1, 0).Err())
+		require.NoError(t, kdb.SetRange(ctx, "foo", 2, "2").Err())
+		util.ErrorRegexp(t, kdb.IncrByFloat(ctx, "foo", 1.0).Err(), "ERR.*valid.*")
 	})
 }

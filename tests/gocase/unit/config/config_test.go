@@ -28,7 +28,7 @@ import (
 )
 
 func TestRenameCommand(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"rename-command": "KEYS KEYSNEW",
 	})
 	defer srv.Close()

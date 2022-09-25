@@ -27,3 +27,10 @@ const ErrRedisNil = "redis: nil"
 // If the containers are still running after the grace period,
 // they are sent the SIGKILL signal and forcibly removed.
 const k8sDefaultGracePeriod = 30
+
+type ServerType int8
+
+const (
+	TypeRedis ServerType = iota
+	TypeKvrocks
+)

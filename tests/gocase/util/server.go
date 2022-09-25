@@ -34,40 +34,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type KvrocksServer struct {
+type IServer interface {
+	Host() string
+	Port() uint16
+	NewClient() *redis.Client
+	NewClientWithOption(options *redis.Options) *redis.Client
+	NewTCPClient() *tcpClient
+	Close()
+}
+
+type Server struct {
 	t    testing.TB
 	cmd  *exec.Cmd
 	addr *net.TCPAddr
 
 	clean func()
 }
+type KvrocksServer struct {
+	Server
+}
 
-func (s *KvrocksServer) Host() string {
+type RedisServer struct {
+	Server
+}
+
+func (s *Server) Host() string {
 	return s.addr.AddrPort().Addr().String()
 }
 
-func (s *KvrocksServer) Port() uint16 {
+func (s *Server) Port() uint16 {
 	return s.addr.AddrPort().Port()
 }
 
-func (s *KvrocksServer) NewClient() *redis.Client {
+func (s *Server) NewClient() *redis.Client {
 	return s.NewClientWithOption(&redis.Options{Addr: s.addr.String()})
 }
 
-func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
+func (s *Server) NewClientWithOption(options *redis.Options) *redis.Client {
 	if options.Addr == "" {
 		options.Addr = s.addr.String()
 	}
 	return redis.NewClient(options)
 }
 
-func (s *KvrocksServer) NewTCPClient() *tcpClient {
+func (s *Server) NewTCPClient() *tcpClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
 	require.NoError(s.t, err)
 	return newTCPClient(c)
 }
 
-func (s *KvrocksServer) Close() {
+func (s *Server) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
 	timer := time.AfterFunc(k8sDefaultGracePeriod*time.Second, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
@@ -77,9 +93,28 @@ func (s *KvrocksServer) Close() {
 	s.clean()
 }
 
-func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	b := os.Getenv("KVROCKS_BIN_PATH")
-	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
+func StartServer(t testing.TB, st ServerType, configs map[string]string) IServer {
+	require.Contains(t, []ServerType{TypeKvrocks, TypeRedis}, st)
+	var b, confName, typeName string
+	switch st {
+	case TypeKvrocks:
+		{
+			b = os.Getenv("KVROCKS_BIN_PATH")
+			require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
+			confName = "kvrocks.conf"
+			typeName = "kvrocks"
+		}
+	case TypeRedis:
+		{
+			b = os.Getenv("REDIS_BIN_PATH")
+			require.NotEmpty(t, b, "please set the environment variable `REDIS_BIN_PATH`")
+			confName = "redis.conf"
+			typeName = "redis"
+			configs["logfile"] = "redis.log"
+			configs["save"] = "900 1"
+		}
+	}
+
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -89,11 +124,11 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	dir := os.Getenv("GO_CASE_WORKSPACE")
 	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
-	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
+	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*-%s", t.Name(), time.Now().UnixMilli(), typeName))
 	require.NoError(t, err)
 	configs["dir"] = dir
 
-	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
+	f, err := os.Create(filepath.Join(dir, confName))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, f.Close()) }()
 
@@ -102,7 +137,11 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 		require.NoError(t, err)
 	}
 
-	cmd.Args = append(cmd.Args, "-c", f.Name())
+	if st == TypeKvrocks {
+		cmd.Args = append(cmd.Args, "-c", f.Name())
+	} else {
+		cmd.Args = append(cmd.Args, f.Name())
+	}
 
 	stdout, err := os.Create(filepath.Join(dir, "stdout"))
 	require.NoError(t, err)
@@ -119,15 +158,30 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 		err := c.Ping(context.Background()).Err()
 		return err == nil || err.Error() == "NOAUTH Authentication required."
 	}, time.Minute, time.Second)
-
-	return &KvrocksServer{
-		t:    t,
-		cmd:  cmd,
-		addr: addr,
-		clean: func() {
-			require.NoError(t, stdout.Close())
-			require.NoError(t, stderr.Close())
-		},
+	if st == TypeKvrocks {
+		return &KvrocksServer{
+			Server: Server{
+				t:    t,
+				cmd:  cmd,
+				addr: addr,
+				clean: func() {
+					require.NoError(t, stdout.Close())
+					require.NoError(t, stderr.Close())
+				},
+			},
+		}
+	} else {
+		return &RedisServer{
+			Server: Server{
+				t:    t,
+				cmd:  cmd,
+				addr: addr,
+				clean: func() {
+					require.NoError(t, stdout.Close())
+					require.NoError(t, stderr.Close())
+				},
+			},
+		}
 	}
 }
 

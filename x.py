@@ -234,13 +234,14 @@ def test_tcl(dir: str, rest: List[str]) -> None:
         cwd=str(tcldir), verbose=True
     )
 
-def test_go(dir: str, rest: List[str]) -> None:
+def test_go(dir: str, redis_bin_path: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
 
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     worksapce = basedir / 'workspace'
     goenv = {
+        'REDIS_BIN_PATH': redis_bin_path,
         'KVROCKS_BIN_PATH': str(binpath),
         'GO_CASE_WORKSPACE': str(worksapce),
     }
@@ -346,6 +347,7 @@ if __name__ == '__main__':
         help="Test kvrocks via go test cases",
     )
     parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_go.add_argument('redis_bin_path', metavar='REIDS_BIN_PATH', nargs=1, help="redis bin path")
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
 

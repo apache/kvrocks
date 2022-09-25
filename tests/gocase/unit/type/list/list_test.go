@@ -42,7 +42,7 @@ var largeValue = map[string]string{
 }
 
 func TestLTRIM(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"list-max-ziplist-size": "4",
 	})
 	defer srv.Close()
@@ -88,7 +88,7 @@ func TestLTRIM(t *testing.T) {
 }
 
 func TestZipList(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"list-max-ziplist-size": "16",
 	})
 	defer srv.Close()

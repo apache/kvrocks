@@ -28,7 +28,7 @@ import (
 )
 
 func TestProtocolNetwork(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer srv.Close()
 
 	t.Run("handle an empty array", func(t *testing.T) {

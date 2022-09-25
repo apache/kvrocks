@@ -29,7 +29,7 @@ import (
 )
 
 func TestScripting(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -475,12 +475,12 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 }
 
 func TestScriptingMasterSlave(t *testing.T) {
-	master := util.StartServer(t, map[string]string{})
+	master := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer master.Close()
 	masterClient := master.NewClient()
 	defer func() { require.NoError(t, masterClient.Close()) }()
 
-	slave := util.StartServer(t, map[string]string{})
+	slave := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer slave.Close()
 	slaveClient := slave.NewClient()
 	defer func() { require.NoError(t, slaveClient.Close()) }()

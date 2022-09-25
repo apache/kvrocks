@@ -28,7 +28,7 @@ import (
 )
 
 func TestHello(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -76,7 +76,7 @@ func TestHello(t *testing.T) {
 }
 
 func TestHelloWithAuth(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"requirepass": "foobar",
 	})
 	defer srv.Close()

@@ -28,7 +28,7 @@ import (
 )
 
 func TestNoAuth(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -42,7 +42,7 @@ func TestNoAuth(t *testing.T) {
 }
 
 func TestAuth(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	srv := util.StartServer(t, util.TypeKvrocks, map[string]string{
 		"requirepass": "foobar",
 	})
 	defer srv.Close()

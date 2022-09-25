@@ -23,7 +23,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,16 +45,6 @@ func getVals(hash map[string]string) []string {
 	r := make([]string, 0)
 	for _, val := range hash {
 		r = append(r, val)
-	}
-	return r
-}
-
-func getAllSorted(hash map[string]string) map[string]string {
-	keys := getKeys(hash)
-	sort.Strings(keys)
-	r := make(map[string]string)
-	for _, key := range keys {
-		r[key] = hash[key]
 	}
 	return r
 }
@@ -97,9 +86,7 @@ func TestHash(t *testing.T) {
 
 	t.Run("HSET wrong number of args", func(t *testing.T) {
 		pattern := ".*wrong number.*"
-		res, err := regexp.MatchString(pattern, rdb.HSet(ctx, "hmsetmulti", "key1", "val1", "key2").Err().Error())
-		require.NoError(t, err)
-		require.Equal(t, true, res)
+		util.ErrorRegexp(t, rdb.HSet(ctx, "hmsetmulti", "key1", "val1", "key2").Err(), pattern)
 	})
 
 	t.Run("HSET supports multiple fields", func(t *testing.T) {
@@ -182,9 +169,7 @@ func TestHash(t *testing.T) {
 
 	t.Run("HMSET wrong number of args", func(t *testing.T) {
 		pattern := ".*wrong number.*"
-		res, err := regexp.MatchString(pattern, rdb.HMSet(ctx, "smallhash", "key1", "val1", "key2").Err().Error())
-		require.NoError(t, err)
-		require.Equal(t, true, res)
+		util.ErrorRegexp(t, rdb.HMSet(ctx, "smallhash", "key1", "val1", "key2").Err(), pattern)
 	})
 
 	t.Run("HMSET - small hash", func(t *testing.T) {
@@ -221,9 +206,7 @@ func TestHash(t *testing.T) {
 	t.Run("HMGET against wrong type", func(t *testing.T) {
 		rdb.Set(ctx, "wrongtype", "somevalue", time.Millisecond*1000)
 		pattern := ".*wrong.*"
-		res, err := regexp.MatchString(pattern, rdb.HMGet(ctx, "wrongtype", "field1", "field2").Err().Error())
-		require.NoError(t, err)
-		require.Equal(t, true, res)
+		util.ErrorRegexp(t, rdb.HMGet(ctx, "wrongtype", "field1", "field2").Err(), pattern)
 	})
 
 	t.Run("HMGET - small hash", func(t *testing.T) {
@@ -295,7 +278,7 @@ func TestHash(t *testing.T) {
 	})
 
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
-		expect := getAllSorted(smallhash)
+		//expect := getAllSorted(smallhash)
 		res := rdb.Do(ctx, "hgetall", "smallhash").Val().([]interface{})
 		mid := make(map[string]string)
 		for i := 0; i < len(res); i += 2 {
@@ -305,12 +288,12 @@ func TestHash(t *testing.T) {
 				mid[res[i].(string)] = res[i+1].(string)
 			}
 		}
-		actual := getAllSorted(mid)
-		require.Equal(t, expect, actual)
+		//actual := getAllSorted(mid)
+		require.Equal(t, smallhash, mid)
 	})
 
 	t.Run("HGETALL - big hash}", func(t *testing.T) {
-		expect := getAllSorted(bighash)
+		//expect := getAllSorted(bighash)
 		res := rdb.Do(ctx, "hgetall", "bighash").Val().([]interface{})
 		mid := make(map[string]string)
 		for i := 0; i < len(res); i += 2 {
@@ -320,8 +303,8 @@ func TestHash(t *testing.T) {
 				mid[res[i].(string)] = res[i+1].(string)
 			}
 		}
-		actual := getAllSorted(mid)
-		require.Equal(t, expect, actual)
+		//actual := getAllSorted(mid)
+		require.Equal(t, bighash, mid)
 	})
 
 	t.Run("HDEL and return value", func(t *testing.T) {
@@ -420,31 +403,23 @@ func TestHash(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", " 11")
 		rdb.HSet(ctx, "bighash", "str", " 11")
 		pattern := "ERR.*not an integer.*"
-		res1, err1 := regexp.MatchString(pattern, rdb.HIncrBy(ctx, "samllhash", "str", 1).Err().Error())
-		require.NoError(t, err1)
-		res2, err2 := regexp.MatchString(pattern, rdb.HIncrBy(ctx, "bighash", "str", 1).Err().Error())
-		require.NoError(t, err2)
-		require.Equal(t, []bool{true, true}, []bool{res1, res2})
+		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "samllhash", "str", 1).Err(), pattern)
+		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "bighash", "str", 1).Err(), pattern)
 	})
 
 	t.Run("HINCRBY fails against hash value with spaces (right)", func(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", "11 ")
 		rdb.HSet(ctx, "bighash", "str", "11 ")
 		pattern := "ERR.*not an integer.*"
-		res1, err1 := regexp.MatchString(pattern, rdb.HIncrBy(ctx, "samllhash", "str", 1).Err().Error())
-		require.NoError(t, err1)
-		res2, err2 := regexp.MatchString(pattern, rdb.HIncrBy(ctx, "bighash", "str", 1).Err().Error())
-		require.NoError(t, err2)
-		require.Equal(t, []bool{true, true}, []bool{res1, res2})
+		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "samllhash", "str", 1).Err(), pattern)
+		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "bighash", "str", 1).Err(), pattern)
 	})
 
 	t.Run("HINCRBY can detect overflows", func(t *testing.T) {
 		rdb.HSet(ctx, "hash", "n", "-9223372036854775484")
 		require.Equal(t, int64(-9223372036854775485), rdb.HIncrBy(ctx, "hash", "n", -1).Val())
 		pattern := ".*overflow.*"
-		res, err := regexp.MatchString(pattern, rdb.HIncrBy(ctx, "hash", "n", -10000).Err().Error())
-		require.NoError(t, err)
-		require.Equal(t, true, res)
+		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "hash", "n", -10000).Err(), pattern)
 	})
 
 	t.Run("HINCRBYFLOAT against non existing database key", func(t *testing.T) {
@@ -509,22 +484,16 @@ func TestHash(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", " 11")
 		rdb.HSet(ctx, "bighash", "str", " 11")
 		pattern := "ERR.*not.*float.*"
-		res1, err1 := regexp.MatchString(pattern, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err().Error())
-		require.NoError(t, err1)
-		res2, err2 := regexp.MatchString(pattern, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err().Error())
-		require.NoError(t, err2)
-		require.Equal(t, []bool{true, true}, []bool{res1, res2})
+		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err(), pattern)
+		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err(), pattern)
 	})
 
 	t.Run("HINCRBYFLOAT fails against hash value with spaces (right)", func(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", "11 ")
 		rdb.HSet(ctx, "bighash", "str", "11 ")
 		pattern := "ERR.*not.*float.*"
-		res1, err1 := regexp.MatchString(pattern, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err().Error())
-		require.NoError(t, err1)
-		res2, err2 := regexp.MatchString(pattern, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err().Error())
-		require.NoError(t, err2)
-		require.Equal(t, []bool{true, true}, []bool{res1, res2})
+		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err(), pattern)
+		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err(), pattern)
 	})
 
 	t.Run("HSTRLEN against the small hash", func(t *testing.T) {

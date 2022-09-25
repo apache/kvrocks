@@ -566,11 +566,11 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
       int start, stop;
       std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
-        auto parse_result = ParseInt<int>(fields[0].c_str(), 10);
-        start = *parse_result;
-        if (IsValidSlot(start) == false) {
+        auto parse_result = ParseInt<int>(ranges[0].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
+        if (!parse_result) {
           return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
         }
+        start = *parse_result;
         slots.set(start, 1);
         if (role == kClusterMaster) {
           if (slots_nodes->find(start) != slots_nodes->end()) {
@@ -580,11 +580,14 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else if (ranges.size() == 2) {
-        auto parse_start = ParseInt<int>(fields[0].c_str(), 10);
-        auto parse_stop = ParseInt<int>(fields[1].c_str(), 10);
+        auto parse_start = ParseInt<int>(ranges[0].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
+        auto parse_stop = ParseInt<int>(ranges[1].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
+        if (!parse_start || !parse_stop) {
+          return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
+        }
         start = *parse_start;
         stop = *parse_stop;
-        if (start >= stop || start < 0 || stop >= kClusterSlots) {
+        if (start >= stop) {
           return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
         }
         for (int j = start; j <= stop; j++) {

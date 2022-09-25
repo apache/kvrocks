@@ -28,6 +28,7 @@
 #include "cluster.h"
 #include "redis_cmd.h"
 #include "replication.h"
+#include "parse_util.h"
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port,
     int role, std::string master_id, std::bitset<kClusterSlots> slots):
@@ -524,10 +525,11 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     std::string host = fields[1];
 
     // 3) port
-    int port = std::atoi(fields[2].c_str());
-    if (port <= 0 || port >= (65535-kClusterPortIncr)) {
+    auto parse_result = ParseInt<int>(fields[2].c_str(),NumericRange<int64_t>{1, 65535 - kClusterPortIncr - 1}, 10);
+    if (!parse_result) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluste node port");
     }
+    int port = *parse_result;
 
     // 4) role
     int role;
@@ -564,7 +566,8 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
       int start, stop;
       std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
-        start = std::atoi(ranges[0].c_str());
+        auto parse_result = ParseInt<int>(fields[0].c_str(), 10);
+        start = *parse_result;
         if (IsValidSlot(start) == false) {
           return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
         }
@@ -577,8 +580,10 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else if (ranges.size() == 2) {
-        start = std::atoi(ranges[0].c_str());
-        stop = std::atoi(ranges[1].c_str());
+        auto parse_start = ParseInt<int>(fields[0].c_str(), 10);
+        auto parse_stop = ParseInt<int>(fields[1].c_str(), 10);
+        start = *parse_start;
+        stop = *parse_stop;
         if (start >= stop || start < 0 || stop >= kClusterSlots) {
           return Status(Status::ClusterInvalidInfo, "Invalid cluste slot range");
         }

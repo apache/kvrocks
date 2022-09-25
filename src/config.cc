@@ -41,6 +41,7 @@
 #include "server.h"
 #include "log_collector.h"
 #include "config_util.h"
+#include "parse_util.h"
 
 const char *kDefaultNamespace = "__namespace";
 
@@ -357,10 +358,11 @@ void Config::initFieldCallback() {
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
         if (args[0] != "no" && args[1] != "one") {
           master_host = args[0];
-          master_port = std::atoi(args[1].c_str());
-          if (master_port <= 0 || master_port >= 65535) {
+          auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, 65535 - 1}, 10);
+          if (!parse_result) {
             return Status(Status::NotOK, "should be between 0 and 65535");
           }
+          master_port = *parse_result;
         }
         return Status::OK();
       }},
@@ -474,11 +476,11 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
         int val;
-        try {
-          val = std::stoi(v);
-        } catch (std::exception &e) {
+        auto parse_result = ParseInt<int>(v, 10);
+        if (!parse_result){
           return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
         }
+        val = *parse_result;
         if (val < 0 || val > 100) {
           return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
         }

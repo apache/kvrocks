@@ -27,6 +27,7 @@
 #include "redis_bitmap.h"
 #include "redis_slot.h"
 #include "redis_reply.h"
+#include "parse_util.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   // Currently, we only have two kinds of log data
@@ -66,7 +67,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();
       if (args->size() > 0) {
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         if (cmd == kRedisCmdExpire) {
           command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
@@ -94,7 +96,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           LOG(ERROR) << "Fail to parse write_batch in putcf type list : args error ,should at least contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdLSet:
             if (args->size() < 2) {
@@ -134,14 +137,16 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : args error ,should at least contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdSetBit: {
             if (args->size() < 2) {
               LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
               return rocksdb::Status::OK();
             }
-            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[1]));
+            auto parse_result = ParseInt<int>((*args)[1], 10);
+            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parse_result);
             command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
             break;
           }
@@ -213,7 +218,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           LOG(ERROR) << "Fail to parse write_batch in DeleteCF type list : args error ,should contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdLTrim:
             if (first_seen_) {

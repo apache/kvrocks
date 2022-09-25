@@ -776,8 +776,8 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
                 catch {[$r0 cluster info]} e
                 assert_match {*10*start*} $e
                 # Change source server to slave by set topology
-                set cluster_nodes "$node0_id $node0_host $node1_port master - 0-10000"
-                set cluster_nodes "$cluster_nodes\n$node0_id $node1_host $node0_port slave $node1_id"
+                set cluster_nodes "$node1_id $node1_host $node1_port master - 0-10000"
+                set cluster_nodes "$cluster_nodes\n$node0_id $node0_host $node0_port slave $node1_id"
                 set cluster_nodes "$cluster_nodes\n$node2_id $node2_host $node2_port master - 10001-16383"
                 $r0 clusterx SETNODES $cluster_nodes 2
                 $r1 clusterx SETNODES $cluster_nodes 2

@@ -278,7 +278,6 @@ func TestHash(t *testing.T) {
 	})
 
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
-		//expect := getAllSorted(smallhash)
 		res := rdb.Do(ctx, "hgetall", "smallhash").Val().([]interface{})
 		mid := make(map[string]string)
 		for i := 0; i < len(res); i += 2 {
@@ -288,12 +287,10 @@ func TestHash(t *testing.T) {
 				mid[res[i].(string)] = res[i+1].(string)
 			}
 		}
-		//actual := getAllSorted(mid)
 		require.Equal(t, smallhash, mid)
 	})
 
 	t.Run("HGETALL - big hash}", func(t *testing.T) {
-		//expect := getAllSorted(bighash)
 		res := rdb.Do(ctx, "hgetall", "bighash").Val().([]interface{})
 		mid := make(map[string]string)
 		for i := 0; i < len(res); i += 2 {
@@ -303,7 +300,6 @@ func TestHash(t *testing.T) {
 				mid[res[i].(string)] = res[i+1].(string)
 			}
 		}
-		//actual := getAllSorted(mid)
 		require.Equal(t, bighash, mid)
 	})
 

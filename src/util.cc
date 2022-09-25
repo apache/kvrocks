@@ -44,6 +44,7 @@
 #include "util.h"
 #include "status.h"
 #include "event_util.h"
+#include "parse_util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -341,26 +342,20 @@ int GetLocalPort(int fd) {
 }
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  try {
-    *n = static_cast<int64_t>(std::stoll(str));
-    if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-    }
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
+  if (!parse_result) {
+    return parse_result.ToStatus();
   }
+  *n = *parse_result;
   return Status::OK();
 }
 
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  try {
-    *n = static_cast<int64_t>(std::stoll(str, nullptr, 8));
-    if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-    }
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
+  if (!parse_result) {
+    return parse_result.ToStatus();
   }
+  *n = *parse_result;
   return Status::OK();
 }
 

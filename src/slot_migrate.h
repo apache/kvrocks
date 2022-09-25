@@ -41,6 +41,7 @@
 #include "encoding.h"
 #include "status.h"
 #include "redis_slot.h"
+#include "parse_util.h"
 
 #define CLUSTER_SLOTS HASH_SLOTS_SIZE
 

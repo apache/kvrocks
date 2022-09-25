@@ -525,7 +525,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     std::string host = fields[1];
 
     // 3) port
-    auto parse_result = ParseInt<int>(fields[2].c_str(),NumericRange<int64_t>{1, 65535 - kClusterPortIncr - 1}, 10);
+    auto parse_result = ParseInt<int>(fields[2].c_str(), NumericRange<int64_t>{1, 65535 - kClusterPortIncr - 1}, 10);
     if (!parse_result) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluste node port");
     }

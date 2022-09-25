@@ -1910,13 +1910,13 @@ class CommandLSet : public Commander {
 class CommandLTrim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_start =ParseInt<int>(args[2], 10);
-    auto parse_stop =ParseInt<int>(args[3], 10);
+    auto parse_start = ParseInt<int>(args[2], 10);
+    auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     start_ = *parse_start;
-    stop_ = *parse_stop; 
+    stop_ = *parse_stop;
 
     return Commander::Parse(args);
   }
@@ -2453,7 +2453,7 @@ class CommandZRange : public Commander {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     start_ = *parse_start;
-    stop_ = *parse_stop; 
+    stop_ = *parse_stop;
     if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
       with_scores_ = true;
     }
@@ -2665,7 +2665,7 @@ class CommandZRemRangeByRank : public Commander {
       return Status(Status::RedisParseErr, errValueNotInterger);
     }
     start_ = *parse_start;
-    stop_ = *parse_stop; 
+    stop_ = *parse_stop;
     return Commander::Parse(args);
   }
 
@@ -3084,7 +3084,7 @@ class CommandGeoRadius : public CommandGeoBase {
         i++;
       } else if (Util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
         auto parse_result = ParseInt<int>(args_[i + 1], 10);
-        if(!parse_result) {
+        if (!parse_result) {
           return Status(Status::RedisParseErr, "ERR count is not a valid int");
         }
         count_ = *parse_result;

@@ -477,7 +477,7 @@ void Config::initFieldCallback() {
         }
         int val;
         auto parse_result = ParseInt<int>(v, 10);
-        if (!parse_result){
+        if (!parse_result) {
           return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
         }
         val = *parse_result;

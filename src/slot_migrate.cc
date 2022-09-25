@@ -21,12 +21,10 @@
 #include "slot_migrate.h"
 
 #include <memory>
-#include <sys/types.h>
 #include <utility>
 
 #include "batch_extractor.h"
 #include "event_util.h"
-#include "parse_util.h"
 
 
 static std::map<RedisType, std::string> type_to_cmd = {

@@ -241,7 +241,7 @@ def test_go(dir: str, redis_bin_path: str, rest: List[str]) -> None:
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     worksapce = basedir / 'workspace'
     goenv = {
-        'REDIS_BIN_PATH': redis_bin_path,
+        'REDIS_BIN_PATH': str(redis_bin_path),
         'KVROCKS_BIN_PATH': str(binpath),
         'GO_CASE_WORKSPACE': str(worksapce),
     }

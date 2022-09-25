@@ -29,7 +29,7 @@
 #include "redis_cmd.h"
 #include "replication.h"
 
-const char *errInvalidNodeID = "Invalid node id";
+const char *errInvalidNodeID = "Invalid cluster node id";
 const char *errInvalidSlotID = "Invalid slot id";
 const char *errSlotOutOfRange = "Slot is out of range";
 const char *errInvalidClusterVersion = "Invalid cluster version";

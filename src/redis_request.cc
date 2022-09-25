@@ -67,11 +67,11 @@ Status Request::Tokenize(evbuffer *input) {
         pipeline_size++;
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] == '*') {
-          try {
-            multi_bulk_len_ = std::stoll(std::string(line.get() + 1, line.length - 1));
-          } catch (std::exception &e) {
+          auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
+          if (!parse_result) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
+          multi_bulk_len_ = *parse_result;
           if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }

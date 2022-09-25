@@ -335,8 +335,8 @@ start_server {tags {"hash"}} {
         catch {r hincrby smallhash str 1} smallerr
         catch {r hincrby smallhash str 1} bigerr
         set rv {}
-        lappend rv [string match "ERR*not an integer*" $smallerr]
-        lappend rv [string match "ERR*not an integer*" $bigerr]
+        lappend rv [string match "ERR*non-integer*" $smallerr]
+        lappend rv [string match "ERR*non-integer*" $bigerr]
     } {1 1}
 
     test {HINCRBY can detect overflows} {

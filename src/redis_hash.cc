@@ -286,6 +286,7 @@ rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Sli
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   limit = std::min(static_cast<int64_t>(metadata.size), limit);
   std::string start_key, stop_key;
   InternalKey(ns_key, start, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
@@ -299,7 +300,7 @@ rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Sli
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   iter->Seek(start_key);
-  for (int i = 0; iter->Valid() && i <= limit - 1; i++) {
+  for (int64_t i = 0; iter->Valid() && i <= limit - 1; ++i) {
     FieldValue tmp_field_value;
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     tmp_field_value.field = ikey.GetSubKey().ToString();
@@ -309,6 +310,7 @@ rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Sli
   }
   return rocksdb::Status::OK();
 }
+
 rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {
   field_values->clear();
 

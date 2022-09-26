@@ -478,7 +478,7 @@ class CommandSet : public Commander {
         xx_ = true;
       } else if (opt == "ex" && !ttl_ && !last_arg) {
         std::string s = args_[++i];
-        StatusOr<int> parse_status = ParseInt(s);
+        auto parse_status = ParseInt<int>(s);
         if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
@@ -486,7 +486,7 @@ class CommandSet : public Commander {
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
         std::string s = args_[++i];
-        StatusOr<int64_t> parse_status = ParseInt(s);
+        auto parse_status = ParseInt<int64_t>(s);
         if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
@@ -494,7 +494,7 @@ class CommandSet : public Commander {
         if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
         std::string s = args_[++i];
-        StatusOr<uint64_t> parse_status = ParseInt(s);
+        auto parse_status = ParseInt<uint64_t>(s);
         if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }

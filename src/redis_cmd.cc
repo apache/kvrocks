@@ -4759,8 +4759,11 @@ class CommandClusterX : public Commander {
     }
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
       nodes_str_ = args_[2];
-      set_version_ = atoll(args_[3].c_str());
-      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
+      auto parse_result = ParseInt<uint64_t>(args[3].c_str(), 10);
+      if (!parse_result) {
+        return Status(Status::RedisParseErr, "Invalid version");
+      }
+      set_version_ = *parse_result;
       if (args_.size() == 4) return Status::OK();
       if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
         force_ = true;

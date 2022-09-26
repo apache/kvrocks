@@ -477,41 +477,28 @@ class CommandSet : public Commander {
       } else if (opt == "xx" && !nx_) {
         xx_ = true;
       } else if (opt == "ex" && !ttl_ && !last_arg) {
-        try {
-          std::string s = args_[++i];
-          std::string::size_type sz;
-          ttl_ = std::stoi(s, &sz);
-          if (sz != s.size()) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
-          }
-        } catch (std::exception &e) {
+        std::string s = args_[++i];
+        StatusOr<int> parse_status = ParseInt(s);
+        if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
+        ttl_ = parse_status.GetValue();
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
-        try {
-          std::string s = args_[++i];
-          std::string::size_type sz;
-          expire_ = std::stol(s, &sz);
-          if (sz != s.size()) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
-          }
-        } catch (std::exception &e) {
+        std::string s = args_[++i];
+        StatusOr<int64_t> parse_status = ParseInt(s);
+        if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
+        expire_ = parse_status.GetValue();
         if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
-        uint64_t expire_ms = 0;
-        try {
-          std::string s = args_[++i];
-          std::string::size_type sz;
-          expire_ms = std::stoul(s, &sz);
-          if (sz != s.size()) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
-          }
-        } catch (std::exception &e) {
+        std::string s = args_[++i];
+        StatusOr<uint64_t> parse_status = ParseInt(s);
+        if (!parse_status.IsOK()) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
+        uint64_t expire_ms = parse_status.GetValue();
         if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (expire_ms < 1000) {
           expire_ = 1;

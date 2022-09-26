@@ -568,11 +568,12 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // 6) slot info
+    auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
     for (unsigned i = 5; i < fields.size(); i++) {
       int start, stop;
       std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
-        auto parse_result = ParseInt<int>(ranges[0].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
+        auto parse_result = ParseInt<int>(ranges[0].c_str(), valid_range, 10);
         if (!parse_result) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }
@@ -586,8 +587,8 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else if (ranges.size() == 2) {
-        auto parse_start = ParseInt<int>(ranges[0].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
-        auto parse_stop = ParseInt<int>(ranges[1].c_str(), NumericRange<int>{0, kClusterSlots - 1}, 10);
+        auto parse_start = ParseInt<int>(ranges[0].c_str(), valid_range, 10);
+        auto parse_stop = ParseInt<int>(ranges[1].c_str(), valid_range, 10);
         if (!parse_start || !parse_stop || *parse_start >= *parse_stop) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }

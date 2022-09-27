@@ -191,3 +191,10 @@ TEST_F(RedisHashTest, HRange) {
     hash->Del(key_);
   }
 }
+
+TEST_F(RedisHashTest, HRangeNonExistingKey) {
+  std::vector<FieldValue> result;
+  auto s = hash->Range("non-existing-key", "any-start-key", "any-end-key", 10, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(result.size(), 0);
+}

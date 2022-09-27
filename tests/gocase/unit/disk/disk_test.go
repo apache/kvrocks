@@ -31,7 +31,8 @@ import (
 
 func TestDisk(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
-		"rocksdb.compression": "no",
+		"rocksdb.compression":       "no",
+		"rocksdb.write_buffer_size": "1",
 	})
 	defer srv.Close()
 	ctx := context.Background()
@@ -73,7 +74,7 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Bitmap", func(t *testing.T) {
-		for i := 0; i < 100000; i += 100 {
+		for i := 0; i < 1024*8*1000; i += 1024 * 8 {
 			require.NoError(t, rdb.SetBit(ctx, "bitmapkey", int64(i), 1).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "bitmapkey").Int()
@@ -82,7 +83,7 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Sortedint", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 100000; i++ {
 			require.NoError(t, rdb.Do(ctx, "siadd", "sortedintkey", i).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "sortedintkey").Int()

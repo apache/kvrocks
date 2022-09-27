@@ -594,7 +594,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   const char *start = value.data(), *end = start + value.size(), *p;
   while (start != end) {
     switch (state) {
-      case stateArrayLen:{
+      case stateArrayLen: {
         if (start[0] != '*') {
           return tokens;
         }
@@ -609,7 +609,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
         state = stateBulkLen;
         break;
       }
-      case stateBulkLen:{
+      case stateBulkLen: {
         if (start[0] != '$') {
           return tokens;
         }
@@ -624,7 +624,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
         state = stateBulkData;
         break;
       }
-      case stateBulkData:{
+      case stateBulkData: {
         if (bulk_len+2 > static_cast<uint64_t>(end - start)) {
           tokens.clear();
           return tokens;

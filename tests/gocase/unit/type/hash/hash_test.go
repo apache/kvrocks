@@ -406,7 +406,7 @@ func TestHash(t *testing.T) {
 	t.Run("HINCRBY fails against hash value with spaces (right)", func(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", "11 ")
 		rdb.HSet(ctx, "bighash", "str", "11 ")
-		pattern := "ERR.*not an integer.*"
+		pattern := "ERR.*non-integer.*"
 		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "samllhash", "str", 1).Err(), pattern)
 		util.ErrorRegexp(t, rdb.HIncrBy(ctx, "bighash", "str", 1).Err(), pattern)
 	})

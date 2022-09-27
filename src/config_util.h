@@ -15,15 +15,26 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
 
-package util
+#pragma once
 
-const DefaultDelta = 0.000001
-const ErrRedisNil = "redis: nil"
+#include <string>
+#include <vector>
+#include <utility>
 
-// Kubernetes will send a SIGTERM signal to the containers in the pod after deleting the pod.
-// It waits for a specified time, called the termination grace period. By default, this is 30 seconds.
-// If the containers are still running after the grace period,
-// they are sent the SIGKILL signal and forcibly removed.
-const k8sDefaultGracePeriod = 30
+#include "status.h"
+
+using ConfigKV = std::pair<std::string, std::string>;
+
+// refer to https://redis.io/docs/manual/config
+// format: key value
+// inline comment: key value # comment
+// quoted string: key "hello world"
+// e.g. `key "hello # world\""  # hi` -> key: hello # world"
+StatusOr<ConfigKV> ParseConfigLine(const std::string &line);
+
+// dump a config item to a string line
+// e.g. {'a', 'b c'} -> "a 'b c'"
+std::string DumpConfigLine(const ConfigKV &config);

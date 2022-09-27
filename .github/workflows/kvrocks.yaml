@@ -72,24 +72,30 @@ jobs:
           - name: Darwin Clang
             os: macos-11
             compiler: auto
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Darwin Clang without Jemalloc
             os: macos-11
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC
             os: ubuntu-18.04
             compiler: gcc
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang
             os: ubuntu-18.04
             compiler: clang
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC ASan
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC TSan
             os: ubuntu-18.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
@@ -97,30 +103,34 @@ jobs:
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
           - name: Ubuntu Clang TSan
             os: ubuntu-18.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
             os: ubuntu-18.04
             with_ninja: --ninja
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC Ninja without Jemalloc
             os: ubuntu-18.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC without luajit
             os: ubuntu-18.04
             without_luajit: -DUSE_LUAJIT=OFF
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-18.04
             compiler: gcc
-            without_openssl: -DENABLE_OPENSSL=OFF
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -164,10 +174,8 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler \
-            ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} \
-            ${{ matrix.without_jemalloc }} ${{ matrix.without_openssl }} ${{ matrix.without_luajit }} \
-            ${{ env.CMAKE_EXTRA_DEFS }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
+            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Run Unit Test
         run: |
@@ -196,7 +204,7 @@ jobs:
         run: |
           export ${{ matrix.runtime_env_vars }}
           ./x.py test tcl build --cli-path $HOME/local/bin/redis-cli --dont-clean
-          if [[ -z "${{ matrix.without_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
+          if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && go build && cd ..
             ./minica/minica --domains localhost
@@ -208,11 +216,11 @@ jobs:
             cp minica.pem tests/tcl/tests/tls/ca.crt
             ./x.py test tcl build --tls --single unit/tls --dont-clean
           fi
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tcl/tests/tmp -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"
             echo "\ndetail reports:\n"
-            cat $(find tests/tmp -iname stderr)
+            cat $(find tests/tcl/tests/tmp -iname stderr)
             echo "sanitizer error was reported, exiting..."
             exit 1
           fi

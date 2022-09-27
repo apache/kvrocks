@@ -208,7 +208,7 @@ struct StatusOr {
     CHECK(*this);
     return std::move(value_);
   }
- 
+
   const value_type& ValueOr(const value_type& v) const& {
     if (IsOK()) {
       return GetValue();

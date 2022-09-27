@@ -38,6 +38,7 @@ class Server;
 namespace Engine {
 class Storage;
 }
+#define PORT_LIMIT 65535
 
 #define SUPERVISED_NONE 0
 #define SUPERVISED_AUTODETECT 1

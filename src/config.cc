@@ -101,9 +101,9 @@ Config::Config() {
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
-      {"port", true, new IntField(&port, kDefaultPort, 1, 65535)},
+      {"port", true, new IntField(&port, kDefaultPort, 1, PORT_LIMIT)},
 #ifdef ENABLE_OPENSSL
-      {"tls-port", true, new IntField(&tls_port, 0, 0, 65535)},
+      {"tls-port", true, new IntField(&tls_port, 0, 0, PORT_LIMIT)},
       {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
       {"tls-key-file", false, new StringField(&tls_key_file, "")},
       {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},
@@ -358,7 +358,7 @@ void Config::initFieldCallback() {
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
         if (args[0] != "no" && args[1] != "one") {
           master_host = args[0];
-          auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, 65535 - 1}, 10);
+          auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, PORT_LIMIT - 1}, 10);
           if (!parse_result) {
             return Status(Status::NotOK, "should be between 0 and 65535");
           }

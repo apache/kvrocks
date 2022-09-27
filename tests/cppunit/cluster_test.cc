@@ -49,35 +49,35 @@ TEST(Cluster, CluseterSetNodes) {
     "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
   s = cluster.SetClusterNodes(invalid_port, 1, false);
   ASSERT_FALSE(s.IsOK());
-  ASSERT_TRUE(s.Msg() == "Invalid cluste node port");
+  ASSERT_TRUE(s.Msg() == "Invalid cluster node port");
 
   const std::string slave_has_no_master =
     "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
     "slave -";
   s = cluster.SetClusterNodes(slave_has_no_master, 1, false);
   ASSERT_FALSE(s.IsOK());
-  ASSERT_TRUE(s.Msg() == "Invalid cluste node master id");
+  ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string master_has_master =
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
     "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
   s = cluster.SetClusterNodes(master_has_master, 1, false);
   ASSERT_FALSE(s.IsOK());
-  ASSERT_TRUE(s.Msg() == "Invalid cluste node master id");
+  ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string invalid_slot_range =
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
     "master - 5461-0";
   s = cluster.SetClusterNodes(invalid_slot_range, 1, false);
   ASSERT_FALSE(s.IsOK());
-  ASSERT_TRUE(s.Msg() == "Invalid cluste slot range");
+  ASSERT_TRUE(s.Msg() == "Slot is out of range");
 
   const std::string invalid_slot_id =
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
     "master - 54610";
   s = cluster.SetClusterNodes(invalid_slot_id, 1, false);
   ASSERT_FALSE(s.IsOK());
-  ASSERT_TRUE(s.Msg() == "Invalid cluste slot range");
+  ASSERT_TRUE(s.Msg() == "Slot is out of range");
 
   const std::string overlapped_slot_id =
     "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "

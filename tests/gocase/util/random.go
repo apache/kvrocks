@@ -36,7 +36,7 @@ func RandPathNoResult(funcs ...func()) {
 }
 
 // Random signed integer in (-max, max)
-func randomSignedInt(max int32) int64 {
+func RandomSignedInt(max int32) int64 {
 	return rand.Int63n(int64(max)*2-1) - int64(max) + 1
 }
 
@@ -78,7 +78,7 @@ func RandomValue() string {
 	return RandPath(
 		// Small enough to likely collide
 		func() string {
-			return fmt.Sprintf("%d", randomSignedInt(1000))
+			return fmt.Sprintf("%d", RandomSignedInt(1000))
 		},
 		// 32 bit compressible signed/unsigned
 		func() string {

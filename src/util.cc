@@ -594,7 +594,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   const char *start = value.data(), *end = start + value.size(), *p;
   while (start != end) {
     switch (state) {
-      case stateArrayLen:
+      case stateArrayLen:{
         if (start[0] != '*') {
           return tokens;
         }
@@ -603,12 +603,13 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        array_len = std::stoull(std::string(start+1, p));
+        auto parse_result = ParseInt<uint64_t>(std::string(start + 1, p), 10);
+        array_len = *parse_result;
         start = p + 2;
         state = stateBulkLen;
         break;
-
-      case stateBulkLen:
+      }
+      case stateBulkLen:{
         if (start[0] != '$') {
           return tokens;
         }
@@ -617,20 +618,22 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        bulk_len = std::stoull(std::string(start+1, p));
+        auto parse_result = ParseInt<uint64_t>(std::string(start + 1, p), 10);
+        bulk_len = *parse_result;
         start = p + 2;
         state = stateBulkData;
         break;
-
-      case stateBulkData:
-        if (bulk_len+2 > static_cast<uint64_t>(end-start)) {
+      }
+      case stateBulkData:{
+        if (bulk_len+2 > static_cast<uint64_t>(end - start)) {
           tokens.clear();
           return tokens;
         }
-        tokens.emplace_back(std::string(start, start+bulk_len));
+        tokens.emplace_back(std::string(start, start + bulk_len));
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
+      }
     }
   }
   if (array_len != tokens.size()) {

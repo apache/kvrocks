@@ -74,7 +74,7 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Bitmap", func(t *testing.T) {
-		for i := 0; i < 1024*8*1000; i += 1024 * 8 {
+		for i := 0; i < 1024*8*100000; i += 1024 * 8 {
 			require.NoError(t, rdb.SetBit(ctx, "bitmapkey", int64(i), 1).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "bitmapkey").Int()

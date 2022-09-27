@@ -158,7 +158,7 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_bitmap");
   key_ = "bitmapdisk_key";
   bool bit = false;
-  for (int i= 0; i < 1024*8*1000; i += 1024 * 8){
+  for (int i= 0; i < 1024*8*100000; i += 1024 * 8){
     EXPECT_TRUE(bitmap->SetBit(key_, i, true, &bit).ok());
   }
   uint64_t key_size;

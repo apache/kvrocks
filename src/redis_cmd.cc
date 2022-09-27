@@ -477,28 +477,25 @@ class CommandSet : public Commander {
       } else if (opt == "xx" && !nx_) {
         xx_ = true;
       } else if (opt == "ex" && !ttl_ && !last_arg) {
-        std::string s = args_[++i];
-        auto parse_status = ParseInt<int>(s);
-        if (!parse_status.IsOK()) {
+        auto parse_result = ParseInt<int>(args_[++i], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        ttl_ = parse_status.GetValue();
+        ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
-        std::string s = args_[++i];
-        auto parse_status = ParseInt<int64_t>(s);
-        if (!parse_status.IsOK()) {
+        auto parse_result = ParseInt<int64_t>(args_[++i], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        expire_ = parse_status.GetValue();
+        expire_ = *parse_result;
         if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
-        std::string s = args_[++i];
-        auto parse_status = ParseInt<uint64_t>(s);
-        if (!parse_status.IsOK()) {
+        auto parse_result = ParseInt<uint64_t>(args[++i], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
-        uint64_t expire_ms = parse_status.GetValue();
+        uint64_t expire_ms = *parse_result;
         if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (expire_ms < 1000) {
           expire_ = 1;

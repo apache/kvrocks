@@ -554,6 +554,10 @@ Status SlotMigrate::MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slic
     return Status(Status::cOK, "empty");
   }
 
+  if (metadata.Expired()) {
+    return Status(Status::cOK, "expired");
+  }
+
   // Construct command according to type of the key
   switch (metadata.Type()) {
     case kRedisString: {
@@ -587,11 +591,8 @@ bool SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &me
                                    const std::string &bytes, std::string *restore_cmds) {
   std::vector<std::string> command = {"set", key.ToString(), bytes.substr(5, bytes.size() - 5)};
   if (metadata.expire > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
-    int32_t ttl = metadata.expire - uint32_t(now);
-    command.emplace_back("EX");
-    command.emplace_back(std::to_string(ttl));
+    command.emplace_back("EXAT");
+    command.emplace_back(std::to_string(metadata.expire));
   }
   *restore_cmds += Redis::MultiBulkString(command, false);
   current_pipeline_size_++;

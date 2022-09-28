@@ -147,6 +147,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Set keys
             set slot1_tag [lindex $::CRC16_SLOT_TABLE 1]
             set slot1_key_string string_{$slot1_tag}
+            set slot1_key_string2 string2_{$slot1_tag}
             set slot1_key_list list_{$slot1_tag}
             set slot1_key_hash hash_{$slot1_tag}
             set slot1_key_set set_{$slot1_tag}
@@ -167,6 +168,11 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Type: string
             $r0 set $slot1_key_string $slot1_key_string
             $r0 expire  $slot1_key_string 10000
+
+            # Expired string key
+            $r0 set $slot1_key_string2 $slot1_key_string2 ex 1
+            after 3000
+            assert_equal [$r0 get $slot1_key_string2] {}
 
             # Type: list
             $r0 rpush $slot1_key_list 0 1 2 3 4 5
@@ -241,6 +247,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {[$r1 get $slot1_key_string] == "$slot1_key_string"}
             set expire_time [$r1 ttl $slot1_key_string]
             assert {$expire_time > 1000 && $expire_time <= 10000}
+
+            assert_equal [$r1 get $slot1_key_string2] {}
 
             # Check list and expired time
             assert {[$r1 lrange $slot1_key_list 0 -1] eq $lvalue}

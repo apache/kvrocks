@@ -74,10 +74,10 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     }
 
     // don't compact the SST created in 1 hour
-    if (file_creation_time > static_cast<uint64_t>(now-3600)) continue;
+    if (file_creation_time > static_cast<uint64_t>(now - 3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
-        auto parse_result = ParseInt<int>(property_iter.second.data(), 10);
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
         if (!parse_result) {
           LOG(ERROR) << "[compaction checker] Parse total_keys error: "
                     << parse_result.Msg();
@@ -86,7 +86,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
         total_keys = *parse_result;
       }
       if (property_iter.first == "deleted_keys") {
-        auto parse_result = ParseInt<int>(property_iter.second.data(), 10);
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
         if (!parse_result) {
           LOG(ERROR) << "[compaction checker] Parse deleted_keys error: "
                     << parse_result.Msg();

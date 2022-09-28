@@ -4497,9 +4497,9 @@ class CommandReplConf : public Commander {
 
   Status ParseParam(const std::string &option, const std::string &value) {
     if (option == "listening-port") {
-      auto parse_result = ParseInt<uint32_t>(value, 10);
+      auto parse_result = ParseInt<uint32_t>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {
-          return Status(Status::RedisParseErr, "listening-port should be number");
+          return Status(Status::RedisParseErr, "listening-port should be number or out of range");
       }
       port_ = *parse_result;
     } else {

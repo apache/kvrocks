@@ -68,6 +68,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       auto args = log_data_.GetArguments();
       if (args->size() > 0) {
         auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
         RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         if (cmd == kRedisCmdExpire) {
           command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
@@ -97,6 +100,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           return rocksdb::Status::OK();
         }
         auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
         RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdLSet:
@@ -138,6 +144,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           return rocksdb::Status::OK();
         }
         auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
         RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdSetBit: {
@@ -146,6 +155,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
               return rocksdb::Status::OK();
             }
             auto parse_result = ParseInt<int>((*args)[1], 10);
+            if (!parse_result) {
+              return rocksdb::Status::InvalidArgument(parse_result.Msg());
+            }
             bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parse_result);
             command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
             break;
@@ -219,6 +231,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           return rocksdb::Status::OK();
         }
         auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
         RedisCommand cmd = static_cast<RedisCommand >(*parse_result);
         switch (cmd) {
           case kRedisCmdLTrim:

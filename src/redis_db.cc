@@ -636,6 +636,9 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   const std::string& log_data = blob.ToString();
   std::vector<std::string> args = Util::Split(log_data, " ");
   auto parse_result = ParseInt<int>(args[0], 10);
+  if (!parse_result) {
+    return parse_result.ToStatus();
+  }
   type_ = static_cast<RedisType >(*parse_result);
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 

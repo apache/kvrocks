@@ -603,6 +603,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
+        // parse_result expects to must be parsed successfully here
         auto parse_result = ParseInt<uint64_t>(std::string(start + 1, p), 10);
         array_len = *parse_result;
         start = p + 2;
@@ -618,6 +619,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
+        // parse_result expects to must be parsed successfully here
         auto parse_result = ParseInt<uint64_t>(std::string(start + 1, p), 10);
         bulk_len = *parse_result;
         start = p + 2;

@@ -138,6 +138,9 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
        iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     auto parse_result = ParseInt<uint32_t>(ikey.GetSubKey().ToString(), 10);
+    if (!parse_result) {
+      return rocksdb::Status::InvalidArgument(parse_result.Msg());
+    }
     frag_index = *parse_result;
     fragment = iter->value().ToString();
     // To be compatible with data written before the commit d603b0e(#338)

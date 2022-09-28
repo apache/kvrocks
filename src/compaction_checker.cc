@@ -78,10 +78,20 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
         auto parse_result = ParseInt<int>(property_iter.second.data(), 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse total_keys error: "
+                    << parse_result.Msg();
+          continue;
+        }
         total_keys = *parse_result;
       }
       if (property_iter.first == "deleted_keys") {
         auto parse_result = ParseInt<int>(property_iter.second.data(), 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse deleted_keys error: "
+                    << parse_result.Msg();
+          continue;
+        }
         deleted_keys = *parse_result;
       }
       if (property_iter.first == "start_key") {

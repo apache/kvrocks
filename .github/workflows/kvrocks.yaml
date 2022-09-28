@@ -140,7 +140,8 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+            ~/local/bin/redis-server
+          key: ${{ runner.os }}-redis
 
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}

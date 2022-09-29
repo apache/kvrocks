@@ -37,6 +37,6 @@ func TestIntrospection(t *testing.T) {
 	t.Run("PING", func(t *testing.T) {
 		require.EqualValues(t, "PONG", rdb.Ping(ctx).Val())
 		require.EqualValues(t, "redis", rdb.Do(ctx, "ping", "redis").Val())
-		require.EqualError(t, rdb.Do(ctx, "ping", "hello", "redis").Err(), "wrong number of arguments")
+		require.EqualError(t, rdb.Do(ctx, "ping", "hello", "redis").Err(), "ERR wrong number of arguments")
 	})
 }

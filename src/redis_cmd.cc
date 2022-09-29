@@ -1023,7 +1023,7 @@ class CommandType : public Commander {
     RedisType type;
     rocksdb::Status s = redis.Type(args_[1], &type);
     if (s.ok()) {
-      *output = Redis::BulkString(RedisTypeNames[type]);
+      *output = Redis::SimpleString(RedisTypeNames[type]);
       return Status::OK();
     }
     return Status(Status::RedisExecErr, s.ToString());
@@ -4326,7 +4326,7 @@ class CommandScanBase : public Commander {
       list.emplace_back(Redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys));
+    list.emplace_back(Redis::MultiBulkString(keys, false));
 
     return Redis::Array(list);
   }
@@ -4416,7 +4416,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(Redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys));
+    list.emplace_back(Redis::MultiBulkString(keys, false));
 
     return Redis::Array(list);
   }

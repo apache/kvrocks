@@ -478,17 +478,31 @@ class CommandSet : public Commander {
       } else if (opt == "xx" && !nx_) {
         xx_ = true;
       } else if (opt == "ex" && !ttl_ && !last_arg) {
-        try {
-          std::string s = args_[++i];
-          std::string::size_type sz;
-          ttl_ = std::stoi(s, &sz);
-          if (sz != s.size()) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
-          }
-        } catch (std::exception &e) {
+        auto parse_result = ParseInt<int>(args_[++i], 10);
+        if (!parse_result) {
           return Status(Status::RedisParseErr, errValueNotInterger);
         }
+        ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
+        auto parse_result = ParseInt<int64_t>(args_[++i], 10);
+        if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
+        expire_ = *parse_result;
+        if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
+        auto parse_result = ParseInt<uint64_t>(args[++i], 10);
+        if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
+        uint64_t expire_ms = *parse_result;
+        if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+        if (expire_ms < 1000) {
+          expire_ = 1;
+        } else {
+          expire_ = static_cast<int64_t>(expire_ms/1000);
+        }
       } else if (opt == "px" && !ttl_ && !last_arg) {
         int64_t ttl_ms = 0;
         std::string s = args_[++i];
@@ -513,6 +527,18 @@ class CommandSet : public Commander {
     int ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s;
+
+    if (!ttl_ && expire_) {
+      int64_t now;
+      rocksdb::Env::Default()->GetCurrentTime(&now);
+      ttl_ = expire_ - now;
+      if (ttl_ <= 0) {
+        string_db.Del(args_[1]);
+        *output = Redis::SimpleString("OK");
+        return Status::OK();
+      }
+    }
+
     if (nx_) {
       s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
     } else if (xx_) {
@@ -535,6 +561,7 @@ class CommandSet : public Commander {
   bool xx_ = false;
   bool nx_ = false;
   int ttl_ = 0;
+  int64_t expire_ = 0;
 };
 
 class CommandSetEX : public Commander {

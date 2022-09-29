@@ -167,7 +167,7 @@ TEST(ReadWriteLock, WriteLockGurad_First) {
       });
     } else {
       ths[i] = std::thread([&rwlock, &val]() {
-        usleep(1000);  // To avoid it is the first to run, just sleep 100ms
+        usleep(100000);  // To avoid it is the first to run, just sleep 100ms
         auto ptr = std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(rwlock));
         ASSERT_EQ(val, 3);
       });

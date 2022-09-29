@@ -26,6 +26,7 @@
 
 #include "test_base.h"
 #include "redis_hash.h"
+#include "parse_util.h"
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {
@@ -117,8 +118,11 @@ TEST_F(RedisHashTest, HIncr) {
   }
   std::string bytes;
   hash->Get(key_, field, &bytes);
-  value = std::stoll(bytes);
-  EXPECT_EQ(32, value);
+  auto parseResult = ParseInt<int64_t>(bytes, 10);
+  if (!parseResult) {
+     FAIL();
+  }
+  EXPECT_EQ(32, *parseResult);
   hash->Del(key_);
 }
 
@@ -186,4 +190,11 @@ TEST_F(RedisHashTest, HRange) {
     EXPECT_EQ("key2", result[2].field);
     hash->Del(key_);
   }
+}
+
+TEST_F(RedisHashTest, HRangeNonExistingKey) {
+  std::vector<FieldValue> result;
+  auto s = hash->Range("non-existing-key", "any-start-key", "any-end-key", 10, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(result.size(), 0);
 }

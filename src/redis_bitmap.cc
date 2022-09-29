@@ -549,7 +549,6 @@ bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset)
 
 bool Bitmap::IsEmptySegment(const Slice &segment) {
   static const char zero_byte_segment[kBitmapSegmentBytes] = {0};
-  std::string value = segment.ToString();
-  return !memcmp(zero_byte_segment, value.c_str(), value.size());
+  return !memcmp(zero_byte_segment, segment.data(), segment.size());
 }
 }  // namespace Redis

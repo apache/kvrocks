@@ -98,12 +98,12 @@ To build with TLS support, you'll need OpenSSL development libraries (e.g. libss
 ```shell
 $ ./x.py build -DENABLE_OPENSSL=ON
 ```
-Recommended for higher performance optimization
-* Lua
-  * Use luajit instead of lua
-  ```shell
-  ./x.py build -D USE_LUAJIT=ON
-  ```
+
+To build with luaJIT instead of lua for better performance, run:
+
+```shell
+$ ./x.py build -D USE_LUAJIT=ON
+```
 
 ### Running kvrocks
 

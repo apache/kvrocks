@@ -247,7 +247,7 @@ class CommandPing : public Commander {
     } else if (args_.size() == 2) {
       *output = Redis::SimpleString(args_[1]);
     } else {
-      *output = Redis::Error(errWrongNumOfArguments);
+      return Status(Status::NotOK, errWrongNumOfArguments);
     }
     return Status::OK();
   }

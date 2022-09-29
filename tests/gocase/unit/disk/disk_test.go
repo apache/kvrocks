@@ -38,7 +38,7 @@ func TestDisk(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-
+	estimationFactor := 0.5
 	t.Run("Disk usage String", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "stringkey", "aaaaaaaaaaaaaaaaaaaaaaaa", 0).Err())
 		val, err := rdb.Do(ctx, "Disk", "usage", "stringkey").Int()
@@ -52,7 +52,7 @@ func TestDisk(t *testing.T) {
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "setkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, 1)
+		require.GreaterOrEqual(t, val, int(1000*32*estimationFactor))
 	})
 
 	t.Run("Disk usage List", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestDisk(t *testing.T) {
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "listkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, 1)
+		require.GreaterOrEqual(t, val, int(1000*estimationFactor))
 	})
 
 	t.Run("Disk usage Zset", func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestDisk(t *testing.T) {
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "zsetkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, 1)
+		require.GreaterOrEqual(t, val, int(1000*32*estimationFactor))
 	})
 
 	t.Run("Disk usage Bitmap", func(t *testing.T) {
@@ -79,7 +79,7 @@ func TestDisk(t *testing.T) {
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "bitmapkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, 1)
+		require.GreaterOrEqual(t, val, int(100000*estimationFactor))
 	})
 
 	t.Run("Disk usage Sortedint", func(t *testing.T) {
@@ -88,7 +88,16 @@ func TestDisk(t *testing.T) {
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "sortedintkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, 1)
+		require.GreaterOrEqual(t, val, int(100000*32*estimationFactor))
+	})
+
+	t.Run("Disk usage Stream", func(t *testing.T) {
+		for i := 0; i < 100000; i++ {
+			require.NoError(t, rdb.Do(ctx, "xadd", "streamkey", "*", "key"+strconv.Itoa(i), "value"+strconv.Itoa(i)).Err())
+		}
+		val, err := rdb.Do(ctx, "Disk", "usage", "streamkey").Int()
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, val, int(100000*32*estimationFactor))
 	})
 
 	t.Run("Disk usage with typo ", func(t *testing.T) {

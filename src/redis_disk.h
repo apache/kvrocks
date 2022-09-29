@@ -36,13 +36,14 @@ class Disk : public Database {
                                       rocksdb::ColumnFamilyHandle *column_family,
                                       uint64_t *key_size, Slice subkeyleft = Slice(),
                                       Slice subkeyright = Slice());
-  rocksdb::Status GetStringSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetHashSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetSetSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetListSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetZsetSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetBitmapSize(const Slice &user_key, uint64_t *key_size);
-  rocksdb::Status GetSortedintSize(const Slice &user_key, uint64_t *key_size);
+  rocksdb::Status GetStringSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetHashSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetSetSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetListSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetZsetSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetBitmapSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetSortedintSize(const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetStreamSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size);
  private:
     rocksdb::SizeApproximationOptions option_;

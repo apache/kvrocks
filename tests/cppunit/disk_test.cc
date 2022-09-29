@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
 #include <vector>
 #include <gtest/gtest.h>
 #include "redis_metadata.h"
@@ -31,6 +32,7 @@
 #include "redis_zset.h"
 #include "redis_bitmap.h"
 #include "redis_sortedint.h"
+#include "redis_stream.h"
 
 class RedisDiskTest : public TestBase {
 protected:
@@ -179,4 +181,22 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisSortedint, &key_size).ok());
   EXPECT_GE(key_size, 10000 * estimation_factor_);
   sortedint->Del(key_);
+}
+
+TEST_F(RedisDiskTest, StreamDisk) {
+  std::unique_ptr<Redis::Stream> stream = Util::MakeUnique<Redis::Stream>(storage_, "disk_ns_stream");
+  std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_stream");
+  key_ = "streamdisk_key";
+  Redis::StreamAddOptions options;
+  options.with_entry_id = false;
+  Redis::StreamEntryID id;
+  for (int i = 0; i < 100000; i++) {
+    std::vector<std::string> values = {"key" + std::to_string(i), "val" + std::to_string(i)};
+    auto s = stream->Add(key_, options, values, &id);
+    EXPECT_TRUE(s.ok());
+  }
+  uint64_t key_size;
+  EXPECT_TRUE(disk->GetKeySize(key_, kRedisStream, &key_size).ok());
+  EXPECT_GE(key_size, 100000 * estimation_factor_);
+  stream->Del(key_);
 }

@@ -79,7 +79,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& op
                             const std::vector<std::string> &args, StreamEntryID *id) {
   for (auto const &v : args) {
     if (v.size() > INT32_MAX) {
-      rocksdb::Status::InvalidArgument("argument length is too high");
+      return rocksdb::Status::InvalidArgument("argument length is too high");
     }
   }
 

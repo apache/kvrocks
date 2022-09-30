@@ -149,7 +149,18 @@ func TestSlowlog(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "config", "set", "slowlog-max-len", 1).Err())
 		require.NoError(t, rdb.Do(ctx, "debug", "sleep", 0.2).Err())
 
+		cmd := rdb.Do(ctx, "slowlog", "get")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, reflect.ValueOf(cmd.Val()).Len())
+	})
+
+	t.Run("SLOWLOG - can be disabled", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "config", "set", "slowlog-max-len", 1).Err())
+		require.NoError(t, rdb.Do(ctx, "config", "set", "slowlog-log-slower-than", 1).Err())
+		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
+		require.NoError(t, rdb.Do(ctx, "debug", "sleep", 0.2).Err())
 		require.EqualValues(t, 1, rdb.Do(ctx, "slowlog", "len").Val())
+
 		require.NoError(t, rdb.Do(ctx, "config", "set", "slowlog-log-slower-than", -1).Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 		require.NoError(t, rdb.Do(ctx, "debug", "sleep", 0.2).Err())

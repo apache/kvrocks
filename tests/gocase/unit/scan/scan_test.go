@@ -22,13 +22,14 @@ package scan
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"testing"
+
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
-	"strconv"
-	"strings"
-	"testing"
 )
 
 func TestScan(t *testing.T) {

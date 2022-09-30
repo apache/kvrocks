@@ -27,25 +27,25 @@ import (
 	"strings"
 )
 
-type TcpClient struct {
+type TCPClient struct {
 	c net.Conn
 	r *bufio.Reader
 	w *bufio.Writer
 }
 
-func newTCPClient(c net.Conn) *TcpClient {
-	return &TcpClient{
+func newTCPClient(c net.Conn) *TCPClient {
+	return &TCPClient{
 		c: c,
 		r: bufio.NewReader(c),
 		w: bufio.NewWriter(c),
 	}
 }
 
-func (c *TcpClient) Close() error {
+func (c *TCPClient) Close() error {
 	return c.c.Close()
 }
 
-func (c *TcpClient) ReadLine() (string, error) {
+func (c *TCPClient) ReadLine() (string, error) {
 	r, err := c.r.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -53,7 +53,7 @@ func (c *TcpClient) ReadLine() (string, error) {
 	return strings.TrimSuffix(r, "\r\n"), nil
 }
 
-func (c *TcpClient) Write(s string) error {
+func (c *TCPClient) Write(s string) error {
 	_, err := c.w.WriteString(s)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func (c *TcpClient) Write(s string) error {
 	return c.w.Flush()
 }
 
-func (c *TcpClient) WriteArgs(args ...string) error {
+func (c *TCPClient) WriteArgs(args ...string) error {
 	if args == nil {
 		return errors.New("args cannot be nil")
 	}

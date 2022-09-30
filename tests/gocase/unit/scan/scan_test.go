@@ -168,6 +168,134 @@ func TestScan(t *testing.T) {
 		slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
+
+	t.Run("SSCAN with encoding intset", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set").Err())
+		var elements []interface{}
+		for i := 0; i < 100; i++ {
+			elements = append(elements, i)
+		}
+		require.NoError(t, rdb.SAdd(ctx, "set", elements...).Err())
+		keys, _, err := rdb.SScan(ctx, "set", 0, "", 10000).Result()
+		require.NoError(t, err)
+		slices.Compact(keys)
+		require.Len(t, keys, 100)
+	})
+
+	t.Run("SSCAN with encoding hashtable", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set").Err())
+		var elements []interface{}
+		for i := 0; i < 100; i++ {
+			elements = append(elements, fmt.Sprintf("ele:%d", i))
+		}
+		require.NoError(t, rdb.SAdd(ctx, "set", elements...).Err())
+		keys, _, err := rdb.SScan(ctx, "set", 0, "", 10000).Result()
+		require.NoError(t, err)
+		slices.Compact(keys)
+		require.Len(t, keys, 100)
+	})
+
+	t.Run("HSCAN with encoding ziplist", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "hash").Err())
+		var elements []interface{}
+		for i := 0; i < 30; i++ {
+			elements = append(elements, fmt.Sprintf("key:%d", i), i)
+		}
+		require.NoError(t, rdb.HMSet(ctx, "hash", elements...).Err())
+		keys, _, err := rdb.HScan(ctx, "hash", 0, "", 10000).Result()
+		require.NoError(t, err)
+		var hashKeys []string
+
+		var hashKey string
+		for _, key := range keys {
+			if hashKey != "" {
+				require.Equal(t, fmt.Sprintf("key:%s", key), hashKey)
+				hashKeys = append(hashKeys, hashKey)
+				hashKey = ""
+			} else {
+				hashKey = key
+			}
+		}
+		require.Len(t, hashKeys, 30)
+	})
+
+	t.Run("HSCAN with encoding hashtable", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "hash").Err())
+		var elements []interface{}
+		for i := 0; i < 1000; i++ {
+			elements = append(elements, fmt.Sprintf("key:%d", i), i)
+		}
+		require.NoError(t, rdb.HMSet(ctx, "hash", elements...).Err())
+		keys, _, err := rdb.HScan(ctx, "hash", 0, "", 10000).Result()
+		require.NoError(t, err)
+		var hashKeys []string
+
+		var hashKey string
+		for _, key := range keys {
+			if hashKey != "" {
+				require.Equal(t, fmt.Sprintf("key:%s", key), hashKey)
+				hashKeys = append(hashKeys, hashKey)
+				hashKey = ""
+			} else {
+				hashKey = key
+			}
+		}
+		require.Len(t, hashKeys, 1000)
+	})
+
+	t.Run("ZSCAN with encoding ziplist", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zset").Err())
+		var elements []redis.Z
+		for i := 0; i < 30; i++ {
+			elements = append(elements, redis.Z{
+				Score:  float64(i),
+				Member: fmt.Sprintf("key:%d", i),
+			})
+		}
+		require.NoError(t, rdb.ZAdd(ctx, "zset", elements...).Err())
+		keys, _, err := rdb.ZScan(ctx, "zset", 0, "", 10000).Result()
+		require.NoError(t, err)
+		var zsetKeys []string
+
+		var zsetKey string
+		for _, key := range keys {
+			if zsetKey != "" {
+				require.Equal(t, fmt.Sprintf("key:%s", key), zsetKey)
+				zsetKeys = append(zsetKeys, zsetKey)
+				zsetKey = ""
+			} else {
+				zsetKey = key
+			}
+		}
+		require.Len(t, zsetKeys, 30)
+	})
+
+	t.Run("ZSCAN with encoding skiplist", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zset").Err())
+		var elements []redis.Z
+		for i := 0; i < 1000; i++ {
+			elements = append(elements, redis.Z{
+				Score:  float64(i),
+				Member: fmt.Sprintf("key:%d", i),
+			})
+		}
+		require.NoError(t, rdb.ZAdd(ctx, "zset", elements...).Err())
+		keys, _, err := rdb.ZScan(ctx, "zset", 0, "", 10000).Result()
+		require.NoError(t, err)
+		var zsetKeys []string
+
+		var zsetKey string
+		for _, key := range keys {
+			if zsetKey != "" {
+				require.Equal(t, fmt.Sprintf("key:%s", key), zsetKey)
+				zsetKeys = append(zsetKeys, zsetKey)
+				zsetKey = ""
+			} else {
+				zsetKey = key
+			}
+		}
+		require.Len(t, zsetKeys, 1000)
+	})
 }
 
 // SCAN of Kvrocks returns _cursor instead of cursor. Thus, redis.Client Scan can fail with

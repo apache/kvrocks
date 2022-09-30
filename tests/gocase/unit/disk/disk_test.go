@@ -47,30 +47,30 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Set", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 1000000; i++ {
 			require.NoError(t, rdb.SAdd(ctx, "setkey", i).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "setkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, int(1000*32*estimationFactor))
+		require.GreaterOrEqual(t, val, int(10000*32*estimationFactor))
 	})
 
 	t.Run("Disk usage List", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 1000000; i++ {
 			require.NoError(t, rdb.LPush(ctx, "listkey", i).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "listkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, int(1000*estimationFactor))
+		require.GreaterOrEqual(t, val, int(10000*estimationFactor))
 	})
 
 	t.Run("Disk usage Zset", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 1000000; i++ {
 			require.NoError(t, rdb.ZAdd(ctx, "zsetkey", redis.Z{Score: float64(i), Member: "x" + strconv.Itoa(i)}).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "zsetkey").Int()
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, val, int(1000*32*estimationFactor))
+		require.GreaterOrEqual(t, val, int(10000*32*estimationFactor))
 	})
 
 	t.Run("Disk usage Bitmap", func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Sortedint", func(t *testing.T) {
-		for i := 0; i < 100000; i++ {
+		for i := 0; i < 1000000; i++ {
 			require.NoError(t, rdb.Do(ctx, "siadd", "sortedintkey", i).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "sortedintkey").Int()
@@ -92,7 +92,7 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage Stream", func(t *testing.T) {
-		for i := 0; i < 100000; i++ {
+		for i := 0; i < 1000000; i++ {
 			require.NoError(t, rdb.Do(ctx, "xadd", "streamkey", "*", "key"+strconv.Itoa(i), "value"+strconv.Itoa(i)).Err())
 		}
 		val, err := rdb.Do(ctx, "Disk", "usage", "streamkey").Int()

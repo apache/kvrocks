@@ -78,7 +78,7 @@ func (s *KvrocksServer) Close() {
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	b := "/Users/chenzili/Brittani/kvrocks/build/kvrocks"
+	b := os.Getenv("KVROCKS_BIN_PATH")
 	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
 	cmd := exec.Command(b)
 
@@ -87,7 +87,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["bind"] = addr.IP.String()
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
-	dir := "/Users/chenzili/Brittani/kvrocks/tests/gocase/workspace"
+	dir := os.Getenv("GO_CASE_WORKSPACE")
 	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)

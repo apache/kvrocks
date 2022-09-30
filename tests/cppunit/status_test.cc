@@ -147,6 +147,8 @@ TEST(StatusOr, SharedPtr) {
 
 TEST(StatusOr, UniquePtr) {
     StatusOr<std::unique_ptr<int>> x(new int(1));
+  
+    ASSERT_EQ(**x, 1);
 }
 
 TEST(StatusOr, ValueOr) {

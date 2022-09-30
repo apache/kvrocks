@@ -61,7 +61,7 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 	return redis.NewClient(options)
 }
 
-func (s *KvrocksServer) NewTCPClient() *tcpClient {
+func (s *KvrocksServer) NewTCPClient() *TCPClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
 	require.NoError(s.t, err)
 	return newTCPClient(c)

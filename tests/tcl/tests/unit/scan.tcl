@@ -22,90 +22,6 @@
 # which started out as: https://github.com/redis/redis/blob/dbcc0a8/tests/unit/scan.tcl
 
 start_server {tags {"scan network"}} {
-    test "SCAN basic" {
-        r flushdb
-        populate 1000 "" 10
-
-        set cur 0
-        set keys {}
-        while 1 {
-            set res [r scan $cur]
-            set cur [lindex $res 0]
-            set k [lindex $res 1]
-            lappend keys {*}$k
-            if {$cur == 0} break
-        }
-
-        set keys [lsort -unique $keys]
-        assert_equal 1000 [llength $keys]
-    }
-
-    test "SCAN COUNT" {
-        r flushdb
-        populate 1000 "" 10
-
-        set cur 0
-        set keys {}
-        while 1 {
-            set res [r scan $cur count 5]
-            set cur [lindex $res 0]
-            set k [lindex $res 1]
-            lappend keys {*}$k
-            if {$cur == 0} break
-        }
-
-        set keys [lsort -unique $keys]
-        assert_equal 1000 [llength $keys]
-    }
-
-    test "SCAN MATCH" {
-        r flushdb
-        populate 1000 "key:" 10
-
-        set cur 0
-        set keys {}
-        while 1 {
-            set res [r scan $cur match "key:*"]
-            set cur [lindex $res 0]
-            set k [lindex $res 1]
-            lappend keys {*}$k
-            if {$cur == 0} break
-        }
-
-        set keys [lsort -unique $keys]
-        assert_equal 1000 [llength $keys]
-    }
-
-    foreach enc {intset hashtable} {
-        test "SSCAN with encoding $enc" {
-            # Create the Set
-            r del set
-            if {$enc eq {intset}} {
-                set prefix ""
-            } else {
-                set prefix "ele:"
-            }
-            set elements {}
-            for {set j 0} {$j < 100} {incr j} {
-                lappend elements ${prefix}${j}
-            }
-            r sadd set {*}$elements
-
-            # Test SSCAN
-            set cur 0
-            set keys {}
-            while 1 {
-                set res [r sscan set $cur]
-                set cur [lindex $res 0]
-                set k [lindex $res 1]
-                lappend keys {*}$k
-                if {$cur == 0} break
-            }
-
-            set keys [lsort -unique $keys]
-            assert_equal 100 [llength $keys]
-        }
-    }
 
     foreach enc {ziplist hashtable} {
         test "HSCAN with encoding $enc" {
@@ -181,34 +97,6 @@ start_server {tags {"scan network"}} {
         }
     }
 
-    test "SCAN guarantees check under write load" {
-        r flushdb
-        populate 100 "" 10
-
-        # We start scanning here, so keys from 0 to 99 should all be
-        # reported at the end of the iteration.
-        set keys {}
-        while 1 {
-            set res [r scan $cur]
-            set cur [lindex $res 0]
-            set k [lindex $res 1]
-            lappend keys {*}$k
-            if {$cur == 0} break
-            # Write 10 random keys at every SCAN iteration.
-            for {set j 0} {$j < 10} {incr j} {
-                r set addedkey:[randomInt 1000] foo
-            }
-        }
-
-        set keys2 {}
-        foreach k $keys {
-            if {[string length $k] > 6} continue
-            lappend keys2 $k
-        }
-
-        set keys2 [lsort -unique $keys2]
-        assert_equal 100 [llength $keys2]
-    }
 
     test "SSCAN with PATTERN" {
         r del mykey
@@ -229,64 +117,5 @@ start_server {tags {"scan network"}} {
         r zadd mykey 1 foo 2 fab 3 fiz 10 foobar
         set res [r zscan mykey 0 MATCH foo* COUNT 10000]
         lsort -unique [lindex $res 1]
-    }
-
-    test {SCAN with multi namespace} {
-        r flushdb
-        r config set requirepass foobared
-
-        set namespaces {test_ns1 test_ns2}
-        set tokens {test_ns_token1 test_ns_token2}
-        set key_prefixs {key1* key2*}
-
-        # Add namespaces and write key
-        set index 0
-        foreach ns $namespaces {
-            r auth foobared
-            r namespace add $ns [lindex $tokens $index]
-
-            r auth [lindex $tokens $index]
-            set prefix [lindex $key_prefixs $index]
-            for {set j 0} {$j < 1000} {incr j} {
-                r set $prefix$j hello
-            }
-            for {set j 0} {$j < 100} {incr j} {
-                r set $j hello
-            }
-
-            incr index
-        }
-
-        # Check SCAN and SCAN MATCH in different namespace
-        set index 0
-        foreach token $tokens {
-            r auth $token
-
-            # SCAN to get all keys
-            set cur 0
-            set keys {}
-            while 1 {
-                set res [r scan $cur count 1]
-                set cur [lindex $res 0]
-                set k [lindex $res 1]
-                lappend keys {*}$k
-                if {$cur == 0} break
-            }
-            assert_equal 1100 [llength $keys]
-
-            # SCAN MATCH
-            set cur 0
-            set keys {}
-            while 1 {
-                set res [r scan $cur match [lindex $key_prefixs $index]]
-                set cur [lindex $res 0]
-                set k [lindex $res 1]
-                lappend keys {*}$k
-                if {$cur == 0} break
-            }
-            assert_equal 1000 [llength $keys]
-
-            incr index
-        }
     }
 }

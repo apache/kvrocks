@@ -21,10 +21,13 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +61,76 @@ func TestScan(t *testing.T) {
 		keys := scanAll(t, rdb, "match", "key:*")
 		slices.Compact(keys)
 		require.Len(t, keys, 1000)
+	})
+
+	t.Run("SCAN guarantees check under write load", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		util.Populate(t, rdb, "", 100, 10)
+
+		// We start scanning here, so keys from 0 to 99 should all be reported at the end of the iteration.
+		var keys []string
+		c := "0"
+		for {
+			cursor, keyList := scan(t, rdb, c)
+
+			c = cursor
+			keys = append(keys, keyList...)
+
+			if c == "0" {
+				break
+			}
+
+			// Write 10 random keys at every SCAN iteration.
+			for i := 0; i < 10; i++ {
+				require.NoError(t, rdb.Set(ctx, fmt.Sprintf("addedkey:%d", util.RandomInt(1000)), "foo", 0).Err())
+			}
+		}
+
+		var originKeys []string
+		for _, key := range keys {
+			if strings.Contains(key, "addedkey:") {
+				continue
+			}
+			originKeys = append(originKeys, key)
+		}
+		slices.Compact(originKeys)
+		require.Len(t, originKeys, 100)
+	})
+
+	t.Run("SCAN with multi namespace", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "requirepass", "foobared").Err())
+
+		tokens := []string{"test_ns_token1", "test_ns_token2"}
+		keyPrefixes := []string{"key1*", "key2*"}
+		namespaces := []string{"test_ns1", "test_ns2"}
+
+		// Add namespaces and write key
+		for i := 0; i < 2; i++ {
+			require.NoError(t, rdb.Do(ctx, "AUTH", "foobared").Err())
+			require.NoError(t, rdb.Do(ctx, "NAMESPACE", "ADD", namespaces[i], tokens[i]).Err())
+			require.NoError(t, rdb.Do(ctx, "AUTH", tokens[i]).Err())
+
+			for k := 0; k < 1000; k++ {
+				require.NoError(t, rdb.Set(ctx, fmt.Sprintf("%s:%d", keyPrefixes[i], k), "hello", 0).Err())
+			}
+			for k := 0; k < 100; k++ {
+				require.NoError(t, rdb.Set(ctx, strconv.Itoa(k), "hello", 0).Err())
+			}
+		}
+
+		// Check SCAN and SCAN MATCH in different namespace
+		for i := 0; i < 2; i++ {
+			require.NoError(t, rdb.Do(ctx, "AUTH", tokens[i]).Err())
+
+			// SCAN to get all keys
+			keys := scanAll(t, rdb)
+			require.Len(t, keys, 1100)
+
+			// SCAN MATCH
+			keys = scanAll(t, rdb, "match", keyPrefixes[i])
+			require.Len(t, keys, 1000)
+		}
 	})
 }
 

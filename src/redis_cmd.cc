@@ -780,11 +780,17 @@ class CommandCAS : public Commander {
       if (opt == "ex") {
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
+        if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "px") {
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
+        if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+        }
         auto ttl_ms = *parse_result;
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
         if (ttl_ms > 0 && ttl_ms < 1000) {
@@ -4807,6 +4813,9 @@ class CommandClusterX : public Commander {
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
       auto parse_id = ParseInt<int>(args[2].c_str(), 10);
+      if (!parse_id) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+      }
       slot_id_ = *parse_id;
       if (!Cluster::IsValidSlot(slot_id_)) {
         return Status(Status::RedisParseErr, "Invalid slot id");
@@ -4818,6 +4827,9 @@ class CommandClusterX : public Commander {
         return Status(Status::RedisParseErr, "Invalid node id");
       }
       auto parse_version = ParseInt<uint64_t>(args[5].c_str(), 10);
+      if (!parse_version) {
+          return Status(Status::RedisParseErr, errValueNotInterger);
+      }
       set_version_ = *parse_version;
       if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
       return Status::OK();

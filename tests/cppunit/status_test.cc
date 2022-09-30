@@ -157,9 +157,9 @@ TEST(StatusOr, ValueOr) {
     ASSERT_EQ(b.ValueOr(233), 233);
     ASSERT_EQ(StatusOr<int>(1).ValueOr(0), 1);
 
-    StatusOr<std::string> a("hello"), b(Status::NotOK, "err");
-    ASSERT_EQ(a.ValueOr("hi"), "hello");
-    ASSERT_EQ(b.ValueOr("hi"), "hi");
+    StatusOr<std::string> c("hello"), d(Status::NotOK, "err");
+    ASSERT_EQ(c.ValueOr("hi"), "hello");
+    ASSERT_EQ(d.ValueOr("hi"), "hi");
     ASSERT_EQ(StatusOr<std::string>("hello").ValueOr("hi"), "hello");
     std::string s = "hi";
     ASSERT_EQ(StatusOr<std::string>(Status::NotOK, "").ValueOr(s), "hi");

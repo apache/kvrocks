@@ -106,7 +106,7 @@ func TestSlowlog(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 
 		// GETSET is replicated as SET
-		util.ErrorRegexp(t, rdb.GetSet(ctx, "a", "5").Err(), "nil")
+		require.EqualValues(t, redis.Nil, rdb.GetSet(ctx, "a", "5").Err())
 		cmd = rdb.Do(ctx, "slowlog", "get")
 		require.NoError(t, cmd.Err())
 		e = reflect.ValueOf(cmd.Val()).Index(0).Interface()

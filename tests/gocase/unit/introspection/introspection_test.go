@@ -35,8 +35,19 @@ func TestIntrospection(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("PING", func(t *testing.T) {
-		require.EqualValues(t, "PONG", rdb.Ping(ctx).Val())
-		require.EqualValues(t, "redis", rdb.Do(ctx, "ping", "redis").Val())
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
+		r, err := c.ReadLine()
+		require.NoError(t, err)
+		require.Contains(t, r, "+PONG")
+		require.NoError(t, c.Write("*2\r\n$4\r\nPING\r\n$4\r\nPONG\r\n"))
+		r, err = c.ReadLine()
+		require.NoError(t, err)
+		require.Contains(t, r, "$4")
+		r, err = c.ReadLine()
+		require.NoError(t, err)
+		require.Contains(t, r, "PONG")
 		require.EqualError(t, rdb.Do(ctx, "ping", "hello", "redis").Err(), "ERR wrong number of arguments")
 	})
 }

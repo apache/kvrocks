@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,11 +81,11 @@ func TestSlowlog(t *testing.T) {
 	t.Run("SLOWLOG - Rewritten commands are logged as their original command", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "config", "set", "slowlog-log-slower-than", 0).Err())
 		// Test rewriting client arguments
-		require.NoError(t, rdb.Do(ctx, "sadd", "set", "a", "b", "c", "d", "e").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set", "a", "b", "c", "d", "e").Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 
 		// SPOP is rewritten as DEL when all keys are removed
-		require.NoError(t, rdb.Do(ctx, "spop", "set", 10).Err())
+		require.NoError(t, rdb.SPopN(ctx, "set", 10).Err())
 		cmd := rdb.Do(ctx, "slowlog", "get")
 		require.NoError(t, cmd.Err())
 		e := reflect.ValueOf(cmd.Val()).Index(0).Interface()
@@ -94,35 +95,33 @@ func TestSlowlog(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 
 		// GEOADD is replicated as ZADD
-		require.NoError(t, rdb.Do(ctx, "geoadd", "cool-cities", -122.33207, 47.60621, "Seattle").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "cool-cities", &redis.GeoLocation{Longitude: -122.33207, Latitude: 47.60621, Name: "Seattle"}).Err())
 		cmd = rdb.Do(ctx, "slowlog", "get")
 		require.NoError(t, cmd.Err())
 		e = reflect.ValueOf(cmd.Val()).Index(0).Interface()
 		require.EqualValues(t, []interface{}{"geoadd", "cool-cities", "-122.33207", "47.60621", "Seattle"}, reflect.ValueOf(e).Index(3).Interface())
 
 		// Test replacing a single command argument
-		require.NoError(t, rdb.Do(ctx, "set", "A", 5).Err())
+		require.NoError(t, rdb.Set(ctx, "A", 5, 0).Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 
 		// GETSET is replicated as SET
-		// TODO: There is a problem here, checking now.
-		rdb.Do(ctx, "getset", "a", 5)
-		// require.NoError(t, rdb.Do(ctx, "getset", "a", 5).Err())
+		util.ErrorRegexp(t, rdb.GetSet(ctx, "a", "5").Err(), "nil")
 		cmd = rdb.Do(ctx, "slowlog", "get")
 		require.NoError(t, cmd.Err())
 		e = reflect.ValueOf(cmd.Val()).Index(0).Interface()
 		require.EqualValues(t, []interface{}{"getset", "a", "5"}, reflect.ValueOf(e).Index(3).Interface())
 
 		// INCRBYFLOAT calls rewrite multiple times, so it's a special case
-		require.NoError(t, rdb.Do(ctx, "set", "A", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "A", 0, 0).Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 
 		// INCRBYFLOAT is replicated as SET
-		require.NoError(t, rdb.Do(ctx, "INCRBYFLOAT", "A", 1.0).Err())
+		require.NoError(t, rdb.IncrByFloat(ctx, "A", 1.0).Err())
 		cmd = rdb.Do(ctx, "slowlog", "get")
 		require.NoError(t, cmd.Err())
 		e = reflect.ValueOf(cmd.Val()).Index(0).Interface()
-		require.EqualValues(t, []interface{}{"INCRBYFLOAT", "A", "1"}, reflect.ValueOf(e).Index(3).Interface())
+		require.EqualValues(t, []interface{}{"incrbyfloat", "A", "1"}, reflect.ValueOf(e).Index(3).Interface())
 	})
 
 	t.Run("SLOWLOG - commands with too many arguments are trimmed", func(t *testing.T) {

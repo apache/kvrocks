@@ -29,8 +29,8 @@ namespace Redis {
 class Disk : public Database {
  public:
   explicit Disk(Engine::Storage *storage, const std::string &ns): Database(storage, ns) {
-    this->option_.include_memtabtles = true;
-    this->option_.include_files = true;
+    option_.include_memtabtles = true;
+    option_.include_files = true;
   }
   rocksdb::Status GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
                                       rocksdb::ColumnFamilyHandle *column_family,
@@ -46,7 +46,7 @@ class Disk : public Database {
   rocksdb::Status GetStreamSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size);
  private:
-    rocksdb::SizeApproximationOptions option_;
+  rocksdb::SizeApproximationOptions option_;
 };
 
 }  // namespace Redis

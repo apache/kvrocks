@@ -34,6 +34,7 @@
 #include "status.h"
 
 namespace Redis {
+
 rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
                                           rocksdb::ColumnFamilyHandle *column_family,
                                           uint64_t *key_size, Slice subkeyleft,
@@ -51,6 +52,7 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
   *key_size += tmp_size;
   return rocksdb::Status::OK();
 }
+
 rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size) {
   *key_size = 0;
   std::string ns_key;
@@ -76,6 +78,7 @@ rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t
       return rocksdb::Status::NotFound("Not found ", user_key);
   }
 }
+
 rocksdb::Status Disk::GetStringSize(const Slice &ns_key, uint64_t *key_size) {
   auto key_range = rocksdb::Range(Slice(ns_key), Slice(ns_key.ToString() + static_cast<char>(0)));
   return db_->GetApproximateSizes(option_, metadata_cf_handle_, &key_range, 1, key_size);
@@ -89,7 +92,6 @@ rocksdb::Status Disk::GetHashSize(const Slice &ns_key, uint64_t *key_size) {
                              storage_->GetCFHandle(Engine::kSubkeyColumnFamilyName),
                              key_size);
 }
-
 
 rocksdb::Status Disk::GetSetSize(const Slice &ns_key, uint64_t *key_size) {
   SetMetadata metadata(false);

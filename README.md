@@ -102,7 +102,7 @@ $ ./x.py build -DENABLE_OPENSSL=ON
 To build with luaJIT instead of lua for better performance, run:
 
 ```shell
-$ ./x.py build -D USE_LUAJIT=ON
+$ ./x.py build -DUSE_LUAJIT=ON
 ```
 
 ### Running kvrocks

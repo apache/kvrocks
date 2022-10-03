@@ -488,17 +488,17 @@ func TestScriptingMasterSlave(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, slaveClient.SlaveOf(ctx, master.Host(), fmt.Sprintf("%d", master.Port())).Err())
-	util.WaitForSync(t, ctx, slaveClient)
+	util.WaitForSync(t, slaveClient)
 
 	t.Run("SCRIPTING: script load on master, read on slave", func(t *testing.T) {
 		sha := masterClient.ScriptLoad(ctx, `return 'script loaded'`).Val()
 		require.Equal(t, "4167ea82ed9c381c7659f7cf93f394219147e8c4", sha)
-		util.WaitForOffsetSync(t, ctx, masterClient, slaveClient)
+		util.WaitForOffsetSync(t, masterClient, slaveClient)
 		require.Equal(t, []bool{true}, masterClient.ScriptExists(ctx, sha).Val())
 		require.Equal(t, []bool{true}, slaveClient.ScriptExists(ctx, sha).Val())
 
 		require.NoError(t, masterClient.ScriptFlush(ctx).Err())
-		util.WaitForOffsetSync(t, ctx, masterClient, slaveClient)
+		util.WaitForOffsetSync(t, masterClient, slaveClient)
 		require.Equal(t, []bool{false}, masterClient.ScriptExists(ctx, sha).Val())
 		require.Equal(t, []bool{false}, slaveClient.ScriptExists(ctx, sha).Val())
 	})

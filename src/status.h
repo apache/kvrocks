@@ -209,6 +209,38 @@ struct StatusOr {
     return std::move(value_);
   }
 
+  const value_type& ValueOr(const value_type& v) const& {
+    if (IsOK()) {
+      return GetValue();
+    } else {
+      return v;
+    }
+  }
+
+  value_type ValueOr(value_type&& v) const& {
+    if (IsOK()) {
+      return GetValue();
+    } else {
+      return std::move(v);
+    }
+  }
+
+  value_type ValueOr(const T& v) && {
+    if (IsOK()) {
+      return std::move(*this).GetValue();
+    } else {
+      return v;
+    }
+  }
+
+  value_type&& ValueOr(T&& v) && {
+    if (IsOK()) {
+      return std::move(*this).GetValue();
+    } else {
+      return std::move(v);
+    }
+  }
+
   const value_type& GetValue() const& {
     CHECK(*this);
     return value_;

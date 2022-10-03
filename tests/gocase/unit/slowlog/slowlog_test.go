@@ -39,13 +39,13 @@ func TestSlowlog(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("SLOWLOG - check that it starts with an empty log", func(t *testing.T) {
-		require.EqualValues(t, 0, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 0, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
 	t.Run("SLOWLOG - only logs commands taking more time than specified", func(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "slowlog-log-slower-than", "100000").Err())
 		require.NoError(t, rdb.Ping(ctx).Err())
-		require.EqualValues(t, 0, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 0, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
 	t.Run("SLOWLOG - max entries is correctly handled", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestSlowlog(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			require.NoError(t, rdb.Ping(ctx).Err())
 		}
-		require.EqualValues(t, 10, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 10, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
 	t.Run("SLOWLOG - GET optional argument to limit output len works", func(t *testing.T) {
@@ -64,7 +64,7 @@ func TestSlowlog(t *testing.T) {
 	t.Run("SLOWLOG - RESET subcommand works", func(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "slowlog-log-slower-than", "100000").Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
-		require.EqualValues(t, 0, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 0, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
 	t.Run("SLOWLOG - logged entry sanity check", func(t *testing.T) {
@@ -153,12 +153,12 @@ func TestSlowlog(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "slowlog-log-slower-than", "1").Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 		require.NoError(t, rdb.Do(ctx, "debug", "sleep", 0.2).Err())
-		require.EqualValues(t, 1, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 1, len(rdb.SlowLogGet(ctx, -1).Val()))
 
 		require.NoError(t, rdb.ConfigSet(ctx, "slowlog-log-slower-than", "-1").Err())
 		require.NoError(t, rdb.Do(ctx, "slowlog", "reset").Err())
 		require.NoError(t, rdb.Do(ctx, "debug", "sleep", 0.2).Err())
-		require.EqualValues(t, 0, rdb.Do(ctx, "slowlog", "len").Val())
+		require.EqualValues(t, 0, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
 }

@@ -55,7 +55,7 @@ jobs:
         with:
           go-version: 1.19.x
       - name: Setup dependencies
-        run: pip install cpplint==1.5.0
+        run: pip install cpplint==1.6.1
       - name: Lint and check code
         run: |
           ./x.py check cpplint

@@ -20,7 +20,6 @@
 package command
 
 import (
-	"context"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
@@ -30,24 +29,24 @@ import (
 func TestIntrospection(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
-	ctx := context.Background()
-	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("PING", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
-		require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
+		require.NoError(t, c.WriteArgs("PING"))
 		r, err := c.ReadLine()
 		require.NoError(t, err)
 		require.Contains(t, r, "+PONG")
-		require.NoError(t, c.Write("*2\r\n$4\r\nPING\r\n$4\r\nPONG\r\n"))
+		require.NoError(t, c.WriteArgs("PING", "PONG"))
 		r, err = c.ReadLine()
 		require.NoError(t, err)
 		require.Contains(t, r, "$4")
 		r, err = c.ReadLine()
 		require.NoError(t, err)
 		require.Contains(t, r, "PONG")
-		require.EqualError(t, rdb.Do(ctx, "ping", "hello", "redis").Err(), "ERR wrong number of arguments")
+		require.NoError(t, c.WriteArgs("ping", "hello", "redis"))
+		r, err = c.ReadLine()
+		require.NoError(t, err)
+		require.Contains(t, r, "-ERR wrong number of arguments")
 	})
 }

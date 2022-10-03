@@ -84,7 +84,7 @@ func (s *KvrocksServer) Close() {
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	b := *binPath
-	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
+	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -93,7 +93,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := *workspace
-	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
+	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir

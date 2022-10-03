@@ -20,7 +20,7 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(jemalloc
-  jemalloc/jemalloc refs/tags/5.3.0  
+  jemalloc/jemalloc 5.3.0  
   SHA1=1be8fdba021e9d6ed201e7d6a3c464b2223fc927
 )
 

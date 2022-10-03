@@ -40,6 +40,7 @@ protected:
     delete storage_;
     config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
     config_->RocksDB.write_buffer_size = 1;
+    config_->RocksDB.block_size = 100;
     storage_ = new Engine::Storage(config_);
     Status s = storage_->Open();
     if (!s.IsOK()) {
@@ -50,7 +51,7 @@ protected:
   ~RedisDiskTest() = default;
 
 protected:
-  double estimation_factor_ = 0.5;
+  double estimation_factor_ = 0.1;
 };
 
 TEST_F(RedisDiskTest, StringDisk) {
@@ -58,15 +59,11 @@ TEST_F(RedisDiskTest, StringDisk) {
   std::unique_ptr<Redis::String> string = Util::MakeUnique<Redis::String>(storage_, "disk_ns_string");
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_string");
   std::vector<int> value_size{1024*1024};
-  for(auto &p : value_size){
-    EXPECT_TRUE(string->Set(key_, std::string(p, 'a')).ok());
-    std::string got_value;
-    EXPECT_TRUE(string->Get(key_,  &got_value).ok());
-    EXPECT_EQ(got_value, std::string(p, 'a'));
-    uint64_t result = 0;
-    EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
-    EXPECT_GE(result, p * estimation_factor_);
-  }
+  EXPECT_TRUE(string->Set(key_, std::string(value_size[0], 'a')).ok());
+  uint64_t result = 0;
+  EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
+  EXPECT_GE(result,  value_size[0] * estimation_factor_);
+  EXPECT_LE(result,  value_size[0] / estimation_factor_);
   string->Del(key_);
 }
 
@@ -76,18 +73,19 @@ TEST_F(RedisDiskTest, HashDisk) {
   key_ = "hashdisk_key";
   fields_ = {"hashdisk_kkey1", "hashdisk_kkey2", "hashdisk_kkey3", "hashdisk_kkey4", "hashdisk_kkey5"};
   values_.resize(5);
-  uint64_t sum = 0;
+  uint64_t approximate_size = 0;
   int ret = 0;
   std::vector<int>value_size{1024, 1024, 1024, 1024, 1024};
-  for(int i = 0; i < int(fields_.size()); i++){
+  for(int i = 0; i < int(fields_.size()); i++) {
     values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
-    sum += uint64_t(fields_[i].size()) + values_[i].size();
+    approximate_size +=  key_.size() + 8 + fields_[i].size() + values_[i].size();
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
   uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisHash, &key_size).ok());
-  EXPECT_GE(key_size, sum * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   hash->Del(key_);
 }
 
@@ -96,19 +94,20 @@ TEST_F(RedisDiskTest, SetDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_set");
   key_ = "setdisk_key";
   values_.resize(5);
-  uint64_t sum = 0;
+  uint64_t approximate_size = 0;
   int ret =0 ;
   std::vector<int>value_size{1024, 1024, 1024, 1024, 1024};
-  for(int i = 0; i < int(values_.size()); i++){
+  for(int i = 0; i < int(values_.size()); i++) {
     values_[i] = std::string(value_size[i], static_cast<char>(i+ 'a'));
-    sum += values_[i].size();
+    approximate_size += key_.size() + values_[i].size() + 8;
   }
   rocksdb::Status s = set->Add(key_, values_, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   
   uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisSet, &key_size).ok());
-  EXPECT_GE(key_size, sum * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
 
   set->Del(key_);
 }
@@ -120,17 +119,18 @@ TEST_F(RedisDiskTest, ListDisk) {
   key_ = "listdisk_key";
   values_.resize(5);
   std::vector<int>value_size{1024, 1024, 1024, 1024, 1024};
-  uint64_t sum = 0;
-  for(int i = 0; i < int(values_.size()); i++){
+  uint64_t approximate_size = 0;
+  for(int i = 0; i < int(values_.size()); i++) {
     values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
-    sum += values_[i].size();
+    approximate_size += key_.size() + values_[i].size() + 8 + 8;
   }
   int ret = 0;
   rocksdb::Status s = list->Push(key_, values_, false, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisList, &key_size).ok());
-  EXPECT_GE(key_size, sum * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   list->Del(key_);
 }
 
@@ -139,19 +139,20 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
   int ret = 0;
-  uint64_t sum = 0;
+  uint64_t approximate_size = 0;
   std::vector<MemberScore> mscores(5);
   std::vector<int>value_size{1024, 1024, 1024, 1024, 1024};
-  for(int i = 0; i < int(value_size.size()); i++){
+  for(int i = 0; i < int(value_size.size()); i++) {
     mscores[i].member = std::string(value_size[i], static_cast<char>('a' + i));
     mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];
-    sum += mscores[i].member.size();
+    approximate_size += (key_.size() + 8 + mscores[i].member.size() + 8) * 2;
   }
   rocksdb::Status s = zset->Add(key_, 0, &mscores, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0; 
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisZSet, &key_size).ok());
-  EXPECT_GE(key_size, sum * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   zset->Del(key_);
 }
 
@@ -160,12 +161,15 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_bitmap");
   key_ = "bitmapdisk_key";
   bool bit = false;
-  for (int i= 0; i < 1024*8*100000; i += 1024 * 8){
+  uint64_t approximate_size = 0;
+  for (int i= 0; i < 1024*8*100000; i += 1024 * 8) {
     EXPECT_TRUE(bitmap->SetBit(key_, i, true, &bit).ok());
+    approximate_size += key_.size() + 8 + std::to_string(i/1024/8).size();
   }
   uint64_t key_size;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisBitmap, &key_size).ok());
-  EXPECT_GE(key_size, 800 * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   bitmap->Del(key_);
 }
 
@@ -174,12 +178,15 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<Redis::Disk> disk = Util::MakeUnique<Redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
   int ret;
-  for(int i = 0; i < 100000; i++){
+  uint64_t approximate_size = 0;
+  for(int i = 0; i < 100000; i++) {
     EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok() && ret==1);
+    approximate_size += key_.size() + 8 + 8;
   }
   uint64_t key_size;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisSortedint, &key_size).ok());
-  EXPECT_GE(key_size, 10000 * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   sortedint->Del(key_);
 }
 
@@ -190,13 +197,16 @@ TEST_F(RedisDiskTest, StreamDisk) {
   Redis::StreamAddOptions options;
   options.with_entry_id = false;
   Redis::StreamEntryID id;
+  uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
     std::vector<std::string> values = {"key" + std::to_string(i), "val" + std::to_string(i)};
     auto s = stream->Add(key_, options, values, &id);
     EXPECT_TRUE(s.ok());
+    approximate_size += key_.size() + 8 + 8 + values[0].size() + values[1].size();
   }
   uint64_t key_size;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisStream, &key_size).ok());
-  EXPECT_GE(key_size, 100000 * estimation_factor_);
+  EXPECT_GE(key_size,  approximate_size * estimation_factor_);
+  EXPECT_LE(key_size,  approximate_size / estimation_factor_);
   stream->Del(key_);
 }

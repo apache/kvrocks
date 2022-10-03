@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -33,6 +34,10 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+var binPath = "placeholder"
+var workspace = "placeholder"
+var deleteOnExit = "false"
 
 type KvrocksServer struct {
 	t    testing.TB
@@ -78,17 +83,16 @@ func (s *KvrocksServer) Close() {
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	b := os.Getenv("KVROCKS_BIN_PATH")
-	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
-	cmd := exec.Command(b)
+	require.FileExists(t, binPath, "please set valid bin path")
+	cmd := exec.Command(binPath)
 
 	addr, err := findFreePort()
 	require.NoError(t, err)
 	configs["bind"] = addr.IP.String()
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
-	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
+	dir := workspace
+	require.DirExists(t, dir, "please set the valid workspace dir")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
@@ -127,6 +131,9 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 		clean: func() {
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())
+			if ok, _ := strconv.ParseBool(deleteOnExit); ok {
+				require.NoError(t, os.RemoveAll(dir))
+			}
 		},
 	}
 }

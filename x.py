@@ -20,7 +20,6 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
 from os import makedirs
-import os
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
@@ -239,14 +238,31 @@ def test_go(dir: str, rest: List[str]) -> None:
 
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    worksapce = basedir / 'workspace'
-    goenv = {
-        'KVROCKS_BIN_PATH': str(binpath),
-        'GO_CASE_WORKSPACE': str(worksapce),
-    }
-    goenv = {**os.environ, **goenv}
-    run(go, 'test', '-v', '-bench=.', './...', *rest,
-        env=goenv, cwd=str(basedir), verbose=True
+    workspace = basedir / 'workspace'
+
+    # construct ldflags
+    package = "github.com/apache/incubator-kvrocks/tests/gocase/util"
+    ldflags = [
+        f"-X {package}.binPath={binpath}",
+        f"-X {package}.workspace={workspace}",
+    ]
+    filtered = []
+    lookup_ldflag = False
+    for arg in rest:
+        if arg == '-ldflags':
+            lookup_ldflag = True
+            continue
+        lookup_ldflag = False
+        if arg.startswith('-ldflags='):
+            ldflags.append(arg[len('-ldflags='):])
+        elif lookup_ldflag:
+            ldflags.append(arg)
+        else:
+            filtered.append(arg)
+    ldflags = ' '.join(ldflags)
+
+    run(go, 'test', '-v', './...', '-ldflags', ldflags, *filtered,
+        cwd=str(basedir), verbose=True
     )
 
 if __name__ == '__main__':

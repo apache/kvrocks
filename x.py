@@ -240,14 +240,15 @@ def test_go(dir: str, rest: List[str]) -> None:
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     worksapce = basedir / 'workspace'
-    goenv = {
-        'KVROCKS_BIN_PATH': str(binpath),
-        'GO_CASE_WORKSPACE': str(worksapce),
-    }
-    goenv = {**os.environ, **goenv}
-    run(go, 'test', '-v', '-bench=.', './...', *rest,
-        env=goenv, cwd=str(basedir), verbose=True
-    )
+
+    args = [
+        'test', '-v', '-bench=.', './...',
+        f'-binPath={binpath}',
+        f'-workspace={worksapce}',
+        *rest
+    ]
+
+    run(go, *args, cwd=str(basedir), verbose=True)
 
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)

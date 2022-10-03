@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +63,7 @@ func TestScripting(t *testing.T) {
 
 	t.Run("EVAL - Lua false boolean -> Redis protocol type conversion", func(t *testing.T) {
 		r := rdb.Eval(ctx, `return false`, []string{})
-		require.EqualError(t, r.Err(), util.ErrRedisNil)
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 		require.Nil(t, r.Val())
 	})
 
@@ -311,7 +312,7 @@ assert(tostring(0xffffffff) == "-1" or
 	tostring(0xffffffff) == "4294967295",
 	"broken tostring()")
 `, []string{})
-		require.EqualError(t, r.Err(), util.ErrRedisNil)
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 		require.Nil(t, r.Val())
 	})
 
@@ -322,7 +323,7 @@ assert(bit.band(1) == 1);
 assert(bit.bxor(1,2) == 3);
 assert(bit.bor(1,2,4,8,16,32,64,128) == 255)
 `, []string{})
-		require.EqualError(t, r.Err(), util.ErrRedisNil)
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 		require.Nil(t, r.Val())
 	})
 
@@ -441,10 +442,10 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 	})
 
 	t.Run("Make sure redis.log() works", func(t *testing.T) {
-		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_DEBUG, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
-		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_VERBOSE, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
-		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_NOTICE, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
-		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_WARNING, 'debug level');`, []string{}).Err(), util.ErrRedisNil)
+		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_DEBUG, 'debug level');`, []string{}).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_VERBOSE, 'debug level');`, []string{}).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_NOTICE, 'debug level');`, []string{}).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.Eval(ctx, `return redis.log(redis.LOG_WARNING, 'debug level');`, []string{}).Err(), redis.Nil.Error())
 	})
 
 	t.Run("EVAL_RO - successful case", func(t *testing.T) {

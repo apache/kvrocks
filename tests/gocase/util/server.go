@@ -69,7 +69,7 @@ func (s *KvrocksServer) NewTCPClient() *TCPClient {
 
 func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
-	timer := time.AfterFunc(k8sDefaultGracePeriod*time.Second, func() {
+	timer := time.AfterFunc(defaultGracePeriod, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()

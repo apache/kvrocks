@@ -132,6 +132,7 @@ Config::Config() {
       {"bgsave-cron", false, new StringField(&bgsave_cron_, "")},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
+      {"rdb-name", true, new StringField(&rdb_name, "dump.rdb")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", true, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},

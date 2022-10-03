@@ -59,6 +59,7 @@
 #include "slot_import.h"
 #include "slot_migrate.h"
 #include "parse_util.h"
+#include "redis_rdb.h"
 
 namespace Redis {
 
@@ -3558,6 +3559,18 @@ class CommandBGSave: public Commander {
   }
 };
 
+class CommandSave: public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::RedisDatabase RDB(svr->storage_, conn->GetNamespace());
+    Config *config = svr->GetConfig();
+    Status s = RDB.Dump(config->dir + "/" + config->rdb_name);
+    if (!s.IsOK()) return s;
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 class CommandFlushBackup : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -6013,6 +6026,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
+    ADD_CMD("save", 1, "read-only no-script exclusive", 0, 0, 0, CommandSave),
     ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
     ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
     ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),

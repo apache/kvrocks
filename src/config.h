@@ -117,6 +117,7 @@ struct Config{
   std::string log_dir;
   std::string pidfile;
   std::string db_name;
+  std::string rdb_name;
   std::string masterauth;
   std::string requirepass;
   std::string master_host;

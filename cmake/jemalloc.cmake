@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(jemalloc
-  jemalloc/jemalloc 12cd13cd418512d9e7596921ccdb62e25a103f87
-  MD5=5df60c70718ba94253cb15d60e69e2f8
+  jemalloc/jemalloc refs/tags/5.3.0  
+  SHA1=1be8fdba021e9d6ed201e7d6a3c464b2223fc927
 )
 
 FetchContent_GetProperties(jemalloc)

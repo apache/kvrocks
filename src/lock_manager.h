@@ -20,12 +20,12 @@
 
 #pragma once
 
-#include <mutex>
-#include <vector>
-#include <string>
-#include <functional>
-
 #include <rocksdb/db.h>
+
+#include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
 
 class LockManager {
  public:

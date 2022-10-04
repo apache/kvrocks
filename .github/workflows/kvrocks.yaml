@@ -178,10 +178,10 @@ jobs:
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
-          tar -xzvf redis-6.2.6.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
+          tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3

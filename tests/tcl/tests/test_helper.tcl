@@ -33,7 +33,6 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 set ::all_tests {
-    unit/type/string
     unit/type/list
     unit/type/zset
     unit/type/stream

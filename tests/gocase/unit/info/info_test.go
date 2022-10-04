@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package command
+package info
 
 import (
 	"context"

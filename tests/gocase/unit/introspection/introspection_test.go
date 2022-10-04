@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package command
+package introspection
 
 import (
 	"testing"

@@ -183,6 +183,15 @@ rocksdb::Options Storage::InitOptions() {
   options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
   options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
 
+  if (config_->RocksDB.enable_db_paths &&
+      !config_->RocksDB.db_paths0.empty() && !config_->RocksDB.db_paths1.empty()
+      && config_->RocksDB.db_paths0_size_gb > 0 && config_->RocksDB.db_paths1_size_gb > 0) {
+    options.db_paths = {
+      {config_->RocksDB.db_paths0, config_->RocksDB.db_paths0_size_gb * GiB},
+      {config_->RocksDB.db_paths1, config_->RocksDB.db_paths1_size_gb * GiB}
+    };
+  }
+
   return options;
 }
 

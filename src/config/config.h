@@ -181,6 +181,11 @@ struct Config {
     int max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
+    bool enable_db_paths;
+    std::string db_paths0;
+    int db_paths0_size_gb;
+    std::string db_paths1;
+    int db_paths1_size_gb;
 
     struct WriteOptions {
       bool sync;

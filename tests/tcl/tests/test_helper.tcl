@@ -39,7 +39,6 @@ set ::all_tests {
     unit/type/stream
     unit/multi
     unit/expire
-    unit/slowlog
     unit/pubsub
     unit/introspection
     unit/geo

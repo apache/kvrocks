@@ -17,7 +17,7 @@
 * under the License.
  */
 
-package str
+package strings
 
 import (
 	"context"

@@ -123,13 +123,27 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC without luajit
+          - name: Ubuntu GCC with luajit
             os: ubuntu-18.04
-            without_luajit: -DUSE_LUAJIT=OFF
             with_openssl: -DENABLE_OPENSSL=ON
+            with_luajit: -DUSE_LUAJIT=ON
             compiler: gcc
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-18.04
+            compiler: gcc
+          - name: Ubuntu GCC ASan with luaJIT
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC TSan with luaJIT
+            os: ubuntu-18.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_TSAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
 
     runs-on: ${{ matrix.os }}
@@ -174,7 +188,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.with_luajit }} \
             ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Run Unit Test

@@ -85,13 +85,19 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
-            with_openssl: -DENABLE_OPENSSL=ON
+            with_openssl: -DENABLE_OPENSSL=ON                    
           - name: Ubuntu GCC ASan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
+          - name: Ubuntu Clang ASan
+            os: ubuntu-20.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: clang            
           - name: Ubuntu GCC TSan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -99,72 +105,52 @@ jobs:
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
-          - name: Ubuntu Clang ASan
-            os: ubuntu-20.04
-            with_sanitizer: -DENABLE_ASAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: clang
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
-            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"          
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
             with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
+            compiler: gcc          
           - name: Ubuntu GCC Ninja without Jemalloc
             os: ubuntu-20.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC with luajit
+          - name: Ubuntu GCC with luaJIT
             os: ubuntu-20.04
             with_openssl: -DENABLE_OPENSSL=ON
             with_luajit: -DUSE_LUAJIT=ON
             compiler: gcc
-          - name: Ubuntu GCC without luajit
+          - name: Ubuntu GCC ASan with luaJIT
+            os: ubuntu-20.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC TSan with luaJIT
+            os: ubuntu-20.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_TSAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC without luaJIT
             os: ubuntu-20.04
             without_luajit: -DUSE_LUAJIT=OFF
             with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-          - name: Ubuntu GCC ASan with luaJIT
-            os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
-            with_sanitizer: -DENABLE_ASAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-          - name: Ubuntu GCC TSan with luaJIT
-            os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
-            with_sanitizer: -DENABLE_TSAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
+            compiler: gcc          
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-20.04
             compiler: gcc
-          - name: Ubuntu GCC ASan with luaJIT
-            os: ubuntu-18.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
-            with_sanitizer: -DENABLE_ASAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-          - name: Ubuntu GCC TSan with luaJIT
-            os: ubuntu-18.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
-            with_sanitizer: -DENABLE_TSAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-
+         
     runs-on: ${{ matrix.os }}
     steps:
       - name: Cache redis

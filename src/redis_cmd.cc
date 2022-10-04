@@ -238,7 +238,13 @@ class CommandFlushAll : public Commander {
 class CommandPing : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    *output = Redis::SimpleString("PONG");
+    if (args_.size() == 1) {
+      *output = Redis::SimpleString("PONG");
+    } else if (args_.size() == 2) {
+      *output = Redis::BulkString(args_[1]);
+    } else {
+      return Status(Status::NotOK, errWrongNumOfArguments);
+    }
     return Status::OK();
   }
 };
@@ -5829,7 +5835,7 @@ class CommandXTrim : public Commander {
 
 CommandAttributes redisCommandTable[] = {
     ADD_CMD("auth", 2, "read-only ok-loading", 0, 0, 0, CommandAuth),
-    ADD_CMD("ping", 1, "read-only", 0, 0, 0, CommandPing),
+    ADD_CMD("ping", -1, "read-only", 0, 0, 0, CommandPing),
     ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
     ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
     ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),

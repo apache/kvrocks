@@ -21,18 +21,19 @@
 #pragma once
 
 #define __STDC_FORMAT_MACROS
-#include <inttypes.h>
+
 #include <arpa/inet.h>
 
 #include <cctype>
-#include <string>
-#include <vector>
-#include <utility>
-#include <memory>
+#include <cinttypes>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "status.h"
 #include "solarisfixes.h"
+#include "status.h"
 
 namespace Util {
 // sock util

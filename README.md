@@ -20,7 +20,7 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
-[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) 
+[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
 
 ---
@@ -40,7 +40,7 @@ Kvrocks has the following key features:
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
-## Who uses kvrocks 
+## Who uses kvrocks
 
 <table>
 <tr>
@@ -99,6 +99,11 @@ To build with TLS support, you'll need OpenSSL development libraries (e.g. libss
 $ ./x.py build -DENABLE_OPENSSL=ON
 ```
 
+To build with luaJIT instead of lua for better performance, run:
+
+```shell
+$ ./x.py build -DUSE_LUAJIT=ON
+```
 
 ### Running kvrocks
 
@@ -136,6 +141,7 @@ $ ./unittest
   * Ubuntu
   * and most other distros
 * macOS
+
 
 ##  Namespace
 

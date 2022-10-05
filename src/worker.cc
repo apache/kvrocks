@@ -20,23 +20,25 @@
 
 #include "worker.h"
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <list>
-#include <cctype>
-#include <cstring>
-#include <utility>
-#include <algorithm>
-#include <glog/logging.h>
 #include <event2/util.h>
+#include <glog/logging.h>
 
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #endif
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <list>
+#include <utility>
 
 #include "redis_connection.h"
 #include "redis_request.h"

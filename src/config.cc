@@ -18,9 +18,14 @@
  *
  */
 
+#include "config.h"
+
+#include <rocksdb/env.h>
+
 #include <fcntl.h>
-#include <string.h>
 #include <strings.h>
+
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -29,18 +34,13 @@
 #include <limits>
 #include <algorithm>
 #include <cctype>
-#include <glog/logging.h>
-#include <rocksdb/env.h>
 
-#include "config.h"
 #include "config_type.h"
+#include "config_util.h"
+#include "server.h"
+#include "status.h"
 #include "tls_util.h"
 #include "util.h"
-#include "status.h"
-#include "cron.h"
-#include "server.h"
-#include "log_collector.h"
-#include "config_util.h"
 
 const char *kDefaultNamespace = "__namespace";
 

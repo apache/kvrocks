@@ -20,22 +20,23 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <utility>
-#include <memory>
-#include <string>
-#include <vector>
-#include <atomic>
+#include <event2/bufferevent.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>
 #include <rocksdb/utilities/backup_engine.h>
-#include <event2/bufferevent.h>
 
-#include "status.h"
-#include "lock_manager.h"
+#include <atomic>
+#include <cinttypes>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "config.h"
+#include "lock_manager.h"
 #include "rw_lock.h"
+#include "status.h"
 
 const int kReplIdLength = 16;
 

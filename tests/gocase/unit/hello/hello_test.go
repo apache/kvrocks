@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package auth
+package hello
 
 import (
 	"context"

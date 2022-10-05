@@ -20,10 +20,11 @@
 
 #pragma once
 
-#include <deque>
-#include <vector>
-#include <string>
 #include <event2/buffer.h>
+
+#include <deque>
+#include <string>
+#include <vector>
 
 #include "status.h"
 

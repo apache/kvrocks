@@ -20,13 +20,14 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <mutex>
 #include <glog/logging.h>
 
-#include "redis_db.h"
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "config.h"
+#include "redis_db.h"
 #include "server.h"
 
 enum ImportStatus{

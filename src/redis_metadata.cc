@@ -19,14 +19,17 @@
  */
 
 #include "redis_metadata.h"
-#include "redis_slot.h"
-#include <time.h>
-#include <stdlib.h>
+
+#include <rocksdb/env.h>
 #include <sys/time.h>
 
-#include <vector>
 #include <atomic>
-#include <rocksdb/env.h>
+#include <ctime>
+#include <cstdlib>
+#include <vector>
+
+#include "redis_slot.h"
+
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
@@ -183,7 +186,7 @@ rocksdb::Status Metadata::Decode(const std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
-    if (input.size() < 12) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    if (input.size() < 12) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
@@ -279,12 +282,12 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
-    if (input.size() < 12) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    if (input.size() < 12) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &version);
     GetFixed32(&input, &size);
   }
   if (Type() == kRedisList) {
-    if (input.size() < 16) rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    if (input.size() < 16) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &head);
     GetFixed64(&input, &tail);
   }
@@ -323,7 +326,7 @@ rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
 
   if (input.size() < 12) {
-    rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
   GetFixed64(&input, &version);

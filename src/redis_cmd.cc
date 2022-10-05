@@ -18,47 +18,43 @@
  *
  */
 
-#include <arpa/inet.h>
+#include "redis_cmd.h"
+
+#include <glog/logging.h>
+
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <algorithm>
-#include <cctype>
 #include <climits>
 #include <cmath>
 #include <chrono>
 #include <vector>
 #include <thread>
 #include <utility>
-#include <memory>
-#include <glog/logging.h>
 
-#include "redis_db.h"
-#include "redis_cmd.h"
-#include "redis_hash.h"
+#include "cluster.h"
+#include "log_collector.h"
+#include "parse_util.h"
 #include "redis_bitmap.h"
-#include "redis_list.h"
-#include "redis_reply.h"
-#include "redis_request.h"
 #include "redis_connection.h"
+#include "redis_db.h"
+#include "redis_geo.h"
+#include "redis_hash.h"
+#include "redis_list.h"
+#include "redis_pubsub.h"
+#include "redis_reply.h"
 #include "redis_set.h"
+#include "redis_slot.h"
+#include "redis_sortedint.h"
+#include "redis_stream.h"
 #include "redis_string.h"
 #include "redis_zset.h"
-#include "redis_geo.h"
-#include "redis_pubsub.h"
-#include "redis_sortedint.h"
-#include "redis_slot.h"
-#include "redis_stream.h"
-#include "replication.h"
-#include "util.h"
-#include "storage.h"
-#include "worker.h"
-#include "server.h"
-#include "log_collector.h"
-#include "cluster.h"
 #include "scripting.h"
+#include "server.h"
 #include "slot_import.h"
 #include "slot_migrate.h"
-#include "parse_util.h"
+#include "storage.h"
+#include "util.h"
 
 namespace Redis {
 
@@ -67,11 +63,11 @@ const char *kCursorPrefix = "_";
 const char *errInvalidSyntax = "syntax error";
 const char *errInvalidExpireTime = "invalid expire time";
 const char *errWrongNumOfArguments = "wrong number of arguments";
-const char *errValueNotInterger = "value is not an integer or out of range";
+const char *errValueNotInteger = "value is not an integer or out of range";
 const char *errAdministorPermissionRequired = "administor permission required to perform the command";
 const char *errValueMustBePositive = "value is out of range, must be positive";
 const char *errNoSuchKey = "no such key";
-const char *errUnbalacedStreamList =
+const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
@@ -242,7 +238,13 @@ class CommandFlushAll : public Commander {
 class CommandPing : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    *output = Redis::SimpleString("PONG");
+    if (args_.size() == 1) {
+      *output = Redis::SimpleString("PONG");
+    } else if (args_.size() == 2) {
+      *output = Redis::BulkString(args_[1]);
+    } else {
+      return Status(Status::NotOK, errWrongNumOfArguments);
+    }
     return Status::OK();
   }
 };
@@ -376,7 +378,7 @@ class CommandGetRange: public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     start_ = *parse_start;
     stop_ = *parse_stop;
@@ -415,7 +417,7 @@ class CommandSetRange: public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     offset_ = *parse_result;
     return Commander::Parse(args);
@@ -480,21 +482,21 @@ class CommandSet : public Commander {
       } else if (opt == "ex" && !ttl_ && !last_arg) {
         auto parse_result = ParseInt<int>(args_[++i], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
         auto parse_result = ParseInt<int64_t>(args_[++i], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         expire_ = *parse_result;
         if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
         auto parse_result = ParseInt<uint64_t>(args[++i], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         uint64_t expire_ms = *parse_result;
         if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
@@ -507,7 +509,7 @@ class CommandSet : public Commander {
         int64_t ttl_ms = 0;
         auto parse_result = ParseInt<int64_t>(args_[++i], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         ttl_ms = *parse_result;
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
@@ -568,7 +570,7 @@ class CommandSetEX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     ttl_ = *parse_result;
     if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
@@ -591,7 +593,7 @@ class CommandPSetEX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto ttl_ms = ParseInt<int64_t>(args[2], 10);
     if (!ttl_ms) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     if (*ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
     if (*ttl_ms > 0 && *ttl_ms < 1000) {
@@ -703,7 +705,7 @@ class CommandIncrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     increment_ = *parse_result;
     return Commander::Parse(args);
@@ -728,7 +730,7 @@ class CommandIncrByFloat : public Commander {
     try {
       increment_ = std::stod(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     return Commander::Parse(args);
   }
@@ -751,7 +753,7 @@ class CommandDecrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     increment_ = *parse_result;
     return Commander::Parse(args);
@@ -781,7 +783,7 @@ class CommandCAS : public Commander {
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
@@ -789,7 +791,7 @@ class CommandCAS : public Commander {
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         auto ttl_ms = *parse_result;
         if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
@@ -919,12 +921,12 @@ class CommandBitCount : public Commander {
     if (args.size() == 4) {
       auto parse_start = ParseInt<int64_t>(args[2], 10);
       if (!parse_start) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       start_ = *parse_start;
       auto parse_stop = ParseInt<int64_t>(args[3], 10);
       if (!parse_stop) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       stop_ = *parse_stop;
     }
@@ -950,14 +952,14 @@ class CommandBitPos: public Commander {
     if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[3], 10);
       if (!parse_start) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       start_ = *parse_start;
     }
     if (args.size() >= 5) {
       auto parse_stop = ParseInt<int64_t>(args[4], 10);
       if (!parse_stop) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       stop_given_ = true;
       stop_ = *parse_stop;
@@ -1112,7 +1114,7 @@ class CommandExpire : public Commander {
     rocksdb::Env::Default()->GetCurrentTime(&now);
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     seconds_ = *parse_result;
     if (seconds_ >= INT32_MAX - now) {
@@ -1144,7 +1146,7 @@ class CommandPExpire : public Commander {
     rocksdb::Env::Default()->GetCurrentTime(&now);
     auto ttl_ms = ParseInt<int64_t>(args[2], 10);
     if (!ttl_ms) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     if (*ttl_ms > 0 && *ttl_ms < 1000) {
       seconds_ = 1;
@@ -1178,7 +1180,7 @@ class CommandExpireAt : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     if (*parse_result >= INT32_MAX) {
       return Status(Status::RedisParseErr, "the expire time was overflow");
@@ -1206,7 +1208,7 @@ class CommandPExpireAt : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     if (*parse_result/1000 >= INT32_MAX) {
       return Status(Status::RedisParseErr, "the expire time was overflow");
@@ -1340,7 +1342,7 @@ class CommandHIncrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[3], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     increment_ = *parse_result;
     return Commander::Parse(args);
@@ -1366,7 +1368,7 @@ class CommandHIncrByFloat : public Commander {
     try {
       increment_ = std::stod(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     return Commander::Parse(args);
   }
@@ -1503,7 +1505,7 @@ class CommandHRange : public Commander {
     }
     if (args.size() == 6) {
       auto parse_result = ParseInt<int64_t>(args_[5], 10);
-      if (!parse_result)return Status(Status::RedisParseErr, errValueNotInterger);
+      if (!parse_result)return Status(Status::RedisParseErr, errValueNotInteger);
       limit_ = *parse_result;
     }
     return Commander::Parse(args);
@@ -1594,7 +1596,7 @@ class CommandPop : public Commander {
     }
     auto v = ParseInt<int32_t>(args[2], 10);
     if (!v) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     if (*v < 0) {
       return Status(Status::RedisParseErr, errValueMustBePositive);
@@ -1804,7 +1806,7 @@ class CommandLRem : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     count_ = *parse_result;
     return Commander::Parse(args);
@@ -1857,7 +1859,7 @@ class CommandLRange : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     start_ = *parse_start;
     stop_ = *parse_stop;
@@ -1897,7 +1899,7 @@ class CommandLIndex : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_reuslt = ParseInt<int>(args[2], 10);
     if (!parse_reuslt) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     index_ = *parse_reuslt;
     return Commander::Parse(args);
@@ -1926,7 +1928,7 @@ class CommandLSet : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_reuslt = ParseInt<int>(args[2], 10);
     if (!parse_reuslt) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     index_ = *parse_reuslt;
     return Commander::Parse(args);
@@ -1951,7 +1953,7 @@ class CommandLTrim : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     start_ = *parse_start;
     stop_ = *parse_stop;
@@ -2127,7 +2129,7 @@ class CommandSPop : public Commander {
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       count_ = *parse_result;
       with_count_ = true;
@@ -2164,7 +2166,7 @@ class CommandSRandMember : public Commander {
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       count_ = *parse_result;
     }
@@ -2444,7 +2446,7 @@ class CommandZPop : public Commander {
     if (args.size() > 2) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       count_ = *parse_result;
     }
@@ -2488,7 +2490,7 @@ class CommandZRange : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     start_ = *parse_start;
     stop_ = *parse_stop;
@@ -2551,7 +2553,7 @@ class CommandZRangeByLex : public Commander {
       auto parse_offset = ParseInt<int>(args[5], 10);
       auto parse_count = ParseInt<int>(args[6], 10);
       if (!parse_offset || !parse_count) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       spec_.offset = *parse_offset;
       spec_.count = *parse_count;
@@ -2599,7 +2601,7 @@ class CommandZRangeByScore : public Commander {
           auto parse_offset = ParseInt<int>(args[i + 1], 10);
           auto parse_count = ParseInt<int>(args[i + 2], 10);
           if (!parse_offset || !parse_count) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
+            return Status(Status::RedisParseErr, errValueNotInteger);
           }
           spec_.offset = *parse_offset;
           spec_.count = *parse_count;
@@ -2700,7 +2702,7 @@ class CommandZRemRangeByRank : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     start_ = *parse_start;
     stop_ = *parse_stop;
@@ -2829,7 +2831,7 @@ class CommandZUnionStore : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInterger);
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
     numkeys_ = *parse_result;
     if (numkeys_ > args.size() - 3) {
@@ -3259,7 +3261,7 @@ class CommandSortedintAdd : public Commander {
     for (unsigned i = 2; i < args.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args[i], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       ids_.emplace_back(*parse_result);
     }
@@ -3287,7 +3289,7 @@ class CommandSortedintRem : public Commander {
     for (unsigned i = 2; i < args.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args[i], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       ids_.emplace_back(*parse_result);
     }
@@ -3331,7 +3333,7 @@ class CommandSortedintExists : public Commander {
     for (unsigned int i = 2; i < args_.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args_[i], 10);
       if (!parse_result) {
-        Status(Status::RedisParseErr, errValueNotInterger);
+        Status(Status::RedisParseErr, errValueNotInteger);
       }
       ids.emplace_back(*parse_result);
     }
@@ -3362,7 +3364,7 @@ class CommandSortedintRange : public Commander {
     auto parse_offset = ParseInt<uint64_t>(args[2], 10);
     auto parse_limit = ParseInt<uint64_t>(args[3], 10);
     if (!parse_offset || !parse_limit) {
-      Status(Status::RedisParseErr, errValueNotInterger);
+      Status(Status::RedisParseErr, errValueNotInteger);
     }
     offset_ = *parse_offset;
     limit_ = *parse_limit;
@@ -3372,7 +3374,7 @@ class CommandSortedintRange : public Commander {
       }
       auto parse_result = ParseInt<uint64_t>(args[5], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       cursor_id_ = *parse_result;
     }
@@ -3428,7 +3430,7 @@ class CommandSortedintRangeByValue : public Commander {
       auto parse_offset = ParseInt<int>(args[5], 10);
       auto parse_count = ParseInt<int>(args[6], 10);
       if (!parse_offset || !parse_count) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       spec_.offset = *parse_offset;
       spec_.count = *parse_count;
@@ -4046,7 +4048,7 @@ class CommandClient : public Commander {
         } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
           auto parse_result = ParseInt<uint64_t>(args[i+1], 10);
           if (!parse_result) {
-            return Status(Status::RedisParseErr, errValueNotInterger);
+            return Status(Status::RedisParseErr, errValueNotInteger);
           }
           id_ = *parse_result;
         } else if (!strcasecmp(args[i].c_str(), "skipme") && moreargs) {
@@ -4814,7 +4816,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "setslot" && args_.size() == 6) {
       auto parse_id = ParseInt<int>(args[2].c_str(), 10);
       if (!parse_id) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
       }
       slot_id_ = *parse_id;
       if (!Cluster::IsValidSlot(slot_id_)) {
@@ -4828,7 +4830,7 @@ class CommandClusterX : public Commander {
       }
       auto parse_version = ParseInt<uint64_t>(args[5].c_str(), 10);
       if (!parse_version) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
       }
       set_version_ = *parse_version;
       if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
@@ -5022,7 +5024,7 @@ class CommandXAdd : public Commander {
 
         auto parse_result = ParseInt<uint64_t>(args[max_len_idx], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         max_len_ = *parse_result;
         with_max_len_ = true;
@@ -5197,7 +5199,7 @@ class CommandXInfo : public Commander {
       if (args.size() > 5 && Util::ToLower(args[4]) == "count") {
         auto parse_result = ParseInt<uint64_t>(args[5], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         count_ = *parse_result;
       }
@@ -5314,7 +5316,7 @@ class CommandXRange : public Commander {
       with_count_ = true;
       auto parse_result = ParseInt<uint64_t>(args[5], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       count_ = *parse_result;
     }
@@ -5404,7 +5406,7 @@ class CommandXRevRange : public Commander {
       with_count_ = true;
       auto parse_result = ParseInt<uint64_t>(args[5]);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       count_ = *parse_result;
     }
@@ -5476,7 +5478,7 @@ class CommandXRead : public Commander {
         with_count_ = true;
         auto parse_result = ParseInt<uint64_t>(args[i+1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         count_ = *parse_result;
         i += 2;
@@ -5491,7 +5493,7 @@ class CommandXRead : public Commander {
         block_ = true;
         auto parse_result = ParseInt<int64_t>(args[i+1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInterger);
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         if (*parse_result < 0) {
           return Status(Status::RedisParseErr, errTimeoutIsNegative);
@@ -5509,7 +5511,7 @@ class CommandXRead : public Commander {
     }
 
     if ((args.size() - streams_word_idx - 1) % 2 != 0) {
-      return Status(Status::RedisParseErr, errUnbalacedStreamList);
+      return Status(Status::RedisParseErr, errUnbalancedStreamList);
     }
 
     size_t number_of_streams = (args.size() - streams_word_idx - 1) / 2;
@@ -5775,7 +5777,7 @@ class CommandXTrim : public Commander {
       }
       auto parse_result = ParseInt<uint64_t>(args[max_len_idx], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInterger);
+        return Status(Status::RedisParseErr, errValueNotInteger);
       }
       max_len_ = *parse_result;
     } else if (trim_strategy == "minid") {
@@ -5851,7 +5853,7 @@ class CommandXTrim : public Commander {
 
 CommandAttributes redisCommandTable[] = {
     ADD_CMD("auth", 2, "read-only ok-loading", 0, 0, 0, CommandAuth),
-    ADD_CMD("ping", 1, "read-only", 0, 0, 0, CommandPing),
+    ADD_CMD("ping", -1, "read-only", 0, 0, 0, CommandPing),
     ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
     ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
     ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),

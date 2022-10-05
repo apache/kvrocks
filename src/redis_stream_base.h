@@ -20,12 +20,12 @@
 
 #pragma once
 
+#include <rocksdb/status.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <rocksdb/status.h>
 
 #include "status.h"
 
@@ -113,10 +113,10 @@ struct StreamRangeOptions {
   StreamEntryID start;
   StreamEntryID end;
   uint64_t count;
+  bool with_count = false;
   bool reverse = false;
   bool exclude_start = false;
   bool exclude_end = false;
-  bool with_count = false;
 };
 
 struct StreamInfo {

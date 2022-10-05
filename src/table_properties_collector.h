@@ -20,10 +20,11 @@
 
 #pragma once
 
-#include <utility>
-#include <string>
-#include <memory>
 #include <rocksdb/table_properties.h>
+
+#include <memory>
+#include <string>
+#include <utility>
 
 class CompactOnExpiredCollector : public rocksdb::TablePropertiesCollector {
  public:

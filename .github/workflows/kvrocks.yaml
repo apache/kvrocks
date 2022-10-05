@@ -85,7 +85,7 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
-            with_openssl: -DENABLE_OPENSSL=ON                    
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC ASan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -97,7 +97,7 @@ jobs:
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
-            compiler: clang            
+            compiler: clang
           - name: Ubuntu GCC TSan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -111,12 +111,12 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
-            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"          
+            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
             with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc          
+            compiler: gcc
           - name: Ubuntu GCC Ninja without Jemalloc
             os: ubuntu-20.04
             with_ninja: --ninja
@@ -142,11 +142,6 @@ jobs:
             with_sanitizer: -DENABLE_TSAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC without luaJIT
-            os: ubuntu-20.04
-            without_luajit: -DUSE_LUAJIT=OFF
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc          
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-20.04
             compiler: gcc

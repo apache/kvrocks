@@ -18,21 +18,22 @@
  *
  */
 
-#include <chrono>
-#include <utility>
-#include <memory>
+#include "redis_request.h"
+
 #include <glog/logging.h>
 #include <rocksdb/perf_context.h>
-#include <rocksdb/iostats_context.h>
 
-#include "util.h"
-#include "redis_reply.h"
-#include "redis_request.h"
-#include "redis_connection.h"
-#include "server.h"
-#include "redis_slot.h"
+#include <chrono>
+#include <memory>
+#include <utility>
+
 #include "event_util.h"
 #include "parse_util.h"
+#include "redis_connection.h"
+#include "redis_reply.h"
+#include "redis_slot.h"
+#include "server.h"
+#include "util.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;

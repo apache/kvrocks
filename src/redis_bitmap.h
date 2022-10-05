@@ -20,11 +20,11 @@
 
 #pragma once
 
-#include "redis_db.h"
-#include "redis_metadata.h"
-
 #include <string>
 #include <vector>
+
+#include "redis_db.h"
+#include "redis_metadata.h"
 
 #if defined(__sparc__) || defined(__arm__)
 #define USE_ALIGNED_ACCESS

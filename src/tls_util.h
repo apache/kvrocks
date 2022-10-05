@@ -22,9 +22,11 @@
 
 #ifdef ENABLE_OPENSSL
 
-#include <memory>
 #include <openssl/ssl.h>
-#include <config.h>
+
+#include <memory>
+
+#include "config.h"
 #include "event_util.h"
 
 void InitSSL();

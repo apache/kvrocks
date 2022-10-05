@@ -20,18 +20,19 @@
 
 #pragma once
 
-#include <thread>
-#include <vector>
-#include <utility>
-#include <memory>
-#include <tuple>
-#include <string>
-#include <deque>
 #include <event2/bufferevent.h>
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "redis_connection.h"
 #include "status.h"
 #include "storage.h"
-#include "redis_connection.h"
 
 class Server;
 

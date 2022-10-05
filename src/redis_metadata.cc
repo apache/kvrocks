@@ -19,14 +19,17 @@
  */
 
 #include "redis_metadata.h"
-#include "redis_slot.h"
-#include <time.h>
-#include <stdlib.h>
+
+#include <rocksdb/env.h>
 #include <sys/time.h>
 
-#include <vector>
 #include <atomic>
-#include <rocksdb/env.h>
+#include <ctime>
+#include <cstdlib>
+#include <vector>
+
+#include "redis_slot.h"
+
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;

@@ -20,25 +20,27 @@
 
 #include "server.h"
 
+#include <glog/logging.h>
+#include <rocksdb/convenience.h>
+
 #include <fcntl.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
+
 #include <memory>
 #include <utility>
-#include <glog/logging.h>
-#include <rocksdb/convenience.h>
 
-#include <tls_util.h>
-#include "util.h"
-#include "worker.h"
-#include "version.h"
+#include "config.h"
+#include "compaction_checker.h"
+#include "redis_connection.h"
 #include "redis_db.h"
 #include "redis_request.h"
-#include "redis_connection.h"
-#include "compaction_checker.h"
-#include "config.h"
 #include "scripting.h"
+#include "tls_util.h"
+#include "util.h"
+#include "version.h"
+#include "worker.h"
 
 std::atomic<int>Server::unix_time_ = {0};
 

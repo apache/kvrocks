@@ -21,14 +21,18 @@
 #ifdef ENABLE_OPENSSL
 
 #include "tls_util.h"
-#include <pthread.h>
-#include <bitset>
-#include <string>
-#include <mutex>
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/opensslv.h>
+
+#include <pthread.h>
+
+#include <bitset>
+#include <mutex>
+#include <string>
+
 #include "config.h"
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L

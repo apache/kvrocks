@@ -20,13 +20,14 @@
 
 #pragma once
 
+#include <glog/logging.h>
+
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <type_traits>
-#include <utility>
-#include <memory>
-#include <algorithm>
 #include <tuple>
-#include <glog/logging.h>
+#include <utility>
 
 class Status {
  public:

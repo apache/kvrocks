@@ -20,27 +20,28 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <thread>
+#include <glog/logging.h>
+#include <rocksdb/db.h>
+#include <rocksdb/status.h>
+#include <rocksdb/transaction_log.h>
+#include <rocksdb/write_batch.h>
+
 #include <chrono>
 #include <map>
 #include <memory>
-#include <rocksdb/status.h>
-#include <rocksdb/write_batch.h>
-#include <rocksdb/db.h>
-#include <rocksdb/transaction_log.h>
-#include <glog/logging.h>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include "redis_db.h"
 #include "config.h"
-#include "server.h"
-#include "stats.h"
-#include "util.h"
-#include "slot_import.h"
 #include "encoding.h"
-#include "status.h"
+#include "redis_db.h"
 #include "redis_slot.h"
+#include "server.h"
+#include "slot_import.h"
+#include "stats.h"
+#include "status.h"
+#include "util.h"
 
 #define CLUSTER_SLOTS HASH_SLOTS_SIZE
 

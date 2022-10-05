@@ -20,24 +20,24 @@
 
 #include "replication.h"
 
-#include <signal.h>
 #include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <future>
-#include <string>
-#include <thread>
-#include <algorithm>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
 #include <glog/logging.h>
 
+#include <algorithm>
+#include <csignal>
+#include <future>
+#include <string>
+#include <thread>
+
+#include "event_util.h"
 #include "redis_reply.h"
 #include "rocksdb_crc32c.h"
-#include "util.h"
-#include "status.h"
 #include "server.h"
-#include "event_util.h"
+#include "status.h"
+#include "util.h"
 
 Status FeedSlaveThread::Start() {
   try {

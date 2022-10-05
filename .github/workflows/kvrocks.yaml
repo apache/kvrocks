@@ -13,7 +13,7 @@
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
-# under the License.
+# under the License. 
 
 name: CI
 
@@ -55,7 +55,7 @@ jobs:
         with:
           go-version: 1.19.x
       - name: Setup dependencies
-        run: pip install cpplint==1.5.0
+        run: pip install cpplint==1.6.1
       - name: Lint and check code
         run: |
           ./x.py check cpplint
@@ -79,73 +79,73 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             compiler: gcc
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             compiler: clang
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC ASan
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
+          - name: Ubuntu Clang ASan
+            os: ubuntu-20.04
+            with_sanitizer: -DENABLE_ASAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: clang
           - name: Ubuntu GCC TSan
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
-          - name: Ubuntu Clang ASan
-            os: ubuntu-18.04
-            with_sanitizer: -DENABLE_ASAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: clang
           - name: Ubuntu Clang TSan
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_ninja: --ninja
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC Ninja without Jemalloc
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC with luajit
-            os: ubuntu-18.04
+          - name: Ubuntu GCC with luaJIT
+            os: ubuntu-20.04
             with_openssl: -DENABLE_OPENSSL=ON
             with_luajit: -DUSE_LUAJIT=ON
             compiler: gcc
-          - name: Ubuntu GCC without OpenSSL
-            os: ubuntu-18.04
-            compiler: gcc
           - name: Ubuntu GCC ASan with luaJIT
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_luajit: -DUSE_LUAJIT=ON
             with_sanitizer: -DENABLE_ASAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC TSan with luaJIT
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_luajit: -DUSE_LUAJIT=ON
             with_sanitizer: -DENABLE_TSAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-
+          - name: Ubuntu GCC without OpenSSL
+            os: ubuntu-20.04
+            compiler: gcc
+         
     runs-on: ${{ matrix.os }}
     steps:
       - name: Cache redis
@@ -167,16 +167,16 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.5 ninja-build tcl-tls
+          sudo apt install -y tcl8.6 ninja-build tcl-tls
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
-          tar -xzvf redis-6.2.6.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
+          tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3

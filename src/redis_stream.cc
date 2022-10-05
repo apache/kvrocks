@@ -20,12 +20,11 @@
 
 #include "redis_stream.h"
 
+#include <rocksdb/status.h>
+
 #include <memory>
 #include <utility>
 #include <vector>
-
-#include <glog/logging.h>
-#include <rocksdb/status.h>
 
 #include "db_util.h"
 
@@ -431,6 +430,9 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
     options.end = metadata.last_entry_id;
     options.with_count = true;
     options.count = need_entries;
+    options.reverse = false;
+    options.exclude_start = false;
+    options.exclude_end = false;
 
     s = range(ns_key, metadata, options, &info->entries);
     if (!s.ok()) {

@@ -19,6 +19,7 @@
  */
 
 #include "redis_reply.h"
+
 #include <numeric>
 
 namespace Redis {

@@ -20,13 +20,13 @@
 
 #pragma once
 
+#include <rocksdb/status.h>
+
 #include <string>
 #include <vector>
 
-#include <rocksdb/status.h>
-
-#include "redis_db.h"
 #include "encoding.h"
+#include "redis_db.h"
 #include "redis_metadata.h"
 
 typedef struct FieldValue {

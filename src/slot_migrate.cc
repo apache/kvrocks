@@ -496,12 +496,13 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
                 << ", line length: " << line.length;
             stat_ = Error;
           } else if (line[0] == '$') {
-            try {
-              bulk_len = std::stoull(std::string(line.get() + 1, line.length - 1));
-              stat_ = bulk_len > 0 ? BulkData : OneRspEnd;
-            } catch (const std::exception &e) {
+            auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
+            if (!parse_result) {
               LOG(ERROR) << "[migrate] Protocol Err: expect integer";
               stat_ = Error;
+            } else {
+              bulk_len = *parse_result;
+              stat_ = bulk_len > 0 ? BulkData : OneRspEnd;
             }
           } else if (line[0] == '+' || line[0] == ':') {
               stat_ = OneRspEnd;
@@ -715,12 +716,12 @@ bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey,
   uint32_t index, offset;
   std::string index_str = inkey.GetSubKey().ToString();
   std::string fragment = (*iter)->value().ToString();
-  try {
-    index = std::stoi(index_str);
-  } catch (std::exception &e) {
+  auto parse_result = ParseInt<int>(index_str, 10);
+  if (!parse_result) {
     LOG(ERROR) << "[migrate] Parse bitmap index error, Err: " << strerror(errno);
     return false;
   }
+  index = *parse_result;
 
   // Bitmap does not have hmset-like command
   // TODO(chrisZMF): Use hmset-like command for efficiency

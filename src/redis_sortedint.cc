@@ -25,6 +25,7 @@
 #include <limits>
 
 #include "db_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 
@@ -260,11 +261,11 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
       spec->minex = true;
       sptr++;
     }
-    try {
-      spec->min = std::stoull(sptr);
-    } catch (const std::exception &e) {
+    auto parse_result = ParseInt<uint64_t>(sptr, 10);
+    if (!parse_result) {
       return Status(Status::NotOK, "the min isn't integer");
     }
+    spec->min = *parse_result;
   }
 
   if (max == "+inf") {
@@ -275,11 +276,11 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
       spec->maxex = true;
       sptr++;
     }
-    try {
-      spec->max = std::stoull(sptr);
-    } catch (const std::exception &e) {
+    auto parse_result = ParseInt<uint64_t>(sptr, 10);
+    if (!parse_result) {
       return Status(Status::NotOK, "the max isn't integer");
     }
+    spec->max = *parse_result;
   }
   return Status::OK();
 }

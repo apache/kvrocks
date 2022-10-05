@@ -21,6 +21,7 @@
 #include "redis_stream_base.h"
 #include "encoding.h"
 #include "util.h"
+#include "parse_util.h"
 
 namespace Redis {
 
@@ -60,45 +61,56 @@ rocksdb::Status GetNextStreamEntryID(const StreamEntryID &last_id, StreamEntryID
 
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
   auto pos = input.find("-");
-  try {
-    if (pos != std::string::npos) {
-      auto ms_str = input.substr(0, pos);
-      auto seq_str = input.substr(pos + 1);
-
-      id->ms = std::stoull(ms_str);
-      id->seq = std::stoull(seq_str);
-    } else {
-      id->ms = std::stoull(input);
-      id->seq = 0;
+  if (pos != std::string::npos) {
+    auto ms_str = input.substr(0, pos);
+    auto seq_str = input.substr(pos + 1);
+    auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
+    auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
+    if (!parse_ms || !parse_seq) {
+        return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
     }
-  } catch (const std::exception &) {
-    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    id->ms = *parse_ms;
+    id->seq = *parse_seq;
+  } else {
+    auto parse_input = ParseInt<uint64_t>(input, 10);
+    if (!parse_input) {
+        return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    }
+    id->ms = *parse_input;
+    id->seq = 0;
   }
-
   return Status::OK();
 }
 
 Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
   auto pos = input.find("-");
-  try {
-    if (pos != std::string::npos) {
-      auto ms_str = input.substr(0, pos);
-      auto seq_str = input.substr(pos + 1);
-
-      id->ms = std::stoull(ms_str);
-
-      if (seq_str == "*") {
-        id->any_seq_number = true;
-      } else {
-        id->seq = std::stoull(seq_str);
-      }
-    } else {
-      id->ms = std::stoull(input);
-      id->seq = 0;
+  if (pos != std::string::npos) {
+    auto ms_str = input.substr(0, pos);
+    auto seq_str = input.substr(pos + 1);
+    auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
+    if (!parse_ms) {
+      return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
     }
-  } catch (const std::exception &) {
-    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    id->ms = *parse_ms;
+
+    if (seq_str == "*") {
+      id->any_seq_number = true;
+    } else {
+      auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
+      if (!parse_seq) {
+        return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+      }
+      id->seq = *parse_seq;
+    }
+  } else {
+    auto parse_input = ParseInt<uint64_t>(input, 10);
+    if (!parse_input) {
+      return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    }
+    id->ms = *parse_input;
+    id->seq = 0;
   }
+
 
   return Status::OK();
 }
@@ -109,19 +121,23 @@ Status ParseRangeStart(const std::string &input, StreamEntryID *id) {
 
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
   auto pos = input.find("-");
-  try {
-    if (pos != std::string::npos) {
-      auto ms_str = input.substr(0, pos);
-      auto seq_str = input.substr(pos + 1);
-
-      id->ms = std::stoull(ms_str);
-      id->seq = std::stoull(seq_str);
-    } else {
-      id->ms = std::stoull(input);
-      id->seq = UINT64_MAX;
+  if (pos != std::string::npos) {
+    auto ms_str = input.substr(0, pos);
+    auto seq_str = input.substr(pos + 1);
+    auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
+    auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
+    if (!parse_ms || !parse_seq) {
+        return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
     }
-  } catch (const std::exception &) {
-    return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    id->ms = *parse_ms;
+    id->seq = *parse_seq;
+  } else {
+    auto parse_input = ParseInt<uint64_t>(input, 10);
+    if (!parse_input) {
+        return Status(Status::RedisParseErr, kErrInvalidEntryIdSpecified);
+    }
+    id->ms = *parse_input;
+    id->seq = UINT64_MAX;
   }
 
   return Status::OK();

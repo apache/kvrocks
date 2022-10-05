@@ -98,11 +98,11 @@ Status Request::Tokenize(evbuffer *input) {
         if (line[0] != '$') {
           return Status(Status::NotOK, "Protocol error: expected '$'");
         }
-        try {
-          bulk_len_ = std::stoull(std::string(line.get() + 1, line.length - 1));
-        } catch (std::exception &e) {
+        auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
+        if (!parse_result) {
           return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }
+        bulk_len_ = *parse_result;
         if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
           return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }

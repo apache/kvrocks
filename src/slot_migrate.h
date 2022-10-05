@@ -41,6 +41,7 @@
 #include "slot_import.h"
 #include "stats.h"
 #include "status.h"
+#include "parse_util.h"
 #include "util.h"
 
 #define CLUSTER_SLOTS HASH_SLOTS_SIZE

@@ -28,6 +28,7 @@
 #include "cluster.h"
 #include "redis_cmd.h"
 #include "replication.h"
+#include "parse_util.h"
 
 const char *errInvalidNodeID = "Invalid cluster node id";
 const char *errInvalidSlotID = "Invalid slot id";
@@ -530,10 +531,11 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     std::string host = fields[1];
 
     // 3) port
-    int port = std::atoi(fields[2].c_str());
-    if (port <= 0 || port >= (65535-kClusterPortIncr)) {
+    auto parse_result = ParseInt<int>(fields[2], NumericRange<int>{1, 65535 - kClusterPortIncr - 1}, 10);
+    if (!parse_result) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster node port");
     }
+    int port = *parse_result;
 
     // 4) role
     int role;
@@ -566,14 +568,16 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // 6) slot info
+    auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
     for (unsigned i = 5; i < fields.size(); i++) {
       int start, stop;
       std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
-        start = std::atoi(ranges[0].c_str());
-        if (IsValidSlot(start) == false) {
+        auto parse_result = ParseInt<int>(ranges[0], valid_range, 10);
+        if (!parse_result) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }
+        start = *parse_result;
         slots.set(start, 1);
         if (role == kClusterMaster) {
           if (slots_nodes->find(start) != slots_nodes->end()) {
@@ -583,11 +587,13 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else if (ranges.size() == 2) {
-        start = std::atoi(ranges[0].c_str());
-        stop = std::atoi(ranges[1].c_str());
-        if (start >= stop || start < 0 || stop >= kClusterSlots) {
+        auto parse_start = ParseInt<int>(ranges[0], valid_range, 10);
+        auto parse_stop = ParseInt<int>(ranges[1], valid_range, 10);
+        if (!parse_start || !parse_stop || *parse_start >= *parse_stop) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }
+        start = *parse_start;
+        stop = *parse_stop;
         for (int j = start; j <= stop; j++) {
           slots.set(j, 1);
           if (role == kClusterMaster) {

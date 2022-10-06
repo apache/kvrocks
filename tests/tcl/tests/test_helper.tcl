@@ -37,7 +37,6 @@ set ::all_tests {
     unit/type/list
     unit/type/zset
     unit/type/stream
-    unit/multi
     unit/expire
     unit/pubsub
     unit/introspection

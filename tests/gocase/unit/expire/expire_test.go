@@ -38,14 +38,14 @@ func TestExpire(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("EXPIRE - set timeouts multiple times", func(t *testing.T) {
-		rdb.Set(ctx, "x", "foobar", 0)
-		require.Equal(t, 1, rdb.Expire(ctx, "x", 5*time.Second).Val())
+		require.NoError(t, rdb.Set(ctx, "x", "foobar", 0).Err())
+		require.Equal(t, true, rdb.Expire(ctx, "x", 5*time.Second).Val())
 		ttl := rdb.TTL(ctx, "x").Val()
-		require.LessOrEqual(t, 5, ttl)
-		require.GreaterOrEqual(t, 4, ttl)
-		require.Equal(t, 1, rdb.Expire(ctx, "x", 10*time.Second).Val())
+		require.LessOrEqual(t, ttl, 5*time.Second)
+		require.GreaterOrEqual(t, ttl, 4*time.Second)
+		require.Equal(t, true, rdb.Expire(ctx, "x", 10*time.Second).Val())
 		require.Equal(t, 10*time.Second, rdb.TTL(ctx, "x").Val())
-		rdb.Expire(ctx, "x", 2*time.Second)
+		require.NoError(t, rdb.Expire(ctx, "x", 2*time.Second).Err())
 	})
 
 	t.Run("EXPIRE - It should be still possible to read 'x'", func(t *testing.T) {
@@ -53,27 +53,27 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("EXPIRE - write on expire should work", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		rdb.LPush(ctx, "x", "foo")
-		rdb.Expire(ctx, "x", 1000*time.Second)
-		rdb.LPush(ctx, "x", "bar")
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.LPush(ctx, "x", "foo").Err())
+		require.NoError(t, rdb.Expire(ctx, "x", 1000*time.Second).Err())
+		require.NoError(t, rdb.LPush(ctx, "x", "bar").Err())
 		require.Equal(t, []string{"bar", "foo"}, rdb.LRange(ctx, "x", 0, -1).Val())
 	})
 
 	t.Run("EXPIREAT - Check for EXPIRE alike behavior", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		rdb.Set(ctx, "x", "foo", 0)
-		rdb.ExpireAt(ctx, "x", time.Now().Add(15*time.Second))
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
+		require.NoError(t, rdb.ExpireAt(ctx, "x", time.Now().Add(15*time.Second)).Err())
 		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, 13, ttl)
-		require.LessOrEqual(t, 16, ttl)
+		require.GreaterOrEqual(t, ttl, 13*time.Second)
+		require.LessOrEqual(t, ttl, 16*time.Second)
 	})
 
 	t.Run("SETEX - Set + Expire combo operation. Check for TTL", func(t *testing.T) {
-		rdb.SetEx(ctx, "x", "test", 12*time.Second)
+		require.NoError(t, rdb.SetEx(ctx, "x", "test", 12*time.Second).Err())
 		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, 10, ttl)
-		require.LessOrEqual(t, 12, ttl)
+		require.GreaterOrEqual(t, ttl, 10*time.Second)
+		require.LessOrEqual(t, ttl, 12*time.Second)
 	})
 
 	t.Run("SETEX - Check value", func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("SETEX - Overwrite old key", func(t *testing.T) {
-		rdb.SetEx(ctx, "y", "foo", 1*time.Second)
+		require.NoError(t, rdb.SetEx(ctx, "y", "foo", 1*time.Second).Err())
 		require.Equal(t, "foo", rdb.Get(ctx, "y").Val())
 	})
 
@@ -91,27 +91,27 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("PERSIST can undo an EXPIRE", func(t *testing.T) {
-		rdb.Set(ctx, "x", "foo", 0)
-		rdb.Expire(ctx, "x", 12*time.Second)
+		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
+		require.NoError(t, rdb.Expire(ctx, "x", 12*time.Second).Err())
 		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, 10, ttl)
-		require.LessOrEqual(t, 12, ttl)
-		require.Equal(t, 1, rdb.Persist(ctx, "x").Val())
-		require.Equal(t, -1, rdb.TTL(ctx, "x").Val())
+		require.GreaterOrEqual(t, ttl, 10*time.Second)
+		require.LessOrEqual(t, ttl, 12*time.Second)
+		require.Equal(t, true, rdb.Persist(ctx, "x").Val())
+		require.Equal(t, time.Duration(-1), rdb.TTL(ctx, "x").Val())
 		require.Equal(t, "foo", rdb.Get(ctx, "x").Val())
 	})
 
 	t.Run("PERSIST returns 0 against non existing or non volatile keys", func(t *testing.T) {
-		rdb.Set(ctx, "x", "foo", 0)
-		require.Equal(t, 0, rdb.Persist(ctx, "foo").Val())
-		require.Equal(t, 0, rdb.Persist(ctx, "nokeyatall").Val())
+		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
+		require.Equal(t, false, rdb.Persist(ctx, "foo").Val())
+		require.Equal(t, false, rdb.Persist(ctx, "nokeyatall").Val())
 	})
 
 	t.Run("EXPIRE pricision is now the millisecond", func(t *testing.T) {
 		a, b := "", ""
 		for i := 0; i < 3; i++ {
-			rdb.Del(ctx, "x")
-			rdb.SetEx(ctx, "x", "somevalue", 1*time.Second)
+			require.NoError(t, rdb.Del(ctx, "x").Err())
+			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
 			time.Sleep(900 * time.Millisecond)
 			a = rdb.Get(ctx, "x").Val()
 			time.Sleep(1100 * time.Millisecond)
@@ -127,22 +127,22 @@ func TestExpire(t *testing.T) {
 	t.Run("PEXPIRE/PSETEX/PEXPIREAT can set sub-second expires", func(t *testing.T) {
 		a, b, c, d, e, f := "", "", "", "", "", ""
 		for i := 0; i < 3; i++ {
-			rdb.Del(ctx, "x", "y", "z")
-			rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond)
+			require.NoError(t, rdb.Del(ctx, "x", "y", "z").Err())
+			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
 			time.Sleep(80 * time.Millisecond)
 			a = rdb.Get(ctx, "x").Val()
 			time.Sleep(2100 * time.Millisecond)
 			b = rdb.Get(ctx, "x").Val()
 
-			rdb.Set(ctx, "x", "somevalue", 0)
-			rdb.Expire(ctx, "x", 100*time.Millisecond)
+			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
+			require.NoError(t, rdb.PExpire(ctx, "x", 100*time.Millisecond).Err())
 			time.Sleep(80 * time.Millisecond)
 			c = rdb.Get(ctx, "x").Val()
 			time.Sleep(2100 * time.Millisecond)
 			d = rdb.Get(ctx, "x").Val()
 
-			rdb.Set(ctx, "x", "somevalue", 0)
-			rdb.ExpireAt(ctx, "x", time.UnixMilli(time.Now().UnixMilli()*1000+100))
+			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
+			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli((time.Now().Unix()*1000+100))).Err())
 			time.Sleep(80 * time.Millisecond)
 			e = rdb.Get(ctx, "x").Val()
 			time.Sleep(2100 * time.Millisecond)
@@ -157,58 +157,59 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("TTL returns tiem to live in seconds", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		rdb.SetEx(ctx, "x", "somevalue", 10*time.Second)
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 10*time.Second).Err())
 		ttl := rdb.TTL(ctx, "x").Val()
-		require.Greater(t, 8, ttl)
-		require.LessOrEqual(t, 10, ttl)
+		require.Greater(t, ttl, 8*time.Second)
+		require.LessOrEqual(t, ttl, 10*time.Second)
 	})
 
 	t.Run("PTTL returns time to live in milliseconds", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		rdb.SetEx(ctx, "x", "somevalue", 1*time.Second)
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
 		ttl := rdb.PTTL(ctx, "x").Val()
-		require.Greater(t, 900, ttl)
-		require.LessOrEqual(t, 1000, ttl)
+		require.Greater(t, ttl, 900*time.Millisecond)
+		require.LessOrEqual(t, ttl, 1000*time.Millisecond)
 	})
 
 	t.Run("TTL / PTTL return -1 if key has no expire", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		rdb.Set(ctx, "x", "hello", 0)
-		require.Equal(t, -1, rdb.TTL(ctx, "x").Val())
-		require.Equal(t, -1, rdb.PTTL(ctx, "x").Val())
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", "hello", 0).Err())
+		require.Equal(t, time.Duration(-1), rdb.TTL(ctx, "x").Val())
+		require.Equal(t, time.Duration(-1), rdb.PTTL(ctx, "x").Val())
 	})
 
 	t.Run("TTL / PTTL return -2 if key does not exit", func(t *testing.T) {
-		rdb.Del(ctx, "x")
-		require.Equal(t, -2, rdb.TTL(ctx, "x").Val())
-		require.Equal(t, -2, rdb.PTTL(ctx, "x").Val())
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.Equal(t, time.Duration(-2), rdb.TTL(ctx, "x").Val())
+		require.Equal(t, time.Duration(-2), rdb.PTTL(ctx, "x").Val())
 	})
 
 	t.Run("Redis should actively expire keys incrementally", func(t *testing.T) {
-		rdb.FlushDB(ctx)
-		rdb.SetEx(ctx, "key1", "a", 500*time.Millisecond)
-		rdb.SetEx(ctx, "key2", "a", 500*time.Millisecond)
-		rdb.SetEx(ctx, "key3", "a", 500*time.Millisecond)
-		// rdb.DBSize(ctx)
-		// rdb.Scan(ctx)
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key1", 500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key2", 500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key3", 500, "a").Err())
+		//require.NoError(t, rdb.Set(ctx, "key1", "a", 500*time.Millisecond).Err())
+		//require.NoError(t, rdb.Set(ctx, "key2", "a", 500*time.Millisecond).Err())
+		//require.NoError(t, rdb.Set(ctx, "key3", "a", 500*time.Millisecond).Err())
+		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())
 		time.Sleep(100 * time.Millisecond)
-		require.Equal(t, 3, rdb.DBSize(ctx).Val())
+		require.Equal(t, int64(3), rdb.DBSize(ctx).Val())
 		time.Sleep(2000 * time.Millisecond)
-		// rdb.DBSize()
-		// rdb.Scan()
+		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())
 		time.Sleep(100 * time.Millisecond)
-		require.Equal(t, 0, rdb.DBSize(ctx).Val())
+		require.Equal(t, int64(0), rdb.DBSize(ctx).Val())
 	})
 
 	t.Run("5 keys in, 5 keys out", func(t *testing.T) {
-		rdb.FlushDB(ctx)
-		rdb.Set(ctx, "a", "c", 0)
-		rdb.Expire(ctx, "a", 5*time.Second)
-		rdb.Set(ctx, "t", "c", 0)
-		rdb.Set(ctx, "e", "c", 0)
-		rdb.Set(ctx, "s", "c", 0)
-		rdb.Set(ctx, "foo", "b", 0)
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		require.NoError(t, rdb.Set(ctx, "a", "c", 0).Err())
+		require.NoError(t, rdb.Expire(ctx, "a", 5*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "t", "c", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "e", "c", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "s", "c", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "b", 0).Err())
 		res := rdb.Keys(ctx, "*").Val()
 		sort.Strings(res)
 		require.Equal(t, []string{"a", "e", "foo", "s", "t"}, res)

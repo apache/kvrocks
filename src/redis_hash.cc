@@ -19,13 +19,15 @@
  */
 
 #include "redis_hash.h"
-#include <cctype>
-#include <utility>
-#include <algorithm>
-#include <limits>
-#include <cmath>
-#include <iostream>
+
 #include <rocksdb/status.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <utility>
+
 #include "db_util.h"
 #include "parse_util.h"
 

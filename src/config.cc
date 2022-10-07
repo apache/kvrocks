@@ -18,9 +18,14 @@
  *
  */
 
+#include "config.h"
+
+#include <rocksdb/env.h>
+
 #include <fcntl.h>
-#include <string.h>
 #include <strings.h>
+
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -29,18 +34,14 @@
 #include <limits>
 #include <algorithm>
 #include <cctype>
-#include <glog/logging.h>
-#include <rocksdb/env.h>
 
-#include "config.h"
 #include "config_type.h"
+#include "config_util.h"
+#include "server.h"
+#include "status.h"
 #include "tls_util.h"
 #include "util.h"
-#include "status.h"
-#include "cron.h"
-#include "server.h"
-#include "log_collector.h"
-#include "config_util.h"
+#include "parse_util.h"
 
 const char *kDefaultNamespace = "__namespace";
 
@@ -100,9 +101,9 @@ Config::Config() {
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
-      {"port", true, new IntField(&port, kDefaultPort, 1, 65535)},
+      {"port", true, new IntField(&port, kDefaultPort, 1, PORT_LIMIT)},
 #ifdef ENABLE_OPENSSL
-      {"tls-port", true, new IntField(&tls_port, 0, 0, 65535)},
+      {"tls-port", true, new IntField(&tls_port, 0, 0, PORT_LIMIT)},
       {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
       {"tls-key-file", false, new StringField(&tls_key_file, "")},
       {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},
@@ -357,10 +358,11 @@ void Config::initFieldCallback() {
         if (args.size() != 2) return Status(Status::NotOK, "wrong number of arguments");
         if (args[0] != "no" && args[1] != "one") {
           master_host = args[0];
-          master_port = std::atoi(args[1].c_str());
-          if (master_port <= 0 || master_port >= 65535) {
+          auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, PORT_LIMIT - 1}, 10);
+          if (!parse_result) {
             return Status(Status::NotOK, "should be between 0 and 65535");
           }
+          master_port = *parse_result;
         }
         return Status::OK();
       }},
@@ -474,11 +476,11 @@ void Config::initFieldCallback() {
           return Status(Status::NotOK, errNotEnableBlobDB);
         }
         int val;
-        try {
-          val = std::stoi(v);
-        } catch (std::exception &e) {
+        auto parse_result = ParseInt<int>(v, 10);
+        if (!parse_result) {
           return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");
         }
+        val = *parse_result;
         if (val < 0 || val > 100) {
           return Status(Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
         }

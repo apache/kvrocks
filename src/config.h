@@ -19,6 +19,8 @@
  */
 
 #pragma once
+
+#include <rocksdb/options.h>
 #include <sys/resource.h>
 
 #include <map>
@@ -27,17 +29,16 @@
 #include <string>
 #include <vector>
 
-#include <rocksdb/options.h>
-
 #include "config_type.h"
-#include "status.h"
 #include "cron.h"
+#include "status.h"
 
 // forward declaration
 class Server;
 namespace Engine {
 class Storage;
 }
+#define PORT_LIMIT 65535
 
 #define SUPERVISED_NONE 0
 #define SUPERVISED_AUTODETECT 1

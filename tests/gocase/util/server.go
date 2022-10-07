@@ -21,6 +21,7 @@ package util
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -33,6 +34,10 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+var binPath = flag.String("binPath", "", "directory including kvrocks build files")
+var workspace = flag.String("workspace", "", "directory of cases workspace")
+var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
 
 type KvrocksServer struct {
 	t    testing.TB
@@ -69,7 +74,7 @@ func (s *KvrocksServer) NewTCPClient() *TCPClient {
 
 func (s *KvrocksServer) Close() {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
-	timer := time.AfterFunc(k8sDefaultGracePeriod*time.Second, func() {
+	timer := time.AfterFunc(defaultGracePeriod, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()
@@ -78,8 +83,8 @@ func (s *KvrocksServer) Close() {
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	b := os.Getenv("KVROCKS_BIN_PATH")
-	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
+	b := *binPath
+	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -87,8 +92,8 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["bind"] = addr.IP.String()
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
-	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
+	dir := *workspace
+	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
@@ -127,6 +132,9 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 		clean: func() {
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())
+			if *deleteOnExit {
+				require.NoError(t, os.RemoveAll(dir))
+			}
 		},
 	}
 }

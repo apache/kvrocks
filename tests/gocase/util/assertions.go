@@ -23,9 +23,25 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/constraints"
 )
 
 func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interface{}) {
-	require.Error(t, err, msgAndArgs)
-	require.Regexp(t, rx, err.Error(), msgAndArgs)
+	require.Error(t, err, msgAndArgs...)
+	require.Regexp(t, rx, err.Error(), msgAndArgs...)
+}
+
+func BetweenValues[T constraints.Ordered](t testing.TB, d, start, end T, msgAndArgs ...interface{}) {
+	require.GreaterOrEqual(t, d, start, msgAndArgs...)
+	require.LessOrEqual(t, d, end, msgAndArgs...)
+}
+
+func RetryEventually(t testing.TB, condition func() bool, maxAttempts int, msgAndArgs ...interface{}) {
+	require.Greater(t, maxAttempts, 0, msgAndArgs...)
+	for i := 0; i < maxAttempts; i++ {
+		if condition() {
+			return
+		}
+	}
+	require.Fail(t, "Condition never satisfied", msgAndArgs...)
 }

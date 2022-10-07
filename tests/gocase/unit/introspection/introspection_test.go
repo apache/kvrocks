@@ -184,7 +184,7 @@ func TestIntrospection(t *testing.T) {
 
 		now := time.Now()
 		require.NoError(t, rdb.Set(ctx, "a", "b", 0).Err())
-		require.GreaterOrEqual(t, time.Now().Sub(now).Seconds(), 2.0)
+		require.GreaterOrEqual(t, time.Since(now).Seconds(), 2.0)
 	})
 }
 

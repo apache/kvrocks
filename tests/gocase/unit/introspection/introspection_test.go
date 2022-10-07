@@ -145,7 +145,7 @@ func TestIntrospection(t *testing.T) {
 		require.NoError(t, r.Err())
 		require.Equal(t, "[subscribe foo 1]", fmt.Sprintf("%v", r.Val()))
 
-		//// psubscribe clients
+		// psubscribe clients
 		c1 := srv.NewClient()
 		defer func() { require.NoError(t, c1.Close()) }()
 		require.NoError(t, c1.Do(ctx, "CLIENT", "SETNAME", "pubsub").Err())
@@ -153,7 +153,7 @@ func TestIntrospection(t *testing.T) {
 		require.NoError(t, r.Err())
 		require.Equal(t, "[psubscribe bar.* 1]", fmt.Sprintf("%v", r.Val()))
 
-		//// normal clients
+		// normal clients
 		c2 := srv.NewClient()
 		require.NoError(t, c2.Do(ctx, "CLIENT", "SETNAME", "normal").Err())
 		defer func() { require.NoError(t, c2.Close()) }()

@@ -39,7 +39,6 @@ set ::all_tests {
     unit/type/stream
     unit/expire
     unit/pubsub
-    unit/introspection
     unit/geo
     integration/slotmigrate
     integration/slotimport

@@ -38,7 +38,6 @@ set ::all_tests {
     unit/type/zset
     unit/type/stream
     unit/pubsub
-    unit/introspection
     unit/geo
     integration/slotmigrate
     integration/slotimport

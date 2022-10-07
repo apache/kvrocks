@@ -183,13 +183,13 @@ rocksdb::Options Storage::InitOptions() {
   options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
   options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
 
-  if (config_->RocksDB.enable_db_paths &&
-      !config_->RocksDB.db_paths0.empty() && !config_->RocksDB.db_paths1.empty()
-      && config_->RocksDB.db_paths0_size_gb > 0 && config_->RocksDB.db_paths1_size_gb > 0) {
-    options.db_paths = {
-      {config_->RocksDB.db_paths0, config_->RocksDB.db_paths0_size_gb * GiB},
-      {config_->RocksDB.db_paths1, config_->RocksDB.db_paths1_size_gb * GiB}
-    };
+  if (!config_->RocksDB.db_paths.empty()) {
+    std::vector<std::string> paths = Util::Split(config_->RocksDB.db_paths, ";");
+    for (auto & path_size : paths) {
+      std::vector<std::string> ps = Util::Split(path_size, " \t");
+      // auto parse_result = ParseInt<uint32_t>(ps[1]);
+      // options.db_paths.emplace_back(rocksdb::DbPath(ps[0], *parse_result * GiB));
+    }
   }
 
   return options;

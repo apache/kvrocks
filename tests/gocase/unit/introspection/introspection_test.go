@@ -141,25 +141,19 @@ func TestIntrospection(t *testing.T) {
 		c0 := srv.NewClient()
 		defer func() { require.NoError(t, c0.Close()) }()
 		require.NoError(t, c0.Do(ctx, "CLIENT", "SETNAME", "pubsub").Err())
-		v, err := c0.Subscribe(ctx, "foo").Receive(ctx)
-		require.NoError(t, err)
-		msg := v.(*redis.Subscription)
-		require.Equal(t, "subscribe", msg.Kind)
-		require.Equal(t, "foo", msg.Channel)
-		require.Equal(t, 1, msg.Count)
+		r := c0.Do(ctx, "SUBSCRIBE", "foo")
+		require.NoError(t, r.Err())
+		require.Equal(t, "[subscribe foo 1]", fmt.Sprintf("%v", r.Val()))
 
-		// psubscribe clients
+		//// psubscribe clients
 		c1 := srv.NewClient()
 		defer func() { require.NoError(t, c1.Close()) }()
-		require.NoError(t, c1.Do(ctx, "CLIENT", "SETNAME", "pubsub_patterns").Err())
-		v, err = c1.PSubscribe(ctx, "bar.*").Receive(ctx)
-		require.NoError(t, err)
-		msg = v.(*redis.Subscription)
-		require.Equal(t, "psubscribe", msg.Kind)
-		require.Equal(t, "bar.*", msg.Channel)
-		require.Equal(t, 1, msg.Count)
+		require.NoError(t, c1.Do(ctx, "CLIENT", "SETNAME", "pubsub").Err())
+		r = c1.Do(ctx, "PSUBSCRIBE", "bar.*")
+		require.NoError(t, r.Err())
+		require.Equal(t, "[psubscribe bar.* 1]", fmt.Sprintf("%v", r.Val()))
 
-		// normal clients
+		//// normal clients
 		c2 := srv.NewClient()
 		require.NoError(t, c2.Do(ctx, "CLIENT", "SETNAME", "normal").Err())
 		defer func() { require.NoError(t, c2.Close()) }()
@@ -168,7 +162,6 @@ func TestIntrospection(t *testing.T) {
 
 		// now the pubsub client should no longer be listed
 		// but normal client should not be dropped
-		t.Skip("cannot run the following assertions")
 		require.Eventually(t, func() bool {
 			r := rdb.ClientList(ctx).Val()
 			fmt.Printf("CLIENT LIST: %v\n", r)

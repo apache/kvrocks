@@ -175,6 +175,10 @@ func TestIntrospection(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.WriteArgs("DEBUG", "sleep", "2.2"))
 
+		// sleep 100ms to prevent the successive set command to be executed
+		// before the debug command since there are in the different connection.
+		time.Sleep(100 * time.Millisecond)
+
 		now := time.Now()
 		require.NoError(t, rdb.Set(ctx, "a", "b", 0).Err())
 		require.GreaterOrEqual(t, time.Since(now).Seconds(), 2.0)

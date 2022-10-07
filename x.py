@@ -133,6 +133,7 @@ def cppcheck() -> None:
     options.append("--enable=warning,portability,information")
     options.append("--error-exitcode=1")
     options.append("--inline-suppr")
+    options.append("-isrc/redis_rdb.cc")
 
     sources = ["src"]
 

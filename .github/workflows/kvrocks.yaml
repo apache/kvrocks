@@ -154,7 +154,8 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+            ~/local/bin/redis-server
+          key: ${{ runner.os }}-redis
 
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
@@ -176,7 +177,7 @@ jobs:
           curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
           tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && BUILD_TLS=yes make MALLOC=libc -j$NPROC redis-cli redis-server && mv src/redis-cli src/redis-server $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3
@@ -204,7 +205,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export ${{ matrix.runtime_env_vars }}
-          ./x.py test go build
+          ./x.py test go build -redisBinPath=$HOME/local/bin/redis-server
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"

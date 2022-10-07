@@ -27,10 +27,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
-	"strings"
 
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
@@ -59,8 +59,8 @@ type Server struct {
 	clean func()
 }
 
-func (s *Server) GetDir() string {
-	return s.dir
+func (s *Server) HostPort() string {
+	return s.addr.AddrPort().String()
 }
 
 func (s *Server) Host() string {
@@ -69,6 +69,10 @@ func (s *Server) Host() string {
 
 func (s *Server) Port() uint16 {
 	return s.addr.AddrPort().Port()
+}
+
+func (s *Server) GetDir() string {
+	return s.dir
 }
 
 func (s *Server) NewClient() *redis.Client {

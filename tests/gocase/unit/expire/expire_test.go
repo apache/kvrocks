@@ -39,11 +39,9 @@ func TestExpire(t *testing.T) {
 
 	t.Run("EXPIRE - set timeouts multiple times", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", "foobar", 0).Err())
-		require.Equal(t, true, rdb.Expire(ctx, "x", 5*time.Second).Val())
-		ttl := rdb.TTL(ctx, "x").Val()
-		require.LessOrEqual(t, ttl, 5*time.Second)
-		require.GreaterOrEqual(t, ttl, 4*time.Second)
-		require.Equal(t, true, rdb.Expire(ctx, "x", 10*time.Second).Val())
+		require.True(t, rdb.Expire(ctx, "x", 5*time.Second).Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 4*time.Second, 5*time.Second)
+		require.True(t, rdb.Expire(ctx, "x", 10*time.Second).Val())
 		require.Equal(t, 10*time.Second, rdb.TTL(ctx, "x").Val())
 		require.NoError(t, rdb.Expire(ctx, "x", 2*time.Second).Err())
 	})
@@ -70,16 +68,12 @@ func TestExpire(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "x").Err())
 		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
 		require.NoError(t, rdb.ExpireAt(ctx, "x", time.Now().Add(15*time.Second)).Err())
-		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, ttl, 13*time.Second)
-		require.LessOrEqual(t, ttl, 16*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 13*time.Second, 16*time.Second)
 	})
 
 	t.Run("SETEX - Set + Expire combo operation. Check for TTL", func(t *testing.T) {
 		require.NoError(t, rdb.SetEx(ctx, "x", "test", 12*time.Second).Err())
-		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, ttl, 10*time.Second)
-		require.LessOrEqual(t, ttl, 12*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 10*time.Second, 12*time.Second)
 	})
 
 	t.Run("SETEX - Check value", func(t *testing.T) {
@@ -97,47 +91,46 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("SETEX - Wrong time parameter", func(t *testing.T) {
-		pattern := ".*invalid expire*."
-		util.ErrorRegexp(t, rdb.SetEx(ctx, "z", "foo", -10).Err(), pattern)
+		util.ErrorRegexp(t, rdb.SetEx(ctx, "z", "foo", -10).Err(), ".*invalid expire*.")
 	})
 
 	t.Run("PERSIST can undo an EXPIRE", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
 		require.NoError(t, rdb.Expire(ctx, "x", 12*time.Second).Err())
-		ttl := rdb.TTL(ctx, "x").Val()
-		require.GreaterOrEqual(t, ttl, 10*time.Second)
-		require.LessOrEqual(t, ttl, 12*time.Second)
-		require.Equal(t, true, rdb.Persist(ctx, "x").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 10*time.Second, 12*time.Second)
+		require.True(t, rdb.Persist(ctx, "x").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "x").Val())
 		require.Equal(t, "foo", rdb.Get(ctx, "x").Val())
 	})
 
 	t.Run("PERSIST returns 0 against non existing or non volatile keys", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
-		require.Equal(t, false, rdb.Persist(ctx, "foo").Val())
-		require.Equal(t, false, rdb.Persist(ctx, "nokeyatall").Val())
+		require.False(t, rdb.Persist(ctx, "foo").Val())
+		require.False(t, rdb.Persist(ctx, "nokeyatall").Val())
 	})
 
-	t.Run("EXPIRE pricision is now the millisecond", func(t *testing.T) {
+	t.Run("EXPIRE precision is now the millisecond", func(t *testing.T) {
+		// This test is very likely to do a false positive if the server is under pressure,
+		// so if it does not work give it a few more chances.
 		a, b := "", ""
-		for i := 0; i < 3; i++ {
+		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
 			time.Sleep(900 * time.Millisecond)
 			a = rdb.Get(ctx, "x").Val()
 			time.Sleep(1100 * time.Millisecond)
 			b = rdb.Get(ctx, "x").Val()
-			if a == "somevalue" && b == "" {
-				break
-			}
-		}
+			return a == "somevalue" && b == ""
+		}, 3)
 		require.Equal(t, "somevalue", a)
 		require.Equal(t, "", b)
 	})
 
 	t.Run("PEXPIRE/PSETEX/PEXPIREAT can set sub-second expires", func(t *testing.T) {
+		// This test is very likely to do a false positive if the server is under pressure,
+		// so if it does not work give it a few more chances.
 		a, b, c, d, e, f := "", "", "", "", "", ""
-		for i := 0; i < 3; i++ {
+		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x", "y", "z").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
 			time.Sleep(80 * time.Millisecond)
@@ -153,34 +146,28 @@ func TestExpire(t *testing.T) {
 			d = rdb.Get(ctx, "x").Val()
 
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
-			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli((time.Now().Unix()*1000+100))).Err())
+			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+100)).Err())
 			time.Sleep(80 * time.Millisecond)
 			e = rdb.Get(ctx, "x").Val()
 			time.Sleep(2100 * time.Millisecond)
 			f = rdb.Get(ctx, "x").Val()
 
-			if a == "somevalue" && b == "" && c == "somevalue" && d == "" && e == "somevalue" && f == "" {
-				break
-			}
-		}
+			return a == "somevalue" && b == "" && c == "somevalue" && d == "" && e == "somevalue" && f == ""
+		}, 3)
 		require.Equal(t, "somevalue", a)
 		require.Equal(t, "", b)
 	})
 
-	t.Run("TTL returns tiem to live in seconds", func(t *testing.T) {
+	t.Run("TTL returns time to live in seconds", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "x").Err())
 		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 10*time.Second).Err())
-		ttl := rdb.TTL(ctx, "x").Val()
-		require.Greater(t, ttl, 8*time.Second)
-		require.LessOrEqual(t, ttl, 10*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 8*time.Second, 10*time.Second)
 	})
 
 	t.Run("PTTL returns time to live in milliseconds", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "x").Err())
 		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
-		ttl := rdb.PTTL(ctx, "x").Val()
-		require.Greater(t, ttl, 900*time.Millisecond)
-		require.LessOrEqual(t, ttl, 1000*time.Millisecond)
+		util.BetweenValues(t, rdb.PTTL(ctx, "x").Val(), 900*time.Millisecond, 1000*time.Millisecond)
 	})
 
 	t.Run("TTL / PTTL return -1 if key has no expire", func(t *testing.T) {
@@ -225,8 +212,7 @@ func TestExpire(t *testing.T) {
 
 	t.Run("EXPIRE with empty string as TTL should report an error", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-		pattern := ".*not an integer*."
-		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), pattern)
+		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), ".*not an integer*.")
 	})
 
 }

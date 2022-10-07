@@ -37,8 +37,6 @@ func TestString(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-	c := srv.NewTCPClient()
-	defer func() { require.NoError(t, c.Close()) }()
 
 	t.Run("SET and GET an item", func(t *testing.T) {
 		key := "x"
@@ -356,66 +354,34 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("Extended SET can detect syntax errors", func(t *testing.T) {
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "non-existing-option"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "non-existing-option").Err(), "syntax error")
 	})
 
 	t.Run("Extended SET NX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "1", "nx"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "2", "nx"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "$-1", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "1", "nx").Val())
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "2", "nx").Err())
 		require.Equal(t, "1", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("Extended SET XX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "1", "xx"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "$-1", r)
-
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "1", "xx").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "2", "xx"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "2", "xx").Val())
 		require.Equal(t, "2", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("Extended SET EX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "ex", "10"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "ex", "10").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
 	})
 
 	t.Run("Extended SET PX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "px", "10000"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "px", "10000").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
 	})
@@ -424,11 +390,7 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 
 		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).Unix(), 10)
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "exat", expireAt))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt).Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
 	})
@@ -436,19 +398,13 @@ func TestString(t *testing.T) {
 	t.Run("Extended SET EXAT option with expired timestamp", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "exat", "1"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", "1").Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 
 		expireAt := strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "exat", expireAt))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt).Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 	})
 
@@ -456,10 +412,7 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 
 		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "pxat", expireAt))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", expireAt).Val())
 
 		ttl := rdb.TTL(ctx, "foo").Val()
 		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
@@ -468,74 +421,34 @@ func TestString(t *testing.T) {
 	t.Run("Extended SET PXAT option with expired timestamp", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "pxat", "1"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1").Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 
 		expireAt := strconv.FormatInt(time.Now().Add(-5*time.Second).UnixMilli(), 10)
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "pxat", expireAt))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", expireAt).Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("Extended SET with incorrect use of multi options should result in syntax err", func(t *testing.T) {
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "ex", "10", "px", "10000"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "syntax err")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "NX", "XX"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "10", "px", "10000").Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "NX", "XX").Err(), "syntax err")
 	})
 
 	t.Run("Extended SET with incorrect expire value", func(t *testing.T) {
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "ex", "1234xyz"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "not an integer")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "ex", "0"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid expire time")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "exat", "1234xyz"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "not an integer")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "exat", "0"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid expire time")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "pxat", "1234xyz"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "not an integer")
-
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "pxat", "0"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid expire time")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "1234xyz").Err(), "not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "0").Err(), "invalid expire time")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "1234xyz").Err(), "not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "0").Err(), "invalid expire time")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1234xyz").Err(), "not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "0").Err(), "invalid expire time")
 	})
 
 	t.Run("Extended SET using multiple options at once", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 
-		require.NoError(t, c.WriteArgs("SET", "foo", "bar", "xx", "px", "10000"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
-
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "xx", "px", "10000").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
 	})
@@ -548,61 +461,32 @@ func TestString(t *testing.T) {
 	t.Run("CAS normal case", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "old_value", "new_value"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":-1", r)
-
+		require.EqualValues(t, -1, rdb.Do(ctx, "CAS", "cas_key", "old_value", "new_value").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "cas_key").Val())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "old_value", 0).Err())
-
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "old_val", "new_value"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":0", r)
+		require.EqualValues(t, 0, rdb.Do(ctx, "CAS", "cas_key", "old_val", "new_value").Val())
 		require.Equal(t, "old_value", rdb.Get(ctx, "cas_key").Val())
-
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "old_value", "new_value"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":1", r)
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "old_value", "new_value").Val())
 		require.Equal(t, "new_value", rdb.Get(ctx, "cas_key").Val())
 	})
 
 	t.Run("CAS wrong key type", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a_list_key").Err())
 		require.NoError(t, rdb.LPush(ctx, "a_list_key", "123").Err())
-
-		require.NoError(t, c.WriteArgs("CAS", "a_list_key", "123", "234"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "WRONGTYPE")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "a_list_key", "123", "234").Err(), "WRONGTYPE")
 	})
 
 	t.Run("CAS invalid param num", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
-
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "123"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "ERR wrong number of arguments")
-
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "123", "234", "ex"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123").Err(), "ERR wrong number of arguments")
 	})
 
 	t.Run("CAS expire", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
 
-		require.NoError(t, c.WriteArgs("CAS", "cas_key", "123", "234", "ex", "1"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, r, ":1")
-
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", "1").Val())
 		require.Equal(t, "234", rdb.Get(ctx, "cas_key").Val())
 
 		require.Eventually(t, func() bool {
@@ -613,37 +497,17 @@ func TestString(t *testing.T) {
 	t.Run("CAD normal case", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cad_key").Err())
 
-		require.NoError(t, c.WriteArgs("CAD", "cad_key", "123"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":-1", r)
-
+		require.EqualValues(t, -1, rdb.Do(ctx, "CAD", "cad_key", "123").Val())
 		require.NoError(t, rdb.Set(ctx, "cad_key", "123", 0).Err())
-
-		require.NoError(t, c.WriteArgs("CAD", "cad_key", "234"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":0", r)
-
-		require.NoError(t, c.WriteArgs("CAD", "cad_key", "123"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, ":1", r)
-
+		require.EqualValues(t, 0, rdb.Do(ctx, "CAD", "cad_key", "234").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAD", "cad_key", "123").Val())
 		require.Equal(t, "", rdb.Get(ctx, "cad_key").Val())
 	})
 
 	t.Run("CAD invalid param num", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "cad_key", "123", 0).Err())
 
-		require.NoError(t, c.WriteArgs("CAD", "cad_key"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "ERR wrong number of arguments")
-
-		require.NoError(t, c.WriteArgs("CAD", "cad_key", "123", "234"))
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "CAD", "cad_key").Err(), "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "CAD", "cad_key", "123", "234").Err(), "ERR wrong number of arguments")
 	})
 }

@@ -148,7 +148,7 @@ func TestIntrospection(t *testing.T) {
 		// psubscribe clients
 		c1 := srv.NewClient()
 		defer func() { require.NoError(t, c1.Close()) }()
-		require.NoError(t, c1.Do(ctx, "CLIENT", "SETNAME", "pubsub").Err())
+		require.NoError(t, c1.Do(ctx, "CLIENT", "SETNAME", "pubsub_patterns").Err())
 		r = c1.Do(ctx, "PSUBSCRIBE", "bar.*")
 		require.NoError(t, r.Err())
 		require.Equal(t, "[psubscribe bar.* 1]", fmt.Sprintf("%v", r.Val()))
@@ -164,7 +164,6 @@ func TestIntrospection(t *testing.T) {
 		// but normal client should not be dropped
 		require.Eventually(t, func() bool {
 			r := rdb.ClientList(ctx).Val()
-			fmt.Printf("CLIENT LIST: %v\n", r)
 			return strings.Count(r, "pubsub") == 0 && strings.Count(r, "normal") == 1
 		}, 5*time.Second, 100*time.Millisecond)
 	})

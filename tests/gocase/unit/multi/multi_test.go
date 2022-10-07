@@ -123,7 +123,7 @@ func TestMulti(t *testing.T) {
 		require.Equal(t, "PONG", rdb.Ping(ctx).Val())
 	})
 
-	{
+	func() {
 		newSrv := util.StartServer(t, map[string]string{})
 		defer newSrv.Close()
 
@@ -152,5 +152,5 @@ func TestMulti(t *testing.T) {
 				require.Equal(t, "master", util.FindInfoEntry(t, rdb, "role"))
 			}
 		})
-	}
+	}()
 }

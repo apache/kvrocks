@@ -47,6 +47,10 @@ type KvrocksServer struct {
 	clean func()
 }
 
+func (s *KvrocksServer) HostPort() string {
+	return s.addr.AddrPort().String()
+}
+
 func (s *KvrocksServer) Host() string {
 	return s.addr.AddrPort().Addr().String()
 }

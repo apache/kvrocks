@@ -40,7 +40,7 @@ start_server {tags {"repl"} overrides {use-rsid-psync yes}} {
             set C [srv 0 client]
             set C_host [srv 0 host]
             set C_port [srv 0 port]
-            
+
             $C slaveof [srv -1 host] [srv -1 port]
             wait_for_sync $C
 

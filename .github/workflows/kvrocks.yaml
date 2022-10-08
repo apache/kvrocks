@@ -214,7 +214,10 @@ jobs:
             echo "sanitizer error was reported, exiting..."
             exit 1
           fi
-
+      - name: Run benchmark
+        run: |
+          export ${{ matrix.runtime_env_vars }}
+          ./x.py bench
       - name: Run Redis Tcl Test
         run: |
           export ${{ matrix.runtime_env_vars }}

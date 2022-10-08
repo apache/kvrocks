@@ -43,6 +43,10 @@
 #include <cerrno>
 #include <cmath>
 #include <string>
+#include <cstddef>
+#include <unordered_set>
+#include <unordered_map>
+#include <vector>
 
 #include "event_util.h"
 #include "parse_util.h"
@@ -342,6 +346,33 @@ int GetLocalPort(int fd) {
   }
 
   return 0;
+}
+
+Status ParseCommandSyntax(const std::vector<std::string> &args,
+                            const std::unordered_map<std::string, int> &key_words,
+                            std::unordered_map<std::string, std::vector<std::string>> *result) {
+  result->clear();
+  std::unordered_set<std::string> tmp_set;
+  for (size_t i = 0 ; i < args.size() ; i ++) {
+    if (!key_words.count(args[i])) {
+      return Status(Status::RedisParseErr, "syntax error");
+    }
+    if (key_words.count(args[i]) && tmp_set.count(args[i])) {
+      return Status(Status::RedisParseErr, "Duplicate keyword");
+    }
+    tmp_set.insert(args[i]);
+    std::vector<std::string> parse_v;
+    if (!key_words.count(args[i]))continue;
+    if (i + key_words.at(args[i]) > args.size()) {
+      return Status(Status::NotOK, "wrong number of arguments");
+    }
+    for (int j = 1; j < key_words.at(args[i]); j++) {
+      parse_v.emplace_back(args[i + j]);
+    }
+    (*result)[args[i]] = parse_v;
+    i += key_words.at(args[i]) - 1;
+  }
+  return Status::OK();
 }
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {

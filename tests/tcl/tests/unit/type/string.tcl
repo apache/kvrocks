@@ -699,6 +699,20 @@ start_server {tags {"string"}} {
         assert_match {*ERR*wrong*number*of*arguments*} $err
     }
 
+    test {CAS duplicate syntax} {
+        r del cas_key
+        r set cas_key 123
+
+        catch {r cas cas_key 123 ex 1 ex 10} err
+        assert_match {*ERR*syntax*} $err
+
+        catch {r cas cas_key 123 ex 1 px 1 ex 100} err
+        assert_match {*ERR*syntax*} $err
+
+        catch {r cas cas_key 123 px 1 ex 1 px 1} err
+        assert_match {*ERR*syntax*} $err
+    }
+
     test {CAS expire} {
         r del cas_key
         r set cas_key 123

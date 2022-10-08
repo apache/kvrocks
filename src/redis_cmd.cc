@@ -31,6 +31,8 @@
 #include <vector>
 #include <thread>
 #include <utility>
+#include <string>
+#include <unordered_map>
 
 #include "cluster.h"
 #include "log_collector.h"
@@ -775,34 +777,33 @@ class CommandDecrBy : public Commander {
 class CommandCAS : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool last_arg;
-    for (size_t i = 4; i < args.size(); i++) {
-      last_arg = (i == args.size()-1);
-      std::string opt = Util::ToLower(args[i]);
-      if (opt == "ex") {
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        ttl_ = *parse_result;
-        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "px") {
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        auto ttl_ms = *parse_result;
-        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        if (ttl_ms > 0 && ttl_ms < 1000) {
-          // round up the pttl to second
-          ttl_ = 1;
-        } else {
-          ttl_ = static_cast<int>(ttl_ms/1000);
-        }
+    std::unordered_map<std::string, int> key_words;
+    key_words["ex"] = 2;
+    key_words["px"] = 2;
+    std::unordered_map<std::string, std::vector<std::string>> *result;
+    auto s = Util::ParseCommandSyntax({args.begin()+4, args.end()}, key_words, result);
+    if (!s) return s;
+
+    if (result->count("ex")) {
+      auto parse_result = ParseInt<int>((*result)["ex"][0], 10);
+      if (!parse_result) {
+        return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      ttl_ = *parse_result;
+      if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    }
+    if (result->count("px")) {
+      auto parse_result = ParseInt<int>((*result)["px"][0], 10);
+      if (!parse_result) {
+        return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      auto ttl_ms = *parse_result;
+      if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      if (ttl_ms > 0 && ttl_ms < 1000) {
+        // round up the pttl to second
+        ttl_ = 1;
       } else {
-        return Status(Status::NotOK, errInvalidSyntax);
+        ttl_ = static_cast<int>(ttl_ms/1000);
       }
     }
     return Commander::Parse(args);

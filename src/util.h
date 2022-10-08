@@ -28,6 +28,7 @@
 #include <cinttypes>
 #include <chrono>
 #include <memory>
+#include <unordered_map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,6 +65,9 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);
 std::string StringToHex(const std::string &input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
+Status ParseCommandSyntax(const std::vector<std::string> &args,
+                            const std::unordered_map<std::string, int> &key_words,
+                            std::unordered_map<std::string, std::vector<std::string>> *result);
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);

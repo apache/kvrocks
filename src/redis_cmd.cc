@@ -318,6 +318,95 @@ class CommandGet : public Commander {
   }
 };
 
+class CommandGetEx : public Commander {
+public:
+    Status Parse(const std::vector<std::string> &args) override {
+        bool last_arg;
+        if (args.size() < 2 || args.size() > 4) {
+            return Status(Status::RedisParseErr, errWrongNumOfArguments);
+        }
+        if (args.size() > 2) {
+            for (size_t i = 2; i < args.size(); i++) {
+                last_arg = (i == args.size() - 1);
+                std::string opt = Util::ToLower(args[i]);
+                if (opt == "persist" && last_arg && !ttl_) {
+                    break;
+                } else if (opt == "ex" && !ttl_ && !last_arg) {
+                    auto parse_result = ParseInt<int>(args_[++i], 10);
+                    if (!parse_result) {
+                        return Status(Status::RedisParseErr, errValueNotInteger);
+                    }
+                    ttl_ = *parse_result;
+                    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
+                    auto parse_result = ParseInt<int64_t>(args_[++i], 10);
+                    if (!parse_result) {
+                        return Status(Status::RedisParseErr, errValueNotInteger);
+                    }
+                    expire_ = *parse_result;
+                    if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
+                    auto parse_result = ParseInt<uint64_t>(args[++i], 10);
+                    if (!parse_result) {
+                        return Status(Status::RedisParseErr, errValueNotInteger);
+                    }
+                    uint64_t expire_ms = *parse_result;
+                    if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                    if (expire_ms < 1000) {
+                        expire_ = 1;
+                    } else {
+                        expire_ = static_cast<int64_t>(expire_ms / 1000);
+                    }
+                } else if (opt == "px" && !ttl_ && !last_arg) {
+                    int64_t ttl_ms = 0;
+                    auto parse_result = ParseInt<int64_t>(args_[++i], 10);
+                    if (!parse_result) {
+                        return Status(Status::RedisParseErr, errValueNotInteger);
+                    }
+                    ttl_ms = *parse_result;
+                    if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                    if (ttl_ms > 0 && ttl_ms < 1000) {
+                        ttl_ = 1;  // round up the pttl to second
+                    } else {
+                        ttl_ = static_cast<int>(ttl_ms / 1000);
+                    }
+                } else {
+                    return Status(Status::NotOK, errInvalidSyntax);
+                }
+            }
+        }
+        return Commander::Parse(args);
+    }
+    Status Execute(Server *svr, Connection *conn, std::string *output) override {
+        if (!ttl_ && expire_) {
+            int64_t now;
+            rocksdb::Env::Default()->GetCurrentTime(&now);
+            ttl_ = expire_ - now;
+        }
+        std::string value;
+        Redis::String string_db(svr->storage_, conn->GetNamespace());
+        rocksdb::Status s = string_db.GetEx(args_[1], &value, ttl_);
+
+        // The IsInvalidArgument error means the key type maybe a bitmap
+        // which we need to fall back to the bitmap's GetString according
+        // to the `max-bitmap-to-string-mb` configuration.
+        if (s.IsInvalidArgument()) {
+            Config *config = svr->GetConfig();
+            uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
+            Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+            s = bitmap_db.GetString(args_[1], max_btos_size, &value);
+        }
+        if (!s.ok() && !s.IsNotFound()) {
+            return Status(Status::RedisExecErr, s.ToString());
+        }
+        *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
+        return Status::OK();
+    }
+private:
+    int ttl_ = 0;
+    int64_t expire_ = 0;
+};
+
 class CommandStrlen: public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -5890,6 +5979,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
 
     ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
+    ADD_CMD("getex", -2, "write", 1,1,1, CommandGetEx),
     ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
     ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
     ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),

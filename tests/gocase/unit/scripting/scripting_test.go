@@ -488,7 +488,7 @@ func TestScriptingMasterSlave(t *testing.T) {
 
 	ctx := context.Background()
 
-	require.NoError(t, slaveClient.SlaveOf(ctx, master.Host(), fmt.Sprintf("%d", master.Port())).Err())
+	util.SlaveOf(t, slaveClient, master)
 	util.WaitForSync(t, slaveClient)
 
 	t.Run("SCRIPTING: script load on master, read on slave", func(t *testing.T) {

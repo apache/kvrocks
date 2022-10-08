@@ -55,21 +55,21 @@ func TestInfo(t *testing.T) {
 			time.Sleep(time.Second)
 		}
 
-		r := util.FindInfoEntry(t, rdb, "put_per_sec", "rocksdb")
+		r := util.FindInfoEntry(rdb, "put_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = util.FindInfoEntry(t, rdb, "get_per_sec", "rocksdb")
+		r = util.FindInfoEntry(rdb, "get_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = util.FindInfoEntry(t, rdb, "seek_per_sec", "rocksdb")
+		r = util.FindInfoEntry(rdb, "seek_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
-		r = util.FindInfoEntry(t, rdb, "next_per_sec", "rocksdb")
+		r = util.FindInfoEntry(rdb, "next_per_sec", "rocksdb")
 		require.Greater(t, MustAtoi(t, r), 0)
 	})
 
 	t.Run("get bgsave information by INFO", func(t *testing.T) {
-		require.Equal(t, "0", util.FindInfoEntry(t, rdb, "bgsave_in_progress", "persistence"))
-		require.Equal(t, "-1", util.FindInfoEntry(t, rdb, "last_bgsave_time", "persistence"))
-		require.Equal(t, "ok", util.FindInfoEntry(t, rdb, "last_bgsave_status", "persistence"))
-		require.Equal(t, "-1", util.FindInfoEntry(t, rdb, "last_bgsave_time_sec", "persistence"))
+		require.Equal(t, "0", util.FindInfoEntry(rdb, "bgsave_in_progress", "persistence"))
+		require.Equal(t, "-1", util.FindInfoEntry(rdb, "last_bgsave_time", "persistence"))
+		require.Equal(t, "ok", util.FindInfoEntry(rdb, "last_bgsave_status", "persistence"))
+		require.Equal(t, "-1", util.FindInfoEntry(rdb, "last_bgsave_time_sec", "persistence"))
 
 		r := rdb.Do(ctx, "bgsave")
 		v, err := r.Text()
@@ -77,14 +77,14 @@ func TestInfo(t *testing.T) {
 		require.Equal(t, "OK", v)
 
 		require.Eventually(t, func() bool {
-			e := MustAtoi(t, util.FindInfoEntry(t, rdb, "bgsave_in_progress", "persistence"))
+			e := MustAtoi(t, util.FindInfoEntry(rdb, "bgsave_in_progress", "persistence"))
 			return e == 0
 		}, 5*time.Second, 100*time.Millisecond)
 
-		lastBgsaveTime := MustAtoi(t, util.FindInfoEntry(t, rdb, "last_bgsave_time", "persistence"))
+		lastBgsaveTime := MustAtoi(t, util.FindInfoEntry(rdb, "last_bgsave_time", "persistence"))
 		require.Greater(t, lastBgsaveTime, 1640507660)
-		require.Equal(t, "ok", util.FindInfoEntry(t, rdb, "last_bgsave_status", "persistence"))
-		lastBgsaveTimeSec := MustAtoi(t, util.FindInfoEntry(t, rdb, "last_bgsave_time_sec", "persistence"))
+		require.Equal(t, "ok", util.FindInfoEntry(rdb, "last_bgsave_status", "persistence"))
+		lastBgsaveTimeSec := MustAtoi(t, util.FindInfoEntry(rdb, "last_bgsave_time_sec", "persistence"))
 		require.GreaterOrEqual(t, lastBgsaveTimeSec, 0)
 		require.Less(t, lastBgsaveTimeSec, 3)
 	})

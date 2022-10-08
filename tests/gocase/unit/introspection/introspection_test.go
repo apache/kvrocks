@@ -172,7 +172,7 @@ func TestIntrospection(t *testing.T) {
 		// use TCPClient to avoid waiting for reply
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
-		require.NoError(t, c.WriteArgs("DEBUG", "sleep", "2.2"))
+		require.NoError(t, c.WriteArgs("DEBUG", "sleep", "2.5"))
 
 		// sleep 100ms to prevent the successive set command to be executed
 		// before the debug command since there are in the different connection.
@@ -197,11 +197,11 @@ func TestMultiServerIntrospection(t *testing.T) {
 
 	ctx := context.Background()
 
-	require.NoError(t, slaveClient.SlaveOf(ctx, master.Host(), fmt.Sprintf("%d", master.Port())).Err())
+	util.SlaveOf(t, slaveClient, master)
 	util.WaitForSync(t, slaveClient)
 
 	t.Run("Kill slave client", func(t *testing.T) {
-		count, err := strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+		count, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 		require.NoError(t, err)
 
 		// kill slave connection
@@ -209,14 +209,14 @@ func TestMultiServerIntrospection(t *testing.T) {
 
 		// incr sync_partial_ok since slave reconnects
 		require.Eventually(t, func() bool {
-			newCount, err := strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+			newCount, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 			require.NoError(t, err)
 			return newCount == count+1
 		}, 5*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("Kill master client", func(t *testing.T) {
-		count, err := strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+		count, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 		require.NoError(t, err)
 
 		// kill master connection by type
@@ -224,12 +224,12 @@ func TestMultiServerIntrospection(t *testing.T) {
 
 		// incr sync_partial_ok since slave reconnects
 		require.Eventually(t, func() bool {
-			newCount, err := strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+			newCount, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 			require.NoError(t, err)
 			return newCount == count+1
 		}, 5*time.Second, 100*time.Millisecond)
 
-		count, err = strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+		count, err = strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 		require.NoError(t, err)
 
 		// kill master connection by addr
@@ -237,7 +237,7 @@ func TestMultiServerIntrospection(t *testing.T) {
 
 		// incr sync_partial_ok since slave reconnects
 		require.Eventually(t, func() bool {
-			newCount, err := strconv.Atoi(util.FindInfoEntry(t, masterClient, "sync_partial_ok"))
+			newCount, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_partial_ok"))
 			require.NoError(t, err)
 			return newCount == count+1
 		}, 5*time.Second, 100*time.Millisecond)

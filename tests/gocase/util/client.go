@@ -31,27 +31,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func FindInfoEntry(t testing.TB, rdb *redis.Client, key string, section ...string) string {
+func FindInfoEntry(rdb *redis.Client, key string, section ...string) string {
 	r := rdb.Info(context.Background(), section...)
 	p := regexp.MustCompile(fmt.Sprintf("%s:(.+)", key))
 	ms := p.FindStringSubmatch(r.Val())
-	require.Len(t, ms, 2)
+	if len(ms) != 2 {
+		return ""
+	}
 	return strings.TrimSpace(ms[1])
 }
 
 func WaitForSync(t testing.TB, slave *redis.Client) {
 	require.Eventually(t, func() bool {
-		r := FindInfoEntry(t, slave, "master_link_status")
+		r := FindInfoEntry(slave, "master_link_status")
 		return r == "up"
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func WaitForOffsetSync(t testing.TB, master, slave *redis.Client) {
 	require.Eventually(t, func() bool {
-		o1 := FindInfoEntry(t, master, "master_repl_offset")
-		o2 := FindInfoEntry(t, slave, "master_repl_offset")
+		o1 := FindInfoEntry(master, "master_repl_offset")
+		o2 := FindInfoEntry(slave, "master_repl_offset")
 		return o1 == o2
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func SlaveOf(t testing.TB, slave *redis.Client, master *KvrocksServer) {
+	require.NoError(t, slave.SlaveOf(context.Background(), master.Host(), fmt.Sprintf("%d", master.Port())).Err())
 }
 
 func Populate(t testing.TB, rdb *redis.Client, prefix string, n, size int) {

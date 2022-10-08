@@ -44,7 +44,9 @@ type KvrocksServer struct {
 	cmd  *exec.Cmd
 	addr *net.TCPAddr
 
-	clean func()
+	configs map[string]string
+
+	clean func(bool)
 }
 
 func (s *KvrocksServer) HostPort() string {
@@ -77,13 +79,57 @@ func (s *KvrocksServer) NewTCPClient() *TCPClient {
 }
 
 func (s *KvrocksServer) Close() {
+	s.close(false)
+}
+
+func (s *KvrocksServer) close(keepDir bool) {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
 	timer := time.AfterFunc(defaultGracePeriod, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 	})
 	defer timer.Stop()
 	require.NoError(s.t, s.cmd.Wait())
-	s.clean()
+	s.clean(keepDir)
+}
+
+func (s *KvrocksServer) Restart() {
+	s.close(true)
+
+	b := *binPath
+	require.NotEmpty(s.t, b, "please set the binary path by `-binPath`")
+	cmd := exec.Command(b)
+
+	dir := s.configs["dir"]
+	f, err := os.Open(filepath.Join(dir, "kvrocks.conf"))
+	require.NoError(s.t, err)
+	defer func() { require.NoError(s.t, f.Close()) }()
+
+	cmd.Args = append(cmd.Args, "-c", f.Name())
+
+	stdout, err := os.Create(filepath.Join(dir, "stdout"))
+	require.NoError(s.t, err)
+	cmd.Stdout = stdout
+	stderr, err := os.Create(filepath.Join(dir, "stderr"))
+	require.NoError(s.t, err)
+	cmd.Stderr = stderr
+
+	require.NoError(s.t, cmd.Start())
+
+	c := redis.NewClient(&redis.Options{Addr: s.addr.String()})
+	defer func() { require.NoError(s.t, c.Close()) }()
+	require.Eventually(s.t, func() bool {
+		err := c.Ping(context.Background()).Err()
+		return err == nil || err.Error() == "NOAUTH Authentication required."
+	}, time.Minute, time.Second)
+
+	s.cmd = cmd
+	s.clean = func(keepDir bool) {
+		require.NoError(s.t, stdout.Close())
+		require.NoError(s.t, stderr.Close())
+		if *deleteOnExit && !keepDir {
+			require.NoError(s.t, os.RemoveAll(dir))
+		}
+	}
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
@@ -130,13 +176,14 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	}, time.Minute, time.Second)
 
 	return &KvrocksServer{
-		t:    t,
-		cmd:  cmd,
-		addr: addr,
-		clean: func() {
+		t:       t,
+		cmd:     cmd,
+		addr:    addr,
+		configs: configs,
+		clean: func(keepDir bool) {
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())
-			if *deleteOnExit {
+			if *deleteOnExit && !keepDir {
 				require.NoError(t, os.RemoveAll(dir))
 			}
 		},

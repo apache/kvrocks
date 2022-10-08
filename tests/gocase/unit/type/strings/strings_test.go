@@ -125,10 +125,10 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", "10", 1*time.Second).Err())
 
 		// Wait for the key to expire
-		require.Eventually(t, func() bool {
-			require.NoError(t, rdb.SetNX(ctx, "x", "20", 0).Err())
-			return rdb.Get(ctx, "x").Val() == "20"
-		}, 2000*time.Millisecond, 100*time.Millisecond)
+		time.Sleep(2000 * time.Millisecond)
+
+		require.NoError(t, rdb.SetNX(ctx, "x", "20", 0).Err())
+		require.Equal(t, "20", rdb.Get(ctx, "x").Val())
 	})
 
 	t.Run("GETDEL command", func(t *testing.T) {
@@ -492,9 +492,9 @@ func TestString(t *testing.T) {
 		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", "1").Val())
 		require.Equal(t, "234", rdb.Get(ctx, "cas_key").Val())
 
-		require.Eventually(t, func() bool {
-			return rdb.Get(ctx, "cas_key").Val() == ""
-		}, 2000*time.Millisecond, 100*time.Millisecond)
+		time.Sleep(2000 * time.Millisecond)
+
+		require.Equal(t, "", rdb.Get(ctx, "cas_key").Val())
 	})
 
 	t.Run("CAD normal case", func(t *testing.T) {

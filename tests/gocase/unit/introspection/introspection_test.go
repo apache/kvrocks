@@ -172,7 +172,7 @@ func TestIntrospection(t *testing.T) {
 		// use TCPClient to avoid waiting for reply
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
-		require.NoError(t, c.WriteArgs("DEBUG", "sleep", "2.2"))
+		require.NoError(t, c.WriteArgs("DEBUG", "sleep", "2.5"))
 
 		// sleep 100ms to prevent the successive set command to be executed
 		// before the debug command since there are in the different connection.

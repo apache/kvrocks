@@ -94,8 +94,12 @@ func TestRSIDMasterAndReplicaYes(t *testing.T) {
 	})
 
 	t.Run("replica can partially re-sync again after restarting", func(t *testing.T) {
-		t.Skip("find a way to restart server")
 		require.NoError(t, rdbC.ConfigRewrite(ctx).Err())
+
+		srvC.Restart()
+		rdbC := srvC.NewClient()
+		defer func() { require.NoError(t, rdbC.Close()) }()
+		util.WaitForSync(t, rdbC)
 
 		// do not increase sync_full, but increase sync_partial_ok
 		require.Equal(t, "2", util.FindInfoEntry(rdbB, "sync_full"))

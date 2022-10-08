@@ -302,8 +302,12 @@ void Config::initFieldValidator() {
         std::vector<std::string> paths = Util::Split(v, ";");
         for (auto & path_size : paths) {
           std::vector<std::string> ps = Util::Split(path_size, " \t");
-          auto parse_result = ParseInt<uint32_t>(ps[1]);
+          auto parse_result = TryParseInt<uint32_t>(ps[1].c_str());
           if (!parse_result) {
+            return Status(Status::NotOK, "db_paths size muster be uint32_t");
+          }
+          std::string unit = Util::ToLower(std::get<1>(*parse_result));
+          if (!(unit == "k" || unit == "m" || unit == "g" || unit == "t")) {
             return Status(Status::NotOK, "db_paths size muster be uint32_t");
           }
         }

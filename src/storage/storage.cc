@@ -187,8 +187,19 @@ rocksdb::Options Storage::InitOptions() {
     std::vector<std::string> paths = Util::Split(config_->RocksDB.db_paths, ";");
     for (auto & path_size : paths) {
       std::vector<std::string> ps = Util::Split(path_size, " \t");
-      // auto parse_result = ParseInt<uint32_t>(ps[1]);
-      // options.db_paths.emplace_back(rocksdb::DbPath(ps[0], *parse_result * GiB));
+      auto parse_result = TryParseInt<uint32_t>(ps[1].c_str());
+      std::string unit = Util::ToLower(std::get<1>(*parse_result));
+      u_int64_t size = std::get<0>(*parse_result);
+      if (unit == "k") {
+        size *= KiB;
+      } else if (unit == "m") {
+        size *= MiB;
+      } else if (unit == "g") {
+        size *= GiB;
+      } else if (unit == "t") {
+        size *= TiB;
+      }
+      options.db_paths.emplace_back(rocksdb::DbPath(ps[0], size));
     }
   }
 

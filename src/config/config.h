@@ -49,6 +49,7 @@ constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";
 constexpr const size_t KiB = 1024L;
 constexpr const size_t MiB = 1024L * KiB;
 constexpr const size_t GiB = 1024L * MiB;
+constexpr const size_t TiB = 1024L * GiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 extern const char *kDefaultNamespace;

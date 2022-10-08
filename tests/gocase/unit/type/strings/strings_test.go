@@ -40,7 +40,7 @@ func TestString(t *testing.T) {
 
 	t.Run("SET and GET an item", func(t *testing.T) {
 		key := "x"
-		value := "foo"
+		value := "foobar"
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 	})
@@ -60,23 +60,23 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("Very big payload random access", func(t *testing.T) {
-		var values []string
+		var payload []string
 		for i := 0; i < 100; i++ {
-			value := util.RandString(1, 100000, util.Alpha)
-			values = append(values, value)
-
-			require.NoError(t, rdb.Set(ctx, "key_"+strconv.Itoa(i), value, 0).Err())
+			buf := util.RandString(1, 100000, util.Alpha)
+			payload = append(payload, buf)
+			require.NoError(t, rdb.Set(ctx, "bigpayload_"+strconv.Itoa(i), buf, 0).Err())
 		}
 
 		for i := 0; i < 1000; i++ {
-			numElements := util.RandomInt(100)
-			key := "key_" + strconv.FormatInt(numElements, 10)
-			value := rdb.Get(ctx, key).Val()
-			require.Equal(t, values[numElements], value)
+			index := util.RandomInt(100)
+			key := "bigpayload_" + strconv.FormatInt(index, 10)
+			buf := rdb.Get(ctx, key).Val()
+			require.Equal(t, payload[index], buf)
 		}
 	})
 
 	t.Run("SET 10000 numeric keys and access all them in reverse order", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
 		for i := 0; i < 10000; i++ {
 			key := strconv.Itoa(i)
 			value := key
@@ -91,69 +91,79 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("SETNX target key missing", func(t *testing.T) {
-		require.NoError(t, rdb.SetNX(ctx, "foo", "bar", 0).Err())
-		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+		require.NoError(t, rdb.Del(ctx, "novar").Err())
+		require.True(t, rdb.SetNX(ctx, "novar", "foobared", 0).Val())
+		require.Equal(t, "foobared", rdb.Get(ctx, "novar").Val())
 	})
 
 	t.Run("SETNX target key exists", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-		require.NoError(t, rdb.SetNX(ctx, "foo", "bared", 0).Err())
-		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+		require.NoError(t, rdb.Set(ctx, "novar", "foobared", 0).Err())
+		require.False(t, rdb.SetNX(ctx, "novar", "blabla", 0).Val())
+		require.Equal(t, "foobared", rdb.Get(ctx, "novar").Val())
 	})
 
 	t.Run("SETNX against not-expired volatile key", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", "10", 10000*time.Second).Err())
-		require.NoError(t, rdb.SetNX(ctx, "x", "20", 0).Err())
+		require.False(t, rdb.SetNX(ctx, "x", "20", 0).Val())
 		require.Equal(t, "10", rdb.Get(ctx, "x").Val())
 	})
 
 	t.Run("SETNX against expired volatile key", func(t *testing.T) {
+		// Make it very unlikely for the key this test uses to be expired by the
+		// active expiry cycle. This is tightly coupled to the implementation of
+		// active expiry and dbAdd() but currently the only way to test that
+		// SETNX expires a key when it should have been.
+		for x := 0; x < 9999; x++ {
+			require.NoError(t, rdb.SetEx(ctx, "key-"+"x", "value", 3600*time.Second).Err())
+		}
+
+		// This will be one of 10000 expiring keys. A cycle is executed every
+		// 100ms, sampling 10 keys for being expired or not.  This key will be
+		// expired for at most 1s when we wait 2s, resulting in a total sample
+		// of 100 keys. The probability of the success of this test being a
+		// false positive is therefore approx. 1%.
 		require.NoError(t, rdb.Set(ctx, "x", "10", 1*time.Second).Err())
+
+		// Wait for the key to expire
 		require.Eventually(t, func() bool {
 			require.NoError(t, rdb.SetNX(ctx, "x", "20", 0).Err())
 			return rdb.Get(ctx, "x").Val() == "20"
-		}, 5*time.Second, 100*time.Millisecond)
+		}, 2000*time.Millisecond, 100*time.Millisecond)
 	})
 
 	t.Run("GETDEL command", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.Equal(t, "bar", rdb.GetDel(ctx, "foo").Val())
 		require.Equal(t, "", rdb.GetDel(ctx, "foo").Val())
 	})
 
 	t.Run("MGET command", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", "FOO", 0).Err())
-		require.NoError(t, rdb.Set(ctx, "bar", "BAR", 0).Err())
-		require.Equal(t, []interface{}{"FOO", "BAR"}, rdb.MGet(ctx, "foo", "bar").Val())
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "BAR", 0).Err())
+		require.NoError(t, rdb.Set(ctx, "bar", "FOO", 0).Err())
+		require.Equal(t, []interface{}{"BAR", "FOO"}, rdb.MGet(ctx, "foo", "bar").Val())
 	})
 
 	t.Run("MGET against non existing key", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", "FOO", 0).Err())
-		require.NoError(t, rdb.Set(ctx, "bar", "BAR", 0).Err())
-		require.Equal(t, []interface{}{"FOO", nil, "BAR"}, rdb.MGet(ctx, "foo", "baazz", "bar").Val())
+		require.Equal(t, []interface{}{"BAR", nil, "FOO"}, rdb.MGet(ctx, "foo", "baazz", "bar").Val())
 	})
 
 	t.Run("MGET against non-string key", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "foo", "FOO", 0).Err())
-		require.NoError(t, rdb.Set(ctx, "bar", "BAR", 0).Err())
 		require.NoError(t, rdb.SAdd(ctx, "myset", "ciao", "bau").Err())
-		require.Equal(t, []interface{}{"FOO", nil, "BAR", nil}, rdb.MGet(ctx, "foo", "baazz", "bar", "myset").Val())
+		require.Equal(t, []interface{}{"BAR", nil, "FOO", nil}, rdb.MGet(ctx, "foo", "baazz", "bar", "myset").Val())
 	})
 
 	t.Run("GETSET set new value", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-		oldValue := rdb.GetSet(ctx, "foo", "xyz").Val()
-		newValue := rdb.Get(ctx, "foo").Val()
-		require.Equal(t, "", oldValue)
-		require.Equal(t, "xyz", newValue)
+		require.Equal(t, "", rdb.GetSet(ctx, "foo", "xyz").Val())
+		require.Equal(t, "xyz", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("GETSET replace old value", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-		oldValue := rdb.GetSet(ctx, "foo", "xyz").Val()
-		newValue := rdb.Get(ctx, "foo").Val()
-		require.Equal(t, "bar", oldValue)
-		require.Equal(t, "xyz", newValue)
+		require.Equal(t, "bar", rdb.GetSet(ctx, "foo", "xyz").Val())
+		require.Equal(t, "xyz", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("MSET base case", func(t *testing.T) {
@@ -171,30 +181,27 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("MSETNX with already existent key", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "x", "10", 0).Err())
-		require.EqualValues(t, 0, rdb.Exists(ctx, "x1").Val())
-		require.EqualValues(t, 0, rdb.Exists(ctx, "y2").Val())
-		require.EqualValues(t, 1, rdb.Exists(ctx, "x").Val())
 		r := rdb.MSetNX(ctx, map[string]interface{}{
 			"x1": "xxx",
 			"y2": "yyy",
 			"x":  "20",
 		})
-		require.Equal(t, false, r.Val())
+		require.False(t, r.Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "x1").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "y2").Val())
 	})
 
 	t.Run("MSETNX with not existing keys", func(t *testing.T) {
-		require.EqualValues(t, 0, rdb.Exists(ctx, "x1").Val())
-		require.EqualValues(t, 0, rdb.Exists(ctx, "y2").Val())
 		r := rdb.MSetNX(ctx, map[string]interface{}{
 			"x1": "xxx",
 			"y2": "yyy",
 		})
-		require.Equal(t, true, r.Val())
+		require.True(t, r.Val())
+		require.Equal(t, "xxx", rdb.Get(ctx, "x1").Val())
+		require.Equal(t, "yyy", rdb.Get(ctx, "y2").Val())
 	})
 
 	t.Run("STRLEN against non-existing key", func(t *testing.T) {
-		require.EqualValues(t, 0, rdb.Exists(ctx, "notakey").Val())
 		require.EqualValues(t, 0, rdb.StrLen(ctx, "notakey").Val())
 	})
 
@@ -211,8 +218,7 @@ func TestString(t *testing.T) {
 	t.Run("SETBIT against key with wrong type", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mykey").Err())
 		require.NoError(t, rdb.LPush(ctx, "mykey", "foo").Err())
-		r := rdb.SetBit(ctx, "mykey", 0, 1)
-		require.ErrorContains(t, r.Err(), "WRONGTYPE")
+		require.ErrorContains(t, rdb.SetBit(ctx, "mykey", 0, 1).Err(), "WRONGTYPE")
 	})
 
 	t.Run("SETBIT with out of range bit offset", func(t *testing.T) {
@@ -323,8 +329,7 @@ func TestString(t *testing.T) {
 	t.Run("SETRANGE against key with wrong type", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mykey").Err())
 		require.NoError(t, rdb.LPush(ctx, "mykey", "foo").Err())
-		r := rdb.SetRange(ctx, "mykey", 0, "bar")
-		require.ErrorContains(t, r.Err(), "WRONGTYPE")
+		require.ErrorContains(t, rdb.SetRange(ctx, "mykey", 0, "bar").Err(), "WRONGTYPE")
 	})
 
 	t.Run("GETRANGE against non-existing key", func(t *testing.T) {
@@ -397,11 +402,11 @@ func TestString(t *testing.T) {
 
 	t.Run("Extended SET EXAT option with expired timestamp", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", "1").Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
 
 		expireAt := strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt).Val())
@@ -420,7 +425,6 @@ func TestString(t *testing.T) {
 
 	t.Run("Extended SET PXAT option with expired timestamp", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1").Val())
 		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
 
@@ -463,11 +467,9 @@ func TestString(t *testing.T) {
 
 		require.EqualValues(t, -1, rdb.Do(ctx, "CAS", "cas_key", "old_value", "new_value").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "cas_key").Val())
-		require.NoError(t, rdb.Set(ctx, "cas_key", "old_value", 0).Err())
+		require.Equal(t, "OK", rdb.Set(ctx, "cas_key", "old_value", 0).Val())
 		require.EqualValues(t, 0, rdb.Do(ctx, "CAS", "cas_key", "old_val", "new_value").Val())
-		require.Equal(t, "old_value", rdb.Get(ctx, "cas_key").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "old_value", "new_value").Val())
-		require.Equal(t, "new_value", rdb.Get(ctx, "cas_key").Val())
 	})
 
 	t.Run("CAS wrong key type", func(t *testing.T) {
@@ -480,6 +482,7 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
 		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123").Err(), "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex").Err(), "ERR wrong number of arguments")
 	})
 
 	t.Run("CAS expire", func(t *testing.T) {
@@ -491,12 +494,10 @@ func TestString(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			return rdb.Get(ctx, "cas_key").Val() == ""
-		}, 5*time.Second, 100*time.Millisecond)
+		}, 2000*time.Millisecond, 100*time.Millisecond)
 	})
 
 	t.Run("CAD normal case", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "cad_key").Err())
-
 		require.EqualValues(t, -1, rdb.Do(ctx, "CAD", "cad_key", "123").Val())
 		require.NoError(t, rdb.Set(ctx, "cad_key", "123", 0).Err())
 		require.EqualValues(t, 0, rdb.Do(ctx, "CAD", "cad_key", "234").Val())

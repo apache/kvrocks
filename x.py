@@ -27,6 +27,7 @@ from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
+from time import sleep
 
 CMAKE_REQUIRE_VERSION = (3, 13, 0)
 TCL_REQUIRE_VERSION = (8, 5, 0)
@@ -250,6 +251,17 @@ def test_go(dir: str, rest: List[str]) -> None:
 
     run(go, *args, cwd=str(basedir), verbose=True)
 
+def bench() -> None:
+    command = find_command("redis-benchmark", msg="redis-benchmark is required")
+
+    options = ["-p", "6666", "-q"]
+   
+    Popen( ["./build/kvrocks"] )
+    
+    sleep(3)
+    
+    run(command, *options, verbose=True)
+    
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.set_defaults(func=parser.print_help)
@@ -349,7 +361,15 @@ if __name__ == '__main__':
     parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
-
+    
+    parser_bench = subparsers.add_parser(
+        'bench',
+        description="Run redis-benchmark test",
+        help="Running a default redis-benchmark test",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    parser_bench.set_defaults(func=bench)
+    
     args = parser.parse_args()
 
     arg_dict = dict(vars(args))

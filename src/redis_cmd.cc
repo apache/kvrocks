@@ -3483,8 +3483,6 @@ class CommandDisk : public Commander {
     std::string opname = Util::ToLower(args[1]);
     if (opname != "usage")
       return Status(Status::RedisInvalidCmd, "Unknown operation");
-    if (args.size() != 3)
-      return Status(Status::RedisInvalidCmd, "Incorrect number of parameters");
     return Commander::Parse(args);
   }
 

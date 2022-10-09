@@ -97,6 +97,75 @@ AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string&
   return AuthResult::OK;
 }
 
+    Status ParseTtlHelper(const std::vector<std::string> &args, int *result, std::string *op = nullptr) {
+        int ttl = 0;
+        int64_t expire = 0;
+        bool last_arg = false;
+        bool xx = false, nx = false;
+        for (size_t i = 0; i < args.size(); i++) {
+            last_arg = (i == args.size() - 1);
+            std::string opt = Util::ToLower(args[i]);
+            if (opt == "nx" && !xx) {
+                nx = true;
+                if (op) *op = opt;
+            } else if (opt == "xx" && !nx) {
+                xx = true;
+                if (op) *op = opt;
+            } else if (opt == "persist" && last_arg && !ttl) {
+                break;
+            } else if (opt == "ex" && !ttl && !last_arg) {
+                auto parse_result = ParseInt<int>(args[++i], 10);
+                if (!parse_result) {
+                    return Status(Status::RedisParseErr, errValueNotInteger);
+                }
+                ttl = *parse_result;
+                if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+            } else if (opt == "exat" && !ttl && !expire && !last_arg) {
+                auto parse_result = ParseInt<int64_t>(args[++i], 10);
+                if (!parse_result) {
+                    return Status(Status::RedisParseErr, errValueNotInteger);
+                }
+                expire = *parse_result;
+                if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+            } else if (opt == "pxat" && !ttl && !expire && !last_arg) {
+                auto parse_result = ParseInt<uint64_t>(args[++i], 10);
+                if (!parse_result) {
+                    return Status(Status::RedisParseErr, errValueNotInteger);
+                }
+                uint64_t expire_ms = *parse_result;
+                if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                if (expire_ms < 1000) {
+                    expire = 1;
+                } else {
+                    expire = static_cast<int64_t>(expire_ms / 1000);
+                }
+            } else if (opt == "px" && !ttl && !last_arg) {
+                int64_t ttl_ms = 0;
+                auto parse_result = ParseInt<int64_t>(args[++i], 10);
+                if (!parse_result) {
+                    return Status(Status::RedisParseErr, errValueNotInteger);
+                }
+                ttl_ms = *parse_result;
+                if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+                if (ttl_ms > 0 && ttl_ms < 1000) {
+                    ttl = 1;  // round up the pttl to second
+                } else {
+                    ttl = static_cast<int>(ttl_ms / 1000);
+                }
+            } else {
+                return Status(Status::NotOK, errInvalidSyntax);
+            }
+        }
+        if (!ttl && expire) {
+            int64_t now;
+            rocksdb::Env::Default()->GetCurrentTime(&now);
+            *result = expire - now;
+        } else {
+            *result = ttl;
+        }
+        return Status::OK();
+    }
+
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -321,68 +390,14 @@ class CommandGet : public Commander {
 class CommandGetEx : public Commander {
 public:
     Status Parse(const std::vector<std::string> &args) override {
-        bool last_arg;
-        if (args.size() < 2 || args.size() > 4) {
-            return Status(Status::RedisParseErr, errWrongNumOfArguments);
-        }
-        if (args.size() > 2) {
-            for (size_t i = 2; i < args.size(); i++) {
-                last_arg = (i == args.size() - 1);
-                std::string opt = Util::ToLower(args[i]);
-                if (opt == "persist" && last_arg && !ttl_) {
-                    break;
-                } else if (opt == "ex" && !ttl_ && !last_arg) {
-                    auto parse_result = ParseInt<int>(args_[++i], 10);
-                    if (!parse_result) {
-                        return Status(Status::RedisParseErr, errValueNotInteger);
-                    }
-                    ttl_ = *parse_result;
-                    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-                } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
-                    auto parse_result = ParseInt<int64_t>(args_[++i], 10);
-                    if (!parse_result) {
-                        return Status(Status::RedisParseErr, errValueNotInteger);
-                    }
-                    expire_ = *parse_result;
-                    if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-                } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
-                    auto parse_result = ParseInt<uint64_t>(args[++i], 10);
-                    if (!parse_result) {
-                        return Status(Status::RedisParseErr, errValueNotInteger);
-                    }
-                    uint64_t expire_ms = *parse_result;
-                    if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-                    if (expire_ms < 1000) {
-                        expire_ = 1;
-                    } else {
-                        expire_ = static_cast<int64_t>(expire_ms / 1000);
-                    }
-                } else if (opt == "px" && !ttl_ && !last_arg) {
-                    int64_t ttl_ms = 0;
-                    auto parse_result = ParseInt<int64_t>(args_[++i], 10);
-                    if (!parse_result) {
-                        return Status(Status::RedisParseErr, errValueNotInteger);
-                    }
-                    ttl_ms = *parse_result;
-                    if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-                    if (ttl_ms > 0 && ttl_ms < 1000) {
-                        ttl_ = 1;  // round up the pttl to second
-                    } else {
-                        ttl_ = static_cast<int>(ttl_ms / 1000);
-                    }
-                } else {
-                    return Status(Status::NotOK, errInvalidSyntax);
-                }
-            }
+        auto s = ParseTtlHelper(std::vector<std::string>(args.begin() + 2, args.end()), &ttl_);
+        if (!s.IsOK()) {
+            return s;
         }
         return Commander::Parse(args);
     }
     Status Execute(Server *svr, Connection *conn, std::string *output) override {
-        if (!ttl_ && expire_) {
-            int64_t now;
-            rocksdb::Env::Default()->GetCurrentTime(&now);
-            ttl_ = expire_ - now;
-        }
+
         std::string value;
         Redis::String string_db(svr->storage_, conn->GetNamespace());
         rocksdb::Status s = string_db.GetEx(args_[1], &value, ttl_);
@@ -404,7 +419,6 @@ public:
     }
 private:
     int ttl_ = 0;
-    int64_t expire_ = 0;
 };
 
 class CommandStrlen: public Commander {
@@ -560,56 +574,9 @@ class CommandAppend: public Commander {
 class CommandSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool last_arg;
-    for (size_t i = 3; i < args.size(); i++) {
-      last_arg = (i == args.size()-1);
-      std::string opt = Util::ToLower(args[i]);
-      if (opt == "nx" && !xx_) {
-        nx_ = true;
-      } else if (opt == "xx" && !nx_) {
-        xx_ = true;
-      } else if (opt == "ex" && !ttl_ && !last_arg) {
-        auto parse_result = ParseInt<int>(args_[++i], 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        ttl_ = *parse_result;
-        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "exat" && !ttl_ && !expire_ && !last_arg) {
-        auto parse_result = ParseInt<int64_t>(args_[++i], 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        expire_ = *parse_result;
-        if (expire_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "pxat" && !ttl_ && !expire_ && !last_arg) {
-        auto parse_result = ParseInt<uint64_t>(args[++i], 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        uint64_t expire_ms = *parse_result;
-        if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        if (expire_ms < 1000) {
-          expire_ = 1;
-        } else {
-          expire_ = static_cast<int64_t>(expire_ms/1000);
-        }
-      } else if (opt == "px" && !ttl_ && !last_arg) {
-        int64_t ttl_ms = 0;
-        auto parse_result = ParseInt<int64_t>(args_[++i], 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        ttl_ms = *parse_result;
-        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        if (ttl_ms > 0 && ttl_ms < 1000) {
-          ttl_ = 1;  // round up the pttl to second
-        } else {
-          ttl_ = static_cast<int>(ttl_ms/1000);
-        }
-      } else {
-        return Status(Status::NotOK, errInvalidSyntax);
-      }
+    auto s = ParseTtlHelper(std::vector<std::string>(args.begin() + 3, args.end()), &ttl_, &op_);
+    if (!s.IsOK()) {
+        return s;
     }
     return Commander::Parse(args);
   }
@@ -618,28 +585,24 @@ class CommandSet : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s;
 
-    if (!ttl_ && expire_) {
-      int64_t now;
-      rocksdb::Env::Default()->GetCurrentTime(&now);
-      ttl_ = expire_ - now;
-      if (ttl_ <= 0) {
-        string_db.Del(args_[1]);
-        *output = Redis::SimpleString("OK");
-        return Status::OK();
-      }
+    if (ttl_ < 0) {
+      string_db.Del(args_[1]);
+      *output = Redis::SimpleString("OK");
+      return Status::OK();
     }
 
-    if (nx_) {
-      s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
-    } else if (xx_) {
+    if (op_ == "nx") {
+        s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
+    } else if (op_ == "xx") {
       s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
     } else {
-      s = string_db.SetEX(args_[1], args_[2], ttl_);
+        s = string_db.SetEX(args_[1], args_[2], ttl_);
     }
+
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    if ((nx_ || xx_) && !ret) {
+    if (op_.empty() && !ret) {
       *output = Redis::NilString();
     } else {
       *output = Redis::SimpleString("OK");
@@ -648,10 +611,8 @@ class CommandSet : public Commander {
   }
 
  private:
-  bool xx_ = false;
-  bool nx_ = false;
+  std::string op_;
   int ttl_ = 0;
-  int64_t expire_ = 0;
 };
 
 class CommandSetEX : public Commander {

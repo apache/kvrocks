@@ -125,60 +125,60 @@ start_server {tags {"string"}} {
         assert_equal 20 [r get x]
     }
 
-    # test "GETEX EX option" {
-    #     r del foo
-    #     r set foo bar
-    #     r getex foo ex 10
-    #     assert_range [r ttl foo] 5 10
-    # }
+    test "GETEX EX option" {
+        r del foo
+        r set foo bar
+        r getex foo ex 10
+        assert_range [r ttl foo] 5 10
+    }
 
-    # test "GETEX PX option" {
-    #     r del foo
-    #     r set foo bar
-    #     r getex foo px 10000
-    #     assert_range [r pttl foo] 5000 10000
-    # }
+    test "GETEX PX option" {
+        r del foo
+        r set foo bar
+        r getex foo px 10000
+        assert_range [r pttl foo] 5000 10000
+    }
 
-    # test "GETEX EXAT option" {
-    #     r del foo
-    #     r set foo bar
-    #     r getex foo exat [expr [clock seconds] + 10]
-    #     assert_range [r ttl foo] 5 10
-    # }
+    test "GETEX EXAT option" {
+        r del foo
+        r set foo bar
+        r getex foo exat [expr [clock seconds] + 10]
+        assert_range [r ttl foo] 5 10
+    }
 
-    # test "GETEX PXAT option" {
-    #     r del foo
-    #     r set foo bar
-    #     r getex foo pxat [expr [clock milliseconds] + 10000]
-    #     assert_range [r pttl foo] 5000 10000
-    # }
+    test "GETEX PXAT option" {
+        r del foo
+        r set foo bar
+        r getex foo pxat [expr [clock milliseconds] + 10000]
+        assert_range [r pttl foo] 5000 10000
+    }
 
-    # test "GETEX PERSIST option" {
-    #     r del foo
-    #     r set foo bar ex 10
-    #     assert_range [r ttl foo] 5 10
-    #     r getex foo persist
-    #     assert_equal -1 [r ttl foo]
-    # }
+    test "GETEX PERSIST option" {
+        r del foo
+        r set foo bar ex 10
+        assert_range [r ttl foo] 5 10
+        r getex foo persist
+        assert_equal -1 [r ttl foo]
+    }
 
-    # test "GETEX no option" {
-    #     r del foo
-    #     r set foo bar
-    #     r getex foo
-    #     assert_equal bar [r getex foo]
-    # }
+    test "GETEX no option" {
+        r del foo
+        r set foo bar
+        r getex foo
+        assert_equal bar [r getex foo]
+    }
 
-    # test "GETEX syntax errors" {
-    #     set ex {}
-    #     catch {r getex foo non-existent-option} ex
-    #     set ex
-    # } {*syntax*}
+    test "GETEX syntax errors" {
+        set ex {}
+        catch {r getex foo non-existent-option} ex
+        set ex
+    } {*syntax*}
 
-    # test "GETEX no arguments" {
-    #      set ex {}
-    #      catch {r getex} ex
-    #      set ex
-    #  } {*wrong number of arguments*}
+    test "GETEX no arguments" {
+         set ex {}
+         catch {r getex} ex
+         set ex
+     } {*wrong number of arguments*}
 
     test "GETDEL command" {
         r del foo

@@ -143,6 +143,8 @@ Status ParseTtlHelper(const std::vector<std::string> &args, int *result) {
             } else {
                 ttl = static_cast<int>(ttl_ms / 1000);
             }
+        } else if (opt == "persist" || opt == "nx"|| opt == "xx") {
+            // pass
         } else {
             return Status(Status::NotOK, errInvalidSyntax);
         }

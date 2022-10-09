@@ -45,7 +45,7 @@ TEST(Cluster, CluseterSetNodes) {
   ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string invalid_port =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 65435 "
+    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 unknown "
     "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
   s = cluster.SetClusterNodes(invalid_port, 1, false);
   ASSERT_FALSE(s.IsOK());

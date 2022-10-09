@@ -126,8 +126,8 @@ func TestIntrospection(t *testing.T) {
 		require.EqualValues(t, 1, rdb.ClientKillByFilter(ctx, "skipme", "no", "type", "normal").Val())
 
 		// reconnect
+		require.NoError(t, rdb.Close())
 		rdb = srv.NewClient()
-		defer func() { require.NoError(t, rdb.Close()) }()
 
 		// now the client should no longer be listed
 		require.Eventually(t, func() bool {

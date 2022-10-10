@@ -368,6 +368,15 @@ std::string ToLower(std::string in) {
   return in;
 }
 
+bool CompareString(const std::string& lhs, const std::string& rhs, bool case_insensitive) {
+    return lhs.size() == rhs.size() && (case_insensitive && std::equal(lhs.begin(), lhs.end(), rhs.begin(),[](const char& l, const char& r) {
+        if (l == r || std::tolower(l) == std::tolower(r)) {
+            return true;
+        }
+        return false;
+    }));
+}
+
 std::string Trim(std::string in, const std::string &chars) {
   if (in.empty()) return in;
 

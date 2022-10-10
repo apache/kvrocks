@@ -97,7 +97,7 @@ AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string&
   return AuthResult::OK;
 }
 
-Status ParseTtlHelper(const std::vector<std::string> &args, int *result) {
+Status ParseTTL(const std::vector<std::string> &args, const std::unordered_map<std::string, bool>& white_list, int *result) {
     int ttl = 0;
     int64_t expire = 0;
     bool last_arg = false;
@@ -111,14 +111,14 @@ Status ParseTtlHelper(const std::vector<std::string> &args, int *result) {
             }
             ttl = *parse_result;
             if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        } else if (opt == "exat" && !ttl && !expire && !last_arg) {
+        } else if (opt == "exat"  && !ttl && !expire && !last_arg) {
             auto parse_result = ParseInt<int64_t>(args[++i], 10);
             if (!parse_result) {
                 return Status(Status::RedisParseErr, errValueNotInteger);
             }
             expire = *parse_result;
             if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        } else if (opt == "pxat" && !ttl && !expire && !last_arg) {
+        } else if (opt == "pxat"  && !ttl && !expire && !last_arg) {
             auto parse_result = ParseInt<uint64_t>(args[++i], 10);
             if (!parse_result) {
                 return Status(Status::RedisParseErr, errValueNotInteger);
@@ -130,7 +130,7 @@ Status ParseTtlHelper(const std::vector<std::string> &args, int *result) {
             } else {
                 expire = static_cast<int64_t>(expire_ms / 1000);
             }
-        } else if (opt == "px" && !ttl && !last_arg) {
+        } else if (opt == "px"  && !ttl && !last_arg) {
             int64_t ttl_ms = 0;
             auto parse_result = ParseInt<int64_t>(args[++i], 10);
             if (!parse_result) {
@@ -143,7 +143,7 @@ Status ParseTtlHelper(const std::vector<std::string> &args, int *result) {
             } else {
                 ttl = static_cast<int>(ttl_ms / 1000);
             }
-        } else if (opt == "persist" || opt == "nx"|| opt == "xx") {
+        } else if (white_list.find(opt) != white_list.end()) {
             // pass
         } else {
             return Status(Status::NotOK, errInvalidSyntax);
@@ -384,13 +384,15 @@ class CommandGetEx : public Commander {
 public:
     Status Parse(const std::vector<std::string> &args) override {
         if (std::find_if(args.begin(), args.end(), [](const std::string& str) -> bool {
-            return Util::ToLower(str) == "persist";
+            return Util::CompareString(str, "persist", true);
         }) != std::end(args)) {
+            white_list_["persist"] = true;
             if (args.size() > 3) {
                 return Status(Status::NotOK, errInvalidSyntax);
             }
-        } else {
-            auto s = ParseTtlHelper(std::vector<std::string>(args.begin() + 2, args.end()), &ttl_);
+        }
+        if (!white_list_["persist"]) {
+            auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), white_list_, &ttl_);
             if (!s.IsOK()) {
                 return s;
             }
@@ -419,7 +421,13 @@ public:
         return Status::OK();
     }
 private:
+    void white_list_register() {
+        white_list_["persist"] = false;
+    }
+
+private:
     int ttl_ = 0;
+    std::unordered_map<std::string, bool> white_list_;
 };
 
 class CommandStrlen: public Commander {
@@ -577,15 +585,15 @@ class CommandSet : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     std::for_each(args.begin(), args.end(), [this] (const std::string& str) {
         if (Util::ToLower(str) == "nx") {
-            nx_ = true;
+            white_list_["nx"] = true;
         } else if (Util::ToLower(str) == "xx") {
-            xx_ = true;
+            white_list_["xx"] = true;
         }
     });
-    if (xx_ && nx_) {
+    if (white_list_["nx"] && white_list_["xx"]) {
         return Status(Status::NotOK, errInvalidSyntax);
     }
-    auto s = ParseTtlHelper(std::vector<std::string>(args.begin() + 3, args.end()), &ttl_);
+    auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), white_list_, &ttl_);
     if (!s.IsOK()) { return s; }
     return Commander::Parse(args);
   }
@@ -600,9 +608,9 @@ class CommandSet : public Commander {
       return Status::OK();
     }
 
-    if (nx_) {
+    if (white_list_["nx"]) {
         s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
-    } else if (xx_) {
+    } else if (white_list_["xx"]) {
       s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
     } else {
         s = string_db.SetEX(args_[1], args_[2], ttl_);
@@ -611,18 +619,21 @@ class CommandSet : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    if ((nx_ || xx_) && !ret) {
+    if ((white_list_["nx"] || white_list_["xx"]) && !ret) {
       *output = Redis::NilString();
     } else {
       *output = Redis::SimpleString("OK");
     }
     return Status::OK();
   }
-
+private:
+    void white_list_register() {
+        white_list_["nx"] = false;
+        white_list_["xx"] = false;
+    }
  private:
-  bool xx_ = false;
-  bool nx_ = false;
   int ttl_ = 0;
+  std::unordered_map<std::string, bool> white_list_;
 };
 
 class CommandSetEX : public Commander {

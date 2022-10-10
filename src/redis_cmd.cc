@@ -582,7 +582,7 @@ class CommandSet : public Commander {
     white_list_register();
     auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), &white_list_, &ttl_);
     if (white_list_["nx"] && white_list_["xx"]) {
-        return Status(Status::NotOK, errInvalidSyntax);
+      return Status(Status::NotOK, errInvalidSyntax);
     }
     if (!s.IsOK()) { return s; }
     return Commander::Parse(args);
@@ -599,11 +599,11 @@ class CommandSet : public Commander {
     }
 
     if (white_list_["nx"]) {
-        s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
+      s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
     } else if (white_list_["xx"]) {
       s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
     } else {
-        s = string_db.SetEX(args_[1], args_[2], ttl_);
+      s = string_db.SetEX(args_[1], args_[2], ttl_);
     }
 
     if (!s.ok()) {
@@ -618,8 +618,8 @@ class CommandSet : public Commander {
   }
 private:
   void white_list_register() {
-      white_list_["nx"] = false;
-      white_list_["xx"] = false;
+    white_list_["nx"] = false;
+    white_list_["xx"] = false;
   }
  private:
   int ttl_ = 0;

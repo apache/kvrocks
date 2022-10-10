@@ -370,10 +370,7 @@ std::string ToLower(std::string in) {
 
 bool CaseInsensitiveCompare(const std::string& lhs, const std::string& rhs) {
     return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(),[](const char& l, const char& r) {
-        if (l == r || std::tolower(l) == std::tolower(r)) {
-            return true;
-        }
-        return false;
+        return std::tolower(l) == std::tolower(r);
     });
 }
 

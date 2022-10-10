@@ -98,65 +98,68 @@ AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string&
 }
 
 Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::string, bool>* white_list, int *result) {
-    int ttl = 0;
-    int64_t expire = 0;
-    bool last_arg = false;
-    for (size_t i = 0; i < args.size(); i++) {
-        last_arg = (i == args.size() - 1);
-        std::string opt = Util::ToLower(args[i]);
-        if (opt == "ex" && !ttl && !last_arg) {
-            auto parse_result = ParseInt<int>(args[++i], 10);
-            if (!parse_result) {
-                return Status(Status::RedisParseErr, errValueNotInteger);
-            }
-            ttl = *parse_result;
-            if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        } else if (opt == "exat"  && !ttl && !expire && !last_arg) {
-            auto parse_result = ParseInt<int64_t>(args[++i], 10);
-            if (!parse_result) {
-                return Status(Status::RedisParseErr, errValueNotInteger);
-            }
-            expire = *parse_result;
-            if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        } else if (opt == "pxat"  && !ttl && !expire && !last_arg) {
-            auto parse_result = ParseInt<uint64_t>(args[++i], 10);
-            if (!parse_result) {
-                return Status(Status::RedisParseErr, errValueNotInteger);
-            }
-            uint64_t expire_ms = *parse_result;
-            if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-            if (expire_ms < 1000) {
-                expire = 1;
-            } else {
-                expire = static_cast<int64_t>(expire_ms / 1000);
-            }
-        } else if (opt == "px"  && !ttl && !last_arg) {
-            int64_t ttl_ms = 0;
-            auto parse_result = ParseInt<int64_t>(args[++i], 10);
-            if (!parse_result) {
-                return Status(Status::RedisParseErr, errValueNotInteger);
-            }
-            ttl_ms = *parse_result;
-            if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-            if (ttl_ms > 0 && ttl_ms < 1000) {
-                ttl = 1;  // round up the pttl to second
-            } else {
-                ttl = static_cast<int>(ttl_ms / 1000);
-            }
-        } else if (white_list->find(opt) != white_list->end()) {
-            (*white_list)[opt] = true;
-        } else {
-            return Status(Status::NotOK, errInvalidSyntax);
-        }
-    }
-    if (!ttl && expire) {
-        int64_t now;
-        rocksdb::Env::Default()->GetCurrentTime(&now);
-        *result = expire - now;
+  int ttl = 0;
+  int64_t expire = 0;
+  bool last_arg = false;
+  for (size_t i = 0; i < args.size(); i++) {
+    last_arg = (i == args.size() - 1);
+    std::string opt = Util::ToLower(args[i]);
+    if (opt == "ex" && !ttl && !last_arg) {
+      auto parse_result = ParseInt<int>(args[++i], 10);
+      if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      ttl = *parse_result;
+      if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    } else if (opt == "exat"  && !ttl && !expire && !last_arg) {
+      auto parse_result = ParseInt<int64_t>(args[++i], 10);
+      if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      expire = *parse_result;
+      if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+    } else if (opt == "pxat"  && !ttl && !expire && !last_arg) {
+      auto parse_result = ParseInt<uint64_t>(args[++i], 10);
+      if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      uint64_t expire_ms = *parse_result;
+      if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      if (expire_ms < 1000) {
+          expire = 1;
+      } else {
+          expire = static_cast<int64_t>(expire_ms / 1000);
+      }
+    } else if (opt == "px"  && !ttl && !last_arg) {
+      int64_t ttl_ms = 0;
+      auto parse_result = ParseInt<int64_t>(args[++i], 10);
+      if (!parse_result) {
+          return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      ttl_ms = *parse_result;
+      if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+      if (ttl_ms > 0 && ttl_ms < 1000) {
+          ttl = 1;  // round up the pttl to second
+      } else {
+          ttl = static_cast<int>(ttl_ms / 1000);
+      }
     } else {
-        *result = ttl;
+      auto iter = white_list->find(opt);
+      if (iter != white_list->end()) {
+          iter->second = true;
+      } else {
+          return Status(Status::NotOK, errInvalidSyntax);
+      }
     }
-    return Status::OK();
+  }
+  if (!ttl && expire) {
+    int64_t now;
+    rocksdb::Env::Default()->GetCurrentTime(&now);
+    *result = expire - now;
+  } else {
+    *result = ttl;
+  }
+  return Status::OK();
 }
 
 class CommandAuth : public Commander {
@@ -382,46 +385,45 @@ class CommandGet : public Commander {
 
 class CommandGetEx : public Commander {
 public:
-    Status Parse(const std::vector<std::string> &args) override {
-        white_list_register();
-        auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
-        if (!s.IsOK()) {
-            return s;
-        }
-        if (white_list_["persist"] && args.size() > 3) {
-          return Status(Status::NotOK, errInvalidSyntax);
-        }
-        return Commander::Parse(args);
+  Status Parse(const std::vector<std::string> &args) override {
+    white_list_register();
+    auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
+    if (!s.IsOK()) {
+      return s;
     }
-    Status Execute(Server *svr, Connection *conn, std::string *output) override {
-
-        std::string value;
-        Redis::String string_db(svr->storage_, conn->GetNamespace());
-        rocksdb::Status s = string_db.GetEx(args_[1], &value, ttl_);
-
-        // The IsInvalidArgument error means the key type maybe a bitmap
-        // which we need to fall back to the bitmap's GetString according
-        // to the `max-bitmap-to-string-mb` configuration.
-        if (s.IsInvalidArgument()) {
-            Config *config = svr->GetConfig();
-            uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
-            Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-            s = bitmap_db.GetString(args_[1], max_btos_size, &value);
-        }
-        if (!s.ok() && !s.IsNotFound()) {
-            return Status(Status::RedisExecErr, s.ToString());
-        }
-        *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
-        return Status::OK();
+    if (white_list_["persist"] && args.size() > 3) {
+      return Status(Status::NotOK, errInvalidSyntax);
     }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::string value;
+    Redis::String string_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = string_db.GetEx(args_[1], &value, ttl_);
+
+    // The IsInvalidArgument error means the key type maybe a bitmap
+    // which we need to fall back to the bitmap's GetString according
+    // to the `max-bitmap-to-string-mb` configuration.
+    if (s.IsInvalidArgument()) {
+      Config *config = svr->GetConfig();
+      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
+      Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+      s = bitmap_db.GetString(args_[1], max_btos_size, &value);
+    }
+    if (!s.ok() && !s.IsNotFound()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
+    return Status::OK();
+  }
 private:
-    void white_list_register() {
-        white_list_["persist"] = false;
-    }
+  void white_list_register() {
+    white_list_["persist"] = false;
+  }
 
 private:
-    int ttl_ = 0;
-    std::unordered_map<std::string, bool> white_list_;
+  int ttl_ = 0;
+  std::unordered_map<std::string, bool> white_list_;
 };
 
 class CommandStrlen: public Commander {

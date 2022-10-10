@@ -83,7 +83,7 @@ class SlotMigrate : public Redis::Database {
  public:
   explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed,
                        int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
-  ~SlotMigrate() {}
+  ~SlotMigrate();
 
   Status CreateMigrateHandleThread(void);
   void *Loop(void *arg);
@@ -144,6 +144,13 @@ class SlotMigrate : public Redis::Database {
     OneRspEnd
   };
   ParserState stat_ = ArrayLen;
+
+  enum ThreadState {
+    Uninitialized,
+    Running,
+    Terminated
+  };
+  ThreadState thread_state_ = Uninitialized;
 
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;

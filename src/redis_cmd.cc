@@ -97,7 +97,7 @@ AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string&
   return AuthResult::OK;
 }
 
-Status ParseTTL(const std::vector<std::string> &args, const std::unordered_map<std::string, bool>& white_list, int *result) {
+Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::string, bool>* white_list, int *result) {
     int ttl = 0;
     int64_t expire = 0;
     bool last_arg = false;
@@ -143,8 +143,8 @@ Status ParseTTL(const std::vector<std::string> &args, const std::unordered_map<s
             } else {
                 ttl = static_cast<int>(ttl_ms / 1000);
             }
-        } else if (white_list.find(opt) != white_list.end()) {
-            // pass
+        } else if (white_list->find(opt) != white_list->end()) {
+            (*white_list)[opt] = true;
         } else {
             return Status(Status::NotOK, errInvalidSyntax);
         }
@@ -383,19 +383,13 @@ class CommandGet : public Commander {
 class CommandGetEx : public Commander {
 public:
     Status Parse(const std::vector<std::string> &args) override {
-        if (std::find_if(args.begin(), args.end(), [](const std::string& str) -> bool {
-            return Util::CompareString(str, "persist", true);
-        }) != std::end(args)) {
-            white_list_["persist"] = true;
-            if (args.size() > 3) {
-                return Status(Status::NotOK, errInvalidSyntax);
-            }
+        white_list_register();
+        auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
+        if (!s.IsOK()) {
+            return s;
         }
-        if (!white_list_["persist"]) {
-            auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), white_list_, &ttl_);
-            if (!s.IsOK()) {
-                return s;
-            }
+        if (white_list_["persist"] && args.size() > 3) {
+          return Status(Status::NotOK, errInvalidSyntax);
         }
         return Commander::Parse(args);
     }
@@ -583,17 +577,11 @@ class CommandAppend: public Commander {
 class CommandSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    std::for_each(args.begin(), args.end(), [this] (const std::string& str) {
-        if (Util::ToLower(str) == "nx") {
-            white_list_["nx"] = true;
-        } else if (Util::ToLower(str) == "xx") {
-            white_list_["xx"] = true;
-        }
-    });
+    white_list_register();
+    auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), &white_list_, &ttl_);
     if (white_list_["nx"] && white_list_["xx"]) {
         return Status(Status::NotOK, errInvalidSyntax);
     }
-    auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), white_list_, &ttl_);
     if (!s.IsOK()) { return s; }
     return Commander::Parse(args);
   }
@@ -627,10 +615,10 @@ class CommandSet : public Commander {
     return Status::OK();
   }
 private:
-    void white_list_register() {
-        white_list_["nx"] = false;
-        white_list_["xx"] = false;
-    }
+  void white_list_register() {
+      white_list_["nx"] = false;
+      white_list_["xx"] = false;
+  }
  private:
   int ttl_ = 0;
   std::unordered_map<std::string, bool> white_list_;

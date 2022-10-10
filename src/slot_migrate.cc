@@ -75,7 +75,7 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   migrate_slot_ = -1;
   migrate_failed_slot_ = -1;
   migrate_state_ = kMigrateNone;
-  stop_ = false;
+  stop_migrate_ = false;
   slot_snapshot_ = nullptr;
 
   if (svr->IsSlave()) {
@@ -285,7 +285,7 @@ Status SlotMigrate::SendSnapshot(void) {
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
     // The migrating task has to be stopped, if server role is changed from master to slave
     // or flush command (flushdb or flushall) is executed
-    if (stop_) {
+    if (stop_migrate_) {
       LOG(ERROR) << "[migrate] Stop migrating snapshot due to the thread stoped";
       return Status(Status::NotOK);
     }
@@ -346,7 +346,7 @@ Status SlotMigrate::SyncWal(void) {
 }
 
 Status SlotMigrate::Success(void) {
-  if (stop_) {
+  if (stop_migrate_) {
     LOG(ERROR) << "[migrate] Stop migrating slot " << migrate_slot_;
     return Status(Status::NotOK);
   }
@@ -623,7 +623,7 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
   InternalKey(slot_key, "", metadata.version, true).Encode(&prefix_subkey);
   int itermscount = 0;
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
-    if (stop_) {
+    if (stop_migrate_) {
       LOG(ERROR) << "[migrate] Stop migrating complex key due to task stopped";
       return false;
     }
@@ -749,7 +749,7 @@ bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey,
 
 bool SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
   // Stop migrating or not
-  if (stop_) {
+  if (stop_migrate_) {
     LOG(ERROR) << "[migrate] Stop sending data due to migrating thread stopped"
                << ", current migrating slot: " << migrate_slot_;
     return false;
@@ -843,7 +843,7 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
   std::string commands;
   commands.clear();
   while (true) {
-    if (stop_) {
+    if (stop_migrate_) {
       LOG(ERROR) << "[migrate] Migration task end during migrating WAL data";
       return Status(Status::NotOK);
     }

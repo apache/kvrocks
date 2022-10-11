@@ -20,13 +20,14 @@
 
 #pragma once
 
+#include <glog/logging.h>
+
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <type_traits>
-#include <utility>
-#include <memory>
-#include <algorithm>
 #include <tuple>
-#include <glog/logging.h>
+#include <utility>
 
 class Status {
  public:
@@ -207,6 +208,38 @@ struct StatusOr {
   value_type&& GetValue() && {
     CHECK(*this);
     return std::move(value_);
+  }
+
+  const value_type& ValueOr(const value_type& v) const& {
+    if (IsOK()) {
+      return GetValue();
+    } else {
+      return v;
+    }
+  }
+
+  value_type ValueOr(value_type&& v) const& {
+    if (IsOK()) {
+      return GetValue();
+    } else {
+      return std::move(v);
+    }
+  }
+
+  value_type ValueOr(const T& v) && {
+    if (IsOK()) {
+      return std::move(*this).GetValue();
+    } else {
+      return v;
+    }
+  }
+
+  value_type&& ValueOr(T&& v) && {
+    if (IsOK()) {
+      return std::move(*this).GetValue();
+    } else {
+      return std::move(v);
+    }
   }
 
   const value_type& GetValue() const& {

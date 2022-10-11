@@ -19,6 +19,8 @@
  */
 
 #pragma once
+
+#include <rocksdb/options.h>
 #include <sys/resource.h>
 
 #include <map>
@@ -27,17 +29,16 @@
 #include <string>
 #include <vector>
 
-#include <rocksdb/options.h>
-
 #include "config_type.h"
-#include "status.h"
 #include "cron.h"
+#include "status.h"
 
 // forward declaration
 class Server;
 namespace Engine {
 class Storage;
 }
+#define PORT_LIMIT 65535
 
 #define SUPERVISED_NONE 0
 #define SUPERVISED_AUTODETECT 1
@@ -141,7 +142,7 @@ struct Config{
   std::set<std::string> profiling_sample_commands;
   bool profiling_sample_all_commands = false;
 
-  struct {
+  struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;
     int metadata_block_cache_size;
@@ -175,6 +176,14 @@ struct Config{
     int max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
+
+    struct WriteOptions {
+      bool sync;
+      bool disable_WAL;
+      bool no_slowdown;
+      bool low_pri;
+      bool memtable_insert_hint_per_batch;
+    } write_options;
   } RocksDB;
 
  public:
@@ -202,7 +211,7 @@ struct Config{
 
   void initFieldValidator();
   void initFieldCallback();
-  Status parseConfigFromString(std::string input, int line_number);
+  Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
   Status isNamespaceLegal(const std::string &ns);
 };

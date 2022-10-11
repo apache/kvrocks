@@ -19,4 +19,12 @@
 
 package util
 
+import "time"
+
 const DefaultDelta = 0.000001
+
+// Kubernetes will send a SIGTERM signal to the containers in the pod after deleting the pod.
+// It waits for a specified time, called the termination grace period. By default, this is 30 seconds.
+// If the containers are still running after the grace period,
+// they are sent the SIGKILL signal and forcibly removed.
+const defaultGracePeriod = 30 * time.Second

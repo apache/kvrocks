@@ -32,8 +32,8 @@ start_server {tags {"Migrate from slave server"} overrides {cluster-enabled yes}
         set slaveid "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $S clusterx SETNODEID $slaveid
 
-        set cluster_nodes "$masterid 127.0.0.1 $M_port master - 0-100"
-        set cluster_nodes "$cluster_nodes\n$slaveid 127.0.0.1 $S_port slave $masterid"
+        set cluster_nodes "$masterid $M_host $M_port master - 0-100"
+        set cluster_nodes "$cluster_nodes\n$slaveid $S_host $S_port slave $masterid"
         $M clusterx SETNODES $cluster_nodes 1
         $S clusterx SETNODES $cluster_nodes 1
 
@@ -63,8 +63,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $r1 clusterx setnodeid $node1_id
 
-        set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-10000"
-        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master - 10001-16383"
+        set cluster_nodes "$node0_id $node0_host $node0_port master - 0-10000"
+        set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port master - 10001-16383"
         $r0 clusterx setnodes $cluster_nodes 1
         $r1 clusterx setnodes $cluster_nodes 1
 
@@ -111,8 +111,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $r1 clusterx setnodeid $node1_id
 
-        set cluster_nodes "$node0_id 127.0.0.1 $node0_host master - 0-10000"
-        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master - 10001-16383"
+        set cluster_nodes "$node0_id $node0_host $node0_port master - 0-10000"
+        set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port master - 10001-16383"
         $r0 clusterx setnodes $cluster_nodes 1
         $r1 clusterx setnodes $cluster_nodes 1
 
@@ -147,6 +147,7 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Set keys
             set slot1_tag [lindex $::CRC16_SLOT_TABLE 1]
             set slot1_key_string string_{$slot1_tag}
+            set slot1_key_string2 string2_{$slot1_tag}
             set slot1_key_list list_{$slot1_tag}
             set slot1_key_hash hash_{$slot1_tag}
             set slot1_key_set set_{$slot1_tag}
@@ -167,6 +168,11 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             # Type: string
             $r0 set $slot1_key_string $slot1_key_string
             $r0 expire  $slot1_key_string 10000
+
+            # Expired string key
+            $r0 set $slot1_key_string2 $slot1_key_string2 ex 1
+            after 3000
+            assert_equal [$r0 get $slot1_key_string2] {}
 
             # Type: list
             $r0 rpush $slot1_key_list 0 1 2 3 4 5
@@ -241,6 +247,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
             assert {[$r1 get $slot1_key_string] == "$slot1_key_string"}
             set expire_time [$r1 ttl $slot1_key_string]
             assert {$expire_time > 1000 && $expire_time <= 10000}
+
+            assert_equal [$r1 get $slot1_key_string2] {}
 
             # Check list and expired time
             assert {[$r1 lrange $slot1_key_list 0 -1] eq $lvalue}
@@ -639,8 +647,8 @@ start_server {tags {"Src migration server"} overrides {cluster-enabled yes}} {
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $r1 clusterx setnodeid $node1_id
 
-        set cluster_nodes "$node0_id 127.0.0.1 $node0_host master - 0-10000"
-        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master - 10001-16383"
+        set cluster_nodes "$node0_id $node0_host $node0_port master - 0-10000"
+        set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port master - 10001-16383"
         $r0 clusterx setnodes $cluster_nodes 1
         $r1 clusterx setnodes $cluster_nodes 1
 
@@ -757,9 +765,9 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
             set node2_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx02"
             $r2 clusterx SETNODEID $node2_id
 
-            set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-10000"
-            set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port slave $node0_id"
-            set cluster_nodes "$cluster_nodes\n$node2_id 127.0.0.1 $node2_port master - 10001-16383"
+            set cluster_nodes "$node0_id $node0_host $node0_port master - 0-10000"
+            set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port slave $node0_id"
+            set cluster_nodes "$cluster_nodes\n$node2_id $node2_host $node2_port master - 10001-16383"
             $r0 clusterx SETNODES $cluster_nodes 1
             $r1 clusterx SETNODES $cluster_nodes 1
             $r2 clusterx SETNODES $cluster_nodes 1
@@ -776,9 +784,9 @@ start_server {tags {"Source server will be changed to slave"} overrides {cluster
                 catch {[$r0 cluster info]} e
                 assert_match {*10*start*} $e
                 # Change source server to slave by set topology
-                set cluster_nodes "$node0_id 127.0.0.1 $node1_port master - 0-10000"
-                set cluster_nodes "$cluster_nodes\n$node0_id 127.0.0.1 $node0_port slave $node1_id"
-                set cluster_nodes "$cluster_nodes\n$node2_id 127.0.0.1 $node2_port master - 10001-16383"
+                set cluster_nodes "$node1_id $node1_host $node1_port master - 0-10000"
+                set cluster_nodes "$cluster_nodes\n$node0_id $node0_host $node0_port slave $node1_id"
+                set cluster_nodes "$cluster_nodes\n$node2_id $node2_host $node2_port master - 10001-16383"
                 $r0 clusterx SETNODES $cluster_nodes 2
                 $r1 clusterx SETNODES $cluster_nodes 2
                 $r2 clusterx SETNODES $cluster_nodes 2
@@ -806,8 +814,8 @@ start_server {tags {"Source server will be flushed"} overrides {cluster-enabled 
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $r1 clusterx SETNODEID $node1_id
 
-        set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-10000"
-        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master - 10001-16383"
+        set cluster_nodes "$node0_id $node0_host $node0_port master - 0-10000"
+        set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port master - 10001-16383"
         $r0 clusterx SETNODES $cluster_nodes 1
         $r1 clusterx SETNODES $cluster_nodes 1
 
@@ -887,8 +895,8 @@ start_server {tags {"Source server"} overrides {cluster-enabled yes}} {
         set node1_id "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
         $r1 clusterx SETNODEID $node1_id
 
-        set cluster_nodes "$node0_id 127.0.0.1 $node0_port master - 0-16383"
-        set cluster_nodes "$cluster_nodes\n$node1_id 127.0.0.1 $node1_port master -"
+        set cluster_nodes "$node0_id $node0_host $node0_port master - 0-16383"
+        set cluster_nodes "$cluster_nodes\n$node1_id $node1_host $node1_port master -"
         $r0 clusterx SETNODES $cluster_nodes 1
         $r1 clusterx SETNODES $cluster_nodes 1
 

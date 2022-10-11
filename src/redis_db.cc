@@ -26,6 +26,7 @@
 #include "server.h"
 #include "util.h"
 #include "db_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 
@@ -99,7 +100,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
-  s = storage_->Write(rocksdb::WriteOptions(), &batch);
+  s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
   delete[]buf;
   return s;
 }
@@ -117,7 +118,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  return storage_->Delete(rocksdb::WriteOptions(), metadata_cf_handle_, ns_key);
+  return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
@@ -634,7 +635,11 @@ std::string WriteBatchLogData::Encode() {
 Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   const std::string& log_data = blob.ToString();
   std::vector<std::string> args = Util::Split(log_data, " ");
-  type_ = static_cast<RedisType >(std::stoi(args[0]));
+  auto parse_result = ParseInt<int>(args[0], 10);
+  if (!parse_result) {
+    return parse_result.ToStatus();
+  }
+  type_ = static_cast<RedisType >(*parse_result);
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 
   return Status::OK();

@@ -25,6 +25,7 @@
 #include <limits>
 
 #include "db_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 
@@ -63,7 +64,7 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, std::vector<uint64_t> ids,
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Sortedint::Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
@@ -95,7 +96,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, std::vector<uint64_t> i
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
@@ -260,11 +261,11 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
       spec->minex = true;
       sptr++;
     }
-    try {
-      spec->min = std::stoull(sptr);
-    } catch (const std::exception &e) {
+    auto parse_result = ParseInt<uint64_t>(sptr, 10);
+    if (!parse_result) {
       return Status(Status::NotOK, "the min isn't integer");
     }
+    spec->min = *parse_result;
   }
 
   if (max == "+inf") {
@@ -275,11 +276,11 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
       spec->maxex = true;
       sptr++;
     }
-    try {
-      spec->max = std::stoull(sptr);
-    } catch (const std::exception &e) {
+    auto parse_result = ParseInt<uint64_t>(sptr, 10);
+    if (!parse_result) {
       return Status(Status::NotOK, "the max isn't integer");
     }
+    spec->max = *parse_result;
   }
   return Status::OK();
 }

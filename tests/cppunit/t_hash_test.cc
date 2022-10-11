@@ -20,9 +20,13 @@
 
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
+#include <random>
+#include <algorithm>
 
 #include "test_base.h"
 #include "redis_hash.h"
+#include "parse_util.h"
 class RedisHashTest : public TestBase {
 protected:
   explicit RedisHashTest() : TestBase() {
@@ -114,8 +118,11 @@ TEST_F(RedisHashTest, HIncr) {
   }
   std::string bytes;
   hash->Get(key_, field, &bytes);
-  value = std::stoll(bytes);
-  EXPECT_EQ(32, value);
+  auto parseResult = ParseInt<int64_t>(bytes, 10);
+  if (!parseResult) {
+     FAIL();
+  }
+  EXPECT_EQ(32, *parseResult);
   hash->Del(key_);
 }
 
@@ -153,4 +160,41 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   value = std::stof(bytes);
   EXPECT_FLOAT_EQ(32*1.2, value);
   hash->Del(key_);
+}
+
+TEST_F(RedisHashTest, HRange) {
+  int ret;
+  std::vector<FieldValue> fvs;
+  for (size_t i = 0; i < 4; i++) {
+    fvs.emplace_back(FieldValue{"key" + std::to_string(i), "value" + std::to_string(i)});
+  }
+  for (size_t i = 0; i < 26; i++) {
+    fvs.emplace_back(FieldValue{std::to_string(char(i + 'a')), std::to_string(char(i + 'a'))});
+  }
+
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::vector<FieldValue> tmp(fvs);
+  for (size_t i =0; i < 100 ; i ++) {
+    std::shuffle(tmp.begin(), tmp.end(), g);
+    rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+    EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+    s = hash->MSet(key_, fvs, false, &ret);
+    EXPECT_EQ(ret ,0);
+    std::vector<FieldValue> result;
+    s = hash->Range(key_, "key0", "key4", INT_MAX, &result);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(4, result.size());
+    EXPECT_EQ("key0", result[0].field);
+    EXPECT_EQ("key1", result[1].field);
+    EXPECT_EQ("key2", result[2].field);
+    hash->Del(key_);
+  }
+}
+
+TEST_F(RedisHashTest, HRangeNonExistingKey) {
+  std::vector<FieldValue> result;
+  auto s = hash->Range("non-existing-key", "any-start-key", "any-end-key", 10, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(result.size(), 0);
 }

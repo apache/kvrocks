@@ -20,17 +20,8 @@
 
 #include "worker.h"
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <list>
-#include <cctype>
-#include <cstring>
-#include <utility>
-#include <algorithm>
-#include <glog/logging.h>
 #include <event2/util.h>
+#include <glog/logging.h>
 
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
@@ -38,8 +29,20 @@
 #include <openssl/err.h>
 #endif
 
-#include "redis_request.h"
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <list>
+#include <utility>
+
 #include "redis_connection.h"
+#include "redis_request.h"
+#include "scripting.h"
 #include "server.h"
 #include "util.h"
 
@@ -65,6 +68,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
+  lua_ = Lua::CreateState(true);
 }
 
 Worker::~Worker() {
@@ -86,6 +90,7 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
+  Lua::DestroyState(lua_);
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {

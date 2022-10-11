@@ -46,11 +46,11 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
   // 1. Start an empty slave server.
-  // 2. Connect to master which has amount of data, and trigger full sychronization.
+  // 2. Connect to master which has amounted of data, and trigger full synchronization.
   // 3. After replication, change slave to master and start slot migrate.
   // 4. It will occur segment fault when using metadata_cf_handle_ to create iterator of rocksdb.
   // [Reason]:
-  // After full sychronization, DB will be reopened, db_ and metadata_cf_handle_ will be released.
+  // After full synchronization, DB will be reopened, db_ and metadata_cf_handle_ will be released.
   // Then, if we create rocksdb iterator with metadata_cf_handle_, it will go wrong.
   // [Solution]:
   // db_ and metadata_cf_handle_ will be replaced by storage_->GetDB() and storage_->GetCFHandle("metadata")
@@ -75,7 +75,7 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   migrate_slot_ = -1;
   migrate_failed_slot_ = -1;
   migrate_state_ = kMigrateNone;
-  stop_ = false;
+  stop_migrate_ = false;
   slot_snapshot_ = nullptr;
 
   if (svr->IsSlave()) {
@@ -121,10 +121,20 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
   return Status::OK();
 }
 
+SlotMigrate::~SlotMigrate() {
+  if (thread_state_ == ThreadState::Running) {
+    stop_migrate_ = true;
+    thread_state_ = ThreadState::Terminated;
+    job_cv_.notify_all();
+    t_.join();
+  }
+}
+
 Status SlotMigrate::CreateMigrateHandleThread(void) {
   try {
     t_ = std::thread([this]() {
       Util::ThreadSetName("slot-migrate");
+      thread_state_ = ThreadState::Running;
       this->Loop(static_cast<void*>(this));
     });
   } catch(const std::exception &e) {
@@ -136,10 +146,14 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
 void *SlotMigrate::Loop(void *arg) {
   while (true) {
     std::unique_lock<std::mutex> ul(this->job_mutex_);
-    while (this->slot_job_ == nullptr) {
+    while (!IsTerminated() && this->slot_job_ == nullptr) {
       this->job_cv_.wait(ul);
     }
     ul.unlock();
+
+    if (IsTerminated()) {
+      return nullptr;
+    }
 
     LOG(INFO) << "[migrate] migrate_slot: " << slot_job_->migrate_slot_
               << ", dst_ip: " << slot_job_->dst_ip_
@@ -155,12 +169,16 @@ void *SlotMigrate::Loop(void *arg) {
 
     StateMachine();
   }
-  return nullptr;
 }
 
 void SlotMigrate::StateMachine(void) {
   state_machine_ = kSlotMigrateStart;
   while (true) {
+    if (IsTerminated()) {
+      LOG(WARNING) << "[migrate] Will stop state machine, because the thread was terminated";
+      return;
+    }
+
     switch (state_machine_) {
       case kSlotMigrateStart: {
         auto s = Start();
@@ -281,12 +299,12 @@ Status SlotMigrate::SendSnapshot(void) {
   ComposeSlotKeyPrefix(namespace_, slot, &prefix);
   LOG(INFO) << "[migrate] Iterate keys of slot, key's prefix: " << prefix;
 
-  // Seek to the begining of keys start with 'prefix' and iterate all these keys
+  // Seek to the beginning of keys start with 'prefix' and iterate all these keys
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
     // The migrating task has to be stopped, if server role is changed from master to slave
     // or flush command (flushdb or flushall) is executed
-    if (stop_) {
-      LOG(ERROR) << "[migrate] Stop migrating snapshot due to the thread stoped";
+    if (stop_migrate_) {
+      LOG(ERROR) << "[migrate] Stop migrating snapshot due to the thread stopped";
       return Status(Status::NotOK);
     }
 
@@ -302,7 +320,7 @@ Status SlotMigrate::SendSnapshot(void) {
 
     // Add key's constructed cmd to restore_cmds, send pipeline
     // or not according to current_pipeline_size_
-    auto stat = MigrateOneKey(rocksdb::Slice(user_key), &restore_cmds);
+    auto stat = MigrateOneKey(user_key, iter->value(), &restore_cmds);
     if (stat.IsOK()) {
       if (stat.Msg() == "ok") migratedkey_cnt++;
       if (stat.Msg() == "expired") expiredkey_cnt++;
@@ -346,7 +364,7 @@ Status SlotMigrate::SyncWal(void) {
 }
 
 Status SlotMigrate::Success(void) {
-  if (stop_) {
+  if (stop_migrate_) {
     LOG(ERROR) << "[migrate] Stop migrating slot " << migrate_slot_;
     return Status(Status::NotOK);
   }
@@ -370,7 +388,7 @@ Status SlotMigrate::Fail(void) {
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportFailed)) {
     LOG(INFO) << "[migrate] Failed to notify the destination that data migration failed";
   }
-  // Stop slot forbiding writing
+  // Stop slot will forbid writing
   migrate_failed_slot_ = migrate_slot_;
   forbidden_slot_ = -1;
   return Status::OK();
@@ -443,7 +461,7 @@ bool SlotMigrate::CheckResponseOnce(int sock_fd) {
 // ltrim        Redis::SimpleString    -Err\r\n
 // linsert      Redis::Integer
 // lset         Redis::SimpleString
-// hdel         Redis::Intege
+// hdel         Redis::Integer
 // srem         Redis::Integer
 // zrem         Redis::Integer
 // lpop         Redis::NilString       $-1\r\n
@@ -460,7 +478,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
     return false;
   }
 
-  // Set socket recieve timeout first
+  // Set socket receive timeout first
   struct timeval tv;
   tv.tv_sec = 1;
   tv.tv_usec = 0;
@@ -472,7 +490,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
   stat_ = ArrayLen;
   UniqueEvbuf evbuf;
   while (true) {
-    // Read response data from socket buffer to event buffer
+    // Read response data from socket buffer to the event buffer
     if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
       LOG(ERROR) << "[migrate] Failed to read response, Err: " + std::string(strerror(errno));
       return false;
@@ -496,12 +514,13 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
                 << ", line length: " << line.length;
             stat_ = Error;
           } else if (line[0] == '$') {
-            try {
-              bulk_len = std::stoull(std::string(line.get() + 1, line.length - 1));
-              stat_ = bulk_len > 0 ? BulkData : OneRspEnd;
-            } catch (const std::exception &e) {
+            auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
+            if (!parse_result) {
               LOG(ERROR) << "[migrate] Protocol Err: expect integer";
               stat_ = Error;
+            } else {
+              bulk_len = *parse_result;
+              stat_ = bulk_len > 0 ? BulkData : OneRspEnd;
             }
           } else if (line[0] == '+' || line[0] == ':') {
               stat_ = OneRspEnd;
@@ -540,32 +559,21 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
       }
     }
   }
-  return true;  // Can't reach here
 }
 
-bool SlotMigrate::GetSlotKeyMetadata(const rocksdb::Slice &prefix_key, std::string *bytes) {
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = slot_snapshot_;
-  auto s = storage_->GetDB()->Get(read_options, storage_->GetCFHandle("metadata"), prefix_key, bytes);
-  if (!s.ok()) {
-    LOG(ERROR) << "[migrate] Failed to get metadata of key: " << prefix_key.ToString()
-      << ", Err: " << s.ToString();
-    return false;
-  }
-  return true;
-}
-
-Status SlotMigrate::MigrateOneKey(rocksdb::Slice key, std::string *restore_cmds) {
+Status SlotMigrate::MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &value, std::string *restore_cmds) {
   std::string prefix_key;
   AppendNamespacePrefix(key, &prefix_key);
-  std::string bytes;
-  bool st = GetSlotKeyMetadata(prefix_key, &bytes);
-  if (!st) return Status(Status::NotOK, "[migrate] Failed to get key's metadata");
+  std::string bytes = value.ToString();
   Metadata metadata(kRedisNone, false);
   metadata.Decode(bytes);
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     LOG(INFO) << "[migrate] No elements of key: " << prefix_key;
-    return Status(Status::cOK, "empty");;
+    return Status(Status::cOK, "empty");
+  }
+
+  if (metadata.Expired()) {
+    return Status(Status::cOK, "expired");
   }
 
   // Construct command according to type of the key
@@ -601,11 +609,8 @@ bool SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &me
                                    const std::string &bytes, std::string *restore_cmds) {
   std::vector<std::string> command = {"set", key.ToString(), bytes.substr(5, bytes.size() - 5)};
   if (metadata.expire > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
-    int32_t ttl = metadata.expire - uint32_t(now);
-    command.emplace_back("EX");
-    command.emplace_back(std::to_string(ttl));
+    command.emplace_back("EXAT");
+    command.emplace_back(std::to_string(metadata.expire));
   }
   *restore_cmds += Redis::MultiBulkString(command, false);
   current_pipeline_size_++;
@@ -633,9 +638,9 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
   std::string slot_key, prefix_subkey;
   AppendNamespacePrefix(key, &slot_key);
   InternalKey(slot_key, "", metadata.version, true).Encode(&prefix_subkey);
-  int itermscount = 0;
+  int item_count = 0;
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
-    if (stop_) {
+    if (stop_migrate_) {
       LOG(ERROR) << "[migrate] Stop migrating complex key due to task stopped";
       return false;
     }
@@ -645,7 +650,7 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
     }
 
     // Parse values of the complex key
-    // InternalKey is adopt to get compex key's value
+    // InternalKey is adopted to get complex key's value
     // from the formatted key return by iterator of rocksdb
     InternalKey inkey(iter->key(), true);
     switch (metadata.Type()) {
@@ -681,18 +686,18 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
         break;
     }
 
-    // Check iterms count
+    // Check item count
     // Exclude bitmap because it does not have hmset-like command
     if (metadata.Type() != kRedisBitmap) {
-      itermscount++;
-      if (itermscount >= kMaxItemsInCommand) {
+      item_count++;
+      if (item_count >= kMaxItemsInCommand) {
         *restore_cmds += Redis::MultiBulkString(user_cmd, false);
         current_pipeline_size_++;
-        itermscount = 0;
-        // Have to clear saved iterms
+        item_count = 0;
+        // Have to clear saved items
         user_cmd.erase(user_cmd.begin() + 2, user_cmd.end());
 
-        // Maybe key has amout of elements, have to check pipeline here
+        // Maybe key has amounted of elements, have to check pipeline here
         if (!SendCmdsPipelineIfNeed(restore_cmds, false)) {
           LOG(INFO) << "[migrate] Failed to send complex key part";
           return false;
@@ -701,8 +706,8 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
     }
   }
 
-  // Have to check the iterm count of the last command list
-  if (itermscount % kMaxItemsInCommand) {
+  // Have to check the item count of the last command list
+  if (item_count % kMaxItemsInCommand) {
     *restore_cmds += Redis::MultiBulkString(user_cmd, false);
     current_pipeline_size_++;
   }
@@ -728,12 +733,12 @@ bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey,
   uint32_t index, offset;
   std::string index_str = inkey.GetSubKey().ToString();
   std::string fragment = (*iter)->value().ToString();
-  try {
-    index = std::stoi(index_str);
-  } catch (std::exception &e) {
+  auto parse_result = ParseInt<int>(index_str, 10);
+  if (!parse_result) {
     LOG(ERROR) << "[migrate] Parse bitmap index error, Err: " << strerror(errno);
     return false;
   }
+  index = *parse_result;
 
   // Bitmap does not have hmset-like command
   // TODO(chrisZMF): Use hmset-like command for efficiency
@@ -761,7 +766,7 @@ bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey,
 
 bool SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
   // Stop migrating or not
-  if (stop_) {
+  if (stop_migrate_) {
     LOG(ERROR) << "[migrate] Stop sending data due to migrating thread stopped"
                << ", current migrating slot: " << migrate_slot_;
     return false;
@@ -794,7 +799,7 @@ bool SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
     return false;
   }
 
-  // Clear commands and currentpipeline
+  // Clear commands and running pipeline
   commands->clear();
   current_pipeline_size_ = 0;
   return true;
@@ -855,21 +860,21 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
   std::string commands;
   commands.clear();
   while (true) {
-    if (stop_) {
+    if (stop_migrate_) {
       LOG(ERROR) << "[migrate] Migration task end during migrating WAL data";
       return Status(Status::NotOK);
     }
     auto batch = (*iter)->GetBatch();
     if (batch.sequence != next_seq) {
       LOG(ERROR) << "[migrate] WAL iterator is discrete, some seq might be lost"
-                 << ", expectd sequence: " << next_seq << ", but got sequence: " << batch.sequence;
+                 << ", expected sequence: " << next_seq << ", but got sequence: " << batch.sequence;
       return Status(Status::NotOK);
     }
 
-    // Generate commands by iterating write bacth
+    // Generate commands by iterating write batch
     auto s = GenerateCmdsFromBatch(&batch, &commands);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[migrate] Failed to generate commands from wirte batch";
+      LOG(ERROR) << "[migrate] Failed to generate commands from write batch";
       return Status(Status::NotOK);
     }
 

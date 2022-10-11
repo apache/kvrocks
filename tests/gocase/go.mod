@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/go-redis/redis/v9 v9.0.0-beta.2
 	github.com/stretchr/testify v1.8.0
+	golang.org/x/exp v0.0.0-20220929160808-de9c53c655b9
 	modernc.org/mathutil v1.5.0
 )
 

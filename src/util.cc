@@ -19,32 +19,36 @@
  */
 
 #define __STDC_FORMAT_MACROS
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <poll.h>
-#include <errno.h>
-#include <pthread.h>
-#include <fcntl.h>
-#include <math.h>
-#include <string>
-#include <algorithm>
+
 #include <event2/util.h>
 #include <event2/buffer.h>
 #include <glog/logging.h>
+
 #ifdef __linux__
 #include <sys/sendfile.h>
 #endif
 
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
 
-#include "util.h"
-#include "status.h"
+#include <algorithm>
+#include <cerrno>
+#include <cmath>
+#include <string>
+
 #include "event_util.h"
+#include "parse_util.h"
 #include "fd_util.h"
+#include "status.h"
+#include "util.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */
@@ -100,7 +104,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
 }
 
 const std::string Float2String(double d) {
-  if (isinf(d)) {
+  if (std::isinf(d)) {
     return d > 0 ? "inf" : "-inf";
   }
 
@@ -341,26 +345,20 @@ int GetLocalPort(int fd) {
 }
 
 Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  try {
-    *n = static_cast<int64_t>(std::stoll(str));
-    if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-    }
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
+  if (!parse_result) {
+    return parse_result.ToStatus();
   }
+  *n = *parse_result;
   return Status::OK();
 }
 
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  try {
-    *n = static_cast<int64_t>(std::stoll(str, nullptr, 8));
-    if (max > min && (*n < min || *n > max)) {
-      return Status(Status::NotOK, "value should between "+std::to_string(min)+" and "+std::to_string(max));
-    }
-  } catch (std::exception &e) {
-    return Status(Status::NotOK, "value is not an integer or out of range");
+  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
+  if (!parse_result) {
+    return parse_result.ToStatus();
   }
+  *n = *parse_result;
   return Status::OK();
 }
 
@@ -599,7 +597,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   const char *start = value.data(), *end = start + value.size(), *p;
   while (start != end) {
     switch (state) {
-      case stateArrayLen:
+      case stateArrayLen: {
         if (start[0] != '*') {
           return tokens;
         }
@@ -608,12 +606,13 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        array_len = std::stoull(std::string(start+1, p));
+        // parse_result expects to must be parsed successfully here
+        array_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
         start = p + 2;
         state = stateBulkLen;
         break;
-
-      case stateBulkLen:
+      }
+      case stateBulkLen: {
         if (start[0] != '$') {
           return tokens;
         }
@@ -622,20 +621,22 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        bulk_len = std::stoull(std::string(start+1, p));
+        // parse_result expects to must be parsed successfully here
+        bulk_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
         start = p + 2;
         state = stateBulkData;
         break;
-
-      case stateBulkData:
-        if (bulk_len+2 > static_cast<uint64_t>(end-start)) {
+      }
+      case stateBulkData: {
+        if (bulk_len+2 > static_cast<uint64_t>(end - start)) {
           tokens.clear();
           return tokens;
         }
-        tokens.emplace_back(std::string(start, start+bulk_len));
+        tokens.emplace_back(std::string(start, start + bulk_len));
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
+      }
     }
   }
   if (array_len != tokens.size()) {

@@ -20,11 +20,11 @@
 
 #pragma once
 
+#include <rocksdb/status.h>
+
+#include <atomic>
 #include <string>
 #include <vector>
-#include <atomic>
-
-#include <rocksdb/status.h>
 
 #include "encoding.h"
 #include "redis_stream_base.h"

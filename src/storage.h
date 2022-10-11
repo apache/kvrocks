@@ -20,22 +20,23 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <utility>
-#include <memory>
-#include <string>
-#include <vector>
-#include <atomic>
+#include <event2/bufferevent.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>
 #include <rocksdb/utilities/backup_engine.h>
-#include <event2/bufferevent.h>
 
-#include "status.h"
-#include "lock_manager.h"
+#include <atomic>
+#include <cinttypes>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "config.h"
+#include "lock_manager.h"
 #include "rw_lock.h"
+#include "status.h"
 
 const int kReplIdLength = 16;
 
@@ -65,6 +66,7 @@ class Storage {
   explicit Storage(Config *config);
   ~Storage();
 
+  void SetWriteOptions(const Config::RocksDB::WriteOptions& config);
   Status Open(bool read_only);
   Status Open();
   Status OpenForReadOnly();
@@ -86,6 +88,7 @@ class Storage {
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
   rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
+  const rocksdb::WriteOptions& DefaultWriteOptions() { return write_opts_; }
   rocksdb::Status Delete(const rocksdb::WriteOptions &options,
                          rocksdb::ColumnFamilyHandle *cf_handle,
                          const rocksdb::Slice &key);
@@ -187,6 +190,8 @@ class Storage {
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
+
+  rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };
 
 }  // namespace Engine

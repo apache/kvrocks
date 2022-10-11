@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16)
 project(kvrocks
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
         LANGUAGES CXX)
@@ -25,8 +25,8 @@ option(ENABLE_ASAN "enable address santinizer" OFF)
 option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
-option(USE_LUAJIT "use luaJIT instead of lua" ON)
-option(ENABLE_OPENSSL "enable openssl to support tls connection" ON)
+option(USE_LUAJIT "use luaJIT instead of lua" OFF)
+option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)

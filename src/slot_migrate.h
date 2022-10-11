@@ -20,27 +20,29 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <thread>
+#include <glog/logging.h>
+#include <rocksdb/db.h>
+#include <rocksdb/status.h>
+#include <rocksdb/transaction_log.h>
+#include <rocksdb/write_batch.h>
+
 #include <chrono>
 #include <map>
 #include <memory>
-#include <rocksdb/status.h>
-#include <rocksdb/write_batch.h>
-#include <rocksdb/db.h>
-#include <rocksdb/transaction_log.h>
-#include <glog/logging.h>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include "redis_db.h"
 #include "config.h"
-#include "server.h"
-#include "stats.h"
-#include "util.h"
-#include "slot_import.h"
 #include "encoding.h"
-#include "status.h"
+#include "redis_db.h"
 #include "redis_slot.h"
+#include "server.h"
+#include "slot_import.h"
+#include "stats.h"
+#include "status.h"
+#include "parse_util.h"
+#include "util.h"
 
 #define CLUSTER_SLOTS HASH_SLOTS_SIZE
 
@@ -81,7 +83,7 @@ class SlotMigrate : public Redis::Database {
  public:
   explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed,
                        int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
-  ~SlotMigrate() {}
+  ~SlotMigrate();
 
   Status CreateMigrateHandleThread(void);
   void *Loop(void *arg);
@@ -91,12 +93,13 @@ class SlotMigrate : public Redis::Database {
   void SetMigrateSpeedLimit(int speed) { if (speed >= 0) migrate_speed_ = speed; }
   void SetPipelineSize(uint32_t size) { if (size > 0) pipeline_size_limit_ = size; }
   void SetSequenceGapSize(int size) { if (size > 0) seq_gap_limit_ = size; }
-  void SetMigrateStopFlag(bool state) { stop_ = state; }
+  void SetMigrateStopFlag(bool state) { stop_migrate_ = state; }
   int16_t GetMigrateState() { return migrate_state_; }
   int16_t GetMigrateStateMachine() { return state_machine_; }
   int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
   int16_t GetMigratingSlot(void) { return migrate_slot_; }
   void GetMigrateInfo(std::string *info);
+  bool IsTerminated() { return thread_state_ == ThreadState::Terminated; }
 
  private:
   void StateMachine(void);
@@ -112,8 +115,7 @@ class SlotMigrate : public Redis::Database {
   bool CheckResponseOnce(int sock_fd);
   bool CheckResponseWithCounts(int sock_fd, int total);
 
-  bool GetSlotKeyMetadata(const rocksdb::Slice &prefix_key, std::string *bytes);
-  Status MigrateOneKey(rocksdb::Slice key, std::string *restore_cmds);
+  Status MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &value, std::string *restore_cmds);
   bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata,
                         const std::string &bytes, std::string *restore_cmds);
   bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
@@ -144,6 +146,13 @@ class SlotMigrate : public Redis::Database {
   };
   ParserState stat_ = ArrayLen;
 
+  enum class ThreadState {
+    Uninitialized,
+    Running,
+    Terminated
+  };
+  ThreadState thread_state_ = ThreadState::Uninitialized;
+
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;
   static const int kMaxNotifyRetryTimes = 3;
@@ -168,7 +177,7 @@ class SlotMigrate : public Redis::Database {
   std::atomic<int16_t> migrate_slot_;
   int16_t migrate_failed_slot_;
   std::atomic<MigrateTaskState> migrate_state_;
-  std::atomic<bool> stop_;
+  std::atomic<bool> stop_migrate_;  // stop_migrate_ is true will stop migrate but the migration thread won't destroy.
   std::string current_migrate_key_;
   uint64_t slot_snapshot_time_;
   const rocksdb::Snapshot *slot_snapshot_;

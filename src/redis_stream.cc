@@ -20,12 +20,11 @@
 
 #include "redis_stream.h"
 
+#include <rocksdb/status.h>
+
 #include <memory>
 #include <utility>
 #include <vector>
-
-#include <glog/logging.h>
-#include <rocksdb/status.h>
 
 #include "db_util.h"
 
@@ -79,7 +78,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& op
                             const std::vector<std::string> &args, StreamEntryID *id) {
   for (auto const &v : args) {
     if (v.size() > INT32_MAX) {
-      rocksdb::Status::InvalidArgument("argument length is too high");
+      return rocksdb::Status::InvalidArgument("argument length is too high");
     }
   }
 
@@ -155,7 +154,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& op
 
   *id = next_entry_id;
 
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
@@ -296,7 +295,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, uint64_t *ret) {
@@ -431,6 +430,9 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
     options.end = metadata.last_entry_id;
     options.with_count = true;
     options.count = need_entries;
+    options.reverse = false;
+    options.exclude_start = false;
+    options.exclude_end = false;
 
     s = range(ns_key, metadata, options, &info->entries);
     if (!s.ok()) {
@@ -525,7 +527,7 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
 
-    return storage_->Write(rocksdb::WriteOptions(), &batch);
+    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
   }
 
   return rocksdb::Status::OK();

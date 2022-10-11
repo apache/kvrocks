@@ -20,13 +20,13 @@
 
 #pragma once
 
-#include <vector>
+#include <event2/buffer.h>
+
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
-#include <memory>
-
-#include <event2/buffer.h>
+#include <vector>
 
 #include "redis_cmd.h"
 #include "redis_request.h"

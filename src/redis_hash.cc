@@ -19,12 +19,17 @@
  */
 
 #include "redis_hash.h"
-#include <utility>
-#include <limits>
-#include <cmath>
-#include <iostream>
+
 #include <rocksdb/status.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <utility>
+
 #include "db_util.h"
+#include "parse_util.h"
 
 namespace Redis {
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
@@ -73,18 +78,17 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
-    std::size_t idx = 0;
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      try {
-        old_value = std::stoll(value_bytes, &idx);
-      } catch (std::exception &e) {
-        return rocksdb::Status::InvalidArgument(e.what());
+      auto parse_result = ParseInt<int64_t>(value_bytes, 10);
+      if (!parse_result) {
+        return rocksdb::Status::InvalidArgument(parse_result.Msg());
       }
-      if (isspace(value_bytes[0]) || idx != value_bytes.size()) {
+      if (isspace(value_bytes[0])) {
         return rocksdb::Status::InvalidArgument("value is not an integer");
       }
+      old_value = *parse_result;
       exists = true;
     }
   }
@@ -104,7 +108,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret) {
@@ -154,7 +158,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Hash::MGet(const Slice &user_key,
@@ -230,7 +234,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   std::string bytes;
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
@@ -271,7 +275,42 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+}
+
+rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop,
+                            int64_t limit, std::vector<FieldValue> *field_values) {
+  field_values->clear();
+  if (start.compare(stop) >= 0 || limit <= 0) {
+    return rocksdb::Status::OK();
+  }
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  limit = std::min(static_cast<int64_t>(metadata.size), limit);
+  std::string start_key, stop_key;
+  InternalKey(ns_key, start, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, stop, metadata.version, storage_->IsSlotIdEncoded()).Encode(&stop_key);
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(stop_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.fill_cache = false;
+
+  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  iter->Seek(start_key);
+  for (int64_t i = 0; iter->Valid() && i <= limit - 1; ++i) {
+    FieldValue tmp_field_value;
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    tmp_field_value.field = ikey.GetSubKey().ToString();
+    tmp_field_value.value = iter->value().ToString();
+    field_values->emplace_back(tmp_field_value);
+    iter->Next();
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {

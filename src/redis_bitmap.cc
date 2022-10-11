@@ -24,6 +24,7 @@
 #include <utility>
 #include <algorithm>
 
+#include "parse_util.h"
 #include "redis_bitmap_string.h"
 #include "db_util.h"
 
@@ -136,7 +137,11 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
        iter->Valid() && iter->key().starts_with(prefix_key);
        iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    frag_index = std::stoul(ikey.GetSubKey().ToString());
+    auto parse_result = ParseInt<uint32_t>(ikey.GetSubKey().ToString(), 10);
+    if (!parse_result) {
+      return rocksdb::Status::InvalidArgument(parse_result.Msg());
+    }
+    frag_index = *parse_result;
     fragment = iter->value().ToString();
     // To be compatible with data written before the commit d603b0e(#338)
     // and avoid returning extra null char after expansion.
@@ -232,7 +237,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt) {
@@ -384,7 +389,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name,
   rocksdb::WriteBatch batch;
   if (max_size == 0) {
     batch.Delete(metadata_cf_handle_, ns_key);
-    return storage_->Write(rocksdb::WriteOptions(), &batch);
+    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
   }
   std::vector<std::string> log_args = {std::to_string(kRedisCmdBitOp), op_name};
   for (const auto &op_key : op_keys) {
@@ -535,7 +540,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name,
   res_metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
   *len = max_size;
-  return storage_->Write(rocksdb::WriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {
@@ -549,7 +554,6 @@ bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset)
 
 bool Bitmap::IsEmptySegment(const Slice &segment) {
   static const char zero_byte_segment[kBitmapSegmentBytes] = {0};
-  std::string value = segment.ToString();
-  return !memcmp(zero_byte_segment, value.c_str(), value.size());
+  return !memcmp(zero_byte_segment, segment.data(), segment.size());
 }
 }  // namespace Redis

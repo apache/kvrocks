@@ -21,29 +21,31 @@ package util
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 )
 
-type tcpClient struct {
+type TCPClient struct {
 	c net.Conn
 	r *bufio.Reader
 	w *bufio.Writer
 }
 
-func newTCPClient(c net.Conn) *tcpClient {
-	return &tcpClient{
+func newTCPClient(c net.Conn) *TCPClient {
+	return &TCPClient{
 		c: c,
 		r: bufio.NewReader(c),
 		w: bufio.NewWriter(c),
 	}
 }
 
-func (c *tcpClient) Close() error {
+func (c *TCPClient) Close() error {
 	return c.c.Close()
 }
 
-func (c *tcpClient) ReadLine() (string, error) {
+func (c *TCPClient) ReadLine() (string, error) {
 	r, err := c.r.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -51,10 +53,27 @@ func (c *tcpClient) ReadLine() (string, error) {
 	return strings.TrimSuffix(r, "\r\n"), nil
 }
 
-func (c *tcpClient) Write(s string) error {
+func (c *TCPClient) Write(s string) error {
 	_, err := c.w.WriteString(s)
 	if err != nil {
 		return err
 	}
 	return c.w.Flush()
+}
+
+func (c *TCPClient) WriteArgs(args ...string) error {
+	if args == nil {
+		return errors.New("args cannot be nil")
+	}
+
+	if len(args) == 0 {
+		return errors.New("args cannot be empty")
+	}
+
+	cmd := fmt.Sprintf("*%d\r\n", len(args))
+	for _, arg := range args {
+		cmd = cmd + fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
+	}
+
+	return c.Write(cmd)
 }

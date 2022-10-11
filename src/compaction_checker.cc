@@ -21,6 +21,7 @@
 #include "compaction_checker.h"
 #include <glog/logging.h>
 #include "storage.h"
+#include "parse_util.h"
 
 void CompactionChecker::CompactPropagateAndPubSubFiles() {
   rocksdb::CompactRangeOptions compact_opts;
@@ -73,13 +74,25 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     }
 
     // don't compact the SST created in 1 hour
-    if (file_creation_time > static_cast<uint64_t>(now-3600)) continue;
+    if (file_creation_time > static_cast<uint64_t>(now - 3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
-        total_keys = std::atoi(property_iter.second.data());
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse total_keys error: "
+                    << parse_result.Msg();
+          continue;
+        }
+        total_keys = *parse_result;
       }
       if (property_iter.first == "deleted_keys") {
-        deleted_keys = std::atoi(property_iter.second.data());
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse deleted_keys error: "
+                    << parse_result.Msg();
+          continue;
+        }
+        deleted_keys = *parse_result;
       }
       if (property_iter.first == "start_key") {
         start_key = property_iter.second;

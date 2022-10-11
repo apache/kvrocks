@@ -18,20 +18,22 @@
  *
  */
 
-#include <chrono>
-#include <utility>
-#include <memory>
+#include "redis_request.h"
+
 #include <glog/logging.h>
 #include <rocksdb/perf_context.h>
-#include <rocksdb/iostats_context.h>
 
-#include "util.h"
-#include "redis_reply.h"
-#include "redis_request.h"
-#include "redis_connection.h"
-#include "server.h"
-#include "redis_slot.h"
+#include <chrono>
+#include <memory>
+#include <utility>
+
 #include "event_util.h"
+#include "parse_util.h"
+#include "redis_connection.h"
+#include "redis_reply.h"
+#include "redis_slot.h"
+#include "server.h"
+#include "util.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
@@ -66,11 +68,11 @@ Status Request::Tokenize(evbuffer *input) {
         pipeline_size++;
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] == '*') {
-          try {
-            multi_bulk_len_ = std::stoll(std::string(line.get() + 1, line.length - 1));
-          } catch (std::exception &e) {
+          auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
+          if (!parse_result) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
+          multi_bulk_len_ = *parse_result;
           if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
@@ -96,11 +98,11 @@ Status Request::Tokenize(evbuffer *input) {
         if (line[0] != '$') {
           return Status(Status::NotOK, "Protocol error: expected '$'");
         }
-        try {
-          bulk_len_ = std::stoull(std::string(line.get() + 1, line.length - 1));
-        } catch (std::exception &e) {
+        auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
+        if (!parse_result) {
           return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }
+        bulk_len_ = *parse_result;
         if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
           return Status(Status::NotOK, "Protocol error: invalid bulk length");
         }

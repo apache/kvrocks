@@ -22,11 +22,11 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update
-RUN apt install -y cmake make git autoconf libtool g++ python3
+RUN apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build
+RUN ./x.py build -DENABLE_OPENSSL=ON
 
 FROM ubuntu:focal
 
@@ -38,5 +38,5 @@ COPY ./kvrocks.conf  ./conf/
 RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' ./conf/kvrocks.conf
 VOLUME /var/lib/kvrocks
 
-EXPOSE 6666:6666 
+EXPOSE 6666:6666
 ENTRYPOINT ["./bin/kvrocks", "-c", "./conf/kvrocks.conf"]

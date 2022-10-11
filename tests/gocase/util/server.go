@@ -21,11 +21,13 @@ package util
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -33,12 +35,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var binPath = flag.String("binPath", "", "directory including kvrocks build files")
+var workspace = flag.String("workspace", "", "directory of cases workspace")
+var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
+
 type KvrocksServer struct {
 	t    testing.TB
 	cmd  *exec.Cmd
-	addr net.Addr
+	addr *net.TCPAddr
 
-	clean func()
+	configs map[string]string
+
+	clean func(bool)
+}
+
+func (s *KvrocksServer) HostPort() string {
+	return s.addr.AddrPort().String()
+}
+
+func (s *KvrocksServer) Host() string {
+	return s.addr.AddrPort().Addr().String()
+}
+
+func (s *KvrocksServer) Port() uint16 {
+	return s.addr.AddrPort().Port()
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
@@ -52,21 +72,71 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 	return redis.NewClient(options)
 }
 
-func (s *KvrocksServer) NewTCPClient() *tcpClient {
+func (s *KvrocksServer) NewTCPClient() *TCPClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
 	require.NoError(s.t, err)
 	return newTCPClient(c)
 }
 
 func (s *KvrocksServer) Close() {
-	require.NoError(s.t, s.cmd.Process.Kill())
-	require.EqualError(s.t, s.cmd.Wait(), "signal: killed")
-	s.clean()
+	s.close(false)
+}
+
+func (s *KvrocksServer) close(keepDir bool) {
+	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
+	f := func(err error) { require.NoError(s.t, err) }
+	timer := time.AfterFunc(defaultGracePeriod, func() {
+		require.NoError(s.t, s.cmd.Process.Kill())
+		f = func(err error) { require.EqualError(s.t, err, "signal: killed") }
+	})
+	defer timer.Stop()
+	f(s.cmd.Wait())
+	s.clean(keepDir)
+}
+
+func (s *KvrocksServer) Restart() {
+	s.close(true)
+
+	b := *binPath
+	require.NotEmpty(s.t, b, "please set the binary path by `-binPath`")
+	cmd := exec.Command(b)
+
+	dir := s.configs["dir"]
+	f, err := os.Open(filepath.Join(dir, "kvrocks.conf"))
+	require.NoError(s.t, err)
+	defer func() { require.NoError(s.t, f.Close()) }()
+
+	cmd.Args = append(cmd.Args, "-c", f.Name())
+
+	stdout, err := os.Create(filepath.Join(dir, "stdout"))
+	require.NoError(s.t, err)
+	cmd.Stdout = stdout
+	stderr, err := os.Create(filepath.Join(dir, "stderr"))
+	require.NoError(s.t, err)
+	cmd.Stderr = stderr
+
+	require.NoError(s.t, cmd.Start())
+
+	c := redis.NewClient(&redis.Options{Addr: s.addr.String()})
+	defer func() { require.NoError(s.t, c.Close()) }()
+	require.Eventually(s.t, func() bool {
+		err := c.Ping(context.Background()).Err()
+		return err == nil || err.Error() == "NOAUTH Authentication required."
+	}, time.Minute, time.Second)
+
+	s.cmd = cmd
+	s.clean = func(keepDir bool) {
+		require.NoError(s.t, stdout.Close())
+		require.NoError(s.t, stderr.Close())
+		if *deleteOnExit && !keepDir {
+			require.NoError(s.t, os.RemoveAll(dir))
+		}
+	}
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	b := os.Getenv("KVROCKS_BIN_PATH")
-	require.NotEmpty(t, b, "please set the environment variable `KVROCKS_BIN_PATH`")
+	b := *binPath
+	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
 
 	addr, err := findFreePort()
@@ -74,14 +144,15 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["bind"] = addr.IP.String()
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
-	dir := os.Getenv("GO_CASE_WORKSPACE")
-	require.NotEmpty(t, dir, "please set the environment variable `GO_CASE_WORKSPACE`")
+	dir := *workspace
+	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
 	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
 
 	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
 	require.NoError(t, err)
+	defer func() { require.NoError(t, f.Close()) }()
 
 	for k := range configs {
 		_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))
@@ -107,12 +178,16 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	}, time.Minute, time.Second)
 
 	return &KvrocksServer{
-		t:    t,
-		cmd:  cmd,
-		addr: addr,
-		clean: func() {
+		t:       t,
+		cmd:     cmd,
+		addr:    addr,
+		configs: configs,
+		clean: func(keepDir bool) {
 			require.NoError(t, stdout.Close())
 			require.NoError(t, stderr.Close())
+			if *deleteOnExit && !keepDir {
+				require.NoError(t, os.RemoveAll(dir))
+			}
 		},
 	}
 }

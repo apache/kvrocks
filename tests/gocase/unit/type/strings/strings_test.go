@@ -35,7 +35,9 @@ func TestString(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		ReadTimeout: 10 * time.Second,
+	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("SET and GET an item", func(t *testing.T) {
@@ -103,7 +105,8 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("SETNX against not-expired volatile key", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "x", "10", 10000*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "x", "10", 0).Err())
+		require.NoError(t, rdb.Expire(ctx, "x", 10000*time.Second).Err())
 		require.False(t, rdb.SetNX(ctx, "x", "20", 0).Val())
 		require.Equal(t, "10", rdb.Get(ctx, "x").Val())
 	})
@@ -122,7 +125,8 @@ func TestString(t *testing.T) {
 		// expired for at most 1s when we wait 2s, resulting in a total sample
 		// of 100 keys. The probability of the success of this test being a
 		// false positive is therefore approx. 1%.
-		require.NoError(t, rdb.Set(ctx, "x", "10", 1*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "x", "10", 0).Err())
+		require.NoError(t, rdb.Expire(ctx, "x", time.Second).Err())
 
 		// Wait for the key to expire
 		time.Sleep(2000 * time.Millisecond)
@@ -365,13 +369,13 @@ func TestString(t *testing.T) {
 	t.Run("Extended SET NX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "1", "nx").Val())
-		require.Error(t, rdb.Do(ctx, "SET", "foo", "2", "nx").Err())
+		require.Nil(t, rdb.Do(ctx, "SET", "foo", "2", "nx").Val())
 		require.Equal(t, "1", rdb.Get(ctx, "foo").Val())
 	})
 
 	t.Run("Extended SET XX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
-		require.Error(t, rdb.Do(ctx, "SET", "foo", "1", "xx").Err())
+		require.Nil(t, rdb.Do(ctx, "SET", "foo", "1", "xx").Val())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "2", "xx").Val())
 		require.Equal(t, "2", rdb.Get(ctx, "foo").Val())
@@ -381,14 +385,14 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "ex", "10").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
-		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("Extended SET PX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "px", "10000").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
-		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("Extended SET EXAT option", func(t *testing.T) {
@@ -397,7 +401,7 @@ func TestString(t *testing.T) {
 		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).Unix(), 10)
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt).Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
-		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("Extended SET EXAT option with expired timestamp", func(t *testing.T) {
@@ -420,7 +424,7 @@ func TestString(t *testing.T) {
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", expireAt).Val())
 
 		ttl := rdb.TTL(ctx, "foo").Val()
-		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("Extended SET PXAT option with expired timestamp", func(t *testing.T) {
@@ -454,7 +458,7 @@ func TestString(t *testing.T) {
 
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "xx", "px", "10000").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
-		require.True(t, ttl <= 10*time.Second && ttl > 5*time.Second)
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("GETRANGE with huge ranges, Github issue #1844", func(t *testing.T) {

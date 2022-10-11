@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16)
 project(kvrocks
         DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
         LANGUAGES CXX)

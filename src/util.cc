@@ -79,6 +79,8 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
     return Status(Status::NotOK, gai_strerror(rv));
   }
 
+  auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
+
   for (p = servinfo; p != nullptr ; p = p->ai_next) {
     auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
     if (!cfd)
@@ -95,12 +97,10 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
     }
 
     *fd = cfd.Release();
-    freeaddrinfo(servinfo);
     return Status::OK();
   }
 
-  freeaddrinfo(servinfo);
-  return Status(Status::NotOK, strerror(errno));
+  return Status::FromErrno();
 }
 
 const std::string Float2String(double d) {
@@ -162,52 +162,59 @@ Status SockSetTcpKeepalive(int fd, int interval) {
 Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
-    if (!s.IsOK()) return s;
+    if (!s) return s;
   } else {
+    *fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(*fd == NullFD) return Status::FromErrno();
+  }
+
+  auto exit = MakeScopeExit([fd] {
+    close(*fd);
+    *fd = NullFD;
+  });
+
+  if (conn_timeout != 0) {
     sockaddr_in sin{};
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = inet_addr(host.c_str());
     sin.sin_port = htons(port);
-    *fd = socket(AF_INET, SOCK_STREAM, 0);
 
     fcntl(*fd, F_SETFL, O_NONBLOCK);
-    connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+    if(connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin))) {
+      return Status::FromErrno();
+    }
 
     auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
     if ((retmask & AE_WRITABLE) == 0 ||
         (retmask & AE_ERROR) != 0 ||
         (retmask & AE_HUP) != 0
         ) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
 
     int socket_arg;
     // Set to blocking mode again...
     if ((socket_arg = fcntl(*fd, F_GETFL, NULL)) < 0) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
     socket_arg &= (~O_NONBLOCK);
     if (fcntl(*fd, F_SETFL, socket_arg) < 0) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
-    SockSetTcpNoDelay(*fd, 1);
+    auto s = SockSetTcpNoDelay(*fd, 1);
+    if(!s) return s;
   }
+  
   if (timeout > 0) {
     struct timeval tv;
     tv.tv_sec = timeout / 1000;
     tv.tv_usec = (timeout % 1000) * 1000;
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
-      close(*fd);
-      *fd = -1;
       return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
     }
   }
+
+  exit.Disable();
   return Status::OK();
 }
 

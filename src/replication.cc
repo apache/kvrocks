@@ -33,6 +33,7 @@
 #include <thread>
 
 #include "event_util.h"
+#include "fd_util.h"
 #include "redis_reply.h"
 #include "rocksdb_crc32c.h"
 #include "server.h"
@@ -748,9 +749,9 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           if (!s.IsOK()) {
             return Status(Status::NotOK, "connect the server err: " + s.Msg());
           }
+          UniqueFD unique_fd{sock_fd};
           s = this->sendAuth(sock_fd);
           if (!s.IsOK()) {
-            close(sock_fd);
             return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
           }
           std::vector<std::string> fetch_files;
@@ -796,7 +797,6 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
               s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn);
             }
           }
-          close(sock_fd);
           return s;
         }));
   }

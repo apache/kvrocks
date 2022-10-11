@@ -622,12 +622,6 @@ class CommandSet : public Commander {
   }
 
  private:
-  void white_list_register() {
-    white_list_["nx"] = false;
-    white_list_["xx"] = false;
-  }
-
- private:
   int ttl_ = 0;
   std::unordered_map<std::string, bool> white_list_;
 };

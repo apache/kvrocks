@@ -64,7 +64,7 @@ int64_t Stats::GetMemoryRSS() {
   if (read(*fd, buf, sizeof(buf)) <= 0) {
     return 0;
   }
-  fd.Reset();
+  fd.Close();
 
   char *start = buf;
   int count = 23;    // RSS is the 24th field in /proc/<pid>/stat

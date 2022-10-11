@@ -4675,7 +4675,7 @@ class CommandFetchFile : public Commander {
                        << ip << ", error: " << strerror(errno);
           break;
         }
-        fd.Reset();
+        fd.Close();
 
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();

@@ -165,7 +165,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     if (!s) return s;
   } else {
     *fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(*fd == NullFD) return Status::FromErrno();
+    if (*fd == NullFD) return Status::FromErrno();
   }
 
   auto exit = MakeScopeExit([fd] {
@@ -180,7 +180,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     sin.sin_port = htons(port);
 
     fcntl(*fd, F_SETFL, O_NONBLOCK);
-    if(connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin))) {
+    if (connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin))) {
       return Status::FromErrno();
     }
 
@@ -202,7 +202,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
       return Status::FromErrno();
     }
     auto s = SockSetTcpNoDelay(*fd, 1);
-    if(!s) return s;
+    if (!s) return s;
   }
   
   if (timeout > 0) {

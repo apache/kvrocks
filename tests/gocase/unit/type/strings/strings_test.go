@@ -21,6 +21,7 @@ package strings
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,9 +36,7 @@ func TestString(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClientWithOption(&redis.Options{
-		ReadTimeout: 10 * time.Second,
-	})
+	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("SET and GET an item", func(t *testing.T) {
@@ -240,9 +239,17 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type string)", func(t *testing.T) {
+		// When setting the last possible bit (offset equal to 2^32 -1) and the string value stored at key
+		// does not yet hold a string value, or holds a small string value, Kvrocks needs to allocate all
+		// intermediate memory which can block the server for some time. See also https://redis.io/commands/setbit/.
+		rdb := srv.NewClientWithOption(&redis.Options{
+			ReadTimeout: time.Minute,
+		})
+		defer func() { require.NoError(t, rdb.Close()) }()
+
 		require.NoError(t, rdb.Del(ctx, "mykey").Err())
 		require.NoError(t, rdb.Set(ctx, "mykey", "", 0).Err())
-		var maxOffset int64 = 4*1024*1024*1024 - 1
+		var maxOffset int64 = math.MaxInt32
 		require.NoError(t, rdb.SetBit(ctx, "mykey", maxOffset, 1).Err())
 		require.EqualValues(t, 1, rdb.GetBit(ctx, "mykey", maxOffset).Val())
 		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 0, End: maxOffset / 8}).Val())

@@ -84,9 +84,7 @@ func (s *KvrocksServer) Close() {
 
 func (s *KvrocksServer) close(keepDir bool) {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
-	// TODO: activate require after server issue resolved
-	// https://github.com/apache/incubator-kvrocks/issues/946#issuecomment-1272445443
-	f := func(err error) { /* require.NoError(s.t, err) */ }
+	f := func(err error) { require.NoError(s.t, err) }
 	timer := time.AfterFunc(defaultGracePeriod, func() {
 		require.NoError(s.t, s.cmd.Process.Kill())
 		f = func(err error) { require.EqualError(s.t, err, "signal: killed") }

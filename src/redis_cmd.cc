@@ -421,11 +421,6 @@ class CommandGetEx : public Commander {
   }
 
  private:
-  void white_list_register() {
-    white_list_["persist"] = false;
-  }
-
- private:
   int ttl_ = 0;
   std::unordered_map<std::string, bool> white_list_;
 };

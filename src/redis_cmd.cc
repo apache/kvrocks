@@ -389,7 +389,7 @@ class CommandGet : public Commander {
 class CommandGetEx : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_register();
+    white_list_ = {{"persist", false}};
     auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
     if (!s.IsOK()) {
       return s;

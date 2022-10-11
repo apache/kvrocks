@@ -583,7 +583,7 @@ class CommandAppend: public Commander {
 class CommandSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_register();
+    white_list_ = {{"nx", false}, {"xx", false}};
     auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), &white_list_, &ttl_);
     if (white_list_["nx"] && white_list_["xx"]) {
       return Status(Status::NotOK, errInvalidSyntax);

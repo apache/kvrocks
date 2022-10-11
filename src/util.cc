@@ -204,7 +204,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     auto s = SockSetTcpNoDelay(*fd, 1);
     if (!s) return s;
   }
-  
+
   if (timeout > 0) {
     struct timeval tv;
     tv.tv_sec = timeout / 1000;

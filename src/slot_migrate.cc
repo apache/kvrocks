@@ -122,9 +122,9 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
 }
 
 SlotMigrate::~SlotMigrate() {
-  if (thread_state_ == Running) {
+  if (thread_state_ == ThreadState::Running) {
     stop_migrate_ = true;
-    thread_state_ = Terminated;
+    thread_state_ = ThreadState::Terminated;
     job_cv_.notify_all();
     t_.join();
   }
@@ -134,7 +134,7 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
   try {
     t_ = std::thread([this]() {
       Util::ThreadSetName("slot-migrate");
-      thread_state_ = Running;
+      thread_state_ = ThreadState::Running;
       this->Loop(static_cast<void*>(this));
     });
   } catch(const std::exception &e) {
@@ -146,12 +146,12 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
 void *SlotMigrate::Loop(void *arg) {
   while (true) {
     std::unique_lock<std::mutex> ul(this->job_mutex_);
-    while (thread_state_ != Terminated && this->slot_job_ == nullptr) {
+    while (!IsTerminated() && this->slot_job_ == nullptr) {
       this->job_cv_.wait(ul);
     }
     ul.unlock();
 
-    if (thread_state_ == Terminated) {
+    if (IsTerminated()) {
       return nullptr;
     }
 
@@ -174,7 +174,7 @@ void *SlotMigrate::Loop(void *arg) {
 void SlotMigrate::StateMachine(void) {
   state_machine_ = kSlotMigrateStart;
   while (true) {
-    if (thread_state_ == Terminated) {
+    if (IsTerminated()) {
       LOG(WARNING) << "[migrate] Will stop state machine, because the thread was terminated";
       return;
     }

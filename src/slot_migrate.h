@@ -99,6 +99,7 @@ class SlotMigrate : public Redis::Database {
   int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
   int16_t GetMigratingSlot(void) { return migrate_slot_; }
   void GetMigrateInfo(std::string *info);
+  bool IsTerminated() { return thread_state_ == ThreadState::Terminated; }
 
  private:
   void StateMachine(void);
@@ -145,12 +146,12 @@ class SlotMigrate : public Redis::Database {
   };
   ParserState stat_ = ArrayLen;
 
-  enum ThreadState {
+  enum class ThreadState {
     Uninitialized,
     Running,
     Terminated
   };
-  ThreadState thread_state_ = Uninitialized;
+  ThreadState thread_state_ = ThreadState::Uninitialized;
 
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;

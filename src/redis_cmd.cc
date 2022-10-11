@@ -31,6 +31,7 @@
 #include <vector>
 #include <thread>
 #include <utility>
+#include <unordered_map>
 
 #include "cluster.h"
 #include "log_collector.h"
@@ -97,7 +98,9 @@ AuthResult AuthenticateUser(Connection *conn, Config* config, const std::string&
   return AuthResult::OK;
 }
 
-Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::string, bool>* white_list, int *result) {
+Status ParseTTL(const std::vector<std::string> &args,
+                std::unordered_map<std::string, bool>* white_list,
+                int *result) {
   int ttl = 0;
   int64_t expire = 0;
   bool last_arg = false;
@@ -384,7 +387,7 @@ class CommandGet : public Commander {
 };
 
 class CommandGetEx : public Commander {
-public:
+ public:
   Status Parse(const std::vector<std::string> &args) override {
     white_list_register();
     auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
@@ -416,12 +419,13 @@ public:
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
   }
-private:
+
+ private:
   void white_list_register() {
     white_list_["persist"] = false;
   }
 
-private:
+ private:
   int ttl_ = 0;
   std::unordered_map<std::string, bool> white_list_;
 };
@@ -616,11 +620,13 @@ class CommandSet : public Commander {
     }
     return Status::OK();
   }
-private:
+
+ private:
   void white_list_register() {
     white_list_["nx"] = false;
     white_list_["xx"] = false;
   }
+
  private:
   int ttl_ = 0;
   std::unordered_map<std::string, bool> white_list_;
@@ -5951,7 +5957,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
 
     ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
-    ADD_CMD("getex", -2, "write", 1,1,1, CommandGetEx),
+    ADD_CMD("getex", -2, "write", 1, 1, 1, CommandGetEx),
     ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
     ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
     ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),

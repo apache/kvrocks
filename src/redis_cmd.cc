@@ -42,6 +42,7 @@
 #include "redis_geo.h"
 #include "redis_hash.h"
 #include "redis_list.h"
+#include "redis_disk.h"
 #include "redis_pubsub.h"
 #include "redis_reply.h"
 #include "redis_set.h"
@@ -3532,6 +3533,30 @@ class CommandInfo : public Commander {
   }
 };
 
+class CommandDisk : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    std::string opname = Util::ToLower(args[1]);
+    if (opname != "usage")
+      return Status(Status::RedisInvalidCmd, "Unknown operation");
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RedisType type;
+    Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
+    rocksdb::Status s = disk_db.Type(args_[2], &type);
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+
+    uint64_t result = 0;
+    s = disk_db.GetKeySize(args_[2], type, &result);
+
+    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    *output = Redis::Integer(result);
+    return Status::OK();
+  }
+};
+
 class CommandRole : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -5930,6 +5955,7 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
     ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
     ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
+    ADD_CMD("disk", 3, "read-only", 0, 0, 0, CommandDisk),
     ADD_CMD("hello", -1,  "read-only ok-loading", 0, 0, 0, CommandHello),
 
     ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),

@@ -132,12 +132,12 @@ func TestMulti(t *testing.T) {
 				rdb := newSrv.NewClient()
 				defer func() { require.NoError(t, rdb.Close()) }()
 				require.NoError(t, rdb.Do(ctx, "MULTI").Err())
-				require.NoError(t, rdb.SlaveOf(ctx, srv.Host(), fmt.Sprintf("%d", srv.Port())).Err())
+				util.SlaveOf(t, rdb, srv)
 				require.NoError(t, rdb.ConfigRewrite(ctx).Err())
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "normal").Err())
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "PUBSUB").Err())
 				require.NoError(t, rdb.Do(ctx, "EXEC").Err())
-				require.Equal(t, "slave", util.FindInfoEntry(t, rdb, "role"))
+				require.Equal(t, "slave", util.FindInfoEntry(rdb, "role"))
 			}
 
 			{
@@ -149,7 +149,7 @@ func TestMulti(t *testing.T) {
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "normal").Err())
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "PUBSUB").Err())
 				require.NoError(t, rdb.Do(ctx, "EXEC").Err())
-				require.Equal(t, "master", util.FindInfoEntry(t, rdb, "role"))
+				require.Equal(t, "master", util.FindInfoEntry(rdb, "role"))
 			}
 		})
 	}()

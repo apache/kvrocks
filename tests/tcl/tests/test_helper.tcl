@@ -37,14 +37,11 @@ set ::all_tests {
     unit/type/list
     unit/type/zset
     unit/type/stream
-    unit/expire
     unit/pubsub
     unit/geo
     integration/slotmigrate
-    integration/slotimport
     integration/redis-cli
     integration/replication
-    integration/rsid_psync
     integration/cluster
 }
 

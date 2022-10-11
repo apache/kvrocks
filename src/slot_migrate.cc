@@ -134,12 +134,8 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
   try {
     t_ = std::thread([this]() {
       Util::ThreadSetName("slot-migrate");
-<<<<<<< Updated upstream
       thread_state_ = ThreadState::Running;
-      this->Loop(static_cast<void*>(this));
-=======
       this->Loop();
->>>>>>> Stashed changes
     });
   } catch(const std::exception &e) {
     return Status(Status::NotOK, std::string(e.what()));

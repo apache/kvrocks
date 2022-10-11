@@ -143,7 +143,7 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
   return Status::OK();
 }
 
-void *SlotMigrate::Loop() {
+void SlotMigrate::Loop() {
   while (true) {
     std::unique_lock<std::mutex> ul(this->job_mutex_);
     while (!IsTerminated() && this->slot_job_ == nullptr) {
@@ -152,7 +152,7 @@ void *SlotMigrate::Loop() {
     ul.unlock();
 
     if (IsTerminated()) {
-      return nullptr;
+      return;
     }
 
     LOG(INFO) << "[migrate] migrate_slot: " << slot_job_->migrate_slot_

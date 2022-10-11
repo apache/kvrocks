@@ -27,7 +27,7 @@ constexpr const int NullFD = -1;
 
 // just like an unique_ptr, but for (int) fd
 struct UniqueFD {
-  explicit UniqueFD() : fd_(NullFD) {}
+  UniqueFD() : fd_(NullFD) {}
   explicit UniqueFD(int fd) : fd_(fd) {}
 
   ~UniqueFD() { if (fd_ != NullFD) close(fd_); }

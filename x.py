@@ -28,7 +28,7 @@ import sys
 from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 
-CMAKE_REQUIRE_VERSION = (3, 13, 0)
+CMAKE_REQUIRE_VERSION = (3, 16, 0)
 TCL_REQUIRE_VERSION = (8, 5, 0)
 
 SEMVER_REGEX = re.compile(

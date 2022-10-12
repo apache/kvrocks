@@ -129,7 +129,7 @@ def get_source_files() -> List[str]:
         *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
     ]
 
-def check_format(clang_format_path: str, fix: bool = False) -> None:
+def clang_format(clang_format_path: str, fix: bool = False) -> None:
     command = find_command(clang_format_path, msg="clang-format is required")
 
     version_res = run_pipe(command, '--version').read().strip()
@@ -292,7 +292,7 @@ if __name__ == '__main__':
         'format',
         description="Format source code",
         help="Format source code")
-    parser_format.set_defaults(func=lambda **args: check_format(**args, fix=True))
+    parser_format.set_defaults(func=lambda **args: clang_format(**args, fix=True))
     parser_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
 
     parser_check = subparsers.add_parser(
@@ -305,7 +305,7 @@ if __name__ == '__main__':
         'format',
         description="Check source format by clang-format",
         help="Check source format by clang-format")
-    parser_check_format.set_defaults(func=lambda **args: check_format(**args, fix=False))
+    parser_check_format.set_defaults(func=lambda **args: clang_format(**args, fix=False))
     parser_check_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
     parser_check_cppcheck = parser_check_subparsers.add_parser(
         'cppcheck',

@@ -135,6 +135,56 @@ func TestString(t *testing.T) {
 		require.Equal(t, "20", rdb.Get(ctx, "x").Val())
 	})
 
+	t.Run("GETEX EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.GetEx(ctx, "foo", 10*time.Second).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("GETEX PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.GetEx(ctx, "foo", 10000*time.Millisecond).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
+	})
+
+	t.Run("GETEX EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "exat", time.Now().Add(10*time.Second).Unix()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("GETEX PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
+	})
+
+	t.Run("GETEX PERSIST option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 10*time.Second).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "persist").Err())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "foo").Val())
+	})
+
+	t.Run("GETEX no option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.Equal(t, "bar", rdb.GetEx(ctx, "foo", 0).Val())
+	})
+
+	t.Run("GETEX syntax errors", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "getex", "foo", "non-existent-option").Err(), ".*syntax*.")
+	})
+
+	t.Run("GETEX no arguments", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "getex").Err(), ".*wrong number of arguments*.")
+	})
+
 	t.Run("GETDEL command", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())

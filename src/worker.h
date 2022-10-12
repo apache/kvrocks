@@ -28,14 +28,13 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <lua.hpp>
 #include <map>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
-
-#include <lua.hpp>
 
 #include "redis_connection.h"
 #include "storage.h"
@@ -61,8 +60,7 @@ class Worker {
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   std::string GetClientsStr();
-  void KillClient(Redis::Connection *self, uint64_t id, std::string addr,
-                  uint64_t type, bool skipme, int64_t *killed);
+  void KillClient(Redis::Connection *self, uint64_t id, std::string addr, uint64_t type, bool skipme, int64_t *killed);
   void KickoutIdleClients(int timeout);
 
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);
@@ -72,34 +70,32 @@ class Worker {
 
  private:
   Status listenTCP(const std::string &host, int port, int backlog);
-  static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
-                               sockaddr *address, int socklen, void *ctx);
-  static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
-                                      sockaddr *address, int socklen, void *ctx);
+  static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx);
+  static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
+                                      void *ctx);
   static void TimerCB(int, int16_t events, void *ctx);
   Redis::Connection *removeConnection(int fd);
-
 
   event_base *base_;
   event *timer_;
   std::thread::id tid_;
-  std::vector<evconnlistener*> listen_events_;
+  std::vector<evconnlistener *> listen_events_;
   std::mutex conns_mu_;
-  std::map<int, Redis::Connection*> conns_;
-  std::map<int, Redis::Connection*> monitor_conns_;
-  int last_iter_conn_fd = 0;   // fd of last processed connection in previous cron
+  std::map<int, Redis::Connection *> conns_;
+  std::map<int, Redis::Connection *> monitor_conns_;
+  int last_iter_conn_fd = 0;  // fd of last processed connection in previous cron
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
-  lua_State* lua_;
+  lua_State *lua_;
 };
 
 class WorkerThread {
  public:
   explicit WorkerThread(std::unique_ptr<Worker> worker) : worker_(std::move(worker)) {}
   ~WorkerThread() = default;
-  WorkerThread(const WorkerThread&) = delete;
-  WorkerThread(WorkerThread&&) = delete;
+  WorkerThread(const WorkerThread &) = delete;
+  WorkerThread(WorkerThread &&) = delete;
   Worker *GetWorker() { return worker_.get(); }
   void Start();
   void Stop();

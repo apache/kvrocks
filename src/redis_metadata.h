@@ -56,13 +56,11 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {
-    "none", "string", "hash",
-    "list", "set", "zset", "bitmap", "sortedint", "stream"
-};
+const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",  "set",
+                                                 "zset", "bitmap", "sortedint", "stream"};
 
-extern const char* kErrMsgWrongType;
-extern const char* kErrMsgKeyExpired;
+extern const char *kErrMsgWrongType;
+extern const char *kErrMsgKeyExpired;
 
 using rocksdb::Slice;
 
@@ -75,7 +73,7 @@ struct KeyNumStats {
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded);
-void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output);
+void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output);
 
 class InternalKey {
  public:
@@ -126,22 +124,22 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  explicit HashMetadata(bool generate_version = true) : Metadata(kRedisHash, generate_version){}
+  explicit HashMetadata(bool generate_version = true) : Metadata(kRedisHash, generate_version) {}
 };
 
 class SetMetadata : public Metadata {
  public:
-  explicit SetMetadata(bool generate_version = true): Metadata(kRedisSet, generate_version) {}
+  explicit SetMetadata(bool generate_version = true) : Metadata(kRedisSet, generate_version) {}
 };
 
 class ZSetMetadata : public Metadata {
  public:
-  explicit ZSetMetadata(bool generate_version = true): Metadata(kRedisZSet, generate_version){}
+  explicit ZSetMetadata(bool generate_version = true) : Metadata(kRedisZSet, generate_version) {}
 };
 
 class BitmapMetadata : public Metadata {
  public:
-  explicit BitmapMetadata(bool generate_version = true): Metadata(kRedisBitmap, generate_version){}
+  explicit BitmapMetadata(bool generate_version = true) : Metadata(kRedisBitmap, generate_version) {}
 };
 
 class SortedintMetadata : public Metadata {
@@ -154,6 +152,7 @@ class ListMetadata : public Metadata {
   uint64_t head;
   uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
+
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;
@@ -169,6 +168,7 @@ class StreamMetadata : public Metadata {
   uint64_t entries_added = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
+
  public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

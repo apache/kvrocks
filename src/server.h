@@ -23,28 +23,28 @@
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
-#include <map>
 #include <list>
-#include <string>
-#include <vector>
+#include <map>
 #include <memory>
-#include <unordered_map>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "cluster.h"
+#include "log_collector.h"
 #include "lua.hpp"
+#include "redis_metadata.h"
+#include "replication.h"
+#include "rw_lock.h"
+#include "slot_import.h"
+#include "slot_migrate.h"
 #include "stats.h"
 #include "storage.h"
 #include "task_runner.h"
-#include "replication.h"
-#include "redis_metadata.h"
-#include "log_collector.h"
-#include "worker.h"
-#include "rw_lock.h"
-#include "cluster.h"
-#include "slot_migrate.h"
-#include "slot_import.h"
 #include "tls_util.h"
+#include "worker.h"
 
 struct DBScanInfo {
   time_t last_scan_time = 0;
@@ -63,8 +63,8 @@ struct StreamConsumer {
   int fd;
   std::string ns;
   Redis::StreamEntryID last_consumed_id;
-  StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id) :
-    owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
+  StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id)
+      : owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
 };
 
 typedef struct {
@@ -78,16 +78,13 @@ enum SlowLog {
 };
 
 enum ClientType {
-  kTypeNormal     = (1ULL<<0),  // normal client
-  kTypePubsub     = (1ULL<<1),  // pubsub client
-  kTypeMaster     = (1ULL<<2),  // master client
-  kTypeSlave      = (1ULL<<3),  // slave client
+  kTypeNormal = (1ULL << 0),  // normal client
+  kTypePubsub = (1ULL << 1),  // pubsub client
+  kTypeMaster = (1ULL << 2),  // master client
+  kTypeSlave = (1ULL << 3),   // slave client
 };
 
-enum ServerLogType {
-  kServerLogNone,
-  kReplIdLog
-};
+enum ServerLogType { kServerLogNone, kReplIdLog };
 
 class ServerLogData {
  public:
@@ -100,8 +97,7 @@ class ServerLogData {
   }
 
   ServerLogData() = default;
-  explicit ServerLogData(ServerLogType type, const std::string &content) :
-      type_(type), content_(content) {}
+  explicit ServerLogData(ServerLogType type, const std::string &content) : type_(type), content_(content) {}
 
   ServerLogType GetType() { return type_; }
   std::string GetContent() { return content_; }
@@ -150,12 +146,11 @@ class Server {
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);
-  void BlockOnStreams(const std::vector<std::string> &keys,
-                      const std::vector<Redis::StreamEntryID> &entry_ids, Redis::Connection *conn);
+  void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
+                      Redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
   Status WakeupBlockingConns(const std::string &key, size_t n_conns);
-  Status OnEntryAddedToStream(const std::string &ns, const std::string &key,
-                              const Redis::StreamEntryID &entry_id);
+  Status OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
@@ -190,8 +185,7 @@ class Server {
   int DecrBlockedClientNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type,
-                  bool skipme, Redis::Connection *conn);
+  void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme, Redis::Connection *conn);
 
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
@@ -209,7 +203,7 @@ class Server {
 
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
-  void SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration);
+  void SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration);
 
   std::unique_ptr<RWLock::ReadLock> WorkConcurrencyGuard();
   std::unique_ptr<RWLock::WriteLock> WorkExclusivityGuard();

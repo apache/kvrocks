@@ -19,19 +19,19 @@
  */
 
 #include "config_util.h"
-#include "util.h"
 
+#include "util.h"
 
 StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
   enum {
-    KEY,  // in (unquoted) key string
-    NORMAL,  // in unquoted value string
-    QUOTED,  // in quoted value string
-    PRE_KEY_SPACE,  // in whitespace characters before key
+    KEY,              // in (unquoted) key string
+    NORMAL,           // in unquoted value string
+    QUOTED,           // in quoted value string
+    PRE_KEY_SPACE,    // in whitespace characters before key
     AFTER_KEY_SPACE,  // in whitespace characters after key and before value
     AFTER_VAL_SPACE,  // in whitespace characters after value
-    ESCAPE,  // in escape character of quoted string
-    ERROR  // error state, e.g. encounter more than one value
+    ESCAPE,           // in escape character of quoted string
+    ERROR             // error state, e.g. encounter more than one value
   } state = PRE_KEY_SPACE;
 
   char quote;  // single or double quote
@@ -135,7 +135,6 @@ StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
     }
   }
 
-
   if (state == KEY) {
     res.first = current_str;
     state = AFTER_KEY_SPACE;
@@ -151,15 +150,14 @@ StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
   return res;
 }
 
-std::string DumpConfigLine(const ConfigKV &config) {
+std::string DumpConfigLine(const ConfigKV& config) {
   std::string res;
 
   res += config.first;
   res += " ";
 
-  if (std::any_of(config.second.begin(), config.second.end(), [](char c) {
-    return std::isspace(c) || c == '"' || c == '\'' || c == '#';
-  })) {
+  if (std::any_of(config.second.begin(), config.second.end(),
+                  [](char c) { return std::isspace(c) || c == '"' || c == '\'' || c == '#'; })) {
     res += '"';
     for (char c : config.second) {
       if (c == '\\') {

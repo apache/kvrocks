@@ -33,7 +33,7 @@ template <typename>
 struct ParseIntFunc;
 
 template <>
-struct ParseIntFunc<short> { // NOLINT
+struct ParseIntFunc<short> {  // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
@@ -43,17 +43,17 @@ struct ParseIntFunc<int> {
 };
 
 template <>
-struct ParseIntFunc<long> { // NOLINT
+struct ParseIntFunc<long> {  // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
 template <>
-struct ParseIntFunc<long long> { // NOLINT
+struct ParseIntFunc<long long> {  // NOLINT
   constexpr static const auto value = std::strtoll;
 };
 
 template <>
-struct ParseIntFunc<unsigned short> { // NOLINT
+struct ParseIntFunc<unsigned short> {  // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 
@@ -63,12 +63,12 @@ struct ParseIntFunc<unsigned> {
 };
 
 template <>
-struct ParseIntFunc<unsigned long> { // NOLINT
+struct ParseIntFunc<unsigned long> {  // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 
 template <>
-struct ParseIntFunc<unsigned long long> { // NOLINT
+struct ParseIntFunc<unsigned long long> {  // NOLINT
   constexpr static const auto value = std::strtoull;
 };
 
@@ -83,7 +83,7 @@ using ParseResultAndPos = std::tuple<T, const char *>;
 // e.g. TryParseInt("100MB") -> {100, "MB"}
 // if no integer can be parsed or out of type range, an error will be returned
 // base can be in {0, 2, ..., 36}, refer to strto* in standard c for more details
-template <typename T = long long> // NOLINT
+template <typename T = long long>  // NOLINT
 StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   char *end;
 
@@ -99,7 +99,7 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   }
 
   if (!std::is_same<T, decltype(res)>::value &&
-    (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
+      (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
     return {Status::NotOK, "out of range of integer type"};
   }
 
@@ -109,8 +109,8 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
 // ParseInt parses a string to a integer,
 // not like TryParseInt, the whole string need to be parsed as an integer,
 // e.g. ParseInt("100MB") -> error status
-template <typename T = long long> // NOLINT
-StatusOr<T> ParseInt(const std::string& v, int base = 0) {
+template <typename T = long long>  // NOLINT
+StatusOr<T> ParseInt(const std::string &v, int base = 0) {
   const char *begin = v.c_str();
   auto res = TryParseInt<T>(begin, base);
 
@@ -128,8 +128,8 @@ using NumericRange = std::tuple<T, T>;
 
 // this overload accepts a range {min, max},
 // integer out of the range will trigger an error status
-template <typename T = long long> // NOLINT
-StatusOr<T> ParseInt(const std::string& v, NumericRange<T> range, int base = 0) {
+template <typename T = long long>  // NOLINT
+StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) {
   auto res = ParseInt<T>(v, base);
 
   if (!res) return res;

@@ -60,12 +60,10 @@ struct CompactionCheckerRange {
   int Start;
   int Stop;
 
-  bool Enabled() {
-    return Start != -1 || Stop != -1;
-  }
+  bool Enabled() { return Start != -1 || Stop != -1; }
 };
 
-struct Config{
+struct Config {
  public:
   Config();
   ~Config() = default;

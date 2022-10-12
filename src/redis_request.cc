@@ -49,7 +49,7 @@ Status Request::Tokenize(evbuffer *input) {
         // We don't use the `EVBUFFER_EOL_CRLF_STRICT` here since only LF is allowed in INLINE protocol.
         // So we need to search LF EOL and figure out current line has CR or not.
         UniqueEvbufReadln line(input, EVBUFFER_EOL_LF);
-        if (line && line.length > 0 && line[line.length-1] == '\r') {
+        if (line && line.length > 0 && line[line.length - 1] == '\r') {
           // remove `\r` if exists
           --line.length;
           isOnlyLF = false;
@@ -77,8 +77,8 @@ Status Request::Tokenize(evbuffer *input) {
             return Status(Status::NotOK, "Protocol error: invalid multibulk length");
           }
           if (multi_bulk_len_ <= 0) {
-              multi_bulk_len_ = 0;
-              continue;
+            multi_bulk_len_ = 0;
+            continue;
           }
           state_ = BulkLen;
         } else {

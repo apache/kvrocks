@@ -21,6 +21,7 @@
 #include "storage.h"
 
 #include <event2/buffer.h>
+#include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 #include <rocksdb/env.h>
@@ -29,8 +30,6 @@
 #include <rocksdb/sst_file_manager.h>
 #include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/utilities/table_properties_collectors.h>
-
-#include <fcntl.h>
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -67,10 +66,7 @@ const uint64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
-Storage::Storage(Config *config)
-    : env_(rocksdb::Env::Default()),
-      config_(config),
-      lock_mgr_(16) {
+Storage::Storage(Config *config) : env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
   Metadata::InitVersionCounter();
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
@@ -97,7 +93,7 @@ void Storage::CloseDB() {
   db_ = nullptr;
 }
 
-void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions& config) {
+void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   write_opts_.sync = config.sync;
   write_opts_.disableWAL = config.disable_WAL;
   write_opts_.no_slowdown = config.no_slowdown;
@@ -113,8 +109,7 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
   table_options.partition_filters = true;
   table_options.optimize_filters_for_memory = true;
   table_options.metadata_block_size = 4096;
-  table_options.data_block_index_type =
-   rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
+  table_options.data_block_index_type = rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
   table_options.data_block_hash_table_util_ratio = 0.75;
   table_options.block_size = static_cast<size_t>(config_->RocksDB.block_size);
   return table_options;
@@ -146,7 +141,7 @@ rocksdb::Options Storage::InitOptions() {
   options.max_background_compactions = config_->RocksDB.max_background_compactions;
   options.max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
   options.min_write_buffer_number_to_merge = 2;
-  options.write_buffer_size =  config_->RocksDB.write_buffer_size * MiB;
+  options.write_buffer_size = config_->RocksDB.write_buffer_size * MiB;
   options.num_levels = 7;
   options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
@@ -213,11 +208,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   rocksdb::ColumnFamilyOptions cf_options(options);
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
   if (s.ok()) {
-    std::vector<std::string> cf_names = {kMetadataColumnFamilyName,
-                                         kZSetScoreColumnFamilyName,
-                                         kPubSubColumnFamilyName,
-                                         kPropagateColumnFamilyName,
-                                         kStreamColumnFamilyName};
+    std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName, kPubSubColumnFamilyName,
+                                         kPropagateColumnFamilyName, kStreamColumnFamilyName};
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -249,8 +241,8 @@ Status Storage::Open(bool read_only) {
   db_closing_ = false;
 
   bool cache_index_and_filter_blocks = config_->RocksDB.cache_index_and_filter_blocks;
-  size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size*MiB;
-  size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size*MiB;
+  size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size * MiB;
+  size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size * MiB;
 
   rocksdb::Options options = InitOptions();
   CreateColumnFamilies(options);
@@ -262,8 +254,8 @@ Status Storage::Open(bool read_only) {
   }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
-  metadata_table_opts.block_cache = shared_block_cache ?
-    shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
+  metadata_table_opts.block_cache =
+      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
@@ -280,8 +272,8 @@ Status Storage::Open(bool read_only) {
   SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
-  subkey_table_opts.block_cache = shared_block_cache ?
-    shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
+  subkey_table_opts.block_cache =
+      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
@@ -334,13 +326,9 @@ Status Storage::Open(bool read_only) {
   return Status::OK();
 }
 
-Status Storage::Open() {
-  return Open(false);
-}
+Status Storage::Open() { return Open(false); }
 
-Status Storage::OpenForReadOnly() {
-  return Open(true);
-}
+Status Storage::OpenForReadOnly() { return Open(true); }
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
@@ -351,14 +339,14 @@ Status Storage::CreateBackup() {
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
 
   // 1) Create checkpoint of rocksdb for backup
-  rocksdb::Checkpoint* checkpoint = NULL;
+  rocksdb::Checkpoint *checkpoint = NULL;
   rocksdb::Status s = rocksdb::Checkpoint::Create(db_, &checkpoint);
   if (!s.ok()) {
     LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
     return Status(Status::NotOK, s.ToString());
   }
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  s = checkpoint->CreateCheckpoint(tmpdir, config_->RocksDB.write_buffer_size*MiB);
+  s = checkpoint->CreateCheckpoint(tmpdir, config_->RocksDB.write_buffer_size * MiB);
   if (!s.ok()) {
     LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
     return Status(Status::DBBackupErr, s.ToString());
@@ -455,8 +443,7 @@ Status Storage::RestoreFromCheckpoint() {
     rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
     env_->RenameFile(tmp_dir, config_->db_dir);
     if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
-    return Status(Status::DBOpenErr,
-              "Fail to open master checkpoint, error: " + s2.Msg());
+    return Status(Status::DBOpenErr, "Fail to open master checkpoint, error: " + s2.Msg());
   }
 
   // Destory origin db
@@ -486,31 +473,25 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
   if (!s.ok()) return;
 
   // No backup is needed to keep or the backup is expired, we will clean it.
-  if (num_backups_to_keep == 0 || (backup_max_keep_hours != 0 &&
-        backup_creating_time_ + backup_max_keep_hours*3600 < now)) {
+  if (num_backups_to_keep == 0 ||
+      (backup_max_keep_hours != 0 && backup_creating_time_ + backup_max_keep_hours * 3600 < now)) {
     s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options());
     if (s.ok()) {
-      LOG(INFO) << "[storage] Succeeded cleaning old backup that was born at "
-                << backup_creating_time_;
+      LOG(INFO) << "[storage] Succeeded cleaning old backup that was born at " << backup_creating_time_;
     } else {
-      LOG(INFO) << "[storage] Failed cleaning old backup that was born at "
-                << backup_creating_time_;
+      LOG(INFO) << "[storage] Failed cleaning old backup that was born at " << backup_creating_time_;
     }
   }
 }
 
-Status Storage::GetWALIter(
-    rocksdb::SequenceNumber seq,
-    std::unique_ptr<rocksdb::TransactionLogIterator> *iter) {
+Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter) {
   auto s = db_->GetUpdatesSince(seq, iter);
   if (!s.ok()) return Status(Status::DBGetWALErr, s.ToString());
   if (!(*iter)->Valid()) return Status(Status::DBGetWALErr, "iterator not valid");
   return Status::OK();
 }
 
-rocksdb::SequenceNumber Storage::LatestSeq() {
-  return db_->GetLatestSequenceNumber();
-}
+rocksdb::SequenceNumber Storage::LatestSeq() { return db_->GetLatestSequenceNumber(); }
 
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   if (reach_db_size_limit_) {
@@ -525,8 +506,7 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   return db_->Write(options, updates);
 }
 
-rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
-                                rocksdb::ColumnFamilyHandle *cf_handle,
+rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
   rocksdb::WriteBatch batch;
   batch.Delete(cf_handle, key);
@@ -551,7 +531,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   std::string begin_key = kLuaFunctionPrefix, end_key = begin_key;
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
-  end_key[end_key.size()-1] += 1;
+  end_key[end_key.size() - 1] += 1;
 
   rocksdb::WriteBatch batch;
   auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
@@ -607,14 +587,13 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
 
   Redis::Database db(this, ns);
   uint64_t size, total_size = 0;
-  uint8_t include_both = rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES |
-      rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
+  uint8_t include_both =
+      rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
-    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) ||
-        cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
+    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) || cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
       continue;
     }
-    auto s = db.FindKeyRangeWithPrefix(prefix,  std::string(), &begin_key, &end_key, cf_handle);
+    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle);
     if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
@@ -674,7 +653,7 @@ bool Storage::ShiftReplId(void) {
 
   std::random_device rd;
   std::mt19937 gen(rd() + getpid());
-  std::uniform_int_distribution<> distrib(0, charset_len-1);
+  std::uniform_int_distribution<> distrib(0, charset_len - 1);
   std::string rand_str;
   for (int i = 0; i < kReplIdLength; i++) {
     rand_str.push_back(charset[distrib(gen)]);
@@ -695,15 +674,14 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
   // An extractor to extract update from raw writebatch
   class ReplIdExtractor : public rocksdb::WriteBatch::Handler {
    public:
-    rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key,
-                        const Slice &value) override {
+    rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override {
       return rocksdb::Status::OK();
     }
     rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
       return rocksdb::Status::OK();
     }
-    rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
-                    const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+    rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice &begin_key,
+                                  const rocksdb::Slice &end_key) override {
       return rocksdb::Status::OK();
     }
 
@@ -718,9 +696,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
         }
       }
     };
-    std::string GetReplId(void) {
-      return replid_in_wal_;
-    }
+    std::string GetReplId(void) { return replid_in_wal_; }
 
    private:
     std::string replid_in_wal_;
@@ -740,9 +716,7 @@ std::string Storage::GetReplIdFromDbEngine(void) {
   return replid_in_db;
 }
 
-std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() {
-  return Util::MakeUnique<RWLock::ReadLock>(db_rw_lock_);
-}
+std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() { return Util::MakeUnique<RWLock::ReadLock>(db_rw_lock_); }
 
 std::unique_ptr<RWLock::WriteLock> Storage::WriteLockGuard() {
   return Util::MakeUnique<RWLock::WriteLock>(db_rw_lock_);
@@ -757,7 +731,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
   // Create checkpoint if not exist
   if (!storage->env_->FileExists(data_files_dir).ok()) {
-    rocksdb::Checkpoint* checkpoint = NULL;
+    rocksdb::Checkpoint *checkpoint = NULL;
     rocksdb::Status s = rocksdb::Checkpoint::Create(storage->db_, &checkpoint);
     if (!s.ok()) {
       LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
@@ -766,8 +740,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
 
     // Create checkpoint of rocksdb
-    s = checkpoint->CreateCheckpoint(data_files_dir,
-          storage->config_->RocksDB.write_buffer_size*MiB);
+    s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB);
     storage->SetCheckpointCreateTime(std::time(nullptr));
     storage->SetCheckpointAccessTime(std::time(nullptr));
     if (!s.ok()) {
@@ -806,12 +779,10 @@ bool Storage::ExistCheckpoint(void) {
   return env_->FileExists(config_->checkpoint_dir).ok();
 }
 
-bool Storage::ExistSyncCheckpoint(void) {
-  return env_->FileExists(config_->sync_checkpoint_dir).ok();
-}
+bool Storage::ExistSyncCheckpoint(void) { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
 
-Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
-    const std::string &dir, std::vector<std::string> valid_files) {
+Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::string &dir,
+                                                   std::vector<std::string> valid_files) {
   if (!storage->env_->FileExists(dir).ok()) {
     return Status::OK();
   }
@@ -827,8 +798,8 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
   std::sort(files.begin(), files.end());
   std::sort(valid_files.begin(), valid_files.end());
   std::vector<std::string> invalid_files(files.size() + valid_files.size());
-  auto it = std::set_difference(files.begin(), files.end(),
-                valid_files.begin(), valid_files.end(), invalid_files.begin());
+  auto it =
+      std::set_difference(files.begin(), files.end(), valid_files.begin(), valid_files.end(), invalid_files.begin());
 
   // Delete invalid files
   Status ret;
@@ -837,18 +808,15 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage,
     auto s = storage->env_->DeleteFile(dir + "/" + *it);
     if (!s.ok()) {
       ret = Status(Status::NotOK, s.ToString());
-      LOG(INFO) << "[storage] Fail to delete invalid file "
-                << *it << " of master checkpoint";
+      LOG(INFO) << "[storage] Fail to delete invalid file " << *it << " of master checkpoint";
     } else {
-      LOG(INFO) << "[storage] Succeed deleting invalid file "
-                << *it << " of master checkpoint";
+      LOG(INFO) << "[storage] Succeed deleting invalid file " << *it << " of master checkpoint";
     }
   }
   return ret;
 }
 
-int Storage::ReplDataManager::OpenDataFile(Storage *storage,
-            const std::string &repl_file, uint64_t *file_size) {
+int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &repl_file, uint64_t *file_size) {
   std::string abs_path = storage->config_->checkpoint_dir + "/" + repl_file;
   auto s = storage->env_->FileExists(abs_path);
   if (!s.ok()) {
@@ -863,8 +831,9 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage,
   return rv;
 }
 
-Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
-    Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf) {
+Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(Storage *storage,
+                                                                              rocksdb::BackupID meta_id,
+                                                                              evbuffer *evbuf) {
   Storage::ReplDataManager::MetaInfo meta;
   auto meta_file = "meta/" + std::to_string(meta_id);
   DLOG(INFO) << "[meta] id: " << meta_id;
@@ -872,8 +841,7 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
   // Save the meta to tmp file
   auto wf = NewTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
   auto data = evbuffer_pullup(evbuf, -1);
-  wf->Append(rocksdb::Slice(reinterpret_cast<char *>(data),
-                            evbuffer_get_length(evbuf)));
+  wf->Append(rocksdb::Slice(reinterpret_cast<char *>(data), evbuffer_get_length(evbuf)));
   wf->Close();
 
   // timestamp;
@@ -900,9 +868,11 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(
     }
     DLOG(INFO) << "[meta] file info: " << line.get();
     auto cptr = line.get();
-    while (*(cptr++) != ' ') {}
+    while (*(cptr++) != ' ') {
+    }
     auto filename = std::string(line.get(), cptr - line.get() - 1);
-    while (*(cptr++) != ' ') {}
+    while (*(cptr++) != ' ') {
+    }
     auto crc32 = std::strtoul(cptr, nullptr, 10);
     meta.files.emplace_back(filename, crc32);
   }
@@ -914,8 +884,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   if (env->CreateDirIfMissing(dir).ok()) return Status::OK();
 
   std::string parent;
-  for (auto pos = dir.find('/', 1); pos != std::string::npos;
-       pos = dir.find('/', pos + 1)) {
+  for (auto pos = dir.find('/', 1); pos != std::string::npos; pos = dir.find('/', pos + 1)) {
     parent = dir.substr(0, pos);
     if (!env->CreateDirIfMissing(parent).ok()) {
       LOG(ERROR) << "[storage] Failed to create directory recursively";
@@ -926,8 +895,8 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   return Status(Status::NotOK);
 }
 
-std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(
-          Storage *storage, const std::string &dir, const std::string &repl_file) {
+std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(Storage *storage, const std::string &dir,
+                                                                            const std::string &repl_file) {
   std::string tmp_file = dir + "/" + repl_file + ".tmp";
   auto s = storage->env_->FileExists(tmp_file);
   if (s.ok()) {
@@ -948,18 +917,17 @@ std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(
   return wf;
 }
 
-Status Storage::ReplDataManager::SwapTmpFile(Storage *storage,
-                  const std::string &dir, const std::string &repl_file) {
+Status Storage::ReplDataManager::SwapTmpFile(Storage *storage, const std::string &dir, const std::string &repl_file) {
   std::string tmp_file = dir + "/" + repl_file + ".tmp";
   std::string orig_file = dir + "/" + repl_file;
   if (!storage->env_->RenameFile(tmp_file, orig_file).ok()) {
-    return Status(Status::NotOK, "unable to rename: "+tmp_file);
+    return Status(Status::NotOK, "unable to rename: " + tmp_file);
   }
   return Status::OK();
 }
 
-bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &dir,
-        const std::string &repl_file, uint32_t crc) {
+bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &dir, const std::string &repl_file,
+                                          uint32_t crc) {
   if (storage->IsClosing()) return false;
 
   auto file_path = dir + "/" + repl_file;

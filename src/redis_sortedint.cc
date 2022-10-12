@@ -20,9 +20,9 @@
 
 #include "redis_sortedint.h"
 
-#include <map>
 #include <iostream>
 #include <limits>
+#include <map>
 
 #include "db_util.h"
 #include "parse_util.h"
@@ -111,12 +111,8 @@ rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::Range(const Slice &user_key,
-                               uint64_t cursor_id,
-                               uint64_t offset,
-                               uint64_t limit,
-                               bool reversed,
-                               std::vector<uint64_t> *ids) {
+rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint64_t offset, uint64_t limit,
+                                 bool reversed, std::vector<uint64_t> *ids) {
   ids->clear();
 
   std::string ns_key;
@@ -148,21 +144,18 @@ rocksdb::Status Sortedint::Range(const Slice &user_key,
   uint64_t id, pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
-       iter->Valid() && iter->key().starts_with(prefix);
-       !reversed ? iter->Next() : iter->Prev()) {
+       iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
     GetFixed64(&sub_key, &id);
-    if ( id == cursor_id || pos++ < offset ) continue;
+    if (id == cursor_id || pos++ < offset) continue;
     ids->emplace_back(id);
     if (limit > 0 && ids->size() >= limit) break;
   }
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
-                                        SortedintRangeSpec spec,
-                                        std::vector<uint64_t> *ids,
+rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpec spec, std::vector<uint64_t> *ids,
                                         int *size) {
   if (size) *size = 0;
   if (ids) ids->clear();
@@ -198,9 +191,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key,
   }
 
   uint64_t id;
-  for (;
-      iter->Valid() && iter->key().starts_with(prefix_key);
-      !spec.reversed ? iter->Next() : iter->Prev()) {
+  for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
     GetFixed64(&sub_key, &id);

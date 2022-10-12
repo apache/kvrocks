@@ -127,15 +127,12 @@ typedef struct {
  * -1:failed
  */
 void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range);
-int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range,
-                  double longitude, double latitude, uint8_t step,
-                  GeoHashBits *hash);
-int geohashEncodeType(double longitude, double latitude,
-                      uint8_t step, GeoHashBits *hash);
-int geohashEncodeWGS84(double longitude, double latitude, uint8_t step,
-                       GeoHashBits *hash);
-int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
-                  const GeoHashBits &hash, GeoHashArea *area);
+int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
+                  uint8_t step, GeoHashBits *hash);
+int geohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
+int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
+int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
+                  GeoHashArea *area);
 int geohashDecodeType(const GeoHashBits &hash, GeoHashArea *area);
 int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy);
 int geohashDecodeToLongLatType(const GeoHashBits &hash, double *xy);
@@ -145,20 +142,11 @@ void geohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors);
 class GeoHashHelper {
  public:
   static uint8_t EstimateStepsByRadius(double range_meters, double lat);
-  static int BoundingBox(double longitude, double latitude, double radius_meters,
-                         double *bounds);
-  static GeoHashRadius GetAreasByRadius(double longitude,
-                                        double latitude, double radius_meters);
-  static GeoHashRadius GetAreasByRadiusWGS84(double longitude, double latitude,
-                                             double radius_meters);
+  static int BoundingBox(double longitude, double latitude, double radius_meters, double *bounds);
+  static GeoHashRadius GetAreasByRadius(double longitude, double latitude, double radius_meters);
+  static GeoHashRadius GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters);
   static GeoHashFix52Bits Align52Bits(const GeoHashBits &hash);
-  static double GetDistance(double lon1d, double lat1d,
-                            double lon2d, double lat2d);
-  static int GetDistanceIfInRadius(double x1, double y1,
-                                   double x2, double y2, double radius,
-                                   double *distance);
-  static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2,
-                                        double y2, double radius,
-                                        double *distance);
+  static double GetDistance(double lon1d, double lat1d, double lon2d, double lat2d);
+  static int GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance);
+  static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius, double *distance);
 };
-

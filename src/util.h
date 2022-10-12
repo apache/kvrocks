@@ -25,8 +25,8 @@
 #include <arpa/inet.h>
 
 #include <cctype>
-#include <cinttypes>
 #include <chrono>
+#include <cinttypes>
 #include <memory>
 #include <string>
 #include <utility>
@@ -73,12 +73,12 @@ uint64_t GetTimeStampUS(void);
 // define std::make_unique in c++14
 // refer to https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
 template <typename T, typename... Args>
-std::unique_ptr<T> MakeUnique(Args&& ... args) {
+std::unique_ptr<T> MakeUnique(Args &&...args) {
   return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
 template <typename T, typename... Args>
-std::shared_ptr<T> MakeShared(Args&& ... args) {
+std::shared_ptr<T> MakeShared(Args &&...args) {
   return std::make_shared<T>(std::forward<Args>(args)...);
 }
 }  // namespace Util

@@ -18,15 +18,17 @@
  *
  */
 
-#include "redis_slot.h"
 #include "redis_db.h"
+
 #include <ctime>
 #include <map>
+
+#include "db_util.h"
+#include "parse_util.h"
+#include "redis_slot.h"
 #include "rocksdb/iterator.h"
 #include "server.h"
 #include "util.h"
-#include "db_util.h"
-#include "parse_util.h"
 
 namespace Redis {
 
@@ -49,8 +51,8 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
     metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata->Type() != type
-      && (metadata->size > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
+  if (metadata->Type() != type &&
+      (metadata->size > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
     metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
@@ -95,13 +97,13 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   char *buf = new char[value.size()];
   memcpy(buf, value.data(), value.size());
   // +1 to skip the flags
-  EncodeFixed32(buf + 1, (uint32_t) timestamp);
+  EncodeFixed32(buf + 1, (uint32_t)timestamp);
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch.PutLogData(log_data.Encode());
   batch.Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
   s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
-  delete[]buf;
+  delete[] buf;
   return s;
 }
 
@@ -159,9 +161,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
   return rocksdb::Status::OK();
 }
 
-void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
-  Keys(prefix, nullptr, stats);
-}
+void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) { Keys(prefix, nullptr, stats); }
 
 void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   uint16_t slot_id = 0;
@@ -226,11 +226,8 @@ void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumSt
   }
 }
 
-rocksdb::Status Database::Scan(const std::string &cursor,
-                         uint64_t limit,
-                         const std::string &prefix,
-                         std::vector<std::string> *keys,
-                         std::string *end_cursor) {
+rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
+                               std::vector<std::string> *keys, std::string *end_cursor) {
   end_cursor->clear();
   uint64_t cnt = 0;
   uint16_t slot_id = 0, slot_start = 0;
@@ -282,7 +279,7 @@ rocksdb::Status Database::Scan(const std::string &cursor,
 
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty()) {
-          end_cursor->append(user_key);
+        end_cursor->append(user_key);
       }
       break;
     }
@@ -454,10 +451,8 @@ void Database::AppendNamespacePrefix(const Slice &user_key, std::string *output)
   ComposeNamespaceKey(namespace_, user_key, output, storage_->IsSlotIdEncoded());
 }
 
-rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix,
-                                                 const std::string &prefix_end,
-                                                 std::string *begin,
-                                                 std::string *end,
+rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, const std::string &prefix_end,
+                                                 std::string *begin, std::string *end,
                                                  rocksdb::ColumnFamilyHandle *cf_handle) {
   if (cf_handle == nullptr) {
     cf_handle = metadata_cf_handle_;
@@ -520,9 +515,7 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::GetSlotKeysInfo(int slot,
-                                          std::map<int, uint64_t> *slotskeys,
-                                          std::vector<std::string> *keys,
+rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
                                           int count) {
   const rocksdb::Snapshot *snapshot;
   snapshot = storage_->GetDB()->GetSnapshot();
@@ -562,12 +555,8 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status SubKeyScanner::Scan(RedisType type,
-                                    const Slice &user_key,
-                                    const std::string &cursor,
-                                    uint64_t limit,
-                                    const std::string &subkey_prefix,
-                                    std::vector<std::string> *keys,
+rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
+                                    const std::string &subkey_prefix, std::vector<std::string> *keys,
                                     std::vector<std::string> *values) {
   uint64_t cnt = 0;
   std::string ns_key;
@@ -616,13 +605,9 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type,
   return rocksdb::Status::OK();
 }
 
-RedisType WriteBatchLogData::GetRedisType() {
-  return type_;
-}
+RedisType WriteBatchLogData::GetRedisType() { return type_; }
 
-std::vector<std::string> *WriteBatchLogData::GetArguments() {
-  return &args_;
-}
+std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
 
 std::string WriteBatchLogData::Encode() {
   std::string ret = std::to_string(type_);
@@ -633,13 +618,13 @@ std::string WriteBatchLogData::Encode() {
 }
 
 Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
-  const std::string& log_data = blob.ToString();
+  const std::string &log_data = blob.ToString();
   std::vector<std::string> args = Util::Split(log_data, " ");
   auto parse_result = ParseInt<int>(args[0], 10);
   if (!parse_result) {
     return parse_result.ToStatus();
   }
-  type_ = static_cast<RedisType >(*parse_result);
+  type_ = static_cast<RedisType>(*parse_result);
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 
   return Status::OK();

@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "redis_db.h"
 #include "redis_metadata.h"
@@ -52,8 +52,8 @@ class String : public Database {
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, int ttl = 0);
   rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret);
-  rocksdb::Status CAS(const std::string &user_key, const std::string &old_value,
-                      const std::string &new_value, int ttl, int *ret);
+  rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value, int ttl,
+                      int *ret);
   rocksdb::Status CAD(const std::string &user_key, const std::string &value, int *ret);
 
  private:

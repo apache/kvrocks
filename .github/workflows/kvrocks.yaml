@@ -38,7 +38,7 @@ jobs:
 
   lint:
     name: Lint and check code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v3
@@ -46,21 +46,30 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y cppcheck
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.x
       - name: Setup Go
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.x
-      - name: Setup dependencies
-        run: pip install cpplint==1.6.1
+      - name: Setup Clang 12
+        run: apt install -y clang-12
       - name: Lint and check code
         run: |
-          ./x.py check cpplint
           ./x.py check cppcheck
           ./x.py check golangci-lint
+      - name: Check code format
+        id: check-format
+        run: ./x.py check format --clang-format-binary clang-format-12
+      - name: Format code
+        if: always() && steps.check-format.outputs.status == 'failure'
+        run: |
+          ./x.py check format -i --clang-format-binary clang-format-12
+          git diff -p > clang-format.patch
+          cat clang-format.patch
+      - name: Upload format patch
+        uses: actions/upload-artifact@v3
+        if: always() && steps.check-format.outputs.status == 'failure'
+        with:
+          path: clang-format.patch
 
   build-and-test:
     name: Build and test

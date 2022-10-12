@@ -150,6 +150,34 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
   return getValue(ns_key, value);
 }
 
+rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, int ttl) {
+    uint32_t expire = 0;
+    if (ttl > 0) {
+        int64_t now;
+        rocksdb::Env::Default()->GetCurrentTime(&now);
+        expire = uint32_t(now) + ttl;
+    }
+    std::string ns_key;
+    AppendNamespacePrefix(user_key, &ns_key);
+
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+    rocksdb::Status s = getValue(ns_key, value);
+    if (!s.ok() && s.IsNotFound()) return s;
+
+    std::string raw_data;
+    Metadata metadata(kRedisString, false);
+    metadata.expire = expire;
+    metadata.Encode(&raw_data);
+    raw_data.append(value->data(), value->size());
+    rocksdb::WriteBatch batch;
+    WriteBatchLogData log_data(kRedisString);
+    batch.PutLogData(log_data.Encode());
+    batch.Put(metadata_cf_handle_, ns_key, raw_data);
+    s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    if (!s.ok()) return s;
+    return rocksdb::Status::OK();
+}
+
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

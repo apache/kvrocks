@@ -19,29 +19,27 @@
  */
 
 #include <gtest/gtest.h>
-#include <memory>
-#include <string>
-#include <random>
-#include <algorithm>
 
-#include "test_base.h"
-#include "redis_hash.h"
+#include <algorithm>
+#include <memory>
+#include <random>
+#include <string>
+
 #include "parse_util.h"
+#include "redis_hash.h"
+#include "test_base.h"
 class RedisHashTest : public TestBase {
-protected:
-  explicit RedisHashTest() : TestBase() {
-    hash = Util::MakeUnique<Redis::Hash>(storage_, "hash_ns");
-  }
+ protected:
+  explicit RedisHashTest() : TestBase() { hash = Util::MakeUnique<Redis::Hash>(storage_, "hash_ns"); }
   ~RedisHashTest() = default;
   void SetUp() override {
     key_ = "test_hash->key";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
-    values_  = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
+    values_ = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
   }
-  void TearDown() override {
-  }
+  void TearDown() override {}
 
-protected:
+ protected:
   std::unique_ptr<Redis::Hash> hash;
 };
 
@@ -70,7 +68,7 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   s = hash->MSet(key_, fvs, false, &ret);
-  EXPECT_EQ(ret ,0);
+  EXPECT_EQ(ret, 0);
   std::vector<std::string> values;
   std::vector<rocksdb::Status> statuses;
   s = hash->MGet(key_, fields_, &values, &statuses);
@@ -120,7 +118,7 @@ TEST_F(RedisHashTest, HIncr) {
   hash->Get(key_, field, &bytes);
   auto parseResult = ParseInt<int64_t>(bytes, 10);
   if (!parseResult) {
-     FAIL();
+    FAIL();
   }
   EXPECT_EQ(32, *parseResult);
   hash->Del(key_);
@@ -158,7 +156,7 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   std::string bytes;
   hash->Get(key_, field, &bytes);
   value = std::stof(bytes);
-  EXPECT_FLOAT_EQ(32*1.2, value);
+  EXPECT_FLOAT_EQ(32 * 1.2, value);
   hash->Del(key_);
 }
 
@@ -175,12 +173,12 @@ TEST_F(RedisHashTest, HRange) {
   std::random_device rd;
   std::mt19937 g(rd());
   std::vector<FieldValue> tmp(fvs);
-  for (size_t i =0; i < 100 ; i ++) {
+  for (size_t i = 0; i < 100; i++) {
     std::shuffle(tmp.begin(), tmp.end(), g);
     rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
     EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
     s = hash->MSet(key_, fvs, false, &ret);
-    EXPECT_EQ(ret ,0);
+    EXPECT_EQ(ret, 0);
     std::vector<FieldValue> result;
     s = hash->Range(key_, "key0", "key4", INT_MAX, &result);
     EXPECT_TRUE(s.ok());

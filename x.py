@@ -117,6 +117,16 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
         target.append("unittest")
     run(cmake, "--build", ".", f"-j{jobs}", "-t", *target, verbose=True, cwd=dir)
 
+def get_source_files() -> List[str]:
+    return [
+        *glob("src/**/*.h", recursive=True),
+        *glob("src/**/*.cc", recursive=True),
+        *glob("tests/cppunit/**/*.h", recursive=True),
+        *glob("tests/cppunit/**/*.cc", recursive=True),
+        *glob("tools/kvrocks2redis/**/*.h", recursive=True),
+        *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
+    ]
+
 def check_format(clang_format_path: str, i: bool) -> None:
     print("WARNING: We use clang-format 12 in CI,\n"
         "  so we recommend that you also use this version locally to avoid inconsistencies.\n"
@@ -126,7 +136,7 @@ def check_format(clang_format_path: str, i: bool) -> None:
     command = find_command(clang_format_path, msg="clang-format is required")
 
     basedir = Path(__file__).parent.absolute()
-    sources = [*glob("src/**/*.h", recursive=True), *glob("src/**/*.cc", recursive=True)]
+    sources = get_source_files()
 
     if i:
         options = ['-i']

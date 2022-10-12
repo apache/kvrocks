@@ -110,52 +110,53 @@ func TestExpire(t *testing.T) {
 	})
 
 	t.Run("EXPIRE precision is now the millisecond", func(t *testing.T) {
-		// This test is very likely to do a false positive if the server is under pressure,
-		// so if it does not work give it a few more chances.
-		a, b := "", ""
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
-			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
+			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", time.Second).Err())
 			time.Sleep(900 * time.Millisecond)
-			a = rdb.Get(ctx, "x").Val()
+			a := rdb.Get(ctx, "x").Val()
 			time.Sleep(1100 * time.Millisecond)
-			b = rdb.Get(ctx, "x").Val()
+			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
-		require.Equal(t, "somevalue", a)
-		require.Equal(t, "", b)
 	})
 
-	t.Run("PEXPIRE/PSETEX/PEXPIREAT can set sub-second expires", func(t *testing.T) {
-		// This test is very likely to do a false positive if the server is under pressure,
-		// so if it does not work give it a few more chances.
-		a, b, c, d, e, f := "", "", "", "", "", ""
+	t.Run("PEXPIRE can set sub-second expires", func(t *testing.T) {
 		util.RetryEventually(t, func() bool {
-			require.NoError(t, rdb.Del(ctx, "x", "y", "z").Err())
-			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
-			time.Sleep(80 * time.Millisecond)
-			a = rdb.Get(ctx, "x").Val()
-			time.Sleep(2100 * time.Millisecond)
-			b = rdb.Get(ctx, "x").Val()
-
+			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
 			require.NoError(t, rdb.PExpire(ctx, "x", 100*time.Millisecond).Err())
-			time.Sleep(80 * time.Millisecond)
-			c = rdb.Get(ctx, "x").Val()
-			time.Sleep(2100 * time.Millisecond)
-			d = rdb.Get(ctx, "x").Val()
+			time.Sleep(50 * time.Millisecond)
+			a := rdb.Get(ctx, "x").Val()
+			time.Sleep(2 * time.Second)
+			b := rdb.Get(ctx, "x").Val()
+			return a == "somevalue" && b == ""
+		}, 3)
+	})
 
+	t.Run("PEXPIREAT can set sub-second expires", func(t *testing.T) {
+		util.RetryEventually(t, func() bool {
+			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
 			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+100)).Err())
-			time.Sleep(80 * time.Millisecond)
-			e = rdb.Get(ctx, "x").Val()
-			time.Sleep(2100 * time.Millisecond)
-			f = rdb.Get(ctx, "x").Val()
-
-			return a == "somevalue" && b == "" && c == "somevalue" && d == "" && e == "somevalue" && f == ""
+			time.Sleep(50 * time.Millisecond)
+			a := rdb.Get(ctx, "x").Val()
+			time.Sleep(2 * time.Second)
+			b := rdb.Get(ctx, "x").Val()
+			return a == "somevalue" && b == ""
 		}, 3)
-		require.Equal(t, "somevalue", a)
-		require.Equal(t, "", b)
+	})
+
+	t.Run("PSETEX can set sub-second expires", func(t *testing.T) {
+		util.RetryEventually(t, func() bool {
+			require.NoError(t, rdb.Del(ctx, "x").Err())
+			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
+			time.Sleep(50 * time.Millisecond)
+			a := rdb.Get(ctx, "x").Val()
+			time.Sleep(2 * time.Second)
+			b := rdb.Get(ctx, "x").Val()
+			return a == "somevalue" && b == ""
+		}, 3)
 	})
 
 	t.Run("TTL returns time to live in seconds", func(t *testing.T) {

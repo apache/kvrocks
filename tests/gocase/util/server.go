@@ -35,9 +35,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var binPath = flag.String("binPath", "/Users/chenzili/Brittani/kvrocks/build/kvrocks", "directory including kvrocks build files")
-var workspace = flag.String("workspace", "/Users/chenzili/Brittani/kvrocks/tests/gocase/workspace", "directory of cases workspace")
-var deleteOnExit = flag.Bool("deleteOnExit", true, "whether to delete workspace on exit")
+var binPath = flag.String("binPath", "", "directory including kvrocks build files")
+var workspace = flag.String("workspace", "", "directory of cases workspace")
+var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
 
 type KvrocksServer struct {
 	t    testing.TB

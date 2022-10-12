@@ -243,8 +243,8 @@ func TestRedisCli(t *testing.T) {
 
 		t.Run("Read last argument from file", func(t *testing.T) {
 			f, err := os.CreateTemp("", "")
-			defer func() { require.NoError(t, f.Close()) }()
 			require.NoError(t, err)
+			defer func() { require.NoError(t, f.Close()) }()
 			_, err = f.WriteString("from file")
 			require.NoError(t, err)
 			require.NoError(t, f.Sync())
@@ -308,8 +308,8 @@ func TestRedisCli(t *testing.T) {
 
 		t.Run("Read last argument from file", func(t *testing.T) {
 			f, err := os.CreateTemp("", "")
-			defer func() { require.NoError(t, f.Close()) }()
 			require.NoError(t, err)
+			defer func() { require.NoError(t, f.Close()) }()
 			_, err = f.WriteString("from file")
 			require.NoError(t, err)
 			require.NoError(t, f.Sync())
@@ -318,5 +318,46 @@ func TestRedisCli(t *testing.T) {
 			require.Equal(t, "OK", runCli(t, srv, f, "-x", "set", "key").Success())
 			require.Equal(t, "from file", rdb.Get(ctx, "key").Val())
 		})
+	})
+
+	t.Run("Scan mode", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		util.Populate(t, rdb, "key:", 10, 1)
+
+		// basic use
+		r := runCli(t, srv, nil, "--scan").Success()
+		require.Len(t, strings.Split(r, "\n"), 10)
+	})
+
+	formatArgs := func(args ...string) string {
+		cmd := fmt.Sprintf("*%d\r\n", len(args))
+		for _, arg := range args {
+			cmd = cmd + fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
+		}
+		return cmd
+	}
+
+	t.Run("Piping raw protocol", func(t *testing.T) {
+		f, err := os.CreateTemp("", "")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, f.Close()) }()
+		cmd := formatArgs("select", "9")
+		cmd += formatArgs("del", "test-counter")
+		for i := 0; i < 1000; i++ {
+			cmd += formatArgs("incr", "test-counter")
+			cmd += formatArgs("set", "large-key", strings.Repeat("x", 20000))
+		}
+		for i := 0; i < 100; i++ {
+			cmd += formatArgs("set", "very-large-key", strings.Repeat("x", 512000))
+		}
+		_, err = f.WriteString(cmd)
+		require.NoError(t, err)
+		require.NoError(t, f.Sync())
+		_, err = f.Seek(0, io.SeekStart)
+		require.NoError(t, err)
+
+		r := runCli(t, srv, f, "--pipe").Success()
+		require.Equal(t, "1000", rdb.Get(ctx, "test-counter").Val())
+		require.Regexp(t, "(?s).*All data transferred.*errors: 0.*replies: 2102.*", r)
 	})
 }

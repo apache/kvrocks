@@ -124,10 +124,6 @@ def check_format(clang_format_path: str, i: bool) -> None:
         "  or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     command = find_command(clang_format_path, msg="clang-format is required")
-    version_out = run_pipe(command, "--version")
-    version_str = run_pipe('awk', '{print $3}', stdin=version_out).read().strip()
-
-    check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
 
     basedir = Path(__file__).parent.absolute()
     sources = [*glob("src/**/*.h", recursive=True), *glob("src/**/*.cc", recursive=True)]

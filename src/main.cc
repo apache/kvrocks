@@ -37,10 +37,10 @@
 #include <ucontext.h>
 
 #include "config.h"
+#include "fd_util.h"
 #include "server.h"
 #include "storage.h"
 #include "util.h"
-#include "fd_util.h"
 #include "version.h"
 
 namespace google {
@@ -231,7 +231,7 @@ bool isSupervisedMode(int mode) {
 }
 
 static Status createPidFile(const std::string &path) {
-  auto fd = UniqueFD(open(path.data(), O_RDWR|O_CREAT, 0660));
+  auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
   if (!fd) {
     return Status(Status::NotOK, strerror(errno));
   }

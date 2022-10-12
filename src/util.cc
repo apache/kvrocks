@@ -45,11 +45,11 @@
 #include <string>
 
 #include "event_util.h"
-#include "parse_util.h"
 #include "fd_util.h"
+#include "parse_util.h"
+#include "scope_exit.h"
 #include "status.h"
 #include "util.h"
-#include "scope_exit.h"
 
 #ifndef POLLIN
 #define POLLIN 0x0001   /* There is data to read */
@@ -68,7 +68,7 @@
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   int rv;
-  char portstr[6];  /* strlen("65535") + 1; */
+  char portstr[6]; /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
 
   snprintf(portstr, sizeof(portstr), "%u", port);
@@ -82,10 +82,9 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
 
   auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
 
-  for (p = servinfo; p != nullptr ; p = p->ai_next) {
+  for (p = servinfo; p != nullptr; p = p->ai_next) {
     auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
-    if (!cfd)
-      continue;
+    if (!cfd) continue;
     if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
       continue;
     }
@@ -186,10 +185,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     }
 
     auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
-    if ((retmask & AE_WRITABLE) == 0 ||
-        (retmask & AE_ERROR) != 0 ||
-        (retmask & AE_HUP) != 0
-        ) {
+    if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
       return Status::FromErrno();
     }
 

@@ -32,8 +32,8 @@
 #include <utility>
 #include <vector>
 
-#include "fd_util.h"
 #include "cluster.h"
+#include "fd_util.h"
 #include "log_collector.h"
 #include "parse_util.h"
 #include "redis_bitmap.h"
@@ -4616,18 +4616,15 @@ class CommandFetchFile : public Commander {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb * MiB) / svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
-                                                                 file, &file_size));
+        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_, file, &file_size));
         if (!fd) break;
 
         // Send file size and content
-        if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
+        if (Util::SockSend(repl_fd, std::to_string(file_size) + CRLF).IsOK() &&
             Util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
-          LOG(INFO) << "[replication] Succeed sending file " << file << " to "
-                    << ip;
+          LOG(INFO) << "[replication] Succeed sending file " << file << " to " << ip;
         } else {
-          LOG(WARNING) << "[replication] Fail to send file " << file << " to "
-                       << ip << ", error: " << strerror(errno);
+          LOG(WARNING) << "[replication] Fail to send file " << file << " to " << ip << ", error: " << strerror(errno);
           break;
         }
         fd.Close();

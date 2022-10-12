@@ -21,6 +21,7 @@
 #pragma once
 
 #include <unistd.h>
+
 #include <utility>
 
 constexpr const int NullFD = -1;
@@ -30,7 +31,9 @@ struct UniqueFD {
   UniqueFD() : fd_(NullFD) {}
   explicit UniqueFD(int fd) : fd_(fd) {}
 
-  ~UniqueFD() { if (fd_ != NullFD) close(fd_); }
+  ~UniqueFD() {
+    if (fd_ != NullFD) close(fd_);
+  }
 
   UniqueFD(const UniqueFD&) = delete;
   UniqueFD(UniqueFD&& f) : fd_(f.fd_) { f.fd_ = NullFD; }
@@ -54,25 +57,17 @@ struct UniqueFD {
     if (old_fd != NullFD) close(old_fd);
   }
 
-  void Close() {
-    Reset();
-  }
+  void Close() { Reset(); }
 
-  void Swap(UniqueFD& other) {
-    std::swap(fd_, other.fd_);
-  }
+  void Swap(UniqueFD& other) { std::swap(fd_, other.fd_); }
 
   int Get() const { return fd_; }
   int operator*() const { return fd_; }
   explicit operator bool() const { return fd_ != NullFD; }
 
-  bool operator==(const UniqueFD& f) const {
-    return fd_ == f.fd_;
-  }
+  bool operator==(const UniqueFD& f) const { return fd_ == f.fd_; }
 
-  bool operator!=(const UniqueFD& f) const {
-    return !(*this == f);
-  }
+  bool operator!=(const UniqueFD& f) const { return !(*this == f); }
 
  private:
   int fd_;

@@ -21,6 +21,7 @@
 #include "stats.h"
 
 #include <chrono>
+
 #include "util.h"
 
 Stats::Stats() {
@@ -68,7 +69,7 @@ int64_t Stats::GetMemoryRSS() {
   fd.Close();
 
   char *start = buf;
-  int count = 23;    // RSS is the 24th field in /proc/<pid>/stat
+  int count = 23;  // RSS is the 24th field in /proc/<pid>/stat
   while (start && count--) {
     start = strchr(start, ' ');
     if (start) start++;

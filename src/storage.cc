@@ -37,11 +37,11 @@
 #include <memory>
 #include <random>
 
-#include "fd_util.h"
 #include "compact_filter.h"
 #include "config.h"
 #include "event_listener.h"
 #include "event_util.h"
+#include "fd_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"

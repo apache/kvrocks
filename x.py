@@ -138,10 +138,10 @@ def check_format(clang_format_path: str, fix: bool = False) -> None:
     version = check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
 
     if version[0] > 12:
-        raise RuntimeError("We use clang-format 12 in CI,\n"
-            "  so we recommend that you also use this version locally to avoid inconsistencies.\n"
-            "  You can install it from your package manager (usually in clang-12 package)\n"
-            "  or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
+        raise RuntimeError("We use clang-format 12 in CI, "
+            "so we recommend that you also use this version locally to avoid inconsistencies. "
+            "You can install it from your package manager (usually in clang-12 package) "
+            "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     basedir = Path(__file__).parent.absolute()
     sources = get_source_files()
@@ -303,8 +303,8 @@ if __name__ == '__main__':
     parser_check_subparsers = parser_check.add_subparsers()
     parser_check_format = parser_check_subparsers.add_parser(
         'format',
-        description="Check source format by clang-tidy",
-        help="Check source format by clang-tidy")
+        description="Check source format by clang-format",
+        help="Check source format by clang-format")
     parser_check_format.set_defaults(func=lambda **args: check_format(**args, fix=False))
     parser_check_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
     parser_check_cppcheck = parser_check_subparsers.add_parser(

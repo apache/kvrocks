@@ -274,7 +274,7 @@ def test_go(dir: str, rest: List[str]) -> None:
     worksapce = basedir / 'workspace'
 
     args = [
-        'test', '-v', '-bench=.', './...',
+        'test', '-bench=.', './...',
         f'-binPath={binpath}',
         f'-workspace={worksapce}',
         *rest

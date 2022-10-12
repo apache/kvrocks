@@ -25,6 +25,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -99,6 +100,38 @@ func (c *interactiveCli) MustEqual(t *testing.T, cmd, expected string) {
 	require.Equal(t, expected, r)
 }
 
+type result struct {
+	t *testing.T
+
+	b   []byte
+	err error
+}
+
+func (res *result) Success() string {
+	require.NoError(res.t, res.err)
+	r := string(bytes.Trim(res.b, "\x00"))
+	r = strings.ReplaceAll(r, "\r", "")
+	r = strings.TrimSuffix(r, "\n")
+	return r
+}
+
+func (res *result) Failed() {
+	require.Error(res.t, res.err)
+}
+
+func runCli(t *testing.T, srv *util.KvrocksServer, in io.Reader, args ...string) *result {
+	c := exec.Command(*cliPath)
+	c.Stdin = in
+	c.Args = append(c.Args, "-h", srv.Host(), "-p", fmt.Sprintf("%d", srv.Port()))
+	c.Args = append(c.Args, args...)
+	b, err := c.CombinedOutput()
+	return &result{
+		t:   t,
+		b:   b,
+		err: err,
+	}
+}
+
 func TestRedisCli(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -165,6 +198,125 @@ func TestRedisCli(t *testing.T) {
 			// quotes after the argument are weird, but should be allowed
 			cli.MustEqual(t, `set key"" bar`, "OK")
 			require.Equal(t, "bar", rdb.Get(ctx, "key").Val())
+		})
+	})
+
+	t.Run("test_tty_cli", func(t *testing.T) {
+		require.NoError(t, os.Setenv("FAKETTY", "1"))
+		defer func() { require.NoError(t, os.Unsetenv("FAKETTY")) }()
+
+		t.Run("Status reply", func(t *testing.T) {
+			require.Equal(t, "OK", runCli(t, srv, nil, "set", "key", "bar").Success())
+			require.Equal(t, "bar", rdb.Get(ctx, "key").Val())
+		})
+
+		t.Run("Integer reply", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "counter").Err())
+			require.Equal(t, "(integer) 1", runCli(t, srv, nil, "incr", "counter").Success())
+		})
+
+		t.Run("Bulk reply", func(t *testing.T) {
+			require.NoError(t, rdb.Set(ctx, "key", "tab\tnewline\n", 0).Err())
+			require.Equal(t, `"tab\tnewline\n"`, runCli(t, srv, nil, "get", "key").Success())
+		})
+
+		t.Run("Multi-bulk reply", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "list").Err())
+			require.NoError(t, rdb.RPush(ctx, "list", "foo").Err())
+			require.NoError(t, rdb.RPush(ctx, "list", "bar").Err())
+			expected := strings.Trim(`
+1) "foo"
+2) "bar"
+`, "\n")
+			require.Equal(t, expected, runCli(t, srv, nil, "lrange", "list", "0", "-1").Success())
+		})
+
+		t.Run("Read last argument from pipe", func(t *testing.T) {
+			cmd := exec.Command("echo", "foo")
+			out, err := cmd.StdoutPipe()
+			require.NoError(t, err)
+			require.NoError(t, cmd.Start())
+			defer func() { require.NoError(t, cmd.Wait()) }()
+			require.Equal(t, "OK", runCli(t, srv, out, "-x", "set", "key").Success())
+			require.Equal(t, "foo\n", rdb.Get(ctx, "key").Val())
+		})
+
+		t.Run("Read last argument from file", func(t *testing.T) {
+			f, err := os.CreateTemp("", "")
+			defer func() { require.NoError(t, f.Close()) }()
+			require.NoError(t, err)
+			_, err = f.WriteString("from file")
+			require.NoError(t, err)
+			require.NoError(t, f.Sync())
+			_, err = f.Seek(0, io.SeekStart)
+			require.NoError(t, err)
+			require.Equal(t, "OK", runCli(t, srv, f, "-x", "set", "key").Success())
+			require.Equal(t, "from file", rdb.Get(ctx, "key").Val())
+		})
+	})
+
+	t.Run("test_notty_cli", func(t *testing.T) {
+		t.Run("Status reply", func(t *testing.T) {
+			require.Equal(t, "OK", runCli(t, srv, nil, "set", "key", "bar").Success())
+			require.Equal(t, "bar", rdb.Get(ctx, "key").Val())
+		})
+
+		t.Run("Integer reply", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "counter").Err())
+			require.Equal(t, "1", runCli(t, srv, nil, "incr", "counter").Success())
+		})
+
+		t.Run("Bulk reply", func(t *testing.T) {
+			require.NoError(t, rdb.Set(ctx, "key", "tab\tnewline\n", 0).Err())
+			require.Equal(t, "tab\tnewline\n", runCli(t, srv, nil, "get", "key").Success())
+		})
+
+		t.Run("Multi-bulk reply", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "list").Err())
+			require.NoError(t, rdb.RPush(ctx, "list", "foo").Err())
+			require.NoError(t, rdb.RPush(ctx, "list", "bar").Err())
+			require.Equal(t, "foo\nbar", runCli(t, srv, nil, "lrange", "list", "0", "-1").Success())
+		})
+
+		t.Run("Quoted input arguments", func(t *testing.T) {
+			require.NoError(t, rdb.Set(ctx, "\x00\x00", "value", 0).Err())
+			require.Equal(t, "value", runCli(t, srv, nil, "--quoted-input", "get", `"\x00\x00"`).Success())
+		})
+
+		t.Run("No accidental unquoting of input arguments", func(t *testing.T) {
+			require.Equal(t, "OK", runCli(t, srv, nil, "--quoted-input", "set", `"\x41\x41"`, "quoted-val").Success())
+			require.Equal(t, "OK", runCli(t, srv, nil, "set", `"\x41\x41"`, "unquoted-val").Success())
+			require.Equal(t, "quoted-val", rdb.Get(ctx, "AA").Val())
+			require.Equal(t, "unquoted-val", rdb.Get(ctx, `"\x41\x41"`).Val())
+		})
+
+		t.Run("Invalid quoted input arguments", func(t *testing.T) {
+			runCli(t, srv, nil, "--quoted-input", "set", `"Unterminated`).Failed()
+			// a single arg that unquotes to two arguments is also not expected
+			runCli(t, srv, nil, "--quoted-input", "set", `"arg1" "arg2"`).Failed()
+		})
+
+		t.Run("Read last argument from pipe", func(t *testing.T) {
+			cmd := exec.Command("echo", "foo")
+			out, err := cmd.StdoutPipe()
+			require.NoError(t, err)
+			require.NoError(t, cmd.Start())
+			defer func() { require.NoError(t, cmd.Wait()) }()
+			require.Equal(t, "OK", runCli(t, srv, out, "-x", "set", "key").Success())
+			require.Equal(t, "foo\n", rdb.Get(ctx, "key").Val())
+		})
+
+		t.Run("Read last argument from file", func(t *testing.T) {
+			f, err := os.CreateTemp("", "")
+			defer func() { require.NoError(t, f.Close()) }()
+			require.NoError(t, err)
+			_, err = f.WriteString("from file")
+			require.NoError(t, err)
+			require.NoError(t, f.Sync())
+			_, err = f.Seek(0, io.SeekStart)
+			require.NoError(t, err)
+			require.Equal(t, "OK", runCli(t, srv, f, "-x", "set", "key").Success())
+			require.Equal(t, "from file", rdb.Get(ctx, "key").Val())
 		})
 	})
 }

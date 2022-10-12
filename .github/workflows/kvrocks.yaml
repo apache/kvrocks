@@ -65,10 +65,6 @@ jobs:
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
-      - uses: stefanzweifel/git-auto-commit-action@v4
-        if: always() && steps.check-format.outcome != 'success'
-        with:
-          commit_message: Format code by clang-format in Github Actions
       - name: Lint and check code
         run: |
           ./x.py check cppcheck

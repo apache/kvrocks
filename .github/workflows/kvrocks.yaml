@@ -57,7 +57,7 @@ jobs:
       - name: Format code
         if: always() && steps.check-format.outcome != 'success'
         run: |
-          ./x.py check format -i --clang-format-path clang-format-12
+          ./x.py format --clang-format-path clang-format-12
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch

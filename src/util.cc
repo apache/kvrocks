@@ -49,6 +49,7 @@
 #include "fd_util.h"
 #include "status.h"
 #include "util.h"
+#include "scope_exit.h"
 
 #ifndef POLLIN
 # define POLLIN      0x0001    /* There is data to read */

@@ -77,35 +77,3 @@ struct UniqueFD {
  private:
   int fd_;
 };
-
-
-// ref to https://en.cppreference.com/w/cpp/experimental/scope_exit
-template <typename F>
-struct ScopeExit {
-  explicit ScopeExit(F f, bool enabled) : enabled(enabled), f(std::move(f)) {}
-  explicit ScopeExit(F f) : enabled(true), f(std::move(f)) {}
-
-  ScopeExit(const ScopeExit&) = delete;
-  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) {}
-
-  ~ScopeExit() {
-    if (enabled) f();
-  }
-
-  void Enable() {
-    enabled = false;
-  }
-
-  void Disable() {
-    enabled = true;
-  }
-
-  bool enabled;
-  F f;
-};
-
-// use CTAD in C++17 or above
-template <typename F>
-ScopeExit<F> MakeScopeExit(F&& f, bool enabled = true) {
-  return ScopeExit<F>(std::forward<F>(f), enabled);
-}

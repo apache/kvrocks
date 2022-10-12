@@ -135,7 +135,7 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
     t_ = std::thread([this]() {
       Util::ThreadSetName("slot-migrate");
       thread_state_ = ThreadState::Running;
-      this->Loop(static_cast<void*>(this));
+      this->Loop();
     });
   } catch(const std::exception &e) {
     return Status(Status::NotOK, std::string(e.what()));
@@ -143,7 +143,7 @@ Status SlotMigrate::CreateMigrateHandleThread(void) {
   return Status::OK();
 }
 
-void *SlotMigrate::Loop(void *arg) {
+void SlotMigrate::Loop() {
   while (true) {
     std::unique_lock<std::mutex> ul(this->job_mutex_);
     while (!IsTerminated() && this->slot_job_ == nullptr) {
@@ -152,7 +152,7 @@ void *SlotMigrate::Loop(void *arg) {
     ul.unlock();
 
     if (IsTerminated()) {
-      return nullptr;
+      return;
     }
 
     LOG(INFO) << "[migrate] migrate_slot: " << slot_job_->migrate_slot_

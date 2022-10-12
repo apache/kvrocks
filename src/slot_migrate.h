@@ -86,7 +86,7 @@ class SlotMigrate : public Redis::Database {
   ~SlotMigrate();
 
   Status CreateMigrateHandleThread(void);
-  void *Loop(void *arg);
+  void Loop();
   Status MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip,
                       int dst_port, int slot, int speed, int pipeline_size, int seq_gap);
   void ReleaseForbiddenSlot();

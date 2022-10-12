@@ -59,14 +59,14 @@ jobs:
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-12
       - name: Format code
-        if: always() && steps.check-format.outputs.status == 'failure'
+        if: always() && steps.check-format.outcome != 'success'
         run: |
           ./x.py check format -i --clang-format-path clang-format-12
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch
         uses: actions/upload-artifact@v3
-        if: always() && steps.check-format.outputs.status == 'failure'
+        if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
 

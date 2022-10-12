@@ -58,11 +58,11 @@ jobs:
           ./x.py check golangci-lint
       - name: Check code format
         id: check-format
-        run: ./x.py check format --clang-format-binary clang-format-12
+        run: ./x.py check format --clang-format-path clang-format-12
       - name: Format code
         if: always() && steps.check-format.outputs.status == 'failure'
         run: |
-          ./x.py check format -i --clang-format-binary clang-format-12
+          ./x.py check format -i --clang-format-path clang-format-12
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch

@@ -51,10 +51,6 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.x
-      - name: Lint and check code
-        run: |
-          ./x.py check cppcheck
-          ./x.py check golangci-lint
       - name: Check code format
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-12
@@ -69,6 +65,14 @@ jobs:
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
+      - uses: stefanzweifel/git-auto-commit-action@v4
+        if: always() && steps.check-format.outcome != 'success'
+        with:
+          commit_message: Format code by clang-format in Github Actions
+      - name: Lint and check code
+        run: |
+          ./x.py check cppcheck
+          ./x.py check golangci-lint
 
   build-and-test:
     name: Build and test

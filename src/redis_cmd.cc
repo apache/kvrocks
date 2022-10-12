@@ -32,6 +32,7 @@
 #include <thread>
 #include <utility>
 
+#include "fd_util.h"
 #include "cluster.h"
 #include "log_collector.h"
 #include "parse_util.h"
@@ -4603,6 +4604,8 @@ class CommandFetchMeta : public Commander {
     // Feed-replica-meta thread
     std::thread t = std::thread([svr, repl_fd, ip]() {
       Util::ThreadSetName("feed-repl-info");
+      UniqueFD unique_fd{repl_fd};
+
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(
           svr->storage_, &files);
@@ -4611,7 +4614,6 @@ class CommandFetchMeta : public Commander {
         write(repl_fd, message, strlen(message));
         LOG(WARNING) << "[replication] Failed to get full data file info,"
                      << " error: " << s.Msg();
-        close(repl_fd);
         return;
       }
       // Send full data file info
@@ -4622,7 +4624,6 @@ class CommandFetchMeta : public Commander {
                      << ip << ", error: " << strerror(errno);
       }
       svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
-      close(repl_fd);
     });
     t.detach();
 
@@ -4649,6 +4650,7 @@ class CommandFetchFile : public Commander {
 
     std::thread t = std::thread([svr, repl_fd, ip, files]() {
       Util::ThreadSetName("feed-repl-file");
+      UniqueFD unique_fd{repl_fd};
       svr->IncrFetchFileThread();
 
       for (auto file : files) {
@@ -4659,22 +4661,21 @@ class CommandFetchFile : public Commander {
               svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
-                                                                 file, &file_size);
-        if (fd < 0) break;
+        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_,
+                                                                 file, &file_size));
+        if (!fd) break;
 
         // Send file size and content
         if (Util::SockSend(repl_fd, std::to_string(file_size)+CRLF).IsOK() &&
-            Util::SockSendFile(repl_fd, fd, file_size).IsOK()) {
+            Util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
           LOG(INFO) << "[replication] Succeed sending file " << file << " to "
                     << ip;
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to "
                        << ip << ", error: " << strerror(errno);
-          close(fd);
           break;
         }
-        close(fd);
+        fd.Close();
 
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
@@ -4691,7 +4692,6 @@ class CommandFetchFile : public Commander {
       }
       svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
       svr->DecrFetchFileThread();
-      close(repl_fd);
     });
     t.detach();
 

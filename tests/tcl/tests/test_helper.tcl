@@ -39,7 +39,6 @@ set ::all_tests {
     unit/pubsub
     unit/geo
     integration/slotmigrate
-    integration/redis-cli
     integration/replication
     integration/cluster
 }

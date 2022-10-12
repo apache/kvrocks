@@ -29,6 +29,7 @@ from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
+CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
 TCL_REQUIRE_VERSION = (8, 5, 0)
 
 SEMVER_REGEX = re.compile(
@@ -74,7 +75,7 @@ def run_pipe(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs:
 def find_command(command: str, msg: Optional[str]=None) -> str:
     return run_pipe("which", command, msg=msg).read().strip()
 
-def check_version(current: str, required: Tuple[int, int, int], prog_name: Optional[str] = None, exact: bool = False) -> None:
+def check_version(current: str, required: Tuple[int, int, int], prog_name: Optional[str] = None) -> Tuple[int, int, int]:
     require_version = '.'.join(map(str, required))
     semver_match = SEMVER_REGEX.match(current)
     if semver_match is None:
@@ -83,6 +84,8 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
     semver = (int(semver_dict["major"]), int(semver_dict["minor"]), int(semver_dict["patch"]))
     if semver < required:
         raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
+    
+    return semver
 
 def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str]) -> None:
     basedir = Path(__file__).parent.absolute()
@@ -126,18 +129,24 @@ def get_source_files() -> List[str]:
         *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
     ]
 
-def check_format(clang_format_path: str, i: bool) -> None:
-    print("WARNING: We use clang-format 12 in CI,\n"
-        "  so we recommend that you also use this version locally to avoid inconsistencies.\n"
-        "  You can install it from your package manager (usually in clang-12 package)\n"
-        "  or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
-
+def check_format(clang_format_path: str, fix: bool = False) -> None:
     command = find_command(clang_format_path, msg="clang-format is required")
+
+    version_res = run_pipe(command, '--version').read().strip()
+    version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
+
+    version = check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
+
+    if version[0] > 12:
+        raise RuntimeError("We use clang-format 12 in CI,\n"
+            "  so we recommend that you also use this version locally to avoid inconsistencies.\n"
+            "  You can install it from your package manager (usually in clang-12 package)\n"
+            "  or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     basedir = Path(__file__).parent.absolute()
     sources = get_source_files()
 
-    if i:
+    if fix:
         options = ['-i']
     else:
         options = ['--dry-run', '--Werror']
@@ -279,6 +288,13 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers()
 
+    parser_format = subparsers.add_parser(
+        'format',
+        description="Format source code",
+        help="Format source code")
+    parser_format.set_defaults(func=lambda **args: check_format(**args, fix=True))
+    parser_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
+
     parser_check = subparsers.add_parser(
         'check',
         description="Check or lint source code",
@@ -287,11 +303,10 @@ if __name__ == '__main__':
     parser_check_subparsers = parser_check.add_subparsers()
     parser_check_format = parser_check_subparsers.add_parser(
         'format',
-        description="Format source code",
-        help="Format source code")
-    parser_check_format.set_defaults(func=check_format)
+        description="Check source format by clang-tidy",
+        help="Check source format by clang-tidy")
+    parser_check_format.set_defaults(func=lambda **args: check_format(**args, fix=False))
     parser_check_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
-    parser_check_format.add_argument('-i', default=False, action='store_true', help="format source files")
     parser_check_cppcheck = parser_check_subparsers.add_parser(
         'cppcheck',
         description="Check code with cppcheck (https://github.com/danmar/cppcheck)",

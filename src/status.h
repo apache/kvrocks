@@ -91,6 +91,8 @@ class Status {
 
   static Status OK() { return {}; }
 
+  static Status FromErrno() { return Status(NotOK, strerror(errno)); }
+
  private:
   Code code_;
   std::string msg_;

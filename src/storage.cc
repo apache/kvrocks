@@ -37,6 +37,7 @@
 #include <memory>
 #include <random>
 
+#include "fd_util.h"
 #include "compact_filter.h"
 #include "config.h"
 #include "event_listener.h"
@@ -821,7 +822,7 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &
   auto s = storage->env_->FileExists(abs_path);
   if (!s.ok()) {
     LOG(ERROR) << "[storage] Data file [" << abs_path << "] not found";
-    return -1;
+    return NullFD;
   }
   storage->env_->GetFileSize(abs_path, file_size);
   auto rv = open(abs_path.c_str(), O_RDONLY);

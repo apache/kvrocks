@@ -40,8 +40,8 @@
 #include "server.h"
 #include "storage.h"
 #include "util.h"
+#include "fd_util.h"
 #include "version.h"
-#include "worker.h"
 
 namespace google {
 bool Symbolize(void *pc, char *out, size_t out_size);
@@ -174,8 +174,8 @@ bool supervisedSystemd() {
     return false;
   }
 
-  int fd = 1;
-  if ((fd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1) {
+  auto fd = UniqueFD(socket(AF_UNIX, SOCK_DGRAM, 0));
+  if (!fd) {
     LOG(WARNING) << "Can't connect to systemd socket " << notify_socket;
     return false;
   }
@@ -205,12 +205,10 @@ bool supervisedSystemd() {
 #ifdef HAVE_MSG_NOSIGNAL
   sendto_flags |= MSG_NOSIGNAL;
 #endif
-  if (sendmsg(fd, &hdr, sendto_flags) < 0) {
+  if (sendmsg(*fd, &hdr, sendto_flags) < 0) {
     LOG(WARNING) << "Can't send notification to systemd";
-    close(fd);
     return false;
   }
-  close(fd);
   return true;
 }
 
@@ -233,13 +231,12 @@ bool isSupervisedMode(int mode) {
 }
 
 static Status createPidFile(const std::string &path) {
-  int fd = open(path.data(), O_RDWR | O_CREAT, 0660);
-  if (fd < 0) {
+  auto fd = UniqueFD(open(path.data(), O_RDWR|O_CREAT, 0660));
+  if (!fd) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  write(fd, pid_str.data(), pid_str.size());
-  close(fd);
+  write(*fd, pid_str.data(), pid_str.size());
   return Status::OK();
 }
 

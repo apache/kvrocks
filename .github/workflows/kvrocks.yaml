@@ -13,7 +13,7 @@
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
-# under the License. 
+# under the License.
 
 name: CI
 
@@ -153,7 +153,7 @@ jobs:
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-20.04
             compiler: gcc
-         
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Cache redis
@@ -212,6 +212,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export ${{ matrix.runtime_env_vars }}
+          export PATH=$PATH:$HOME/local/bin/
           ./x.py test go build
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then

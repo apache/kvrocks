@@ -36,63 +36,49 @@ func TestProtocolNetwork(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("\r\n"))
 		require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+PONG", r)
+		c.MustRead(t, "+PONG")
 	})
 
 	t.Run("out of range multibulk length", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*20000000\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid multibulk length")
+		c.MustMatch(t, "invalid multibulk length")
 	})
 
 	t.Run("wrong multibulk payload header", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*3\r\n$3\r\nSET\r\n$1\r\nx\r\nfoo\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "expected '$'")
+		c.MustMatch(t, "expected '\\$'")
 	})
 
 	t.Run("negative multibulk payload length", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*3\r\n$3\r\nSET\r\n$1\r\nx\r\n$-10\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid bulk length")
+		c.MustMatch(t, "invalid bulk length")
 	})
 
 	t.Run("out of range multibulk payload length", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*3\r\n$3\r\nSET\r\n$1\r\nx\r\n$2000000000\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid bulk length")
+		c.MustMatch(t, "invalid bulk length")
 	})
 
 	t.Run("non-number multibulk payload length", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*3\r\n$3\r\nSET\r\n$1\r\nx\r\n$foo\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid bulk length")
+		c.MustMatch(t, "invalid bulk length")
 	})
 
 	t.Run("multibulk request not followed by bulk arguments", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*1\r\nfoo\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "expected '$'")
+		c.MustMatch(t, "expected '\\$'")
 	})
 
 	t.Run("generic wrong number of args", func(t *testing.T) {
@@ -106,18 +92,14 @@ func TestProtocolNetwork(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*-1\r\n*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\nval\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, r, "+OK")
+		c.MustRead(t, "+OK")
 	})
 
 	t.Run("allow only LF protocol separator", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("set foo 123\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, r, "+OK")
+		c.MustRead(t, "+OK")
 	})
 
 	t.Run("mix LF/CRLF protocol separator", func(t *testing.T) {
@@ -125,9 +107,7 @@ func TestProtocolNetwork(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*-1\r\nset foo 123\nget foo\r\n*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\nval\r\n"))
 		for _, res := range []string{"+OK", "$3", "123", "+OK"} {
-			r, err := c.ReadLine()
-			require.NoError(t, err)
-			require.Equal(t, res, r)
+			c.MustRead(t, res)
 		}
 	})
 
@@ -135,8 +115,6 @@ func TestProtocolNetwork(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("*3\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\nval\r\n"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Contains(t, r, "invalid multibulk length")
+		c.MustMatch(t, "invalid multibulk length")
 	})
 }

@@ -25,6 +25,9 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type TCPClient struct {
@@ -51,6 +54,24 @@ func (c *TCPClient) ReadLine() (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(r, "\r\n"), nil
+}
+
+func (c *TCPClient) MustRead(t testing.TB, s string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.Equal(t, s, r)
+}
+
+func (c *TCPClient) MustMatch(t testing.TB, rx string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.Regexp(t, rx, r)
+}
+
+func (c *TCPClient) MustFail(t testing.TB) {
+	r, err := c.ReadLine()
+	require.Error(t, err)
+	require.Empty(t, r)
 }
 
 func (c *TCPClient) Write(s string) error {

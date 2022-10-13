@@ -36,7 +36,6 @@ set ::all_tests {
     unit/type/list
     unit/type/zset
     unit/type/stream
-    unit/pubsub
     unit/geo
     integration/slotmigrate
     integration/replication

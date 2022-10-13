@@ -23,10 +23,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"net"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type TCPClient struct {

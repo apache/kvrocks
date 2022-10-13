@@ -56,13 +56,14 @@
  */
 
 #include "geohash.h"
+
 #include <math.h>
 
 #define D_R (M_PI / 180.0)
 #define R_MAJOR 6378137.0
 #define R_MINOR 6356752.3142
 #define RATIO (R_MINOR / R_MAJOR)
-#define ECCENT (sqrt(1.0 - (RATIO *RATIO)))
+#define ECCENT (sqrt(1.0 - (RATIO * RATIO)))
 #define COM (0.5 * ECCENT)
 
 // @brief The usual PI/180 constant
@@ -96,9 +97,8 @@ static inline double rad_deg(double ang) { return ang / D_R; }
  * From:  https://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
  */
 static inline uint64_t interleave64(uint32_t xlo, uint32_t ylo) {
-  static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL,
-                               0x0F0F0F0F0F0F0F0FULL, 0x00FF00FF00FF00FFULL,
-                               0x0000FFFF0000FFFFULL};
+  static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
+                               0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL};
   static const unsigned int S[] = {1, 2, 4, 8, 16};
 
   uint64_t x = xlo;
@@ -126,9 +126,8 @@ static inline uint64_t interleave64(uint32_t xlo, uint32_t ylo) {
  * derived from http://stackoverflow.com/questions/4909263
  */
 static inline uint64_t deinterleave64(uint64_t interleaved) {
-  static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL,
-                               0x0F0F0F0F0F0F0F0FULL, 0x00FF00FF00FF00FFULL,
-                               0x0000FFFF0000FFFFULL, 0x00000000FFFFFFFFULL};
+  static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
+                               0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL, 0x00000000FFFFFFFFULL};
   static const unsigned int S[] = {0, 1, 2, 4, 8, 16};
 
   uint64_t x = interleaved;
@@ -164,32 +163,26 @@ void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
   lat_range->min = GEO_LAT_MIN;
 }
 
-int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range,
-                  double longitude, double latitude, uint8_t step,
-                  GeoHashBits *hash) {
+int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
+                  uint8_t step, GeoHashBits *hash) {
   /* Check basic arguments sanity. */
-  if (hash == NULL || step > 32 || step == 0 ||
-      RANGEPISZERO(lat_range) || RANGEPISZERO(long_range))
-    return 0;
+  if (hash == NULL || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
 
   /* Return an error when trying to index outside the supported
    * constraints. */
-  if (longitude > GEO_LONG_MAX || longitude < GEO_LONG_MIN ||
-      latitude > GEO_LAT_MAX || latitude < GEO_LAT_MIN)
+  if (longitude > GEO_LONG_MAX || longitude < GEO_LONG_MIN || latitude > GEO_LAT_MAX || latitude < GEO_LAT_MIN)
     return 0;
 
   hash->bits = 0;
   hash->step = step;
 
-  if (latitude < lat_range->min || latitude > lat_range->max ||
-      longitude < long_range->min || longitude > long_range->max) {
+  if (latitude < lat_range->min || latitude > lat_range->max || longitude < long_range->min ||
+      longitude > long_range->max) {
     return 0;
   }
 
-  double lat_offset =
-      (latitude - lat_range->min) / (lat_range->max - lat_range->min);
-  double long_offset =
-      (longitude - long_range->min) / (long_range->max - long_range->min);
+  double lat_offset = (latitude - lat_range->min) / (lat_range->max - lat_range->min);
+  double long_offset = (longitude - long_range->min) / (long_range->max - long_range->min);
 
   /* convert to fixed point based on the step size */
   lat_offset *= (1ULL << step);
@@ -204,15 +197,13 @@ int geohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBi
   return geohashEncode(&r[0], &r[1], longitude, latitude, step, hash);
 }
 
-int geohashEncodeWGS84(double longitude, double latitude, uint8_t step,
-                       GeoHashBits *hash) {
+int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash) {
   return geohashEncodeType(longitude, latitude, step, hash);
 }
 
-int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
-                  const GeoHashBits &hash, GeoHashArea *area) {
-  if (HASHISZERO(hash) || NULL == area || RANGEISZERO(lat_range) ||
-      RANGEISZERO(long_range)) {
+int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
+                  GeoHashArea *area) {
+  if (HASHISZERO(hash) || NULL == area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
     return 0;
   }
 
@@ -229,14 +220,10 @@ int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
   /* divide by 2**step.
    * Then, for 0-1 coordinate, multiply times scale and add
      to the min to get the absolute coordinate. */
-  area->latitude.min =
-      lat_range.min + (ilato * 1.0 / (1ull << step)) * lat_scale;
-  area->latitude.max =
-      lat_range.min + ((ilato + 1) * 1.0 / (1ull << step)) * lat_scale;
-  area->longitude.min =
-      long_range.min + (ilono * 1.0 / (1ull << step)) * long_scale;
-  area->longitude.max =
-      long_range.min + ((ilono + 1) * 1.0 / (1ull << step)) * long_scale;
+  area->latitude.min = lat_range.min + (ilato * 1.0 / (1ull << step)) * lat_scale;
+  area->latitude.max = lat_range.min + ((ilato + 1) * 1.0 / (1ull << step)) * lat_scale;
+  area->longitude.min = long_range.min + (ilono * 1.0 / (1ull << step)) * long_scale;
+  area->longitude.max = long_range.min + ((ilono + 1) * 1.0 / (1ull << step)) * long_scale;
 
   return 1;
 }
@@ -247,9 +234,7 @@ int geohashDecodeType(const GeoHashBits &hash, GeoHashArea *area) {
   return geohashDecode(r[0], r[1], hash, area);
 }
 
-int geohashDecodeWGS84(const GeoHashBits &hash, GeoHashArea *area) {
-  return geohashDecodeType(hash, area);
-}
+int geohashDecodeWGS84(const GeoHashBits &hash, GeoHashArea *area) { return geohashDecodeType(hash, area); }
 
 int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
   if (!xy) return 0;
@@ -264,18 +249,14 @@ int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
 
 int geohashDecodeToLongLatType(const GeoHashBits &hash, double *xy) {
   GeoHashArea area = {{0}};
-  if (!xy || !geohashDecodeType(hash, &area))
-    return 0;
+  if (!xy || !geohashDecodeType(hash, &area)) return 0;
   return geohashDecodeAreaToLongLat(&area, xy);
 }
 
-int geohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy) {
-  return geohashDecodeToLongLatType(hash, xy);
-}
+int geohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy) { return geohashDecodeToLongLatType(hash, xy); }
 
 static void geohash_move_x(GeoHashBits *hash, int8_t d) {
-  if (d == 0)
-    return;
+  if (d == 0) return;
 
   uint64_t x = hash->bits & 0xaaaaaaaaaaaaaaaaULL;
   uint64_t y = hash->bits & 0x5555555555555555ULL;
@@ -294,8 +275,7 @@ static void geohash_move_x(GeoHashBits *hash, int8_t d) {
 }
 
 static void geohash_move_y(GeoHashBits *hash, int8_t d) {
-  if (d == 0)
-    return;
+  if (d == 0) return;
 
   uint64_t x = hash->bits & 0xaaaaaaaaaaaaaaaaULL;
   uint64_t y = hash->bits & 0x5555555555555555ULL;
@@ -389,8 +369,7 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
  * Since this function is currently only used as an optimization, the
  * optimization is not used for very big radiuses, however the function
  * should be fixed. */
-int GeoHashHelper::BoundingBox(double longitude, double latitude, double radius_meters,
-                               double *bounds) {
+int GeoHashHelper::BoundingBox(double longitude, double latitude, double radius_meters, double *bounds) {
   if (!bounds) return 0;
 
   bounds[0] = longitude - rad_deg(radius_meters / EARTH_RADIUS_IN_METERS / cos(deg_rad(latitude)));
@@ -439,18 +418,10 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
     geohashDecode(long_range, lat_range, neighbors.east, &east);
     geohashDecode(long_range, lat_range, neighbors.west, &west);
 
-    if (GetDistance(longitude, latitude, longitude, north.latitude.max)
-        < radius_meters)
-      decrease_step = 1;
-    if (GetDistance(longitude, latitude, longitude, south.latitude.min)
-        < radius_meters)
-      decrease_step = 1;
-    if (GetDistance(longitude, latitude, east.longitude.max, latitude)
-        < radius_meters)
-      decrease_step = 1;
-    if (GetDistance(longitude, latitude, west.longitude.min, latitude)
-        < radius_meters)
-      decrease_step = 1;
+    if (GetDistance(longitude, latitude, longitude, north.latitude.max) < radius_meters) decrease_step = 1;
+    if (GetDistance(longitude, latitude, longitude, south.latitude.min) < radius_meters) decrease_step = 1;
+    if (GetDistance(longitude, latitude, east.longitude.max, latitude) < radius_meters) decrease_step = 1;
+    if (GetDistance(longitude, latitude, west.longitude.min, latitude) < radius_meters) decrease_step = 1;
   }
 
   if (steps > 1 && decrease_step) {
@@ -489,8 +460,7 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   return radius;
 }
 
-GeoHashRadius GeoHashHelper::GetAreasByRadiusWGS84(double longitude, double latitude,
-                                                   double radius_meters) {
+GeoHashRadius GeoHashHelper::GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters) {
   return GetAreasByRadius(longitude, latitude, radius_meters);
 }
 
@@ -509,20 +479,16 @@ double GeoHashHelper::GetDistance(double lon1d, double lat1d, double lon2d, doub
   lon2r = deg_rad(lon2d);
   u = sin((lat2r - lat1r) / 2);
   v = sin((lon2r - lon1r) / 2);
-  return 2.0 * EARTH_RADIUS_IN_METERS *
-      asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
+  return 2.0 * EARTH_RADIUS_IN_METERS * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
 
-int GeoHashHelper::GetDistanceIfInRadius(double x1, double y1,
-                                         double x2, double y2, double radius,
-                                         double *distance) {
+int GeoHashHelper::GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance) {
   *distance = GetDistance(x1, y1, x2, y2);
   if (*distance > radius) return 0;
   return 1;
 }
 
-int GeoHashHelper::GetDistanceIfInRadiusWGS84(double x1, double y1, double x2,
-                                              double y2, double radius,
+int GeoHashHelper::GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius,
                                               double *distance) {
   return GetDistanceIfInRadius(x1, y1, x2, y2, radius, distance);
 }

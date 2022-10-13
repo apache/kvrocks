@@ -21,6 +21,7 @@
 #include "task_runner.h"
 
 #include <thread>
+
 #include "util.h"
 
 Status TaskRunner::Publish(const Task &task) {
@@ -68,7 +69,7 @@ void TaskRunner::run() {
   Task task;
   std::unique_lock<std::mutex> lock(mu_);
   while (!stop_) {
-    cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty();});
+    cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty(); });
     while (!stop_ && !task_queue_.empty()) {
       task = task_queue_.front();
       task_queue_.pop_front();

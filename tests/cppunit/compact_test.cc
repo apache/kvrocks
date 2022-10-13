@@ -21,10 +21,10 @@
 #include <gtest/gtest.h>
 
 #include "config.h"
-#include "storage.h"
-#include "redis_metadata.h"
 #include "redis_hash.h"
+#include "redis_metadata.h"
 #include "redis_zset.h"
+#include "storage.h"
 
 TEST(Compact, Filter) {
   Config config;
@@ -43,19 +43,19 @@ TEST(Compact, Filter) {
   std::string live_hash_key = "live_hash_key";
   hash->Set(expired_hash_key, "f1", "v1", &ret);
   hash->Set(expired_hash_key, "f2", "v2", &ret);
-  hash->Expire(expired_hash_key, 1); // expired
+  hash->Expire(expired_hash_key, 1);  // expired
   usleep(10000);
   hash->Set(live_hash_key, "f1", "v1", &ret);
   hash->Set(live_hash_key, "f2", "v2", &ret);
   auto status = storage_->Compact(nullptr, nullptr);
   assert(status.ok());
 
-  rocksdb::DB *db = storage_->GetDB();
+  rocksdb::DB* db = storage_->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = db->GetSnapshot();
   read_options.fill_cache = false;
 
-  auto NewIterator = [db, read_options, &storage_](const std::string& name){
+  auto NewIterator = [db, read_options, &storage_](const std::string& name) {
     return std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_options, storage_->GetCFHandle(name)));
   };
 
@@ -74,9 +74,9 @@ TEST(Compact, Filter) {
 
   auto zset = Util::MakeUnique<Redis::ZSet>(storage_.get(), ns);
   std::string expired_zset_key = "expire_zset_key";
-  std::vector<MemberScore> member_scores =  {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
+  std::vector<MemberScore> member_scores = {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, 0, &member_scores, &ret);
-  zset->Expire(expired_zset_key, 1); // expired
+  zset->Expire(expired_zset_key, 1);  // expired
   usleep(10000);
 
   status = storage_->Compact(nullptr, nullptr);

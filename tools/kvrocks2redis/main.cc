@@ -18,20 +18,20 @@
  *
  */
 
-#include <getopt.h>
 #include <event2/thread.h>
+#include <fcntl.h>
+#include <getopt.h>
 #include <glog/logging.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+
 #include <csignal>
 
 #include "../../src/config.h"
 #include "../../src/storage.h"
-
-#include "sync.h"
-#include "redis_writer.h"
-#include "parser.h"
 #include "config.h"
+#include "parser.h"
+#include "redis_writer.h"
+#include "sync.h"
 #include "version.h"
 
 const char *kDefaultConfPath = "./kvrocks2redis.conf";
@@ -67,7 +67,8 @@ static Options parseCommandLineOptions(int argc, char **argv) {
         opts.show_usage = true;
         break;
       }
-      default: usage(argv[0]);
+      default:
+        usage(argv[0]);
     }
   }
   return opts;
@@ -91,9 +92,7 @@ static Status createPidFile(const std::string &path) {
   return Status::OK();
 }
 
-static void removePidFile(const std::string &path) {
-  std::remove(path.data());
-}
+static void removePidFile(const std::string &path) { std::remove(path.data()); }
 
 static void daemonize() {
   pid_t pid;
@@ -115,9 +114,7 @@ static void daemonize() {
   close(STDERR_FILENO);
 }
 
-Server *GetServer() {
-  return nullptr;
-}
+Server *GetServer() { return nullptr; }
 
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging("kvrocks2redis");

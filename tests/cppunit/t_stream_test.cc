@@ -19,12 +19,12 @@
  */
 
 #include <gtest/gtest.h>
-#include "test_base.h"
-#include "redis_stream.h"
 
+#include "redis_stream.h"
+#include "test_base.h"
 
 class RedisStreamTest : public TestBase {
-public:
+ public:
   void checkStreamEntryValues(const std::vector<std::string> &got, const std::vector<std::string> &expected) {
     EXPECT_EQ(got.size(), expected.size());
     for (size_t i = 0; i < got.size(); ++i) {
@@ -32,25 +32,19 @@ public:
     }
   }
 
-protected:
+ protected:
   RedisStreamTest() : TestBase() {
     stream = new Redis::Stream(storage_, "stream_ns");
     name = "test_stream";
   }
 
-  ~RedisStreamTest() {
-    delete stream;
-  }
+  ~RedisStreamTest() { delete stream; }
 
-  void SetUp() override {
-    stream->Del(name);
-  }
+  void SetUp() override { stream->Del(name); }
 
-  void TearDown() override {
-    stream->Del(name);
-  }
+  void TearDown() override { stream->Del(name); }
 
-protected:
+ protected:
   std::string name;
   Redis::Stream *stream;
 };
@@ -1276,8 +1270,8 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
   s = stream->Add(name, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
-  std::vector<Redis::StreamEntryID> ids = {
-    Redis::StreamEntryID{123456, 0}, Redis::StreamEntryID{1234567, 89}, Redis::StreamEntryID{123458, 0}};
+  std::vector<Redis::StreamEntryID> ids = {Redis::StreamEntryID{123456, 0}, Redis::StreamEntryID{1234567, 89},
+                                           Redis::StreamEntryID{123458, 0}};
   uint64_t deleted;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());

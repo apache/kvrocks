@@ -21,8 +21,9 @@
 #pragma once
 
 #include <unistd.h>
-#include <map>
+
 #include <atomic>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -47,8 +48,8 @@ struct command_stat {
 };
 
 struct inst_metric {
-  uint64_t last_sample_time;      // Timestamp of the last sample in ms
-  uint64_t last_sample_count;     // Count in the last sample
+  uint64_t last_sample_time;   // Timestamp of the last sample in ms
+  uint64_t last_sample_count;  // Count in the last sample
   uint64_t samples[STATS_METRIC_SAMPLES];
   int idx;
 };

@@ -20,9 +20,9 @@
 
 #pragma once
 
+#include <limits>
 #include <string>
 #include <vector>
-#include <limits>
 
 #include "redis_db.h"
 #include "redis_metadata.h"
@@ -51,16 +51,9 @@ class Sortedint : public Database {
   rocksdb::Status MExist(const Slice &user_key, std::vector<uint64_t> ids, std::vector<int> *exists);
   rocksdb::Status Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
   rocksdb::Status Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
-  rocksdb::Status Range(const Slice &user_key,
-                        uint64_t cursor_id,
-                        uint64_t page,
-                        uint64_t limit,
-                        bool reversed,
+  rocksdb::Status Range(const Slice &user_key, uint64_t cursor_id, uint64_t page, uint64_t limit, bool reversed,
                         std::vector<uint64_t> *ids);
-  rocksdb::Status RangeByValue(const Slice &user_key,
-                               SortedintRangeSpec spec,
-                               std::vector<uint64_t> *ids,
-                               int *size);
+  rocksdb::Status RangeByValue(const Slice &user_key, SortedintRangeSpec spec, std::vector<uint64_t> *ids, int *size);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec);
 
  private:

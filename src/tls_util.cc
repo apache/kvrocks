@@ -22,11 +22,10 @@
 
 #include "tls_util.h"
 
-#include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <openssl/rand.h>
 #include <openssl/opensslv.h>
-
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
 #include <pthread.h>
 
 #include <bitset>
@@ -64,12 +63,12 @@ void InitSSL() {
     }
   });
 
-  CRYPTO_set_id_callback([]{ return (unsigned long)pthread_self(); }); // NOLINT
+  CRYPTO_set_id_callback([] { return (unsigned long)pthread_self(); });  // NOLINT
 #endif
 }
 
-StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOLINT
-  unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3; // NOLINT
+StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {  // NOLINT
+  unsigned long ctx_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;           // NOLINT
 
   if (protocols.empty()) {
     return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
@@ -78,7 +77,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) { // NOL
   auto protos = Util::Split(Util::ToLower(protocols), " ");
 
   std::bitset<4> has_protocol;
-  for (const auto& proto : protos) {
+  for (const auto &proto : protos) {
     if (proto == "tlsv1") {
       has_protocol[0] = true;
     } else if (proto == "tlsv1.1") {
@@ -215,8 +214,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
 #ifdef SSL_OP_NO_TLSv1_3
-  if (!config->tls_ciphersuites.empty() &&
-    !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
+  if (!config->tls_ciphersuites.empty() && !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
     LOG(ERROR) << "Failed to set SSL ciphersuites: " << SSLErrors{};
     return nullptr;
   }

@@ -20,13 +20,13 @@
 
 #pragma once
 
-#include <cstdint>
-#include <vector>
-#include <list>
-#include <thread>
-#include <mutex>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
+#include <list>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include "status.h"
 
@@ -35,7 +35,7 @@ using Task = std::function<void()>;
 class TaskRunner {
  public:
   explicit TaskRunner(int n_thread = 1, uint32_t max_queue_size = 10240)
-  :max_queue_size_(max_queue_size), n_thread_(n_thread) {}
+      : max_queue_size_(max_queue_size), n_thread_(n_thread) {}
   ~TaskRunner() = default;
   Status Publish(const Task &task);
   size_t QueueSize() { return task_queue_.size(); }
@@ -43,6 +43,7 @@ class TaskRunner {
   void Stop();
   void Join();
   void Purge();
+
  private:
   void run();
   bool stop_ = false;

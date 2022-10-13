@@ -22,8 +22,9 @@
 
 #include <ctime>
 #include <iostream>
-#include <vector>
 #include <string>
+#include <vector>
+
 #include "status.h"
 
 struct Scheduler {
@@ -50,12 +51,7 @@ class Cron {
   std::vector<Scheduler> schedulers_;
   struct tm last_tm_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 
-  Status convertToScheduleTime(
-      const std::string &minute,
-      const std::string &hour,
-      const std::string &mday,
-      const std::string &month,
-      const std::string &wday,
-      Scheduler *st);
+  Status convertToScheduleTime(const std::string &minute, const std::string &hour, const std::string &mday,
+                               const std::string &month, const std::string &wday, Scheduler *st);
   Status convertParam(const std::string &param, int lower_bound, int upper_bound, int *value);
 };

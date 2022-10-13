@@ -20,10 +20,10 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <utility>
 #include <map>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "redis_metadata.h"
 #include "storage.h"
@@ -45,22 +45,14 @@ class Database {
   rocksdb::Status FlushAll();
   void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
   void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
-  rocksdb::Status Scan(const std::string &cursor,
-                       uint64_t limit,
-                       const std::string &prefix,
-                       std::vector<std::string> *keys,
-                       std::string *end_cursor = nullptr);
+  rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
+                       std::vector<std::string> *keys, std::string *end_cursor = nullptr);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   void AppendNamespacePrefix(const Slice &user_key, std::string *output);
-  rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix,
-                                         const std::string &prefix_end,
-                                         std::string *begin,
-                                         std::string *end,
-                                         rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
+  rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix, const std::string &prefix_end, std::string *begin,
+                                         std::string *end, rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
   rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
-  rocksdb::Status GetSlotKeysInfo(int slot,
-                                  std::map<int, uint64_t> *slotskeys,
-                                  std::vector<std::string> *keys,
+  rocksdb::Status GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
                                   int count);
 
  protected:
@@ -71,13 +63,10 @@ class Database {
 
   class LatestSnapShot {
    public:
-    explicit LatestSnapShot(rocksdb::DB *db) : db_(db) {
-      snapshot_ = db_->GetSnapshot();
-    }
-    ~LatestSnapShot() {
-      db_->ReleaseSnapshot(snapshot_);
-    }
+    explicit LatestSnapShot(rocksdb::DB *db) : db_(db) { snapshot_ = db_->GetSnapshot(); }
+    ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
     const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
+
    private:
     rocksdb::DB *db_ = nullptr;
     const rocksdb::Snapshot *snapshot_ = nullptr;
@@ -86,14 +75,9 @@ class Database {
 
 class SubKeyScanner : public Redis::Database {
  public:
-  explicit SubKeyScanner(Engine::Storage *storage, const std::string &ns)
-      : Database(storage, ns) {}
-  rocksdb::Status Scan(RedisType type,
-                       const Slice &user_key,
-                       const std::string &cursor,
-                       uint64_t limit,
-                       const std::string &subkey_prefix,
-                       std::vector<std::string> *keys,
+  explicit SubKeyScanner(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  rocksdb::Status Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
+                       const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
 };
 
@@ -101,8 +85,7 @@ class WriteBatchLogData {
  public:
   WriteBatchLogData() = default;
   explicit WriteBatchLogData(RedisType type) : type_(type) {}
-  explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) :
-      type_(type), args_(std::move(args)) {}
+  explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) : type_(type), args_(std::move(args)) {}
 
   RedisType GetRedisType();
   std::vector<std::string> *GetArguments();
@@ -115,4 +98,3 @@ class WriteBatchLogData {
 };
 
 }  // namespace Redis
-

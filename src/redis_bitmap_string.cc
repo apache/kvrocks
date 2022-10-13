@@ -40,10 +40,7 @@ rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offs
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status BitmapString::SetBit(const Slice &ns_key,
-                                     std::string *raw_value,
-                                     uint32_t offset,
-                                     bool new_bit,
+rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value, uint32_t offset, bool new_bit,
                                      bool *old_bit) {
   auto string_value = raw_value->substr(STRING_HDR_SIZE, raw_value->size() - STRING_HDR_SIZE);
   uint32_t byte_index = offset >> 3;
@@ -82,20 +79,16 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
   if (stop >= static_cast<int64_t>(strlen)) stop = strlen - 1;
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
-     * zero can be returned is: start > stop. */
+   * zero can be returned is: start > stop. */
   if (start <= stop) {
     int64_t bytes = stop - start + 1;
-    *cnt = redisPopcount((unsigned char *) (&string_value[0] + start), bytes);
+    *cnt = redisPopcount((unsigned char *)(&string_value[0] + start), bytes);
   }
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
-                                     bool bit,
-                                     int64_t start,
-                                     int64_t stop,
-                                     bool stop_given,
-                                     int64_t *pos) {
+rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
+                                     bool stop_given, int64_t *pos) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   auto strlen = string_value.size();
   /* Convert negative indexes */
@@ -109,7 +102,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value,
     *pos = -1;
   } else {
     int64_t bytes = stop - start + 1;
-    *pos = redisBitpos((unsigned char *) (&string_value[0] + start), bytes, bit);
+    *pos = redisBitpos((unsigned char *)(&string_value[0] + start), bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
      * range with start-end, we can't consider the right of the range as
@@ -173,16 +166,15 @@ size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
     aux6 = (aux6 & 0x33333333) + ((aux6 >> 2) & 0x33333333);
     aux7 = aux7 - ((aux7 >> 1) & 0x55555555);
     aux7 = (aux7 & 0x33333333) + ((aux7 >> 2) & 0x33333333);
-    bits += ((((aux1 + (aux1 >> 4)) & 0x0F0F0F0F) +
-        ((aux2 + (aux2 >> 4)) & 0x0F0F0F0F) +
-        ((aux3 + (aux3 >> 4)) & 0x0F0F0F0F) +
-        ((aux4 + (aux4 >> 4)) & 0x0F0F0F0F) +
-        ((aux5 + (aux5 >> 4)) & 0x0F0F0F0F) +
-        ((aux6 + (aux6 >> 4)) & 0x0F0F0F0F) +
-        ((aux7 + (aux7 >> 4)) & 0x0F0F0F0F)) * 0x01010101) >> 24;
+    bits += ((((aux1 + (aux1 >> 4)) & 0x0F0F0F0F) + ((aux2 + (aux2 >> 4)) & 0x0F0F0F0F) +
+              ((aux3 + (aux3 >> 4)) & 0x0F0F0F0F) + ((aux4 + (aux4 >> 4)) & 0x0F0F0F0F) +
+              ((aux5 + (aux5 >> 4)) & 0x0F0F0F0F) + ((aux6 + (aux6 >> 4)) & 0x0F0F0F0F) +
+              ((aux7 + (aux7 >> 4)) & 0x0F0F0F0F)) *
+             0x01010101) >>
+            24;
   }
   /* Count the remaining bytes. */
-  p = (unsigned char *) p4;
+  p = (unsigned char *)p4;
   while (count--) bits += kNum2Bits[*p++];
   return bits;
 }
@@ -269,8 +261,8 @@ int64_t BitmapString::redisBitpos(unsigned char *c, int64_t count, int bit) {
    * unsigned long. We don't know the size of the long so we use a
    * simple trick. */
   one = UINT64_MAX; /* All bits set to 1.*/
-  one >>= 1;       /* All bits set to 1 but the MSB. */
-  one = ~one;      /* All bits set to 0 but the MSB. */
+  one >>= 1;        /* All bits set to 1 but the MSB. */
+  one = ~one;       /* All bits set to 0 but the MSB. */
 
   while (one) {
     if (((one & word) != 0) == bit) return pos;

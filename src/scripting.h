@@ -24,12 +24,12 @@
 #include <vector>
 
 #include "lua.hpp"
-#include "status.h"
 #include "redis_connection.h"
+#include "status.h"
 
 namespace Lua {
 
-lua_State* CreateState(bool read_only = false);
+lua_State *CreateState(bool read_only = false);
 void DestroyState(lua_State *lua);
 
 void loadFuncs(lua_State *lua, bool read_only = false);
@@ -42,12 +42,10 @@ int redisGenericCommand(lua_State *lua, int raise_error);
 int redisSha1hexCommand(lua_State *lua);
 int redisStatusReplyCommand(lua_State *lua);
 int redisErrorReplyCommand(lua_State *lua);
-Status createFunction(Server *srv, const std::string &body, std::string *sha,
-                      lua_State *lua);
+Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua);
 
 int redisLogCommand(lua_State *lua);
-Status evalGenericCommand(Redis::Connection *conn,
-                          const std::vector<std::string> &args, bool evalsha,
+Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string> &args, bool evalsha,
                           std::string *output, bool read_only = false);
 
 const char *redisProtocolToLuaType(lua_State *lua, const char *reply);

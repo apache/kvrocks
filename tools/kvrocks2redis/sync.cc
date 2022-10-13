@@ -19,15 +19,17 @@
  */
 
 #include "sync.h"
+
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
+#include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/write_batch.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <string>
+
 #include <fstream>
+#include <string>
 
 #include "../../src/redis_reply.h"
 #include "../../src/util.h"
@@ -38,14 +40,10 @@ void send_string_to_event(bufferevent *bev, const std::string &data) {
 }
 
 Sync::Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
-    : storage_(storage),
-      writer_(writer),
-      parser_(parser),
-      config_(config) {
-}
+    : storage_(storage), writer_(writer), parser_(parser), config_(config) {}
 
 Sync::~Sync() {
-  if (sock_fd_) close (sock_fd_);
+  if (sock_fd_) close(sock_fd_);
   if (next_seq_fd_) close(next_seq_fd_);
   writer_->Stop();
 }
@@ -124,8 +122,7 @@ Status Sync::auth() {
 Status Sync::tryPSync() {
   const auto seq_str = std::to_string(next_seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
-  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str +
-      CRLF + seq_str + CRLF;
+  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
   if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
@@ -141,8 +138,8 @@ Status Sync::tryPSync() {
       // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
       auto error_msg =
           "[kvrocks2redis] CRITICAL - Failed to psync , please remove"
-          " last_next_seq config file, and restart kvrocks2redis, redis reply: "
-           + std::string(line);
+          " last_next_seq config file, and restart kvrocks2redis, redis reply: " +
+          std::string(line);
       stop_flag_ = true;
       return Status(Status::NotOK, error_msg);
     }
@@ -165,8 +162,7 @@ Status Sync::incrementBatchLoop() {
   while (!IsStopped()) {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
-      return Status(Status::NotOK,
-                    std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
+      return Status(Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length

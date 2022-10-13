@@ -21,12 +21,13 @@
 #pragma once
 
 #include <stdint.h>
-#include <vector>
-#include <string>
 
+#include <string>
+#include <vector>
+
+#include "encoding.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
-#include "encoding.h"
 
 namespace Redis {
 class List : public Database {

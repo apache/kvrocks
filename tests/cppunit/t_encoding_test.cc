@@ -19,14 +19,14 @@
  */
 
 #include <gtest/gtest.h>
-#include "encoding.h"
+#include <rocksdb/slice.h>
 
 #include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
 
-#include <rocksdb/slice.h>
+#include "encoding.h"
 
 TEST(Util, EncodeAndDecodeDouble) {
   std::vector<double> values = {-1234, -100.1234, -1.2345, 0, 1.2345, 100.1234, 1234};

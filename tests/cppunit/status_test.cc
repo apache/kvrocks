@@ -19,14 +19,14 @@
  */
 
 #include <gtest/gtest.h>
+#include <status.h>
 
 #include <memory>
-#include <status.h>
 
 TEST(StatusOr, Scalar) {
   auto f = [](int x) -> StatusOr<int> {
     if (x > 10) {
-        return {Status::NotOK, "x large than 10"};
+      return {Status::NotOK, "x large than 10"};
     }
 
     return 2 * x + 5;
@@ -54,7 +54,7 @@ TEST(StatusOr, Scalar) {
 
   auto g = [f](int y) -> StatusOr<int> {
     if (y > 5 && y < 15) {
-        return {Status::NotOK, "y large than 5"};
+      return {Status::NotOK, "y large than 5"};
     }
 
     auto res = f(y);
@@ -79,7 +79,7 @@ TEST(StatusOr, Scalar) {
 TEST(StatusOr, String) {
   auto f = [](std::string x) -> StatusOr<std::string> {
     if (x.size() > 10) {
-        return {Status::NotOK, "string too long"};
+      return {Status::NotOK, "string too long"};
     }
 
     return x + " hello";
@@ -87,7 +87,7 @@ TEST(StatusOr, String) {
 
   auto g = [f](std::string x) -> StatusOr<std::string> {
     if (x.size() < 5) {
-        return {Status::NotOK, "string too short"};
+      return {Status::NotOK, "string too short"};
     }
 
     auto res = f(x);
@@ -117,50 +117,49 @@ TEST(StatusOr, String) {
 }
 
 TEST(StatusOr, SharedPtr) {
-    struct A {
-      A(int *x) : x(x) { *x = 233; }
-      ~A() { *x = 0; }
+  struct A {
+    A(int *x) : x(x) { *x = 233; }
+    ~A() { *x = 0; }
 
-      int *x;
-    };
+    int *x;
+  };
 
-    int val = 0;
-    
+  int val = 0;
+
+  {
+    StatusOr<std::shared_ptr<A>> x(new A(&val));
+
+    ASSERT_EQ(val, 233);
+    ASSERT_EQ(x->use_count(), 1);
+
     {
-      StatusOr<std::shared_ptr<A>> x(new A(&val));
-
+      StatusOr<std::shared_ptr<A>> y(*x);
       ASSERT_EQ(val, 233);
-      ASSERT_EQ(x->use_count(), 1);
-
-      {
-        StatusOr<std::shared_ptr<A>> y(*x);
-        ASSERT_EQ(val, 233);
-        ASSERT_EQ(x->use_count(), 2);
-      }
-
-      ASSERT_EQ(x->use_count(), 1);
+      ASSERT_EQ(x->use_count(), 2);
     }
 
-    ASSERT_EQ(val, 0);
+    ASSERT_EQ(x->use_count(), 1);
+  }
 
+  ASSERT_EQ(val, 0);
 }
 
 TEST(StatusOr, UniquePtr) {
-    StatusOr<std::unique_ptr<int>> x(new int(1));
-  
-    ASSERT_EQ(**x, 1);
+  StatusOr<std::unique_ptr<int>> x(new int(1));
+
+  ASSERT_EQ(**x, 1);
 }
 
 TEST(StatusOr, ValueOr) {
-    StatusOr<int> a(1), b(Status::NotOK, "err");
-    ASSERT_EQ(a.ValueOr(0), 1);
-    ASSERT_EQ(b.ValueOr(233), 233);
-    ASSERT_EQ(StatusOr<int>(1).ValueOr(0), 1);
+  StatusOr<int> a(1), b(Status::NotOK, "err");
+  ASSERT_EQ(a.ValueOr(0), 1);
+  ASSERT_EQ(b.ValueOr(233), 233);
+  ASSERT_EQ(StatusOr<int>(1).ValueOr(0), 1);
 
-    StatusOr<std::string> c("hello"), d(Status::NotOK, "err");
-    ASSERT_EQ(c.ValueOr("hi"), "hello");
-    ASSERT_EQ(d.ValueOr("hi"), "hi");
-    ASSERT_EQ(StatusOr<std::string>("hello").ValueOr("hi"), "hello");
-    std::string s = "hi";
-    ASSERT_EQ(StatusOr<std::string>(Status::NotOK, "").ValueOr(s), "hi");
+  StatusOr<std::string> c("hello"), d(Status::NotOK, "err");
+  ASSERT_EQ(c.ValueOr("hi"), "hello");
+  ASSERT_EQ(d.ValueOr("hi"), "hi");
+  ASSERT_EQ(StatusOr<std::string>("hello").ValueOr("hi"), "hello");
+  std::string s = "hi";
+  ASSERT_EQ(StatusOr<std::string>(Status::NotOK, "").ValueOr(s), "hi");
 }

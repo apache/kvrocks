@@ -20,33 +20,33 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <bitset>
-#include <memory>
 #include <algorithm>
-#include <unordered_map>
-#include <set>
+#include <bitset>
 #include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "status.h"
-#include "rw_lock.h"
 #include "redis_cmd.h"
-#include "redis_slot.h"
 #include "redis_connection.h"
+#include "redis_slot.h"
+#include "rw_lock.h"
+#include "status.h"
 
 enum {
-  kClusterMaster    = 1,
-  kClusterSlave     = 2,
+  kClusterMaster = 1,
+  kClusterSlave = 2,
   kClusterNodeIdLen = 40,
-  kClusterPortIncr  = 10000,
-  kClusterSlots     = HASH_SLOTS_SIZE,
+  kClusterPortIncr = 10000,
+  kClusterSlots = HASH_SLOTS_SIZE,
 };
 
 class ClusterNode {
  public:
-  explicit ClusterNode(std::string id, std::string host, int port,
-        int role, std::string master_id, std::bitset<kClusterSlots> slots);
+  explicit ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
+                       std::bitset<kClusterSlots> slots);
   std::string id_;
   std::string host_;
   int port_;
@@ -88,8 +88,7 @@ class Cluster {
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot);
-  Status CanExecByMySelf(const Redis::CommandAttributes *attributes,
-                         const std::vector<std::string> &cmd_tokens,
+  Status CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          Redis::Connection *conn);
   void SetMasterSlaveRepl();
   Status MigrateSlot(int slot, const std::string &dst_node_id);
@@ -102,13 +101,13 @@ class Cluster {
   std::string GenNodesDescription();
   SlotInfo GenSlotNodeInfo(int start, int end, std::shared_ptr<ClusterNode> n);
   Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
-                    std::unordered_map<int, std::string> *slots_nodes);
+                           std::unordered_map<int, std::string> *slots_nodes);
   Server *svr_;
   std::vector<std::string> binds_;
   int port_;
   int size_;
   int64_t version_;
-  std::string  myid_;
+  std::string myid_;
   std::shared_ptr<ClusterNode> myself_;
   ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];

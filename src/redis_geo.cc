@@ -21,6 +21,7 @@
 #include "redis_geo.h"
 
 #include <algorithm>
+
 #include "util.h"
 
 namespace Redis {
@@ -37,10 +38,7 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
   return ZSet::Add(user_key, 0, &member_scores, ret);
 }
 
-rocksdb::Status Geo::Dist(const Slice &user_key,
-                          const Slice &member_1,
-                          const Slice &member_2,
-                          double *dist) {
+rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist) {
   std::map<std::string, GeoPoint> geo_points;
   auto s = MGet(user_key, {member_1, member_2}, &geo_points);
   if (!s.ok()) return s;
@@ -51,15 +49,13 @@ rocksdb::Status Geo::Dist(const Slice &user_key,
       return rocksdb::Status::NotFound();
     }
   }
-  *dist = GeoHashHelper::GetDistance(geo_points[member_1.ToString()].longitude,
-                                     geo_points[member_1.ToString()].latitude,
-                                     geo_points[member_2.ToString()].longitude,
-                                     geo_points[member_2.ToString()].latitude);
+  *dist =
+      GeoHashHelper::GetDistance(geo_points[member_1.ToString()].longitude, geo_points[member_1.ToString()].latitude,
+                                 geo_points[member_2.ToString()].longitude, geo_points[member_2.ToString()].latitude);
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::Hash(const Slice &user_key,
-                          const std::vector<Slice> &members,
+rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &members,
                           std::vector<std::string> *geoHashes) {
   std::map<std::string, GeoPoint> geo_points;
   auto s = MGet(user_key, members, &geo_points);
@@ -77,22 +73,14 @@ rocksdb::Status Geo::Hash(const Slice &user_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::Pos(const Slice &user_key,
-                         const std::vector<Slice> &members,
+rocksdb::Status Geo::Pos(const Slice &user_key, const std::vector<Slice> &members,
                          std::map<std::string, GeoPoint> *geo_points) {
   return MGet(user_key, members, geo_points);
 }
 
-rocksdb::Status Geo::Radius(const Slice &user_key,
-                            double longitude,
-                            double latitude,
-                            double radius_meters,
-                            int count,
-                            DistanceSort sort,
-                            const std::string &store_key,
-                            bool store_distance,
-                            double unit_conversion,
-                            std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double latitude, double radius_meters, int count,
+                            DistanceSort sort, const std::string &store_key, bool store_distance,
+                            double unit_conversion, std::vector<GeoPoint> *geo_points) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   ZSetMetadata metadata(false);
@@ -139,28 +127,18 @@ rocksdb::Status Geo::Radius(const Slice &user_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::RadiusByMember(const Slice &user_key,
-                                    const Slice &member,
-                                    double radius_meters,
-                                    int count,
-                                    DistanceSort sort,
-                                    const std::string &store_key,
-                                    bool store_distance,
-                                    double unit_conversion,
-                                    std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,
+                                    DistanceSort sort, const std::string &store_key, bool store_distance,
+                                    double unit_conversion, std::vector<GeoPoint> *geo_points) {
   GeoPoint geo_point;
   auto s = Get(user_key, member, &geo_point);
   if (!s.ok()) return s;
 
-  return Radius(user_key, geo_point.longitude, geo_point.latitude, radius_meters,
-                count,
-                sort,
-                store_key, store_distance, unit_conversion, geo_points);
+  return Radius(user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
+                store_distance, unit_conversion, geo_points);
 }
 
-rocksdb::Status Geo::Get(const Slice &user_key,
-                         const Slice &member,
-                         GeoPoint *geo_point) {
+rocksdb::Status Geo::Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point) {
   std::map<std::string, GeoPoint> geo_points;
   auto s = MGet(user_key, {member}, &geo_points);
   if (!s.ok()) return s;
@@ -173,8 +151,7 @@ rocksdb::Status Geo::Get(const Slice &user_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::MGet(const Slice &user_key,
-                          const std::vector<Slice> &members,
+rocksdb::Status Geo::MGet(const Slice &user_key, const std::vector<Slice> &members,
                           std::map<std::string, GeoPoint> *geo_points) {
   std::map<std::string, double> member_scores;
   auto s = ZSet::MGet(user_key, members, &member_scores);
@@ -197,10 +174,10 @@ rocksdb::Status Geo::MGet(const Slice &user_key,
 std::string Geo::EncodeGeoHash(double longitude, double latitude) {
   const std::string geoalphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
   /* The internal format we use for geocoding is a bit different
-             * than the standard, since we use as initial latitude range
-             * -85,85, while the normal geohashing algorithm uses -90,90.
-             * So we have to decode our position and re-encode using the
-             * standard ranges in order to output a valid geohash string. */
+   * than the standard, since we use as initial latitude range
+   * -85,85, while the normal geohashing algorithm uses -90,90.
+   * So we have to decode our position and re-encode using the
+   * standard ranges in order to output a valid geohash string. */
 
   /* Re-encode */
   GeoHashRange r[2];
@@ -228,16 +205,12 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
 }
 
 int Geo::decodeGeoHash(double bits, double *xy) {
-  GeoHashBits hash = {(uint64_t) bits, GEO_STEP_MAX};
+  GeoHashBits hash = {(uint64_t)bits, GEO_STEP_MAX};
   return geohashDecodeToLongLatWGS84(hash, xy);
 }
 
 /* Search all eight neighbors + self geohash box */
-int Geo::membersOfAllNeighbors(const Slice &user_key,
-                               GeoHashRadius n,
-                               double lon,
-                               double lat,
-                               double radius,
+int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
   unsigned int i, count = 0, last_processed = 0;
@@ -263,8 +236,7 @@ int Geo::membersOfAllNeighbors(const Slice &user_key,
      * adjacent neighbors can be the same, leading to duplicated
      * elements. Skip every range which is the same as the one
      * processed previously. */
-    if (last_processed &&
-        neighbors[i].bits == neighbors[last_processed].bits &&
+    if (last_processed && neighbors[i].bits == neighbors[last_processed].bits &&
         neighbors[i].step == neighbors[last_processed].step) {
       continue;
     }
@@ -277,12 +249,8 @@ int Geo::membersOfAllNeighbors(const Slice &user_key,
 /* Obtain all members between the min/max of this geohash bounding box.
  * Populate a GeoArray of GeoPoints by calling getPointsInRange().
  * Return the number of points added to the array. */
-int Geo::membersOfGeoHashBox(const Slice &user_key,
-                             GeoHashBits hash,
-                             std::vector<GeoPoint> *geo_points,
-                             double lon,
-                             double lat,
-                             double radius) {
+int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, double lon,
+                             double lat, double radius) {
   GeoHashFix52Bits min, max;
 
   scoresOfGeoHashBox(hash, &min, &max);
@@ -330,12 +298,7 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
  * using multiple queries to the sorted set, that we later need to sort
  * via qsort. Similarly we need to be able to reject points outside the search
  * radius area ASAP in order to allocate and process more points than needed. */
-int Geo::getPointsInRange(const Slice &user_key,
-                          double min,
-                          double max,
-                          double lon,
-                          double lat,
-                          double radius,
+int Geo::getPointsInRange(const Slice &user_key, double min, double max, double lon, double lat, double radius,
                           std::vector<GeoPoint> *geo_points) {
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
@@ -360,19 +323,14 @@ int Geo::getPointsInRange(const Slice &user_key,
  * only if the point is within the search area.
  *
  * returns true if the point is included, or false if it is outside. */
-bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points,
-                               double lon,
-                               double lat,
-                               double radius,
-                               double score,
+bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius, double score,
                                const std::string &member) {
   double distance, xy[2];
 
   if (!decodeGeoHash(score, xy)) return false; /* Can't decode. */
   /* Note that geohashGetDistanceIfInRadiusWGS84() takes arguments in
    * reverse order: longitude first, latitude later. */
-  if (!GeoHashHelper::GetDistanceIfInRadiusWGS84(lon, lat, xy[0], xy[1],
-                                                 radius, &distance)) {
+  if (!GeoHashHelper::GetDistanceIfInRadiusWGS84(lon, lat, xy[0], xy[1], radius, &distance)) {
     return false;
   }
 
@@ -387,12 +345,8 @@ bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points,
   return true;
 }
 
-bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) {
-  return gp1.dist < gp2.dist;
-}
+bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist < gp2.dist; }
 
-bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) {
-  return gp1.dist >= gp2.dist;
-}
+bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist >= gp2.dist; }
 
 }  // namespace Redis

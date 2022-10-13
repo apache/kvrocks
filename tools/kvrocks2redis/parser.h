@@ -20,29 +20,25 @@
 
 #pragma once
 
-#include <string>
 #include <map>
-#include <vector>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "../../src/batch_extractor.h"
 #include "../../src/redis_db.h"
+#include "../../src/redis_metadata.h"
 #include "../../src/status.h"
 #include "../../src/storage.h"
-#include "../../src/redis_metadata.h"
-#include "../../src/batch_extractor.h"
-
 #include "config.h"
 #include "writer.h"
 
 class LatestSnapShot {
  public:
-  explicit LatestSnapShot(rocksdb::DB *db) : db_(db) {
-    snapshot_ = db_->GetSnapshot();
-  }
-  ~LatestSnapShot() {
-    db_->ReleaseSnapshot(snapshot_);
-  }
+  explicit LatestSnapShot(rocksdb::DB *db) : db_(db) { snapshot_ = db_->GetSnapshot(); }
+  ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
   const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
+
  private:
   rocksdb::DB *db_ = nullptr;
   const rocksdb::Snapshot *snapshot_ = nullptr;
@@ -50,8 +46,7 @@ class LatestSnapShot {
 
 class Parser {
  public:
-  explicit Parser(Engine::Storage *storage, Writer *writer)
-      : storage_(storage), writer_(writer) {
+  explicit Parser(Engine::Storage *storage, Writer *writer) : storage_(storage), writer_(writer) {
     lastest_snapshot_ = std::unique_ptr<LatestSnapShot>(new LatestSnapShot(storage->GetDB()));
     is_slotid_encoded_ = storage_->IsSlotIdEncoded();
   }

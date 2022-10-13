@@ -19,9 +19,12 @@
  */
 
 #include "cron.h"
-#include "util.h"
+
 #include <gtest/gtest.h>
+
 #include <memory>
+
+#include "util.h"
 
 class CronTest : public testing::Test {
  protected:

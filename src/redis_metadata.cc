@@ -24,21 +24,20 @@
 #include <sys/time.h>
 
 #include <atomic>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
 #include <vector>
 
 #include "redis_slot.h"
-
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
 
 static std::atomic<uint64_t> version_counter_ = {0};
 
-const char* kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
-const char* kErrMsgKeyExpired = "the key was expired";
-const char* kErrMetadataTooShort = "metadata is too short";
+const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
+const char *kErrMsgKeyExpired = "the key was expired";
+const char *kErrMetadataTooShort = "metadata is too short";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;
@@ -76,29 +75,21 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slo
 }
 
 InternalKey::~InternalKey() {
-  if (buf_ != nullptr && buf_ != prealloc_) delete []buf_;
+  if (buf_ != nullptr && buf_ != prealloc_) delete[] buf_;
 }
 
-Slice InternalKey::GetNamespace() const {
-  return namespace_;
-}
+Slice InternalKey::GetNamespace() const { return namespace_; }
 
-Slice InternalKey::GetKey() const {
-  return key_;
-}
+Slice InternalKey::GetKey() const { return key_; }
 
-Slice InternalKey::GetSubKey() const {
-  return sub_key_;
-}
+Slice InternalKey::GetSubKey() const { return sub_key_; }
 
-uint64_t InternalKey::GetVersion() const {
-  return version_;
-}
+uint64_t InternalKey::GetVersion() const { return version_; }
 
 void InternalKey::Encode(std::string *out) {
   out->clear();
   size_t pos = 0;
-  size_t total = 1+namespace_.size()+4+key_.size()+8+sub_key_.size();
+  size_t total = 1 + namespace_.size() + 4 + key_.size() + 8 + sub_key_.size();
   if (slot_id_encoded_) {
     total += 2;
   }
@@ -107,21 +98,21 @@ void InternalKey::Encode(std::string *out) {
   } else {
     buf_ = new char[total];
   }
-  EncodeFixed8(buf_+pos, static_cast<uint8_t>(namespace_.size()));
+  EncodeFixed8(buf_ + pos, static_cast<uint8_t>(namespace_.size()));
   pos += 1;
-  memcpy(buf_+pos, namespace_.data(), namespace_.size());
+  memcpy(buf_ + pos, namespace_.data(), namespace_.size());
   pos += namespace_.size();
   if (slot_id_encoded_) {
-    EncodeFixed16(buf_+pos, slotid_);
+    EncodeFixed16(buf_ + pos, slotid_);
     pos += 2;
   }
-  EncodeFixed32(buf_+pos, static_cast<uint32_t>(key_.size()));
+  EncodeFixed32(buf_ + pos, static_cast<uint32_t>(key_.size()));
   pos += 4;
-  memcpy(buf_+pos, key_.data(), key_.size());
+  memcpy(buf_ + pos, key_.data(), key_.size());
   pos += key_.size();
-  EncodeFixed64(buf_+pos, version_);
+  EncodeFixed64(buf_ + pos, version_);
   pos += 8;
-  memcpy(buf_+pos, sub_key_.data(), sub_key_.size());
+  memcpy(buf_ + pos, sub_key_.data(), sub_key_.size());
   pos += sub_key_.size();
   out->assign(buf_, pos);
 }
@@ -146,7 +137,7 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool s
   *key = ns_key.ToString();
 }
 
-void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key, bool slot_id_encoded) {
+void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded) {
   ns_key->clear();
 
   PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
@@ -160,7 +151,7 @@ void ComposeNamespaceKey(const Slice& ns, const Slice& key, std::string *ns_key,
   ns_key->append(key.data(), key.size());
 }
 
-void ComposeSlotKeyPrefix(const Slice& ns, int slotid, std::string *output) {
+void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output) {
   output->clear();
 
   PutFixed8(output, static_cast<uint8_t>(ns.size()));
@@ -195,7 +186,7 @@ rocksdb::Status Metadata::Decode(const std::string &bytes) {
 
 void Metadata::Encode(std::string *dst) {
   PutFixed8(dst, flags);
-  PutFixed32(dst, (uint32_t) expire);
+  PutFixed32(dst, (uint32_t)expire);
   if (Type() != kRedisString) {
     PutFixed64(dst, version);
     PutFixed32(dst, size);
@@ -214,10 +205,10 @@ void Metadata::InitVersionCounter() {
 uint64_t Metadata::generateVersion() {
   struct timeval now;
   gettimeofday(&now, nullptr);
-  uint64_t version = static_cast<uint64_t >(now.tv_sec)*1000000;
+  uint64_t version = static_cast<uint64_t>(now.tv_sec) * 1000000;
   version += static_cast<uint64_t>(now.tv_usec);
   uint64_t counter = version_counter_.fetch_add(1);
-  return (version << VersionCounterBits) + (counter%(1 << VersionCounterBits));
+  return (version << VersionCounterBits) + (counter % (1 << VersionCounterBits));
 }
 
 bool Metadata::operator==(const Metadata &that) const {
@@ -230,9 +221,7 @@ bool Metadata::operator==(const Metadata &that) const {
   return true;
 }
 
-RedisType Metadata::Type() const {
-  return static_cast<RedisType>(flags & (uint8_t)0x0f);
-}
+RedisType Metadata::Type() const { return static_cast<RedisType>(flags & (uint8_t)0x0f); }
 
 int32_t Metadata::TTL() const {
   int64_t now;
@@ -243,12 +232,14 @@ int32_t Metadata::TTL() const {
   if (expire < now) {
     return -2;
   }
-  return int32_t (expire - now);
+  return int32_t(expire - now);
 }
 
 timeval Metadata::Time() const {
   auto t = version >> VersionCounterBits;
-  struct timeval created_at{static_cast<uint32_t>(t / 1000000), static_cast<int32_t>(t % 1000000)};
+  struct timeval created_at {
+    static_cast<uint32_t>(t / 1000000), static_cast<int32_t>(t % 1000000)
+  };
   return created_at;
 }
 
@@ -267,7 +258,7 @@ bool Metadata::Expired() const {
 }
 
 ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
-  head = UINT64_MAX/2;
+  head = UINT64_MAX / 2;
   tail = head;
 }
 

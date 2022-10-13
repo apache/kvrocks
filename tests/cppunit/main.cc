@@ -22,9 +22,7 @@
 
 #include "server.h"
 
-Server *GetServer() {
-  return nullptr;
-}
+Server *GetServer() { return nullptr; }
 
 int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);

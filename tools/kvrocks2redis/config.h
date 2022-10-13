@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
 #include "../../src/status.h"

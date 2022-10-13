@@ -54,18 +54,10 @@ Connection::~Connection() {
 
 std::string Connection::ToString() {
   std::ostringstream stream;
-  stream << "id=" << id_
-    << " addr=" << addr_
-    << " fd=" << bufferevent_getfd(bev_)
-    << " name=" << name_
-    << " age=" << GetAge()
-    << " idle=" << GetIdleTime()
-    << " flags=" << GetFlags()
-    << " namespace=" << ns_
-    << " qbuf=" << evbuffer_get_length(Input())
-    << " obuf=" << evbuffer_get_length(Output())
-    << " cmd=" << last_cmd_
-    << "\n";
+  stream << "id=" << id_ << " addr=" << addr_ << " fd=" << bufferevent_getfd(bev_) << " name=" << name_
+         << " age=" << GetAge() << " idle=" << GetIdleTime() << " flags=" << GetFlags() << " namespace=" << ns_
+         << " qbuf=" << evbuffer_get_length(Input()) << " obuf=" << evbuffer_get_length(Output())
+         << " cmd=" << last_cmd_ << "\n";
   return stream.str();
 }
 
@@ -96,8 +88,7 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
 
 void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
-  if (conn->IsFlagEnabled(kCloseAfterReply) ||
-      conn->IsFlagEnabled(kCloseAsync)) {
+  if (conn->IsFlagEnabled(kCloseAfterReply) || conn->IsFlagEnabled(kCloseAsync)) {
     conn->Close();
   }
 }
@@ -106,23 +97,21 @@ void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
   auto conn = static_cast<Connection *>(ctx);
   if (events & BEV_EVENT_ERROR) {
     LOG(ERROR) << "[connection] Going to remove the client: " << conn->GetAddr()
-               << ", while encounter error: "
-               << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
+               << ", while encounter error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
 #ifdef ENABLE_OPENSSL
-               << ", SSL Error: " << SSLError(bufferevent_get_openssl_error(bev)) // NOLINT
+               << ", SSL Error: " << SSLError(bufferevent_get_openssl_error(bev))  // NOLINT
 #endif
-               ; // NOLINT
+        ;  // NOLINT
     conn->Close();
     return;
   }
   if (events & BEV_EVENT_EOF) {
-    DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr()
-               << ", while closed by client";
+    DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr() << ", while closed by client";
     conn->Close();
     return;
   }
   if (events & BEV_EVENT_TIMEOUT) {
-    DLOG(INFO) << "[connection] The client: " << conn->GetAddr()  << "] reached timeout";
+    DLOG(INFO) << "[connection] The client: " << conn->GetAddr() << "] reached timeout";
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
@@ -216,16 +205,13 @@ void Connection::UnSubscribeAll(unsubscribe_callback reply) {
     owner_->svr_->UnSubscribeChannel(chan, this);
     removed++;
     if (reply != nullptr) {
-      reply(chan, static_cast<int>(subscribe_channels_.size() -
-                                   removed + subcribe_patterns_.size()));
+      reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subcribe_patterns_.size()));
     }
   }
   subscribe_channels_.clear();
 }
 
-int Connection::SubscriptionsCount() {
-  return static_cast<int>(subscribe_channels_.size());
-}
+int Connection::SubscriptionsCount() { return static_cast<int>(subscribe_channels_.size()); }
 
 void Connection::PSubscribeChannel(const std::string &pattern) {
   for (const auto &p : subcribe_patterns_) {
@@ -257,16 +243,13 @@ void Connection::PUnSubscribeAll(unsubscribe_callback reply) {
     owner_->svr_->PUnSubscribeChannel(pattern, this);
     removed++;
     if (reply != nullptr) {
-      reply(pattern, static_cast<int>(subcribe_patterns_.size() -
-                                      removed + subscribe_channels_.size()));
+      reply(pattern, static_cast<int>(subcribe_patterns_.size() - removed + subscribe_channels_.size()));
     }
   }
   subcribe_patterns_.clear();
 }
 
-int Connection::PSubscriptionsCount() {
-  return static_cast<int>(subcribe_patterns_.size());
-}
+int Connection::PSubscriptionsCount() { return static_cast<int>(subcribe_patterns_.size()); }
 
 bool Connection::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
@@ -275,8 +258,7 @@ bool Connection::isProfilingEnabled(const std::string &cmd) {
       config->profiling_sample_commands.find(cmd) == config->profiling_sample_commands.end()) {
     return false;
   }
-  if (config->profiling_sample_ratio == 100 ||
-      std::rand() % 100 <= config->profiling_sample_ratio) {
+  if (config->profiling_sample_ratio == 100 || std::rand() % 100 <= config->profiling_sample_ratio) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
     rocksdb::get_perf_context()->Reset();
     rocksdb::get_iostats_context()->Reset();
@@ -287,7 +269,7 @@ bool Connection::isProfilingEnabled(const std::string &cmd) {
 
 void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
   int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
-  if (threshold > 0 && static_cast<int>(duration/1000) < threshold) {
+  if (threshold > 0 && static_cast<int>(duration / 1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
     return;
   }
@@ -312,8 +294,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();
 
-    if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) &&
-        !IsFlagEnabled(Connection::kMultiExec)) break;
+    if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) && !IsFlagEnabled(Connection::kMultiExec)) break;
 
     auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
     if (!s.IsOK()) {
@@ -337,7 +318,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     const auto attributes = current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
 
-    std::unique_ptr<RWLock::ReadLock>  concurrency;  // Allow concurrency
+    std::unique_ptr<RWLock::ReadLock> concurrency;   // Allow concurrency
     std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
     // If the command need to process exclusively, we need to get 'ExclusivityGuard'
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
@@ -347,12 +328,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
-               (cmd_name == "config" && cmd_tokens.size() == 2 &&
-                !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-               (config->cluster_enabled &&
-                (cmd_name == "clusterx" || cmd_name == "cluster") &&
-                cmd_tokens.size() >= 2 &&
-                Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+               (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
+               (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") &&
+                cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
 
       // When executing lua script commands that have "exclusive" attribute,
@@ -377,8 +355,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
     int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
-    if ((arity > 0 && tokens != arity)
-        || (arity < 0 && tokens < -arity)) {
+    if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       Reply(Redis::Error("ERR wrong number of arguments"));
       continue;
@@ -387,7 +364,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     s = current_cmd_->Parse(cmd_tokens);
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR "+s.Msg()));
+      Reply(Redis::Error("ERR " + s.Msg()));
       continue;
     }
 
@@ -418,11 +395,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
-    if (!config->slave_serve_stale_data && svr_->IsSlave()
-        && cmd_name != "info" && cmd_name != "slaveof"
-        && svr_->GetReplicationState() != kReplConnected) {
-      Reply(Redis::Error("MASTERDOWN Link with MASTER is down "
-                               "and slave-serve-stale-data is set to 'no'."));
+    if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
+        svr_->GetReplicationState() != kReplConnected) {
+      Reply(
+          Redis::Error("MASTERDOWN Link with MASTER is down "
+                       "and slave-serve-stale-data is set to 'no'."));
       continue;
     }
 
@@ -432,7 +409,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_profiling = isProfilingEnabled(cmd_name);
     s = current_cmd_->Execute(svr_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
-    uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
     svr_->SlowlogPushEntryIfNeeded(current_cmd_->Args(), duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);

@@ -18,9 +18,9 @@
  *
  */
 
-#include <gtest/gtest.h>
-
 #include "log_collector.h"
+
+#include <gtest/gtest.h>
 
 TEST(LogCollector, PushEntry) {
   LogCollector<PerfEntry> perf_log;

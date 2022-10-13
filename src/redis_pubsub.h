@@ -29,9 +29,7 @@ namespace Redis {
 
 class PubSub : public Database {
  public:
-  explicit PubSub(Engine::Storage *storage) :
-      Database(storage),
-      pubsub_cf_handle_(storage->GetCFHandle("pubsub")) {}
+  explicit PubSub(Engine::Storage *storage) : Database(storage), pubsub_cf_handle_(storage->GetCFHandle("pubsub")) {}
   rocksdb::Status Publish(const Slice &channel, const Slice &value);
 
  private:

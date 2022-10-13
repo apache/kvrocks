@@ -23,14 +23,14 @@
 #include <string>
 #include <utility>
 
-#include "util.h"
 #include "status.h"
+#include "util.h"
 
 // forward declaration
 class Server;
 
-typedef std::function<Status(const std::string&, const std::string&)> validate_fn;
-typedef std::function<Status(Server *srv, const std::string&, const std::string&)> callback_fn;
+typedef std::function<Status(const std::string &, const std::string &)> validate_fn;
+typedef std::function<Status(Server *srv, const std::string &, const std::string &)> callback_fn;
 
 typedef struct configEnum {
   const char *name;
@@ -55,15 +55,11 @@ class ConfigField {
   callback_fn callback = nullptr;
 };
 
-class StringField: public ConfigField {
+class StringField : public ConfigField {
  public:
-  StringField(std::string *receiver, std::string s): receiver_(receiver) {
-    *receiver_ = std::move(s);
-  }
+  StringField(std::string *receiver, std::string s) : receiver_(receiver) { *receiver_ = std::move(s); }
   ~StringField() override = default;
-  std::string ToString() override {
-    return *receiver_;
-  }
+  std::string ToString() override { return *receiver_; }
   Status Set(const std::string &v) override {
     *receiver_ = v;
     return Status::OK();
@@ -75,14 +71,9 @@ class StringField: public ConfigField {
 
 class IntField : public ConfigField {
  public:
-  IntField(int *receiver, int n, int min, int max)
-      : receiver_(receiver), min_(min), max_(max) {
-    *receiver_ = n;
-  }
+  IntField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
   ~IntField() override = default;
-  std::string ToString() override {
-    return std::to_string(*receiver_);
-  }
+  std::string ToString() override { return std::to_string(*receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
@@ -103,14 +94,9 @@ class IntField : public ConfigField {
 
 class OctalField : public ConfigField {
  public:
-  OctalField(int *receiver, int n, int min, int max)
-      : receiver_(receiver), min_(min), max_(max) {
-    *receiver_ = n;
-  }
+  OctalField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
   ~OctalField() override = default;
-  std::string ToString() override {
-    return std::to_string(*receiver_);
-  }
+  std::string ToString() override { return std::to_string(*receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
@@ -131,14 +117,11 @@ class OctalField : public ConfigField {
 
 class Int64Field : public ConfigField {
  public:
-  Int64Field(int64_t *receiver, int64_t n, int64_t min, int64_t max)
-      : receiver_(receiver), min_(min), max_(max) {
+  Int64Field(int64_t *receiver, int64_t n, int64_t min, int64_t max) : receiver_(receiver), min_(min), max_(max) {
     *receiver_ = n;
   }
   ~Int64Field() override = default;
-  std::string ToString() override {
-    return std::to_string(*receiver_);
-  }
+  std::string ToString() override { return std::to_string(*receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
@@ -159,13 +142,9 @@ class Int64Field : public ConfigField {
 
 class YesNoField : public ConfigField {
  public:
-  YesNoField(bool *receiver, bool b) : receiver_(receiver) {
-    *receiver_ = b;
-  }
+  YesNoField(bool *receiver, bool b) : receiver_(receiver) { *receiver_ = b; }
   ~YesNoField() override = default;
-  std::string ToString() override {
-    return *receiver_ ? "yes":"no";
-  }
+  std::string ToString() override { return *receiver_ ? "yes" : "no"; }
   Status ToBool(bool *b) override {
     *b = *receiver_;
     return Status::OK();
@@ -187,14 +166,9 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, configEnum *enums, int e) :
-      receiver_(receiver), enums_(enums) {
-    *receiver_ = e;
-  }
+  EnumField(int *receiver, configEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
   ~EnumField() override = default;
-  std::string ToString() override {
-    return configEnumGetName(enums_, *receiver_);
-  }
+  std::string ToString() override { return configEnumGetName(enums_, *receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();

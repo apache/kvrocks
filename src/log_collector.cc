@@ -18,10 +18,11 @@
  *
  */
 
-#include <algorithm>
 #include "log_collector.h"
-#include "redis_reply.h"
 
+#include <algorithm>
+
+#include "redis_reply.h"
 
 std::string SlowEntry::ToRedisString() {
   std::string output;
@@ -82,8 +83,7 @@ void LogCollector<T>::PushEntry(T *entry) {
   std::lock_guard<std::mutex> guard(mu_);
   entry->id = ++id_;
   entry->time = time(nullptr);
-  if (max_entries_ > 0 && !entries_.empty()
-      && entries_.size() >= static_cast<size_t>(max_entries_)) {
+  if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     delete entries_.back();
     entries_.pop_back();
   }

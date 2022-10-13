@@ -30,7 +30,7 @@
 #include "redis_db.h"
 #include "server.h"
 
-enum ImportStatus{
+enum ImportStatus {
   kImportStart,
   kImportSuccess,
   kImportFailed,

@@ -20,8 +20,8 @@
 
 #include "redis_set.h"
 
-#include <map>
 #include <iostream>
+#include <map>
 #include <memory>
 
 #include "db_util.h"
@@ -155,9 +155,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(prefix);
-       iter->Valid() && iter->key().starts_with(prefix);
-       iter->Next()) {
+  for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
   }
@@ -230,9 +228,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(prefix);
-       iter->Valid() && iter->key().starts_with(prefix);
-       iter->Next()) {
+  for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
     if (pop) batch.Delete(iter->key());
@@ -263,11 +259,8 @@ rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &membe
   return Add(dst, members, ret);
 }
 
-rocksdb::Status Set::Scan(const Slice &user_key,
-                          const std::string &cursor,
-                          uint64_t limit,
-                          const std::string &member_prefix,
-                          std::vector<std::string> *members) {
+rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+                          const std::string &member_prefix, std::vector<std::string> *members) {
   return SubKeyScanner::Scan(kRedisSet, user_key, cursor, limit, member_prefix, members);
 }
 

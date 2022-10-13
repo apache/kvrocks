@@ -19,14 +19,16 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <map>
+
 #include "util.h"
 
 TEST(StringUtil, ToLower) {
-  std::map<std::string, std::string> cases {
-          {"ABC", "abc"},
-          {"AbC", "abc"},
-          {"abc", "abc"},
+  std::map<std::string, std::string> cases{
+      {"ABC", "abc"},
+      {"AbC", "abc"},
+      {"abc", "abc"},
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
@@ -36,14 +38,9 @@ TEST(StringUtil, ToLower) {
 }
 
 TEST(StringUtil, Trim) {
-  std::map<std::string, std::string> cases {
-          {"abc", "abc"},
-          {"   abc    ", "abc"},
-          {"\t\tabc\t\t", "abc"},
-          {"\t\tabc\n\n", "abc"},
-          {"\n\nabc\n\n", "abc"},
-          {" a b", "a b"},
-          {"a \tb\t \n", "a \tb"},
+  std::map<std::string, std::string> cases{
+      {"abc", "abc"},         {"   abc    ", "abc"}, {"\t\tabc\t\t", "abc"},  {"\t\tabc\n\n", "abc"},
+      {"\n\nabc\n\n", "abc"}, {" a b", "a b"},       {"a \tb\t \n", "a \tb"},
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
@@ -68,7 +65,8 @@ TEST(StringUtil, Split) {
   ASSERT_EQ(Util::Split("a", " "), std::vector<std::string>{"a"});
   ASSERT_EQ(Util::Split("a bc", " "), (std::vector<std::string>{"a", "bc"}));
   ASSERT_EQ(Util::Split("a  b c def gh ", " "), (std::vector<std::string>{"a", "b", "c", "def", "gh"}));
-  ASSERT_EQ(Util::Split("  hello;hi,,; one ;;; two,, ", " ,;"), (std::vector<std::string>{"hello", "hi", "one", "two"}));
+  ASSERT_EQ(Util::Split("  hello;hi,,; one ;;; two,, ", " ,;"),
+            (std::vector<std::string>{"hello", "hi", "one", "two"}));
 }
 
 TEST(StringUtil, TokenizeRedisProtocol) {

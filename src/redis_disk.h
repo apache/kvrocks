@@ -21,6 +21,7 @@
 #pragma once
 
 #include <string>
+
 #include "redis_db.h"
 #include "redis_metadata.h"
 
@@ -28,14 +29,13 @@ namespace Redis {
 
 class Disk : public Database {
  public:
-  explicit Disk(Engine::Storage *storage, const std::string &ns): Database(storage, ns) {
+  explicit Disk(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {
     option_.include_memtabtles = true;
     option_.include_files = true;
   }
   rocksdb::Status GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
-                                      rocksdb::ColumnFamilyHandle *column_family,
-                                      uint64_t *key_size, Slice subkeyleft = Slice(),
-                                      Slice subkeyright = Slice());
+                                      rocksdb::ColumnFamilyHandle *column_family, uint64_t *key_size,
+                                      Slice subkeyleft = Slice(), Slice subkeyright = Slice());
   rocksdb::Status GetStringSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetHashSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetSetSize(const Slice &ns_key, uint64_t *key_size);
@@ -45,6 +45,7 @@ class Disk : public Database {
   rocksdb::Status GetSortedintSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetStreamSize(const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size);
+
  private:
   rocksdb::SizeApproximationOptions option_;
 };

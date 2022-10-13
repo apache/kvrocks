@@ -22,16 +22,16 @@
 
 #include <event2/bufferevent.h>
 #include <unistd.h>
+
 #include <fstream>
 
-#include "../../src/status.h"
-#include "../../src/storage.h"
 #include "../../src/replication.h"
 #include "../../src/server.h"
-
+#include "../../src/status.h"
+#include "../../src/storage.h"
 #include "config.h"
-#include "writer.h"
 #include "parser.h"
+#include "writer.h"
 
 class Sync {
  public:

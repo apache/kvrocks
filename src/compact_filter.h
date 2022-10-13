@@ -33,19 +33,17 @@
 namespace Engine {
 class MetadataFilter : public rocksdb::CompactionFilter {
  public:
-  explicit MetadataFilter(Storage *storage): stor_(storage) {}
+  explicit MetadataFilter(Storage *storage) : stor_(storage) {}
   const char *Name() const override { return "MetadataFilter"; }
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override;
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
+
  private:
   Engine::Storage *stor_;
 };
 
 class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit MetadataFilterFactory(Engine::Storage *storage) {
-    stor_ = storage;
-  }
+  explicit MetadataFilterFactory(Engine::Storage *storage) { stor_ = storage; }
   const char *Name() const override { return "MetadataFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context &context) override {
@@ -58,19 +56,14 @@ class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
 
 class SubKeyFilter : public rocksdb::CompactionFilter {
  public:
-  explicit SubKeyFilter(Storage *storage)
-      : cached_key_(""),
-        cached_metadata_(""),
-        stor_(storage) {}
+  explicit SubKeyFilter(Storage *storage) : cached_key_(""), cached_metadata_(""), stor_(storage) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
-  Status GetMetadata(const InternalKey &ikey, Metadata* metadata) const;
-  bool IsMetadataExpired(const InternalKey &ikey, const Metadata& metadata) const;
-  rocksdb::CompactionFilter::Decision FilterBlobByKey(int level, const Slice &key,
-                                  std::string *new_value,
-                                  std::string *skip_until) const override;
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override;
+  Status GetMetadata(const InternalKey &ikey, Metadata *metadata) const;
+  bool IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const;
+  rocksdb::CompactionFilter::Decision FilterBlobByKey(int level, const Slice &key, std::string *new_value,
+                                                      std::string *skip_until) const override;
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
 
  protected:
   mutable std::string cached_key_;
@@ -80,15 +73,12 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
 
 class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit SubKeyFilterFactory(Engine::Storage *storage) {
-    stor_ = storage;
-  }
+  explicit SubKeyFilterFactory(Engine::Storage *storage) { stor_ = storage; }
 
   const char *Name() const override { return "SubKeyFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context &context) override {
-    return std::unique_ptr<rocksdb::CompactionFilter>(
-        new SubKeyFilter(stor_));
+    return std::unique_ptr<rocksdb::CompactionFilter>(new SubKeyFilter(stor_));
   }
 
  private:
@@ -98,8 +88,7 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
 class PropagateFilter : public rocksdb::CompactionFilter {
  public:
   const char *Name() const override { return "PropagateFilter"; }
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override {
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override {
     // We propagate Lua commands which don't store data,
     // just in order to implement updating Lua state.
     return key == Engine::kPropagateScriptCommand;
@@ -119,8 +108,9 @@ class PropagateFilterFactory : public rocksdb::CompactionFilterFactory {
 class PubSubFilter : public rocksdb::CompactionFilter {
  public:
   const char *Name() const override { return "PubSubFilter"; }
-  bool Filter(int level, const Slice &key, const Slice &value,
-              std::string *new_value, bool *modified) const override { return true; }
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override {
+    return true;
+  }
 };
 
 class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {

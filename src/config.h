@@ -38,20 +38,18 @@ class Server;
 namespace Engine {
 class Storage;
 }
-#define PORT_LIMIT 65535
 
-#define SUPERVISED_NONE 0
-#define SUPERVISED_AUTODETECT 1
-#define SUPERVISED_SYSTEMD 2
-#define SUPERVISED_UPSTART 3
+constexpr const uint16_t PORT_LIMIT = 65535;
 
-#define TLS_AUTH_CLIENTS_NO "no"
-#define TLS_AUTH_CLIENTS_OPTIONAL "optional"
+enum { SUPERVISED_NONE = 0, SUPERVISED_AUTODETECT, SUPERVISED_SYSTEMD, SUPERVISED_UPSTART };
 
-const size_t KiB = 1024L;
-const size_t MiB = 1024L * KiB;
-const size_t GiB = 1024L * MiB;
-const int kDefaultPort = 6666;
+constexpr const char *TLS_AUTH_CLIENTS_NO = "no";
+constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";
+
+constexpr const size_t KiB = 1024L;
+constexpr const size_t MiB = 1024L * KiB;
+constexpr const size_t GiB = 1024L * MiB;
+constexpr const int kDefaultPort = 6666;
 
 extern const char *kDefaultNamespace;
 

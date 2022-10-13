@@ -76,11 +76,13 @@ typedef struct {
   double score;
 } MemberScore;
 
-#define ZSET_INCR 1
-#define ZSET_NX (1 << 1)
-#define ZSET_XX (1 << 2)
-#define ZSET_REVERSED (1 << 3)
-#define ZSET_REMOVED 1 << 4
+enum {
+  ZSET_INCR = 1,
+  ZSET_NX = 1 << 1,
+  ZSET_XX = 1 << 2,
+  ZSET_REVERSED = 1 << 3,
+  ZSET_REMOVED = 1 << 4,
+};
 
 namespace Redis {
 

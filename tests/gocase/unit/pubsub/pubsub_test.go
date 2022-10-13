@@ -73,11 +73,24 @@ func TestPubSub(t *testing.T) {
 
 		// unsubscribe from one of the channels
 		require.NoError(t, pubsub.Unsubscribe(ctx, "chan1"))
+		require.EqualValues(t, &redis.Subscription{
+			Kind:    "unsubscribe",
+			Channel: "chan1",
+			Count:   1,
+		}, receiveType(t, pubsub, &redis.Subscription{}))
 		require.EqualValues(t, 0, rdb.Publish(ctx, "chan1", "hello").Val())
 		require.EqualValues(t, 1, rdb.Publish(ctx, "chan2", "world").Val())
 
+		// drain incoming messages
+		receiveType(t, pubsub, &redis.Message{})
+
 		// unsubscribe from the remaining channel
 		require.NoError(t, pubsub.Unsubscribe(ctx, "chan2"))
+		require.EqualValues(t, &redis.Subscription{
+			Kind:    "unsubscribe",
+			Channel: "chan2",
+			Count:   0,
+		}, receiveType(t, pubsub, &redis.Subscription{}))
 		require.EqualValues(t, 0, rdb.Publish(ctx, "chan1", "hello").Val())
 		require.EqualValues(t, 0, rdb.Publish(ctx, "chan2", "world").Val())
 	})

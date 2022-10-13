@@ -77,11 +77,11 @@ typedef struct {
 } MemberScore;
 
 enum ZSetFlags {
-  ZSET_INCR = 1,
-  ZSET_NX = 1 << 1,
-  ZSET_XX = 1 << 2,
-  ZSET_REVERSED = 1 << 3,
-  ZSET_REMOVED = 1 << 4,
+  kZSetIncr = 1,
+  kZSetNX = 1 << 1,
+  kZSetXX = 1 << 2,
+  kZSetReversed = 1 << 3,
+  kZSetRemoved = 1 << 4,
 };
 
 namespace Redis {

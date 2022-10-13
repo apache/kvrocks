@@ -41,7 +41,7 @@ class Storage;
 
 constexpr const uint16_t PORT_LIMIT = 65535;
 
-enum SupervisedMode { SUPERVISED_NONE = 0, SUPERVISED_AUTODETECT, SUPERVISED_SYSTEMD, SUPERVISED_UPSTART };
+enum SupervisedMode { kSupervisedNone = 0, kSupervisedAutoDetect, kSupervisedSystemd, kSupervisedUpStart };
 
 constexpr const char *TLS_AUTH_CLIENTS_NO = "no";
 constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";
@@ -90,7 +90,7 @@ struct Config {
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
   bool daemonize = false;
-  int supervised_mode = SUPERVISED_NONE;
+  int supervised_mode = kSupervisedNone;
   bool slave_readonly = true;
   bool slave_serve_stale_data = true;
   bool slave_empty_db_before_fullsync = false;

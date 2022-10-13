@@ -76,7 +76,7 @@ typedef struct {
   double score;
 } MemberScore;
 
-enum {
+enum ZSetFlags {
   ZSET_INCR = 1,
   ZSET_NX = 1 << 1,
   ZSET_XX = 1 << 2,

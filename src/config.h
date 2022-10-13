@@ -41,7 +41,7 @@ class Storage;
 
 constexpr const uint16_t PORT_LIMIT = 65535;
 
-enum { SUPERVISED_NONE = 0, SUPERVISED_AUTODETECT, SUPERVISED_SYSTEMD, SUPERVISED_UPSTART };
+enum SupervisedMode { SUPERVISED_NONE = 0, SUPERVISED_AUTODETECT, SUPERVISED_SYSTEMD, SUPERVISED_UPSTART };
 
 constexpr const char *TLS_AUTH_CLIENTS_NO = "no";
 constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";

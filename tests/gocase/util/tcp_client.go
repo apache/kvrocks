@@ -23,8 +23,10 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"net"
 	"strings"
+	"testing"
 )
 
 type TCPClient struct {
@@ -51,6 +53,12 @@ func (c *TCPClient) ReadLine() (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(r, "\r\n"), nil
+}
+
+func (c *TCPClient) MustRead(t testing.TB, s string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.Equal(t, s, r)
 }
 
 func (c *TCPClient) Write(s string) error {

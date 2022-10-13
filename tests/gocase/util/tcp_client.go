@@ -61,6 +61,18 @@ func (c *TCPClient) MustRead(t testing.TB, s string) {
 	require.Equal(t, s, r)
 }
 
+func (c *TCPClient) MustMatch(t testing.TB, rx string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.Regexp(t, rx, r)
+}
+
+func (c *TCPClient) MustFail(t testing.TB) {
+	r, err := c.ReadLine()
+	require.Error(t, err)
+	require.Empty(t, r)
+}
+
 func (c *TCPClient) Write(s string) error {
 	_, err := c.w.WriteString(s)
 	if err != nil {

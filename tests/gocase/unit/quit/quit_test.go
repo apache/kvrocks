@@ -39,14 +39,10 @@ func TestPipeQuit(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 
 		require.NoError(t, c.WriteArgs("QUIT"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "+OK", r)
+		c.MustRead(t, "+OK")
 
 		require.NoError(t, c.WriteArgs("PING"))
-		r, err = c.ReadLine()
-		require.Error(t, err)
-		require.Empty(t, r)
+		c.MustFail(t)
 	})
 
 	t.Run("Pipelined commands after QUIT must not be executed", func(t *testing.T) {

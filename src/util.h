@@ -25,8 +25,8 @@
 #include <arpa/inet.h>
 
 #include <cctype>
-#include <cinttypes>
 #include <chrono>
+#include <cinttypes>
 #include <memory>
 #include <string>
 #include <utility>
@@ -55,7 +55,7 @@ Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min = INT6
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
 const std::string Float2String(double d);
 std::string ToLower(std::string in);
-bool CaseInsensitiveCompare(const std::string& lhs, const std::string& rhs);
+bool CaseInsensitiveCompare(const std::string &lhs, const std::string &rhs);
 void BytesToHuman(char *buf, size_t size, uint64_t n);
 std::string Trim(std::string in, const std::string &chars);
 std::vector<std::string> Split(const std::string &in, const std::string &delim);
@@ -74,12 +74,12 @@ uint64_t GetTimeStampUS(void);
 // define std::make_unique in c++14
 // refer to https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
 template <typename T, typename... Args>
-std::unique_ptr<T> MakeUnique(Args&& ... args) {
+std::unique_ptr<T> MakeUnique(Args &&...args) {
   return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
 template <typename T, typename... Args>
-std::shared_ptr<T> MakeShared(Args&& ... args) {
+std::shared_ptr<T> MakeShared(Args &&...args) {
   return std::make_shared<T>(std::forward<Args>(args)...);
 }
 }  // namespace Util

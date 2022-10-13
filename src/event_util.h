@@ -20,14 +20,16 @@
 
 #pragma once
 
-#include <memory>
 #include <cstdlib>
+#include <memory>
 #include <utility>
 
 #include "event2/buffer.h"
 
-template <typename F, F *f> struct StaticFunction {
-  template <typename... Ts> auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {
+template <typename F, F *f>
+struct StaticFunction {
+  template <typename... Ts>
+  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {
     return f(std::forward<Ts>(args)...);
   }
 };
@@ -42,11 +44,11 @@ struct UniqueFreePtr : std::unique_ptr<T, StaticFree> {
 };
 
 struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
-    // cppcheck-suppress uninitMemberVar
-    UniqueEvbufReadln(evbuffer* buffer, evbuffer_eol_style eol_style)
+  // cppcheck-suppress uninitMemberVar
+  UniqueEvbufReadln(evbuffer *buffer, evbuffer_eol_style eol_style)
       : UniqueFreePtr(evbuffer_readln(buffer, &length, eol_style)) {}
 
-    size_t length;
+  size_t length;
 };
 
 using StaticEvbufFree = StaticFunction<decltype(evbuffer_free), evbuffer_free>;

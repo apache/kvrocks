@@ -44,7 +44,10 @@ struct StreamEntryID {
   StreamEntryID() {}
   StreamEntryID(uint64_t ms, uint64_t seq) : ms(ms), seq(seq) {}
 
-  void Clear() { ms = 0; seq = 0; }
+  void Clear() {
+    ms = 0;
+    seq = 0;
+  }
 
   bool IsMaximum() const { return ms == UINT64_MAX && seq == UINT64_MAX; }
   bool IsMinimum() const { return ms == 0 && seq == 0; }
@@ -55,25 +58,15 @@ struct StreamEntryID {
     return false;
   }
 
-  bool operator>=(const StreamEntryID &rhs) const {
-    return !(*this < rhs);
-  }
+  bool operator>=(const StreamEntryID &rhs) const { return !(*this < rhs); }
 
-  bool operator>(const StreamEntryID &rhs) const {
-    return rhs < *this;
-  }
+  bool operator>(const StreamEntryID &rhs) const { return rhs < *this; }
 
-  bool operator<=(const StreamEntryID &rhs) const {
-    return !(rhs < *this);
-  }
+  bool operator<=(const StreamEntryID &rhs) const { return !(rhs < *this); }
 
-  bool operator==(const StreamEntryID &rhs) const {
-    return ms == rhs.ms && seq == rhs.seq;
-  }
+  bool operator==(const StreamEntryID &rhs) const { return ms == rhs.ms && seq == rhs.seq; }
 
-  std::string ToString() const {
-    return std::to_string(ms) + "-" + std::to_string(seq);
-  }
+  std::string ToString() const { return std::to_string(ms) + "-" + std::to_string(seq); }
 
   static StreamEntryID Minimum() { return StreamEntryID{0, 0}; }
   static StreamEntryID Maximum() { return StreamEntryID{UINT64_MAX, UINT64_MAX}; }
@@ -135,7 +128,7 @@ struct StreamReadResult {
   std::vector<StreamEntry> entries;
 
   StreamReadResult(std::string name, std::vector<StreamEntry> result)
-    : name(std::move(name)), entries(std::move(result)) {}
+      : name(std::move(name)), entries(std::move(result)) {}
 };
 
 rocksdb::Status IncrementStreamEntryID(StreamEntryID *id);
@@ -146,6 +139,5 @@ Status ParseRangeStart(const std::string &input, StreamEntryID *id);
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id);
 std::string EncodeStreamEntryValue(const std::vector<std::string> &args);
 Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::string> *result);
-
 
 }  // namespace Redis

@@ -34,16 +34,14 @@ namespace Redis {
 
 class Stream : public SubKeyScanner {
  public:
-  explicit Stream(Engine::Storage *storage, const std::string &ns) :
-      SubKeyScanner(storage, ns),
-      stream_cf_handle_(storage->GetCFHandle("stream")) {}
-  rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options,
-                      const std::vector<std::string> &values, StreamEntryID *id);
+  explicit Stream(Engine::Storage *storage, const std::string &ns)
+      : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle("stream")) {}
+  rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
+                      StreamEntryID *id);
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *ret);
   rocksdb::Status Len(const Slice &stream_name, uint64_t *ret);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
-  rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options,
-                        std::vector<StreamEntry> *entries);
+  rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options, std::vector<StreamEntry> *entries);
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret);
   rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
@@ -51,17 +49,17 @@ class Stream : public SubKeyScanner {
  private:
   rocksdb::ColumnFamilyHandle *stream_cf_handle_;
 
-  rocksdb::Status range(const std::string &ns_key, const StreamMetadata &metadata,
-                        const StreamRangeOptions &options, std::vector<StreamEntry> *entries) const;
-  rocksdb::Status getEntryRawValue(const std::string &ns_key, const StreamMetadata &metadata,
-                                   const StreamEntryID &id, std::string *value) const;
+  rocksdb::Status range(const std::string &ns_key, const StreamMetadata &metadata, const StreamRangeOptions &options,
+                        std::vector<StreamEntry> *entries) const;
+  rocksdb::Status getEntryRawValue(const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
+                                   std::string *value) const;
   StreamEntryID entryIDFromInternalKey(const rocksdb::Slice &key) const;
   std::string internalKeyFromEntryID(const std::string &ns_key, const StreamMetadata &metadata,
                                      const StreamEntryID &id) const;
-  rocksdb::Status getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
-                                 bool first_entry, StreamEntryID *next_entry_id) const;
-  uint64_t trim(const std::string &ns_key, const StreamTrimOptions &options,
-                StreamMetadata *metadata, rocksdb::WriteBatch *batch);
+  rocksdb::Status getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options, bool first_entry,
+                                 StreamEntryID *next_entry_id) const;
+  uint64_t trim(const std::string &ns_key, const StreamTrimOptions &options, StreamMetadata *metadata,
+                rocksdb::WriteBatch *batch);
 };
 
 }  // namespace Redis

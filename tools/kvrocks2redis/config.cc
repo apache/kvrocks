@@ -20,16 +20,16 @@
 
 #include "config.h"
 
-#include <strings.h>
 #include <rocksdb/env.h>
+#include <strings.h>
 
 #include <fstream>
 #include <iostream>
 #include <utility>
 #include <vector>
 
-#include "../../src/util.h"
 #include "../../src/config.h"
+#include "../../src/util.h"
 
 namespace Kvrocks2redis {
 

@@ -20,19 +20,18 @@
 
 #include "server.h"
 
+#include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
-
-#include <fcntl.h>
+#include <sys/resource.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
-#include <sys/resource.h>
 
 #include <memory>
 #include <utility>
 
-#include "config.h"
 #include "compaction_checker.h"
+#include "config.h"
 #include "redis_connection.h"
 #include "redis_db.h"
 #include "redis_request.h"
@@ -42,10 +41,9 @@
 #include "version.h"
 #include "worker.h"
 
-std::atomic<int>Server::unix_time_ = {0};
+std::atomic<int> Server::unix_time_ = {0};
 
-Server::Server(Engine::Storage *storage, Config *config) :
-  storage_(storage), config_(config) {
+Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = Redis::GetOriginalCommands();
   for (const auto &iter : *commands) {
@@ -133,8 +131,8 @@ Status Server::Start() {
 
   if (config_->cluster_enabled) {
     // Create objects used for slot migration
-    slot_migrate_ = Util::MakeUnique<SlotMigrate>(this, config_->migrate_speed,
-                                    config_->pipeline_size, config_->sequence_gap);
+    slot_migrate_ =
+        Util::MakeUnique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
     slot_import_ = new SlotImport(this);
     // Create migrating thread
     auto s = slot_migrate_->CreateMigrateHandleThread();
@@ -172,19 +170,17 @@ Status Server::Start() {
         auto now = std::time(nullptr);
         std::tm local_time{};
         localtime_r(&now, &local_time);
-        if (local_time.tm_hour >= config_->compaction_checker_range.Start
-        && local_time.tm_hour <= config_->compaction_checker_range.Stop) {
-          std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName,
-                                               Engine::kSubkeyColumnFamilyName,
-                                               Engine::kZSetScoreColumnFamilyName,
-                                               Engine::kStreamColumnFamilyName};
+        if (local_time.tm_hour >= config_->compaction_checker_range.Start &&
+            local_time.tm_hour <= config_->compaction_checker_range.Stop) {
+          std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName, Engine::kSubkeyColumnFamilyName,
+                                               Engine::kZSetScoreColumnFamilyName, Engine::kStreamColumnFamilyName};
           for (const auto &cf_name : cf_names) {
             compaction_checker.PickCompactionFiles(cf_name);
           }
         }
         // compact once per day
-        if (now != 0 && last_compact_date != now/86400) {
-          last_compact_date = now/86400;
+        if (now != 0 && last_compact_date != now / 86400) {
+          last_compact_date = now / 86400;
           compaction_checker.CompactPropagateAndPubSubFiles();
         }
       }
@@ -220,9 +216,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
-  if (!force_reconnect &&
-      !master_host_.empty() && master_host_ == host &&
-      master_port_ == port) {
+  if (!force_reconnect && !master_host_.empty() && master_host_ == host && master_port_ == port) {
     return Status::OK();
   }
 
@@ -235,17 +229,13 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   // For master using old version, it uses replication thread to implement
   // replication, and uses 'listen-port + 1' as thread listening port.
   uint32_t master_listen_port = port;
-  if (GetConfig()->master_use_repl_port)  master_listen_port += 1;
-  replication_thread_ = std::unique_ptr<ReplicationThread>(
-      new ReplicationThread(host, master_listen_port, this));
-  auto s = replication_thread_->Start(
-      [this]() {
-        PrepareRestoreDB();
-      },
-      [this]() {
-        this->is_loading_ = false;
-        task_runner_.Start();
-      });
+  if (GetConfig()->master_use_repl_port) master_listen_port += 1;
+  replication_thread_ = std::unique_ptr<ReplicationThread>(new ReplicationThread(host, master_listen_port, this));
+  auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
+                                      [this]() {
+                                        this->is_loading_ = false;
+                                        task_runner_.Start();
+                                      });
   if (s.IsOK()) {
     master_host_ = host;
     master_port_ = port;
@@ -299,8 +289,7 @@ void Server::cleanupExitedSlaves() {
   std::list<FeedSlaveThread *> exited_slave_threads;
   std::lock_guard<std::mutex> guard(slaveof_mu_);
   for (const auto &slave_thread : slave_threads_) {
-    if (slave_thread->IsStopped())
-      exited_slave_threads.emplace_back(slave_thread);
+    if (slave_thread->IsStopped()) exited_slave_threads.emplace_back(slave_thread);
   }
   while (!exited_slave_threads.empty()) {
     auto t = exited_slave_threads.front();
@@ -493,13 +482,12 @@ void Server::UnBlockingKey(const std::string &key, Redis::Connection *conn) {
   DecrBlockedClientNum();
 }
 
-void Server::BlockOnStreams(const std::vector<std::string> &keys,
-                            const std::vector<Redis::StreamEntryID> &entry_ids, Redis::Connection *conn) {
+void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
+                            Redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   IncrBlockedClientNum();
   for (size_t i = 0; i < keys.size(); ++i) {
-    auto consumer = std::make_shared<StreamConsumer>(
-          conn->Owner(), conn->GetFD(), conn->GetNamespace(), entry_ids[i]);
+    auto consumer = std::make_shared<StreamConsumer>(conn->Owner(), conn->GetFD(), conn->GetNamespace(), entry_ids[i]);
     auto iter = blocked_stream_consumers_.find(keys[i]);
     if (iter == blocked_stream_consumers_.end()) {
       std::set<std::shared_ptr<StreamConsumer>> consumers;
@@ -520,7 +508,7 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
       continue;
     }
 
-    for (auto it = iter->second.begin(); it != iter->second.end(); ) {
+    for (auto it = iter->second.begin(); it != iter->second.end();) {
       auto consumer = *it;
       if (conn->GetFD() == consumer->fd && conn->Owner() == consumer->owner) {
         iter->second.erase(it);
@@ -556,7 +544,7 @@ Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &ke
     return Status(Status::NotOK);
   }
 
-  for (auto it = iter->second.begin(); it != iter->second.end(); ) {
+  for (auto it = iter->second.begin(); it != iter->second.end();) {
     auto consumer = *it;
     if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
       consumer->owner->EnableWriteEvent(consumer->fd);
@@ -588,25 +576,15 @@ int Server::IncrClientNum() {
   return connected_clients_.fetch_add(1, std::memory_order_relaxed);
 }
 
-int Server::DecrClientNum() {
-  return connected_clients_.fetch_sub(1, std::memory_order_relaxed);
-}
+int Server::DecrClientNum() { return connected_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
-int Server::IncrMonitorClientNum() {
-  return monitor_clients_.fetch_add(1, std::memory_order_relaxed);
-}
+int Server::IncrMonitorClientNum() { return monitor_clients_.fetch_add(1, std::memory_order_relaxed); }
 
-int Server::DecrMonitorClientNum() {
-  return monitor_clients_.fetch_sub(1, std::memory_order_relaxed);
-}
+int Server::DecrMonitorClientNum() { return monitor_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
-int Server::IncrBlockedClientNum() {
-  return blocked_clients_.fetch_add(1, std::memory_order_relaxed);
-}
+int Server::IncrBlockedClientNum() { return blocked_clients_.fetch_add(1, std::memory_order_relaxed); }
 
-int Server::DecrBlockedClientNum() {
-  return blocked_clients_.fetch_sub(1, std::memory_order_relaxed);
-}
+int Server::DecrBlockedClientNum() { return blocked_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
 std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
   return Util::MakeUnique<RWLock::ReadLock>(works_concurrency_rw_lock_);
@@ -616,9 +594,7 @@ std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
   return Util::MakeUnique<RWLock::WriteLock>(works_concurrency_rw_lock_);
 }
 
-std::atomic<uint64_t> *Server::GetClientID() {
-  return &client_id_;
-}
+std::atomic<uint64_t> *Server::GetClientID() { return &client_id_; }
 
 void Server::recordInstantaneousMetrics() {
   auto rocksdb_stats = storage_->GetDB()->GetDBOptions().statistics;
@@ -626,17 +602,17 @@ void Server::recordInstantaneousMetrics() {
   stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
   stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_GET,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_READ));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_READ));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_MULTIGET_KEYS_READ));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_MULTIGET_KEYS_READ));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV,
-    rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV));
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV));
 }
 
 void Server::cron() {
@@ -663,9 +639,8 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled()
-          && config_->compact_cron.IsEnabled()
-          && config_->compact_cron.IsTimeMatch(&now)) {
+      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+          config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
@@ -680,8 +655,7 @@ void Server::cron() {
 
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
       // checkpoints at the same time
-      if (config_->purge_backup_on_fullsync &&
-          (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
+      if (config_->purge_backup_on_fullsync && (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
         AsyncPurgeOldBackups(0, 0);
       }
     }
@@ -755,18 +729,18 @@ void Server::GetRocksDBInfo(std::string *info) {
     string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
-    string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
-    string_stream << "level0_file_limit_stop[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
-    string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
-    string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
-    string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
-    string_stream << "memtable_count_limit_stop[" << cf_handle->GetName() << "]:"
-                  << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
+    string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
+    string_stream << "level0_file_limit_stop[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
+    string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
+    string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
+    string_stream << "memtable_count_limit_stop[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";
@@ -779,11 +753,13 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_superversion:" << num_superversion << "\r\n";
   string_stream << "num_background_errors:" << num_backgroud_errors << "\r\n";
-  string_stream << "flush_count:" << storage_->GetFlushCount()<< "\r\n";
-  string_stream << "compaction_count:" << storage_->GetCompactionCount()<< "\r\n";
+  string_stream << "flush_count:" << storage_->GetFlushCount() << "\r\n";
+  string_stream << "compaction_count:" << storage_->GetCompactionCount() << "\r\n";
   string_stream << "put_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
-  string_stream << "get_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
-                                      stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET) << "\r\n";
+  string_stream << "get_per_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
+                       stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET)
+                << "\r\n";
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
@@ -815,8 +791,8 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
-  string_stream << "uptime_in_seconds:" << now-start_time_ << "\r\n";
-  string_stream << "uptime_in_days:" << (now-start_time_)/86400 << "\r\n";
+  string_stream << "uptime_in_seconds:" << now - start_time_ << "\r\n";
+  string_stream << "uptime_in_days:" << (now - start_time_) / 86400 << "\r\n";
   *info = string_stream.str();
 }
 
@@ -835,10 +811,10 @@ void Server::GetMemoryInfo(std::string *info) {
   char used_memory_rss_human[16], used_memory_lua_human[16];
   int64_t rss = Stats::GetMemoryRSS();
   Util::BytesToHuman(used_memory_rss_human, 16, static_cast<uint64_t>(rss));
-  int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0)*1024;
+  int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0) * 1024;
   Util::BytesToHuman(used_memory_lua_human, 16, static_cast<uint64_t>(memory_lua));
   string_stream << "# Memory\r\n";
-  string_stream << "used_memory_rss:" << rss <<"\r\n";
+  string_stream << "used_memory_rss:" << rss << "\r\n";
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
@@ -849,16 +825,16 @@ void Server::GetReplicationInfo(std::string *info) {
   time_t now;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
-  string_stream << "role:" << (IsSlave() ? "slave":"master") << "\r\n";
+  string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
     time(&now);
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
-    string_stream << "master_link_status:" << (state == kReplConnected? "up":"down") << "\r\n";
+    string_stream << "master_link_status:" << (state == kReplConnected ? "up" : "down") << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
-    string_stream << "master_last_io_seconds_ago:" << now-replication_thread_->LastIOTime() << "\r\n";
+    string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
     string_stream << "slave_repl_offset:" << storage_->LatestSeq() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   }
@@ -870,14 +846,13 @@ void Server::GetReplicationInfo(std::string *info) {
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
     string_stream << "slave" << std::to_string(idx) << ":";
-    string_stream << "ip=" << slave->GetConn()->GetIP()
-                  << ",port=" << slave->GetConn()->GetListeningPort()
-                  << ",offset=" << slave->GetCurrentReplSeq()
-                  << ",lag=" << latest_seq - slave->GetCurrentReplSeq() << "\r\n";
+    string_stream << "ip=" << slave->GetConn()->GetIP() << ",port=" << slave->GetConn()->GetListeningPort()
+                  << ",offset=" << slave->GetCurrentReplSeq() << ",lag=" << latest_seq - slave->GetCurrentReplSeq()
+                  << "\r\n";
     ++idx;
   }
   slave_threads_mu_.unlock();
-  string_stream << "master_repl_offset:" << latest_seq  << "\r\n";
+  string_stream << "master_repl_offset:" << latest_seq << "\r\n";
 
   *info = string_stream.str();
 }
@@ -904,10 +879,10 @@ void Server::GetRoleInfo(std::string *info) {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
       list.emplace_back(Redis::MultiBulkString({
-                                                   slave->GetConn()->GetIP(),
-                                                   std::to_string(slave->GetConn()->GetListeningPort()),
-                                                   std::to_string(slave->GetCurrentReplSeq()),
-                                               }));
+          slave->GetConn()->GetIP(),
+          std::to_string(slave->GetConn()->GetListeningPort()),
+          std::to_string(slave->GetCurrentReplSeq()),
+      }));
     }
     slave_threads_mu_.unlock();
     auto multi_len = 2;
@@ -945,23 +920,22 @@ int Server::GetUnixTime() {
 void Server::GetStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Stats\r\n";
-  string_stream << "total_connections_received:" << total_clients_ <<"\r\n";
-  string_stream << "total_commands_processed:" << stats_.total_calls <<"\r\n";
-  string_stream << "instantaneous_ops_per_sec:" << \
-  stats_.GetInstantaneousMetric(STATS_METRIC_COMMAND) <<"\r\n";
-  string_stream << "total_net_input_bytes:" << stats_.in_bytes <<"\r\n";
-  string_stream << "total_net_output_bytes:" << stats_.out_bytes <<"\r\n";
-  string_stream << "instantaneous_input_kbps:" << \
-  static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_INPUT)/1024) <<"\r\n";
-  string_stream << "instantaneous_output_kbps:" << \
-  static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT)/1024) <<"\r\n";
-  string_stream << "sync_full:" << stats_.fullsync_counter <<"\r\n";
-  string_stream << "sync_partial_ok:" << stats_.psync_ok_counter <<"\r\n";
-  string_stream << "sync_partial_err:" << stats_.psync_err_counter <<"\r\n";
+  string_stream << "total_connections_received:" << total_clients_ << "\r\n";
+  string_stream << "total_commands_processed:" << stats_.total_calls << "\r\n";
+  string_stream << "instantaneous_ops_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMMAND) << "\r\n";
+  string_stream << "total_net_input_bytes:" << stats_.in_bytes << "\r\n";
+  string_stream << "total_net_output_bytes:" << stats_.out_bytes << "\r\n";
+  string_stream << "instantaneous_input_kbps:"
+                << static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
+  string_stream << "instantaneous_output_kbps:"
+                << static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
+  string_stream << "sync_full:" << stats_.fullsync_counter << "\r\n";
+  string_stream << "sync_partial_ok:" << stats_.psync_ok_counter << "\r\n";
+  string_stream << "sync_partial_err:" << stats_.psync_err_counter << "\r\n";
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
-    string_stream << "pubsub_channels:" << pubsub_channels_.size() <<"\r\n";
-    string_stream << "pubsub_patterns:" << pubsub_patterns_.size() <<"\r\n";
+    string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
+    string_stream << "pubsub_patterns:" << pubsub_patterns_.size() << "\r\n";
   }
   *info = string_stream.str();
 }
@@ -974,10 +948,8 @@ void Server::GetCommandsStatsInfo(std::string *info) {
     auto calls = cmd_stat.second.calls.load();
     auto latency = cmd_stat.second.latency.load();
     if (calls == 0) continue;
-    string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls
-                  << ",usec=" << latency << ",usec_per_call="
-                  << ((calls == 0) ? 0 : static_cast<float>(latency/calls))
-                  << "\r\n";
+    string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls << ",usec=" << latency
+                  << ",usec_per_call=" << ((calls == 0) ? 0 : static_cast<float>(latency / calls)) << "\r\n";
   }
   *info = string_stream.str();
 }
@@ -1009,10 +981,10 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   }
   if (all || section == "persistence") {
     string_stream << "# Persistence\r\n";
-    string_stream << "loading:" << is_loading_ <<"\r\n";
+    string_stream << "loading:" << is_loading_ << "\r\n";
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
-    string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_? 1 : 0) << "\r\n";
+    string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
     string_stream << "last_bgsave_time:" << last_bgsave_time_ << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
     string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
@@ -1034,10 +1006,12 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     getrusage(RUSAGE_SELF, &self_ru);
     string_stream << "# CPU\r\n";
     string_stream << "used_cpu_sys:"
-                  << static_cast<float>(self_ru.ru_stime.tv_sec)+static_cast<float>(self_ru.ru_stime.tv_usec/1000000)
+                  << static_cast<float>(self_ru.ru_stime.tv_sec) +
+                         static_cast<float>(self_ru.ru_stime.tv_usec / 1000000)
                   << "\r\n";
     string_stream << "used_cpu_user:"
-                  << static_cast<float>(self_ru.ru_utime.tv_sec)+static_cast<float>(self_ru.ru_utime.tv_usec/1000000)
+                  << static_cast<float>(self_ru.ru_utime.tv_sec) +
+                         static_cast<float>(self_ru.ru_utime.tv_usec / 1000000)
                   << "\r\n";
   }
   if (all || section == "commandstats") {
@@ -1053,13 +1027,12 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     time_t last_scan_time = GetLastScanTime(ns);
     string_stream << "# Keyspace\r\n";
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
-    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires
-                  << ",avg_ttl=" << stats.avg_ttl << ",expired=" << stats.n_expired << "\r\n";
+    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
+                  << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size:" << storage_->GetTotalSize(ns) << "\r\n";
     string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
-    double used_percent = config_->max_db_size ?
-                          storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
+    double used_percent = config_->max_db_size ? storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
     struct statvfs stat;
     if (statvfs(config_->db_dir.c_str(), &stat) == 0) {
@@ -1085,22 +1058,19 @@ std::string Server::GetRocksDBStatsJson() {
   char buf[256];
   std::string output;
 
-  output.reserve(8*1024);
+  output.reserve(8 * 1024);
   output.append("{");
   auto stats = storage_->GetDB()->GetDBOptions().statistics;
   for (const auto &iter : rocksdb::TickersNameMap) {
-    snprintf(buf, sizeof(buf), "\"%s\":%" PRIu64 ",",
-             iter.second.c_str(), stats->getTickerCount(iter.first));
+    snprintf(buf, sizeof(buf), "\"%s\":%" PRIu64 ",", iter.second.c_str(), stats->getTickerCount(iter.first));
     output.append(buf);
   }
   for (const auto &iter : rocksdb::HistogramsNameMap) {
     rocksdb::HistogramData hist_data;
     stats->histogramData(iter.first, &hist_data);
     /* P50 P95 P99 P100 COUNT SUM */
-    snprintf(buf, sizeof(buf), "\"%s\":[%f,%f,%f,%f,%" PRIu64 ",%" PRIu64 "],",
-             iter.second.c_str(),
-             hist_data.median, hist_data.percentile95, hist_data.percentile99,
-             hist_data.max, hist_data.count, hist_data.sum);
+    snprintf(buf, sizeof(buf), "\"%s\":[%f,%f,%f,%f,%" PRIu64 ",%" PRIu64 "],", iter.second.c_str(), hist_data.median,
+             hist_data.percentile95, hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum);
     output.append(buf);
   }
   output.pop_back();
@@ -1195,7 +1165,7 @@ Status Server::AsyncBgsaveDB() {
     is_bgsave_in_progress_ = false;
     last_bgsave_time_ = static_cast<int>(start_bgsave_time);
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time-start_bgsave_time);
+    last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time - start_bgsave_time);
   };
   return task_runner_.Publish(task);
 }
@@ -1263,21 +1233,16 @@ Status Server::autoResizeBlockAndSST() {
     target_file_size_base = 16;
     block_size = 2 * KiB;
   }
-  if (target_file_size_base == config_->RocksDB.target_file_size_base
-      && target_file_size_base == config_->RocksDB.write_buffer_size
-      && block_size == config_->RocksDB.block_size) {
+  if (target_file_size_base == config_->RocksDB.target_file_size_base &&
+      target_file_size_base == config_->RocksDB.write_buffer_size && block_size == config_->RocksDB.block_size) {
     return Status::OK();
   }
   if (target_file_size_base != config_->RocksDB.target_file_size_base) {
     auto old_target_file_size_base = config_->RocksDB.target_file_size_base;
     auto s = config_->Set(this, "rocksdb.target_file_size_base", std::to_string(target_file_size_base));
-    LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from "
-              << old_target_file_size_base
-              << " to " << target_file_size_base
-              << ", average_kv_size: " << average_kv_size
-              << ", total_size: " << total_size
-              << ", total_keys: " << total_keys
-              << ", result: " << s.Msg();
+    LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from " << old_target_file_size_base << " to "
+              << target_file_size_base << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
+              << ", total_keys: " << total_keys << ", result: " << s.Msg();
     if (!s.IsOK()) {
       return s;
     }
@@ -1285,26 +1250,18 @@ Status Server::autoResizeBlockAndSST() {
   if (target_file_size_base != config_->RocksDB.write_buffer_size) {
     auto old_write_buffer_size = config_->RocksDB.write_buffer_size;
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
-    LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from "
-              << old_write_buffer_size
-              << " to " << target_file_size_base
-              << ", average_kv_size: " << average_kv_size
-              << ", total_size: " << total_size
-              << ", total_keys: " << total_keys
-              << ", result: " << s.Msg();
+    LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from " << old_write_buffer_size << " to "
+              << target_file_size_base << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
+              << ", total_keys: " << total_keys << ", result: " << s.Msg();
     if (!s.IsOK()) {
       return s;
     }
   }
   if (block_size != config_->RocksDB.block_size) {
     auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
-    LOG(INFO) << "[server] Resize rocksdb.block_size from "
-              << config_->RocksDB.block_size
-              << " to " << block_size
-              << ", average_kv_size: " << average_kv_size
-              << ", total_size: " << total_size
-              << ", total_keys: " << total_keys
-              << ", result: " << s.Msg();
+    LOG(INFO) << "[server] Resize rocksdb.block_size from " << config_->RocksDB.block_size << " to " << block_size
+              << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
+              << ", total_keys: " << total_keys << ", result: " << s.Msg();
     if (!s.IsOK()) {
       return s;
     }
@@ -1330,22 +1287,21 @@ time_t Server::GetLastScanTime(const std::string &ns) {
   return 0;
 }
 
-void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string>* args, uint64_t duration) {
+void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration) {
   int64_t threshold = config_->slowlog_log_slower_than;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
   auto entry = new SlowEntry();
   size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
   for (size_t i = 0; i < argc; i++) {
-    if (argc != args->size() && i == argc-1) {
-      entry->args.emplace_back("... (" +
-        std::to_string(args->size()-argc+1) + " more arguments)");
+    if (argc != args->size() && i == argc - 1) {
+      entry->args.emplace_back("... (" + std::to_string(args->size() - argc + 1) + " more arguments)");
       break;
     }
     if (args->data()[i].length() <= kSlowLogMaxString) {
       entry->args.emplace_back(args->data()[i]);
     } else {
       entry->args.emplace_back(args->data()[i].substr(0, kSlowLogMaxString) + "... (" +
-          std::to_string(args->data()[i].length() - kSlowLogMaxString) + " more bytes)");
+                               std::to_string(args->data()[i].length() - kSlowLogMaxString) + " more bytes)");
     }
   }
   entry->duration = duration;
@@ -1364,8 +1320,8 @@ std::string Server::GetClientsStr() {
   return clients;
 }
 
-void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
-                         uint64_t type, bool skipme, Redis::Connection *conn) {
+void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme,
+                        Redis::Connection *conn) {
   *killed = 0;
 
   // Normal clients and pubsub clients
@@ -1378,8 +1334,7 @@ void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
   // Slave clients
   slave_threads_mu_.lock();
   for (const auto &st : slave_threads_) {
-    if ((type & kTypeSlave) ||
-        (!addr.empty() && st->GetConn()->GetAddr() == addr) ||
+    if ((type & kTypeSlave) || (!addr.empty() && st->GetConn()->GetAddr() == addr) ||
         (id != 0 && st->GetConn()->GetID() == id)) {
       st->Stop();
       (*killed)++;
@@ -1389,8 +1344,7 @@ void Server::KillClient(int64_t *killed, std::string addr, uint64_t id,
 
   // Master client
   if (IsSlave() &&
-      (type & kTypeMaster ||
-       (!addr.empty() && addr == master_host_+":"+std::to_string(master_port_)))) {
+      (type & kTypeMaster || (!addr.empty() && addr == master_host_ + ":" + std::to_string(master_port_)))) {
     // Stop replication thread and start a new one to replicate
     AddMaster(master_host_, master_port_, true);
     (*killed)++;
@@ -1404,8 +1358,7 @@ ReplState Server::GetReplicationState() {
   return kReplConnecting;
 }
 
-Status Server::LookupAndCreateCommand(const std::string &cmd_name,
-                                      std::unique_ptr<Redis::Commander> *cmd) {
+Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd) {
   auto commands = Redis::GetCommands();
   if (cmd_name.empty()) return Status(Status::RedisUnknownCmd);
   auto cmd_iter = commands->find(Util::ToLower(cmd_name));
@@ -1525,12 +1478,12 @@ void Server::AdjustOpenFilesLimit() {
       exit(1);
     }
     LOG(WARNING) << "[server] You requested max clients of " << max_clients << " and rocksdb max open files of "
-                 << rocksdb_max_open_file <<" requiring at least " << max_files << " max file descriptors.";
+                 << rocksdb_max_open_file << " requiring at least " << max_files << " max file descriptors.";
     LOG(WARNING) << "[server] Server can't set maximum open files to " << max_files
                  << " because of OS error: " << strerror(setrlimit_error);
   } else {
-    LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files
-                 << " (it's originally set to " << old_limit << ")";
+    LOG(WARNING) << "[server] Increased maximum number of open files to " << max_files << " (it's originally set to "
+                 << old_limit << ")";
   }
 }
 
@@ -1551,7 +1504,7 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   // Only support `kReplIdTag` now
   if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
     type_ = kReplIdLog;
-    content_ = std::string(blob.data()+2, blob.size()-2);
+    content_ = std::string(blob.data() + 2, blob.size() - 2);
     return Status::OK();
   }
   return Status(Status::NotOK);

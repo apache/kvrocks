@@ -19,7 +19,9 @@
  */
 
 #include "stats.h"
+
 #include <chrono>
+
 #include "util.h"
 
 Stats::Stats() {
@@ -36,8 +38,8 @@ Stats::Stats() {
 }
 
 #if defined(__APPLE__)
-#include <mach/task.h>
 #include <mach/mach_init.h>
+#include <mach/task.h>
 
 int64_t Stats::GetMemoryRSS() {
   task_t task = MACH_PORT_NULL;
@@ -50,9 +52,9 @@ int64_t Stats::GetMemoryRSS() {
 #else
 #include <fcntl.h>
 
-#include <string>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "fd_util.h"
 
@@ -67,7 +69,7 @@ int64_t Stats::GetMemoryRSS() {
   fd.Close();
 
   char *start = buf;
-  int count = 23;    // RSS is the 24th field in /proc/<pid>/stat
+  int count = 23;  // RSS is the 24th field in /proc/<pid>/stat
   while (start && count--) {
     start = strchr(start, ' ');
     if (start) start++;
@@ -93,7 +95,7 @@ void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
 void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
   uint64_t t = Util::GetTimeStampMS() - inst_metrics[metric].last_sample_time;
   uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
-  uint64_t ops_sec = t > 0 ? (ops*1000/t) : 0;
+  uint64_t ops_sec = t > 0 ? (ops * 1000 / t) : 0;
   inst_metrics[metric].samples[inst_metrics[metric].idx] = ops_sec;
   inst_metrics[metric].idx++;
   inst_metrics[metric].idx %= STATS_METRIC_SAMPLES;
@@ -103,7 +105,6 @@ void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
 
 uint64_t Stats::GetInstantaneousMetric(int metric) {
   uint64_t sum = 0;
-  for (int j = 0; j < STATS_METRIC_SAMPLES; j++)
-      sum += inst_metrics[metric].samples[j];
+  for (int j = 0; j < STATS_METRIC_SAMPLES; j++) sum += inst_metrics[metric].samples[j];
   return sum / STATS_METRIC_SAMPLES;
 }

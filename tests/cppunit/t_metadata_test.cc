@@ -18,11 +18,13 @@
  *
  */
 
-#include "redis_metadata.h"
-#include "redis_hash.h"
-#include "test_base.h"
 #include <gtest/gtest.h>
+
 #include <memory>
+
+#include "redis_hash.h"
+#include "redis_metadata.h"
+#include "test_base.h"
 
 TEST(InternalKey, EncodeAndDecode) {
   Slice key = "test-metadata-key";
@@ -65,16 +67,17 @@ TEST(Metadata, EncodeAndDeocde) {
 }
 
 class RedisTypeTest : public TestBase {
-public:
-  RedisTypeTest() :TestBase() {
+ public:
+  RedisTypeTest() : TestBase() {
     redis = Util::MakeUnique<Redis::Database>(storage_, "default_ns");
     hash = Util::MakeUnique<Redis::Hash>(storage_, "default_ns");
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
-    values_  = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
+    values_ = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
   }
   ~RedisTypeTest() = default;
-protected:
+
+ protected:
   std::unique_ptr<Redis::Database> redis;
   std::unique_ptr<Redis::Hash> hash;
 };
@@ -86,7 +89,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size())==ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   HashMetadata metadata;
   std::string ns_key;
   redis->AppendNamespacePrefix(key_, &ns_key);
@@ -103,10 +106,10 @@ TEST_F(RedisTypeTest, Expire) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size())==ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  redis->Expire(key_,int(now+2));
+  redis->Expire(key_, int(now + 2));
   int ttl;
   redis->TTL(key_, &ttl);
   ASSERT_TRUE(ttl >= 1 && ttl <= 2);

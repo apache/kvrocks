@@ -92,8 +92,8 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
       exists = true;
     }
   }
-  if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN-old_value))
-      || (increment > 0 && old_value > 0 && increment > (LLONG_MAX-old_value))) {
+  if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN - old_value)) ||
+      (increment > 0 && old_value > 0 && increment > (LLONG_MAX - old_value))) {
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
 
@@ -161,9 +161,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::MGet(const Slice &user_key,
-                           const std::vector<Slice> &fields,
-                           std::vector<std::string> *values,
+rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values,
                            std::vector<rocksdb::Status> *statuses) {
   values->clear();
   statuses->clear();
@@ -278,8 +276,8 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop,
-                            int64_t limit, std::vector<FieldValue> *field_values) {
+rocksdb::Status Hash::Range(const Slice &user_key, const Slice &start, const Slice &stop, int64_t limit,
+                            std::vector<FieldValue> *field_values) {
   field_values->clear();
   if (start.compare(stop) >= 0 || limit <= 0) {
     return rocksdb::Status::OK();
@@ -334,9 +332,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(prefix_key);
-       iter->Valid() && iter->key().starts_with(prefix_key);
-       iter->Next()) {
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     FieldValue fv;
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -353,11 +349,8 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Hash::Scan(const Slice &user_key,
-                           const std::string &cursor,
-                           uint64_t limit,
-                           const std::string &field_prefix,
-                           std::vector<std::string> *fields,
+rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+                           const std::string &field_prefix, std::vector<std::string> *fields,
                            std::vector<std::string> *values) {
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }

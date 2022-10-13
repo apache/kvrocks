@@ -22,10 +22,11 @@ package stream
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestStreamOffset(t *testing.T) {

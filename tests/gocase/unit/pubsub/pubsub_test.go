@@ -307,7 +307,6 @@ func TestPubSub(t *testing.T) {
 
 		require.NoError(t, c.WriteArgs("subscribe", "foo.bar"))
 		require.NoError(t, c.WriteArgs("psubscribe", "foo.*"))
-		require.EqualValues(t, 2, rdb.Publish(ctx, "foo.bar", "hello").Val())
 
 		readSub(t, c, redis.Subscription{
 			Kind:    "subscribe",
@@ -319,6 +318,8 @@ func TestPubSub(t *testing.T) {
 			Channel: "foo.*",
 			Count:   2,
 		})
+
+		require.EqualValues(t, 2, rdb.Publish(ctx, "foo.bar", "hello").Val())
 
 		readMsg(t, c, "message", redis.Message{
 			Channel:      "foo.bar",

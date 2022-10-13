@@ -47,17 +47,13 @@ func TestRegression(t *testing.T) {
 	v := rdb.RPush(ctx, "handle", "a")
 	require.EqualValues(t, 1, v.Val())
 	for _, res := range resList {
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, res, r)
+		c.MustRead(t, res)
 	}
 
 	v = rdb.RPush(ctx, "handle", "a")
 	require.EqualValues(t, 1, v.Val())
 
 	for _, res := range resList {
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, res, r)
+		c.MustRead(t, res)
 	}
 }

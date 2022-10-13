@@ -213,18 +213,18 @@ bool supervisedSystemd() {
 }
 
 bool isSupervisedMode(int mode) {
-  if (mode == SUPERVISED_AUTODETECT) {
+  if (mode == kSupervisedAutoDetect) {
     const char *upstart_job = getenv("UPSTART_JOB");
     const char *notify_socket = getenv("NOTIFY_SOCKET");
     if (upstart_job) {
-      mode = SUPERVISED_UPSTART;
+      mode = kSupervisedUpStart;
     } else if (notify_socket) {
-      mode = SUPERVISED_SYSTEMD;
+      mode = kSupervisedSystemd;
     }
   }
-  if (mode == SUPERVISED_UPSTART) {
+  if (mode == kSupervisedUpStart) {
     return supervisedUpstart();
-  } else if (mode == SUPERVISED_SYSTEMD) {
+  } else if (mode == kSupervisedSystemd) {
     return supervisedSystemd();
   }
   return false;

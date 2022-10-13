@@ -57,10 +57,10 @@ configEnum compression_type_enum[] = {{"no", rocksdb::CompressionType::kNoCompre
                                       {"zstd", rocksdb::CompressionType::kZSTD},
                                       {nullptr, 0}};
 
-configEnum supervised_mode_enum[] = {{"no", SUPERVISED_NONE},
-                                     {"auto", SUPERVISED_AUTODETECT},
-                                     {"upstart", SUPERVISED_UPSTART},
-                                     {"systemd", SUPERVISED_SYSTEMD},
+configEnum supervised_mode_enum[] = {{"no", kSupervisedNone},
+                                     {"auto", kSupervisedAutoDetect},
+                                     {"upstart", kSupervisedUpStart},
+                                     {"systemd", kSupervisedSystemd},
                                      {nullptr, 0}};
 
 std::string trimRocksDBPrefix(std::string s) {
@@ -135,7 +135,7 @@ Config::Config() {
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
-      {"supervised", true, new EnumField(&supervised_mode, supervised_mode_enum, SUPERVISED_NONE)},
+      {"supervised", true, new EnumField(&supervised_mode, supervised_mode_enum, kSupervisedNone)},
       {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
       {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},

@@ -2555,7 +2555,7 @@ class CommandZRange : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> memeber_scores;
-    uint8_t flags = !reversed_ ? 0 : ZSET_REVERSED;
+    uint8_t flags = !reversed_ ? 0 : kZSetReversed;
     rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &memeber_scores);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());

@@ -120,7 +120,7 @@ TEST_F(RedisZSetTest, RevRange) {
   int count = mscores.size() - 1;
   zset->Add(key_, 0, &mscores, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  zset->Range(key_, 0, -2, ZSET_REVERSED, &mscores);
+  zset->Range(key_, 0, -2, kZSetReversed, &mscores);
   EXPECT_EQ(mscores.size(), count);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[count - i].ToString());

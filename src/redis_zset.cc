@@ -77,7 +77,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
         double old_score = DecodeDouble(old_score_bytes.data());
-        if (flags == ZSET_INCR) {
+        if (flags == kZSetIncr) {
           (*mscores)[i].score += old_score;
           if (std::isnan((*mscores)[i].score)) {
             return rocksdb::Status::InvalidArgument("resulting score is not a number (NaN)");
@@ -138,7 +138,7 @@ rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double 
   int ret;
   std::vector<MemberScore> mscores;
   mscores.emplace_back(MemberScore{member.ToString(), increment});
-  rocksdb::Status s = Add(user_key, ZSET_INCR, &mscores, &ret);
+  rocksdb::Status s = Add(user_key, kZSetIncr, &mscores, &ret);
   if (!s.ok()) return s;
   *score = mscores[0].score;
   return rocksdb::Status::OK();
@@ -212,8 +212,8 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  bool removed = (flags & (uint8_t)ZSET_REMOVED) != 0;
-  bool reversed = (flags & (uint8_t)ZSET_REVERSED) != 0;
+  bool removed = (flags & (uint8_t)kZSetRemoved) != 0;
+  bool reversed = (flags & (uint8_t)kZSetReversed) != 0;
 
   std::unique_ptr<LockGuard> lock_guard;
   if (removed) lock_guard = Util::MakeUnique<LockGuard>(storage_->GetLockManager(), ns_key);
@@ -553,7 +553,7 @@ rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, ZRangeLexSpec spec
 }
 
 rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret) {
-  uint8_t flags = ZSET_REMOVED;
+  uint8_t flags = kZSetRemoved;
   std::vector<MemberScore> mscores;
   rocksdb::Status s = Range(user_key, start, stop, flags, &mscores);
   *ret = static_cast<int>(mscores.size());

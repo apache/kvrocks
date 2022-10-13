@@ -44,7 +44,7 @@
 #include "status.h"
 #include "util.h"
 
-#define CLUSTER_SLOTS HASH_SLOTS_SIZE
+constexpr const auto CLUSTER_SLOTS = HASH_SLOTS_SIZE;
 
 enum MigrateTaskState { kMigrateNone = 0, kMigrateStart, kMigrateSuccess, kMigrateFailed };
 

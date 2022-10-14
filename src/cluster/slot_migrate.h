@@ -39,9 +39,9 @@
 #include "parse_util.h"
 #include "redis_slot.h"
 #include "slot_import.h"
+#include "stats/stats.h"
 #include "status.h"
 #include "storage/redis_db.h"
-#include "storage/stats.h"
 #include "util.h"
 
 constexpr const auto CLUSTER_SLOTS = HASH_SLOTS_SIZE;

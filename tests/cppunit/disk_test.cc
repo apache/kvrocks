@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-#include "storage/redis_disk.h"
+#include "stats/disk_stats.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "types/redis_bitmap.h"

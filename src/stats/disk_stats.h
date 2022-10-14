@@ -22,8 +22,8 @@
 
 #include <string>
 
-#include "redis_db.h"
-#include "redis_metadata.h"
+#include "storage/redis_db.h"
+#include "storage/redis_metadata.h"
 
 namespace Redis {
 

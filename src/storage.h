@@ -40,7 +40,7 @@
 
 const int kReplIdLength = 16;
 
-enum ColumnFamilyID{
+enum ColumnFamilyID {
   kColumnFamilyIDDefault,
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,
@@ -66,7 +66,7 @@ class Storage {
   explicit Storage(Config *config);
   ~Storage();
 
-  void SetWriteOptions(const Config::RocksDB::WriteOptions& config);
+  void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
   Status Open(bool read_only);
   Status Open();
   Status OpenForReadOnly();
@@ -83,14 +83,12 @@ class Storage {
   Status DestroyBackup();
   Status RestoreFromBackup();
   Status RestoreFromCheckpoint();
-  Status GetWALIter(rocksdb::SequenceNumber seq,
-                    std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
+  Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
-  rocksdb::Status Write(const rocksdb::WriteOptions& options, rocksdb::WriteBatch* updates);
-  const rocksdb::WriteOptions& DefaultWriteOptions() { return write_opts_; }
-  rocksdb::Status Delete(const rocksdb::WriteOptions &options,
-                         rocksdb::ColumnFamilyHandle *cf_handle,
+  rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
+  rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                          const rocksdb::Slice &key);
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
@@ -100,9 +98,9 @@ class Storage {
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() { return db_closing_; }
-  const std::string GetName() {return config_->db_name; }
+  const std::string GetName() { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
-  std::vector<rocksdb::ColumnFamilyHandle *>* GetCFHandles() { return &cf_handles_; }
+  std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
@@ -126,12 +124,10 @@ class Storage {
    public:
     // Master side
     static Status GetFullReplDataInfo(Storage *storage, std::string *files);
-    static int OpenDataFile(Storage *storage, const std::string &rel_file,
-                            uint64_t *file_size);
-    static Status CleanInvalidFiles(Storage *storage,
-      const std::string &dir, std::vector<std::string> valid_files);
+    static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
+    static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<bool>   is_creating;
+      std::atomic<bool> is_creating;
       std::atomic<time_t> create_time;
       std::atomic<time_t> access_time;
     };
@@ -144,23 +140,19 @@ class Storage {
       // [[filename, checksum]...]
       std::vector<std::pair<std::string, uint32_t>> files;
     };
-    static MetaInfo ParseMetaAndSave(Storage *storage,
-                                     rocksdb::BackupID meta_id,
-                                     evbuffer *evbuf);
-    static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(
-        Storage *storage, const std::string &dir, const std::string &repl_file);
-    static Status SwapTmpFile(Storage *storage, const std::string &dir,
-        const std::string &repl_file);
-    static bool FileExists(Storage *storage, const std::string &dir,
-        const std::string &repl_file, uint32_t crc);
+    static MetaInfo ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf);
+    static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(Storage *storage, const std::string &dir,
+                                                             const std::string &repl_file);
+    static Status SwapTmpFile(Storage *storage, const std::string &dir, const std::string &repl_file);
+    static bool FileExists(Storage *storage, const std::string &dir, const std::string &repl_file, uint32_t crc);
   };
 
   bool ExistCheckpoint(void);
   bool ExistSyncCheckpoint(void);
-  void SetCheckpointCreateTime(time_t t)  { checkpoint_info_.create_time = t; }
-  time_t GetCheckpointCreateTime()  { return checkpoint_info_.create_time; }
-  void SetCheckpointAccessTime(time_t t)  { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime()  { return checkpoint_info_.access_time; }
+  void SetCheckpointCreateTime(time_t t) { checkpoint_info_.create_time = t; }
+  time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
+  void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
+  time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 

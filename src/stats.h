@@ -21,8 +21,9 @@
 #pragma once
 
 #include <unistd.h>
-#include <map>
+
 #include <atomic>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -47,8 +48,8 @@ struct command_stat {
 };
 
 struct inst_metric {
-  uint64_t last_sample_time;      // Timestamp of the last sample in ms
-  uint64_t last_sample_count;     // Count in the last sample
+  uint64_t last_sample_time;   // Timestamp of the last sample in ms
+  uint64_t last_sample_count;  // Count in the last sample
   uint64_t samples[STATS_METRIC_SAMPLES];
   int idx;
 };
@@ -75,7 +76,6 @@ class Stats {
   void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
   static int64_t GetMemoryRSS();
-  uint64_t GetTimeStamp(void);
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
   uint64_t GetInstantaneousMetric(int metric);
 };

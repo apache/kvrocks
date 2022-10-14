@@ -20,11 +20,11 @@
 
 #include "encoding.h"
 
-#include <limits.h>
 #include <float.h>
-#include <unistd.h>
+#include <limits.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 /* Byte ordering detection */
 
 #include <sys/types.h> /* This will likely define BYTE_ORDER */
@@ -34,37 +34,32 @@
 
 #ifndef BYTE_ORDER
 #if (BSD >= 199103)
-# include <machine/endian.h>
+#include <machine/endian.h>
 #else
 #if defined(linux) || defined(__linux__)
-# include <endian.h>
+#include <endian.h>
 #else
-#define LITTLE_ENDIAN   1234    /* least-significant byte first (vax, pc) */
-#define BIG_ENDIAN  4321    /* most-significant byte first (IBM, net) */
-#define PDP_ENDIAN  3412    /* LSB first in word, MSW first in long (pdp)*/
+#define LITTLE_ENDIAN 1234 /* least-significant byte first (vax, pc) */
+#define BIG_ENDIAN 4321    /* most-significant byte first (IBM, net) */
+#define PDP_ENDIAN 3412    /* LSB first in word, MSW first in long (pdp)*/
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__amd64__) || \
-  defined(vax) || defined(ns32000) || defined(sun386) || \
-  defined(MIPSEL) || defined(_MIPSEL) || defined(BIT_ZERO_ON_RIGHT) || \
-  defined(__alpha__) || defined(__alpha)
-#define BYTE_ORDER    LITTLE_ENDIAN
+#if defined(__i386__) || defined(__x86_64__) || defined(__amd64__) || defined(vax) || defined(ns32000) ||         \
+    defined(sun386) || defined(MIPSEL) || defined(_MIPSEL) || defined(BIT_ZERO_ON_RIGHT) || defined(__alpha__) || \
+    defined(__alpha)
+#define BYTE_ORDER LITTLE_ENDIAN
 #endif
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__amd64__) || \
-  defined(vax) || defined(ns32000) || defined(sun386) || \
-  defined(MIPSEL) || defined(_MIPSEL) || defined(BIT_ZERO_ON_RIGHT) || \
-  defined(__alpha__) || defined(__alpha)
-#define BYTE_ORDER    LITTLE_ENDIAN
+#if defined(__i386__) || defined(__x86_64__) || defined(__amd64__) || defined(vax) || defined(ns32000) ||         \
+    defined(sun386) || defined(MIPSEL) || defined(_MIPSEL) || defined(BIT_ZERO_ON_RIGHT) || defined(__alpha__) || \
+    defined(__alpha)
+#define BYTE_ORDER LITTLE_ENDIAN
 #endif
 
-#if defined(sel) || defined(pyr) || defined(mc68000) || defined(sparc) || \
-  defined(is68k) || defined(tahoe) || defined(ibm032) || defined(ibm370) || \
-  defined(MIPSEB) || defined(_MIPSEB) || defined(_IBMR2) || defined(DGUX) ||\
-  defined(apollo) || defined(__convex__) || defined(_CRAY) || \
-  defined(__hppa) || defined(__hp9000) || \
-  defined(__hp9000s300) || defined(__hp9000s700) || \
-  defined(BIT_ZERO_ON_LEFT) || defined(m68k) || defined(__sparc)
-#define BYTE_ORDER  BIG_ENDIAN
+#if defined(sel) || defined(pyr) || defined(mc68000) || defined(sparc) || defined(is68k) || defined(tahoe) ||        \
+    defined(ibm032) || defined(ibm370) || defined(MIPSEB) || defined(_MIPSEB) || defined(_IBMR2) || defined(DGUX) || \
+    defined(apollo) || defined(__convex__) || defined(_CRAY) || defined(__hppa) || defined(__hp9000) ||              \
+    defined(__hp9000s300) || defined(__hp9000s700) || defined(BIT_ZERO_ON_LEFT) || defined(m68k) || defined(__sparc)
+#define BYTE_ORDER BIG_ENDIAN
 #endif
 #endif /* linux */
 #endif /* BSD */
@@ -92,19 +87,16 @@
 #endif
 #endif
 
-#if !defined(BYTE_ORDER) || \
-    (BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != LITTLE_ENDIAN)
+#if !defined(BYTE_ORDER) || (BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != LITTLE_ENDIAN)
 /* you must determine what the correct bit order is for
-     * your compiler - the next line is an intentional error
-     * which will force your compiles to bomb until you fix
-     * the above macros.
-     */
+ * your compiler - the next line is an intentional error
+ * which will force your compiles to bomb until you fix
+ * the above macros.
+ */
 #error "Undefined or invalid BYTE_ORDER"
 #endif
 
-void EncodeFixed8(char *buf, uint8_t value) {
-  buf[0] = static_cast<uint8_t>(value & 0xff);
-}
+void EncodeFixed8(char *buf, uint8_t value) { buf[0] = static_cast<uint8_t>(value & 0xff); }
 
 void EncodeFixed16(char *buf, uint16_t value) {
   if (BYTE_ORDER == BIG_ENDIAN) {
@@ -230,8 +222,8 @@ uint16_t DecodeFixed16(const char *ptr) {
     memcpy(&value, ptr, sizeof(value));
     return value;
   } else {
-    return ((static_cast<uint16_t>(static_cast<uint8_t>(ptr[1])))
-        | (static_cast<uint16_t>(static_cast<uint8_t>(ptr[0])) << 8));
+    return ((static_cast<uint16_t>(static_cast<uint8_t>(ptr[1]))) |
+            (static_cast<uint16_t>(static_cast<uint8_t>(ptr[0])) << 8));
   }
 }
 
@@ -241,10 +233,10 @@ uint32_t DecodeFixed32(const char *ptr) {
     memcpy(&value, ptr, sizeof(value));
     return value;
   } else {
-    return ((static_cast<uint32_t>(static_cast<uint8_t>(ptr[3])))
-        | (static_cast<uint32_t>(static_cast<uint8_t>(ptr[2])) << 8)
-        | (static_cast<uint32_t>(static_cast<uint8_t>(ptr[1])) << 16)
-        | (static_cast<uint32_t>(static_cast<uint8_t>(ptr[0])) << 24));
+    return ((static_cast<uint32_t>(static_cast<uint8_t>(ptr[3]))) |
+            (static_cast<uint32_t>(static_cast<uint8_t>(ptr[2])) << 8) |
+            (static_cast<uint32_t>(static_cast<uint8_t>(ptr[1])) << 16) |
+            (static_cast<uint32_t>(static_cast<uint8_t>(ptr[0])) << 24));
   }
 }
 
@@ -255,14 +247,14 @@ uint64_t DecodeFixed64(const char *ptr) {
     return value;
   } else {
     uint64_t hi = DecodeFixed32(ptr);
-    uint64_t lo = DecodeFixed32(ptr+4);
+    uint64_t lo = DecodeFixed32(ptr + 4);
     return (hi << 32) | lo;
   }
 }
 
 double DecodeDouble(const char *ptr) {
   uint64_t decoded = DecodeFixed64(ptr);
-  if ((decoded>>63) == 0) {
+  if ((decoded >> 63) == 0) {
     decoded ^= 0xffffffffffffffff;
   } else {
     decoded &= 0x7fffffffffffffff;
@@ -272,24 +264,24 @@ double DecodeDouble(const char *ptr) {
   return value;
 }
 
-char* EncodeVarint32(char *dst, uint32_t v) {
+char *EncodeVarint32(char *dst, uint32_t v) {
   // Operate on characters as unsigneds
-  unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
+  unsigned char *ptr = reinterpret_cast<unsigned char *>(dst);
   do {
     *ptr = 0x80 | v;
     v >>= 7, ++ptr;
   } while (v != 0);
   *(ptr - 1) &= 0x7F;
-  return reinterpret_cast<char*>(ptr);
+  return reinterpret_cast<char *>(ptr);
 }
 
 void PutVarint32(std::string *dst, uint32_t v) {
   char buf[5];
-  char* ptr = EncodeVarint32(buf, v);
+  char *ptr = EncodeVarint32(buf, v);
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 
-const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *value) {
+const char *GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *value) {
   uint32_t result = 0;
   for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
     uint32_t byte = static_cast<unsigned char>(*p);
@@ -306,7 +298,7 @@ const char* GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *v
   return nullptr;
 }
 
-const char* GetVarint32Ptr(const char *p, const char *limit, uint32_t *value) {
+const char *GetVarint32Ptr(const char *p, const char *limit, uint32_t *value) {
   if (p < limit) {
     uint32_t result = static_cast<unsigned char>(*p);
     if ((result & 0x80) == 0) {
@@ -318,9 +310,9 @@ const char* GetVarint32Ptr(const char *p, const char *limit, uint32_t *value) {
 }
 
 bool GetVarint32(rocksdb::Slice *input, uint32_t *value) {
-  const char* p = input->data();
-  const char* limit = p + input->size();
-  const char* q = GetVarint32Ptr(p, limit, value);
+  const char *p = input->data();
+  const char *limit = p + input->size();
+  const char *q = GetVarint32Ptr(p, limit, value);
   if (q == nullptr) {
     return false;
   } else {

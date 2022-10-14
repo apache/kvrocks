@@ -25,8 +25,8 @@
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 class Status {
@@ -67,18 +67,17 @@ class Status {
   };
 
   Status() : Status(cOK) {}
-  explicit Status(Code code, std::string msg = {})
-    : code_(code), msg_(std::move(msg)) {}
+  explicit Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}
 
   template <Code code>
-  bool Is() const { return code_ == code; }
+  bool Is() const {
+    return code_ == code;
+  }
 
   bool IsOK() const { return Is<cOK>(); }
   operator bool() const { return IsOK(); }
 
-  Code GetCode() const {
-    return code_;
-  }
+  Code GetCode() const { return code_; }
 
   std::string Msg() const& {
     if (*this) return ok_msg;
@@ -92,6 +91,8 @@ class Status {
 
   static Status OK() { return {}; }
 
+  static Status FromErrno() { return Status(NotOK, strerror(errno)); }
+
  private:
   Code code_;
   std::string msg_;
@@ -102,7 +103,7 @@ class Status {
   friend struct StatusOr;
 };
 
-template <typename ...Ts>
+template <typename... Ts>
 using first_element = typename std::tuple_element<0, std::tuple<Ts...>>::type;
 
 template <typename T>
@@ -133,32 +134,31 @@ struct StatusOr {
 
   explicit StatusOr(Status s) : code_(s.code_) {
     CHECK(!s);
-    new(&error_) error_type(new std::string(std::move(s.msg_)));
+    new (&error_) error_type(new std::string(std::move(s.msg_)));
   }
 
-  StatusOr(Code code, std::string msg = {}) : code_(code) { // NOLINT
+  StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT
     CHECK(code != Code::cOK);
-    new(&error_) error_type(new std::string(std::move(msg)));
+    new (&error_) error_type(new std::string(std::move(msg)));
   }
 
-  template <typename ...Ts,
-    typename std::enable_if<
-      (sizeof...(Ts) > 0 &&
-        !std::is_same<Status, remove_cvref_t<first_element<Ts...>>>::value &&
-        !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
-        !std::is_same<value_type, remove_cvref_t<first_element<Ts...>>>::value &&
-        !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value
-      ), int>::type = 0> // NOLINT
-  explicit StatusOr(Ts && ... args) : code_(Code::cOK) {
-    new(&value_) value_type(std::forward<Ts>(args)...);
+  template <typename... Ts,
+            typename std::enable_if<(sizeof...(Ts) > 0 &&
+                                     !std::is_same<Status, remove_cvref_t<first_element<Ts...>>>::value &&
+                                     !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
+                                     !std::is_same<value_type, remove_cvref_t<first_element<Ts...>>>::value &&
+                                     !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value),
+                                    int>::type = 0>  // NOLINT
+  explicit StatusOr(Ts&&... args) : code_(Code::cOK) {
+    new (&value_) value_type(std::forward<Ts>(args)...);
   }
 
-  StatusOr(T&& value) : code_(Code::cOK) { // NOLINT
-    new(&value_) value_type(std::move(value));
+  StatusOr(T&& value) : code_(Code::cOK) {  // NOLINT
+    new (&value_) value_type(std::move(value));
   }
 
-  StatusOr(const T& value) : code_(Code::cOK) { // NOLINT
-    new(&value_) value_type(value);
+  StatusOr(const T& value) : code_(Code::cOK) {  // NOLINT
+    new (&value_) value_type(value);
   }
 
   StatusOr(const StatusOr&) = delete;
@@ -166,22 +166,24 @@ struct StatusOr {
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     if (code_ == Code::cOK) {
-      new(&value_) value_type(std::move(other.value_));
+      new (&value_) value_type(std::move(other.value_));
     } else {
-      new(&error_) error_type(std::move(other.error_));
+      new (&error_) error_type(std::move(other.error_));
     }
   }
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
     CHECK(code_ != Code::cOK);
-    new(&error_) error_type(std::move(other.error_));
+    new (&error_) error_type(std::move(other.error_));
   }
 
   Status& operator=(const Status&) = delete;
 
   template <Code code>
-  bool Is() const { return code_ == code; }
+  bool Is() const {
+    return code_ == code;
+  }
 
   bool IsOK() const { return Is<Code::cOK>(); }
   operator bool() const { return IsOK(); }
@@ -196,9 +198,7 @@ struct StatusOr {
     return Status(code_, std::move(*error_));
   }
 
-  Code GetCode() const {
-    return code_;
-  }
+  Code GetCode() const { return code_; }
 
   value_type& GetValue() & {
     CHECK(*this);
@@ -247,25 +247,15 @@ struct StatusOr {
     return value_;
   }
 
-  value_type& operator*() & {
-    return GetValue();
-  }
+  value_type& operator*() & { return GetValue(); }
 
-  value_type&& operator*() && {
-    return std::move(GetValue());
-  }
+  value_type&& operator*() && { return std::move(GetValue()); }
 
-  const value_type& operator*() const& {
-    return GetValue();
-  }
+  const value_type& operator*() const& { return GetValue(); }
 
-  value_type* operator->() {
-    return &GetValue();
-  }
+  value_type* operator->() { return &GetValue(); }
 
-  const value_type* operator->() const {
-    return &GetValue();
-  }
+  const value_type* operator->() const { return &GetValue(); }
 
   std::string Msg() const& {
     if (*this) return Status::ok_msg;

@@ -21,10 +21,11 @@
 #pragma once
 
 #include <glog/logging.h>
+
 #include <map>
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
 
 #include "writer.h"
 
@@ -45,10 +46,7 @@ class RedisWriter : public Writer {
   std::map<std::string, int> redis_fds_;
 
   void sync();
-  Status getRedisConn(const std::string &ns,
-                      const std::string &host,
-                      uint32_t port,
-                      const std::string &auth,
+  Status getRedisConn(const std::string &ns, const std::string &host, uint32_t port, const std::string &auth,
                       int db_index);
   Status authRedis(const std::string &ns, const std::string &auth);
   Status selectDB(const std::string &ns, int db_number);

@@ -19,13 +19,12 @@
  */
 
 #include <gtest/gtest.h>
-
 #include <parse_util.h>
 
 TEST(ParseUtil, TryParseInt) {
   long long v;
   const char *str = "12345hellooo", *end;
-  
+
   std::tie(v, end) = *TryParseInt(str);
   ASSERT_EQ(v, 12345);
   ASSERT_EQ(end - str, 5);

@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "redis_db.h"
 #include "redis_metadata.h"
@@ -40,6 +40,7 @@ class String : public Database {
   explicit String(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Append(const std::string &user_key, const std::string &value, int *ret);
   rocksdb::Status Get(const std::string &user_key, std::string *value);
+  rocksdb::Status GetEx(const std::string &user_key, std::string *value, int ttl);
   rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value);
   rocksdb::Status GetDel(const std::string &user_key, std::string *value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value);
@@ -52,8 +53,8 @@ class String : public Database {
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, int ttl = 0);
   rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret);
-  rocksdb::Status CAS(const std::string &user_key, const std::string &old_value,
-                      const std::string &new_value, int ttl, int *ret);
+  rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value, int ttl,
+                      int *ret);
   rocksdb::Status CAD(const std::string &user_key, const std::string &value, int *ret);
 
  private:

@@ -33,20 +33,12 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 set ::all_tests {
-    unit/type/string
     unit/type/list
     unit/type/zset
     unit/type/stream
-    unit/multi
-    unit/expire
-    unit/pubsub
-    unit/introspection
     unit/geo
     integration/slotmigrate
-    integration/slotimport
-    integration/redis-cli
     integration/replication
-    integration/rsid_psync
     integration/cluster
 }
 

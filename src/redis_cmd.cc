@@ -3203,7 +3203,11 @@ class CommandGeoRadius : public CommandGeoBase {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = GenerateOutput(geo_points);
+    if (store_key_.size() != 0){
+      *output = Redis::Integer(geo_points.size());
+    } else {
+      *output = GenerateOutput(geo_points);
+    }
     return Status::OK();
   }
 

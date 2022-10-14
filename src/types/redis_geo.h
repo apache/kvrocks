@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-#include "storage/geohash.h"
+#include "geohash.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "types/redis_zset.h"

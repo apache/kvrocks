@@ -22,13 +22,14 @@ package zset
 import (
 	"context"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"math"
 	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"

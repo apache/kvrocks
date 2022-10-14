@@ -20,7 +20,6 @@
 
 #include "config.h"
 
-#include <config_util.h>
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -28,7 +27,8 @@
 #include <map>
 #include <vector>
 
-#include "server.h"
+#include "config/config_util.h"
+#include "network/server.h"
 
 TEST(Config, GetAndSet) {
   const char *path = "test.conf";

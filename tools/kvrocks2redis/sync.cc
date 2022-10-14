@@ -31,8 +31,8 @@
 #include <fstream>
 #include <string>
 
-#include "../../src/redis_reply.h"
-#include "../../src/util.h"
+#include "network/redis_reply.h"
+#include "util.h"
 
 void send_string_to_event(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);

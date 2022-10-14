@@ -18,7 +18,7 @@
  *
  */
 
-#include "log_collector.h"
+#include "network/log_collector.h"
 
 #include <gtest/gtest.h>
 

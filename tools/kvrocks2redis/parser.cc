@@ -25,9 +25,9 @@
 
 #include <memory>
 
-#include "../../src/redis_reply.h"
-#include "../../src/redis_slot.h"
+#include "cluster/redis_slot.h"
 #include "db_util.h"
+#include "network/redis_reply.h"
 
 Status Parser::ParseFullDB() {
   rocksdb::DB *db_ = storage_->GetDB();

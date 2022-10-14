@@ -26,8 +26,8 @@
 #include <string>
 
 #include "parse_util.h"
-#include "redis_hash.h"
 #include "test_base.h"
+#include "types/redis_hash.h"
 class RedisHashTest : public TestBase {
  protected:
   explicit RedisHashTest() : TestBase() { hash = Util::MakeUnique<Redis::Hash>(storage_, "hash_ns"); }

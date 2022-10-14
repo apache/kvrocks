@@ -25,24 +25,24 @@ import (
 	"strings"
 )
 
-func RandPath[T any](funcs ...func() T) T {
-	index := rand.Int31n(int32(len(funcs)))
-	return funcs[index]()
+func RandPath[T any](f ...func() T) T {
+	index := rand.Int31n(int32(len(f)))
+	return f[index]()
 }
 
-func RandPathNoResult(funcs ...func()) {
-	index := rand.Int31n(int32(len(funcs)))
-	funcs[index]()
+func RandPathNoResult(f ...func()) {
+	index := rand.Int31n(int32(len(f)))
+	f[index]()
 }
 
-// Random signed integer in (-max, max)
+// RandomSignedInt returns an integer in (-max, max)
 func RandomSignedInt(max int32) int64 {
 	return rand.Int63n(int64(max)*2-1) - int64(max) + 1
 }
 
-// Random integer in [0, max)
+// RandomInt return an integer in [0, max)
 func RandomInt(max int64) int64 {
-	return rand.Int63() % int64(max)
+	return rand.Int63() % max
 }
 
 type RandStringType int
@@ -50,7 +50,6 @@ type RandStringType int
 const (
 	Alpha RandStringType = iota
 	Binary
-	Compr
 )
 
 func RandString(min, max int, typ RandStringType) string {
@@ -62,8 +61,6 @@ func RandString(min, max int, typ RandStringType) string {
 		minVal, maxVal = 0, 255
 	case Alpha:
 		minVal, maxVal = 48, 122
-	case Compr:
-		minVal, maxVal = 48, 52
 	}
 
 	var sb strings.Builder
@@ -100,9 +97,6 @@ func RandomValue() string {
 			return RandPath(
 				func() string {
 					return RandString(0, 256, Alpha)
-				},
-				func() string {
-					return RandString(0, 256, Compr)
 				},
 				func() string {
 					return RandString(0, 256, Binary)

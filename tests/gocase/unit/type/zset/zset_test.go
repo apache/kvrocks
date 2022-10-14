@@ -1,0 +1,985 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package zset
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
+	"github.com/stretchr/testify/require"
+	"math"
+	"math/rand"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func create_zset(rdb *redis.Client, ctx context.Context, key string, items []redis.Z) {
+	rdb.Del(ctx, key)
+	for _, it := range items {
+		rdb.ZAdd(ctx, key, it)
+	}
+}
+
+func create_default_zset(rdb *redis.Client, ctx context.Context) {
+	create_zset(rdb, ctx, "zset", []redis.Z{{math.Inf(-1), "a"}, {1, "b"}, {2, "c"},
+		{3, "d"}, {4, "e"}, {5, "f"}, {math.Inf(1), "g"}})
+}
+
+func create_default_lex_zset(rdb *redis.Client, ctx context.Context) {
+	create_zset(rdb, ctx, "zset", []redis.Z{{0, "alpha"}, {0, "bar"}, {0, "cool"},
+		{0, "down"}, {0, "elephant"}, {0, "foo"}, {0, "great"}, {0, "hill"}, {0, "omega"}})
+}
+
+func reverse(s []redis.Z) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func basics(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing string) {
+
+	t.Run(fmt.Sprintf("Check encoding - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"})
+	})
+
+	t.Run(fmt.Sprintf("ZSET basic ZADD and score update - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 20, Member: "y"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 30, Member: "z"})
+		require.Equal(t, []string{"x", "y", "z"}, rdb.ZRange(ctx, "ztmp", 0, -1).Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 1, Member: "y"})
+		require.Equal(t, []string{"y", "x", "z"}, rdb.ZRange(ctx, "ztmp", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZSET basic ZADD the same member with different scores - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(1), rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"}, redis.Z{Score: 20, Member: "x"}).Val())
+		require.Equal(t, []string{"x"}, rdb.ZRange(ctx, "ztmp", 0, -1).Val())
+		require.Equal(t, float64(20), rdb.ZScore(ctx, "ztmp", "x").Val())
+
+		require.Equal(t, int64(2), rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 30, Member: "x"}, redis.Z{Score: 40, Member: "y"}, redis.Z{Score: 50, Member: "z"}).Val())
+		require.Equal(t, []string{"x", "y", "z"}, rdb.ZRange(ctx, "ztmp", 0, -1).Val())
+		require.Equal(t, float64(30), rdb.ZScore(ctx, "ztmp", "x").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZSET element can't be set to NaN with ZADD - %s", encodeing), func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.ZAdd(ctx, "myzset", redis.Z{Score: math.NaN(), Member: "abc"}).Err(), ".*float.*")
+	})
+
+	t.Run("ZSET element can't be set to NaN with ZINCRBY", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.ZAdd(ctx, "myzset", redis.Z{Score: math.NaN(), Member: "abc"}).Err(), ".*float.*")
+	})
+
+	t.Run("ZINCRBY calls leading to NaN result in error", func(t *testing.T) {
+		rdb.ZIncrBy(ctx, "myzset", math.Inf(1), "abc")
+		util.ErrorRegexp(t, rdb.ZIncrBy(ctx, "myzset", math.Inf(-1), "abc").Err(), ".*NaN.*")
+	})
+
+	t.Run("ZADD - Variadic version base case", func(t *testing.T) {
+		rdb.Del(ctx, "myzset")
+		require.Equal(t, int64(3), rdb.ZAdd(ctx, "myzset", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}).Val())
+		require.Equal(t, []redis.Z{{10, "a"}, {20, "b"}, {30, "c"}}, rdb.ZRangeWithScores(ctx, "myzset", 0, -1).Val())
+	})
+
+	t.Run("ZADD - Return value is the number of actually added items", func(t *testing.T) {
+		require.Equal(t, int64(1), rdb.ZAdd(ctx, "myzset", redis.Z{Score: 5, Member: "x"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}).Val())
+		require.Equal(t, []redis.Z{{5, "x"}, {10, "a"}, {20, "b"}, {30, "c"}}, rdb.ZRangeWithScores(ctx, "myzset", 0, -1).Val())
+	})
+
+	t.Run("ZADD - Variadic version will raise error on missing arg", func(t *testing.T) {
+		rdb.Del(ctx, "myzset")
+		e := rdb.Do(ctx, "zadd", "myzset", 10, "a", 20, "b", 30, "c", 40).Err()
+		util.ErrorRegexp(t, e, ".*syntax.*")
+	})
+
+	t.Run("ZINCRBY does not work variadic even if shares ZADD implementation", func(t *testing.T) {
+		rdb.Del(ctx, "myzset")
+		e := rdb.Do(ctx, "zincrby", "myzset", 10, "a", 20, "b", 30, "c").Err()
+		util.ErrorRegexp(t, e, ".*ERR.*wrong.*number.*arg.*")
+	})
+
+	t.Run(fmt.Sprintf("ZCARD basics - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.Equal(t, int64(3), rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, int64(0), rdb.ZCard(ctx, "zdoesntexist").Val())
+	})
+
+	t.Run("ZREM removes key after last element is removed", func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"}, redis.Z{Score: 20, Member: "y"})
+		require.Equal(t, int64(1), rdb.Exists(ctx, "ztmp").Val())
+		require.Equal(t, int64(0), rdb.ZRem(ctx, "ztmp", "z").Val())
+		require.Equal(t, int64(1), rdb.ZRem(ctx, "ztmp", "y").Val())
+		require.Equal(t, int64(1), rdb.ZRem(ctx, "ztmp", "x").Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "ztmp").Val())
+	})
+
+	t.Run("ZREM variadic version", func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.Equal(t, int64(2), rdb.ZRem(ctx, "ztmp", []string{"x", "y", "a", "b", "k"}).Val())
+		require.Equal(t, int64(0), rdb.ZRem(ctx, "ztmp", []string{"foo", "bar"}).Val())
+		require.Equal(t, int64(1), rdb.ZRem(ctx, "ztmp", []string{"c"}).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "ztmp").Val())
+	})
+
+	t.Run("ZREM variadic version -- remove elements after key deletion", func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.Equal(t, int64(3), rdb.ZRem(ctx, "ztmp", []string{"a", "b", "c", "d", "e", "f", "g"}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGE basics - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 2, Member: "b"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 4, Member: "d"})
+
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "ztmp", 0, -1).Val())
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRange(ctx, "ztmp", 0, -2).Val())
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "ztmp", 1, -1).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZRange(ctx, "ztmp", 1, -2).Val())
+		require.Equal(t, []string{"c", "d"}, rdb.ZRange(ctx, "ztmp", -2, -1).Val())
+		require.Equal(t, []string{"c"}, rdb.ZRange(ctx, "ztmp", -2, -2).Val())
+
+		// out of range start index
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRange(ctx, "ztmp", -5, 2).Val())
+		require.Equal(t, []string{"a", "b"}, rdb.ZRange(ctx, "ztmp", -5, 1).Val())
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "ztmp", 5, -1).Val())
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "ztmp", 5, -2).Val())
+
+		// out of range end index
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "ztmp", 0, 5).Val())
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "ztmp", 1, 5).Val())
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "ztmp", 0, -5).Val())
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "ztmp", 1, -5).Val())
+
+		// withscores
+		require.Equal(t, []redis.Z{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}},
+			rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZREVRANGE basics - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 2, Member: "b"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 4, Member: "d"})
+
+		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRevRange(ctx, "ztmp", 0, -1).Val())
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRange(ctx, "ztmp", 0, -2).Val())
+		require.Equal(t, []string{"c", "b", "a"}, rdb.ZRevRange(ctx, "ztmp", 1, -1).Val())
+		require.Equal(t, []string{"c", "b"}, rdb.ZRevRange(ctx, "ztmp", 1, -2).Val())
+		require.Equal(t, []string{"b", "a"}, rdb.ZRevRange(ctx, "ztmp", -2, -1).Val())
+		require.Equal(t, []string{"b"}, rdb.ZRevRange(ctx, "ztmp", -2, -2).Val())
+
+		// out of range start index
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRange(ctx, "ztmp", -5, 2).Val())
+		require.Equal(t, []string{"d", "c"}, rdb.ZRevRange(ctx, "ztmp", -5, 1).Val())
+		require.Equal(t, []string{}, rdb.ZRevRange(ctx, "ztmp", 5, -1).Val())
+		require.Equal(t, []string{}, rdb.ZRevRange(ctx, "ztmp", 5, -2).Val())
+
+		// out of range end index
+		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRevRange(ctx, "ztmp", 0, 5).Val())
+		require.Equal(t, []string{"c", "b", "a"}, rdb.ZRevRange(ctx, "ztmp", 1, 5).Val())
+		require.Equal(t, []string{}, rdb.ZRevRange(ctx, "ztmp", 0, -5).Val())
+		require.Equal(t, []string{}, rdb.ZRevRange(ctx, "ztmp", 1, -5).Val())
+
+		// withscores
+		require.Equal(t, []redis.Z{{4, "d"}, {3, "c"}, {2, "b"}, {1, "a"}},
+			rdb.ZRevRangeWithScores(ctx, "ztmp", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANK/ZREVRANK basics - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zranktmp")
+		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 10, Member: "x"})
+		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 20, Member: "y"})
+		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 30, Member: "z"})
+		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
+		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "y").Val())
+		require.Equal(t, int64(2), rdb.ZRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "foo").Val())
+		require.Equal(t, int64(2), rdb.ZRevRank(ctx, "zranktmp", "x").Val())
+		require.Equal(t, int64(1), rdb.ZRevRank(ctx, "zranktmp", "y").Val())
+		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "foo").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANK - after deletion -%s", encodeing), func(t *testing.T) {
+		rdb.ZRem(ctx, "zranktmp", "y")
+		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
+		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "z").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINCRBY - can create a new sorted set - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zset")
+		rdb.ZIncrBy(ctx, "zset", 1, "foo")
+		require.Equal(t, []string{"foo"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+		require.Equal(t, float64(1), rdb.ZScore(ctx, "zset", "foo").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINCRBY - increment and decrement - %s", encodeing), func(t *testing.T) {
+		rdb.ZIncrBy(ctx, "zset", 2, "foo")
+		rdb.ZIncrBy(ctx, "zset", 1, "bar")
+		require.Equal(t, []string{"bar", "foo"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+		rdb.ZIncrBy(ctx, "zset", 10, "bar")
+		rdb.ZIncrBy(ctx, "zset", -5, "foo")
+		rdb.ZIncrBy(ctx, "zset", -5, "bar")
+		require.Equal(t, []string{"foo", "bar"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+		require.Equal(t, float64(-2), rdb.ZScore(ctx, "zset", "foo").Val())
+		require.Equal(t, float64(6), rdb.ZScore(ctx, "zset", "bar").Val())
+
+	})
+
+	t.Run("ZINCRBY return value", func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		retval := rdb.ZIncrBy(ctx, "ztmp", 1.0, "x").Val()
+		require.Equal(t, float64(1), retval)
+	})
+
+	t.Run("ZRANGEBYSCORE/ZREVRANGEBYSCORE/ZCOUNT basics", func(t *testing.T) {
+		create_default_zset(rdb, ctx)
+
+		// inclusive range
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: "2"}).Val())
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "3", Max: "6"}).Val())
+		require.Equal(t, []string{"e", "f", "g"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "4", Max: "+inf"}).Val())
+		require.Equal(t, []string{"c", "b", "a"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "2", Min: "-inf"}).Val())
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "3", Min: "0"}).Val())
+		require.Equal(t, []string{"f", "e", "d"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "6", Min: "3"}).Val())
+		require.Equal(t, []string{"g", "f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "4"}).Val())
+		require.Equal(t, int64(3), rdb.ZCount(ctx, "zset", "0", "3").Val())
+
+		// exclusive range
+		require.Equal(t, []string{"b"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(2"}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(0", Max: "(3"}).Val())
+		require.Equal(t, []string{"e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(3", Max: "(6"}).Val())
+		require.Equal(t, []string{"f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(4", Max: "(+inf"}).Val())
+		require.Equal(t, []string{"b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(2", Min: "(-inf"}).Val())
+		require.Equal(t, []string{"c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(3", Min: "(0"}).Val())
+		require.Equal(t, []string{"f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(6", Min: "(3"}).Val())
+		require.Equal(t, []string{"f"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(4"}).Val())
+		require.Equal(t, int64(2), rdb.ZCount(ctx, "zset", "(0", "(3").Val())
+
+		// test empty ranges
+		rdb.ZRem(ctx, "zset", "a")
+		rdb.ZRem(ctx, "zset", "g")
+
+		// inclusive range
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "4", Max: "2"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "6", Max: "+inf"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: "-6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "-6", Min: "-inf"}).Val())
+
+		// exclusive range
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(4", Max: "(2"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2", Max: "(2"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2", Max: "2"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(6", Max: "(+inf"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(-6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(-6", Min: "(-inf"}).Val())
+
+		// empty inner range
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "2.6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "2.6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "(2.6"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "(2.6"}).Val())
+	})
+
+	t.Run("ZRANGEBYSCORE with WITHSCORES", func(t *testing.T) {
+		create_default_zset(rdb, ctx)
+		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}, {3, "d"}},
+			rdb.ZRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+		require.Equal(t, []redis.Z{{3, "d"}, {2, "c"}, {1, "b"}},
+			rdb.ZRevRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+	})
+
+	t.Run("ZRANGEBYSCORE with LIMIT", func(t *testing.T) {
+		create_default_zset(rdb, ctx)
+		require.Equal(t, []string{"b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 10}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 20, Count: 10}).Val())
+		require.Equal(t, []string{"f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 10}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 20, Count: 10}).Val())
+	})
+
+	t.Run("ZRANGEBYSCORE with LIMIT and WITHSCORES", func(t *testing.T) {
+		create_default_zset(rdb, ctx)
+		require.Equal(t, []redis.Z{{4, "e"}, {5, "f"}}, rdb.ZRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{"2", "5", 2, 3}).Val())
+		require.Equal(t, []redis.Z{{3, "d"}, {2, "c"}}, rdb.ZRevRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{"2", "5", 2, 3}).Val())
+	})
+
+	t.Run("ZRANGEBYSCORE with non-value min or max", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "str", Max: "1"}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "1", Max: "str"}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "1", Max: "NaN"}).Err(), ".*double.*")
+	})
+
+	t.Run("ZRANGEBYSCORE for min/max score with multi member", func(t *testing.T) {
+		zsint := []redis.Z{{math.Inf(-1), "a"}, {math.Inf(-1), "b"}, {-1, "c"},
+			{2, "d"}, {3, "e"}, {math.Inf(1), "f"}, {math.Inf(1), "g"}}
+		create_zset(rdb, ctx, "mzset", zsint)
+		require.Equal(t, zsint, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+		reverse(zsint)
+		require.Equal(t, zsint, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+
+		zsdouble := []redis.Z{{-1.004, "a"}, {-1.004, "b"}, {-1.002, "c"},
+			{1.002, "d"}, {1.004, "e"}, {1.004, "f"}}
+		create_zset(rdb, ctx, "mzset", zsdouble)
+		require.Equal(t, zsdouble, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+		reverse(zsdouble)
+		require.Equal(t, zsdouble, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+	})
+
+	t.Run("ZRANGEBYLEX/ZREVRANGEBYLEX/ZLEXCOUNT basics", func(t *testing.T) {
+		create_default_lex_zset(rdb, ctx)
+
+		// inclusive range
+		require.Equal(t, []string{"alpha", "bar", "cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool"}).Val())
+		require.Equal(t, []string{"bar", "cool", "down"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down"}).Val())
+		require.Equal(t, []string{"great", "hill", "omega"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[g", Max: "+"}).Val())
+		require.Equal(t, []string{"cool", "bar", "alpha"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool"}).Val())
+		require.Equal(t, []string{"down", "cool", "bar"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down"}).Val())
+		require.Equal(t, []string{"omega", "hill", "great", "foo", "elephant", "down"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[d", Max: "+"}).Val())
+
+		// exclusive range
+		require.Equal(t, []string{"alpha", "bar"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "(cool"}).Val())
+		require.Equal(t, []string{"cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(bar", Max: "(down"}).Val())
+		require.Equal(t, []string{"hill", "omega"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(great", Max: "+"}).Val())
+		require.Equal(t, []string{"bar", "alpha"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "(cool"}).Val())
+		require.Equal(t, []string{"cool"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(bar", Max: "(down"}).Val())
+		require.Equal(t, []string{"omega", "hill"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(great", Max: "+"}).Val())
+
+		// inclusive and exclusive
+		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(az", Max: "(b"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(z", Max: "+"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[aaaa"}).Val())
+		require.Equal(t, []string{}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[elez", Max: "[elex"}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(hill", Max: "(omega"}).Val())
+	})
+
+	t.Run("ZRANGEBYSLEX with LIMIT", func(t *testing.T) {
+		create_default_lex_zset(rdb, ctx)
+		require.Equal(t, []string{"alpha", "bar"}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "-", Max: "[cool", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []string{"bar", "cool"}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "-", Max: "[cool", Offset: 1, Count: 2}).Val())
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "zrangebylex", "zset", "[bar", "[down", "limit", "0", "0").Val())
+		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 2, Count: 0}).Val())
+		require.Equal(t, []string{"bar"}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 0, Count: 1}).Val())
+		require.Equal(t, []string{"cool"}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 1, Count: 1}).Val())
+		require.Equal(t, []string{"bar", "cool", "down"}, rdb.ZRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 0, Count: 100}).Val())
+		require.Equal(t, []string{"omega", "hill", "great", "foo", "elephant"}, rdb.ZRevRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[d", Max: "+", Offset: 0, Count: 5}).Val())
+		require.Equal(t, []string{"omega", "hill", "great", "foo"}, rdb.ZRevRangeByLex(ctx, "zset",
+			&redis.ZRangeBy{Min: "[d", Max: "+", Offset: 0, Count: 4}).Val())
+	})
+
+	t.Run("ZRANGEBYLEX with invalid lex range specifiers", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "foo", Max: "bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "[foo", Max: "bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "foo", Max: "[bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "+x", Max: "[bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "-x", Max: "[bar"}).Err(), ".*illegal.*")
+	})
+
+	t.Run("", func(t *testing.T) {
+		remrangebyscore := func(min, max string) int64 {
+			create_zset(rdb, ctx, "zset", []redis.Z{{1, "a"}, {2, "b"}, {3, "c"},
+				{4, "d"}, {5, "e"}})
+			require.Equal(t, int64(1), rdb.Exists(ctx, "zset").Val())
+			return rdb.ZRemRangeByScore(ctx, "zset", min, max).Val()
+		}
+
+		// inner range
+		require.Equal(t, int64(3), remrangebyscore("2", "4"))
+		require.Equal(t, []string{"a", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// start underflow
+		require.Equal(t, int64(1), remrangebyscore("-10", "1"))
+		require.Equal(t, []string{"b", "c", "d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// end overflow
+		require.Equal(t, int64(1), remrangebyscore("5", "10"))
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// switch min and max
+		require.Equal(t, int64(0), remrangebyscore("4", "2"))
+		require.Equal(t, []string{"a", "b", "c", "d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// -inf to mid
+		require.Equal(t, int64(3), remrangebyscore("-inf", "3"))
+		require.Equal(t, []string{"d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// mid to +inf
+		require.Equal(t, int64(3), remrangebyscore("3", "+inf"))
+		require.Equal(t, []string{"a", "b"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// -inf to +inf
+		require.Equal(t, int64(5), remrangebyscore("-inf", "+inf"))
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// exclusive min
+		require.Equal(t, int64(4), remrangebyscore("(1", "5"))
+		require.Equal(t, []string{"a"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+		require.Equal(t, int64(3), remrangebyscore("(2", "5"))
+		require.Equal(t, []string{"a", "b"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// exclusive max
+		require.Equal(t, int64(4), remrangebyscore("1", "(5"))
+		require.Equal(t, []string{"e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+		require.Equal(t, int64(3), remrangebyscore("1", "(4"))
+		require.Equal(t, []string{"d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// exclusive min and max
+		require.Equal(t, int64(3), remrangebyscore("(1", "(5"))
+		require.Equal(t, []string{"a", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// destory when empty
+		require.Equal(t, int64(5), remrangebyscore("1", "5"))
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zset").Val())
+	})
+
+	t.Run("ZREMRANGEBYSCORE with non-value min or max", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.ZRemRangeByScore(ctx, "fooz", "str", "1").Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.ZRemRangeByScore(ctx, "fooz", "1", "str").Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.ZRemRangeByScore(ctx, "fooz", "1", "NaN").Err(), ".*double.*")
+	})
+
+	t.Run("ZREMRANGEBYRANK basics", func(t *testing.T) {
+		remrangebyrank := func(min, max int64) int64 {
+			create_zset(rdb, ctx, "zset", []redis.Z{{1, "a"}, {2, "b"}, {3, "c"},
+				{4, "d"}, {5, "e"}})
+			require.Equal(t, int64(1), rdb.Exists(ctx, "zset").Val())
+			return rdb.ZRemRangeByRank(ctx, "zset", min, max).Val()
+		}
+
+		// inner range
+		require.Equal(t, int64(3), remrangebyrank(1, 3))
+		require.Equal(t, []string{"a", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// start underflow
+		require.Equal(t, int64(1), remrangebyrank(-10, 0))
+		require.Equal(t, []string{"b", "c", "d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// start overflow
+		require.Equal(t, int64(0), remrangebyrank(10, -1))
+		require.Equal(t, []string{"a", "b", "c", "d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// end underflow
+		require.Equal(t, int64(0), remrangebyrank(0, -10))
+		require.Equal(t, []string{"a", "b", "c", "d", "e"}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// end overflow
+		require.Equal(t, int64(5), remrangebyrank(0, 10))
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "zset", 0, -1).Val())
+
+		// destory when empty
+		require.Equal(t, int64(5), remrangebyrank(0, 4))
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zset").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE against non-existing key doesn't set destination - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		require.Equal(t, int64(0), rdb.ZUnionStore(ctx, "dst_key", &redis.ZStore{Keys: []string{"zseta"}}).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "dst_key").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE with empty set - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zseta", "zsetb")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 2, Member: "b"})
+		rdb.ZUnionStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}})
+		require.Equal(t, []redis.Z{{1, "a"}, {2, "b"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE basics - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zseta", "zsetb", "zsetc")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 2, Member: "b"})
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "b"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 2, Member: "c"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 3, Member: "d"})
+		require.Equal(t, int64(4), rdb.ZUnionStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+		require.Equal(t, []redis.Z{{1, "a"}, {3, "b"}, {3, "d"}, {5, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE with weights - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(4), rdb.ZUnionStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}}).Val())
+		require.Equal(t, []redis.Z{{2, "a"}, {7, "b"}, {9, "d"}, {12, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE with AGGREGATE MIN - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(4), rdb.ZUnionStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+		require.Equal(t, []redis.Z{{1, "a"}, {1, "b"}, {2, "c"}, {3, "d"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE with AGGREGATE MAX - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(4), rdb.ZUnionStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
+		require.Equal(t, []redis.Z{{1, "a"}, {2, "b"}, {3, "c"}, {3, "d"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTERSTORE basics - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTERSTORE with weights - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}}).Val())
+		require.Equal(t, []redis.Z{{7, "b"}, {12, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MIN - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+
+	})
+
+	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MAX - %s", encodeing), func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
+		require.Equal(t, []redis.Z{{2, "b"}, {3, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	for i, cmd := range []func(ctx context.Context, dest string, store *redis.ZStore) *redis.IntCmd{rdb.ZInterStore, rdb.ZUnionStore} {
+		var funcName string
+		switch i {
+		case 0:
+			funcName = "ZINTERSTORE"
+		case 1:
+			funcName = "ZUNIONSTORE"
+		}
+
+		t.Run(fmt.Sprintf("%s with +inf/-inf scores - %s", funcName, encodeing), func(t *testing.T) {
+			rdb.Del(ctx, "zsetinf1", "zsetinf2")
+
+			rdb.ZAdd(ctx, "zsetinf1", redis.Z{math.Inf(1), "key"})
+			rdb.ZAdd(ctx, "zsetinf2", redis.Z{math.Inf(1), "key"})
+			cmd(ctx, "zsetinf3", &redis.ZStore{Keys: []string{"zsetinf1", "zsetinf2"}})
+			require.Equal(t, math.Inf(1), rdb.ZScore(ctx, "zsetinf3", "key").Val())
+
+			rdb.ZAdd(ctx, "zsetinf1", redis.Z{math.Inf(-1), "key"})
+			rdb.ZAdd(ctx, "zsetinf2", redis.Z{math.Inf(1), "key"})
+			cmd(ctx, "zsetinf3", &redis.ZStore{Keys: []string{"zsetinf1", "zsetinf2"}})
+			require.Equal(t, float64(0), rdb.ZScore(ctx, "zsetinf3", "key").Val())
+
+			rdb.ZAdd(ctx, "zsetinf1", redis.Z{math.Inf(1), "key"})
+			rdb.ZAdd(ctx, "zsetinf2", redis.Z{math.Inf(-1), "key"})
+			cmd(ctx, "zsetinf3", &redis.ZStore{Keys: []string{"zsetinf1", "zsetinf2"}})
+			require.Equal(t, float64(0), rdb.ZScore(ctx, "zsetinf3", "key").Val())
+
+			rdb.ZAdd(ctx, "zsetinf1", redis.Z{math.Inf(-1), "key"})
+			rdb.ZAdd(ctx, "zsetinf2", redis.Z{math.Inf(-1), "key"})
+			cmd(ctx, "zsetinf3", &redis.ZStore{Keys: []string{"zsetinf1", "zsetinf2"}})
+			require.Equal(t, math.Inf(-1), rdb.ZScore(ctx, "zsetinf3", "key").Val())
+
+		})
+
+		t.Run(fmt.Sprintf("%s with NaN weights - %s", funcName, encodeing), func(t *testing.T) {
+			rdb.Del(ctx, "zsetinf1", "zsetinf2")
+			rdb.ZAdd(ctx, "zsetinf1", redis.Z{1.0, "key"})
+			rdb.ZAdd(ctx, "zsetinf2", redis.Z{1.0, "key"})
+			util.ErrorRegexp(t, cmd(ctx, "zsetinf3", &redis.ZStore{Keys: []string{"zsetinf1", "zsetinf2"},
+				Weights: []float64{math.NaN(), math.NaN()}}).Err(), ".*weight.*not.*double.*")
+		})
+	}
+}
+
+func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing string) {
+	var elements int
+	if encodeing == "ziplist" {
+		elements = 128
+	} else if encodeing == "skiplist" {
+		elements = 100
+	} else {
+		fmt.Println("Unknown sorted set encoding")
+		return
+	}
+	t.Run(fmt.Sprintf("ZSCORE - %s", encodeing), func(t *testing.T) {
+		rdb.Del(ctx, "zscoretest")
+		aux := make([]float64, 0)
+		for i := 0; i < elements; i++ {
+			score := rand.Float64()
+			aux = append(aux, score)
+			rdb.ZAdd(ctx, "zscoretest", redis.Z{score, strconv.Itoa(i)})
+		}
+		for i := 0; i < elements; i++ {
+			require.Equal(t, aux[i], rdb.ZScore(ctx, "zscoretest", strconv.Itoa(i)).Val())
+		}
+	})
+
+	t.Run(fmt.Sprintf("ZSET sorting stresser - %s", encodeing), func(t *testing.T) {
+		delta := 0
+		for test := 0; test < 2; test++ {
+			auxarray := make(map[string]float64)
+			auxlist := make([]redis.Z, 0)
+			rdb.Del(ctx, "myzset")
+			var score float64
+			for i := 0; i < elements; i++ {
+				if test == 0 {
+					score = rand.Float64()
+				} else {
+					score = float64(rand.Intn(10))
+				}
+				auxarray[strconv.Itoa(i)] = score
+				rdb.ZAdd(ctx, "myzset", redis.Z{Score: score, Member: strconv.Itoa(i)})
+				if rand.Float64() < 0.2 {
+					j := rand.Intn(1000)
+					if test == 0 {
+						score = rand.Float64()
+					} else {
+						score = float64(rand.Intn(10))
+
+					}
+					auxarray[strconv.Itoa(j)] = score
+					rdb.ZAdd(ctx, "myzset", redis.Z{Score: score, Member: strconv.Itoa(j)})
+				}
+			}
+			for i, s := range auxarray {
+				auxlist = append(auxlist, redis.Z{s, i})
+			}
+			sort.Slice(auxlist, func(i, j int) bool {
+				if auxlist[i].Score < auxlist[j].Score {
+					return true
+				} else if auxlist[i].Score > auxlist[j].Score {
+					return false
+				} else {
+					if strings.Compare(auxlist[i].Member.(string), auxlist[j].Member.(string)) == 1 {
+						return false
+					} else {
+						return true
+					}
+				}
+			})
+			var aux []string
+			for _, z := range auxlist {
+				aux = append(aux, z.Member.(string))
+			}
+			fromredis := rdb.ZRange(ctx, "myzset", 0, -1).Val()
+			for i := 0; i < len(fromredis); i++ {
+				if aux[i] != fromredis[i] {
+					delta++
+				}
+			}
+			require.Equal(t, 0, delta)
+		}
+	})
+
+	t.Run(fmt.Sprintf("ZRANGEBYSCORE fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
+		err := []error{}
+		rdb.Del(ctx, "zset")
+		for i := 0; i < elements; i++ {
+			rdb.ZAdd(ctx, "zset", redis.Z{Score: rand.Float64(), Member: strconv.Itoa(i)})
+		}
+
+		for i := 0; i < 100; i++ {
+			min, max := rand.Float64(), rand.Float64()
+			min, max = math.Min(min, max), math.Max(min, max)
+			low := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("%f", min)}).Val()
+			ok := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%f", min), Max: fmt.Sprintf("%f", max)}).Val()
+			high := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%f", max), Max: "+inf"}).Val()
+			lowx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("(%f", min)}).Val()
+			okx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%f", min), Max: fmt.Sprintf("(%f", max)}).Val()
+			highx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%f", max), Max: "+inf"}).Val()
+
+			if rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("%f", min)).Val() != int64(len(low)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+			if rdb.ZCount(ctx, "zset", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Val() != int64(len(ok)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+			if rdb.ZCount(ctx, "zset", fmt.Sprintf("%f", max), "+inf").Val() != int64(len(high)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+			if rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("(%f", min)).Val() != int64(len(lowx)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+			if rdb.ZCount(ctx, "zset", fmt.Sprintf("(%f", min), fmt.Sprintf("(%f", max)).Val() != int64(len(okx)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+			if rdb.ZCount(ctx, "zset", fmt.Sprintf("(%f", max), "+inf").Val() != int64(len(highx)) {
+				err = append(err, errors.New("Error, len does not match zcount\n"))
+			}
+
+			for _, x := range low {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score > min {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f > %f\n", x, score, min)))
+				}
+			}
+			for _, x := range low {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score >= min {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f >= %f\n", x, score, min)))
+				}
+			}
+			for _, x := range ok {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score < min || score > max {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f outside %f-%f range\n", x, score, min, max)))
+				}
+			}
+			for _, x := range okx {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score <= min || score >= max {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f outside %f-%f open range\n", x, score, min, max)))
+
+				}
+			}
+			for _, x := range high {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score < max {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f < %f\n", x, score, max)))
+				}
+			}
+			for _, x := range highx {
+				score := rdb.ZScore(ctx, "zset", x).Val()
+				if score <= max {
+					err = append(err, errors.New(fmt.Sprintf("Error, score for %s is %f <= %f\n", x, score, max)))
+				}
+			}
+		}
+		require.Equal(t, []error{}, err)
+
+	})
+
+	t.Run(fmt.Sprintf("ZRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
+		lexset := []string{}
+		rdb.Del(ctx, "zset")
+		for j := 0; j < elements; j++ {
+			e := util.RandString(0, 30, util.Alpha)
+			lexset = append(lexset, e)
+			rdb.ZAdd(ctx, "zset", redis.Z{0, e})
+		}
+		tmp := make(map[string]bool)
+		for _, l := range lexset {
+			tmp[l] = true
+		}
+		lexset = nil
+		for k := range tmp {
+			lexset = append(lexset, k)
+		}
+		sort.Strings(lexset)
+		for j := 0; j < 100; j++ {
+			min, max := util.RandString(0, 30, util.Alpha), util.RandString(0, 30, util.Alpha)
+			mininc, maxinc := util.RandomInt(2), util.RandomInt(2)
+			var cmin string
+			var cmax string
+			if mininc == 1 {
+				cmin = "[" + min
+			} else {
+				cmin = "(" + min
+			}
+			if maxinc == 1 {
+				cmax = "[" + max
+			} else {
+				cmax = "(" + max
+			}
+			rev := util.RandomInt(2)
+			require.Equal(t, lexset, rdb.ZRange(ctx, "zset", 0, -1).Val())
+			var outlen int64
+			var output []string
+			if rev == 1 {
+				outlen = rdb.ZLexCount(ctx, "zset", cmax, cmin).Val()
+				output = rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: cmax, Max: cmin}).Val()
+			} else {
+				outlen = rdb.ZLexCount(ctx, "zset", cmin, cmax).Val()
+				output = rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: cmin, Max: cmax}).Val()
+			}
+			o := []string{}
+			c := lexset
+			if rev == 0 && strings.Compare(min, max) > 0 || rev == 1 && strings.Compare(max, min) > 0 {
+
+			} else {
+				if rev == 1 {
+					c = rdb.ZRevRange(ctx, "zset", 0, -1).Val()
+					min, max, mininc, maxinc = max, min, maxinc, mininc
+				}
+				for _, e := range c {
+					mincmp := strings.Compare(e, min)
+					maxcmp := strings.Compare(e, max)
+					if (mininc == 1 && mincmp >= 0 || mininc == 0 && mincmp > 0) && (maxinc == 1 && maxcmp <= 0 || maxinc == 0 && maxcmp < 0) {
+						o = append(o, e)
+					}
+				}
+			}
+			require.Equal(t, o, output)
+			require.Equal(t, outlen, int64(len(output)))
+		}
+	})
+
+	t.Run(fmt.Sprintf("ZREMRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
+		lexset := []string{}
+		rdb.Del(ctx, "zset", "zsetcopy")
+		for j := 0; j < elements; j++ {
+			e := util.RandString(0, 30, util.Alpha)
+			lexset = append(lexset, e)
+			rdb.ZAdd(ctx, "zset", redis.Z{0, e})
+		}
+		tmp := make(map[string]bool)
+		for _, l := range lexset {
+			tmp[l] = true
+		}
+		lexset = nil
+		for k := range tmp {
+			lexset = append(lexset, k)
+		}
+		sort.Strings(lexset)
+		for j := 0; j < 100; j++ {
+			rdb.ZUnionStore(ctx, "zsetcopy", &redis.ZStore{Keys: []string{"zset"}})
+			lexsetcopy := []string{}
+			lexsetcopy = append(lexsetcopy, lexset...)
+			min, max := util.RandString(0, 30, util.Alpha), util.RandString(0, 30, util.Alpha)
+			mininc, maxinc := util.RandomInt(2), util.RandomInt(2)
+			var cmin string
+			var cmax string
+			if mininc == 1 {
+				cmin = "[" + min
+			} else {
+				cmin = "(" + min
+			}
+			if maxinc == 1 {
+				cmax = "[" + max
+			} else {
+				cmax = "(" + max
+			}
+			require.Equal(t, lexset, rdb.ZRange(ctx, "zset", 0, -1).Val())
+			torem := rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: cmin, Max: cmax}).Val()
+			toremlen := rdb.ZLexCount(ctx, "zset", cmin, cmax).Val()
+			rdb.ZRemRangeByLex(ctx, "zsetcopy", cmin, cmax)
+			output := rdb.ZRange(ctx, "zsetcopy", 0, -1).Val()
+			if toremlen > 0 {
+				var first, last int64
+				for i, v := range lexsetcopy {
+					if v == torem[0] {
+						first = int64(i)
+					}
+				}
+				last = first + toremlen - 1
+				lexsetcopy = append(lexsetcopy[:first], lexsetcopy[last+1:]...)
+			}
+			require.Equal(t, lexsetcopy, output)
+		}
+	})
+
+	t.Run(fmt.Sprintf("ZSETs skiplist implementation backlink consistency test - %s", encodeing), func(t *testing.T) {
+		diff := 0
+		for i := 0; i < elements; i++ {
+			rdb.ZAdd(ctx, "zset", redis.Z{Score: rand.Float64(), Member: fmt.Sprintf("Element-%d", i)})
+			rdb.ZRem(ctx, "myzset", fmt.Sprintf("Element-%d", rand.Intn(elements)))
+		}
+		l1 := rdb.ZRange(ctx, "myzset", 0, -1).Val()
+		l2 := rdb.ZRevRange(ctx, "myzset", 0, -1).Val()
+		for j := 0; j < len(l1); j++ {
+			if l1[j] != l2[len(l1)-j-1] {
+				diff++
+			}
+		}
+		require.Equal(t, 0, diff)
+	})
+
+	t.Run(fmt.Sprintf("ZSETs ZRANK augmented skip list stress testing - %s", encodeing), func(t *testing.T) {
+		var err error
+		rdb.Del(ctx, "myzset")
+		for k := 0; k < 2000; k++ {
+			i := k % elements
+			if rand.Float64() < 0.2 {
+				rdb.ZRem(ctx, "myzset", strconv.Itoa(i))
+			} else {
+				score := rand.Float64()
+				rdb.ZAdd(ctx, "myzset", redis.Z{score, strconv.Itoa(i)})
+			}
+			card := rdb.ZCard(ctx, "myzset").Val()
+			if card > 0 {
+				index := util.RandomInt(card)
+				ele := rdb.ZRange(ctx, "myzset", index, index).Val()[0]
+				rank := rdb.ZRank(ctx, "myzset", ele).Val()
+				if rank != index {
+					err = errors.New(fmt.Sprintf("%s RANK is wrong! (%d != %d)", ele, rank, index))
+					break
+				}
+			}
+		}
+		require.NoError(t, err)
+	})
+
+}
+
+func TestZset(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	basics(t, rdb, ctx, "skiplist")
+
+	t.Run("ZUNIONSTORE regression, should not create NaN in scores", func(t *testing.T) {
+		rdb.ZAdd(ctx, "z", redis.Z{math.Inf(-1), "neginf"})
+		rdb.ZUnionStore(ctx, "out", &redis.ZStore{Keys: []string{"z"}, Weights: []float64{0}})
+		require.Equal(t, []redis.Z{{0, "neginf"}}, rdb.ZRangeWithScores(ctx, "out", 0, -1).Val())
+	})
+
+	t.Run("ZUNIONSTORE result is sorted", func(t *testing.T) {
+		rdb.Del(ctx, "one", "two", "dest")
+		var zsone []redis.Z
+		var zstwo []redis.Z
+		for j := 0; j < 1000; j++ {
+			zsone = append(zsone, redis.Z{Score: float64(util.RandomInt(1000)), Member: util.RandomValue()})
+			zstwo = append(zstwo, redis.Z{Score: float64(util.RandomInt(1000)), Member: util.RandomValue()})
+		}
+		rdb.ZAdd(ctx, "one", zsone...)
+		rdb.ZAdd(ctx, "two", zstwo...)
+		require.Greater(t, rdb.ZCard(ctx, "one").Val(), int64(100))
+		require.Greater(t, rdb.ZCard(ctx, "two").Val(), int64(100))
+		rdb.ZUnionStore(ctx, "dest", &redis.ZStore{Keys: []string{"one", "two"}})
+		oldsocre := float64(0)
+		for _, z := range rdb.ZRangeWithScores(ctx, "dest", 0, -1).Val() {
+			require.GreaterOrEqual(t, z.Score, oldsocre)
+			oldsocre = z.Score
+		}
+	})
+
+	t.Run("ZSET commands don't accept the empty strings as valid score", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "zadd", "myzset", "", "abc").Err(), ".*not.*float.*")
+	})
+
+	stressers(t, rdb, ctx, "skiplist")
+
+}

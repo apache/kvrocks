@@ -750,6 +750,11 @@ start_server {tags {"zset"}} {
             set elements 128
         } elseif {$encoding == "skiplist"} {
             if {$::accurate} {set elements 1000} else {set elements 100}
+            puts "********************************************************************************************"
+            puts $elements
+            puts $::accurate
+            puts "********************************************************************************************"
+            
         } else {
             puts "Unknown sorted set encoding"
             exit

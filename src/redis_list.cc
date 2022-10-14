@@ -51,10 +51,7 @@ rocksdb::Status List::PushX(const Slice &user_key, const std::vector<Slice> &ele
   return push(user_key, elems, false, left, ret);
 }
 
-rocksdb::Status List::push(const Slice &user_key,
-                           std::vector<Slice> elems,
-                           bool create_if_missing,
-                           bool left,
+rocksdb::Status List::push(const Slice &user_key, std::vector<Slice> elems, bool create_if_missing, bool left,
                            int *ret) {
   *ret = 0;
   std::string ns_key;
@@ -199,8 +196,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(start_key);
-       iter->Valid() && iter->key().starts_with(prefix);
+  for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
     if (iter->value() == elem) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -231,8 +227,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
     size_t count = 0;
-    for (iter->Seek(start_key);
-         iter->Valid() && iter->key().starts_with(prefix);
+    for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
       if (iter->value() != elem || count >= to_delete_indexes.size()) {
         buf.clear();
@@ -290,9 +285,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(start_key);
-       iter->Valid() && iter->key().starts_with(prefix);
-       iter->Next()) {
+  for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     if (iter->value() == pivot) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       Slice sub_key = ikey.GetSubKey();
@@ -307,10 +300,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
 
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisList,
-                             {std::to_string(kRedisCmdLInsert),
-                              before ? "1" : "0",
-                              pivot.ToString(),
-                              elem.ToString()});
+                             {std::to_string(kRedisCmdLInsert), before ? "1" : "0", pivot.ToString(), elem.ToString()});
   batch.PutLogData(log_data.Encode());
 
   std::string to_update_key;
@@ -323,9 +313,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
     new_elem_index = reversed ? --pivot_index : ++pivot_index;
     !reversed ? iter->Next() : iter->Prev();
   }
-  for (;
-      iter->Valid() && iter->key().starts_with(prefix);
-      !reversed ? iter->Next() : iter->Prev()) {
+  for (; iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     buf.clear();
     PutFixed64(&buf, reversed ? --pivot_index : ++pivot_index);
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
@@ -406,9 +394,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
-  for (iter->Seek(start_key);
-       iter->Valid() && iter->key().starts_with(prefix);
-       iter->Next()) {
+  for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
     uint64_t index;
@@ -443,8 +429,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   if (value == elem) return rocksdb::Status::OK();
 
   rocksdb::WriteBatch batch;
-  WriteBatchLogData
-      log_data(kRedisList, {std::to_string(kRedisCmdLSet), std::to_string(index)});
+  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLSet), std::to_string(index)});
   batch.PutLogData(log_data.Encode());
   batch.Put(sub_key, elem);
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
@@ -468,8 +453,8 @@ rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string 
   return s;
 }
 
-rocksdb::Status List::LMove(const rocksdb::Slice &src, const rocksdb::Slice &dst,
-                            bool src_left, bool dst_left, std::string *elem) {
+rocksdb::Status List::LMove(const rocksdb::Slice &src, const rocksdb::Slice &dst, bool src_left, bool dst_left,
+                            std::string *elem) {
   if (src == dst) {
     return lmoveOnSingleList(src, src_left, dst_left, elem);
   }
@@ -537,8 +522,8 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::Slice &dst,
-                                      bool src_left, bool dst_left, std::string *elem) {
+rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::Slice &dst, bool src_left,
+                                      bool dst_left, std::string *elem) {
   std::string src_ns_key;
   AppendNamespacePrefix(src, &src_ns_key);
   std::string dst_ns_key;
@@ -622,9 +607,8 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   if (start < 0) start = 0;
 
   rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisList,
-                             std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),
-                                                      std::to_string(stop)});
+  WriteBatchLogData log_data(kRedisList, std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),
+                                                                  std::to_string(stop)});
   batch.PutLogData(log_data.Encode());
   uint64_t left_index = metadata.head + start;
   uint64_t right_index = metadata.head + stop + 1;

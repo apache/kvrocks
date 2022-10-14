@@ -18,79 +18,81 @@
  *
  */
 
-#include <cstring>
-#include <algorithm>
+#include "cluster.h"
+
 #include <gtest/gtest.h>
 
-#include "util.h"
+#include <algorithm>
+#include <cstring>
+
 #include "server.h"
-#include "cluster.h"
+#include "util.h"
 
 TEST(Cluster, CluseterSetNodes) {
   Status s;
   Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
 
   const std::string invalid_fields =
-    "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
-    "slave";
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave";
   s = cluster.SetClusterNodes(invalid_fields, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster nodes info");
 
   const std::string invalid_node_id =
-    "07c37dfeb235213a872192d90877d0cd55635b9 127.0.0.1 30004 "
-    "slave 07c37dfeb235213a872192d90877d0cd55635b92";
+      "07c37dfeb235213a872192d90877d0cd55635b9 127.0.0.1 30004 "
+      "slave 07c37dfeb235213a872192d90877d0cd55635b92";
   s = cluster.SetClusterNodes(invalid_node_id, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string invalid_port =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 65435 "
-    "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 unknown "
+      "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
   s = cluster.SetClusterNodes(invalid_port, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster node port");
 
   const std::string slave_has_no_master =
-    "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
-    "slave -";
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave -";
   s = cluster.SetClusterNodes(slave_has_no_master, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string master_has_master =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master 07c37dfeb235213a872192d90877d0cd55635b91 5461-10922";
   s = cluster.SetClusterNodes(master_has_master, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster node id");
 
   const std::string invalid_slot_range =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 5461-0";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-0";
   s = cluster.SetClusterNodes(invalid_slot_range, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Slot is out of range");
 
   const std::string invalid_slot_id =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 54610";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 54610";
   s = cluster.SetClusterNodes(invalid_slot_id, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Slot is out of range");
 
   const std::string overlapped_slot_id =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 0-126\n"
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa2 127.0.0.1 30003 "
-    "master - 0-16383";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 0-126\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa2 127.0.0.1 30003 "
+      "master - 0-16383";
   s = cluster.SetClusterNodes(overlapped_slot_id, 1, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Slot distribution is overlapped");
 
   const std::string right_nodes =
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 0 123-456 789 831 8192-16381 16382 16383";
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 0 123-456 789 831 8192-16381 16382 16383";
   s = cluster.SetClusterNodes(right_nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
   ASSERT_TRUE(cluster.GetVersion() == 1);
@@ -98,10 +100,10 @@ TEST(Cluster, CluseterSetNodes) {
 
 TEST(Cluster, CluseterGetNodes) {
   const std::string nodes =
-    "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
-    "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 5461-10922";
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-10922";
   Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
@@ -136,10 +138,10 @@ TEST(Cluster, CluseterGetNodes) {
 
 TEST(Cluster, CluseterGetSlotInfo) {
   const std::string nodes =
-    "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
-    "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
-    "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
-    "master - 5461-10922";
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-10922";
   Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());

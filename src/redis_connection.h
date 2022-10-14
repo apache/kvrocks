@@ -37,11 +37,11 @@ namespace Redis {
 class Connection {
  public:
   enum Flag {
-    kSlave           = 1 << 4,
-    kMonitor         = 1 << 5,
+    kSlave = 1 << 4,
+    kMonitor = 1 << 5,
     kCloseAfterReply = 1 << 6,
-    kCloseAsync      = 1 << 7,
-    kMultiExec       = 1 << 8,
+    kCloseAsync = 1 << 7,
+    kMultiExec = 1 << 8,
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);

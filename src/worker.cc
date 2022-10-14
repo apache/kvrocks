@@ -25,13 +25,13 @@
 
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
-#include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 #endif
 
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/un.h>
 
 #include <algorithm>
@@ -57,12 +57,11 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   int ports[3] = {config->port, config->tls_port, 0};
   auto binds = config->binds;
 
-  for (int* port = ports; *port; ++port) {
+  for (int *port = ports; *port; ++port) {
     for (const auto &bind : binds) {
       Status s = listenTCP(bind, *port, config->backlog);
       if (!s.IsOK()) {
-        LOG(ERROR) << "[worker] Failed to listen on: "<< bind << ":" << *port
-                  << ", encounter error: " << s.Msg();
+        LOG(ERROR) << "[worker] Failed to listen on: " << bind << ":" << *port << ", encounter error: " << s.Msg();
         exit(1);
       }
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
@@ -72,7 +71,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
 }
 
 Worker::~Worker() {
-  std::list<Redis::Connection*> conns;
+  std::list<Redis::Connection *> conns;
   for (const auto &iter : conns_) {
     conns.emplace_back(iter.second);
   }
@@ -94,19 +93,16 @@ Worker::~Worker() {
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
-  auto worker = static_cast<Worker*>(ctx);
+  auto worker = static_cast<Worker *>(ctx);
   auto config = worker->svr_->GetConfig();
   if (config->timeout == 0) return;
   worker->KickoutIdleClients(config->timeout);
 }
 
-void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
-                              sockaddr *address, int socklen, void *ctx) {
+void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   int local_port = Util::GetLocalPort(fd);
-  DLOG(INFO) << "[worker] New connection: fd=" << fd
-              << " from port: " << local_port << " thread #"
-              << worker->tid_;
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
     LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << s.Msg();
@@ -156,8 +152,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   }
 #endif
   auto conn = new Redis::Connection(bev, worker);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
-                    Redis::Connection::OnEvent, conn);
+  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
@@ -176,20 +171,16 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd,
   }
 }
 
-void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd,
-                                     sockaddr *address, int socklen, void *ctx) {
+void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
+                                     void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  DLOG(INFO) << "[worker] New connection: fd=" << fd
-              << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket << " thread #"
-              << worker->tid_;
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket
+             << " thread #" << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
-  bufferevent *bev = bufferevent_socket_new(base,
-                                            fd,
-                                            evThreadSafeFlags);
+  bufferevent *bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   auto conn = new Redis::Connection(bev, worker);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite,
-                    Redis::Connection::OnEvent, conn);
+  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
@@ -225,8 +216,7 @@ Status Worker::listenTCP(const std::string &host, int port, int backlog) {
   }
 
   for (p = srv_info; p != nullptr; p = p->ai_next) {
-    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
-      continue;
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) continue;
     if (af == AF_INET6 && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
       goto error;
     }
@@ -241,8 +231,7 @@ Status Worker::listenTCP(const std::string &host, int port, int backlog) {
       goto error;
     }
     evutil_make_socket_nonblocking(fd);
-    auto lev = evconnlistener_new(base_, newTCPConnection, this,
-                                  LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+    auto lev = evconnlistener_new(base_, newTCPConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
   }
 
@@ -270,8 +259,7 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
     return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
   evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newUnixSocketConnection, this,
-                                LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+  auto lev = evconnlistener_new(base_, newUnixSocketConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
   if (perm != 0) {
     chmod(sa.sun_path, (mode_t)perm);
@@ -306,12 +294,11 @@ Status Worker::AddConnection(Redis::Connection *c) {
     svr_->DecrClientNum();
     return Status(Status::NotOK, "max number of clients reached");
   }
-  conns_.insert(std::pair<int, Redis::Connection*>(c->GetFD(), c));
+  conns_.insert(std::pair<int, Redis::Connection *>(c->GetFD(), c));
   uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
   c->SetID(id);
   return Status::OK();
 }
-
 
 Redis::Connection *Worker::removeConnection(int fd) {
   Redis::Connection *conn = nullptr;
@@ -339,7 +326,7 @@ void Worker::DetachConnection(Redis::Connection *conn) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
   auto bev = conn->GetBufferEvent();
-  bufferevent_disable(bev, EV_READ|EV_WRITE);
+  bufferevent_disable(bev, EV_READ | EV_WRITE);
   bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);
 }
 
@@ -421,8 +408,7 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
   std::unique_lock<std::mutex> lock(conns_mu_);
   for (const auto &iter : monitor_conns_) {
     if (conn == iter.second) continue;  // skip the monitor command
-    if (conn->GetNamespace() == iter.second->GetNamespace()
-        || iter.second->GetNamespace() == kDefaultNamespace) {
+    if (conn->GetNamespace() == iter.second->GetNamespace() || iter.second->GetNamespace() == kDefaultNamespace) {
       iter.second->Reply(Redis::SimpleString(output));
     }
   }
@@ -438,14 +424,13 @@ std::string Worker::GetClientsStr() {
   return output;
 }
 
-void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr,
-                        uint64_t type, bool skipme, int64_t *killed) {
+void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, uint64_t type, bool skipme,
+                        int64_t *killed) {
   std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &iter : conns_) {
-    Redis::Connection* conn = iter.second;
+    Redis::Connection *conn = iter.second;
     if (skipme && self == conn) continue;
-    if ((type & conn->GetClientType()) ||
-        (!addr.empty() && conn->GetAddr() == addr) ||
+    if ((type & conn->GetClientType()) || (!addr.empty() && conn->GetAddr() == addr) ||
         (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection
@@ -468,11 +453,9 @@ void Worker::KickoutIdleClients(int timeout) {
     int iterations = std::min(static_cast<int>(conns_.size()), 50);
     auto iter = conns_.upper_bound(last_iter_conn_fd);
     while (iterations--) {
-      if (iter == conns_.end())
-        iter = conns_.begin();
+      if (iter == conns_.end()) iter = conns_.begin();
       if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
-        to_be_killed_conns.emplace_back(
-            std::make_pair(iter->first, iter->second->GetID()));
+        to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
       }
       iter++;
     }
@@ -497,9 +480,7 @@ void WorkerThread::Start() {
   LOG(INFO) << "[worker] Thread #" << t_.get_id() << " started";
 }
 
-void WorkerThread::Stop() {
-  worker_->Stop();
-}
+void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
   if (t_.joinable()) t_.join();

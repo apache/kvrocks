@@ -20,8 +20,8 @@
 
 #define __STDC_FORMAT_MACROS
 
-#include <event2/util.h>
 #include <event2/buffer.h>
+#include <event2/util.h>
 #include <glog/logging.h>
 
 #ifdef __linux__
@@ -45,17 +45,19 @@
 #include <string>
 
 #include "event_util.h"
+#include "fd_util.h"
 #include "parse_util.h"
+#include "scope_exit.h"
 #include "status.h"
 #include "util.h"
 
 #ifndef POLLIN
-# define POLLIN      0x0001    /* There is data to read */
-# define POLLPRI     0x0002    /* There is urgent data to read */
-# define POLLOUT     0x0004    /* Writing now will not block */
-# define POLLERR     0x0008    /* Error condition */
-# define POLLHUP     0x0010    /* Hung up */
-# define POLLNVAL    0x0020    /* Invalid request: fd not open */
+#define POLLIN 0x0001   /* There is data to read */
+#define POLLPRI 0x0002  /* There is urgent data to read */
+#define POLLOUT 0x0004  /* Writing now will not block */
+#define POLLERR 0x0008  /* Error condition */
+#define POLLHUP 0x0010  /* Hung up */
+#define POLLNVAL 0x0020 /* Invalid request: fd not open */
 #endif
 
 #define AE_READABLE 1
@@ -65,8 +67,8 @@
 
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {
-  int rv, cfd;
-  char portstr[6];  /* strlen("65535") + 1; */
+  int rv;
+  char portstr[6]; /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
 
   snprintf(portstr, sizeof(portstr), "%u", port);
@@ -78,29 +80,27 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
     return Status(Status::NotOK, gai_strerror(rv));
   }
 
-  for (p = servinfo; p != nullptr ; p = p->ai_next) {
-    if ((cfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
-      continue;
-    if (connect(cfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(cfd);
+  auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
+
+  for (p = servinfo; p != nullptr; p = p->ai_next) {
+    auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
+    if (!cfd) continue;
+    if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
       continue;
     }
-    Status s = SockSetTcpKeepalive(cfd, 120);
+    Status s = SockSetTcpKeepalive(*cfd, 120);
     if (s.IsOK()) {
-      s = SockSetTcpNoDelay(cfd, 1);
+      s = SockSetTcpNoDelay(*cfd, 1);
     }
     if (!s.IsOK()) {
-      close(cfd);
       continue;
     }
 
-    *fd = cfd;
-    freeaddrinfo(servinfo);
+    *fd = cfd.Release();
     return Status::OK();
   }
 
-  freeaddrinfo(servinfo);
-  return Status(Status::NotOK, strerror(errno));
+  return Status::FromErrno();
 }
 
 const std::string Float2String(double d) {
@@ -134,7 +134,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   // Send first probe after interval.
   val = interval;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPIDLE: ")+strerror(errno));
+    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPIDLE: ") + strerror(errno));
   }
 
   // Send next probes after the specified interval. Note that we set the
@@ -143,17 +143,17 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   val = interval / 3;
   if (val == 0) val = 1;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPINTVL: ")+strerror(errno));
+    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPINTVL: ") + strerror(errno));
   }
 
   // Consider the socket in error state after three we send three ACK
   // probes without getting a reply.
   val = 3;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPCNT: ")+strerror(errno));
+    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPCNT: ") + strerror(errno));
   }
 #else
-  ((void) interval);  // Avoid unused var warning for non Linux systems.
+  ((void)interval);  // Avoid unused var warning for non Linux systems.
 #endif
 
   return Status::OK();
@@ -162,52 +162,56 @@ Status SockSetTcpKeepalive(int fd, int interval) {
 Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
-    if (!s.IsOK()) return s;
+    if (!s) return s;
   } else {
+    *fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (*fd == NullFD) return Status::FromErrno();
+  }
+
+  auto exit = MakeScopeExit([fd] {
+    close(*fd);
+    *fd = NullFD;
+  });
+
+  if (conn_timeout != 0) {
     sockaddr_in sin{};
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = inet_addr(host.c_str());
     sin.sin_port = htons(port);
-    *fd = socket(AF_INET, SOCK_STREAM, 0);
 
     fcntl(*fd, F_SETFL, O_NONBLOCK);
-    connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+    if (connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin))) {
+      return Status::FromErrno();
+    }
 
     auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
-    if ((retmask & AE_WRITABLE) == 0 ||
-        (retmask & AE_ERROR) != 0 ||
-        (retmask & AE_HUP) != 0
-        ) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+    if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
+      return Status::FromErrno();
     }
 
     int socket_arg;
     // Set to blocking mode again...
     if ((socket_arg = fcntl(*fd, F_GETFL, NULL)) < 0) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
     socket_arg &= (~O_NONBLOCK);
     if (fcntl(*fd, F_SETFL, socket_arg) < 0) {
-      close(*fd);
-      *fd = -1;
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
-    SockSetTcpNoDelay(*fd, 1);
+    auto s = SockSetTcpNoDelay(*fd, 1);
+    if (!s) return s;
   }
+
   if (timeout > 0) {
     struct timeval tv;
     tv.tv_sec = timeout / 1000;
     tv.tv_usec = (timeout % 1000) * 1000;
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
-      close(*fd);
-      *fd = -1;
       return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
     }
   }
+
+  exit.Disable();
   return Status::OK();
 }
 
@@ -215,7 +219,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
 Status SockSend(int fd, const std::string &data) {
   ssize_t n = 0;
   while (n < static_cast<ssize_t>(data.size())) {
-    ssize_t nwritten = write(fd, data.c_str()+n, data.size()-n);
+    ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
     if (nwritten == -1) {
       return Status(Status::NotOK, strerror(errno));
     }
@@ -236,27 +240,27 @@ Status SockSend(int fd, const std::string &data) {
 // was successful. On error, -1 is returned, and errno is set appropriately.
 ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
 #if defined(__linux__)
-    return sendfile(out_fd, in_fd, &offset, count);
+  return sendfile(out_fd, in_fd, &offset, count);
 
 #elif defined(__APPLE__)
-    off_t len = count;
-    if (sendfile(in_fd, out_fd, offset, &len, NULL, 0) == -1)
-      return -1;
-    else
-      return (ssize_t)len;
+  off_t len = count;
+  if (sendfile(in_fd, out_fd, offset, &len, NULL, 0) == -1)
+    return -1;
+  else
+    return (ssize_t)len;
 
 #endif
-    errno = ENOSYS;
-    return -1;
+  errno = ENOSYS;
+  return -1;
 }
 
 // Send file by sendfile actually according to different operation systems,
 // please note that, the out socket fd should be in blocking mode.
 Status SockSendFile(int out_fd, int in_fd, size_t size) {
   ssize_t nwritten = 0;
-  off_t  offset = 0;
+  off_t offset = 0;
   while (size != 0) {
-    size_t n = size <= 16*1024 ? size : 16*1024;
+    size_t n = size <= 16 * 1024 ? size : 16 * 1024;
     nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
     if (nwritten == -1) {
       if (errno == EINTR)
@@ -274,8 +278,7 @@ Status SockSetBlocking(int fd, int blocking) {
   int flags;
   // Old flags
   if ((flags = fcntl(fd, F_GETFL)) == -1) {
-    return Status(Status::NotOK,
-           std::string("fcntl(F_GETFL): ") + strerror(errno));
+    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
   }
 
   // New flags
@@ -285,8 +288,7 @@ Status SockSetBlocking(int fd, int blocking) {
     flags |= O_NONBLOCK;
 
   if (fcntl(fd, F_SETFL, flags) == -1) {
-    return Status(Status::NotOK,
-           std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
+    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
   }
   return Status::OK();
 }
@@ -363,9 +365,13 @@ Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t
 }
 
 std::string ToLower(std::string in) {
-  std::transform(in.begin(), in.end(), in.begin(),
-                 [](char c) -> char { return static_cast<char>(std::tolower(c)); });
+  std::transform(in.begin(), in.end(), in.begin(), [](char c) -> char { return static_cast<char>(std::tolower(c)); });
   return in;
+}
+
+bool CaseInsensitiveCompare(const std::string &lhs, const std::string &rhs) {
+  return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(),
+                                                [](char l, char r) { return std::tolower(l) == std::tolower(r); });
 }
 
 std::string Trim(std::string in, const std::string &chars) {
@@ -386,8 +392,7 @@ std::vector<std::string> Split(const std::string &in, const std::string &delim) 
 
   if (delim.empty()) {
     out.resize(in.size());
-    std::transform(in.begin(), in.end(), out.begin(),
-      [](char c) -> std::string { return {c}; });
+    std::transform(in.begin(), in.end(), out.begin(), [](char c) -> std::string { return {c}; });
     return out;
   }
 
@@ -428,8 +433,7 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
 }
 
 // Glob-style pattern matching.
-int StringMatchLen(const char *pattern, int patternLen,
-                   const char *string, int stringLen, int nocase) {
+int StringMatchLen(const char *pattern, int patternLen, const char *string, int stringLen, int nocase) {
   while (patternLen && stringLen) {
     switch (pattern[0]) {
       case '*':
@@ -437,20 +441,16 @@ int StringMatchLen(const char *pattern, int patternLen,
           pattern++;
           patternLen--;
         }
-        if (patternLen == 1)
-          return 1; /* match */
+        if (patternLen == 1) return 1; /* match */
         while (stringLen) {
-          if (StringMatchLen(pattern + 1, patternLen - 1,
-                             string, stringLen, nocase))
-            return 1; /* match */
+          if (StringMatchLen(pattern + 1, patternLen - 1, string, stringLen, nocase)) return 1; /* match */
           string++;
           stringLen--;
         }
         return 0; /* no match */
         break;
       case '?':
-        if (stringLen == 0)
-          return 0; /* no match */
+        if (stringLen == 0) return 0; /* no match */
         string++;
         stringLen--;
         break;
@@ -469,8 +469,7 @@ int StringMatchLen(const char *pattern, int patternLen,
           if (pattern[0] == '\\' && patternLen >= 2) {
             pattern++;
             patternLen--;
-            if (pattern[0] == string[0])
-              match = 1;
+            if (pattern[0] == string[0]) match = 1;
           } else if (pattern[0] == ']') {
             break;
           } else if (patternLen == 0) {
@@ -493,24 +492,19 @@ int StringMatchLen(const char *pattern, int patternLen,
             }
             pattern += 2;
             patternLen -= 2;
-            if (c >= start && c <= end)
-              match = 1;
+            if (c >= start && c <= end) match = 1;
           } else {
             if (!nocase) {
-              if (pattern[0] == string[0])
-                match = 1;
+              if (pattern[0] == string[0]) match = 1;
             } else {
-              if (tolower(static_cast<int>(pattern[0])) == tolower(static_cast<int>(string[0])))
-                match = 1;
+              if (tolower(static_cast<int>(pattern[0])) == tolower(static_cast<int>(string[0]))) match = 1;
             }
           }
           pattern++;
           patternLen--;
         }
-        if (not_symbol)
-          match = !match;
-        if (!match)
-          return 0; /* no match */
+        if (not_symbol) match = !match;
+        if (!match) return 0; /* no match */
         string++;
         stringLen--;
         break;
@@ -523,11 +517,9 @@ int StringMatchLen(const char *pattern, int patternLen,
         /* fall through */
       default:
         if (!nocase) {
-          if (pattern[0] != string[0])
-            return 0; /* no match */
+          if (pattern[0] != string[0]) return 0; /* no match */
         } else {
-          if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0])))
-            return 0; /* no match */
+          if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0]))) return 0; /* no match */
         }
         string++;
         stringLen--;
@@ -543,8 +535,7 @@ int StringMatchLen(const char *pattern, int patternLen,
       break;
     }
   }
-  if (patternLen == 0 && stringLen == 0)
-    return 1;
+  if (patternLen == 0 && stringLen == 0) return 1;
   return 0;
 }
 
@@ -564,20 +555,20 @@ void BytesToHuman(char *buf, size_t size, uint64_t n) {
 
   if (n < 1024) {
     snprintf(buf, size, "%" PRIu64 "B", n);
-  } else if (n < (1024*1024)) {
-    d = static_cast<double>(n)/(1024);
+  } else if (n < (1024 * 1024)) {
+    d = static_cast<double>(n) / (1024);
     snprintf(buf, size, "%.2fK", d);
-  } else if (n < (1024LL*1024*1024)) {
-    d = static_cast<double>(n)/(1024*1024);
+  } else if (n < (1024LL * 1024 * 1024)) {
+    d = static_cast<double>(n) / (1024 * 1024);
     snprintf(buf, size, "%.2fM", d);
-  } else if (n < (1024LL*1024*1024*1024)) {
-    d = static_cast<double>(n)/(1024LL*1024*1024);
+  } else if (n < (1024LL * 1024 * 1024 * 1024)) {
+    d = static_cast<double>(n) / (1024LL * 1024 * 1024);
     snprintf(buf, size, "%.2fG", d);
-  } else if (n < (1024LL*1024*1024*1024*1024)) {
-    d = static_cast<double>(n)/(1024LL*1024*1024*1024);
+  } else if (n < (1024LL * 1024 * 1024 * 1024 * 1024)) {
+    d = static_cast<double>(n) / (1024LL * 1024 * 1024 * 1024);
     snprintf(buf, size, "%.2fT", d);
-  } else if (n < (1024LL*1024*1024*1024*1024*1024)) {
-    d = static_cast<double>(n)/(1024LL*1024*1024*1024*1024);
+  } else if (n < (1024LL * 1024 * 1024 * 1024 * 1024 * 1024)) {
+    d = static_cast<double>(n) / (1024LL * 1024 * 1024 * 1024 * 1024);
     snprintf(buf, size, "%.2fP", d);
   } else {
     snprintf(buf, size, "%" PRIu64 "B", n);
@@ -597,7 +588,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   const char *start = value.data(), *end = start + value.size(), *p;
   while (start != end) {
     switch (state) {
-      case stateArrayLen:
+      case stateArrayLen: {
         if (start[0] != '*') {
           return tokens;
         }
@@ -606,12 +597,13 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        array_len = std::stoull(std::string(start+1, p));
+        // parse_result expects to must be parsed successfully here
+        array_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
         start = p + 2;
         state = stateBulkLen;
         break;
-
-      case stateBulkLen:
+      }
+      case stateBulkLen: {
         if (start[0] != '$') {
           return tokens;
         }
@@ -620,20 +612,22 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        bulk_len = std::stoull(std::string(start+1, p));
+        // parse_result expects to must be parsed successfully here
+        bulk_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
         start = p + 2;
         state = stateBulkData;
         break;
-
-      case stateBulkData:
-        if (bulk_len+2 > static_cast<uint64_t>(end-start)) {
+      }
+      case stateBulkData: {
+        if (bulk_len + 2 > static_cast<uint64_t>(end - start)) {
           tokens.clear();
           return tokens;
         }
-        tokens.emplace_back(std::string(start, start+bulk_len));
+        tokens.emplace_back(std::string(start, start + bulk_len));
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
+      }
     }
   }
   if (array_len != tokens.size()) {

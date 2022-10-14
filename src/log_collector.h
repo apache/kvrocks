@@ -22,12 +22,12 @@
 
 #include <time.h>
 
-#include <string>
-#include <list>
-#include <vector>
-#include <mutex>
 #include <cstdint>
 #include <functional>
+#include <list>
+#include <mutex>
+#include <string>
+#include <vector>
 
 class SlowEntry {
  public:
@@ -67,5 +67,5 @@ class LogCollector {
   std::mutex mu_;
   uint64_t id_ = 0;
   int64_t max_entries_ = 128;
-  std::list<T*> entries_;
+  std::list<T *> entries_;
 };

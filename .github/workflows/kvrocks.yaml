@@ -13,7 +13,7 @@
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
-# under the License. 
+# under the License.
 
 name: CI
 
@@ -38,7 +38,7 @@ jobs:
 
   lint:
     name: Lint and check code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout Code Base
         uses: actions/checkout@v3
@@ -46,19 +46,27 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y cppcheck
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.x
+          sudo apt install -y clang-format-12
       - name: Setup Go
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.x
-      - name: Setup dependencies
-        run: pip install cpplint==1.6.1
+      - name: Check code format
+        id: check-format
+        run: ./x.py check format --clang-format-path clang-format-12
+      - name: Format code
+        if: always() && steps.check-format.outcome != 'success'
+        run: |
+          ./x.py format --clang-format-path clang-format-12
+          git diff -p > clang-format.patch
+          cat clang-format.patch
+      - name: Upload format patch
+        uses: actions/upload-artifact@v3
+        if: always() && steps.check-format.outcome != 'success'
+        with:
+          path: clang-format.patch
       - name: Lint and check code
         run: |
-          ./x.py check cpplint
           ./x.py check cppcheck
           ./x.py check golangci-lint
 
@@ -145,12 +153,12 @@ jobs:
           - name: Ubuntu GCC without OpenSSL
             os: ubuntu-20.04
             compiler: gcc
-         
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/local/bin/redis-cli
@@ -182,7 +190,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.x
 
@@ -204,6 +212,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export ${{ matrix.runtime_env_vars }}
+          export PATH=$PATH:$HOME/local/bin/
           ./x.py test go build
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then

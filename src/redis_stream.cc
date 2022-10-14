@@ -28,7 +28,6 @@
 
 #include "db_util.h"
 
-
 namespace Redis {
 
 rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
@@ -74,7 +73,7 @@ std::string Stream::internalKeyFromEntryID(const std::string &ns_key, const Stre
   return entry_key;
 }
 
-rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions& options,
+rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &options,
                             const std::vector<std::string> &args, StreamEntryID *id) {
   for (auto const &v : args) {
     if (v.size() > INT32_MAX) {
@@ -166,24 +165,24 @@ rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const Str
 
     if (metadata.last_generated_id.ms == UINT64_MAX && metadata.last_generated_id.seq == UINT64_MAX) {
       return rocksdb::Status::InvalidArgument(
-            "The stream has exhausted the last possible ID, unable to add more items");
+          "The stream has exhausted the last possible ID, unable to add more items");
     }
 
     if (!first_entry) {
       if (metadata.last_generated_id.ms > options.entry_id.ms) {
         return rocksdb::Status::InvalidArgument(
-              "The ID specified in XADD is equal or smaller than the target stream top item");
+            "The ID specified in XADD is equal or smaller than the target stream top item");
       }
 
       if (metadata.last_generated_id.ms == options.entry_id.ms) {
         if (!options.entry_id.any_seq_number && metadata.last_generated_id.seq >= options.entry_id.seq) {
           return rocksdb::Status::InvalidArgument(
-                "The ID specified in XADD is equal or smaller than the target stream top item");
+              "The ID specified in XADD is equal or smaller than the target stream top item");
         }
 
         if (options.entry_id.any_seq_number && metadata.last_generated_id.seq == UINT64_MAX) {
           return rocksdb::Status::InvalidArgument(
-                "Elements are too large to be stored");  // Redis responds with exactly this message
+              "Elements are too large to be stored");  // Redis responds with exactly this message
         }
       }
 
@@ -210,8 +209,8 @@ rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const Str
   }
 }
 
-rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
-                                      const std::vector<StreamEntryID> &ids, uint64_t *ret) {
+rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const std::vector<StreamEntryID> &ids,
+                                      uint64_t *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -244,7 +243,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name,
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
 
-  for (const auto& id : ids) {
+  for (const auto &id : ids) {
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
     std::string value;
     s = db_->Get(read_options, stream_cf_handle_, entry_key, &value);
@@ -339,8 +338,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     return rocksdb::Status::OK();
   }
 
-  if ((!options.reverse && options.end < options.start)
-      || (options.reverse && options.start < options.end)) {
+  if ((!options.reverse && options.end < options.start) || (options.reverse && options.start < options.end)) {
     return rocksdb::Status::OK();
   }
 
@@ -364,8 +362,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     iter->SeekForPrev(start_key);
   }
 
-  for (;
-       iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
+  for (; iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
        options.reverse ? iter->Prev() : iter->Next()) {
     if (options.exclude_start && iter->key().ToString() == start_key) {
       continue;
@@ -397,8 +394,7 @@ rocksdb::Status Stream::getEntryRawValue(const std::string &ns_key, const Stream
   return db_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, value);
 }
 
-rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full,
-                                      uint64_t count, StreamInfo *info) {
+rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full, uint64_t count, StreamInfo *info) {
   std::string ns_key;
   AppendNamespacePrefix(stream_name, &ns_key);
 
@@ -533,8 +529,8 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
   return rocksdb::Status::OK();
 }
 
-uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &options,
-                      StreamMetadata *metadata, rocksdb::WriteBatch *batch) {
+uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &options, StreamMetadata *metadata,
+                      rocksdb::WriteBatch *batch) {
   if (metadata->size == 0) {
     return 0;
   }
@@ -606,6 +602,5 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
 
   return ret;
 }
-
 
 }  // namespace Redis

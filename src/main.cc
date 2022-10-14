@@ -18,32 +18,33 @@
  *
  */
 
+#include <dlfcn.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <dlfcn.h>
 #ifdef __linux__
 #define _XOPEN_SOURCE 700
 #else
 #define _XOPEN_SOURCE
 #endif
-#include <sys/un.h>
-#include <signal.h>
-#include <execinfo.h>
-#include <ucontext.h>
 #include <event2/thread.h>
+#include <execinfo.h>
 #include <glog/logging.h>
-#include "worker.h"
-#include "storage.h"
-#include "version.h"
+#include <signal.h>
+#include <sys/un.h>
+#include <ucontext.h>
+
 #include "config.h"
+#include "fd_util.h"
 #include "server.h"
+#include "storage.h"
 #include "util.h"
+#include "version.h"
 
 namespace google {
-bool Symbolize(void* pc, char* out, size_t out_size);
+bool Symbolize(void *pc, char *out, size_t out_size);
 }  // namespace google
 
 std::function<void()> hup_handler;
@@ -55,9 +56,7 @@ struct Options {
 
 Server *srv = nullptr;
 
-Server *GetServer() {
-  return srv;
-}
+Server *GetServer() { return srv; }
 
 extern "C" void signal_handler(int sig) {
   if (hup_handler) hup_handler();
@@ -66,8 +65,8 @@ extern "C" void signal_handler(int sig) {
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
 
-  LOG(ERROR) << "======= Ooops! kvrocks "<< VERSION << " @" << GIT_COMMIT
-    << " got signal: " << strsignal(sig) << " (" << sig << ") =======";
+  LOG(ERROR) << "======= Ooops! kvrocks " << VERSION << " @" << GIT_COMMIT << " got signal: " << strsignal(sig) << " ("
+             << sig << ") =======";
   int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   char **messages = backtrace_symbols(trace, trace_size);
   for (int i = 1; i < trace_size; ++i) {
@@ -113,7 +112,7 @@ void setupSigSegvAction() {
   sigaction(SIGINT, &act, nullptr);
 }
 
-static void usage(const char* program) {
+static void usage(const char *program) {
   std::cout << program << " implements the Redis protocol based on rocksdb\n"
             << "\t-c config file\n"
             << "\t-h help\n";
@@ -125,10 +124,16 @@ static Options parseCommandLineOptions(int argc, char **argv) {
   Options opts;
   while ((ch = ::getopt(argc, argv, "c:hv")) != -1) {
     switch (ch) {
-      case 'c': opts.conf_file = optarg; break;
-      case 'h': opts.show_usage = true; break;
-      case 'v': exit(0);
-      default: usage(argv[0]);
+      case 'c':
+        opts.conf_file = optarg;
+        break;
+      case 'h':
+        opts.show_usage = true;
+        break;
+      case 'v':
+        exit(0);
+      default:
+        usage(argv[0]);
     }
   }
   return opts;
@@ -169,8 +174,8 @@ bool supervisedSystemd() {
     return false;
   }
 
-  int fd = 1;
-  if ((fd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1) {
+  auto fd = UniqueFD(socket(AF_UNIX, SOCK_DGRAM, 0));
+  if (!fd) {
     LOG(WARNING) << "Can't connect to systemd socket " << notify_socket;
     return false;
   }
@@ -178,10 +183,9 @@ bool supervisedSystemd() {
   struct sockaddr_un su;
   memset(&su, 0, sizeof(su));
   su.sun_family = AF_UNIX;
-  strncpy (su.sun_path, notify_socket, sizeof(su.sun_path) -1);
+  strncpy(su.sun_path, notify_socket, sizeof(su.sun_path) - 1);
   su.sun_path[sizeof(su.sun_path) - 1] = '\0';
-  if (notify_socket[0] == '@')
-    su.sun_path[0] = '\0';
+  if (notify_socket[0] == '@') su.sun_path[0] = '\0';
 
   struct iovec iov;
   memset(&iov, 0, sizeof(iov));
@@ -201,47 +205,42 @@ bool supervisedSystemd() {
 #ifdef HAVE_MSG_NOSIGNAL
   sendto_flags |= MSG_NOSIGNAL;
 #endif
-  if (sendmsg(fd, &hdr, sendto_flags) < 0) {
+  if (sendmsg(*fd, &hdr, sendto_flags) < 0) {
     LOG(WARNING) << "Can't send notification to systemd";
-    close(fd);
     return false;
   }
-  close(fd);
   return true;
 }
 
 bool isSupervisedMode(int mode) {
-  if (mode == SUPERVISED_AUTODETECT)  {
+  if (mode == kSupervisedAutoDetect) {
     const char *upstart_job = getenv("UPSTART_JOB");
     const char *notify_socket = getenv("NOTIFY_SOCKET");
     if (upstart_job) {
-      mode = SUPERVISED_UPSTART;
-    }  else if (notify_socket) {
-      mode = SUPERVISED_SYSTEMD;
+      mode = kSupervisedUpStart;
+    } else if (notify_socket) {
+      mode = kSupervisedSystemd;
     }
   }
-  if (mode == SUPERVISED_UPSTART) {
+  if (mode == kSupervisedUpStart) {
     return supervisedUpstart();
-  } else if (mode == SUPERVISED_SYSTEMD) {
+  } else if (mode == kSupervisedSystemd) {
     return supervisedSystemd();
   }
   return false;
 }
 
 static Status createPidFile(const std::string &path) {
-  int fd = open(path.data(), O_RDWR|O_CREAT, 0660);
-  if (fd < 0) {
+  auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
+  if (!fd) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  write(fd, pid_str.data(), pid_str.size());
-  close(fd);
+  write(*fd, pid_str.data(), pid_str.size());
   return Status::OK();
 }
 
-static void removePidFile(const std::string &path) {
-  std::remove(path.data());
-}
+static void removePidFile(const std::string &path) { std::remove(path.data()); }
 
 static void daemonize() {
   pid_t pid;
@@ -263,7 +262,7 @@ static void daemonize() {
   close(STDERR_FILENO);
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   google::InitGoogleLogging("kvrocks");
   evthread_use_pthreads();
 
@@ -293,8 +292,8 @@ int main(int argc, char* argv[]) {
     int ports[] = {config.port, config.tls_port, 0};
     for (int *port = ports; *port; ++port) {
       if (Util::IsPortInUse(*port)) {
-        LOG(ERROR)<< "Could not create server TCP since the specified port["
-                  << *port << "] is already in use" << std::endl;
+        LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use"
+                   << std::endl;
         exit(1);
       }
     }

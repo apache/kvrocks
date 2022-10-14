@@ -18,11 +18,13 @@
  *
  */
 
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <thread>
+
 #include "lock_manager.h"
 #include "rw_lock.h"
-#include <thread>
-#include <memory>
-#include <gtest/gtest.h>
 
 TEST(LockManager, LockKey) {
   LockManager locks(8);
@@ -40,18 +42,14 @@ TEST(LockManager, LockMultiKeys) {
   std::vector<std::string> keys2 = {"a7", "a6", "a5", "a4", "a3", "a2", "a1", "a0"};
 
   std::thread ths[10];
-  for(int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     if (i % 2 == 0) {
-      ths[i] = std::thread([&lock_manager, &keys1]() {
-        MultiLockGuard(&lock_manager, keys1);
-      });
+      ths[i] = std::thread([&lock_manager, &keys1]() { MultiLockGuard(&lock_manager, keys1); });
     } else {
-      ths[i] = std::thread([&lock_manager, &keys2]() {
-        MultiLockGuard(&lock_manager, keys2);
-      });
+      ths[i] = std::thread([&lock_manager, &keys2]() { MultiLockGuard(&lock_manager, keys2); });
     }
   }
-  for (auto & th : ths) {
+  for (auto &th : ths) {
     th.join();
   }
 }
@@ -61,7 +59,7 @@ TEST(ReadWriteLock, ReadLockGurad) {
   int val = 1;
 
   std::thread ths[10];
-  for(int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ths[i] = std::thread([&rwlock, &val]() {
       RWLock::ReadLock rlock(rwlock);
       ASSERT_EQ(1, val);
@@ -78,11 +76,11 @@ TEST(ReadWriteLock, WriteLockGurad) {
   int val = 0;
 
   std::thread ths[10];
-  for(int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ths[i] = std::thread([&rwlock, &val]() {
-        RWLock::WriteLock wlock(rwlock);
-        for (int i = 0; i < 100000000; i++) {
-          val++;
+      RWLock::WriteLock wlock(rwlock);
+      for (int i = 0; i < 100000000; i++) {
+        val++;
       }
     });
   }
@@ -98,7 +96,7 @@ TEST(ReadWriteLock, unique_ptr_for_WriteLockGuard) {
   int val = 0;
 
   std::thread ths[10];
-  for(int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ths[i] = std::thread([&rwlock, &val]() {
       auto ptr = std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(rwlock));
       for (int i = 0; i < 10000000; i++) {
@@ -118,7 +116,7 @@ TEST(ReadWriteLock, ReadLockGuard_Concurrency) {
 
   std::time_t start = std::time(nullptr);
   std::thread ths[5];
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     ths[i] = std::thread([&rwlock]() {
       auto ptr = std::unique_ptr<RWLock::ReadLock>(new RWLock::ReadLock(rwlock));
       sleep(1);
@@ -130,7 +128,7 @@ TEST(ReadWriteLock, ReadLockGuard_Concurrency) {
   }
 
   std::time_t end = std::time(nullptr);
-  ASSERT_LE(end-start, 2);
+  ASSERT_LE(end - start, 2);
 }
 
 TEST(ReadWriteLock, WriteLockGuard_Exclusive) {
@@ -138,7 +136,7 @@ TEST(ReadWriteLock, WriteLockGuard_Exclusive) {
 
   std::time_t start = std::time(nullptr);
   std::thread ths[5];
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     ths[i] = std::thread([&rwlock]() {
       auto ptr = std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(rwlock));
       sleep(1);
@@ -150,7 +148,7 @@ TEST(ReadWriteLock, WriteLockGuard_Exclusive) {
   }
 
   std::time_t end = std::time(nullptr);
-  ASSERT_GT(end-start, 4);
+  ASSERT_GT(end - start, 4);
 }
 
 TEST(ReadWriteLock, WriteLockGurad_First) {
@@ -158,7 +156,7 @@ TEST(ReadWriteLock, WriteLockGurad_First) {
   int val = 0;
 
   std::thread ths[6];
-  for(int i = 0; i < 6; i++) {
+  for (int i = 0; i < 6; i++) {
     if ((i % 2) == 0) {
       ths[i] = std::thread([&rwlock, &val]() {
         auto ptr = std::unique_ptr<RWLock::WriteLock>(new RWLock::WriteLock(rwlock));

@@ -67,7 +67,7 @@ class FeedSlaveThread {
   void Join();
   bool IsStopped() { return stop_; }
   Redis::Connection *GetConn() { return conn_.get(); }
-  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_-1; }
+  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_ - 1; }
 
  private:
   uint64_t interval = 0;
@@ -78,7 +78,7 @@ class FeedSlaveThread {
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
   const size_t kMaxDelayUpdates = 16;
-  const size_t kMaxDelayBytes   = 16 * 1024;
+  const size_t kMaxDelayBytes = 16 * 1024;
 
   void loop();
   void checkLivenessIfNeed();
@@ -86,10 +86,8 @@ class FeedSlaveThread {
 
 class ReplicationThread {
  public:
-  explicit ReplicationThread(std::string host, uint32_t port,
-                             Server *srv);
-  Status Start(std::function<void()> &&pre_fullsync_cb,
-               std::function<void()> &&post_fullsync_cb);
+  explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
+  Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_; }
   time_t LastIOTime() { return last_io_time_; }
@@ -118,12 +116,9 @@ class ReplicationThread {
     void Start();
     void Stop();
     static void EvCallback(bufferevent *bev, void *ctx);
-    static void ConnEventCB(bufferevent *bev, int16_t events,
-                            void *state_machine_ptr);
-    static void SetReadCB(bufferevent *bev, bufferevent_data_cb cb,
-                          void *state_machine_ptr);
-    static void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb,
-                           void *state_machine_ptr);
+    static void ConnEventCB(bufferevent *bev, int16_t events, void *state_machine_ptr);
+    static void SetReadCB(bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr);
+    static void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr);
 
    private:
     bufferevent *bev_ = nullptr;
@@ -131,12 +126,8 @@ class ReplicationThread {
     CallbackList handlers_;
     CallbackList::size_type handler_idx_ = 0;
 
-    EventType getHandlerEventType(CallbackList::size_type idx) {
-      return std::get<0>(handlers_[idx]);
-    }
-    std::string getHandlerName(CallbackList::size_type idx) {
-      return std::get<1>(handlers_[idx]);
-    }
+    EventType getHandlerEventType(CallbackList::size_type idx) { return std::get<0>(handlers_[idx]); }
+    std::string getHandlerName(CallbackList::size_type idx) { return std::get<1>(handlers_[idx]); }
     std::function<State(bufferevent *, void *)> getHandlerFunc(CallbackList::size_type idx) {
       return std::get<2>(handlers_[idx]);
     }
@@ -193,14 +184,11 @@ class ReplicationThread {
 
   // Synchronized-Blocking ops
   Status sendAuth(int sock_fd);
-  Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir,
-                   const std::string file, uint32_t crc, fetch_file_callback fn);
-  Status fetchFiles(int sock_fd, const std::string &dir,
-                  const std::vector<std::string> &files,
-                  const std::vector<uint32_t> &crcs,
-                  fetch_file_callback fn);
-  Status parallelFetchFile(const std::string &dir,
-                  const std::vector<std::pair<std::string, uint32_t>> &files);
+  Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string file, uint32_t crc,
+                   fetch_file_callback fn);
+  Status fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
+                    const std::vector<uint32_t> &crcs, fetch_file_callback fn);
+  Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
   static bool isWrongPsyncNum(const char *err);
 
@@ -214,13 +202,12 @@ class ReplicationThread {
  */
 class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
-  rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
-                        const rocksdb::Slice &value) override;
+  rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
   rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
     return rocksdb::Status::OK();
   }
-  rocksdb::Status DeleteRangeCF(uint32_t column_family_id,
-                  const rocksdb::Slice& begin_key, const rocksdb::Slice& end_key) override {
+  rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice &begin_key,
+                                const rocksdb::Slice &end_key) override {
     return rocksdb::Status::OK();
   }
   WriteBatchType Type() { return type_; }

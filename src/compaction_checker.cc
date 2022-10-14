@@ -19,7 +19,10 @@
  */
 
 #include "compaction_checker.h"
+
 #include <glog/logging.h>
+
+#include "parse_util.h"
 #include "storage.h"
 
 void CompactionChecker::CompactPropagateAndPubSubFiles() {
@@ -30,7 +33,7 @@ void CompactionChecker::CompactPropagateAndPubSubFiles() {
     LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf_name;
     auto cf_handle = storage_->GetCFHandle(cf_name);
     auto s = storage_->GetDB()->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
-    LOG(INFO) << "[compaction checker] Compact the column family: "<< cf_name <<" finished, result: " << s.ToString();
+    LOG(INFO) << "[compaction checker] Compact the column family: " << cf_name << " finished, result: " << s.ToString();
   }
 }
 
@@ -48,8 +51,8 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   if (props.size() <= 1) return;
 
   size_t maxFilesToCompact = 1;
-  if (props.size()/360 > maxFilesToCompact) {
-    maxFilesToCompact = props.size()/360;
+  if (props.size() / 360 > maxFilesToCompact) {
+    maxFilesToCompact = props.size() / 360;
   }
   int64_t now, forceCompactSeconds = 2 * 24 * 3600;
   rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -66,20 +69,30 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       // file_creation_time is 0 which means the unknown condition in rocksdb
       auto s = rocksdb::Env::Default()->GetFileModificationTime(iter.first, &file_creation_time);
       if (!s.ok()) {
-        LOG(INFO) << "[compaction checker] Failed to get the file creation time: "
-                  << iter.first << ", err: "<< s.ToString();
+        LOG(INFO) << "[compaction checker] Failed to get the file creation time: " << iter.first
+                  << ", err: " << s.ToString();
         continue;
       }
     }
 
     // don't compact the SST created in 1 hour
-    if (file_creation_time > static_cast<uint64_t>(now-3600)) continue;
+    if (file_creation_time > static_cast<uint64_t>(now - 3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
-        total_keys = std::atoi(property_iter.second.data());
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse total_keys error: " << parse_result.Msg();
+          continue;
+        }
+        total_keys = *parse_result;
       }
       if (property_iter.first == "deleted_keys") {
-        deleted_keys = std::atoi(property_iter.second.data());
+        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        if (!parse_result) {
+          LOG(ERROR) << "[compaction checker] Parse deleted_keys error: " << parse_result.Msg();
+          continue;
+        }
+        deleted_keys = *parse_result;
       }
       if (property_iter.first == "start_key") {
         start_key = property_iter.second;
@@ -91,7 +104,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
 
     if (start_key.empty() || stop_key.empty()) continue;
     // pick the file which was created more than 2 days
-    if (file_creation_time < static_cast<uint64_t>(now-forceCompactSeconds)) {
+    if (file_creation_time < static_cast<uint64_t>(now - forceCompactSeconds)) {
       LOG(INFO) << "[compaction checker] Going to compact the key in file(created more than 2 days): " << iter.first;
       auto s = storage_->Compact(&start_key, &stop_key);
       LOG(INFO) << "[compaction checker] Compact the key in file(created more than 2 days): " << iter.first
@@ -99,7 +112,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       maxFilesToCompact--;
     }
     // pick the file which has highest delete ratio
-    double delete_ratio = static_cast<double>(deleted_keys)/static_cast<double>(total_keys);
+    double delete_ratio = static_cast<double>(deleted_keys) / static_cast<double>(total_keys);
     if (total_keys != 0 && delete_ratio > best_delete_ratio) {
       best_delete_ratio = delete_ratio;
       best_filename = iter.first;

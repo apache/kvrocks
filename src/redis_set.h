@@ -30,8 +30,7 @@ namespace Redis {
 
 class Set : public SubKeyScanner {
  public:
-  explicit Set(Engine::Storage *storage, const std::string &ns)
-      : SubKeyScanner(storage, ns) {}
+  explicit Set(Engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status IsMember(const Slice &user_key, const Slice &member, int *ret);
@@ -48,11 +47,8 @@ class Set : public SubKeyScanner {
   rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   rocksdb::Status InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
-  rocksdb::Status Scan(const Slice &user_key,
-                       const std::string &cursor,
-                       uint64_t limit,
-                       const std::string &member_prefix,
-                       std::vector<std::string> *members);
+  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+                       const std::string &member_prefix, std::vector<std::string> *members);
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, SetMetadata *metadata);

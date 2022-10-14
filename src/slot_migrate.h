@@ -35,6 +35,7 @@
 
 #include "config.h"
 #include "encoding.h"
+#include "parse_util.h"
 #include "redis_db.h"
 #include "redis_slot.h"
 #include "server.h"
@@ -43,14 +44,9 @@
 #include "status.h"
 #include "util.h"
 
-#define CLUSTER_SLOTS HASH_SLOTS_SIZE
+constexpr const auto CLUSTER_SLOTS = HASH_SLOTS_SIZE;
 
-enum MigrateTaskState {
-  kMigrateNone = 0,
-  kMigrateStart,
-  kMigrateSuccess,
-  kMigrateFailed
-};
+enum MigrateTaskState { kMigrateNone = 0, kMigrateStart, kMigrateSuccess, kMigrateFailed };
 
 enum MigrateStateMachine {
   kSlotMigrateNone,
@@ -63,10 +59,13 @@ enum MigrateStateMachine {
 };
 
 struct SlotMigrateJob {
-  SlotMigrateJob(int slot, std::string dst_ip, int port,
-                 int speed, int pipeline_size, int seq_gap) :
-                 migrate_slot_(slot), dst_ip_(dst_ip), dst_port_(port),
-                 speed_limit_(speed), pipeline_size_(pipeline_size), seq_gap_(seq_gap) {}
+  SlotMigrateJob(int slot, std::string dst_ip, int port, int speed, int pipeline_size, int seq_gap)
+      : migrate_slot_(slot),
+        dst_ip_(dst_ip),
+        dst_port_(port),
+        speed_limit_(speed),
+        pipeline_size_(pipeline_size),
+        seq_gap_(seq_gap) {}
   ~SlotMigrateJob() { close(slot_fd_); }
   int slot_fd_ = -1;  // fd to send data to dst during migrate job
   int migrate_slot_;
@@ -77,27 +76,33 @@ struct SlotMigrateJob {
   int seq_gap_;
 };
 
-
 class SlotMigrate : public Redis::Database {
  public:
-  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed,
-                       int pipeline_size = kPipelineSize, int seq_gap = kSeqGapLimit);
-  ~SlotMigrate() {}
+  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed, int pipeline_size = kPipelineSize,
+                       int seq_gap = kSeqGapLimit);
+  ~SlotMigrate();
 
   Status CreateMigrateHandleThread(void);
-  void *Loop(void *arg);
-  Status MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip,
-                      int dst_port, int slot, int speed, int pipeline_size, int seq_gap);
+  void Loop();
+  Status MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip, int dst_port, int slot,
+                      int speed, int pipeline_size, int seq_gap);
   void ReleaseForbiddenSlot();
-  void SetMigrateSpeedLimit(int speed) { if (speed >= 0) migrate_speed_ = speed; }
-  void SetPipelineSize(uint32_t size) { if (size > 0) pipeline_size_limit_ = size; }
-  void SetSequenceGapSize(int size) { if (size > 0) seq_gap_limit_ = size; }
-  void SetMigrateStopFlag(bool state) { stop_ = state; }
+  void SetMigrateSpeedLimit(int speed) {
+    if (speed >= 0) migrate_speed_ = speed;
+  }
+  void SetPipelineSize(uint32_t size) {
+    if (size > 0) pipeline_size_limit_ = size;
+  }
+  void SetSequenceGapSize(int size) {
+    if (size > 0) seq_gap_limit_ = size;
+  }
+  void SetMigrateStopFlag(bool state) { stop_migrate_ = state; }
   int16_t GetMigrateState() { return migrate_state_; }
   int16_t GetMigrateStateMachine() { return state_machine_; }
   int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
   int16_t GetMigratingSlot(void) { return migrate_slot_; }
   void GetMigrateInfo(std::string *info);
+  bool IsTerminated() { return thread_state_ == ThreadState::Terminated; }
 
  private:
   void StateMachine(void);
@@ -114,13 +119,11 @@ class SlotMigrate : public Redis::Database {
   bool CheckResponseWithCounts(int sock_fd, int total);
 
   Status MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &value, std::string *restore_cmds);
-  bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata,
-                        const std::string &bytes, std::string *restore_cmds);
-  bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
-  bool MigrateBitmapKey(const InternalKey &inkey,
-                        std::unique_ptr<rocksdb::Iterator> *iter,
-                        std::vector<std::string> *user_cmd,
+  bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
                         std::string *restore_cmds);
+  bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
+  bool MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
+                        std::vector<std::string> *user_cmd, std::string *restore_cmds);
   bool SendCmdsPipelineIfNeed(std::string *commands, bool need);
   void MigrateSpeedLimit(void);
   Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
@@ -135,21 +138,18 @@ class SlotMigrate : public Redis::Database {
 
   MigrateStateMachine state_machine_;
 
-  enum ParserState {
-    ArrayLen,
-    BulkLen,
-    BulkData,
-    Error,
-    OneRspEnd
-  };
+  enum ParserState { ArrayLen, BulkLen, BulkData, Error, OneRspEnd };
   ParserState stat_ = ArrayLen;
+
+  enum class ThreadState { Uninitialized, Running, Terminated };
+  ThreadState thread_state_ = ThreadState::Uninitialized;
 
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;
   static const int kMaxNotifyRetryTimes = 3;
   static const int kPipelineSize = 16;
   static const int kMigrateSpeed = 4096;
-  static const int kMaxItemsInCommand = 16;   // Iterms in every write commmand of complex keys
+  static const int kMaxItemsInCommand = 16;  // Iterms in every write commmand of complex keys
   static const int kSeqGapLimit = 10000;
   static const int kMaxLoopTimes = 10;
 
@@ -168,7 +168,7 @@ class SlotMigrate : public Redis::Database {
   std::atomic<int16_t> migrate_slot_;
   int16_t migrate_failed_slot_;
   std::atomic<MigrateTaskState> migrate_state_;
-  std::atomic<bool> stop_;
+  std::atomic<bool> stop_migrate_;  // stop_migrate_ is true will stop migrate but the migration thread won't destroy.
   std::string current_migrate_key_;
   uint64_t slot_snapshot_time_;
   const rocksdb::Snapshot *slot_snapshot_;
@@ -178,5 +178,3 @@ class SlotMigrate : public Redis::Database {
   int pipeline_size_limit_ = kPipelineSize;
   int seq_gap_limit_ = kSeqGapLimit;
 };
-
-

@@ -20,13 +20,14 @@
 
 #include "batch_extractor.h"
 
-#include <rocksdb/write_batch.h>
 #include <glog/logging.h>
+#include <rocksdb/write_batch.h>
 
-#include "server.h"
+#include "parse_util.h"
 #include "redis_bitmap.h"
-#include "redis_slot.h"
 #include "redis_reply.h"
+#include "redis_slot.h"
+#include "server.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   // Currently, we only have two kinds of log data
@@ -41,8 +42,7 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   }
 }
 
-rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key,
-                                           const Slice &value) {
+rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
   if (column_family_id == kColumnFamilyIDZSetScore) {
     return rocksdb::Status::OK();
   }
@@ -66,7 +66,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();
       if (args->size() > 0) {
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
+        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
           command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
@@ -86,7 +90,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
     switch (log_data_.GetRedisType()) {
-      case kRedisHash:command_args = {"HSET", user_key, sub_key, value.ToString()};
+      case kRedisHash:
+        command_args = {"HSET", user_key, sub_key, value.ToString()};
         break;
       case kRedisList: {
         auto args = log_data_.GetArguments();
@@ -94,7 +99,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           LOG(ERROR) << "Fail to parse write_batch in putcf type list : args error ,should at least contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
+        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLSet:
             if (args->size() < 2) {
@@ -107,7 +116,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
             if (first_seen_) {
               if (args->size() < 4) {
                 LOG(ERROR)
-                   << "Fail to parse write_batch in putcf cmd linsert : args error, should contain before pivot value";
+                    << "Fail to parse write_batch in putcf cmd linsert : args error, should contain before pivot value";
                 return rocksdb::Status::OK();
               }
               command_args = {"LINSERT", user_key, (*args)[1] == "1" ? "before" : "after", (*args)[2], (*args)[3]};
@@ -117,11 +126,13 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           case kRedisCmdLRem:
             // lrem will be parsed in deletecf, so ignore this putcf
             break;
-          default:command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
+          default:
+            command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
         }
         break;
       }
-      case kRedisSet:command_args = {"SADD", user_key, sub_key};
+      case kRedisSet:
+        command_args = {"SADD", user_key, sub_key};
         break;
       case kRedisZSet: {
         double score = DecodeDouble(value.data());
@@ -134,14 +145,22 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : args error ,should at least contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
+        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdSetBit: {
             if (args->size() < 2) {
               LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
               return rocksdb::Status::OK();
             }
-            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), std::stoi((*args)[1]));
+            auto parse_result = ParseInt<int>((*args)[1], 10);
+            if (!parse_result) {
+              return rocksdb::Status::InvalidArgument(parse_result.Msg());
+            }
+            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parse_result);
             command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
             break;
           }
@@ -149,7 +168,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
             if (first_seen_) {
               if (args->size() < 4) {
                 LOG(ERROR)
-                   << "Fail to parse write_batch in putcf cmd bitop : args error, should at least contain srckey";
+                    << "Fail to parse write_batch in putcf cmd bitop : args error, should at least contain srckey";
                 return rocksdb::Status::OK();
               }
               command_args = {"BITOP", (*args)[1], user_key};
@@ -169,7 +188,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         }
         break;
       }
-      default: break;
+      default:
+        break;
     }
   }
 
@@ -201,11 +221,14 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
     switch (log_data_.GetRedisType()) {
-      case kRedisHash: command_args = {"HDEL", user_key, sub_key};
+      case kRedisHash:
+        command_args = {"HDEL", user_key, sub_key};
         break;
-      case kRedisSet: command_args = {"SREM", user_key, sub_key};
+      case kRedisSet:
+        command_args = {"SREM", user_key, sub_key};
         break;
-      case kRedisZSet: command_args = {"ZREM", user_key, sub_key};
+      case kRedisZSet:
+        command_args = {"ZREM", user_key, sub_key};
         break;
       case kRedisList: {
         auto args = log_data_.GetArguments();
@@ -213,7 +236,11 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           LOG(ERROR) << "Fail to parse write_batch in DeleteCF type list : args error ,should contain cmd";
           return rocksdb::Status::OK();
         }
-        RedisCommand cmd = static_cast<RedisCommand >(std::stoi((*args)[0]));
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+        }
+        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLTrim:
             if (first_seen_) {
@@ -235,7 +262,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
               first_seen_ = false;
             }
             break;
-          default:command_args = {cmd == kRedisCmdLPop ? "LPOP" : "RPOP", user_key};
+          default:
+            command_args = {cmd == kRedisCmdLPop ? "LPOP" : "RPOP", user_key};
         }
         break;
       }
@@ -245,7 +273,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         }
         break;
       }
-      default: break;
+      default:
+        break;
     }
   }
 
@@ -255,8 +284,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id,
-                                                   const Slice& begin_key, const Slice& end_key) {
+rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
+                                                   const Slice &end_key) {
   // Do nothing about DeleteRange operations
   return rocksdb::Status::OK();
 }

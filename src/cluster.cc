@@ -18,16 +18,18 @@
  *
  */
 
+#include "cluster.h"
+
+#include <algorithm>
 #include <cassert>
 #include <cstring>
-#include <algorithm>
 #include <memory>
 
-#include "util.h"
-#include "server.h"
-#include "cluster.h"
+#include "parse_util.h"
 #include "redis_cmd.h"
 #include "replication.h"
+#include "server.h"
+#include "util.h"
 
 const char *errInvalidNodeID = "Invalid cluster node id";
 const char *errInvalidSlotID = "Invalid slot id";
@@ -39,13 +41,12 @@ const char *errClusterNoInitialized = "CLUSTERDOWN The cluster is not initialize
 const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
 const char *errInvalidImportState = "Invalid import state";
 
-ClusterNode::ClusterNode(std::string id, std::string host, int port,
-    int role, std::string master_id, std::bitset<kClusterSlots> slots):
-    id_(id), host_(host), port_(port), role_(role),
-    master_id_(master_id), slots_(slots) { }
+ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
+                         std::bitset<kClusterSlots> slots)
+    : id_(id), host_(host), port_(port), role_(role), master_id_(master_id), slots_(slots) {}
 
-Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port) :
-    svr_(svr), binds_(binds), port_(port), size_(0), version_(-1), myself_(nullptr) {
+Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port)
+    : svr_(svr), binds_(binds), port_(port), size_(0), version_(-1), myself_(nullptr) {
   for (unsigned i = 0; i < kClusterSlots; i++) {
     slots_nodes_[i] = nullptr;
   }
@@ -61,7 +62,7 @@ bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
     return true;
   } else if (strcasecmp("setnodeid", subcommand.c_str()) == 0) {
     return true;
-  }  else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
+  } else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
     return true;
   } else if (strcasecmp("import", subcommand.c_str()) == 0) {
     return true;
@@ -107,7 +108,7 @@ Status Cluster::SetSlot(int slot, std::string node_id, int64_t new_version) {
   if (!IsValidSlot(slot)) {
     return Status(Status::NotOK, errInvalidSlotID);
   }
-  if (node_id.size() != kClusterNodeIdLen)  {
+  if (node_id.size() != kClusterNodeIdLen) {
     return Status(Status::NotOK, errInvalidNodeID);
   }
 
@@ -194,9 +195,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   // Find myself
   if (myid_.empty() || force) {
     for (auto &n : nodes_) {
-      if (n.second->port_ == port_ &&
-          std::find(binds_.begin(), binds_.end(), n.second->host_)
-            != binds_.end()) {
+      if (n.second->port_ == port_ && std::find(binds_.begin(), binds_.end(), n.second->host_) != binds_.end()) {
         myid_ = n.first;
         break;
       }
@@ -239,19 +238,15 @@ void Cluster::SetMasterSlaveRepl() {
     std::shared_ptr<ClusterNode> master = nodes_[myself_->master_id_];
     Status s = svr_->AddMaster(master->host_, master->port_, 0);
     if (s.IsOK()) {
-      LOG(INFO) << "SLAVE OF " << master->host_ << ":" << master->port_
-                << " enabled by cluster topology setting";
+      LOG(INFO) << "SLAVE OF " << master->host_ << ":" << master->port_ << " enabled by cluster topology setting";
     } else {
       LOG(WARNING) << "SLAVE OF " << master->host_ << ":" << master->port_
-                    << " enabled by cluster topology setting, encounter error: "
-                    << s.Msg();
+                   << " enabled by cluster topology setting, encounter error: " << s.Msg();
     }
   }
 }
 
-bool Cluster::IsNotMaster() {
-  return myself_ == nullptr || myself_->role_ != kClusterMaster || svr_->IsSlave();
-}
+bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role_ != kClusterMaster || svr_->IsSlave(); }
 
 Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
   if (!IsValidSlot(slot)) {
@@ -296,10 +291,8 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
   }
 
   const auto dst = nodes_[dst_node_id];
-  Status s = svr_->slot_migrate_->MigrateStart(svr_, dst_node_id, dst->host_,
-                                               dst->port_, slot,
-                                               svr_->GetConfig()->migrate_speed,
-                                               svr_->GetConfig()->pipeline_size,
+  Status s = svr_->slot_migrate_->MigrateStart(svr_, dst_node_id, dst->host_, dst->port_, slot,
+                                               svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
                                                svr_->GetConfig()->sequence_gap);
   return s;
 }
@@ -329,8 +322,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
     case kImportSuccess:
       if (!svr_->slot_import_->Success(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
-                  << ", received slot: " << slot
-                  << ", current slot: " << svr_->slot_import_->GetSlot();
+                   << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
         return Status(Status::NotOK, "Failed to set slot " + std::to_string(slot) + " importing success");
       }
       LOG(INFO) << "[import] Succeed to import slot " << slot;
@@ -338,8 +330,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
     case kImportFailed:
       if (!svr_->slot_import_->Fail(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
-                  << ", received slot: " << slot
-                  << ", current slot: " << svr_->slot_import_->GetSlot();
+                   << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
         return Status(Status::NotOK, "Failed to set slot " + std::to_string(slot) + " importing error");
       }
       LOG(INFO) << "[import] Failed to import slot " << slot;
@@ -362,15 +353,26 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   }
 
   *cluster_infos =
-    "cluster_state:ok\r\n"
-    "cluster_slots_assigned:" + std::to_string(ok_slot) + "\r\n"
-    "cluster_slots_ok:" + std::to_string(ok_slot) + "\r\n"
-    "cluster_slots_pfail:0\r\n"
-    "cluster_slots_fail:0\r\n"
-    "cluster_known_nodes:" + std::to_string(nodes_.size()) +"\r\n"
-    "cluster_size:" + std::to_string(size_) + "\r\n"
-    "cluster_current_epoch:" +  std::to_string(version_) + "\r\n"
-    "cluster_my_epoch:" +  std::to_string(version_) + "\r\n";
+      "cluster_state:ok\r\n"
+      "cluster_slots_assigned:" +
+      std::to_string(ok_slot) +
+      "\r\n"
+      "cluster_slots_ok:" +
+      std::to_string(ok_slot) +
+      "\r\n"
+      "cluster_slots_pfail:0\r\n"
+      "cluster_slots_fail:0\r\n"
+      "cluster_known_nodes:" +
+      std::to_string(nodes_.size()) +
+      "\r\n"
+      "cluster_size:" +
+      std::to_string(size_) +
+      "\r\n"
+      "cluster_current_epoch:" +
+      std::to_string(version_) +
+      "\r\n"
+      "cluster_my_epoch:" +
+      std::to_string(version_) + "\r\n";
 
   if (myself_ != nullptr && myself_->role_ == kClusterMaster && !svr_->IsSlave()) {
     // Get migrating status
@@ -414,7 +416,7 @@ Status Cluster::GetSlotsInfo(std::vector<SlotInfo> *slots_infos) {
     }
     // Generate slots info when occur different node with start or end of slot
     if (i == kClusterSlots || n != slots_nodes_[i]) {
-      slots_infos->emplace_back(GenSlotNodeInfo(start, i-1, n));
+      slots_infos->emplace_back(GenSlotNodeInfo(start, i - 1, n));
       if (i == kClusterSlots) break;
       n = slots_nodes_[i];
       start = i;
@@ -427,7 +429,7 @@ SlotInfo Cluster::GenSlotNodeInfo(int start, int end, std::shared_ptr<ClusterNod
   std::vector<SlotInfo::NodeInfo> vn;
   vn.push_back({n->host_, n->port_, n->id_});  // itself
 
-  for (const auto &id : n->replicas) {         // replicas
+  for (const auto &id : n->replicas) {  // replicas
     if (nodes_.find(id) == nodes_.end()) continue;
     vn.push_back({nodes_[id]->host_, nodes_[id]->port_, nodes_[id]->id_});
   }
@@ -459,10 +461,10 @@ std::string Cluster::GenNodesDescription() {
     }
     // Generate slots info when occur different node with start or end of slot
     if (i == kClusterSlots || n != slots_nodes_[i]) {
-      if (start == i-1) {
+      if (start == i - 1) {
         n->slots_info_ += std::to_string(start) + " ";
       } else {
-        n->slots_info_ += std::to_string(start)+ "-" + std::to_string(i-1) + " ";
+        n->slots_info_ += std::to_string(start) + "-" + std::to_string(i - 1) + " ";
       }
       if (i == kClusterSlots) break;
       n = slots_nodes_[i];
@@ -477,8 +479,8 @@ std::string Cluster::GenNodesDescription() {
     std::string node_str;
     // ID, host, port
     node_str.append(n->id_ + " ");
-    node_str.append(n->host_ + ":" + std::to_string(n->port_) +
-        "@" + std::to_string(n->port_+kClusterPortIncr) + " ");
+    node_str.append(n->host_ + ":" + std::to_string(n->port_) + "@" + std::to_string(n->port_ + kClusterPortIncr) +
+                    " ");
 
     // Flags
     if (n->id_ == myid_) node_str.append("myself,");
@@ -489,9 +491,8 @@ std::string Cluster::GenNodesDescription() {
     }
 
     // Ping sent, pong received, config epoch, link status
-    node_str.append(std::to_string(std::time(nullptr)*1000-1) + " " +
-      std::to_string(std::time(nullptr)*1000) + " " +
-      std::to_string(version_) + " " + "connected");
+    node_str.append(std::to_string(std::time(nullptr) * 1000 - 1) + " " + std::to_string(std::time(nullptr) * 1000) +
+                    " " + std::to_string(version_) + " " + "connected");
 
     // Slots
     if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Trim space
@@ -530,17 +531,17 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     std::string host = fields[1];
 
     // 3) port
-    int port = std::atoi(fields[2].c_str());
-    if (port <= 0 || port >= (65535-kClusterPortIncr)) {
+    auto parse_result = ParseInt<uint16_t>(fields[2], 10);
+    if (!parse_result) {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster node port");
     }
+    int port = *parse_result;
 
     // 4) role
     int role;
     if (strcasecmp(fields[3].c_str(), "master") == 0) {
       role = kClusterMaster;
-    } else if (strcasecmp(fields[3].c_str(), "slave") == 0 ||
-               strcasecmp(fields[3].c_str(), "replica") == 0) {
+    } else if (strcasecmp(fields[3].c_str(), "slave") == 0 || strcasecmp(fields[3].c_str(), "replica") == 0) {
       role = kClusterSlave;
     } else {
       return Status(Status::ClusterInvalidInfo, "Invalid cluster node role");
@@ -559,21 +560,22 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         return Status(Status::ClusterInvalidInfo, errInvalidClusterNodeInfo);
       } else {
         // Create slave node
-        (*nodes)[id] = Util::MakeShared<ClusterNode>(
-          id, host, port, role, master_id, slots);
+        (*nodes)[id] = Util::MakeShared<ClusterNode>(id, host, port, role, master_id, slots);
         continue;
       }
     }
 
     // 6) slot info
+    auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
     for (unsigned i = 5; i < fields.size(); i++) {
       int start, stop;
       std::vector<std::string> ranges = Util::Split(fields[i], "-");
       if (ranges.size() == 1) {
-        start = std::atoi(ranges[0].c_str());
-        if (IsValidSlot(start) == false) {
+        auto parse_result = ParseInt<int>(ranges[0], valid_range, 10);
+        if (!parse_result) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }
+        start = *parse_result;
         slots.set(start, 1);
         if (role == kClusterMaster) {
           if (slots_nodes->find(start) != slots_nodes->end()) {
@@ -583,11 +585,13 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
           }
         }
       } else if (ranges.size() == 2) {
-        start = std::atoi(ranges[0].c_str());
-        stop = std::atoi(ranges[1].c_str());
-        if (start >= stop || start < 0 || stop >= kClusterSlots) {
+        auto parse_start = ParseInt<int>(ranges[0], valid_range, 10);
+        auto parse_stop = ParseInt<int>(ranges[1], valid_range, 10);
+        if (!parse_start || !parse_stop || *parse_start >= *parse_stop) {
           return Status(Status::ClusterInvalidInfo, errSlotOutOfRange);
         }
+        start = *parse_start;
+        stop = *parse_stop;
         for (int j = start; j <= stop; j++) {
           slots.set(j, 1);
           if (role == kClusterMaster) {
@@ -604,8 +608,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    (*nodes)[id] = Util::MakeShared<ClusterNode>(
-        id, host, port, role, master_id, slots);
+    (*nodes)[id] = Util::MakeShared<ClusterNode>(id, host, port, role, master_id, slots);
   }
   return Status::OK();
 }
@@ -617,8 +620,7 @@ bool Cluster::IsWriteForbiddenSlot(int slot) {
   return false;
 }
 
-Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
-                                const std::vector<std::string> &cmd_tokens,
+Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {
   std::vector<int> keys_indexes;
   auto s = Redis::GetKeysFromCommand(attributes->name, cmd_tokens.size(), &keys_indexes);
@@ -632,8 +634,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
     int cur_slot = GetSlotNumFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {
-      return Status(Status::RedisExecErr,
-        "CROSSSLOT Attempted to access keys that don't hash to the same slot");
+      return Status(Status::RedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot");
     }
   }
   if (slot == -1) return Status::OK();
@@ -664,14 +665,11 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes,
     // the destination server. Before the central controller change the topology, the destination
     // server should record the imported slots to accept new data of the imported slots.
     return Status::OK();  // I'm serving the imported slot
-  } else if (myself_ && myself_->role_ == kClusterSlave
-     && attributes->is_write() == false
-     && nodes_.find(myself_->master_id_) != nodes_.end()
-     && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
+  } else if (myself_ && myself_->role_ == kClusterSlave && attributes->is_write() == false &&
+             nodes_.find(myself_->master_id_) != nodes_.end() && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
     return Status::OK();  // My mater is serving this slot
   } else {
-    std::string ip_port = slots_nodes_[slot]->host_ + ":" +
-                          std::to_string(slots_nodes_[slot]->port_);
+    std::string ip_port = slots_nodes_[slot]->host_ + ":" + std::to_string(slots_nodes_[slot]->port_);
     return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + ip_port);
   }
 }

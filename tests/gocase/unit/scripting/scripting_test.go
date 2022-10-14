@@ -83,12 +83,8 @@ func TestScripting(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.WriteArgs("EVAL", `return "hello"`, "0"))
-		r, err := c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "$5", r)
-		r, err = c.ReadLine()
-		require.NoError(t, err)
-		require.Equal(t, "hello", r)
+		c.MustRead(t, "$5")
+		c.MustRead(t, "hello")
 	})
 
 	t.Run("EVAL - Lua table -> Redis protocol type conversion", func(t *testing.T) {
@@ -488,7 +484,7 @@ func TestScriptingMasterSlave(t *testing.T) {
 
 	ctx := context.Background()
 
-	require.NoError(t, slaveClient.SlaveOf(ctx, master.Host(), fmt.Sprintf("%d", master.Port())).Err())
+	util.SlaveOf(t, slaveClient, master)
 	util.WaitForSync(t, slaveClient)
 
 	t.Run("SCRIPTING: script load on master, read on slave", func(t *testing.T) {

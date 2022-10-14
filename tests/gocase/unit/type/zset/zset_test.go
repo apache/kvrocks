@@ -523,7 +523,7 @@ func basics(t *testing.T, rdb *redis.Client, ctx context.Context, encoding strin
 		require.Equal(t, int64(5), remrangebyrank(0, 10))
 		require.Equal(t, []string{}, rdb.ZRange(ctx, "zset", 0, -1).Val())
 
-		// destory when empty
+		// destroy when empty
 		require.Equal(t, int64(5), remrangebyrank(0, 4))
 		require.Equal(t, int64(0), rdb.Exists(ctx, "zset").Val())
 	})
@@ -583,7 +583,6 @@ func basics(t *testing.T, rdb *redis.Client, ctx context.Context, encoding strin
 	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MIN - %s", encoding), func(t *testing.T) {
 		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
 		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
-
 	})
 
 	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MAX - %s", encoding), func(t *testing.T) {
@@ -635,17 +634,17 @@ func basics(t *testing.T, rdb *redis.Client, ctx context.Context, encoding strin
 	}
 }
 
-func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing string) {
+func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
 	var elements int
-	if encodeing == "ziplist" {
+	if encoding == "ziplist" {
 		elements = 128
-	} else if encodeing == "skiplist" {
+	} else if encoding == "skiplist" {
 		elements = 100
 	} else {
 		fmt.Println("Unknown sorted set encoding")
 		return
 	}
-	t.Run(fmt.Sprintf("ZSCORE - %s", encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZSCORE - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zscoretest")
 		aux := make([]float64, 0)
 		for i := 0; i < elements; i++ {
@@ -658,7 +657,7 @@ func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing s
 		}
 	})
 
-	t.Run(fmt.Sprintf("ZSET sorting stresser - %s", encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZSET sorting stresser - %s", encoding), func(t *testing.T) {
 		delta := 0
 		for test := 0; test < 2; test++ {
 			auxarray := make(map[string]float64)
@@ -715,7 +714,7 @@ func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing s
 		}
 	})
 
-	t.Run(fmt.Sprintf("ZRANGEBYSCORE fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZRANGEBYSCORE fuzzy test, 100 ranges in %d element sorted set - %s", elements, encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zset")
 		for i := 0; i < elements; i++ {
 			rdb.ZAdd(ctx, "zset", redis.Z{Score: rand.Float64(), Member: strconv.Itoa(i)})
@@ -759,7 +758,7 @@ func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing s
 		}
 	})
 
-	t.Run(fmt.Sprintf("ZRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zset")
 
 		var lexSet []string
@@ -818,61 +817,49 @@ func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing s
 		}
 	})
 
-	t.Run(fmt.Sprintf("ZREMRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encodeing), func(t *testing.T) {
-		var lexset []string
+	t.Run(fmt.Sprintf("ZREMRANGEBYLEX fuzzy test, 100 ranges in %d element sorted set - %s", elements, encoding), func(t *testing.T) {
+		var lexSet []string
 		rdb.Del(ctx, "zset", "zsetcopy")
-		for j := 0; j < elements; j++ {
+		for i := 0; i < elements; i++ {
 			e := util.RandString(0, 30, util.Alpha)
-			lexset = append(lexset, e)
+			lexSet = append(lexSet, e)
 			rdb.ZAdd(ctx, "zset", redis.Z{Member: e})
 		}
-		tmp := make(map[string]bool)
-		for _, l := range lexset {
-			tmp[l] = true
-		}
-		lexset = nil
-		for k := range tmp {
-			lexset = append(lexset, k)
-		}
-		sort.Strings(lexset)
-		for j := 0; j < 100; j++ {
+		sort.Strings(lexSet)
+		lexSet = slices.Compact(lexSet)
+		for i := 0; i < 100; i++ {
 			rdb.ZUnionStore(ctx, "zsetcopy", &redis.ZStore{Keys: []string{"zset"}})
-			var lexsetcopy []string
-			lexsetcopy = append(lexsetcopy, lexset...)
+			var lexSetCopy []string
+			lexSetCopy = append(lexSetCopy, lexSet...)
 			min, max := util.RandString(0, 30, util.Alpha), util.RandString(0, 30, util.Alpha)
-			mininc, maxinc := util.RandomInt(2), util.RandomInt(2)
-			var cmin string
-			var cmax string
-			if mininc == 1 {
-				cmin = "[" + min
-			} else {
-				cmin = "(" + min
+			minInc, maxInc := util.RandomBool(), util.RandomBool()
+			cMin, cMax := "("+min, "("+max
+			if minInc {
+				cMin = "[" + min
 			}
-			if maxinc == 1 {
-				cmax = "[" + max
-			} else {
-				cmax = "(" + max
+			if maxInc {
+				cMax = "[" + max
 			}
-			require.Equal(t, lexset, rdb.ZRange(ctx, "zset", 0, -1).Val())
-			torem := rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: cmin, Max: cmax}).Val()
-			toremlen := rdb.ZLexCount(ctx, "zset", cmin, cmax).Val()
-			rdb.ZRemRangeByLex(ctx, "zsetcopy", cmin, cmax)
+			require.Equal(t, lexSet, rdb.ZRange(ctx, "zset", 0, -1).Val())
+			toRem := rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: cMin, Max: cMax}).Val()
+			toRemLen := rdb.ZLexCount(ctx, "zset", cMin, cMax).Val()
+			rdb.ZRemRangeByLex(ctx, "zsetcopy", cMin, cMax)
 			output := rdb.ZRange(ctx, "zsetcopy", 0, -1).Val()
-			if toremlen > 0 {
+			if toRemLen > 0 {
 				var first, last int64
-				for i, v := range lexsetcopy {
-					if v == torem[0] {
-						first = int64(i)
+				for idx, v := range lexSetCopy {
+					if v == toRem[0] {
+						first = int64(idx)
 					}
 				}
-				last = first + toremlen - 1
-				lexsetcopy = append(lexsetcopy[:first], lexsetcopy[last+1:]...)
+				last = first + toRemLen - 1
+				lexSetCopy = append(lexSetCopy[:first], lexSetCopy[last+1:]...)
 			}
-			require.Equal(t, lexsetcopy, output)
+			require.Equal(t, lexSetCopy, output)
 		}
 	})
 
-	t.Run(fmt.Sprintf("ZSETs skiplist implementation backlink consistency test - %s", encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZSETs skiplist implementation backlink consistency test - %s", encoding), func(t *testing.T) {
 		diff := 0
 		for i := 0; i < elements; i++ {
 			rdb.ZAdd(ctx, "zset", redis.Z{Score: rand.Float64(), Member: fmt.Sprintf("Element-%d", i)})
@@ -888,7 +875,7 @@ func stressers(t *testing.T, rdb *redis.Client, ctx context.Context, encodeing s
 		require.Equal(t, 0, diff)
 	})
 
-	t.Run(fmt.Sprintf("ZSETs ZRANK augmented skip list stress testing - %s", encodeing), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZSETs ZRANK augmented skip list stress testing - %s", encoding), func(t *testing.T) {
 		var err error
 		rdb.Del(ctx, "myzset")
 		for k := 0; k < 2000; k++ {

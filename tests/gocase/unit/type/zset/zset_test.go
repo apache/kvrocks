@@ -432,7 +432,7 @@ func basics(t *testing.T, rdb *redis.Client, ctx context.Context, encoding strin
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "-x", Max: "[bar"}).Err(), ".*illegal.*")
 	})
 
-	t.Run("", func(t *testing.T) {
+	t.Run("ZREMRANGEBYSCORE basics", func(t *testing.T) {
 		remrangebyscore := func(min, max string) int64 {
 			createZset(rdb, ctx, "zset", []redis.Z{{1, "a"}, {2, "b"}, {3, "c"},
 				{4, "d"}, {5, "e"}})

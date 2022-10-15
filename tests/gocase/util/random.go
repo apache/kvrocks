@@ -45,6 +45,10 @@ func RandomInt(max int64) int64 {
 	return rand.Int63() % max
 }
 
+func RandomBool() bool {
+	return RandomInt(2) != 0
+}
+
 type RandStringType int
 
 const (

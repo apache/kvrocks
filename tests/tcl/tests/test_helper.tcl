@@ -34,7 +34,6 @@ source tests/support/util.tcl
 
 set ::all_tests {
     unit/type/list
-    unit/type/zset
     unit/type/stream
     unit/geo
     integration/slotmigrate

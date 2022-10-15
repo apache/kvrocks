@@ -31,9 +31,16 @@ func ErrorRegexp(t testing.TB, err error, rx interface{}, msgAndArgs ...interfac
 	require.Regexp(t, rx, err.Error(), msgAndArgs...)
 }
 
+// BetweenValues asserts start <= d <= end
 func BetweenValues[T constraints.Ordered](t testing.TB, d, start, end T, msgAndArgs ...interface{}) {
 	require.GreaterOrEqual(t, d, start, msgAndArgs...)
 	require.LessOrEqual(t, d, end, msgAndArgs...)
+}
+
+// BetweenValuesEx asserts start < d < end
+func BetweenValuesEx[T constraints.Ordered](t testing.TB, d, start, end T, msgAndArgs ...interface{}) {
+	require.Greater(t, d, start, msgAndArgs...)
+	require.Less(t, d, end, msgAndArgs...)
 }
 
 func RetryEventually(t testing.TB, condition func() bool, maxAttempts int, msgAndArgs ...interface{}) {

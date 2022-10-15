@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package introspection
+package replication
 
 import (
 	"context"
@@ -46,7 +46,7 @@ func TestReplicationLoading(t *testing.T) {
 	defer func() { require.NoError(t, rdbB.Close()) }()
 
 	t.Run("Set instance A as slave of B", func(t *testing.T) {
-		ctx := context.TODO()
+		ctx := context.Background()
 		require.NoError(t, rdbA.ConfigSet(ctx, "slave-empty-db-before-fullsync", "yes").Err())
 		require.NoError(t, rdbA.ConfigSet(ctx, "fullsync-recv-file-delay", "2").Err())
 		util.SlaveOf(t, rdbA, srvB)
@@ -73,7 +73,7 @@ func TestReplicationBasics(t *testing.T) {
 	masterClient := master.NewClient()
 	defer func() { require.NoError(t, masterClient.Close()) }()
 
-	ctx := context.TODO()
+	ctx := context.Background()
 	require.NoError(t, masterClient.Set(ctx, "mykey", "foo", 0).Err())
 	require.NoError(t, masterClient.Set(ctx, "mystring", "a", 0).Err())
 	require.NoError(t, masterClient.LPush(ctx, "mylist", "a", "b", "c").Err())
@@ -190,8 +190,8 @@ func TestReplicationWithMultiSlaves(t *testing.T) {
 		util.WaitForSync(t, rdbA)
 		util.WaitForSync(t, rdbB)
 		require.Eventually(t, func() bool {
-			roleA := rdbA.Do(context.TODO(), "role").String()
-			roleB := rdbB.Do(context.TODO(), "role").String()
+			roleA := rdbA.Do(context.Background(), "role").String()
+			roleB := rdbB.Do(context.Background(), "role").String()
 			return strings.Contains(roleA, "connected") && strings.Contains(roleB, "connected")
 		}, 50*time.Second, 100*time.Millisecond)
 		require.Equal(t, "2", util.FindInfoEntry(rdbC, "sync_full"))
@@ -210,7 +210,7 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 	defer func() { require.NoError(t, masterClient.Close()) }()
 	util.Populate(t, masterClient, "", 1024, 10240)
 
-	ctx := context.TODO()
+	ctx := context.Background()
 	require.NoError(t, masterClient.Set(ctx, "a", "b", 0).Err())
 	require.NoError(t, masterClient.Do(ctx, "compact").Err())
 
@@ -251,7 +251,7 @@ func TestReplicationShareCheckpoint(t *testing.T) {
 	masterClient := master.NewClient()
 	defer func() { require.NoError(t, masterClient.Close()) }()
 	util.Populate(t, masterClient, "", 1024, 1)
-	ctx := context.TODO()
+	ctx := context.Background()
 	require.NoError(t, masterClient.Set(ctx, "a", "b", 0).Err())
 	require.NoError(t, masterClient.Do(ctx, "compact").Err())
 	time.Sleep(time.Second)
@@ -297,11 +297,12 @@ func TestReplicationContinueRunning(t *testing.T) {
 	util.WaitForSync(t, slaveClient)
 
 	t.Run("Master doesn't pause replicating with replicas, #346", func(t *testing.T) {
-		ctx := context.TODO()
+		ctx := context.Background()
 		// In #346, we find a bug, if one command contains more than special
 		// number updates, master won't send replication stream to replicas.
-		masterClient.HSet(ctx, "myhash", 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9,
-			"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "f", "f", "g", "g", "h", "h", "i", "i", "j", "j", "k", "k")
+		masterClient.HSet(ctx, "myhash", map[string]interface{}{
+			"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+			"a": "a", "b": "b", "c": "c", "d": "d", "e": "e", "f": "f", "g": "g", "h": "h", "i": "i", "j": "j", "k": "k"})
 		require.EqualValues(t, 21, masterClient.HLen(ctx, "myhash").Val())
 		util.WaitForOffsetSync(t, masterClient, slaveClient)
 		require.Equal(t, "1", slaveClient.HGet(ctx, "myhash", "1").Val())
@@ -324,7 +325,7 @@ func TestReplicationChangePassword(t *testing.T) {
 	util.WaitForSync(t, slaveClient)
 
 	t.Run("Slave can re-sync with master after password change", func(t *testing.T) {
-		ctx := context.TODO()
+		ctx := context.Background()
 		require.Contains(t, slaveClient.Info(ctx, "replication").String(), "role:slave")
 		masterReplicationInfo := masterClient.Info(ctx, "replication").String()
 		require.Contains(t, masterReplicationInfo, "role:master")
@@ -340,6 +341,9 @@ func TestReplicationChangePassword(t *testing.T) {
 		require.NoError(t, err)
 		require.Greater(t, killedSlaveCount, int64(0))
 
+		// Sleep to wait for the killed connection state to prevent `WaitForSync` running
+		// before the slave finds the connection is down.
+		time.Sleep(time.Second)
 		util.WaitForSync(t, slaveClient)
 		masterReplicationInfo = masterClient.Info(ctx, "replication").String()
 		require.Contains(t, masterReplicationInfo, "role:master")

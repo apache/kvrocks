@@ -20,13 +20,13 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
 from os import makedirs
-import os
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
+from warnings import warn
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
@@ -138,10 +138,10 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     version = check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
 
     if version[0] > 12:
-        raise RuntimeError("We use clang-format 12 in CI, "
-            "so we recommend that you also use this version locally to avoid inconsistencies. "
-            "You can install it from your package manager (usually in clang-12 package) "
-            "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
+        warn("We use clang-format 12 in CI, "
+             "so we recommend that you also use this version locally to avoid inconsistencies. "
+             "You can install it from your package manager (usually in clang-12 package) "
+             "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     basedir = Path(__file__).parent.absolute()
     sources = get_source_files()

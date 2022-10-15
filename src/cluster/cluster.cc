@@ -26,9 +26,9 @@
 #include <memory>
 
 #include "commands/redis_cmd.h"
-#include "server/server.h"
 #include "parse_util.h"
 #include "replication.h"
+#include "server/server.h"
 #include "util.h"
 
 const char *errInvalidNodeID = "Invalid cluster node id";

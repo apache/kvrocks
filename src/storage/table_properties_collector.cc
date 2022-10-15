@@ -24,8 +24,8 @@
 #include <utility>
 
 #include "encoding.h"
-#include "server/server.h"
 #include "redis_metadata.h"
+#include "server/server.h"
 
 rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key, const rocksdb::Slice &value,
                                                       rocksdb::EntryType entry_type, rocksdb::SequenceNumber,

@@ -42,10 +42,10 @@
 #include "event_listener.h"
 #include "event_util.h"
 #include "fd_util.h"
-#include "server/server.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"
+#include "server/server.h"
 #include "table_properties_collector.h"
 
 namespace Engine {

@@ -24,9 +24,9 @@
 #include <rocksdb/write_batch.h>
 
 #include "cluster/redis_slot.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
-#include "parse_util.h"
 #include "types/redis_bitmap.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {

@@ -82,7 +82,7 @@ func TestImportedServer(t *testing.T) {
 
 	t.Run("IMPORT - slot states in right order", func(t *testing.T) {
 		slotNum := 1
-		slotKey := util.GetKeyWithSlotNum(slotNum)
+		slotKey := util.SlotTable[slotNum]
 
 		// import start
 		require.Equal(t, "OK", rdb.Do(ctx, "cluster", "import", slotNum, 0).Val())
@@ -104,7 +104,7 @@ func TestImportedServer(t *testing.T) {
 
 	t.Run("IMPORT - slot state 'error'", func(t *testing.T) {
 		slotNum := 10
-		slotKey := util.GetKeyWithSlotNum(slotNum)
+		slotKey := util.SlotTable[slotNum]
 
 		require.Equal(t, "OK", rdb.Do(ctx, "cluster", "import", slotNum, 0).Val())
 		require.NoError(t, rdb.Set(ctx, slotKey, "slot10_again", 0).Err())
@@ -124,7 +124,7 @@ func TestImportedServer(t *testing.T) {
 
 	t.Run("IMPORT - connection broken", func(t *testing.T) {
 		slotNum := 11
-		slotKey := util.GetKeyWithSlotNum(slotNum)
+		slotKey := util.SlotTable[slotNum]
 		require.Equal(t, "OK", rdb.Do(ctx, "cluster", "import", slotNum, 0).Val())
 		require.NoError(t, rdb.Set(ctx, slotKey, "slot11", 0).Err())
 		require.Equal(t, "slot11", rdb.Get(ctx, slotKey).Val())

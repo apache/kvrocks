@@ -35,7 +35,7 @@
 
 #include "config.h"
 #include "encoding.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "parse_util.h"
 #include "redis_slot.h"
 #include "slot_import.h"

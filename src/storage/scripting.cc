@@ -57,8 +57,8 @@
 #include <string>
 
 #include "commands/redis_cmd.h"
-#include "network/redis_connection.h"
-#include "network/server.h"
+#include "server/redis_connection.h"
+#include "server/server.h"
 #include "rand.h"
 #include "sha1.h"
 #include "util.h"

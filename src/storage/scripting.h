@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "lua.hpp"
-#include "network/redis_connection.h"
+#include "server/redis_connection.h"
 #include "status.h"
 
 namespace Lua {

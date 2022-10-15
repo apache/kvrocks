@@ -22,7 +22,7 @@
 
 #include <algorithm>
 
-#include "network/redis_reply.h"
+#include "server/redis_reply.h"
 
 std::string SlowEntry::ToRedisString() {
   std::string output;

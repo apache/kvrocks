@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-#include "network/redis_reply.h"
+#include "server/redis_reply.h"
 #include "status.h"
 
 class Server;

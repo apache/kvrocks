@@ -34,8 +34,8 @@
 
 #include "event_util.h"
 #include "fd_util.h"
-#include "network/redis_reply.h"
-#include "network/server.h"
+#include "server/redis_reply.h"
+#include "server/server.h"
 #include "rocksdb_crc32c.h"
 #include "status.h"
 #include "util.h"

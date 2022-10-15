@@ -31,7 +31,7 @@
 #include <fstream>
 #include <string>
 
-#include "network/redis_reply.h"
+#include "server/redis_reply.h"
 #include "util.h"
 
 void send_string_to_event(bufferevent *bev, const std::string &data) {

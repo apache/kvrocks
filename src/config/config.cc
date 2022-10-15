@@ -36,8 +36,8 @@
 
 #include "config_type.h"
 #include "config_util.h"
-#include "network/server.h"
-#include "network/tls_util.h"
+#include "server/server.h"
+#include "server/tls_util.h"
 #include "parse_util.h"
 #include "status.h"
 #include "util.h"

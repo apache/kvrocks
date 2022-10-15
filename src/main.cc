@@ -38,7 +38,7 @@
 
 #include "config.h"
 #include "fd_util.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "storage/storage.h"
 #include "util.h"
 #include "version.h"

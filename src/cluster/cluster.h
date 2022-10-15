@@ -30,7 +30,7 @@
 #include <vector>
 
 #include "commands/redis_cmd.h"
-#include "network/redis_connection.h"
+#include "server/redis_connection.h"
 #include "redis_slot.h"
 #include "rw_lock.h"
 #include "status.h"

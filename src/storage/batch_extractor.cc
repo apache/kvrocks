@@ -24,8 +24,8 @@
 #include <rocksdb/write_batch.h>
 
 #include "cluster/redis_slot.h"
-#include "network/redis_reply.h"
-#include "network/server.h"
+#include "server/redis_reply.h"
+#include "server/server.h"
 #include "parse_util.h"
 #include "types/redis_bitmap.h"
 

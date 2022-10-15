@@ -25,7 +25,7 @@
 
 #include "cluster/redis_slot.h"
 #include "db_util.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "util.h"

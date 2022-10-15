@@ -28,7 +28,7 @@
 #include <vector>
 
 #include "config/config_util.h"
-#include "network/server.h"
+#include "server/server.h"
 
 TEST(Config, GetAndSet) {
   const char *path = "test.conf";

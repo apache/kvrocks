@@ -30,7 +30,7 @@
 #include <utility>
 #include <vector>
 
-#include "network/redis_connection.h"
+#include "server/redis_connection.h"
 #include "status.h"
 #include "storage/storage.h"
 

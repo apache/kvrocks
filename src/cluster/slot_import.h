@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "config/config.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "storage/redis_db.h"
 
 enum ImportStatus {

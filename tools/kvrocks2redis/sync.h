@@ -27,7 +27,7 @@
 
 #include "cluster/replication.h"
 #include "config.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "parser.h"
 #include "status.h"
 #include "storage/storage.h"

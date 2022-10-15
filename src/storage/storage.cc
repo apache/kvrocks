@@ -42,7 +42,7 @@
 #include "event_listener.h"
 #include "event_util.h"
 #include "fd_util.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"

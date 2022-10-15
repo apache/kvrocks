@@ -26,7 +26,7 @@
 #include <memory>
 
 #include "commands/redis_cmd.h"
-#include "network/server.h"
+#include "server/server.h"
 #include "parse_util.h"
 #include "replication.h"
 #include "util.h"

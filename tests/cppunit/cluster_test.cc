@@ -25,7 +25,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "network/server.h"
+#include "server/server.h"
 #include "util.h"
 
 TEST(Cluster, CluseterSetNodes) {

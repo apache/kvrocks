@@ -204,7 +204,9 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 		"rocksdb.target_file_size_base": "1",
 	})
 	defer master.Close()
-	masterClient := master.NewClient()
+	masterClient := master.NewClientWithOption(&redis.Options{
+		ReadTimeout: 10 * time.Second,
+	})
 	defer func() { require.NoError(t, masterClient.Close()) }()
 	util.Populate(t, masterClient, "", 1024, 10240)
 

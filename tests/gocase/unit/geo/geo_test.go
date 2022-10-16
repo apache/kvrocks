@@ -125,7 +125,7 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "nyc", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 10, Unit: "km", Sort: "asc", Count: 3}).Val())
 	})
 
-	t.Run("GEORADIUS HUGE, issue #2767", func(t *testing.T) {
+	t.Run("GEORADIUS HUGE, (redis issue #2767)", func(t *testing.T) {
 		require.NoError(t, rdb.GeoAdd(ctx, "users", &redis.GeoLocation{Name: "user_000000", Longitude: -47.271613776683807, Latitude: -54.534504198047678}).Err())
 		require.EqualValues(t, 1, len(rdb.GeoRadius(ctx, "users", 0, 0, &redis.GeoRadiusQuery{Radius: 50000, Unit: "km", WithCoord: true}).Val()))
 	})
@@ -144,16 +144,16 @@ func TestGeo(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "a", Longitude: 10, Latitude: 20}, &redis.GeoLocation{Name: "b", Longitude: 30, Latitude: 40}).Err())
 		cmd := rdb.GeoPos(ctx, "points", "a", "b")
-		require.True(t, math.Abs(cmd.Val()[0].Longitude-10) < 0.001)
-		require.True(t, math.Abs(cmd.Val()[0].Latitude-20) < 0.001)
-		require.True(t, math.Abs(cmd.Val()[1].Longitude-30) < 0.001)
-		require.True(t, math.Abs(cmd.Val()[1].Latitude-40) < 0.001)
+		require.Less(t, math.Abs(cmd.Val()[0].Longitude-10), 0.001)
+		require.Less(t, math.Abs(cmd.Val()[0].Latitude-20), 0.001)
+		require.Less(t, math.Abs(cmd.Val()[1].Longitude-30), 0.001)
+		require.Less(t, math.Abs(cmd.Val()[1].Latitude-40), 0.001)
 	})
 
 	t.Run("GEOPOS missing element", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "a", Longitude: 10, Latitude: 20}, &redis.GeoLocation{Name: "b", Longitude: 30, Latitude: 40}).Err())
-		require.EqualValues(t, (*redis.GeoPos)(nil), rdb.GeoPos(ctx, "points", "a", "x", "b").Val()[1])
+		require.Nil(t, rdb.GeoPos(ctx, "points", "a", "x", "b").Val()[1])
 	})
 
 	t.Run("GEODIST simple & unit", func(t *testing.T) {

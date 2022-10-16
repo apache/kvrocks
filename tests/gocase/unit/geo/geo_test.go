@@ -114,15 +114,15 @@ func TestGeo(t *testing.T) {
 	})
 
 	t.Run("Check geoset values", func(t *testing.T) {
-		require.EqualValues(t, []redis.Z([]redis.Z{redis.Z{Score: 1.79187397205302e+15, Member: "wtc one"}, redis.Z{Score: 1.791875485187452e+15, Member: "union square"}, redis.Z{Score: 1.791875761332224e+15, Member: "central park n/q/r"}, redis.Z{Score: 1.791875796750882e+15, Member: "4545"}, redis.Z{Score: 1.791875804419201e+15, Member: "lic market"}, redis.Z{Score: 1.791875830079666e+15, Member: "q4"}, redis.Z{Score: 1.791895905559723e+15, Member: "jfk"}}), rdb.ZRangeWithScores(ctx, "nyc", 0, -1).Val())
+		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1.79187397205302e+15, Member: "wtc one"}, {Score: 1.791875485187452e+15, Member: "union square"}, {Score: 1.791875761332224e+15, Member: "central park n/q/r"}, {Score: 1.791875796750882e+15, Member: "4545"}, {Score: 1.791875804419201e+15, Member: "lic market"}, {Score: 1.791875830079666e+15, Member: "q4"}, {Score: 1.791895905559723e+15, Member: "jfk"}}), rdb.ZRangeWithScores(ctx, "nyc", 0, -1).Val())
 	})
 
 	t.Run("GEORADIUS simple (sorted)", func(t *testing.T) {
-		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{redis.GeoLocation{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "nyc", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 3, Unit: "km", Sort: "asc"}).Val())
+		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "nyc", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 3, Unit: "km", Sort: "asc"}).Val())
 	})
 
 	t.Run("GEORADIUS with COUNT", func(t *testing.T) {
-		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{redis.GeoLocation{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "nyc", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 10, Unit: "km", Sort: "asc", Count: 3}).Val())
+		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "nyc", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 10, Unit: "km", Sort: "asc", Count: 3}).Val())
 	})
 
 	t.Run("GEORADIUS HUGE, issue #2767", func(t *testing.T) {
@@ -131,7 +131,7 @@ func TestGeo(t *testing.T) {
 	})
 
 	t.Run("GEORADIUSBYMEMBER simple (sorted)", func(t *testing.T) {
-		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{redis.GeoLocation{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, redis.GeoLocation{Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
+		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})
 
 	t.Run("GEOHASH is able to return geohash strings", func(t *testing.T) {

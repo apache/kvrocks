@@ -205,7 +205,7 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 	})
 	defer master.Close()
 	masterClient := master.NewClientWithOption(&redis.Options{
-		ReadTimeout:  10 * time.Second,
+		ReadTimeout: 10 * time.Second,
 	})
 	defer func() { require.NoError(t, masterClient.Close()) }()
 	util.Populate(t, masterClient, "", 1024, 10240)

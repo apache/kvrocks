@@ -26,11 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v9"
-
-	"github.com/stretchr/testify/require"
-
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReplicationLoading(t *testing.T) {
@@ -50,10 +48,10 @@ func TestReplicationLoading(t *testing.T) {
 		require.NoError(t, rdbA.ConfigSet(ctx, "slave-empty-db-before-fullsync", "yes").Err())
 		require.NoError(t, rdbA.ConfigSet(ctx, "fullsync-recv-file-delay", "2").Err())
 		util.SlaveOf(t, rdbA, srvB)
-		// Become loading state in 1 second
+		// Become loading state in 5 second
 		require.Eventually(t, func() bool {
 			return util.FindInfoEntry(rdbA, "loading") == "1"
-		}, time.Second, 50*time.Millisecond)
+		}, 5*time.Second, 50*time.Millisecond)
 
 		require.Eventually(t, func() bool {
 			return util.FindInfoEntry(rdbA, "loading") == "0"

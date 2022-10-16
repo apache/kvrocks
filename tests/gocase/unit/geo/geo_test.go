@@ -74,12 +74,12 @@ func compareLists(list1, list2 []string) []string {
 		i = j
 	}
 	for _, i := range list1 {
-		if _, ok := vis[i]; ok {
+		if val, ok := vis[i]; ok && val == 1 {
 			result = append(result, i)
 		}
 	}
 	for _, i := range list2 {
-		if _, ok := vis[i]; ok {
+		if val, ok := vis[i]; ok && val == 1 {
 			result = append(result, i)
 		}
 	}

@@ -34,12 +34,10 @@ source tests/support/util.tcl
 
 set ::all_tests {
     unit/type/list
-    unit/type/zset
     unit/type/stream
     unit/geo
     integration/slotmigrate
     integration/replication
-    integration/cluster
 }
 
 # Index to the next test to run in the ::all_tests list.

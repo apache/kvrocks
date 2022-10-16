@@ -19,16 +19,12 @@
 
 package util
 
-func GetKeyWithSlotNum(slotNum int) string {
-	return slotTable[slotNum]
-}
-
-// A table of the shortest possible alphanumeric string that is mapped by
+// SlotTable is a table of the shortest possible alphanumeric string that is mapped by
 // redis's crc16 to any given redis cluster slot.
 //
 // The array indexes are slot numbers, so that given a desired slot, this string is guaranteed
 // to make redis cluster route a request to the shard holding this slot
-var slotTable = [...]string{
+var SlotTable = [...]string{
 	"06S", "Qi", "5L5", "4Iu", "4gY", "460", "1Y7", "1LV", "0QG", "ru", "7Ok", "4ji", "4DE", "65n", "2JH", "I8", "F9", "SX", "7nF", "4KD",
 	"4eh", "6PK", "2ke", "1Ng", "0Sv", "4L", "491", "4hX", "4Ft", "5C4", "2Hy", "09R", "021", "0cX", "4Xv", "6mU", "6Cy", "42R", "0Mt", "nF",
 	"cv", "1Pe", "5kK", "6NI", "74L", "4UF", "0nh", "MZ", "2TJ", "0ai", "4ZG", "6od", "6AH", "40c", "0OE", "lw", "aG", "0Bu", "5iz", "6Lx",

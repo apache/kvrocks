@@ -18,6 +18,8 @@
  *
  */
 
+#include "redis_rdb.h"
+
 #include <string>
 #include <vector>
 
@@ -29,11 +31,35 @@
 #include "redis_bitmap.h"
 #include "db_util.h"
 
-#include "redis_rdb.h"
-
-
 namespace Redis {
 
+const int RDB_VERSION = 6;
+// always use the redis logical database 0
+const int SELECT_DB = 0;
+const int RDB_6BITLEN = 0;
+const int RDB_14BITLEN = 1;
+const int RDB_32BITLEN = 0x80;
+
+enum RDBOpCode: unsigned char {
+    RDB_OPCODE_EXPIRETIME = 253,  /* Expire time in seconds. */
+    RDB_OPCODE_SELECTDB,  /* DB number of the following keys. */
+    RDB_OPCODE_EOF  /* End of the RDB file. */
+};
+
+enum RDBType: unsigned char {
+    RDB_TYPE_STRING,
+    RDB_TYPE_LIST,
+    RDB_TYPE_SET,
+    RDB_TYPE_ZSET,
+    RDB_TYPE_HASH
+};
+
+enum RDBEncoding: unsigned char {
+    RDB_ENC_INT8,
+    RDB_ENC_INT16,
+    RDB_ENC_INT32,
+    RDB_ENCVAL
+};
 /* 
 *  Making Kvrocks write RDB is more straightforward than making it parse RDB.
 *  Because Redis is backward compatible, which can load the original RDB file. 
@@ -83,8 +109,8 @@ Status RedisDatabase::Dump(const std::string &file_name) {
 
   Status s;
   rocksdb::Status rs;
-  Util util(file_name);
-  s = util.SaveMeta();
+  Composer composer(file_name);
+  s = composer.SaveMeta();
   if (!s.IsOK()) return s;
   for (iter->Seek(ns_prefix); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(ns_prefix)) {
@@ -100,25 +126,25 @@ Status RedisDatabase::Dump(const std::string &file_name) {
     int32_t ttl = metadata.TTL();
     RedisType type = metadata.Type();
 
-    s = util.SaveMetaKeyPair(user_key, ttl, type);
+    s = composer.SaveMetaKeyPair(user_key, ttl, type);
     if (!s.IsOK()) return s;
     switch (type) {
         case kRedisString:
             rs = string_db.Get(user_key, &value);
             if (rs.ok()) {
-               s = util.SaveStringObject(value);
+               s = composer.SaveStringObject(value);
                if (!s.IsOK()) return s;
             }
             break;
         case kRedisHash:
             rs = hash_db.GetAll(user_key, &field_values, HashFetchType::kAll);
             if (rs.ok()) {
-                s = util.SaveLen(field_values.size());
+                s = composer.SaveLen(field_values.size());
                 if (!s.IsOK()) return s;
                 for (const auto &fv : field_values) {
-                    s = util.SaveStringObject(fv.field);
+                    s = composer.SaveStringObject(fv.field);
                     if (!s.IsOK()) return s;
-                    s = util.SaveStringObject(fv.value);
+                    s = composer.SaveStringObject(fv.value);
                     if (!s.IsOK()) return s;
                 }
             }
@@ -126,10 +152,10 @@ Status RedisDatabase::Dump(const std::string &file_name) {
         case kRedisList:
             rs = list_db.Range(user_key, 0, -1, &elems);
             if (rs.ok()) {
-                s = util.SaveLen(elems.size());
+                s = composer.SaveLen(elems.size());
                 if (!s.IsOK()) return s;
                 for (const auto &item : elems) {
-                    s = util.SaveStringObject(item);
+                    s = composer.SaveStringObject(item);
                     if (!s.IsOK()) return s;
                 }
             }
@@ -137,10 +163,10 @@ Status RedisDatabase::Dump(const std::string &file_name) {
         case kRedisSet:
             rs = set_db.Members(user_key, &members);
             if (rs.ok()) {
-                s = util.SaveLen(members.size());
+                s = composer.SaveLen(members.size());
                 if (!s.IsOK()) return s;
                 for (const auto &item : members) {
-                    s = util.SaveStringObject(item);
+                    s = composer.SaveStringObject(item);
                     if (!s.IsOK()) return s;
                 }
             }
@@ -148,12 +174,12 @@ Status RedisDatabase::Dump(const std::string &file_name) {
         case kRedisZSet:
             rs = zset_db.Range(user_key, 0, -1, 0, &member_scores);
             if (rs.ok()) {
-                s = util.SaveLen(member_scores.size());
+                s = composer.SaveLen(member_scores.size());
                 for (const auto &item : member_scores) {
-                    s = util.SaveStringObject(item.member);
+                    s = composer.SaveStringObject(item.member);
                     if (!s.IsOK()) return s;
                     std::string score = std::to_string(item.score);
-                    s = util.SaveStringObject(score);
+                    s = composer.SaveStringObject(score);
                     if (!s.IsOK()) return s;
                 }
             }
@@ -161,7 +187,7 @@ Status RedisDatabase::Dump(const std::string &file_name) {
             case kRedisBitmap:
             rs = bitmap_db.GetString(user_key, UINT32_MAX, &value);
             if (rs.ok()) {
-                s = util.SaveStringObject(value);
+                s = composer.SaveStringObject(value);
                 if (!s.IsOK()) return s;
             }
             break;
@@ -170,21 +196,20 @@ Status RedisDatabase::Dump(const std::string &file_name) {
     }
     if (!rs.ok()) return Status(Status::NotOK, rs.ToString());
   }
-  s = util.SaveTail();
+  s = composer.SaveTail();
   return s;
 }
 
-RedisDatabase::Util::Util(const std::string &file_name) {
+RedisDatabase::Composer::Composer(const std::string &file_name) {
     file_.open(file_name, std::ofstream::binary);
+    if (!file_) {
+        throw std::runtime_error("Could not open " + file_name);
+    }
 }
 
-RedisDatabase::Util::~Util() {
-    file_.close();
-}
-
-Status RedisDatabase::Util::SaveMetaKeyPair(const std::string &key,
-                                            const int32_t &remain,
-                                            const RedisType &type) {
+Status RedisDatabase::Composer::SaveMetaKeyPair(const std::string &key,
+                                               int32_t remain,
+                                               const RedisType &type) {
   Status s;
   if (remain != -1) {
       s = saveType(RDB_OPCODE_EXPIRETIME);
@@ -198,7 +223,7 @@ Status RedisDatabase::Util::SaveMetaKeyPair(const std::string &key,
   return s;
 }
 
-Status RedisDatabase::Util::SaveTail() {
+Status RedisDatabase::Composer::SaveTail() {
     Status s;
     s = saveType(RDB_OPCODE_EOF);
     if (!s.IsOK()) return s;
@@ -209,13 +234,13 @@ Status RedisDatabase::Util::SaveTail() {
     return s;
 }
 
-Status RedisDatabase::Util::SaveStringObject(const std::string &str) {
-    Status s;
+Status RedisDatabase::Composer::SaveStringObject(const std::string &str) {
     auto len = str.length();
-    int enclen;
+    Status s;
     if (len <= 11) {
         unsigned char buf[5];
-        if ((enclen = tryIntegerEncoding(str.c_str(), len, buf)) > 0) {
+        int enclen = tryIntegerEncoding(str.c_str(), len, buf);
+        if (enclen > 0) {
             s = saveRaw(buf, enclen);
             return s;
         }
@@ -230,11 +255,10 @@ Status RedisDatabase::Util::SaveStringObject(const std::string &str) {
     return s;
 }
 
-Status RedisDatabase::Util::SaveMeta() {
+Status RedisDatabase::Composer::SaveMeta() {
     char bytes[10];
     snprintf(bytes, sizeof(bytes), "REDIS%04d", RDB_VERSION);
-    Status s;
-    s = saveRaw(bytes, 9);
+    Status s = saveRaw(bytes, 9);
     if (!s.IsOK()) return s;
     // ignore other AUX metadata
     s = saveType(RDB_OPCODE_SELECTDB);
@@ -246,25 +270,22 @@ Status RedisDatabase::Util::SaveMeta() {
 
 // Length encoding is a variable byte encoding designed to use as few bytes as possible,
 // which use redis logic directly
-Status RedisDatabase::Util::SaveLen(uint64_t len) {
+Status RedisDatabase::Composer::SaveLen(uint64_t len) {
     unsigned char buf[2];
     Status s;
     if (len < (1 << 6)) {
         /* Save a 6 bit len */
         buf[0] = (len & 0xFF) | (RDB_6BITLEN << 6);
         s = saveRaw(buf, 1);
-        if (!s.IsOK()) return s;
     } else if (len < (1 << 14)) {
         /* Save a 14 bit len */
         buf[0] = ((len >> 8) & 0xFF) | (RDB_14BITLEN << 6);
         buf[1] = len & 0xFF;
         s = saveRaw(buf, 1);
-        if (!s.IsOK()) return s;
     } else if (len <= UINT32_MAX) {
         /* Save a 32 bit len */
         buf[0] = RDB_32BITLEN;
-         s = saveRaw(buf, 1);
-        if (!s.IsOK()) return s;
+        s = saveRaw(buf, 1);
         uint32_t len32 = htonl(len);
         s = saveRaw(&len32, 4);
     }
@@ -272,7 +293,7 @@ Status RedisDatabase::Util::SaveLen(uint64_t len) {
 }
 
 // Use the logic of redis directly
-int RedisDatabase::Util::tryIntegerEncoding(const char *s, size_t len, unsigned char *enc) {
+int RedisDatabase::Composer::tryIntegerEncoding(const char *s, size_t len, unsigned char *enc) {
     int64_t value;
     char *endptr, buf[32];
 
@@ -289,7 +310,7 @@ int RedisDatabase::Util::tryIntegerEncoding(const char *s, size_t len, unsigned 
 }
 
 // Use the logic of redis directly
-uint32_t RedisDatabase::Util::digits10(uint64_t v) {
+uint32_t RedisDatabase::Composer::digits10(uint64_t v) {
   if (v < 10)   return 1;
   if (v < 100)  return 2;
   if (v < 1000) return 3;
@@ -310,7 +331,7 @@ uint32_t RedisDatabase::Util::digits10(uint64_t v) {
 }
 
 // Use the logic of redis directly
-int RedisDatabase::Util::encodeInteger(int64_t value, unsigned char *enc) {
+int RedisDatabase::Composer::encodeInteger(int64_t value, unsigned char *enc) {
     if (value >= -(1 << 7) && value <= (1 << 7) - 1) {
         enc[0] = (RDB_ENCVAL << 6) | RDB_ENC_INT8;
         enc[1] = value & 0xFF;
@@ -333,7 +354,7 @@ int RedisDatabase::Util::encodeInteger(int64_t value, unsigned char *enc) {
 }
 
 // Use the logic of redis directly
-int RedisDatabase::Util::ll2string(char *dst, size_t dstlen, int64_t svalue) {
+int RedisDatabase::Composer::ll2string(char *dst, size_t dstlen, int64_t svalue) {
   static const char digits[201] =
       "0001020304050607080910111213141516171819"
       "2021222324252627282930313233343536373839"
@@ -387,7 +408,7 @@ int RedisDatabase::Util::ll2string(char *dst, size_t dstlen, int64_t svalue) {
   return length;
 }
 
-Status RedisDatabase::Util::saveObjectType(const RedisType &type) {
+Status RedisDatabase::Composer::saveObjectType(const RedisType &type) {
     switch (type) {
         case kRedisString:
             return saveType(RDB_TYPE_STRING);
@@ -406,22 +427,22 @@ Status RedisDatabase::Util::saveObjectType(const RedisType &type) {
     }
 }
 
-Status RedisDatabase::Util::saveSecondTime(const int32_t &remain) {
+Status RedisDatabase::Composer::saveSecondTime(int32_t remain) {
     int64_t now;
-    int32_t expiretime;
     rocksdb::Env::Default()->GetCurrentTime(&now);
-    expiretime = static_cast<int32_t>(now) + remain;
+    int32_t expiretime = static_cast<int32_t>(now) + remain;
     return saveRaw(&expiretime, 4);
 }
 
-Status RedisDatabase::Util::saveType(unsigned char type) {
+Status RedisDatabase::Composer::saveType(unsigned char type) {
     return saveRaw(&type, 1);
 }
 
-Status RedisDatabase::Util::saveRaw(const void *p, const int &len) {
+Status RedisDatabase::Composer::saveRaw(const void *p, uint32_t len) {
     file_.write((const char *)p, len);
-    if (file_.bad())
+    if (file_.bad()) {
         return Status(Status::NotOK, "write faild");
+    }
     return Status::OK();
 }
 

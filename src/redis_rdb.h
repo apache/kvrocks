@@ -18,28 +18,6 @@
  *
  */
 
-#define RDB_VERSION 6
-#define SELECT_DB 0
-
-#define RDB_6BITLEN 0
-#define RDB_14BITLEN 1
-#define RDB_32BITLEN 0x80
-
-#define RDB_OPCODE_EXPIRETIME 253  /* Expire time in seconds. */
-#define RDB_OPCODE_SELECTDB   254  /* DB number of the following keys. */
-#define RDB_OPCODE_EOF        255  /* End of the RDB file. */
-
-#define RDB_TYPE_STRING 0
-#define RDB_TYPE_LIST   1
-#define RDB_TYPE_SET    2
-#define RDB_TYPE_ZSET   3
-#define RDB_TYPE_HASH   4
-
-#define RDB_ENCVAL 3
-#define RDB_ENC_INT8  0 /* 8 bit signed integer */
-#define RDB_ENC_INT16 1 /* 16 bit signed integer */
-#define RDB_ENC_INT32 2 /* 32 bit signed integer */
-
 #pragma once
 
 #include <fstream>
@@ -54,13 +32,10 @@ class RedisDatabase : public Database {
   Status Dump(const std::string &file_name);
 
  private:
-  class Util {
+  class Composer {
    public:
-    explicit Util(const std::string &file_name);
-    ~Util();
-    Status SaveMetaKeyPair(const std::string &key,
-                            const int &remain,
-                            const RedisType &type);
+    explicit Composer(const std::string &file_name);
+    Status SaveMetaKeyPair(const std::string &key, int remain, const RedisType &type);
     Status SaveStringObject(const std::string &str);
     Status SaveLen(uint64_t len);
     Status SaveMeta();
@@ -70,8 +45,8 @@ class RedisDatabase : public Database {
     std::ofstream file_;
     Status saveType(unsigned char type);
     Status saveObjectType(const RedisType &type);
-    Status saveSecondTime(const int32_t &remain);
-    Status saveRaw(const void *p, const int &len);
+    Status saveSecondTime(int32_t remain);
+    Status saveRaw(const void *p, uint32_t len);
     int tryIntegerEncoding(const char *s, size_t len, unsigned char *enc);
     int ll2string(char *dst, size_t dstlen, int64_t svalue);
     int encodeInteger(int64_t value, unsigned char *enc);

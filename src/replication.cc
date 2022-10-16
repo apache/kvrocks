@@ -178,17 +178,6 @@ void ReplicationThread::CallbacksStateMachine::SetWriteCB(bufferevent *bev, buff
   bufferevent_setcb(bev, nullptr, cb, ConnEventCB, state_machine_ptr);
 }
 
-ReplicationThread::CallbacksStateMachine::CallbacksStateMachine(
-    ReplicationThread *repl, ReplicationThread::CallbacksStateMachine::CallbackList &&handlers)
-    : repl_(repl), handlers_(std::move(handlers)) {
-  // Note: It may cause data races to use 'masterauth' directly.
-  // It is acceptable because password change is a low frequency operation.
-  if (!repl_->srv_->GetConfig()->masterauth.empty()) {
-    handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", authReadCB);
-    handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
-  }
-}
-
 void ReplicationThread::CallbacksStateMachine::EvCallback(bufferevent *bev, void *ctx) {
   auto self = static_cast<CallbacksStateMachine *>(ctx);
 LOOP_LABEL:
@@ -235,6 +224,13 @@ void ReplicationThread::CallbacksStateMachine::Start() {
 
   if (handlers_.empty()) {
     return;
+  }
+
+  // Note: It may cause data races to use 'masterauth' directly.
+  // It is acceptable because password change is a low frequency operation.
+  if (!repl_->srv_->GetConfig()->masterauth.empty()) {
+    handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", authReadCB);
+    handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
 
   while (!repl_->stop_flag_ && bev == nullptr) {

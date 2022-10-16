@@ -111,7 +111,8 @@ class ReplicationThread {
     };
     using CallbackType = std::tuple<EventType, std::string, std::function<State(bufferevent *, void *)>>;
     using CallbackList = std::deque<CallbackType>;
-    CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers);
+    CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers)
+        : repl_(repl), handlers_(std::move(handlers)) {}
 
     void Start();
     void Stop();

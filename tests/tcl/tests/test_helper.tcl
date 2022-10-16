@@ -37,7 +37,6 @@ set ::all_tests {
     unit/type/stream
     unit/geo
     integration/slotmigrate
-    integration/replication
 }
 
 # Index to the next test to run in the ::all_tests list.

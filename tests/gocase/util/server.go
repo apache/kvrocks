@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"syscall"
 	"testing"
 	"time"
@@ -59,6 +60,14 @@ func (s *KvrocksServer) Host() string {
 
 func (s *KvrocksServer) Port() uint16 {
 	return s.addr.AddrPort().Port()
+}
+
+func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
+	dir := s.configs["dir"]
+	content, err := os.ReadFile(dir + "/kvrocks.INFO")
+	require.NoError(t, err)
+	p := regexp.MustCompile(pattern)
+	return p.Match(content)
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {

@@ -192,6 +192,7 @@ func TestGeo(t *testing.T) {
 		rdb.GeoRadiusStore(ctx, "points", 13.361389, 38.115556, &redis.GeoRadiusQuery{Radius: 500, Unit: "km", Store: "points2"})
 		require.EqualValues(t, rdb.ZRange(ctx, "points", 0, -1).Val(), rdb.ZRange(ctx, "points2", 0, -1).Val())
 	})
+
 	type item struct {
 		seed int64
 		km   int64
@@ -226,35 +227,35 @@ func TestGeo(t *testing.T) {
 				debuginfo += "rand seed is " + strconv.FormatInt(tmp, 10)
 			}
 			require.NoError(t, rdb.Del(ctx, "mypoints").Err())
-			var radius_km int64
+			var radiusKm int64
 			if util.RandomInt(10) == 0 {
-				radius_km = util.RandomInt(50000) + 10
+				radiusKm = util.RandomInt(50000) + 10
 			} else {
-				radius_km = util.RandomInt(200) + 10
+				radiusKm = util.RandomInt(200) + 10
 			}
 			if attempt < len(regressionVectors) {
-				radius_km = regressionVectors[attempt].km
+				radiusKm = regressionVectors[attempt].km
 			}
-			radius_m := radius_km * 1000
-			search_lon, search_lat := geoRandomPoint()
+			radiusM := radiusKm * 1000
+			searchLon, searchLat := geoRandomPoint()
 			if attempt < len(regressionVectors) {
-				search_lon = regressionVectors[attempt].lon
-				search_lat = regressionVectors[attempt].lat
+				searchLon = regressionVectors[attempt].lon
+				searchLat = regressionVectors[attempt].lat
 			}
-			debuginfo += "Search area: " + strconv.FormatFloat(search_lon, 'f', 10, 64) + "," + strconv.FormatFloat(search_lat, 'f', 10, 64) + " " + strconv.FormatInt(radius_km, 10) + " km"
+			debuginfo += "Search area: " + strconv.FormatFloat(searchLon, 'f', 10, 64) + "," + strconv.FormatFloat(searchLat, 'f', 10, 64) + " " + strconv.FormatInt(radiusKm, 10) + " km"
 			var result []string
 			var argvs []*redis.GeoLocation
 			for j := 0; j < 20000; j++ {
 				lon, lat := geoRandomPoint()
 				argvs = append(argvs, &redis.GeoLocation{Longitude: lon, Latitude: lat, Name: "place:" + strconv.Itoa(j)})
-				distance := geoDistance(lon, lat, search_lon, search_lat)
-				if distance < float64(radius_m) {
+				distance := geoDistance(lon, lat, searchLon, searchLat)
+				if distance < float64(radiusM) {
 					result = append(result, "place:"+strconv.Itoa(j))
 				}
 				debuginfo += "place:" + strconv.FormatInt(int64(j), 10) + " " + strconv.FormatInt(int64(lon), 10) + " " + strconv.FormatInt(int64(lat), 10) + " " + strconv.FormatInt(int64(distance)/1000, 10) + " km"
 			}
 			require.NoError(t, rdb.GeoAdd(ctx, "mypoints", argvs...).Err())
-			cmd := rdb.GeoRadius(ctx, "mypoints", search_lon, search_lat, &redis.GeoRadiusQuery{Radius: float64(radius_km), Unit: "km"})
+			cmd := rdb.GeoRadius(ctx, "mypoints", searchLon, searchLat, &redis.GeoRadiusQuery{Radius: float64(radiusKm), Unit: "km"})
 			sort.Strings(result)
 			var res []string
 			for _, i := range cmd.Val() {
@@ -264,21 +265,21 @@ func TestGeo(t *testing.T) {
 			equal := reflect.DeepEqual(res, result)
 			testResult := true
 			if !equal {
-				rounding_errors := 0
+				roundingErrors := 0
 				diff := compareLists(res, result)
 				for _, i := range diff {
 					cmd := rdb.GeoPos(ctx, "mypoints", i)
-					mydist := geoDistance(cmd.Val()[0].Longitude, cmd.Val()[0].Latitude, search_lon, search_lat) / 1000
-					if mydist/float64(radius_km) > 0.999 {
-						rounding_errors += 1
+					mydist := geoDistance(cmd.Val()[0].Longitude, cmd.Val()[0].Latitude, searchLon, searchLat) / 1000
+					if mydist/float64(radiusKm) > 0.999 {
+						roundingErrors += 1
 						continue
 					}
-					if mydist < float64(radius_m) {
-						rounding_errors += 1
+					if mydist < float64(radiusM) {
+						roundingErrors += 1
 						continue
 					}
 				}
-				if len(diff) == rounding_errors {
+				if len(diff) == roundingErrors {
 					equal = true
 				}
 			}
@@ -301,7 +302,7 @@ func TestGeo(t *testing.T) {
 					}
 					cmd := rdb.GeoPos(ctx, "mypoints", i)
 					require.NoError(t, cmd.Err())
-					mydis := geoDistance(cmd.Val()[0].Longitude, cmd.Val()[0].Latitude, search_lon, search_lat) / 1000
+					mydis := geoDistance(cmd.Val()[0].Longitude, cmd.Val()[0].Latitude, searchLon, searchLat) / 1000
 					t.Logf("%v -> %v %v %v", i, rdb.GeoPos(ctx, "mypoints", i).Val()[0], mydis, where)
 				}
 				testResult = false

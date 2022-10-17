@@ -34,7 +34,6 @@ source tests/support/util.tcl
 
 set ::all_tests {
     unit/type/list
-    unit/type/stream
     integration/slotmigrate
 }
 

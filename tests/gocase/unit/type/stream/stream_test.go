@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
@@ -221,6 +223,431 @@ func TestStream(t *testing.T) {
 		require.EqualValues(t, "1641544570597-0", items[0].ID)
 		require.EqualValues(t, "1641544570597-1", items[1].ID)
 	})
+
+	t.Run("XADD mass insertion and XLEN", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		insertIntoStreamKey(t, rdb, "mystream")
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 10000)
+		for i := 0; i < 10000; i++ {
+			require.Subset(t, items[i].Values, map[string]interface{}{"item": strconv.Itoa(i)})
+		}
+	})
+
+	t.Run("XADD with ID 0-0", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "otherstream").Err())
+		require.Error(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: "otherstream",
+			ID:     "0-0",
+			Values: []string{"k", "v"},
+		}).Err())
+		require.Zero(t, rdb.Exists(ctx, "otherstream").Val())
+	})
+
+	t.Run("XRANGE COUNT works as expected", func(t *testing.T) {
+		require.Len(t, rdb.XRangeN(ctx, "mystream", "-", "+", 10).Val(), 10)
+	})
+
+	t.Run("XREVRANGE COUNT works as expected", func(t *testing.T) {
+		require.Len(t, rdb.XRevRangeN(ctx, "mystream", "+", "-", 10).Val(), 10)
+	})
+
+	t.Run("XRANGE can be used to iterate the whole stream", func(t *testing.T) {
+		lastID, c := "-", 0
+		for {
+			items := rdb.XRangeN(ctx, "mystream", lastID, "+", 100).Val()
+			if len(items) == 0 {
+				break
+			}
+			for _, item := range items {
+				require.Subset(t, item.Values, map[string]interface{}{"item": strconv.Itoa(c)})
+				c++
+			}
+			lastID = streamNextID(t, items[len(items)-1].ID)
+		}
+		require.Equal(t, 10000, c)
+	})
+
+	t.Run("XREVRANGE returns the reverse of XRANGE", func(t *testing.T) {
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		revItems := rdb.XRevRange(ctx, "mystream", "+", "-").Val()
+		util.ReverseSlice(revItems)
+		require.EqualValues(t, items, revItems)
+	})
+
+	t.Run("XRANGE exclusive ranges", func(t *testing.T) {
+		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551615-18446744073709551614", "18446744073709551615-18446744073709551615"}
+		total := len(ids)
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		// DEL returns "QUEUED" here, so we use Do to avoid ParseInt.
+		require.NoError(t, rdb.Do(ctx, "DEL", "vipstream").Err())
+		for _, id := range ids {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: "vipstream",
+				ID:     id,
+				Values: []string{"foo", "bar"},
+			}).Err())
+		}
+		require.NoError(t, rdb.Do(ctx, "EXEC").Err())
+		require.Len(t, rdb.XRange(ctx, "vipstream", "-", "+").Val(), total)
+		require.Len(t, rdb.XRange(ctx, "vipstream", "("+ids[0], "+").Val(), total-1)
+		require.Len(t, rdb.XRange(ctx, "vipstream", "-", "("+ids[total-1]).Val(), total-1)
+		require.Len(t, rdb.XRange(ctx, "vipstream", "(0-1", "(1-0").Val(), 1)
+		require.Len(t, rdb.XRange(ctx, "vipstream", "(1-0", "(42-42").Val(), 1)
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(-", "+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551615-18446744073709551615", "+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(0-0").Err(), "ERR")
+	})
+
+	t.Run("XREAD with non empty stream", func(t *testing.T) {
+		r := rdb.XRead(ctx, &redis.XReadArgs{
+			Streams: []string{"mystream", "0-0"},
+			Count:   1,
+		}).Val()
+		require.Len(t, r, 1)
+		require.Equal(t, "mystream", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"item": "0"})
+	})
+
+	t.Run("Non blocking XREAD with empty streams", func(t *testing.T) {
+		// go-redis blocks underneath; fallback to Do
+		require.Empty(t, rdb.Do(ctx, "XREAD", "STREAMS", "s1", "s2", "0-0", "0-0").Val())
+	})
+
+	t.Run("XREAD with non empty second stream", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		insertIntoStreamKey(t, rdb, "mystream")
+		r := rdb.XRead(ctx, &redis.XReadArgs{
+			Streams: []string{"nostream", "mystream", "0-0", "0-0"},
+			Count:   1,
+		}).Val()
+		require.Len(t, r, 1)
+		require.Equal(t, "mystream", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"item": "0"})
+	})
+
+	t.Run("Blocking XREAD waiting new data", func(t *testing.T) {
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s2", Values: []string{"old", "abcd1234"}}).Err())
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XRead(ctx, &redis.XReadArgs{Streams: []string{"s1", "s2", "s3", "$", "$", "$"}, Block: 20 * time.Second}).Val()
+		}()
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt > 0
+		}, 5*time.Second, 100*time.Millisecond)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s2", Values: []string{"new", "abcd1234"}}).Err())
+		r := <-ch
+		require.Len(t, r, 1)
+		require.Equal(t, "s2", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"new": "abcd1234"})
+	})
+
+	t.Run("Blocking XREAD waiting old data", func(t *testing.T) {
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XRead(ctx, &redis.XReadArgs{Streams: []string{"s1", "s2", "s3", "$", "0-0", "$"}, Block: 20 * time.Second}).Val()
+		}()
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s2", Values: []string{"foo", "abcd1234"}}).Err())
+		r := <-ch
+		require.Len(t, r, 1)
+		require.Equal(t, "s2", r[0].Stream)
+		require.GreaterOrEqual(t, len(r[0].Messages), 2)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"old": "abcd1234"})
+	})
+
+	t.Run("Blocking XREAD will not reply with an empty array", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "s1").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s1", ID: "666", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s1", ID: "667", Values: []string{"f2", "v2"}}).Err())
+		require.NoError(t, rdb.XDel(ctx, "s1", "667").Err())
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("XREAD", "BLOCK", "10", "STREAMS", "s1", "666"))
+		time.Sleep(20 * time.Millisecond)
+		c.MustRead(t, "$-1") // before the fix, client didn't even block, but was served synchronously with {s1 {}}
+	})
+
+	t.Run("Blocking XREAD for stream that ran dry (redis issue #5299)", func(t *testing.T) {
+		// add an entry then delete it, now stream's last_id is 666.
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "666", Values: []string{"key", "value"}}).Err())
+		require.NoError(t, rdb.XDel(ctx, "mystream", "666").Err())
+		// pass an ID smaller than stream's last_id, released on timeout
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.Empty(t, c.XRead(ctx, &redis.XReadArgs{Streams: []string{"mystream", "665"}, Block: 10 * time.Millisecond}).Val())
+		// throw an error if the ID equal or smaller than the last_id
+		util.ErrorRegexp(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "665", Values: []string{"key", "value"}}).Err(), "ERR.*equal.*smaller.*")
+		util.ErrorRegexp(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "666", Values: []string{"key", "value"}}).Err(), "ERR.*equal.*smaller.*")
+		// entered blocking state and then release because of the new entry
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XRead(ctx, &redis.XReadArgs{Streams: []string{"mystream", "665"}}).Val()
+		}()
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt == 1
+		}, 5*time.Second, 100*time.Millisecond)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "667", Values: []string{"key", "value"}}).Err())
+		r := <-ch
+		require.Len(t, r, 1)
+		require.Equal(t, "mystream", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Equal(t, "667-0", r[0].Messages[0].ID)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"key": "value"})
+	})
+
+	t.Run("XREAD with same stream name multiple times should work", func(t *testing.T) {
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s2", Values: []string{"old", "abcd1234"}}).Err())
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XRead(ctx, &redis.XReadArgs{Streams: []string{"s2", "s2", "s2", "$", "$", "$"}, Block: 20 * time.Second}).Val()
+		}()
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt == 1
+		}, 5*time.Second, 100*time.Millisecond)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "s2", Values: []string{"new", "abcd1234"}}).Err())
+		r := <-ch
+		require.Len(t, r, 3)
+		require.Equal(t, "s2", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Subset(t, r[0].Messages[0].Values, map[string]interface{}{"new": "abcd1234"})
+	})
+
+	t.Run("XDEL basic test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "somestream").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", Values: []string{"foo", "value0"}}).Err())
+		id := rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", Values: []string{"foo", "value1"}}).Val()
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", Values: []string{"foo", "value2"}}).Err())
+		require.NoError(t, rdb.XDel(ctx, "somestream", id).Err())
+		require.EqualValues(t, 2, rdb.XLen(ctx, "somestream").Val())
+		items := rdb.XRange(ctx, "somestream", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.Subset(t, items[0].Values, map[string]interface{}{"foo": "value0"})
+		require.Subset(t, items[1].Values, map[string]interface{}{"foo": "value2"})
+	})
+
+	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
+	t.Run("XDEL fuzz test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "somestream").Err())
+		var ids []string
+		// add enough elements to have a few radix tree nodes inside the stream
+		cnt := 0
+		for {
+			ids = append(ids, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", Values: map[string]interface{}{"item": cnt}}).Val())
+			cnt++
+			if rdb.XInfoStream(ctx, "somestream").Val().Length > 500 {
+				break
+			}
+		}
+		// Now remove all the elements till we reach an empty stream and after every deletion,
+		// check that the stream is sane enough to report the right number of elements with XRANGE:
+		// this will also force accessing the whole data structure to check sanity.
+		require.EqualValues(t, cnt, rdb.XLen(ctx, "somestream").Val())
+		// We want to remove elements in random order to really test the implementation in a better way.
+		rand.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
+		for _, id := range ids {
+			require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", id).Val())
+			cnt--
+			require.EqualValues(t, cnt, rdb.XLen(ctx, "somestream").Val())
+			// The test would be too slow calling XRANGE for every iteration. Do it every 100 removal.
+			if cnt%100 == 0 {
+				require.Len(t, rdb.XRange(ctx, "somestream", "-", "+").Val(), cnt)
+			}
+		}
+	})
+
+	t.Run("XRANGE fuzzing", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		insertIntoStreamKey(t, rdb, "mystream")
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		lowID, highID := items[0].ID, items[len(items)-1].ID
+		for i := 0; i < 100; i++ {
+			start, end := streamRandomID(lowID, highID), streamRandomID(lowID, highID)
+			realRange := rdb.XRange(ctx, "mystream", start, end).Val()
+			fakeRange := streamSimulateXRANGE(items, start, end)
+			require.EqualValues(t, fakeRange, realRange, fmt.Sprintf("start=%s, end=%s", start, end))
+		}
+	})
+
+	t.Run("XREVRANGE regression test for (redis issue #5006)", func(t *testing.T) {
+		// add non compressed entries
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream", ID: "1234567891230", Values: []string{"key1", "value1"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream", ID: "1234567891240", Values: []string{"key2", "value2"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream", ID: "1234567891250", Values: []string{"key3", "value3"}}).Err())
+		// add SAMEFIELD compressed entries
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream2", ID: "1234567891230", Values: []string{"key1", "value1"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream2", ID: "1234567891240", Values: []string{"key1", "value2"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "teststream2", ID: "1234567891250", Values: []string{"key1", "value3"}}).Err())
+		items := rdb.XRevRange(ctx, "teststream", "1234567891245", "-").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, redis.XMessage{ID: "1234567891240-0", Values: map[string]interface{}{"key2": "value2"}}, items[0])
+		require.EqualValues(t, redis.XMessage{ID: "1234567891230-0", Values: map[string]interface{}{"key1": "value1"}}, items[1])
+		items = rdb.XRevRange(ctx, "teststream2", "1234567891245", "-").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, redis.XMessage{ID: "1234567891240-0", Values: map[string]interface{}{"key1": "value2"}}, items[0])
+		require.EqualValues(t, redis.XMessage{ID: "1234567891230-0", Values: map[string]interface{}{"key1": "value1"}}, items[1])
+	})
+
+	t.Run("XREAD streamID edge (no-blocking)", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "1-1", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "1-18446744073709551615", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "2-1", Values: []string{"f", "v"}}).Err())
+		r := rdb.XRead(ctx, &redis.XReadArgs{Streams: []string{"x", "1-18446744073709551615"}}).Val()
+		require.Len(t, r, 1)
+		require.Equal(t, "x", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Equal(t, "2-1", r[0].Messages[0].ID)
+		require.Equal(t, map[string]interface{}{"f": "v"}, r[0].Messages[0].Values)
+	})
+
+	t.Run("XREAD streamID edge (blocking)", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XRead(ctx, &redis.XReadArgs{Streams: []string{"x", "1-18446744073709551615"}}).Val()
+		}()
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt == 1
+		}, 5*time.Second, 100*time.Millisecond)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "1-1", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "1-18446744073709551615", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "2-1", Values: []string{"f", "v"}}).Err())
+		r := <-ch
+		require.Len(t, r, 1)
+		require.Equal(t, "x", r[0].Stream)
+		require.Len(t, r[0].Messages, 1)
+		require.Equal(t, "2-1", r[0].Messages[0].ID)
+		require.Equal(t, map[string]interface{}{"f": "v"}, r[0].Messages[0].Values)
+	})
+
+	t.Run("XADD streamID edge", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", ID: "2577343934890-18446744073709551615", Values: []string{"f", "v"}}).Err()) // we need the timestamp to be in the future
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "x", Values: []string{"f2", "v2"}}).Err())
+		items := rdb.XRange(ctx, "x", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, redis.XMessage{ID: "2577343934890-18446744073709551615", Values: map[string]interface{}{"f": "v"}}, items[0])
+		require.EqualValues(t, redis.XMessage{ID: "2577343934891-0", Values: map[string]interface{}{"f2": "v2"}}, items[1])
+	})
+
+	t.Run("XTRIM with MAXLEN option basic test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 0; i < 1000; i++ {
+			if rand.Float64() < 0.9 {
+				require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: map[string]interface{}{"xitem": i}}).Err())
+			} else {
+				require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: map[string]interface{}{"yitem": i}}).Err())
+			}
+		}
+		require.NoError(t, rdb.XTrimMaxLen(ctx, "mystream", 666).Err())
+		require.EqualValues(t, 666, rdb.XLen(ctx, "mystream").Val())
+		require.NoError(t, rdb.XTrimMaxLen(ctx, "mystream", 555).Err())
+		require.EqualValues(t, 555, rdb.XLen(ctx, "mystream").Val())
+	})
+
+	t.Run("XADD with LIMIT consecutive calls", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 0; i < 100; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: map[string]interface{}{"xitem": "v"}}).Err())
+		}
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", MaxLen: 55, Values: map[string]interface{}{"xitem": "v"}}).Err())
+		require.EqualValues(t, 55, rdb.XLen(ctx, "mystream").Val())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", MaxLen: 55, Values: map[string]interface{}{"xitem": "v"}}).Err())
+		require.EqualValues(t, 55, rdb.XLen(ctx, "mystream").Val())
+	})
+}
+
+// streamSimulateXRANGE simulates Redis XRANGE implementation in Golang.
+func streamSimulateXRANGE(items []redis.XMessage, start, end string) []redis.XMessage {
+	result := make([]redis.XMessage, 0)
+	for _, item := range items {
+		if streamCompareID(item.ID, start) >= 0 && streamCompareID(item.ID, end) <= 0 {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func streamCompareID(a, b string) int {
+	aParts, bParts := strings.Split(a, "-"), strings.Split(b, "-")
+	aMs, _ := strconv.Atoi(aParts[0])
+	aSeq, _ := strconv.Atoi(aParts[1])
+	bMs, _ := strconv.Atoi(bParts[0])
+	bSeq, _ := strconv.Atoi(bParts[1])
+	if aMs > bMs {
+		return 1
+	}
+	if aMs < bMs {
+		return -1
+	}
+	if aSeq > bSeq {
+		return 1
+	}
+	if aSeq < bSeq {
+		return -1
+	}
+	return 0
+}
+
+// streamRandomID generates a random stream entry ID with the ms part between min and max and
+// a low sequence number (0 - 999 range), in order to stress test XRANGE against streamSimulateXRANGE.
+func streamRandomID(minID, maxID string) string {
+	minParts, maxParts := strings.Split(minID, "-"), strings.Split(maxID, "-")
+	minMs, _ := strconv.Atoi(minParts[0])
+	maxMs, _ := strconv.Atoi(maxParts[0])
+	delta := int64(maxMs - minMs + 1)
+	ms, seq := int64(minMs)+util.RandomInt(delta), util.RandomInt(1000)
+	return fmt.Sprintf("%d-%d", ms, seq)
+}
+
+// streamNextID returns the ID immediately greater than the specified one.
+//
+// Note that this function does not care to handle 'seq' overflow since it's a 64 bit value.
+func streamNextID(t *testing.T, id string) string {
+	parts := strings.Split(id, "-")
+	require.Len(t, parts, 2)
+	ms, seq := parts[0], parts[1]
+	seqN, err := strconv.Atoi(seq)
+	require.NoError(t, err)
+	return fmt.Sprintf("%s-%d", ms, seqN+1)
+}
+
+func insertIntoStreamKey(t *testing.T, rdb *redis.Client, key string) {
+	ctx := context.Background()
+	require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+	for i := 0; i < 10000; i++ {
+		// From time to time insert a field with a different set
+		// of fields in order to stress the stream compression code.
+		if rand.Float64() < 0.9 {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: key,
+				Values: map[string]interface{}{"item": i},
+			}).Err())
+		} else {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: key,
+				Values: map[string]interface{}{"item": i, "otherfield": "foo"},
+			}).Err())
+		}
+	}
+	require.NoError(t, rdb.Do(ctx, "EXEC").Err())
 }
 
 func TestStreamOffset(t *testing.T) {

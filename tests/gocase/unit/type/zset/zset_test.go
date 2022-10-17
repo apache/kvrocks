@@ -67,12 +67,6 @@ func createDefaultLexZset(rdb *redis.Client, ctx context.Context) {
 		{0, "omega"}})
 }
 
-func reverse(s []redis.Z) {
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
-	}
-}
-
 func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
 	t.Run(fmt.Sprintf("Check encoding - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
@@ -374,7 +368,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{math.Inf(1), "g"}}
 		createZset(rdb, ctx, "mzset", zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
-		reverse(zsetInt)
+		util.ReverseSlice(zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 
 		zsetDouble := []redis.Z{
@@ -386,7 +380,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{1.004, "f"}}
 		createZset(rdb, ctx, "mzset", zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
-		reverse(zsetDouble)
+		util.ReverseSlice(zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 	})
 

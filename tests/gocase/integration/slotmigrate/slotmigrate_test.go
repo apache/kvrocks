@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
@@ -103,9 +104,7 @@ func TestSlotMigrateDestServerKilled(t *testing.T) {
 		srv1Alive = false
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "migrate", "1", id1).Err())
 		time.Sleep(50 * time.Millisecond)
-		i := rdb0.ClusterInfo(ctx).Val()
-		require.Contains(t, i, "migrating_slot: 1")
-		require.Contains(t, i, "migrating_state: fail")
+		requireMigrateState(t, rdb0, "1", "fail")
 	})
 }
 
@@ -142,10 +141,7 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 		require.NoError(t, rdb0.Set(ctx, util.SlotTable[0], "", 0).Err())
 		time.Sleep(500 * time.Millisecond)
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "0", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 0") && strings.Contains(i, "migrating_state: success")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "0", "success")
 		require.Equal(t, "slot0", rdb1.Get(ctx, "").Val())
 		require.Equal(t, "", rdb1.Get(ctx, util.SlotTable[0]).Val())
 		require.NoError(t, rdb1.Del(ctx, util.SlotTable[0]).Err())
@@ -161,10 +157,7 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 		k2 := fmt.Sprintf("\x49\x1f\x7f{%s}\xaf", util.SlotTable[1])
 		require.NoError(t, rdb0.Set(ctx, k2, "\0000\0001", 0).Err())
 		time.Sleep(time.Second)
-		require.Eventually(t, func() bool {
-			i := rdb1.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "importing_slot: 1") && strings.Contains(i, "import_state: success")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForImportSate(t, rdb1, "1", "success")
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, k1).Val())
 		require.Equal(t, "\0000\0001", rdb1.LPop(ctx, k1).Val())
 		require.Equal(t, "\0000\0001", rdb1.Get(ctx, k2).Val())
@@ -175,10 +168,7 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 		require.NoError(t, rdb1.FlushDB(ctx).Err())
 		time.Sleep(500 * time.Millisecond)
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "2", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 2") && strings.Contains(i, "migrating_state: success")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "2", "success")
 		require.NoError(t, rdb1.Keys(ctx, "*").Err())
 	})
 
@@ -187,15 +177,11 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[8], i).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "8", id1).Val())
-		i := rdb0.ClusterInfo(ctx).Val()
-		require.Contains(t, i, "migrating_slot: 8")
-		require.Contains(t, i, "migrating_state: start")
+		requireMigrateState(t, rdb0, "8", "start")
 		srv1.Close()
 		srv1Alive = false
 		time.Sleep(time.Second)
-		i = rdb0.ClusterInfo(ctx).Val()
-		require.Contains(t, i, "migrating_slot: 8")
-		require.Contains(t, i, "migrating_state: fail")
+		requireMigrateState(t, rdb0, "8", "fail")
 	})
 }
 
@@ -233,16 +219,10 @@ func TestSlotMigrateSourceServerFlushedOrKilled(t *testing.T) {
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "32").Err())
 		require.Equal(t, map[string]string{"migrate-speed": "32"}, rdb0.ConfigGet(ctx, "migrate-speed").Val())
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "11", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 11") && strings.Contains(i, "migrating_state: start")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "11", "start")
 		require.NoError(t, rdb0.FlushDB(ctx).Err())
 		time.Sleep(time.Second)
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 11") && strings.Contains(i, "migrating_state: fail")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "11", "fail")
 	})
 
 	t.Run("MIGRATE - Fail to migrate slot because source server is killed while migrating", func(t *testing.T) {
@@ -294,10 +274,7 @@ func TestSlotMigrateNewNodeAndAuth(t *testing.T) {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[21], i).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "21", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 21") && strings.Contains(i, "migrating_state: success")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "21", "success")
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, util.SlotTable[21]).Val())
 
 		k := fmt.Sprintf("{%s}_1", util.SlotTable[21])
@@ -314,28 +291,19 @@ func TestSlotMigrateNewNodeAndAuth(t *testing.T) {
 
 		// migrating slot will fail if no auth
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "22", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 22") && strings.Contains(i, "migrating_state: fail")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "22", "fail")
 		require.ErrorContains(t, rdb1.Exists(ctx, util.SlotTable[22]).Err(), "MOVED")
 
 		// migrating slot will fail if auth with wrong password
 		require.NoError(t, rdb0.ConfigSet(ctx, "requirepass", "pass").Err())
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "22", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 22") && strings.Contains(i, "migrating_state: fail")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "22", "fail")
 		require.ErrorContains(t, rdb1.Exists(ctx, util.SlotTable[22]).Err(), "MOVED")
 
 		// migrating slot will succeed if auth with right password
 		require.NoError(t, rdb0.ConfigSet(ctx, "requirepass", "password").Err())
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "22", id1).Val())
-		require.Eventually(t, func() bool {
-			i := rdb0.ClusterInfo(ctx).Val()
-			return strings.Contains(i, "migrating_slot: 22") && strings.Contains(i, "migrating_state: success")
-		}, 5*time.Second, 100*time.Millisecond)
+		waitForMigrateState(t, rdb0, "22", "success")
 		require.EqualValues(t, 1, rdb1.Exists(ctx, util.SlotTable[21]).Val())
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, util.SlotTable[22]).Val())
 	})
@@ -377,9 +345,7 @@ func TestSlotMigrateThreeNodes(t *testing.T) {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[10], i).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "10", id2).Val())
-		i := rdb0.ClusterInfo(ctx).Val()
-		require.Contains(t, i, "migrating_slot: 10")
-		require.Contains(t, i, "migrating_state: start")
+		requireMigrateState(t, rdb0, "10", "start")
 
 		// change source server to slave by set topology
 		clusterNodes := fmt.Sprintf("%s %s %d master - 0-10000\n", id1, srv1.Host(), srv1.Port())
@@ -391,8 +357,34 @@ func TestSlotMigrateThreeNodes(t *testing.T) {
 		time.Sleep(time.Second)
 
 		// check destination importing status
-		i = rdb2.ClusterInfo(ctx).Val()
-		require.Contains(t, i, "importing_slot: 10")
-		require.Contains(t, i, "import_state: error")
+		requireImportState(t, rdb2, "10", "error")
 	})
+}
+
+func waitForMigrateState(t testing.TB, client *redis.Client, n, state string) {
+	require.Eventually(t, func() bool {
+		i := client.ClusterInfo(context.Background()).Val()
+		return strings.Contains(i, fmt.Sprintf("migrating_slot: %s", n)) &&
+			strings.Contains(i, fmt.Sprintf("migrating_state: %s", state))
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func requireMigrateState(t testing.TB, client *redis.Client, n, state string) {
+	i := client.ClusterInfo(context.Background()).Val()
+	require.Contains(t, i, fmt.Sprintf("migrating_slot: %s", n))
+	require.Contains(t, i, fmt.Sprintf("migrating_state: %s", state))
+}
+
+func waitForImportSate(t testing.TB, client *redis.Client, n, state string) {
+	require.Eventually(t, func() bool {
+		i := client.ClusterInfo(context.Background()).Val()
+		return strings.Contains(i, fmt.Sprintf("importing_slot: %s", n)) &&
+			strings.Contains(i, fmt.Sprintf("import_state: %s", state))
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func requireImportState(t testing.TB, client *redis.Client, n, state string) {
+	i := client.ClusterInfo(context.Background()).Val()
+	require.Contains(t, i, fmt.Sprintf("importing_slot: %s", n))
+	require.Contains(t, i, fmt.Sprintf("import_state: %s", state))
 }

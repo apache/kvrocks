@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-#include "server.h"
+#include "server/server.h"
 
 Server *GetServer() { return nullptr; }
 

@@ -25,12 +25,12 @@
 
 #include <fstream>
 
-#include "../../src/replication.h"
-#include "../../src/server.h"
-#include "../../src/status.h"
-#include "../../src/storage.h"
+#include "cluster/replication.h"
 #include "config.h"
 #include "parser.h"
+#include "server/server.h"
+#include "status.h"
+#include "storage/storage.h"
 #include "writer.h"
 
 class Sync {

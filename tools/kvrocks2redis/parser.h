@@ -25,12 +25,12 @@
 #include <string>
 #include <vector>
 
-#include "../../src/batch_extractor.h"
-#include "../../src/redis_db.h"
-#include "../../src/redis_metadata.h"
-#include "../../src/status.h"
-#include "../../src/storage.h"
 #include "config.h"
+#include "status.h"
+#include "storage/batch_extractor.h"
+#include "storage/redis_db.h"
+#include "storage/redis_metadata.h"
+#include "storage/storage.h"
 #include "writer.h"
 
 class LatestSnapShot {

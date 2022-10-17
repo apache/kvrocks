@@ -22,8 +22,8 @@
 
 #include <memory>
 
-#include "redis_list.h"
 #include "test_base.h"
+#include "types/redis_list.h"
 
 class RedisListTest : public TestBase {
  protected:

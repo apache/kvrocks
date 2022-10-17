@@ -20,8 +20,8 @@
 
 #include <gtest/gtest.h>
 
-#include "redis_stream.h"
 #include "test_base.h"
+#include "types/redis_stream.h"
 
 class RedisStreamTest : public TestBase {
  public:

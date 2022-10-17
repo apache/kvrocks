@@ -22,8 +22,8 @@
 
 #include <gtest/gtest.h>
 
-#include "redis_db.h"
-#include "redis_hash.h"
+#include "storage/redis_db.h"
+#include "types/redis_hash.h"
 
 class TestBase : public testing::Test {
  protected:

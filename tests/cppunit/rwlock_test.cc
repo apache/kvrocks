@@ -23,8 +23,8 @@
 #include <memory>
 #include <thread>
 
-#include "lock_manager.h"
 #include "rw_lock.h"
+#include "storage/lock_manager.h"
 
 TEST(LockManager, LockKey) {
   LockManager locks(8);

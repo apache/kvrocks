@@ -28,8 +28,8 @@
 #include <utility>
 #include <vector>
 
-#include "../../src/config.h"
-#include "../../src/util.h"
+#include "config/config.h"
+#include "util.h"
 
 namespace Kvrocks2redis {
 

@@ -26,11 +26,11 @@
 
 #include <csignal>
 
-#include "../../src/config.h"
-#include "../../src/storage.h"
 #include "config.h"
+#include "config/config.h"
 #include "parser.h"
 #include "redis_writer.h"
+#include "storage/storage.h"
 #include "sync.h"
 #include "version.h"
 

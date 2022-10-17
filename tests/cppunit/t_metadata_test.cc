@@ -22,9 +22,9 @@
 
 #include <memory>
 
-#include "redis_hash.h"
-#include "redis_metadata.h"
+#include "storage/redis_metadata.h"
 #include "test_base.h"
+#include "types/redis_hash.h"
 
 TEST(InternalKey, EncodeAndDecode) {
   Slice key = "test-metadata-key";

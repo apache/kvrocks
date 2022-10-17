@@ -185,7 +185,7 @@ rocksdb::Options Storage::InitOptions() {
 
   if (!config_->RocksDB.db_paths.empty()) {
     std::vector<std::string> paths = Util::Split(config_->RocksDB.db_paths, ";");
-    for (auto & path_size : paths) {
+    for (auto &path_size : paths) {
       std::vector<std::string> ps = Util::Split(path_size, " \t");
       auto parse_result = TryParseInt<uint32_t>(ps[1].c_str());
       std::string unit = Util::ToLower(std::get<1>(*parse_result));

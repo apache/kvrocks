@@ -62,7 +62,7 @@ func TestSlotMigrateFromSlave(t *testing.T) {
 	})
 }
 
-func TestSlotMigrateServerKilled(t *testing.T) {
+func TestSlotMigrateDestServerKilled(t *testing.T) {
 	ctx := context.Background()
 
 	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})

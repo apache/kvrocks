@@ -22,8 +22,8 @@
 
 #include <memory>
 
-#include "redis_set.h"
 #include "test_base.h"
+#include "types/redis_set.h"
 
 class RedisSetTest : public TestBase {
  protected:

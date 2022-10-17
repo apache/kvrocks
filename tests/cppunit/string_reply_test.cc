@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-#include "redis_reply.h"
+#include "server/redis_reply.h"
 
 class StringReplyTest : public testing::Test {
  protected:

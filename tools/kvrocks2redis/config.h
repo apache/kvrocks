@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-#include "../../src/status.h"
+#include "status.h"
 
 namespace Kvrocks2redis {
 

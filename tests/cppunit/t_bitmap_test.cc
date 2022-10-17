@@ -22,8 +22,8 @@
 
 #include <memory>
 
-#include "redis_bitmap.h"
 #include "test_base.h"
+#include "types/redis_bitmap.h"
 
 class RedisBitmapTest : public TestBase {
  protected:

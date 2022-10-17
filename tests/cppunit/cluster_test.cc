@@ -18,14 +18,14 @@
  *
  */
 
-#include "cluster.h"
+#include "cluster/cluster.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstring>
 
-#include "server.h"
+#include "server/server.h"
 #include "util.h"
 
 TEST(Cluster, CluseterSetNodes) {

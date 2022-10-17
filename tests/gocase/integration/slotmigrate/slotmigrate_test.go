@@ -56,7 +56,7 @@ func TestSlotMigrateFromSlave(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Cannot migrate slot to a slave", func(t *testing.T) {
-		require.ErrorContains(t, masterClient.Do(ctx, "clusterx", "migrate", "1", slaveID).Err(), "Can't migrate slot")
+		require.ErrorContains(t, masterClient.Do(ctx, "clusterx", "migrate", "1", slaveID).Err(), "Can't migrate slot to a slave")
 	})
 }
 

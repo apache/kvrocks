@@ -33,15 +33,6 @@ proc streamCompareID {a b} {
     if {$a_seq < $b_seq} {return -1}
 }
 
-# return the ID immediately greater than the specified one.
-# Note that this function does not care to handle 'seq' overflow
-# since it's a 64 bit value.
-proc streamNextID {id} {
-    lassign [split $id -] ms seq
-    incr seq
-    join [list $ms $seq] -
-}
-
 # Generate a random stream entry ID with the ms part between min and max
 # and a low sequence number (0 - 999 range), in order to stress test
 # XRANGE against a Tcl implementation implementing the same concept
@@ -75,107 +66,6 @@ set content {} ;# Will be populated with Tcl side copy of the stream content.
 start_server {
     tags {"stream"}
 } {
-    proc insert_into_stream_key {key {count 10000}} {
-        r multi
-        for {set j 0} {$j < $count} {incr j} {
-            # From time to time insert a field with a different set
-            # of fields in order to stress the stream compression code.
-            if {rand() < 0.9} {
-                r XADD $key * item $j
-            } else {
-                r XADD $key * item $j otherfield foo
-            }
-        }
-        r exec
-    }
-
-    test {XADD mass insertion and XLEN} {
-        r DEL mystream
-        insert_into_stream_key mystream
-
-        set items [r XRANGE mystream - +]
-        for {set j 0} {$j < 10000} {incr j} {
-            assert {[lrange [lindex $items $j 1] 0 1] eq [list item $j]}
-        }
-        assert {[r xlen mystream] == $j}
-    }
-
-    test {XADD with ID 0-0} {
-        r DEL otherstream
-        catch {r XADD otherstream 0-0 k v} err
-        assert {[r EXISTS otherstream] == 0}
-    }
-
-    test {XRANGE COUNT works as expected} {
-        assert {[llength [r xrange mystream - + COUNT 10]] == 10}
-    }
-
-    test {XREVRANGE COUNT works as expected} {
-        assert {[llength [r xrevrange mystream + - COUNT 10]] == 10}
-    }
-
-    test {XRANGE can be used to iterate the whole stream} {
-        set last_id "-"
-        set j 0
-        while 1 {
-            set elements [r xrange mystream $last_id + COUNT 100]
-            if {[llength $elements] == 0} break
-            foreach e $elements {
-                assert {[lrange [lindex $e 1] 0 1] eq [list item $j]}
-                incr j;
-            }
-            set last_id [streamNextID [lindex $elements end 0]]
-        }
-        assert {$j == 10000}
-    }
-
-    test {XREVRANGE returns the reverse of XRANGE} {
-        assert {[r xrange mystream - +] == [lreverse [r xrevrange mystream + -]]}
-    }
-
-    test {XRANGE exclusive ranges} {
-        set ids {0-1 0-18446744073709551615 1-0 42-0 42-42
-                 18446744073709551615-18446744073709551614
-                 18446744073709551615-18446744073709551615}
-        set total [llength $ids]
-        r multi
-        r DEL vipstream
-        foreach id $ids {
-            r XADD vipstream $id foo bar
-        }
-        r exec
-        assert {[llength [r xrange vipstream - +]] == $total}
-        assert {[llength [r xrange vipstream ([lindex $ids 0] +]] == $total-1}
-        assert {[llength [r xrange vipstream - ([lindex $ids $total-1]]] == $total-1}
-        assert {[llength [r xrange vipstream (0-1 (1-0]] == 1}
-        assert {[llength [r xrange vipstream (1-0 (42-42]] == 1}
-        catch {r xrange vipstream (- +} e
-        assert_match {ERR*} $e
-        catch {r xrange vipstream - (+} e
-        assert_match {ERR*} $e
-        catch {r xrange vipstream (18446744073709551615-18446744073709551615 +} e
-        assert_match {ERR*} $e
-        catch {r xrange vipstream - (0-0} e
-        assert_match {ERR*} $e
-    }
-
-    test {XREAD with non empty stream} {
-        set res [r XREAD COUNT 1 STREAMS mystream 0-0]
-        assert {[lrange [lindex $res 0 1 0 1] 0 1] eq {item 0}}
-    }
-
-    test {Non blocking XREAD with empty streams} {
-        set res [r XREAD STREAMS s1{t} s2{t} 0-0 0-0]
-        assert {$res eq {}}
-    }
-
-    test {XREAD with non empty second stream} {
-        insert_into_stream_key mystream{t}
-        set res [r XREAD COUNT 1 STREAMS nostream{t} mystream{t} 0-0 0-0]
-        assert {[lindex $res 0 0] eq {mystream{t}}}
-        assert {[lrange [lindex $res 0 1 0 1] 0 1] eq {item 0}}
-    }
-
     test {Blocking XREAD waiting new data} {
         r XADD s2{t} * old abcd1234
         set rd [redis_deferring_client]

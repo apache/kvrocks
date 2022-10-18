@@ -63,23 +63,18 @@ func (c *TCPClient) MustRead(t testing.TB, s string) {
 	require.Equal(t, s, r)
 }
 
-func (c *TCPClient) MustReadResult(t testing.TB, s string) {
+func (c *TCPClient) MustReadStrings(t testing.TB, s []string) {
 	r, err := c.ReadLine()
 	require.NoError(t, err)
-	require.Regexp(t, "\\**", r)
-	num, err := strconv.Atoi(r[1:])
+	require.EqualValues(t, '*', r[0])
+	n, err := strconv.Atoi(r[1:])
 	require.NoError(t, err)
-	var str string
-	for i := 0; i < num*2; i++ {
-		rn, err := c.ReadLine()
+	require.Equal(t, n, len(s))
+	for i := 0; i < n; i++ {
+		_, err := c.ReadLine()
 		require.NoError(t, err)
-		if i%2 == 0 {
-			continue
-		}
-		str += rn + " "
+		c.MustRead(t, s[i])
 	}
-	str = str[0 : len(str)-1]
-	require.Equal(t, s, str)
 }
 
 func (c *TCPClient) MustMatch(t testing.TB, rx string) {

@@ -148,11 +148,11 @@ func TestZipList(t *testing.T) {
 			case 1:
 				require.NoError(t, rdb.RPush(ctx, key, ele).Err())
 			case 2:
-				rdb.LPop(ctx, key)
+				require.NoError(t, rdb.LPop(ctx, key).Err())
 			case 3:
-				rdb.RPop(ctx, key)
+				require.NoError(t, rdb.RPop(ctx, key).Err())
 			case 4:
-				rdb.LSet(ctx, key, randCnt, ele)
+				require.NoError(t, rdb.LSet(ctx, key, randCnt, ele).Err())
 			case 5:
 				otherEle := fmt.Sprintf("%d", rand.Int63n(1000))
 				var where string
@@ -248,7 +248,6 @@ func TestList(t *testing.T) {
 	defer func() { require.NoError(t, rd.Close()) }()
 
 	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - ziplist", func(t *testing.T) {
-
 		// first lpush then rpush
 		require.EqualValues(t, 1, rdb.LPush(ctx, "myziplist1", "aa").Val())
 		require.EqualValues(t, 2, rdb.RPush(ctx, "myziplist1", "bb").Val())
@@ -305,7 +304,7 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("Variadic RPUSH/LPUSH", func(t *testing.T) {
-		rdb.Del(ctx, "mylist")
+		require.NoError(t, rdb.Del(ctx, "mylist").Err())
 		require.EqualValues(t, 4, rdb.LPush(ctx, "mylist", "a", "b", "c", "d").Val())
 		require.EqualValues(t, 8, rdb.RPush(ctx, "mylist", "1", "2", "3", "4").Val())
 		require.Equal(t, []string{"d", "c", "b", "a", "1", "2", "3", "4"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
@@ -318,91 +317,87 @@ func TestList(t *testing.T) {
 	})
 
 	createList := func(key string, entries ...interface{}) {
-		rdb.Del(ctx, key)
+		require.NoError(t, rdb.Del(ctx, key).Err())
 		for _, entry := range entries {
-			rdb.RPush(ctx, key, entry)
+			require.NoError(t, rdb.RPush(ctx, key, entry).Err())
 		}
 	}
 
 	for listType, large := range largeValue {
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: single existing list - %s", listType), func(t *testing.T) {
 			createList("blist", []string{"a", "b", large, "c", "d"})
-
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
-			rd.MustReadResult(t, "blist a")
+			rd.MustReadStrings(t, []string{"blist", "a"})
 			require.NoError(t, rd.WriteArgs("brpop", "blist", "1"))
-			rd.MustReadResult(t, "blist d")
+			rd.MustReadStrings(t, []string{"blist", "d"})
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
-			rd.MustReadResult(t, "blist b")
+			rd.MustReadStrings(t, []string{"blist", "b"})
 			require.NoError(t, rd.WriteArgs("brpop", "blist", "1"))
-			rd.MustReadResult(t, "blist c")
+			rd.MustReadStrings(t, []string{"blist", "c"})
 		})
 
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: multiple existing lists - %s", listType), func(t *testing.T) {
 			createList("blist1", []string{"a", large, "c"})
 			createList("blist2", []string{"d", large, "f"})
-
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
-			rd.MustReadResult(t, "blist1 a")
+			rd.MustReadStrings(t, []string{"blist1", "a"})
 			require.NoError(t, rd.WriteArgs("brpop", "blist1", "blist2", "1"))
-			rd.MustReadResult(t, "blist1 c")
+			rd.MustReadStrings(t, []string{"blist1", "c"})
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 3, rdb.LLen(ctx, "blist2").Val())
 			require.NoError(t, rd.WriteArgs("blpop", "blist2", "blist2", "1"))
-			rd.MustReadResult(t, "blist2 d")
+			rd.MustReadStrings(t, []string{"blist2", "d"})
 			require.NoError(t, rd.WriteArgs("brpop", "blist2", "blist2", "1"))
-			rd.MustReadResult(t, "blist2 f")
+			rd.MustReadStrings(t, []string{"blist2", "f"})
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist2").Val())
 		})
 
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: second list has an entry - %s", listType), func(t *testing.T) {
-			rdb.Del(ctx, "blist1")
+			require.NoError(t, rdb.Del(ctx, "blist1").Err())
 			createList("blist2", []string{"d", large, "f"})
-
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
-			rd.MustReadResult(t, "blist2 d")
+			rd.MustReadStrings(t, []string{"blist2", "d"})
 			require.NoError(t, rd.WriteArgs("brpop", "blist1", "blist2", "1"))
-			rd.MustReadResult(t, "blist2 f")
+			rd.MustReadStrings(t, []string{"blist2", "f"})
 			require.EqualValues(t, 0, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist2").Val())
 		})
 	}
 
-	t.Run("BLPOP with same key multiple times should work (issue #801)", func(t *testing.T) {
-		rdb.Del(ctx, "list1", "list2")
+	t.Run("BLPOP with same key multiple times should work (redis issue #801)", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "list1", "list2").Err())
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
-		rdb.LPush(ctx, "list1", "a")
-		rd.MustReadResult(t, "list1 a")
+		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
+		rd.MustReadStrings(t, []string{"list1", "a"})
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
-		rdb.LPush(ctx, "list2", "b")
-		rd.MustReadResult(t, "list2 b")
-		rdb.LPush(ctx, "list1", "a")
-		rdb.LPush(ctx, "list2", "b")
+		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
+		rd.MustReadStrings(t, []string{"list2", "b"})
+		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
+		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
-		rd.MustReadResult(t, "list1 a")
+		rd.MustReadStrings(t, []string{"list1", "a"})
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
-		rd.MustReadResult(t, "list2 b")
+		rd.MustReadStrings(t, []string{"list2", "b"})
 	})
 
 	t.Run("BLPOP with variadic LPUSH", func(t *testing.T) {
-		rdb.Del(ctx, "blist", "target")
+		require.NoError(t, rdb.Del(ctx, "blist", "target").Err())
 		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "blist", "0"))
 		time.Sleep(time.Millisecond * 100)
 		require.EqualValues(t, 2, rdb.LPush(ctx, "blist", "foo", "bar").Val())
 		time.Sleep(time.Millisecond * 100)
-		rd.MustReadResult(t, "blist bar")
+		rd.MustReadStrings(t, []string{"blist", "bar"})
 		require.Equal(t, "foo", rdb.LRange(ctx, "blist", 0, -1).Val()[0])
 	})
 
 	for _, popType := range []string{"blpop", "brpop"} {
-
 		t.Run(fmt.Sprintf("%s: with single empty list argument", popType), func(t *testing.T) {
-			rdb.Del(ctx, "blist1")
+			require.NoError(t, rdb.Del(ctx, "blist1").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "1"))
-			rdb.RPush(ctx, "blist1", "foo")
-			rd.MustReadResult(t, "blist1 foo")
+			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
+			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
 		})
 
@@ -416,40 +411,40 @@ func TestList(t *testing.T) {
 			// The blocking pop should still be waiting for a push.
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "0"))
 			time.Sleep(time.Millisecond * 1000)
-			rdb.RPush(ctx, "blist1", "foo")
-			rd.MustReadResult(t, "blist1 foo")
+			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
+			rd.MustReadStrings(t, []string{"blist1", "foo"})
 		})
 
 		t.Run(fmt.Sprintf("%s: second argument is not a list", popType), func(t *testing.T) {
-			rdb.Del(ctx, "blist1", "blist2")
-			rdb.Set(ctx, "blist2", "nolist", 0)
+			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
+			require.NoError(t, rdb.Set(ctx, "blist2", "nolist", 0).Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rd.MustMatch(t, ".*WRONGTYPE.*")
 		})
 
 		t.Run(fmt.Sprintf("%s: timeout", popType), func(t *testing.T) {
-			rdb.Del(ctx, "blist1", "blist2")
+			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rd.MustMatch(t, "")
 		})
 
 		t.Run(fmt.Sprintf("%s: arguments are empty", popType), func(t *testing.T) {
-			rdb.Del(ctx, "blist1", "blist2")
+			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
-			rdb.RPush(ctx, "blist1", "foo")
-			rd.MustReadResult(t, "blist1 foo")
+			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
+			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist2").Val())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
-			rdb.RPush(ctx, "blist2", "foo")
-			rd.MustReadResult(t, "blist2 foo")
+			require.NoError(t, rdb.RPush(ctx, "blist2", "foo").Err())
+			rd.MustReadStrings(t, []string{"blist2", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist2").Val())
 		})
 	}
 
 	t.Run("LPUSHX, RPUSHX - generic", func(t *testing.T) {
-		rdb.Del(ctx, "xlist")
+		require.NoError(t, rdb.Del(ctx, "xlist").Err())
 		require.EqualValues(t, 0, rdb.LPushX(ctx, "xlist", "a").Val())
 		require.EqualValues(t, 0, rdb.LLen(ctx, "xlist").Val())
 		require.EqualValues(t, 0, rdb.RPushX(ctx, "xlist", "a").Val())
@@ -459,7 +454,6 @@ func TestList(t *testing.T) {
 	for listType, large := range largeValue {
 		t.Run(fmt.Sprintf("LPUSHX, RPUSHX - %s", listType), func(t *testing.T) {
 			createList("xlist", []string{large, "c"})
-
 			require.EqualValues(t, 3, rdb.RPushX(ctx, "xlist", "d").Val())
 			require.EqualValues(t, 4, rdb.LPushX(ctx, "xlist", "a").Val())
 			require.EqualValues(t, 6, rdb.RPushX(ctx, "xlist", "42", "x").Val())
@@ -469,7 +463,6 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LINSERT - %s", listType), func(t *testing.T) {
 			createList("xlist", []string{"a", large, "c", "d"})
-
 			require.EqualValues(t, 5, rdb.LInsert(ctx, "xlist", "before", "c", "zz").Val())
 			require.Equal(t, []string{"a", large, "zz", "c", "d"}, rdb.LRange(ctx, "xlist", 0, 10).Val())
 			require.EqualValues(t, 6, rdb.LInsert(ctx, "xlist", "after", "c", "yy").Val())
@@ -485,7 +478,6 @@ func TestList(t *testing.T) {
 			require.EqualValues(t, 9, rdb.LInsert(ctx, "xlist", "before", "aa", "42").Val())
 			require.Equal(t, "42", rdb.LRange(ctx, "xlist", 0, 0).Val()[0])
 		})
-
 	}
 
 	t.Run("LINSERT raise error on bad syntax", func(t *testing.T) {
@@ -494,7 +486,6 @@ func TestList(t *testing.T) {
 
 	listType := "quicklist"
 	for _, num := range []int{250, 500} {
-
 		checkNumberedListConsistency := func(key string) {
 			l := rdb.LLen(ctx, key).Val()
 			for i := 0; i < int(l); i++ {
@@ -506,16 +497,16 @@ func TestList(t *testing.T) {
 		checkRandomAccessConsistency := func(key string) {
 			l := rdb.LLen(ctx, key).Val()
 			for i := 0; i < int(l); i++ {
-				rint := rand.Intn(int(l))
-				require.Equal(t, strconv.Itoa(rint), rdb.LIndex(ctx, key, int64(rint)).Val())
-				require.Equal(t, strconv.Itoa(int(l)-rint-1), rdb.LIndex(ctx, key, int64(int(l)-rint-1)).Val())
+				k := rand.Intn(int(l))
+				require.Equal(t, strconv.Itoa(k), rdb.LIndex(ctx, key, int64(k)).Val())
+				require.Equal(t, strconv.Itoa(int(l)-k-1), rdb.LIndex(ctx, key, int64(int(l)-k-1)).Val())
 			}
 		}
 
 		t.Run(fmt.Sprintf("LINDEX consistency test - %s", listType), func(t *testing.T) {
-			rdb.Del(ctx, "mylist")
+			require.NoError(t, rdb.Del(ctx, "mylist").Err())
 			for i := 0; i < num; i++ {
-				rdb.RPush(ctx, "mylist", strconv.Itoa(i))
+				require.NoError(t, rdb.RPush(ctx, "mylist", strconv.Itoa(i)).Err())
 			}
 			checkNumberedListConsistency("mylist")
 		})
@@ -530,9 +521,9 @@ func TestList(t *testing.T) {
 		})
 	}
 	t.Run("LLEN against non-list value error", func(t *testing.T) {
-		rdb.Del(ctx, "mylist")
-		rdb.Set(ctx, "mylist", "foobar", 0)
-		util.ErrorRegexp(t, rdb.LLen(ctx, "mylist").Err(), ".*WRONGTYPE.*")
+		require.NoError(t, rdb.Del(ctx, "mylist").Err())
+		require.NoError(t, rdb.Set(ctx, "mylist", "foobar", 0).Err())
+		require.ErrorContains(t, rdb.LLen(ctx, "mylist").Err(), "WRONGTYPE")
 	})
 
 	t.Run("LLEN against non existing key", func(t *testing.T) {
@@ -540,7 +531,7 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("LINDEX against non-list value error", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb.LIndex(ctx, "mylist", 0).Err(), ".*WRONGTYPE.*")
+		require.ErrorContains(t, rdb.LIndex(ctx, "mylist", 0).Err(), "WRONGTYPE")
 	})
 
 	t.Run("LINDEX against non existing key", func(t *testing.T) {
@@ -548,17 +539,16 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("LPUSH against non-list value error", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb.LPush(ctx, "mylist", 0).Err(), ".*WRONGTYPE.*")
+		require.ErrorContains(t, rdb.LPush(ctx, "mylist", 0).Err(), "WRONGTYPE")
 	})
 
 	t.Run("RPUSH against non-list value error", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb.RPush(ctx, "mylist", 0).Err(), ".*WRONGTYPE.*")
+		require.ErrorContains(t, rdb.RPush(ctx, "mylist", 0).Err(), "WRONGTYPE")
 	})
 
 	for listType, large := range largeValue {
-
 		t.Run(fmt.Sprintf("RPOPLPUSH base case - %s", listType), func(t *testing.T) {
-			rdb.Del(ctx, "mylist1", "mylist2")
+			require.NoError(t, rdb.Del(ctx, "mylist1", "mylist2").Err())
 			createList("mylist1", []string{"a", large, "c", "d"})
 			require.Equal(t, "d", rdb.RPopLPush(ctx, "mylist1", "mylist2").Val())
 			require.Equal(t, "c", rdb.RPopLPush(ctx, "mylist1", "mylist2").Val())
@@ -574,7 +564,6 @@ func TestList(t *testing.T) {
 		})
 
 		for otherListType, otherLarge := range largeValue {
-
 			t.Run(fmt.Sprintf("RPOPLPUSH with %s source and existing target %s", listType, otherListType), func(t *testing.T) {
 				createList("srclist", []string{"a", "b", "c", large})
 				createList("dstlist", []string{otherLarge})
@@ -583,37 +572,34 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"a", "b"}, rdb.LRange(ctx, "srclist", 0, -1).Val())
 				require.Equal(t, []string{"c", large, otherLarge}, rdb.LRange(ctx, "dstlist", 0, -1).Val())
 			})
-
 		}
 	}
 
 	t.Run("RPOPLPUSH against non existing key", func(t *testing.T) {
-		rdb.Del(ctx, "srclist", "dstlist")
+		require.NoError(t, rdb.Del(ctx, "srclist", "dstlist").Err())
 		require.Equal(t, "", rdb.RPopLPush(ctx, "srclist", "dstlist").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "srclist").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "dstlist").Val())
 	})
 
 	t.Run("RPOPLPUSH against non list src key", func(t *testing.T) {
-		rdb.Del(ctx, "srclist", "dstlist")
-		rdb.Set(ctx, "srclist", "x", 0)
-		util.ErrorRegexp(t, rdb.RPopLPush(ctx, "srclist", "dstlist").Err(), ".*WRONGTYPE.*")
+		require.NoError(t, rdb.Del(ctx, "srclist", "dstlist").Err())
+		require.NoError(t, rdb.Set(ctx, "srclist", "x", 0).Err())
+		require.ErrorContains(t, rdb.RPopLPush(ctx, "srclist", "dstlist").Err(), "WRONGTYPE")
 		require.Equal(t, "string", rdb.Type(ctx, "srclist").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "newlist").Val())
-
 	})
 
 	t.Run("RPOPLPUSH against non list dst key", func(t *testing.T) {
 		createList("srclist", []string{"a", "b", "c", "d"})
-
-		rdb.Set(ctx, "dstlist", "x", 0)
-		util.ErrorRegexp(t, rdb.RPopLPush(ctx, "srclist", "dstlist").Err(), ".*WRONGTYPE.*")
+		require.NoError(t, rdb.Set(ctx, "dstlist", "x", 0).Err())
+		require.ErrorContains(t, rdb.RPopLPush(ctx, "srclist", "dstlist").Err(), "WRONGTYPE")
 		require.Equal(t, "string", rdb.Type(ctx, "dstlist").Val())
 		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.LRange(ctx, "srclist", 0, -1).Val())
 	})
 
 	t.Run("RPOPLPUSH against non existing src key", func(t *testing.T) {
-		rdb.Del(ctx, "srclist", "dstlist")
+		require.NoError(t, rdb.Del(ctx, "srclist", "dstlist").Err())
 		require.Equal(t, "", rdb.RPopLPush(ctx, "srclist", "dstlist").Val())
 	})
 
@@ -633,14 +619,14 @@ func TestList(t *testing.T) {
 	}
 
 	t.Run("LPOP/RPOP against non list value", func(t *testing.T) {
-		rdb.Set(ctx, "notalist", "foo", 0)
-		util.ErrorRegexp(t, rdb.LPop(ctx, "notalist").Err(), ".*WRONGTYPE.*")
-		util.ErrorRegexp(t, rdb.RPop(ctx, "notalist").Err(), ".*WRONGTYPE.*")
+		require.NoError(t, rdb.Set(ctx, "notalist", "foo", 0).Err())
+		require.ErrorContains(t, rdb.LPop(ctx, "notalist").Err(), "WRONGTYPE")
+		require.ErrorContains(t, rdb.RPop(ctx, "notalist").Err(), "WRONGTYPE")
 	})
 
 	t.Run("LPOP/RPOP with wrong number of arguments", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb.Do(ctx, "lpop", "key", "1", "1").Err(), ".*wrong number of arguments.*")
-		util.ErrorRegexp(t, rdb.Do(ctx, "lpop", "key", "2", "2").Err(), ".*wrong number of arguments.*")
+		require.ErrorContains(t, rdb.Do(ctx, "lpop", "key", "1", "1").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "lpop", "key", "2", "2").Err(), "wrong number of arguments")
 	})
 
 	t.Run("RPOP/LPOP with the optional count argument", func(t *testing.T) {
@@ -654,39 +640,32 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("LPOP/RPOP with the count 0 returns an empty array", func(t *testing.T) {
-		// Make sure we can distinguish between an empty array and a null response
-		rdb.Do(ctx, "readraw", "1")
-		rdb.LPush(ctx, "listcount", "zoro")
+		require.NoError(t, rdb.LPush(ctx, "listcount", "zero").Err())
 		require.Equal(t, []string{}, rdb.LPopCount(ctx, "listcount", 0).Val())
 		require.Equal(t, []string{}, rdb.RPopCount(ctx, "listcount", 0).Val())
-		rdb.Do(ctx, "readraw", "0")
 	})
 
 	t.Run("LPOP/RPOP against non existing key", func(t *testing.T) {
-		rdb.Do(ctx, "readraw", "1")
-		rdb.Del(ctx, "non_existing_key")
-		require.Equal(t, "", rdb.LPop(ctx, "non_existing_key").Val())
-		require.Equal(t, "", rdb.RPop(ctx, "non_existing_key").Val())
-		rdb.Do(ctx, "readraw", "0")
+		require.NoError(t, rdb.Del(ctx, "non_existing_key").Err())
+		require.EqualError(t, rdb.LPop(ctx, "non_existing_key").Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.RPop(ctx, "non_existing_key").Err(), redis.Nil.Error())
 	})
 
 	t.Run("LPOP/RPOP with <count> against non existing key", func(t *testing.T) {
-		rdb.Do(ctx, "readraw", "1")
-		rdb.Del(ctx, "non_existing_key")
-		require.Equal(t, []string(nil), rdb.LPopCount(ctx, "non_existing_key", 0).Val())
-		require.Equal(t, []string(nil), rdb.LPopCount(ctx, "non_existing_key", 1).Val())
-		require.Equal(t, []string(nil), rdb.RPopCount(ctx, "non_existing_key", 0).Val())
-		require.Equal(t, []string(nil), rdb.RPopCount(ctx, "non_existing_key", 1).Val())
-		rdb.Do(ctx, "readraw", "0")
+		require.NoError(t, rdb.Del(ctx, "non_existing_key").Err())
+		require.EqualError(t, rdb.LPopCount(ctx, "non_existing_key", 0).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.LPopCount(ctx, "non_existing_key", 1).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.RPopCount(ctx, "non_existing_key", 0).Err(), redis.Nil.Error())
+		require.EqualError(t, rdb.RPopCount(ctx, "non_existing_key", 1).Err(), redis.Nil.Error())
 	})
 
 	listType = "quicklist"
 	for _, num := range []int{250, 500} {
 		t.Run(fmt.Sprintf("Mass RPOP/LPOP - %s", listType), func(t *testing.T) {
-			rdb.Del(ctx, "mylist")
+			require.NoError(t, rdb.Del(ctx, "mylist").Err())
 			sum1 := 0
 			for i := 0; i < num; i++ {
-				rdb.LPush(ctx, "mylist", strconv.Itoa(i))
+				require.NoError(t, rdb.LPush(ctx, "mylist", strconv.Itoa(i)).Err())
 				sum1 += i
 			}
 			sum2 := 0
@@ -703,10 +682,8 @@ func TestList(t *testing.T) {
 	}
 
 	for listType, large := range largeValue {
-
 		t.Run(fmt.Sprintf("LRANGE basics - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{large, "1", "2", "3", "4", "5", "6", "7", "8", "9"})
-
 			require.Equal(t, []string{"1", "2", "3", "4", "5", "6", "7", "8"}, rdb.LRange(ctx, "mylist", 1, -2).Val())
 			require.Equal(t, []string{"7", "8", "9"}, rdb.LRange(ctx, "mylist", -3, -1).Val())
 			require.Equal(t, []string{"4"}, rdb.LRange(ctx, "mylist", 4, 4).Val())
@@ -714,19 +691,16 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LRANGE inverted indexes - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{large, "1", "2", "3", "4", "5", "6", "7", "8", "9"})
-
 			require.Equal(t, []string{}, rdb.LRange(ctx, "mylist", 6, 2).Val())
 		})
 
 		t.Run(fmt.Sprintf("LRANGE out of range indexes including the full list - $type - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{large, "1", "2", "3"})
-
 			require.Equal(t, []string{large, "1", "2", "3"}, rdb.LRange(ctx, "mylist", -1000, 1000).Val())
 		})
 
 		t.Run(fmt.Sprintf("LRANGE out of range negative end index - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{large, "1", "2", "3"})
-
 			require.Equal(t, []string{large}, rdb.LRange(ctx, "mylist", 0, -4).Val())
 			require.Equal(t, []string{}, rdb.LRange(ctx, "mylist", 0, -5).Val())
 		})
@@ -737,11 +711,10 @@ func TestList(t *testing.T) {
 	})
 
 	for listType, large := range largeValue {
-
 		trimList := func(listType string, min, max int64) []string {
-			rdb.Del(ctx, "mylist")
+			require.NoError(t, rdb.Del(ctx, "mylist").Err())
 			createList("mylist", []string{"1", "2", "3", "4", large})
-			rdb.LTrim(ctx, "mylist", min, max)
+			require.NoError(t, rdb.LTrim(ctx, "mylist", min, max).Err())
 			return rdb.LRange(ctx, "mylist", 0, -1).Val()
 		}
 
@@ -767,7 +740,6 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LTRIM lrem elements after ltrim list - %s", listType), func(t *testing.T) {
 			createList("myotherlist", []string{"0", "1", "2", "3", "4", "3", "6", "7", "3", "9"})
-
 			require.Equal(t, "OK", rdb.LTrim(ctx, "myotherlist", 2, -3).Val())
 			require.Equal(t, []string{"2", "3", "4", "3", "6", "7"}, rdb.LRange(ctx, "myotherlist", 0, -1).Val())
 			require.EqualValues(t, 2, rdb.LRem(ctx, "myotherlist", 4, "3").Val())
@@ -776,22 +748,19 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LTRIM linsert elements after ltrim list - %s", listType), func(t *testing.T) {
 			createList("myotherlist1", []string{"0", "1", "2", "3", "4", "3", "6", "7", "3", "9"})
-
 			require.Equal(t, "OK", rdb.LTrim(ctx, "myotherlist1", 2, -3).Val())
 			require.Equal(t, []string{"2", "3", "4", "3", "6", "7"}, rdb.LRange(ctx, "myotherlist1", 0, -1).Val())
 			require.EqualValues(t, -1, rdb.LInsert(ctx, "myotherlist1", "before", "9", "0").Val())
 			require.EqualValues(t, 7, rdb.LInsert(ctx, "myotherlist1", "before", "4", "0").Val())
 			require.Equal(t, []string{"2", "3", "0", "4", "3", "6", "7"}, rdb.LRange(ctx, "myotherlist1", 0, -1).Val())
 		})
-
 	}
 
 	for listType, large := range largeValue {
 		t.Run(fmt.Sprintf("LSET - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{"99", "98", large, "96", "95"})
-
-			rdb.LSet(ctx, "mylist", 1, "foo")
-			rdb.LSet(ctx, "mylist", -1, "bar")
+			require.NoError(t, rdb.LSet(ctx, "mylist", 1, "foo").Err())
+			require.NoError(t, rdb.LSet(ctx, "mylist", -1, "bar").Err())
 			require.Equal(t, []string{"99", "foo", large, "96", "bar"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
 		})
 
@@ -805,14 +774,13 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("LSET against non list value", func(t *testing.T) {
-		rdb.Set(ctx, "nolist", "foobar", 0)
-		util.ErrorRegexp(t, rdb.LSet(ctx, "nolist", 0, "foo").Err(), ".*WRONGTYPE.*")
+		require.NoError(t, rdb.Set(ctx, "nolist", "foobar", 0).Err())
+		require.ErrorContains(t, rdb.LSet(ctx, "nolist", 0, "foo").Err(), "WRONGTYPE")
 	})
 
 	for listType, e := range largeValue {
 		t.Run(fmt.Sprintf("LREM remove all the occurrences - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{e, "foo", "bar", "foobar", "foobared", "zap", "bar", "test", "foo"})
-
 			require.EqualValues(t, 2, rdb.LRem(ctx, "mylist", 0, "bar").Val())
 			require.Equal(t, []string{e, "foo", "foobar", "foobared", "zap", "test", "foo"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
 		})
@@ -829,7 +797,6 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LREM starting from tail with negative count - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{e, "foo", "bar", "foobar", "foobared", "zap", "bar", "test", "foo", "foo"})
-
 			require.EqualValues(t, 1, rdb.LRem(ctx, "mylist", -1, "bar").Val())
 			require.Equal(t, []string{e, "foo", "bar", "foobar", "foobared", "zap", "test", "foo", "foo"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
 		})
@@ -841,14 +808,12 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("LREM deleting objects that may be int encoded - %s", listType), func(t *testing.T) {
 			createList("myotherlist", e, 1, 2, 3)
-
 			require.EqualValues(t, 1, rdb.LRem(ctx, "myotherlist", 1, 2).Val())
 			require.EqualValues(t, 3, rdb.LLen(ctx, "myotherlist").Val())
 		})
 
 		t.Run(fmt.Sprintf("LREM remove elements in repeating list - %s", listType), func(t *testing.T) {
 			createList("myotherlist", e, "a", "b", "c", "d", "e", "f", "a", "f", "a", "f")
-
 			require.EqualValues(t, 1, rdb.LRem(ctx, "myotherlist", 1, "f").Val())
 			require.Equal(t, []string{e, "a", "b", "c", "d", "e", "a", "f", "a", "f"}, rdb.LRange(ctx, "myotherlist", 0, -1).Val())
 			require.EqualValues(t, 2, rdb.LRem(ctx, "myotherlist", 0, "f").Val())
@@ -857,13 +822,13 @@ func TestList(t *testing.T) {
 	}
 
 	t.Run("Test LMOVE on different keys", func(t *testing.T) {
-		rdb.RPush(ctx, "list1{t}", "1")
-		rdb.RPush(ctx, "list1{t}", "2")
-		rdb.RPush(ctx, "list1{t}", "3")
-		rdb.RPush(ctx, "list1{t}", "4")
-		rdb.RPush(ctx, "list1{t}", "5")
-		rdb.LMove(ctx, "list1{t}", "list2{t}", "RIGHT", "LEFT")
-		rdb.LMove(ctx, "list1{t}", "list2{t}", "LEFT", "RIGHT")
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "1").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "2").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "3").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "4").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "5").Err())
+		require.NoError(t, rdb.LMove(ctx, "list1{t}", "list2{t}", "RIGHT", "LEFT").Err())
+		require.NoError(t, rdb.LMove(ctx, "list1{t}", "list2{t}", "LEFT", "RIGHT").Err())
 		require.EqualValues(t, 3, rdb.LLen(ctx, "list1{t}").Val())
 		require.EqualValues(t, 2, rdb.LLen(ctx, "list2{t}").Val())
 		require.Equal(t, []string{"2", "3", "4"}, rdb.LRange(ctx, "list1{t}", 0, -1).Val())
@@ -873,8 +838,8 @@ func TestList(t *testing.T) {
 	for _, from := range []string{"LEFT", "RIGHT"} {
 		for _, to := range []string{"LEFT", "RIGHT"} {
 			t.Run(fmt.Sprintf("LMOVE %s %s on the list node", from, to), func(t *testing.T) {
-				rdb.Del(ctx, "target_key{t}")
-				rdb.RPush(ctx, "target_key{t}", 1)
+				require.NoError(t, rdb.Del(ctx, "target_key{t}").Err())
+				require.NoError(t, rdb.RPush(ctx, "target_key{t}", 1).Err())
 				createList("list{t}", []string{"a", "b", "c", "d"})
 				require.NoError(t, rd.WriteArgs("lmove", "list{t}", "target_key{t}", from, to))
 				r, err1 := rd.ReadLine()

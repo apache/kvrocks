@@ -29,11 +29,10 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func createZset(rdb *redis.Client, ctx context.Context, key string, items []redis.Z) {

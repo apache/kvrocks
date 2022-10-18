@@ -29,11 +29,10 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func createZset(rdb *redis.Client, ctx context.Context, key string, items []redis.Z) {
@@ -65,12 +64,6 @@ func createDefaultLexZset(rdb *redis.Client, ctx context.Context) {
 		{0, "great"},
 		{0, "hill"},
 		{0, "omega"}})
-}
-
-func reverse(s []redis.Z) {
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
-	}
 }
 
 func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
@@ -374,7 +367,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{math.Inf(1), "g"}}
 		createZset(rdb, ctx, "mzset", zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
-		reverse(zsetInt)
+		util.ReverseSlice(zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 
 		zsetDouble := []redis.Z{
@@ -386,7 +379,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{1.004, "f"}}
 		createZset(rdb, ctx, "mzset", zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
-		reverse(zsetDouble)
+		util.ReverseSlice(zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 	})
 

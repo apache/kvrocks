@@ -32,6 +32,26 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7)
+        message(FATAL_ERROR "It is expected to build kvrocks with GCC 7 or above")
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5)
+        message(FATAL_ERROR "It is expected to build kvrocks with Clang 5 or above")
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
+        message(FATAL_ERROR "It is expected to build kvrocks with Xcode toolchains 10 or above")
+    endif()
+else()
+    message(WARNING "The compiler you are currently using is not officially supported, 
+        so you can try switching to GCC>=7 or Clang>=5 if you encounter problems")
+endif()
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(DEPS_FETCH_PROXY "" CACHE STRING
     "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
      https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
@@ -148,14 +168,14 @@ find_library(FOUND_UNWIND_LIB unwind)
 set(WARNING_FLAGS -Wall -Wpedantic -Wsign-compare -Wreturn-type)
 
 # kvrocks objects target
-file(GLOB KVROCKS_SRCS src/*.cc)
+file(GLOB_RECURSE KVROCKS_SRCS src/*.cc)
 list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/main.cc)
 
 add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
 
-target_include_directories(kvrocks_objs PUBLIC src ${PROJECT_BINARY_DIR})
-target_compile_features(kvrocks_objs PUBLIC cxx_std_11)
-target_compile_options(kvrocks_objs PUBLIC ${WARNING_FLAGS} -fno-omit-frame-pointer)
+target_include_directories(kvrocks_objs PUBLIC src src/common ${PROJECT_BINARY_DIR})
+target_compile_features(kvrocks_objs PUBLIC cxx_std_17)
+target_compile_options(kvrocks_objs PUBLIC ${WARNING_FLAGS} -fno-omit-frame-pointer -Wall -Wpedantic)
 target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(FOUND_UNWIND_LIB)

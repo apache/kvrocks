@@ -21,10 +21,10 @@
 #include <gtest/gtest.h>
 
 #include "config.h"
-#include "redis_hash.h"
-#include "redis_metadata.h"
-#include "redis_zset.h"
-#include "storage.h"
+#include "storage/redis_metadata.h"
+#include "storage/storage.h"
+#include "types/redis_hash.h"
+#include "types/redis_zset.h"
 
 TEST(Compact, Filter) {
   Config config;

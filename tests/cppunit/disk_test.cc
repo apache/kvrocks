@@ -25,16 +25,16 @@
 #include <string>
 #include <vector>
 
-#include "redis_bitmap.h"
-#include "redis_disk.h"
-#include "redis_list.h"
-#include "redis_metadata.h"
-#include "redis_set.h"
-#include "redis_sortedint.h"
-#include "redis_stream.h"
-#include "redis_string.h"
-#include "redis_zset.h"
+#include "stats/disk_stats.h"
+#include "storage/redis_metadata.h"
 #include "test_base.h"
+#include "types/redis_bitmap.h"
+#include "types/redis_list.h"
+#include "types/redis_set.h"
+#include "types/redis_sortedint.h"
+#include "types/redis_stream.h"
+#include "types/redis_string.h"
+#include "types/redis_zset.h"
 
 class RedisDiskTest : public TestBase {
  protected:

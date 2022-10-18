@@ -22,8 +22,8 @@
 
 #include <memory>
 
-#include "redis_sortedint.h"
 #include "test_base.h"
+#include "types/redis_sortedint.h"
 
 class RedisSortedintTest : public TestBase {
  protected:

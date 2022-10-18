@@ -18,7 +18,7 @@
  *
  */
 
-#include "log_collector.h"
+#include "stats/log_collector.h"
 
 #include <gtest/gtest.h>
 

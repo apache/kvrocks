@@ -23,8 +23,8 @@
 
 #include <memory>
 
-#include "redis_geo.h"
 #include "test_base.h"
+#include "types/redis_geo.h"
 
 class RedisGeoTest : public TestBase {
  protected:

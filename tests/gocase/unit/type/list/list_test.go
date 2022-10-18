@@ -306,8 +306,8 @@ func TestList(t *testing.T) {
 
 	t.Run("Variadic RPUSH/LPUSH", func(t *testing.T) {
 		rdb.Del(ctx, "mylist")
-		require.Equal(t, int64(4), rdb.LPush(ctx, "mylist", "a", "b", "c", "d").Val())
-		require.Equal(t, int64(8), rdb.RPush(ctx, "mylist", "1", "2", "3", "4").Val())
+		require.EqualValues(t, 4, rdb.LPush(ctx, "mylist", "a", "b", "c", "d").Val())
+		require.EqualValues(t, 8, rdb.RPush(ctx, "mylist", "1", "2", "3", "4").Val())
 		require.Equal(t, []string{"d", "c", "b", "a", "1", "2", "3", "4"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
 	})
 
@@ -390,7 +390,7 @@ func TestList(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "blist", "0"))
 		time.Sleep(time.Millisecond * 100)
-		require.Equal(t, int64(2), rdb.LPush(ctx, "blist", "foo", "bar").Val())
+		require.EqualValues(t, 2, rdb.LPush(ctx, "blist", "foo", "bar").Val())
 		time.Sleep(time.Millisecond * 100)
 		rd.MustReadResult(t, "blist bar")
 		require.Equal(t, "foo", rdb.LRange(ctx, "blist", 0, -1).Val()[0])
@@ -403,7 +403,7 @@ func TestList(t *testing.T) {
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "1"))
 			rdb.RPush(ctx, "blist1", "foo")
 			rd.MustReadResult(t, "blist1 foo")
-			require.Equal(t, int64(0), rdb.Exists(ctx, "blist1").Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
 		})
 
 		t.Run(fmt.Sprintf("%s: with negative timeout", popType), func(t *testing.T) {
@@ -438,13 +438,13 @@ func TestList(t *testing.T) {
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rdb.RPush(ctx, "blist1", "foo")
 			rd.MustReadResult(t, "blist1 foo")
-			require.Equal(t, int64(0), rdb.Exists(ctx, "blist1").Val())
-			require.Equal(t, int64(0), rdb.Exists(ctx, "blist2").Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, "blist2").Val())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rdb.RPush(ctx, "blist2", "foo")
 			rd.MustReadResult(t, "blist2 foo")
-			require.Equal(t, int64(0), rdb.Exists(ctx, "blist1").Val())
-			require.Equal(t, int64(0), rdb.Exists(ctx, "blist2").Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, "blist2").Val())
 		})
 	}
 
@@ -536,7 +536,7 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("LLEN against non existing key", func(t *testing.T) {
-		require.Equal(t, int64(0), rdb.LLen(ctx, "not-a-key").Val())
+		require.EqualValues(t, 0, rdb.LLen(ctx, "not-a-key").Val())
 	})
 
 	t.Run("LINDEX against non-list value error", func(t *testing.T) {
@@ -644,7 +644,7 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("RPOP/LPOP with the optional count argument", func(t *testing.T) {
-		require.Equal(t, int64(7), rdb.LPush(ctx, "listcount", "aa", "bb", "cc", "dd", "ee", "ff", "gg").Val())
+		require.EqualValues(t, 7, rdb.LPush(ctx, "listcount", "aa", "bb", "cc", "dd", "ee", "ff", "gg").Val())
 		require.Equal(t, []string{"gg"}, rdb.LPopCount(ctx, "listcount", 1).Val())
 		require.Equal(t, []string{"ff", "ee"}, rdb.LPopCount(ctx, "listcount", 2).Val())
 		require.Equal(t, []string{"aa", "bb"}, rdb.RPopCount(ctx, "listcount", 2).Val())
@@ -835,7 +835,7 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("LREM starting from tail with negative count (2) - %s", listType), func(t *testing.T) {
-			require.Equal(t, int64(2), rdb.LRem(ctx, "mylist", -2, "foo").Val())
+			require.EqualValues(t, 2, rdb.LRem(ctx, "mylist", -2, "foo").Val())
 			require.Equal(t, []string{e, "foo", "bar", "foobar", "foobared", "zap", "test"}, rdb.LRange(ctx, "mylist", 0, -1).Val())
 		})
 

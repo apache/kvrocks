@@ -148,11 +148,11 @@ func TestZipList(t *testing.T) {
 			case 1:
 				require.NoError(t, rdb.RPush(ctx, key, ele).Err())
 			case 2:
-				require.NoError(t, rdb.LPop(ctx, key).Err())
+				rdb.LPop(ctx, key)
 			case 3:
-				require.NoError(t, rdb.RPop(ctx, key).Err())
+				rdb.RPop(ctx, key)
 			case 4:
-				require.NoError(t, rdb.LSet(ctx, key, randCnt, ele).Err())
+				rdb.LSet(ctx, key, randCnt, ele)
 			case 5:
 				otherEle := fmt.Sprintf("%d", rand.Int63n(1000))
 				var where string

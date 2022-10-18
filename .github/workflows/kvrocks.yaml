@@ -226,7 +226,6 @@ jobs:
       - name: Run Redis Tcl Test
         run: |
           export ${{ matrix.runtime_env_vars }}
-          ./x.py test tcl build --cli-path $HOME/local/bin/redis-cli --dont-clean
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && go build && cd ..

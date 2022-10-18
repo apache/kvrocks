@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -60,6 +61,20 @@ func (c *TCPClient) MustRead(t testing.TB, s string) {
 	r, err := c.ReadLine()
 	require.NoError(t, err)
 	require.Equal(t, s, r)
+}
+
+func (c *TCPClient) MustReadStrings(t testing.TB, s []string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.EqualValues(t, '*', r[0])
+	n, err := strconv.Atoi(r[1:])
+	require.NoError(t, err)
+	require.Equal(t, n, len(s))
+	for i := 0; i < n; i++ {
+		_, err := c.ReadLine()
+		require.NoError(t, err)
+		c.MustRead(t, s[i])
+	}
 }
 
 func (c *TCPClient) MustMatch(t testing.TB, rx string) {

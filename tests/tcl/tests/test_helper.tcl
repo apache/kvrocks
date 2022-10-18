@@ -34,7 +34,6 @@ source tests/support/util.tcl
 
 set ::all_tests {
     unit/type/list
-    integration/slotmigrate
 }
 
 # Index to the next test to run in the ::all_tests list.

@@ -34,7 +34,6 @@ source tests/support/util.tcl
 
 set ::all_tests {
     unit/type/list
-    integration/slotmigrate
 }
 
 # Index to the next test to run in the ::all_tests list.
@@ -686,7 +685,7 @@ if {[llength $::skipunits] > 0} {
 
 # Override the list of tests with the specific tests we want to run
 # in case there was some filter, that is --single, -skipunit or --skip-till options.
-if {[llength $filtered_tests] < [llength $::all_tests]} {
+if {[llength $filtered_tests] > 0} {
     set ::all_tests $filtered_tests
 }
 

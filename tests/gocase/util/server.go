@@ -31,7 +31,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -44,6 +43,10 @@ import (
 var binPath = flag.String("binPath", "", "directory including kvrocks build files")
 var workspace = flag.String("workspace", "", "directory of cases workspace")
 var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
+var TLSServerName = flag.String("TLSServerName", "localhost", "server name for TLS connection")
+
+var EnableTLSTests = flag.Bool("enableTLSTests", false, "enable TLS-related test cases")
+var CliPath = flag.String("cliPath", "redis-cli", "path to redis-cli")
 
 type KvrocksServer struct {
 	t   testing.TB
@@ -85,7 +88,7 @@ func (s *KvrocksServer) NewClient() *redis.Client {
 	return s.NewClientWithOption(&redis.Options{})
 }
 
-func (s *KvrocksServer) NewTLSClient() *redis.Client {
+func (s *KvrocksServer) DefaultTLSConfig() *tls.Config {
 	dir := filepath.Join(*workspace, "..", "tls", "cert")
 
 	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
@@ -97,17 +100,24 @@ func (s *KvrocksServer) NewTLSClient() *redis.Client {
 	rootCAs := x509.NewCertPool()
 	rootCAs.AppendCertsFromPEM(ca)
 
+	return &tls.Config{
+		ServerName:   *TLSServerName,
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      rootCAs,
+	}
+}
+
+func (s *KvrocksServer) NewTLSClient() *redis.Client {
 	return s.NewTLSClientWithOption(&redis.Options{
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-			RootCAs:      rootCAs,
-		},
+		TLSConfig: s.DefaultTLSConfig(),
 	})
 }
 
 func (s *KvrocksServer) NewTLSClientWithOption(options *redis.Options) *redis.Client {
-	options.Addr = strings.ReplaceAll(s.tlsAddr.String(), "127.0.0.1", "localhost")
+	if options.Addr == "" {
+		options.Addr = s.tlsAddr.String()
+	}
 
 	return s.NewClientWithOption(options)
 }

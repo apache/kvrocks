@@ -22,7 +22,6 @@ package tls
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
@@ -30,10 +29,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var enableTLSTests = flag.Bool("enableTLSTests", false, "enable TLS-related test cases")
-
 func TestTLS(t *testing.T) {
-	if *enableTLSTests {
+	if *util.EnableTLSTests {
 		srv := util.StartTLSServer(t, map[string]string{})
 		defer srv.Close()
 
@@ -67,6 +64,80 @@ func TestTLS(t *testing.T) {
 			require.NoError(t, c.Close())
 			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}})
 			require.Error(t, c.Ping(ctx).Err())
+		})
+
+		t.Run("TLS: Verify tls-protocols behaves as expected", func(t *testing.T) {
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "TLSv1.2").Err())
+
+			tlsConf := srv.DefaultTLSConfig()
+			tlsConf.MaxVersion = tls.VersionTLS11
+
+			c := srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			defer func() { require.NoError(t, c.Close()) }()
+
+			require.Error(t, c.Ping(ctx).Err())
+
+			tlsConf.MaxVersion = tls.VersionTLS12
+
+			require.NoError(t, c.Close())
+			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			require.Equal(t, "PONG", c.Ping(ctx).Val())
+		})
+
+		t.Run("TLS: Verify tls-ciphers behaves as expected", func(t *testing.T) {
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "TLSv1.2").Err())
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT:-AES128-SHA256").Err())
+
+			tlsConf := srv.DefaultTLSConfig()
+			tlsConf.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
+
+			c := srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			defer func() { require.NoError(t, c.Close()) }()
+
+			require.Error(t, c.Ping(ctx).Err())
+
+			tlsConf.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384}
+
+			require.NoError(t, c.Close())
+			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+
+			require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
+
+			tlsConf.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
+
+			require.NoError(t, c.Close())
+			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+
+			require.NoError(t, c.Ping(ctx).Err())
+			require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
+		})
+
+		t.Run("TLS: Verify tls-prefer-server-ciphers behaves as expected", func(t *testing.T) {
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "TLSv1.2").Err())
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "AES128-SHA256:AES256-GCM-SHA384").Err())
+
+			tlsConf := srv.DefaultTLSConfig()
+			tlsConf.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384, tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
+
+			c := srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			defer func() { require.NoError(t, c.Close()) }()
+
+			require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-prefer-server-ciphers", "yes").Err())
+
+			require.NoError(t, c.Close())
+			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+
+			require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
+			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
 		})
 	}
 }

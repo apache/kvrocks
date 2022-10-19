@@ -218,10 +218,9 @@ jobs:
             git clone https://github.com/jsha/minica
             cd minica && go build && cd ..
             ./minica/minica --domains localhost
-            mkdir -p tests/tcl/tests/tls
-            cp localhost/cert.pem tests/tcl/tests/tls/server.crt
-            cp localhost/key.pem tests/tcl/tests/tls/server.key
-            cp minica.pem tests/tcl/tests/tls/ca.crt
+            cp localhost/cert.pem tests/gocase/tls/cert/server.crt
+            cp localhost/key.pem tests/gocase/tls/cert/server.key
+            cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-enableTLSTests"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS

@@ -21,6 +21,8 @@ package util
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"net"
@@ -28,6 +30,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -41,8 +44,9 @@ var workspace = flag.String("workspace", "", "directory of cases workspace")
 var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
 
 type KvrocksServer struct {
-	t    testing.TB
-	cmd  *exec.Cmd
+	t   testing.TB
+	cmd *exec.Cmd
+
 	addr *net.TCPAddr
 
 	configs map[string]string
@@ -71,13 +75,29 @@ func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
-	return s.NewClientWithOption(&redis.Options{Addr: s.addr.String()})
+	return s.NewClientWithOption(&redis.Options{})
+}
+
+func (s *KvrocksServer) NewClientWithTLSConfig() *redis.Client {
+	dir := filepath.Join(*workspace, "..", "tls", "cert")
+	cert, _ := tls.LoadX509KeyPair(filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.key"))
+	ca, _ := os.ReadFile(filepath.Join(dir, "ca.crt"))
+	rootCAs := x509.NewCertPool()
+	rootCAs.AppendCertsFromPEM(ca)
+	return s.NewClientWithOption(&redis.Options{
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      rootCAs,
+		},
+	})
 }
 
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
 	if options.Addr == "" {
 		options.Addr = s.addr.String()
 	}
+	options.Addr = strings.ReplaceAll(options.Addr, "127.0.0.1", "localhost")
 	return redis.NewClient(options)
 }
 
@@ -141,6 +161,29 @@ func (s *KvrocksServer) Restart() {
 			require.NoError(s.t, os.RemoveAll(dir))
 		}
 	}
+}
+
+func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
+	dir := *workspace
+	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
+	dir = filepath.Join(dir, "..", "tls", "cert")
+
+	configs["tls-cert-file"] = filepath.Join(dir, "server.crt")
+	configs["tls-key-file"] = filepath.Join(dir, "server.key")
+	configs["tls-client-cert-file"] = filepath.Join(dir, "client.crt")
+	configs["tls-client-key-file"] = filepath.Join(dir, "client.key")
+	configs["tls-ca-cert-file"] = filepath.Join(dir, "ca.crt")
+	configs["tls-cluster"] = "yes"
+	configs["tls-replication"] = "yes"
+
+	addr, err := findFreePort()
+	require.NoError(t, err)
+	configs["tls-port"] = fmt.Sprintf("%d", addr.Port)
+
+	s := StartServer(t, configs)
+	s.addr = addr
+
+	return s
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {

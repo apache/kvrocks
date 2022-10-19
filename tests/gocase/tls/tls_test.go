@@ -30,10 +30,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var enableTlsTests = flag.Bool("enableTlsTests", false, "enable TLS-related test cases")
+var enableTLSTests = flag.Bool("enableTLSTests", false, "enable TLS-related test cases")
 
 func TestTLS(t *testing.T) {
-	if *enableTlsTests {
+	if *enableTLSTests {
 		srv := util.StartTLSServer(t, map[string]string{})
 		defer srv.Close()
 

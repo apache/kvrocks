@@ -30,7 +30,7 @@
 #include "types/redis_hash.h"
 class RedisHashTest : public TestBase {
  protected:
-  explicit RedisHashTest() : TestBase() { hash = Util::MakeUnique<Redis::Hash>(storage_, "hash_ns"); }
+  explicit RedisHashTest() : TestBase() { hash = std::make_unique<Redis::Hash>(storage_, "hash_ns"); }
   ~RedisHashTest() = default;
   void SetUp() override {
     key_ = "test_hash->key";

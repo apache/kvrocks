@@ -93,7 +93,8 @@ rocksdb::TablePropertiesCollector *CompactOnExpiredTableCollectorFactory::Create
     rocksdb::TablePropertiesCollectorFactory::Context context) {
   return new CompactOnExpiredCollector(cf_name_, trigger_threshold_);
 }
+
 std::shared_ptr<CompactOnExpiredTableCollectorFactory> NewCompactOnExpiredTableCollectorFactory(
     const std::string &cf_name, float trigger_threshold) {
-  return Util::MakeShared<CompactOnExpiredTableCollectorFactory>(cf_name, trigger_threshold);
+  return std::make_shared<CompactOnExpiredTableCollectorFactory>(cf_name, trigger_threshold);
 }

@@ -68,18 +68,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);
-uint64_t GetTimeStampMS(void);
-uint64_t GetTimeStampUS(void);
+uint64_t GetTimeStampMS();
+uint64_t GetTimeStampUS();
 
-// define std::make_unique in c++14
-// refer to https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique
-template <typename T, typename... Args>
-std::unique_ptr<T> MakeUnique(Args &&...args) {
-  return std::make_unique<T>(std::forward<Args>(args)...);
-}
-
-template <typename T, typename... Args>
-std::shared_ptr<T> MakeShared(Args &&...args) {
-  return std::make_shared<T>(std::forward<Args>(args)...);
-}
 }  // namespace Util

@@ -560,7 +560,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         return Status(Status::ClusterInvalidInfo, errInvalidClusterNodeInfo);
       } else {
         // Create slave node
-        (*nodes)[id] = Util::MakeShared<ClusterNode>(id, host, port, role, master_id, slots);
+        (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
         continue;
       }
     }
@@ -608,7 +608,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    (*nodes)[id] = Util::MakeShared<ClusterNode>(id, host, port, role, master_id, slots);
+    (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
   }
   return Status::OK();
 }

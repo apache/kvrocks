@@ -717,10 +717,10 @@ std::string Storage::GetReplIdFromDbEngine(void) {
   return replid_in_db;
 }
 
-std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() { return Util::MakeUnique<RWLock::ReadLock>(db_rw_lock_); }
+std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() { return std::make_unique<RWLock::ReadLock>(db_rw_lock_); }
 
 std::unique_ptr<RWLock::WriteLock> Storage::WriteLockGuard() {
-  return Util::MakeUnique<RWLock::WriteLock>(db_rw_lock_);
+  return std::make_unique<RWLock::WriteLock>(db_rw_lock_);
 }
 
 Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::string *files) {

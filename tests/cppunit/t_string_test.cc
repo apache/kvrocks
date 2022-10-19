@@ -27,7 +27,7 @@
 
 class RedisStringTest : public TestBase {
  protected:
-  explicit RedisStringTest() : TestBase() { string = Util::MakeUnique<Redis::String>(storage_, "string_ns"); }
+  explicit RedisStringTest() : TestBase() { string = std::make_unique<Redis::String>(storage_, "string_ns"); }
   ~RedisStringTest() = default;
   void SetUp() override {
     key_ = "test-string-key";

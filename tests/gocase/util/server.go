@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
@@ -36,6 +37,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v9"
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,7 +49,8 @@ type KvrocksServer struct {
 	t   testing.TB
 	cmd *exec.Cmd
 
-	addr *net.TCPAddr
+	addr    *net.TCPAddr
+	tlsAddr *net.TCPAddr
 
 	configs map[string]string
 
@@ -66,6 +69,10 @@ func (s *KvrocksServer) Port() uint16 {
 	return s.addr.AddrPort().Port()
 }
 
+func (s *KvrocksServer) TLSAddr() string {
+	return s.tlsAddr.String()
+}
+
 func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 	dir := s.configs["dir"]
 	content, err := os.ReadFile(dir + "/kvrocks.INFO")
@@ -78,13 +85,19 @@ func (s *KvrocksServer) NewClient() *redis.Client {
 	return s.NewClientWithOption(&redis.Options{})
 }
 
-func (s *KvrocksServer) NewClientWithTLSConfig() *redis.Client {
+func (s *KvrocksServer) NewTLSClient() *redis.Client {
 	dir := filepath.Join(*workspace, "..", "tls", "cert")
-	cert, _ := tls.LoadX509KeyPair(filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.key"))
-	ca, _ := os.ReadFile(filepath.Join(dir, "ca.crt"))
+
+	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
+	require.NoError(s.t, err)
+
+	ca, err := os.ReadFile(filepath.Join(dir, "ca.crt"))
+	require.NoError(s.t, err)
+
 	rootCAs := x509.NewCertPool()
 	rootCAs.AppendCertsFromPEM(ca)
-	return s.NewClientWithOption(&redis.Options{
+
+	return s.NewTLSClientWithOption(&redis.Options{
 		TLSConfig: &tls.Config{
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{cert},
@@ -93,11 +106,16 @@ func (s *KvrocksServer) NewClientWithTLSConfig() *redis.Client {
 	})
 }
 
+func (s *KvrocksServer) NewTLSClientWithOption(options *redis.Options) *redis.Client {
+	options.Addr = strings.ReplaceAll(s.tlsAddr.String(), "127.0.0.1", "localhost")
+
+	return s.NewClientWithOption(options)
+}
+
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
 	if options.Addr == "" {
 		options.Addr = s.addr.String()
 	}
-	options.Addr = strings.ReplaceAll(options.Addr, "127.0.0.1", "localhost")
 	return redis.NewClient(options)
 }
 
@@ -170,18 +188,14 @@ func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	configs["tls-cert-file"] = filepath.Join(dir, "server.crt")
 	configs["tls-key-file"] = filepath.Join(dir, "server.key")
-	configs["tls-client-cert-file"] = filepath.Join(dir, "client.crt")
-	configs["tls-client-key-file"] = filepath.Join(dir, "client.key")
 	configs["tls-ca-cert-file"] = filepath.Join(dir, "ca.crt")
-	configs["tls-cluster"] = "yes"
-	configs["tls-replication"] = "yes"
 
 	addr, err := findFreePort()
 	require.NoError(t, err)
 	configs["tls-port"] = fmt.Sprintf("%d", addr.Port)
 
 	s := StartServer(t, configs)
-	s.addr = addr
+	s.tlsAddr = addr
 
 	return s
 }
@@ -224,10 +238,18 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	c := redis.NewClient(&redis.Options{Addr: addr.String()})
 	defer func() { require.NoError(t, c.Close()) }()
+
+	proc, err := process.NewProcess(int32(cmd.Process.Pid))
+	require.NoError(t, err)
+
+	procStatus := []string{}
 	require.Eventually(t, func() bool {
 		err := c.Ping(context.Background()).Err()
-		return err == nil || err.Error() == "NOAUTH Authentication required."
+		procStatus, _ = proc.Status()
+		return err == nil || err.Error() == "NOAUTH Authentication required." || reflect.DeepEqual(procStatus, []string{process.Zombie})
 	}, time.Minute, time.Second)
+
+	require.NotEqual(t, procStatus, []string{process.Zombie}, "kvrocks unexpectedly exited while starting server")
 
 	return &KvrocksServer{
 		t:       t,

@@ -21,9 +21,12 @@ package tls
 
 import (
 	"context"
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/stretchr/testify/require"
+	"crypto/tls"
 	"testing"
+
+	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTLS(t *testing.T) {
@@ -32,23 +35,33 @@ func TestTLS(t *testing.T) {
 
 	ctx := context.Background()
 
-	rdb := srv.NewClientWithTLSConfig()
+	rdb := srv.NewTLSClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("TLS: Not accepting non-TLS connections on a TLS port", func(t *testing.T) {
-		c := srv.NewClient()
+		c := srv.NewTLSClientWithOption(&redis.Options{})
 		defer func() { require.NoError(t, c.Close()) }()
 		require.Error(t, c.Ping(ctx).Err())
 	})
 
 	t.Run("TLS: Verify tls-auth-clients behaves as expected", func(t *testing.T) {
-		c := srv.NewClient()
+		c := srv.NewTLSClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}})
 		defer func() { require.NoError(t, c.Close()) }()
 		require.Error(t, c.Ping(ctx).Err())
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "no").Err())
 		require.NoError(t, c.Close())
-		c = srv.NewClient()
+		c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}})
 		require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "optional").Err())
+		require.NoError(t, c.Close())
+		c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}})
+		require.Equal(t, "PONG", c.Ping(ctx).Val())
+
+		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "yes").Err())
+		require.NoError(t, c.Close())
+		c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}})
+		require.Error(t, c.Ping(ctx).Err())
 	})
 }

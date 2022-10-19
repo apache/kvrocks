@@ -135,6 +135,12 @@ func (s *KvrocksServer) NewTCPClient() *TCPClient {
 	return newTCPClient(c)
 }
 
+func (s *KvrocksServer) NewTCPTLSClient(conf *tls.Config) *TCPClient {
+	c, err := tls.Dial(s.tlsAddr.Network(), s.tlsAddr.String(), conf)
+	require.NoError(s.t, err)
+	return newTCPClient(c)
+}
+
 func (s *KvrocksServer) Close() {
 	s.close(false)
 }

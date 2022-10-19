@@ -124,17 +124,21 @@ func TestTLS(t *testing.T) {
 			tlsConf := srv.DefaultTLSConfig()
 			tlsConf.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384, tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
 
-			c := srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			c := srv.NewTCPTLSClient(tlsConf)
 			defer func() { require.NoError(t, c.Close()) }()
 
-			require.Equal(t, "PONG", c.Ping(ctx).Val())
+			require.NoError(t, c.WriteArgs("PING"))
+			c.MustMatch(t, "PONG")
+			require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_256_GCM_SHA384)
 
 			require.NoError(t, rdb.ConfigSet(ctx, "tls-prefer-server-ciphers", "yes").Err())
 
 			require.NoError(t, c.Close())
-			c = srv.NewTLSClientWithOption(&redis.Options{TLSConfig: tlsConf})
+			c = srv.NewTCPTLSClient(tlsConf)
 
-			require.Equal(t, "PONG", c.Ping(ctx).Val())
+			require.NoError(t, c.WriteArgs("PING"))
+			c.MustMatch(t, "PONG")
+			require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_128_CBC_SHA256)
 
 			require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
 			require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())

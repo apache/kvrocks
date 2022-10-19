@@ -69,8 +69,8 @@ TEST(Metadata, EncodeAndDeocde) {
 class RedisTypeTest : public TestBase {
  public:
   RedisTypeTest() : TestBase() {
-    redis = Util::MakeUnique<Redis::Database>(storage_, "default_ns");
-    hash = Util::MakeUnique<Redis::Hash>(storage_, "default_ns");
+    redis = std::make_unique<Redis::Database>(storage_, "default_ns");
+    hash = std::make_unique<Redis::Hash>(storage_, "default_ns");
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_ = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};

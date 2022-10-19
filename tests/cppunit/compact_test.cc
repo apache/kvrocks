@@ -32,13 +32,13 @@ TEST(Compact, Filter) {
   config.backup_dir = "compactdb/backup";
   config.slot_id_encoded = false;
 
-  auto storage_ = Util::MakeUnique<Engine::Storage>(&config);
+  auto storage_ = std::make_unique<Engine::Storage>(&config);
   Status s = storage_->Open();
   assert(s.IsOK());
 
   int ret;
   std::string ns = "test_compact";
-  auto hash = Util::MakeUnique<Redis::Hash>(storage_.get(), ns);
+  auto hash = std::make_unique<Redis::Hash>(storage_.get(), ns);
   std::string expired_hash_key = "expire_hash_key";
   std::string live_hash_key = "live_hash_key";
   hash->Set(expired_hash_key, "f1", "v1", &ret);
@@ -72,7 +72,7 @@ TEST(Compact, Filter) {
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
 
-  auto zset = Util::MakeUnique<Redis::ZSet>(storage_.get(), ns);
+  auto zset = std::make_unique<Redis::ZSet>(storage_.get(), ns);
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores = {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, 0, &member_scores, &ret);

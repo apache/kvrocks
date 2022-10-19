@@ -108,7 +108,7 @@ Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const 
   dst_node_ = node_id;
 
   // Create migration job
-  auto job = Util::MakeUnique<SlotMigrateJob>(slot, dst_ip, dst_port, speed, pipeline_size, seq_gap);
+  auto job = std::make_unique<SlotMigrateJob>(slot, dst_ip, dst_port, speed, pipeline_size, seq_gap);
   {
     std::lock_guard<std::mutex> guard(job_mutex_);
     slot_job_ = std::move(job);

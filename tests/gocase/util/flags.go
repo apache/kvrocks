@@ -19,32 +19,18 @@
 
 package util
 
-import (
-	"crypto/tls"
-	"crypto/x509"
-	"os"
-	"path/filepath"
-)
+import "flag"
 
-func DefaultTLSConfig() (*tls.Config, error) {
-	dir := filepath.Join(*workspace, "..", "tls", "cert")
+var binPath = flag.String("binPath", "", "directory including kvrocks build files")
+var workspace = flag.String("workspace", "", "directory of cases workspace")
+var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
+var cliPath = flag.String("cliPath", "redis-cli", "path to redis-cli")
+var tlsEnable = flag.Bool("tlsEnable", false, "enable TLS-related test cases")
 
-	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
-	if err != nil {
-		return nil, err
-	}
+func CLIPath() string {
+	return *cliPath
+}
 
-	rootCAs := x509.NewCertPool()
-	if ca, err := os.ReadFile(filepath.Join(dir, "ca.crt")); err != nil {
-		return nil, err
-	} else {
-		rootCAs.AppendCertsFromPEM(ca)
-	}
-
-	return &tls.Config{
-		ServerName:   "localhost",
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      rootCAs,
-	}, nil
+func TLSEnable() bool {
+	return *tlsEnable
 }

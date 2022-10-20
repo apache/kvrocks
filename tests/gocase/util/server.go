@@ -22,7 +22,6 @@ package util
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -38,10 +37,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
-
-var binPath = flag.String("binPath", "", "directory including kvrocks build files")
-var workspace = flag.String("workspace", "", "directory of cases workspace")
-var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
 
 type KvrocksServer struct {
 	t   testing.TB

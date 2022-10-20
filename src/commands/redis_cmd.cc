@@ -2367,6 +2367,7 @@ class CommandZAdd : public Commander {
     Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
     parseOptions(args, index);
+    rocksdb::Status s = validateFlags();
     if ((args.size()-index) % 2 != 0) {
       return Status(Status::RedisParseErr, errInvalidSyntax);
     }
@@ -2400,7 +2401,7 @@ class CommandZAdd : public Commander {
   uint8_t flags = 0;
 
   void parseOptions(const std::vector<std::string> &args, unsigned& index);
-  rocksdb::Status validateFlags();
+  Status validateFlags();
 };
 
 void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& index) {
@@ -2426,6 +2427,30 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& i
       index++;
     }
   }
+}
+
+Status CommandZAdd::validateFlags() {
+  if (!flags) {
+    return {};
+  }
+  bool nx = (flags & kZSetNX) != 0;
+  bool xx = (flags & kZSetXX) != 0;
+  bool lt = (flags & kZSetLT) != 0;
+  bool gt = (flags & kZSetGT) != 0;
+  bool ch = (flags & kZSetCH) != 0;
+  if (nx && xx) {
+    return Status(Status::RedisParseErr, errInvalidSyntax);
+  }
+  if (lt && gt) {
+    return Status(Status::RedisParseErr, errInvalidSyntax);
+  }
+  if (lt && nx) {
+    return Status(Status::RedisParseErr, errInvalidSyntax);
+  }
+  if (gt && nx) {
+    return Status(Status::RedisParseErr, errInvalidSyntax);
+  }
+  return {};
 }
 
 class CommandZCount : public Commander {

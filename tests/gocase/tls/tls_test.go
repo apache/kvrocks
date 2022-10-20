@@ -52,7 +52,7 @@ func TestTLS(t *testing.T) {
 	}
 
 	t.Run("TLS: Not accepting non-TLS connections on a TLS port", func(t *testing.T) {
-		c := srv.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig})
+		c := srv.NewClientWithOption(&redis.Options{Addr: srv.TLSAddr()})
 		defer func() { require.NoError(t, c.Close()) }()
 		require.Error(t, c.Ping(ctx).Err())
 	})

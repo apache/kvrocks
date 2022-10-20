@@ -62,10 +62,10 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
 #endif
 
   // Init cluster
-  cluster_ = Util::MakeUnique<Cluster>(this, config_->binds, config_->port);
+  cluster_ = std::make_unique<Cluster>(this, config_->binds, config_->port);
 
   for (int i = 0; i < config->workers; i++) {
-    auto worker = Util::MakeUnique<Worker>(this, config);
+    auto worker = std::make_unique<Worker>(this, config);
     // multiple workers can't listen to the same unix socket, so
     // listen unix socket only from a single worker - the first one
     if (!config->unixsocket.empty() && i == 0) {
@@ -77,7 +77,7 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
       }
       LOG(INFO) << "[server] Listening on unix socket: " << config->unixsocket;
     }
-    worker_threads_.emplace_back(Util::MakeUnique<WorkerThread>(std::move(worker)));
+    worker_threads_.emplace_back(std::make_unique<WorkerThread>(std::move(worker)));
   }
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
@@ -132,7 +132,7 @@ Status Server::Start() {
   if (config_->cluster_enabled) {
     // Create objects used for slot migration
     slot_migrate_ =
-        Util::MakeUnique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
+        std::make_unique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
     slot_import_ = new SlotImport(this);
     // Create migrating thread
     auto s = slot_migrate_->CreateMigrateHandleThread();
@@ -587,11 +587,11 @@ int Server::IncrBlockedClientNum() { return blocked_clients_.fetch_add(1, std::m
 int Server::DecrBlockedClientNum() { return blocked_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
 std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
-  return Util::MakeUnique<RWLock::ReadLock>(works_concurrency_rw_lock_);
+  return std::make_unique<RWLock::ReadLock>(works_concurrency_rw_lock_);
 }
 
 std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
-  return Util::MakeUnique<RWLock::WriteLock>(works_concurrency_rw_lock_);
+  return std::make_unique<RWLock::WriteLock>(works_concurrency_rw_lock_);
 }
 
 std::atomic<uint64_t> *Server::GetClientID() { return &client_id_; }

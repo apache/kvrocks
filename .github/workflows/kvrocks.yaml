@@ -214,7 +214,7 @@ jobs:
           export ${{ matrix.runtime_env_vars }}
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
-          if [[ -n "${{ matrix.with_openssl }}" ]]; then
+          if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && go build && cd ..
             ./minica/minica --domains localhost

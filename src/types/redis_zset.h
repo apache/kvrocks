@@ -82,6 +82,9 @@ enum ZSetFlags {
   kZSetXX = 1 << 2,
   kZSetReversed = 1 << 3,
   kZSetRemoved = 1 << 4,
+  kZSetGT = 1 << 5,
+  kZSetLT = 1 << 6,
+  kZSetCH = 1 << 7,
 };
 
 namespace Redis {

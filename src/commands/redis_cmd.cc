@@ -2364,13 +2364,14 @@ class CommandSInterStore : public Commander {
 
 class CommandZAdd : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 != 0) {
+    Status Parse(const std::vector<std::string> &args) override {
+    unsigned index = 2;
+    parseOptions(args, index);
+    if ((args.size()-index) % 2 != 0) {
       return Status(Status::RedisParseErr, errInvalidSyntax);
     }
-
     try {
-      for (unsigned i = 2; i < args.size(); i += 2) {
+      for (unsigned i = index; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
         if (std::isnan(score)) {
           return Status(Status::RedisParseErr, "ERR score is not a valid float");
@@ -2386,7 +2387,7 @@ class CommandZAdd : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], 0, &member_scores_, &ret);
+    rocksdb::Status s = zset_db.Add(args_[1], flags, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -2396,7 +2397,36 @@ class CommandZAdd : public Commander {
 
  private:
   std::vector<MemberScore> member_scores_;
+  uint8_t flags = 0;
+
+  void parseOptions(const std::vector<std::string> &args, unsigned& index);
+  rocksdb::Status validateFlags();
 };
+
+void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& index) {
+  constexpr unsigned max_options = 4;
+  for (unsigned i = 2; i < max_options; i++) {
+    auto option = args[i].c_str();
+    if (!strcasecmp(option, "xx")) {
+      flags |= kZSetXX;
+      index++;
+    } else if (!strcasecmp(option, "nx")) {
+      flags |= kZSetNX;
+      index++;
+    } else if (!strcasecmp(option, "incr")) {
+      flags |= kZSetIncr;
+      index++;
+    } else if (!strcasecmp(option, "ch")) {
+      flags |= kZSetCH;
+      index++;
+    } else if (!strcasecmp(option, "gt")) {
+      flags |= kZSetGT;
+    } else if (!strcasecmp(option, "lt")) {
+      flags |= kZSetLT;
+      index++;
+    }
+  }
+}
 
 class CommandZCount : public Commander {
  public:

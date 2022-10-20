@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,7 +52,7 @@ func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string
 	}
 }
 func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...string) []string {
-	buf := []string{}
+	buf := make([]string, 0, len(keys))
 	for _, key := range keys {
 		cmd := rdb.Get(ctx, key)
 		require.NoError(t, cmd.Err())
@@ -61,7 +62,7 @@ func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...str
 }
 func SimulateBitOp(op BITOP, values ...[]byte) string {
 	maxlen := 0
-	binaryArray := []string{}
+	binaryArray := make([]string, 0, len(values))
 	for _, value := range values {
 		if maxlen < len(value)*8 {
 			maxlen = len(value) * 8
@@ -75,7 +76,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 		tmp := buf.String() + strings.Repeat("0", maxlen-len(buf.String()))
 		binaryArray = append(binaryArray, tmp)
 	}
-	var binarayResult []byte
+	var binaryResult []byte
 	for i := 0; i < maxlen; i++ {
 		x := binaryArray[0][i]
 		if op == NOT {
@@ -102,14 +103,14 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 				x = '1'
 			}
 		}
-		binarayResult = append(binarayResult, x)
+		binaryResult = append(binaryResult, x)
 	}
 
-	result := []byte{}
-	for i := 0; i < len(binarayResult); i += 8 {
+	var result []byte
+	for i := 0; i < len(binaryResult); i += 8 {
 		sum := 0
 		for j := 0; j < 8; j++ {
-			sum = sum*2 + int(binarayResult[i+j]-'0')
+			sum = sum*2 + int(binaryResult[i+j]-'0')
 		}
 		result = append(result, byte(sum))
 	}
@@ -138,11 +139,11 @@ func TestBitmap(t *testing.T) {
 
 	t.Run("SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type bitmap)", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "b0").Err())
-		maxOffset := 4*1024*1024*1024 - 1
-		util.ErrorRegexp(t, rdb.SetBit(ctx, "b0", int64(maxOffset)+1, 1).Err(), ".*out of range.*")
-		require.NoError(t, rdb.SetBit(ctx, "b0", int64(maxOffset), 1).Err())
-		require.EqualValues(t, 1, rdb.GetBit(ctx, "b0", int64(maxOffset)).Val())
-		require.EqualValues(t, 1, rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: int64(maxOffset) / 8}).Val())
+		var maxOffset int64 = math.MaxUint32
+		util.ErrorRegexp(t, rdb.SetBit(ctx, "b0", maxOffset+1, 1).Err(), ".*out of range.*")
+		require.NoError(t, rdb.SetBit(ctx, "b0", maxOffset, 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "b0", maxOffset).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: maxOffset / 8}).Val())
 		require.EqualValues(t, maxOffset, rdb.BitPos(ctx, "b0", 1).Val())
 	})
 

@@ -30,7 +30,6 @@ from warnings import warn
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
-TCL_REQUIRE_VERSION = (8, 5, 0)
 
 SEMVER_REGEX = re.compile(
     r"""
@@ -84,7 +83,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
     semver = (int(semver_dict["major"]), int(semver_dict["minor"]), int(semver_dict["patch"]))
     if semver < required:
         raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
-    
+
     return semver
 
 def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str]) -> None:
@@ -253,19 +252,6 @@ def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) ->
 
     run(fpm, *fpm_opts, verbose=True)
 
-def test_tcl(dir: str, rest: List[str]) -> None:
-    tclsh = find_command('tclsh', msg='TCL is required for testing')
-
-    output = run_pipe('echo', 'puts [info patchlevel];exit 0')
-    output = run_pipe(tclsh, stdin=output)
-    tcl_version = output.read().strip()
-    check_version(tcl_version, TCL_REQUIRE_VERSION, "tclsh")
-
-    tcldir = Path(__file__).parent.absolute() / 'tests' / 'tcl'
-    run(tclsh, 'tests/test_helper.tcl', '--server-path', str(Path(dir).absolute() / 'kvrocks'), *rest,
-        cwd=str(tcldir), verbose=True
-    )
-
 def test_go(dir: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
 
@@ -372,14 +358,6 @@ if __name__ == '__main__':
     )
     parser_test.set_defaults(func=parser_test.print_help)
     parser_test_subparsers = parser_test.add_subparsers()
-    parser_test_tcl = parser_test_subparsers.add_parser(
-        'tcl',
-        description="Test kvrocks via TCL scripts",
-        help="Test kvrocks via TCL scripts",
-    )
-    parser_test_tcl.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
-    parser_test_tcl.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to TCL scripts")
-    parser_test_tcl.set_defaults(func=test_tcl)
 
     parser_test_go = parser_test_subparsers.add_parser(
         'go',

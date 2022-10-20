@@ -175,7 +175,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.6 ninja-build tcl-tls
+          sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis
@@ -213,36 +213,22 @@ jobs:
         run: |
           export ${{ matrix.runtime_env_vars }}
           export PATH=$PATH:$HOME/local/bin/
-          ./x.py test go build
+          GOCASE_RUN_ARGS=""
+          if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            git clone https://github.com/jsha/minica
+            cd minica && go build && cd ..
+            ./minica/minica --domains localhost
+            cp localhost/cert.pem tests/gocase/tls/cert/server.crt
+            cp localhost/key.pem tests/gocase/tls/cert/server.key
+            cp minica.pem tests/gocase/tls/cert/ca.crt
+            GOCASE_RUN_ARGS="-tlsEnable"
+          fi
+          ./x.py test go build $GOCASE_RUN_ARGS
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"
             echo "\ndetail reports:\n"
             cat $(find tests/gocase/workspace -iname stderr)
-            echo "sanitizer error was reported, exiting..."
-            exit 1
-          fi
-
-      - name: Run Redis Tcl Test
-        run: |
-          export ${{ matrix.runtime_env_vars }}
-          if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
-            git clone https://github.com/jsha/minica
-            cd minica && go build && cd ..
-            ./minica/minica --domains localhost
-            mkdir -p tests/tcl/tests/tls
-            cp localhost/cert.pem tests/tcl/tests/tls/server.crt
-            cp localhost/key.pem tests/tcl/tests/tls/server.key
-            cp localhost/cert.pem tests/tcl/tests/tls/client.crt
-            cp localhost/key.pem tests/tcl/tests/tls/client.key
-            cp minica.pem tests/tcl/tests/tls/ca.crt
-            ./x.py test tcl build --tls --single unit/tls --dont-clean
-          fi
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tcl/tests/tmp -r || true)
-          if [[ $SANITIZER_OUTPUT ]]; then
-            echo "$SANITIZER_OUTPUT"
-            echo "\ndetail reports:\n"
-            cat $(find tests/tcl/tests/tmp -iname stderr)
             echo "sanitizer error was reported, exiting..."
             exit 1
           fi

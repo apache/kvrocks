@@ -63,8 +63,8 @@ func (s *KvrocksServer) Host() string {
 	return s.addr.AddrPort().Addr().String()
 }
 
-func (s *KvrocksServer) Port() uint16 {
-	return s.addr.AddrPort().Port()
+func (s *KvrocksServer) Port() uint64 {
+	return uint64(s.addr.AddrPort().Port())
 }
 
 func (s *KvrocksServer) TLSAddr() string {

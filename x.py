@@ -84,7 +84,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
     semver = (int(semver_dict["major"]), int(semver_dict["minor"]), int(semver_dict["patch"]))
     if semver < required:
         raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
-    
+
     return semver
 
 def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str]) -> None:
@@ -274,7 +274,7 @@ def test_go(dir: str, rest: List[str]) -> None:
     worksapce = basedir / 'workspace'
 
     args = [
-        'test', '-bench=.', './...',
+        'test', './...',
         f'-binPath={binpath}',
         f'-workspace={worksapce}',
         *rest

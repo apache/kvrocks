@@ -175,7 +175,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.6 ninja-build tcl-tls
+          sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis

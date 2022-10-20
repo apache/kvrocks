@@ -24,7 +24,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"net"
 	"os"
 	"os/exec"
@@ -37,6 +36,7 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 var binPath = flag.String("binPath", "", "directory including kvrocks build files")

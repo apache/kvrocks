@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 )
 
-var tlsEnable = flag.Bool("tlsEnable", false, "enable TLS-related test cases")
+var tlsEnable = flag.Bool("tlsEnable", true, "enable TLS-related test cases")
 
 func TLSEnable() bool {
 	return *tlsEnable

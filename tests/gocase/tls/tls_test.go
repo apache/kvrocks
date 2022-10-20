@@ -45,6 +45,12 @@ func TestTLS(t *testing.T) {
 	rdb := srv.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig, Addr: srv.TLSAddr()})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	doWithTLSClient := func(tlsConfig *tls.Config, f func(c *redis.Client)) {
+		c := srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
+		defer func() { require.NoError(t, c.Close()) }()
+		f(c)
+	}
+
 	t.Run("TLS: Not accepting non-TLS connections on a TLS port", func(t *testing.T) {
 		c := srv.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig})
 		defer func() { require.NoError(t, c.Close()) }()
@@ -52,24 +58,17 @@ func TestTLS(t *testing.T) {
 	})
 
 	t.Run("TLS: Verify tls-auth-clients behaves as expected", func(t *testing.T) {
-		c := srv.NewClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}, Addr: srv.TLSAddr()})
-		defer func() { require.NoError(t, c.Close()) }()
-		require.Error(t, c.Ping(ctx).Err())
+		tlsConfig := &tls.Config{InsecureSkipVerify: true}
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Error(t, c.Ping(ctx).Err()) })
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "no").Err())
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}, Addr: srv.TLSAddr()})
-		require.Equal(t, "PONG", c.Ping(ctx).Val())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Equal(t, "PONG", c.Ping(ctx).Val()) })
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "optional").Err())
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}, Addr: srv.TLSAddr()})
-		require.Equal(t, "PONG", c.Ping(ctx).Val())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Equal(t, "PONG", c.Ping(ctx).Val()) })
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-auth-clients", "yes").Err())
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: &tls.Config{InsecureSkipVerify: true}, Addr: srv.TLSAddr()})
-		require.Error(t, c.Ping(ctx).Err())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Error(t, c.Ping(ctx).Err()) })
 	})
 
 	t.Run("TLS: Verify tls-protocols behaves as expected", func(t *testing.T) {
@@ -79,16 +78,10 @@ func TestTLS(t *testing.T) {
 		require.NoError(t, err)
 
 		tlsConfig.MaxVersion = tls.VersionTLS11
-
-		c := srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
-		defer func() { require.NoError(t, c.Close()) }()
-		require.Error(t, c.Ping(ctx).Err())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Error(t, c.Ping(ctx).Err()) })
 
 		tlsConfig.MaxVersion = tls.VersionTLS12
-
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
-		require.Equal(t, "PONG", c.Ping(ctx).Val())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Equal(t, "PONG", c.Ping(ctx).Val()) })
 	})
 
 	t.Run("TLS: Verify tls-ciphers behaves as expected", func(t *testing.T) {
@@ -99,32 +92,24 @@ func TestTLS(t *testing.T) {
 		require.NoError(t, err)
 
 		tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
-
-		c := srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
-		defer func() { require.NoError(t, c.Close()) }()
-
-		require.Error(t, c.Ping(ctx).Err())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Error(t, c.Ping(ctx).Err()) })
 
 		tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384}
-
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
-
-		require.Equal(t, "PONG", c.Ping(ctx).Val())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Equal(t, "PONG", c.Ping(ctx).Val()) })
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
-
 		tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
-
-		require.NoError(t, c.Close())
-		c = srv.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: srv.TLSAddr()})
-
-		require.NoError(t, c.Ping(ctx).Err())
-		require.Equal(t, "PONG", c.Ping(ctx).Val())
+		doWithTLSClient(tlsConfig, func(c *redis.Client) { require.Equal(t, "PONG", c.Ping(ctx).Val()) })
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
 	})
+
+	doWithTCPTLSClient := func(tlsConfig *tls.Config, f func(c *util.TCPClient)) {
+		c := srv.NewTCPTLSClient(tlsConfig)
+		defer func() { require.NoError(t, c.Close()) }()
+		f(c)
+	}
 
 	t.Run("TLS: Verify tls-prefer-server-ciphers behaves as expected", func(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "TLSv1.2").Err())
@@ -132,24 +117,20 @@ func TestTLS(t *testing.T) {
 
 		tlsConfig, err := util.DefaultTLSConfig()
 		require.NoError(t, err)
-
 		tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384, tls.TLS_RSA_WITH_AES_128_CBC_SHA256}
 
-		c := srv.NewTCPTLSClient(tlsConfig)
-		defer func() { require.NoError(t, c.Close()) }()
-
-		require.NoError(t, c.WriteArgs("PING"))
-		c.MustMatch(t, "PONG")
-		require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_256_GCM_SHA384)
+		doWithTCPTLSClient(tlsConfig, func(c *util.TCPClient) {
+			require.NoError(t, c.WriteArgs("PING"))
+			c.MustRead(t, "+PONG")
+			require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_256_GCM_SHA384)
+		})
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-prefer-server-ciphers", "yes").Err())
-
-		require.NoError(t, c.Close())
-		c = srv.NewTCPTLSClient(tlsConfig)
-
-		require.NoError(t, c.WriteArgs("PING"))
-		c.MustMatch(t, "PONG")
-		require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_128_CBC_SHA256)
+		doWithTCPTLSClient(tlsConfig, func(c *util.TCPClient) {
+			require.NoError(t, c.WriteArgs("PING"))
+			c.MustRead(t, "+PONG")
+			require.Equal(t, c.TLSState().CipherSuite, tls.TLS_RSA_WITH_AES_128_CBC_SHA256)
+		})
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())

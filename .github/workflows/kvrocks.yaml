@@ -221,7 +221,7 @@ jobs:
             cp localhost/cert.pem tests/gocase/tls/cert/server.crt
             cp localhost/key.pem tests/gocase/tls/cert/server.key
             cp minica.pem tests/gocase/tls/cert/ca.crt
-            GOCASE_RUN_ARGS="-enableTLSTests"
+            GOCASE_RUN_ARGS="-tlsEnable"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)

@@ -22,14 +22,13 @@ package util
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"syscall"
 	"testing"
@@ -43,10 +42,6 @@ import (
 var binPath = flag.String("binPath", "", "directory including kvrocks build files")
 var workspace = flag.String("workspace", "", "directory of cases workspace")
 var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
-var TLSServerName = flag.String("TLSServerName", "localhost", "server name for TLS connection")
-
-var EnableTLSTests = flag.Bool("enableTLSTests", false, "enable TLS-related test cases")
-var CliPath = flag.String("cliPath", "redis-cli", "path to redis-cli")
 
 type KvrocksServer struct {
 	t   testing.TB
@@ -86,40 +81,6 @@ func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 
 func (s *KvrocksServer) NewClient() *redis.Client {
 	return s.NewClientWithOption(&redis.Options{})
-}
-
-func (s *KvrocksServer) DefaultTLSConfig() *tls.Config {
-	dir := filepath.Join(*workspace, "..", "tls", "cert")
-
-	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
-	require.NoError(s.t, err)
-
-	ca, err := os.ReadFile(filepath.Join(dir, "ca.crt"))
-	require.NoError(s.t, err)
-
-	rootCAs := x509.NewCertPool()
-	rootCAs.AppendCertsFromPEM(ca)
-
-	return &tls.Config{
-		ServerName:   *TLSServerName,
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      rootCAs,
-	}
-}
-
-func (s *KvrocksServer) NewTLSClient() *redis.Client {
-	return s.NewTLSClientWithOption(&redis.Options{
-		TLSConfig: s.DefaultTLSConfig(),
-	})
-}
-
-func (s *KvrocksServer) NewTLSClientWithOption(options *redis.Options) *redis.Client {
-	if options.Addr == "" {
-		options.Addr = s.tlsAddr.String()
-	}
-
-	return s.NewClientWithOption(options)
 }
 
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
@@ -258,14 +219,13 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	proc, err := process.NewProcess(int32(cmd.Process.Pid))
 	require.NoError(t, err)
 
-	procStatus := []string{}
+	var status []string
 	require.Eventually(t, func() bool {
 		err := c.Ping(context.Background()).Err()
-		procStatus, _ = proc.Status()
-		return err == nil || err.Error() == "NOAUTH Authentication required." || reflect.DeepEqual(procStatus, []string{process.Zombie})
+		status, _ = proc.Status()
+		return err == nil || err.Error() == "NOAUTH Authentication required." || slices.Contains(status, process.Zombie)
 	}, time.Minute, time.Second)
-
-	require.NotEqual(t, procStatus, []string{process.Zombie}, "kvrocks unexpectedly exited while starting server")
+	require.NotContains(t, status, process.Zombie, "Kvrocks has been unexpectedly exited while starting server")
 
 	return &KvrocksServer{
 		t:       t,

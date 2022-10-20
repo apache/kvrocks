@@ -167,8 +167,8 @@ We only used the source code in `lib` directory which is under  BSD 2-Clause:
     are intended to be used "as is", as part of their intended scenarios,
     with no intention to support 3rd party integration use cases.
 
-For tcl tests(*.tcl), src/geohash.*, src/rand.*, src/sha1.*,
-src/scripting.* and some functions in src/util.cc are modified from Redis.
+For src/types/geohash.*, src/common/rand.*, src/common/sha1.*, src/storage/scripting.* and
+some functions in src/common/util.cc are modified from Redis.
 
 We have added the Redis license notice in each file header, can also see bundled license file
 https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.redis for details.

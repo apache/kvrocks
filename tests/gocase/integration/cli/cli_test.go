@@ -23,7 +23,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -39,8 +38,6 @@ import (
 
 const defaultByteBufLen = math.MaxUint16
 
-var cliPath = flag.String("cliPath", "redis-cli", "path to redis-cli")
-
 type interactiveCli struct {
 	c *exec.Cmd
 	r *bufio.Reader
@@ -48,7 +45,7 @@ type interactiveCli struct {
 }
 
 func createInteractiveCli(t *testing.T, srv *util.KvrocksServer) *interactiveCli {
-	c := exec.Command(*cliPath)
+	c := exec.Command(util.CLIPath())
 	c.Args = append(c.Args, "-h", srv.Host(), "-p", fmt.Sprintf("%d", srv.Port()))
 	w, err := c.StdinPipe()
 	require.NoError(t, err)
@@ -120,7 +117,7 @@ func (res *result) Failed() {
 }
 
 func runCli(t *testing.T, srv *util.KvrocksServer, in io.Reader, args ...string) *result {
-	c := exec.Command(*cliPath)
+	c := exec.Command(util.CLIPath())
 	c.Stdin = in
 	c.Args = append(c.Args, "-h", srv.Host(), "-p", fmt.Sprintf("%d", srv.Port()))
 	c.Args = append(c.Args, args...)

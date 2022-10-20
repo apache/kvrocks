@@ -52,7 +52,7 @@ func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string
 	}
 }
 func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...string) []string {
-	var buf []string
+	buf := make([]string, 0, len(keys))
 	for _, key := range keys {
 		cmd := rdb.Get(ctx, key)
 		require.NoError(t, cmd.Err())
@@ -62,7 +62,7 @@ func GetBitmap(t *testing.T, rdb *redis.Client, ctx context.Context, keys ...str
 }
 func SimulateBitOp(op BITOP, values ...[]byte) string {
 	maxlen := 0
-	var binaryArray []string
+	binaryArray := make([]string, 0, len(values))
 	for _, value := range values {
 		if maxlen < len(value)*8 {
 			maxlen = len(value) * 8

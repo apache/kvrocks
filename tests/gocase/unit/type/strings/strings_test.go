@@ -141,10 +141,25 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
 	})
 
+	t.Run("GETEX Duplicate EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.GetEx(ctx, "foo", 10*time.Second).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "ex", 1, "ex", 10).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("GETEX PX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.NoError(t, rdb.GetEx(ctx, "foo", 10000*time.Millisecond).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
+	})
+
+	t.Run("GETEX Duplicate PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "px", 1, "px", 10000).Err())
 		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
 	})
 
@@ -155,10 +170,24 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
 	})
 
+	t.Run("GETEX Duplicate EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "exat", time.Now().Add(100*time.Second).Unix(), "exat", time.Now().Add(10*time.Second).Unix()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("GETEX PXAT option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.NoError(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
+	})
+
+	t.Run("GETEX Duplicate PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(1000000*time.Millisecond).UnixMilli(), "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err())
 		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
 	})
 
@@ -168,6 +197,51 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
 		require.NoError(t, rdb.Do(ctx, "getex", "foo", "persist").Err())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "foo").Val())
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "ex", 10, "persist").Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "px", 10000, "persist").Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli(), "persist").Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "exat", time.Now().Add(100*time.Second).Unix(), "persist").Err(), "syntax err")
+	})
+
+	t.Run("GETEX with incorrect use of multi options should result in syntax err", func(t *testing.T) {
+		options := []string{"px", "ex", "pxat", "exat"}
+		for i := 0; i < (1 << 4); i++ {
+			cnt := 0
+			var op1, op1Value, op2, op2Value string
+			for j := 0; j < 4; j++ {
+				if i&(1<<j) == 0 {
+					continue
+				}
+				cnt++
+				if op1 == "" {
+					op1 = options[j]
+					if j <= 1 {
+						op1Value = "100"
+					} else {
+						if j == 2 {
+							op1Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+						} else {
+							op1Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
+						}
+					}
+				} else {
+					op2 = options[j]
+					if j <= 1 {
+						op2Value = "100"
+					} else {
+						if j == 2 {
+							op2Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+						} else {
+							op2Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
+						}
+					}
+				}
+			}
+			if cnt != 2 {
+				continue
+			}
+			require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", op1, op1Value, op2, op2Value).Err(), "syntax err")
+		}
 	})
 
 	t.Run("GETEX no option", func(t *testing.T) {
@@ -445,9 +519,23 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
+	t.Run("Extended SET Duplicate EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "ex", "1", "ex", "2", "ex", "10").Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("Extended SET PX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "px", "10000").Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET Duplicate PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "px", "100", "px", "1000", "px", "10000").Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
@@ -457,6 +545,16 @@ func TestString(t *testing.T) {
 
 		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).Unix(), 10)
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt).Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET Duplicate EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+
+		expireFirst := strconv.FormatInt(time.Now().Add(1*time.Second).Unix(), 10)
+		expireSecond := strconv.FormatInt(time.Now().Add(10*time.Second).Unix(), 10)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "exat", expireFirst, "exat", expireSecond).Val())
 		ttl := rdb.TTL(ctx, "foo").Val()
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
@@ -484,6 +582,16 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
+	t.Run("Extended SET Duplicate PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+
+		expireFirst := strconv.FormatInt(time.Now().Add(1*time.Second).UnixMilli(), 10)
+		expireSecond := strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", expireFirst, "pxat", expireSecond).Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("Extended SET PXAT option with expired timestamp", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.Equal(t, "OK", rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1").Val())
@@ -497,7 +605,44 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("Extended SET with incorrect use of multi options should result in syntax err", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "10", "px", "10000").Err(), "syntax err")
+		options := []string{"px", "ex", "pxat", "exat"}
+		for i := 0; i < (1 << 4); i++ {
+			cnt := 0
+			var op1, op1Value, op2, op2Value string
+			for j := 0; j < 4; j++ {
+				if i&(1<<j) == 0 {
+					continue
+				}
+				cnt++
+				if op1 == "" {
+					op1 = options[j]
+					if j <= 1 {
+						op1Value = "100"
+					} else {
+						if j == 2 {
+							op1Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+						} else {
+							op1Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
+						}
+					}
+				} else {
+					op2 = options[j]
+					if j <= 1 {
+						op2Value = "100"
+					} else {
+						if j == 2 {
+							op2Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+						} else {
+							op2Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
+						}
+					}
+				}
+			}
+			if cnt != 2 {
+				continue
+			}
+			require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", op1, op1Value, op2, op2Value).Err(), "syntax err")
+		}
 		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "NX", "XX").Err(), "syntax err")
 	})
 
@@ -556,6 +701,28 @@ func TestString(t *testing.T) {
 		time.Sleep(2000 * time.Millisecond)
 
 		require.Equal(t, "", rdb.Get(ctx, "cas_key").Val())
+	})
+
+	t.Run("CAS expire Duplicate EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "ex", 10).Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS expire Duplicate PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 1000, "px", 10000).Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5000*time.Millisecond, 10000*time.Millisecond)
+	})
+
+	t.Run("CAS expire PX option and EX option exist at the same time", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "px", 100000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "ex", 10, "px", 10000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 10000, "ex", 100, "ex", 10, "px", 10000).Err(), "syntax error")
 	})
 
 	t.Run("CAD normal case", func(t *testing.T) {

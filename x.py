@@ -159,7 +159,7 @@ def cppcheck() -> None:
     options = ["-x", "c++"]
     options.append("-U__GNUC__")
     options.append("--force")
-    options.append("--std=c++11")
+    options.append("--std=c++17")
     # we should run cmake configuration to fetch deps if we want to enable missingInclude
     options.append("--enable=warning,portability,information")
     options.append("--error-exitcode=1")

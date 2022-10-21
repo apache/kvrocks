@@ -93,6 +93,72 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, float64(30), rdb.ZScore(ctx, "ztmp", "x").Val())
 	})
 
+	t.Run(fmt.Sprintf("ZSET ZADD INCR option supports a single pair - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Contains(t, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{Members: []redis.Z{{Member: "abc", Score: 1.5}, {Member: "adc"}}}).Err(),
+			"INCR option supports a single increment-element pair")
+	})
+	t.Run(fmt.Sprintf("ZSET ZADD IncrMixedOtherOptions - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, redis.Nil, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Err())
+
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, redis.Nil, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{XX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Err())
+		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, 3.0, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{GT: true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, 0.0, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{GT: true,Members: []redis.Z{{Member: "abc", Score: -1.5}}}).Val())
+		require.Equal(t, redis.Nil, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{GT: true,Members: []redis.Z{{Member: "abc", Score: -1.5}}}).Err())
+
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX:true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, 0.0, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{LT: true,Members: []redis.Z{{Member: "abc", Score: -1.5}}}).Val())
+		require.Equal(t, 0.0, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{LT: true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, redis.Nil, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{LT: true,Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Err())
+	})
+
+	t.Run(fmt.Sprintf("ZSET ZADD LT/GT with other options - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{GT:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{GT:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{GT:true, Ch: false, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{GT:true, Ch: false, Members: []redis.Z{{Member: "abc", Score: 100}}}).Val())
+		require.Contains(t, rdb.Do(ctx, "zadd", "ztmp", "lt", "gt", "1", "m1", "2", "m2").Err(),
+			"GT, LT, and/or NX options at the same time are not compatible")
+
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{LT:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{LT:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 1.2}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{LT:true, Ch: false, Members: []redis.Z{{Member: "abc", Score: 0.5}}}).Val())
+
+		rdb.Del(ctx, "newAbc1", "newAbc2")
+		require.Equal(t, int64(2), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{Ch: true, Members: []redis.Z{{Member: "abc", Score: 0.5}, {Member: "newAbc1", Score: 10}, {Member: "newAbc2"}}}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZSET ZADD NX/XX option supports a single pair - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX:true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX:true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{XX:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{XX:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())
+		require.Contains(t, rdb.Do(ctx, "zadd", "ztmp", "nx", "xx", "1", "m1", "2", "m2").Err(),
+			"XX and NX options at the same time are not compatible")
+
+		require.Contains(t, rdb.Do(ctx, "zadd", "ztmp", "lt", "nx", "1", "m1", "2", "m2").Err(),
+			"GT, LT, and/or NX options at the same time are not compatible")
+		require.Contains(t, rdb.Do(ctx, "zadd", "ztmp", "gt", "nx", "1", "m1", "2", "m2").Err(),
+			"GT, LT, and/or NX options at the same time are not compatible")
+
+		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX:true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX:true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
+	})
+
 	t.Run(fmt.Sprintf("ZSET element can't be set to NaN with ZADD - %s", encoding), func(t *testing.T) {
 		require.Contains(t, rdb.ZAdd(ctx, "myzset", redis.Z{Score: math.NaN(), Member: "abc"}).Err(), "float")
 	})

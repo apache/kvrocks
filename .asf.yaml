@@ -47,4 +47,4 @@ notifications:
   issues:       issues@kvrocks.apache.org
   pullrequests: issues@kvrocks.apache.org
   jobs:         builds@kvrocks.apache.org
-  discussions:  dev@kvrocks.apache.org
+  discussions:  issues@kvrocks.apache.org

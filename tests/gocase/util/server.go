@@ -21,7 +21,7 @@ package util
 
 import (
 	"context"
-	"flag"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -33,17 +33,17 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v9"
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
-var binPath = flag.String("binPath", "", "directory including kvrocks build files")
-var workspace = flag.String("workspace", "", "directory of cases workspace")
-var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
-
 type KvrocksServer struct {
-	t    testing.TB
-	cmd  *exec.Cmd
-	addr *net.TCPAddr
+	t   testing.TB
+	cmd *exec.Cmd
+
+	addr    *net.TCPAddr
+	tlsAddr *net.TCPAddr
 
 	configs map[string]string
 
@@ -58,8 +58,12 @@ func (s *KvrocksServer) Host() string {
 	return s.addr.AddrPort().Addr().String()
 }
 
-func (s *KvrocksServer) Port() uint16 {
-	return s.addr.AddrPort().Port()
+func (s *KvrocksServer) Port() uint64 {
+	return uint64(s.addr.AddrPort().Port())
+}
+
+func (s *KvrocksServer) TLSAddr() string {
+	return s.tlsAddr.String()
 }
 
 func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
@@ -71,7 +75,7 @@ func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
-	return s.NewClientWithOption(&redis.Options{Addr: s.addr.String()})
+	return s.NewClientWithOption(&redis.Options{})
 }
 
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
@@ -83,6 +87,12 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 
 func (s *KvrocksServer) NewTCPClient() *TCPClient {
 	c, err := net.Dial(s.addr.Network(), s.addr.String())
+	require.NoError(s.t, err)
+	return newTCPClient(c)
+}
+
+func (s *KvrocksServer) NewTCPTLSClient(conf *tls.Config) *TCPClient {
+	c, err := tls.Dial(s.tlsAddr.Network(), s.tlsAddr.String(), conf)
 	require.NoError(s.t, err)
 	return newTCPClient(c)
 }
@@ -143,6 +153,25 @@ func (s *KvrocksServer) Restart() {
 	}
 }
 
+func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
+	dir := *workspace
+	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
+	dir = filepath.Join(dir, "..", "tls", "cert")
+
+	configs["tls-cert-file"] = filepath.Join(dir, "server.crt")
+	configs["tls-key-file"] = filepath.Join(dir, "server.key")
+	configs["tls-ca-cert-file"] = filepath.Join(dir, "ca.crt")
+
+	addr, err := findFreePort()
+	require.NoError(t, err)
+	configs["tls-port"] = fmt.Sprintf("%d", addr.Port)
+
+	s := StartServer(t, configs)
+	s.tlsAddr = addr
+
+	return s
+}
+
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	b := *binPath
 	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
@@ -181,10 +210,17 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 
 	c := redis.NewClient(&redis.Options{Addr: addr.String()})
 	defer func() { require.NoError(t, c.Close()) }()
+
+	proc, err := process.NewProcess(int32(cmd.Process.Pid))
+	require.NoError(t, err)
+
+	var status []string
 	require.Eventually(t, func() bool {
 		err := c.Ping(context.Background()).Err()
-		return err == nil || err.Error() == "NOAUTH Authentication required."
+		status, _ = proc.Status()
+		return err == nil || err.Error() == "NOAUTH Authentication required." || slices.Contains(status, process.Zombie)
 	}, time.Minute, time.Second)
+	require.NotContains(t, status, process.Zombie, "Kvrocks has been unexpectedly exited while starting server")
 
 	return &KvrocksServer{
 		t:       t,

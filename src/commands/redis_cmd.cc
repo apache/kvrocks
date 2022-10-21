@@ -73,6 +73,7 @@ const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
+const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
 
 enum class AuthResult {
   OK,
@@ -2367,12 +2368,14 @@ class CommandZAdd : public Commander {
     Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
     parseOptions(args, index);
-    Status s = validateFlags();
-    if (!s.IsOK()) {
+    if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
-    if ((args.size()-index) % 2 != 0) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+    if (auto left = (args.size()-index); left > 0) {
+      if ((flags_ & kZSetIncr) && left != 2) {
+        return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
+      } else if (left % 2 != 0)
+        return Status(Status::RedisParseErr, errInvalidSyntax);
     }
     try {
       for (unsigned i = index; i < args.size(); i += 2) {
@@ -2390,12 +2393,24 @@ class CommandZAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
+    double old_score = member_scores_[0].score;
+    bool incr = (flags_ & kZSetIncr) != 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::Integer(ret);
+    if (incr) {
+      auto new_score = member_scores_[0].score;
+      bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_&kZSetLT), gt = (flags_&kZSetGT);
+      if ((nx||xx||lt||gt) && old_score==new_score && ret==0) { //not the first time using incr && score not changed
+        *output = Redis::NilString();
+        return Status::OK();
+      }
+      *output = Redis::BulkString(Util::Float2String(new_score));
+    } else {
+      *output = Redis::Integer(ret);
+    }
     return Status::OK();
   }
 
@@ -2416,8 +2431,8 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& i
       {"gt", kZSetGT},
       {"incr", kZSetIncr},
   };
-  constexpr unsigned max_options = 4;
-  for (unsigned i = 2; i < max_options; i++) {
+  constexpr unsigned max_index = 6;
+  for (unsigned i = 2; i < max_index; i++) {
     auto option = Util::ToLower(args[i]);
     if (auto it = options.find(option); it != options.end()) {
       flags_ |= it->second;
@@ -2429,25 +2444,24 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& i
 }
 
 Status CommandZAdd::validateFlags() {
-  if (!flags) {
+  if (!flags_) {
     return {};
   }
-  bool nx = (flags & kZSetNX) != 0;
-  bool xx = (flags & kZSetXX) != 0;
-  bool lt = (flags & kZSetLT) != 0;
-  bool gt = (flags & kZSetGT) != 0;
-  bool ch = (flags & kZSetCH) != 0;
+  bool nx = (flags_ & kZSetNX) != 0;
+  bool xx = (flags_ & kZSetXX) != 0;
+  bool lt = (flags_ & kZSetLT) != 0;
+  bool gt = (flags_ & kZSetGT) != 0;
   if (nx && xx) {
-    return Status(Status::RedisParseErr, errInvalidSyntax);
+    return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
   }
   if (lt && gt) {
-    return Status(Status::RedisParseErr, errInvalidSyntax);
+    return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   if (lt && nx) {
-    return Status(Status::RedisParseErr, errInvalidSyntax);
+    return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   if (gt && nx) {
-    return Status(Status::RedisParseErr, errInvalidSyntax);
+    return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   return {};
 }

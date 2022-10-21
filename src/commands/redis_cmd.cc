@@ -2429,7 +2429,8 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &i
   constexpr unsigned max_index = 6;
   for (unsigned i = 2; i < max_index; i++) {
     auto option = Util::ToLower(args[i]);
-    if (auto it = options.find(option); it != options.end()) {
+    auto it = options.find(option);
+    if (it != options.end()) {
       flags_ |= it->second;
       index++;
     } else {

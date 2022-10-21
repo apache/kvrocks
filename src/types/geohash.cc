@@ -261,7 +261,7 @@ static void geohash_move_x(GeoHashBits *hash, int8_t d) {
   uint64_t x = hash->bits & 0xaaaaaaaaaaaaaaaaULL;
   uint64_t y = hash->bits & 0x5555555555555555ULL;
 
-  uint64_t zz = 0x5555555555555555ULL >> (64 - hash->step * 2);
+  uint64_t zz = 0x5555555555555555ULL >> (64 - hash->step * 2); // NOLINT
 
   if (d > 0) {
     x = x + (zz + 1);
@@ -270,7 +270,7 @@ static void geohash_move_x(GeoHashBits *hash, int8_t d) {
     x = x - (zz + 1);
   }
 
-  x &= (0xaaaaaaaaaaaaaaaaULL >> (64 - hash->step * 2));
+  x &= (0xaaaaaaaaaaaaaaaaULL >> (64 - hash->step * 2)); // NOLINT
   hash->bits = (x | y);
 }
 

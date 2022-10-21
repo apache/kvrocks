@@ -30,6 +30,7 @@ from warnings import warn
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
+CLANG_TIDY_REQUIRED_VERSION = (12, 0, 0)
 
 SEMVER_REGEX = re.compile(
     r"""
@@ -86,7 +87,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
-def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str]) -> None:
+def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str], config_only: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -112,6 +113,9 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
     if D:
         cmake_options += [f"-D{o}" for o in D]
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
+
+    if config_only:
+        return
 
     target = ["kvrocks", "kvrocks2redis"]
     if unittest:
@@ -152,22 +156,25 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
 
     run(command, *options, *sources, verbose=True, cwd=basedir)
 
-def cppcheck() -> None:
-    command = find_command("cppcheck", msg="cppcheck is required")
+def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: str) -> None:
+    # instead of clang-tidy, we use a python script run-clang-tidy provided by LLVM Clang
+    run_command = find_command(run_clang_tidy_path, msg="run-clang-tidy is required")
+
+    tidy_command = find_command(clang_tidy_path, msg="clang-tidy is required")
+
+    version_res = run_pipe(tidy_command, '--version').read().strip()
+    version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
+
+    check_version(version_str, CLANG_TIDY_REQUIRED_VERSION, "clang-tidy")
+
+    if not (Path(dir) / 'compile_commands.json').exists():
+        raise RuntimeError("expect compile_commands.json in build directory {}".format(dir))
+
     basedir = Path(__file__).parent.absolute()
 
-    options = ["-x", "c++"]
-    options.append("-U__GNUC__")
-    options.append("--force")
-    options.append("--std=c++11")
-    # we should run cmake configuration to fetch deps if we want to enable missingInclude
-    options.append("--enable=warning,portability,information")
-    options.append("--error-exitcode=1")
-    options.append("--inline-suppr")
+    options = ['-p', dir, '-clang-tidy-binary', tidy_command, '-j', jobs]
 
-    sources = ["src"]
-
-    run(command, *options, *sources, verbose=True, cwd=basedir)
+    run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
 
 def golangci_lint() -> None:
     go = find_command('go', msg='go is required for testing')
@@ -293,13 +300,17 @@ if __name__ == '__main__':
         help="Check source format by clang-format")
     parser_check_format.set_defaults(func=lambda **args: clang_format(**args, fix=False))
     parser_check_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
-    parser_check_cppcheck = parser_check_subparsers.add_parser(
-        'cppcheck',
-        description="Check code with cppcheck (https://github.com/danmar/cppcheck)",
-        help="Check code with cppcheck (https://github.com/danmar/cppcheck)",
+    parser_check_tidy = parser_check_subparsers.add_parser(
+        'tidy',
+        description="Check code with clang-tidy",
+        help="Check code with clang-tidy",
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
-    parser_check_cppcheck.set_defaults(func=cppcheck)
+    parser_check_tidy.set_defaults(func=clang_tidy)
+    parser_check_tidy.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory to store cmake-generated and build files")
+    parser_check_tidy.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_check_tidy.add_argument('--clang-tidy-path', default='clang-tidy', help="path of clang-tidy used to check source")
+    parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy', help="path of run-clang-tidy used to check source")
     parser_check_golangci_lint = parser_check_subparsers.add_parser(
         'golangci-lint',
         description="Check code with golangci-lint (https://golangci-lint.run/)",
@@ -322,6 +333,7 @@ if __name__ == '__main__':
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
     parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
+    parser_build.add_argument('--config-only', default=False, action='store_true', help='configure only, no build step')
     parser_build.set_defaults(func=build)
 
     parser_package = subparsers.add_parser(

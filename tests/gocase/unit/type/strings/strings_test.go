@@ -204,44 +204,12 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("GETEX with incorrect use of multi options should result in syntax err", func(t *testing.T) {
-		options := []string{"px", "ex", "pxat", "exat"}
-		for i := 0; i < (1 << 4); i++ {
-			cnt := 0
-			var op1, op1Value, op2, op2Value string
-			for j := 0; j < 4; j++ {
-				if i&(1<<j) == 0 {
-					continue
-				}
-				cnt++
-				if op1 == "" {
-					op1 = options[j]
-					if j <= 1 {
-						op1Value = "100"
-					} else {
-						if j == 2 {
-							op1Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
-						} else {
-							op1Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
-						}
-					}
-				} else {
-					op2 = options[j]
-					if j <= 1 {
-						op2Value = "100"
-					} else {
-						if j == 2 {
-							op2Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
-						} else {
-							op2Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
-						}
-					}
-				}
-			}
-			if cnt != 2 {
-				continue
-			}
-			require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", op1, op1Value, op2, op2Value).Err(), "syntax err")
-		}
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "px", 100, "ex", 10).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "px", 100, "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "px", 100, "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "ex", 10, "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "ex", 10, "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli(), "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
 	})
 
 	t.Run("GETEX no option", func(t *testing.T) {
@@ -605,44 +573,12 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("Extended SET with incorrect use of multi options should result in syntax err", func(t *testing.T) {
-		options := []string{"px", "ex", "pxat", "exat"}
-		for i := 0; i < (1 << 4); i++ {
-			cnt := 0
-			var op1, op1Value, op2, op2Value string
-			for j := 0; j < 4; j++ {
-				if i&(1<<j) == 0 {
-					continue
-				}
-				cnt++
-				if op1 == "" {
-					op1 = options[j]
-					if j <= 1 {
-						op1Value = "100"
-					} else {
-						if j == 2 {
-							op1Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
-						} else {
-							op1Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
-						}
-					}
-				} else {
-					op2 = options[j]
-					if j <= 1 {
-						op2Value = "100"
-					} else {
-						if j == 2 {
-							op2Value = strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
-						} else {
-							op2Value = strconv.FormatInt(time.Now().Add(-5*time.Second).Unix(), 10)
-						}
-					}
-				}
-			}
-			if cnt != 2 {
-				continue
-			}
-			require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", op1, op1Value, op2, op2Value).Err(), "syntax err")
-		}
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "px", 100, "ex", 10).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "px", 100, "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "px", 100, "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", 10, "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", 10, "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", time.Now().Add(10000*time.Millisecond).UnixMilli(), "exat", time.Now().Add(10*time.Second).Unix()).Err(), "syntax err")
 		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "NX", "XX").Err(), "syntax err")
 	})
 

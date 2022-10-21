@@ -2365,7 +2365,7 @@ class CommandSInterStore : public Commander {
 
 class CommandZAdd : public Commander {
  public:
-    Status Parse(const std::vector<std::string> &args) override {
+  Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
     parseOptions(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {

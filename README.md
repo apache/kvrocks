@@ -25,8 +25,8 @@
 
 ---
 
-* [Google Group](https://groups.google.com/g/kvrocks)
 * [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
+* [Mailing List](https://lists.apache.org/list.html?dev@kvrocks.apache.org) ([Tutorial](https://www.apache.org/foundation/mailinglists.html))
 
 **Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 

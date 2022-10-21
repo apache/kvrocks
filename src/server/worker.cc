@@ -430,7 +430,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, 
   for (const auto &iter : conns_) {
     Redis::Connection *conn = iter.second;
     if (skipme && self == conn) continue;
-    // no need to kill again the client if flags as kCloseAfterReply
+    // no need to kill the client again if flags as kCloseAfterReply
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) {
       continue;
     }

@@ -2371,7 +2371,7 @@ class CommandZAdd : public Commander {
     if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
-    if (auto left = (args.size()-index); left > 0) {
+    if (auto left = (args.size() - index); left > 0) {
       if ((flags_ & kZSetIncr) && left != 2) {
         return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
       } else if (left % 2 != 0)
@@ -2402,8 +2402,9 @@ class CommandZAdd : public Commander {
     }
     if (incr) {
       auto new_score = member_scores_[0].score;
-      bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_&kZSetLT), gt = (flags_&kZSetGT);
-      if ((nx||xx||lt||gt) && old_score==new_score && ret==0) { //not the first time using incr && score not changed
+      bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_ & kZSetLT), gt = (flags_ & kZSetGT);
+      if ((nx || xx || lt || gt) && old_score == new_score &&
+          ret == 0) {  // not the first time using incr && score not changed
         *output = Redis::NilString();
         return Status::OK();
       }
@@ -2418,19 +2419,13 @@ class CommandZAdd : public Commander {
   std::vector<MemberScore> member_scores_;
   uint8_t flags_ = 0;
 
-  void parseOptions(const std::vector<std::string> &args, unsigned& index);
+  void parseOptions(const std::vector<std::string> &args, unsigned &index);
   Status validateFlags();
 };
 
-void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& index) {
-  std::unordered_map<std::string, ZSetFlags> options = {
-      {"xx", kZSetXX},
-      {"nx", kZSetNX},
-      {"ch", kZSetCH},
-      {"lt", kZSetLT},
-      {"gt", kZSetGT},
-      {"incr", kZSetIncr},
-  };
+void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &index) {
+  std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
+                                                        {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
   constexpr unsigned max_index = 6;
   for (unsigned i = 2; i < max_index; i++) {
     auto option = Util::ToLower(args[i]);

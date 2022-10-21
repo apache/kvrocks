@@ -96,7 +96,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
           }
         }
         if ((*mscores)[i].score != old_score) {
-          if (lt && (*mscores)[i].score >= old_score ) {
+          if (lt && (*mscores)[i].score >= old_score) {
             continue;
           } else if (gt && (*mscores)[i].score <= old_score) {
             continue;

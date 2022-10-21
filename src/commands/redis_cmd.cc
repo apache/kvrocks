@@ -2367,7 +2367,10 @@ class CommandZAdd : public Commander {
     Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
     parseOptions(args, index);
-    rocksdb::Status s = validateFlags();
+    Status s = validateFlags();
+    if (!s.IsOK()) {
+      return s;
+    }
     if ((args.size()-index) % 2 != 0) {
       return Status(Status::RedisParseErr, errInvalidSyntax);
     }
@@ -2388,7 +2391,7 @@ class CommandZAdd : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], flags, &member_scores_, &ret);
+    rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -2398,33 +2401,29 @@ class CommandZAdd : public Commander {
 
  private:
   std::vector<MemberScore> member_scores_;
-  uint8_t flags = 0;
+  uint8_t flags_ = 0;
 
   void parseOptions(const std::vector<std::string> &args, unsigned& index);
   Status validateFlags();
 };
 
 void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned& index) {
+  std::unordered_map<std::string, ZSetFlags> options = {
+      {"xx", kZSetXX},
+      {"nx", kZSetNX},
+      {"ch", kZSetCH},
+      {"lt", kZSetLT},
+      {"gt", kZSetGT},
+      {"incr", kZSetIncr},
+  };
   constexpr unsigned max_options = 4;
   for (unsigned i = 2; i < max_options; i++) {
-    auto option = args[i].c_str();
-    if (!strcasecmp(option, "xx")) {
-      flags |= kZSetXX;
+    auto option = Util::ToLower(args[i]);
+    if (auto it = options.find(option); it != options.end()) {
+      flags_ |= it->second;
       index++;
-    } else if (!strcasecmp(option, "nx")) {
-      flags |= kZSetNX;
-      index++;
-    } else if (!strcasecmp(option, "incr")) {
-      flags |= kZSetIncr;
-      index++;
-    } else if (!strcasecmp(option, "ch")) {
-      flags |= kZSetCH;
-      index++;
-    } else if (!strcasecmp(option, "gt")) {
-      flags |= kZSetGT;
-    } else if (!strcasecmp(option, "lt")) {
-      flags |= kZSetLT;
-      index++;
+    } else {
+      break;
     }
   }
 }

@@ -21,6 +21,7 @@ package util
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -42,6 +43,15 @@ func newTCPClient(c net.Conn) *TCPClient {
 		c: c,
 		r: bufio.NewReader(c),
 		w: bufio.NewWriter(c),
+	}
+}
+
+func (c *TCPClient) TLSState() *tls.ConnectionState {
+	if v, ok := c.c.(*tls.Conn); ok {
+		state := v.ConnectionState()
+		return &state
+	} else {
+		return nil
 	}
 }
 

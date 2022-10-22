@@ -21,12 +21,12 @@ package config
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"path/filepath"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -67,7 +67,7 @@ func TestSetConfigBackupDir(t *testing.T) {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			return false
 		}
-		files, err := ioutil.ReadDir(dir)
+		files, err := os.ReadDir(dir)
 		if err != nil {
 			log.Fatal(err)
 		}

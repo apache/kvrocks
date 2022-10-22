@@ -21,7 +21,12 @@ package config
 
 import (
 	"context"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -43,24 +48,53 @@ func TestRenameCommand(t *testing.T) {
 }
 
 func TestSetConfigBackupDir(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-	r := rdb.Do(ctx, "CONFIG", "GET backup-dir")
+
+	originBackupDir := filepath.Join(configs["dir"], "backup")
+
+	r := rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
+	rList := r.Val().([]interface{})
+	require.EqualValues(t, rList[0], "backup-dir")
+	require.EqualValues(t, rList[1], originBackupDir)
+
+	hasCompactionFiles := func(dir string) bool {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return false
+		}
+		files, err := ioutil.ReadDir(dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return len(files) != 0
+	}
+
+	require.False(t, hasCompactionFiles(originBackupDir))
 
 	r = rdb.Do(ctx, "bgsave")
+	time.Sleep(2000 * time.Millisecond)
 
-	// TODO(mapleFU): os check
+	require.True(t, hasCompactionFiles(originBackupDir))
 
-	// TODO(mapleFU): set to a proper folder
-	r = rdb.Do(ctx, "CONFIG", "SET backup-dir /tmp")
+	newBackupDir := filepath.Join(configs["dir"], "backup2")
+
+	require.False(t, hasCompactionFiles(newBackupDir))
+
+	r = rdb.Do(ctx, "CONFIG", "SET", "backup-dir", newBackupDir)
+
+	r = rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
+	rList = r.Val().([]interface{})
+	require.EqualValues(t, rList[0], "backup-dir")
+	require.EqualValues(t, rList[1], newBackupDir)
 
 	r = rdb.Do(ctx, "bgsave")
+	time.Sleep(2000 * time.Millisecond)
 
-	// TODO(mapleFU): os check
-
-	require.Equal(t, []interface{}{}, r.Val())
+	require.True(t, hasCompactionFiles(newBackupDir))
+	require.True(t, hasCompactionFiles(originBackupDir))
 }

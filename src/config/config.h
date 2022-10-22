@@ -107,7 +107,7 @@ struct Config {
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
-  std::string backup_dir; // GUARD_BY(backup_mu_)
+  std::string backup_dir;  // GUARD_BY(backup_mu_)
   std::string backup_sync_dir;
   std::string checkpoint_dir;
   std::string sync_checkpoint_dir;
@@ -181,6 +181,8 @@ struct Config {
       bool memtable_insert_hint_per_batch;
     } write_options;
   } RocksDB;
+
+  mutable std::mutex backup_mu_;
 
  public:
   Status Rewrite();

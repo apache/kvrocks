@@ -126,22 +126,6 @@ void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100.0;
 }
 
-void Storage::SetBackupDir(std::string backup) {
-  // WARN: currently, SetBackupDir may wait for a long time
-  //  when the server is building a backup.
-  std::lock_guard<std::mutex> lg(backup_mu_);
-  config_->backup_dir = std::move(backup);
-}
-
-void Storage::SetBackupDirIfEmpty(std::string backup) {
-  // WARN: currently, SetBackupDir may wait for a long time
-  //  when the server is building a backup.
-  std::lock_guard<std::mutex> lg(backup_mu_);
-  if (config_->backup_dir.empty()) {
-    config_->backup_dir = std::move(backup);
-  }
-}
-
 rocksdb::Options Storage::InitOptions() {
   rocksdb::Options options;
   options.create_if_missing = true;
@@ -349,7 +333,7 @@ Status Storage::OpenForReadOnly() { return Open(true); }
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
-  std::lock_guard<std::mutex> lg(backup_mu_);
+  std::lock_guard<std::mutex> lg(config_->backup_mu_);
   // Note: `config_->backup_dir` may change, so we should use same dir during the task.
   std::string task_backup_dir = config_->backup_dir;
 
@@ -485,7 +469,7 @@ void Storage::EmptyDB() {
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = time(nullptr);
-  std::lock_guard<std::mutex> lg(backup_mu_);
+  std::lock_guard<std::mutex> lg(config_->backup_mu_);
   std::string task_backup_dir = config_->backup_dir;
 
   // Return if there is no backup

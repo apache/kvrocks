@@ -160,13 +160,9 @@ class Storage {
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine(void);
 
-  void SetBackupDir(std::string backup);
-  void SetBackupDirIfEmpty(std::string backup);
-
  private:
   rocksdb::DB *db_ = nullptr;
   std::string replid_;
-  std::mutex backup_mu_;
   time_t backup_creating_time_;
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *env_;

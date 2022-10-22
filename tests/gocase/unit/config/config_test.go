@@ -41,3 +41,26 @@ func TestRenameCommand(t *testing.T) {
 	r := rdb.Do(ctx, "KEYSNEW", "*")
 	require.Equal(t, []interface{}{}, r.Val())
 }
+
+func TestSetConfigBackupDir(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	r := rdb.Do(ctx, "CONFIG", "GET backup-dir")
+
+	r = rdb.Do(ctx, "bgsave")
+
+	// TODO(mapleFU): os check
+
+	// TODO(mapleFU): set to a proper folder
+	r = rdb.Do(ctx, "CONFIG", "SET backup-dir /tmp")
+
+	r = rdb.Do(ctx, "bgsave")
+
+	// TODO(mapleFU): os check
+
+	require.Equal(t, []interface{}{}, r.Val())
+}

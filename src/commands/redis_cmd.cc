@@ -2426,8 +2426,7 @@ class CommandZAdd : public Commander {
 void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &index) {
   std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
                                                         {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
-  constexpr unsigned max_index = 6;
-  for (unsigned i = 2; i < max_index; i++) {
+  for (unsigned i = 2; i < args.size(); i++) {
     auto option = Util::ToLower(args[i]);
     auto it = options.find(option);
     if (it != options.end()) {

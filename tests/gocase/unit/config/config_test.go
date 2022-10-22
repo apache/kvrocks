@@ -76,7 +76,7 @@ func TestSetConfigBackupDir(t *testing.T) {
 
 	require.False(t, hasCompactionFiles(originBackupDir))
 
-	r = rdb.Do(ctx, "bgsave")
+	require.NoError(t, rdb.Do(ctx, "bgsave").Err())
 	time.Sleep(2000 * time.Millisecond)
 
 	require.True(t, hasCompactionFiles(originBackupDir))
@@ -85,14 +85,14 @@ func TestSetConfigBackupDir(t *testing.T) {
 
 	require.False(t, hasCompactionFiles(newBackupDir))
 
-	r = rdb.Do(ctx, "CONFIG", "SET", "backup-dir", newBackupDir)
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "backup-dir", newBackupDir).Err())
 
 	r = rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
 	rList = r.Val().([]interface{})
 	require.EqualValues(t, rList[0], "backup-dir")
 	require.EqualValues(t, rList[1], newBackupDir)
 
-	r = rdb.Do(ctx, "bgsave")
+	require.NoError(t, rdb.Do(ctx, "bgsave").Err())
 	time.Sleep(2000 * time.Millisecond)
 
 	require.True(t, hasCompactionFiles(newBackupDir))

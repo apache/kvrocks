@@ -126,6 +126,22 @@ void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100.0;
 }
 
+void Storage::SetBackupDir(std::string backup) {
+  // WARN: currently, SetBackupDir may wait for a long time
+  //  when the server is building a backup.
+  std::lock_guard<std::mutex> lg(backup_mu_);
+  config_->backup_dir = std::move(backup);
+}
+
+void Storage::SetBackupDirIfEmpty(std::string backup) {
+  // WARN: currently, SetBackupDir may wait for a long time
+  //  when the server is building a backup.
+  std::lock_guard<std::mutex> lg(backup_mu_);
+  if (config_->backup_dir.empty()) {
+    config_->backup_dir = std::move(backup);
+  }
+}
+
 rocksdb::Options Storage::InitOptions() {
   rocksdb::Options options;
   options.create_if_missing = true;
@@ -334,8 +350,10 @@ Status Storage::OpenForReadOnly() { return Open(true); }
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(backup_mu_);
+  // Note: `config_->backup_dir` may change, so we should use same dir during the task.
+  std::string task_backup_dir = config_->backup_dir;
 
-  std::string tmpdir = config_->backup_dir + ".tmp";
+  std::string tmpdir = task_backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
 
@@ -354,11 +372,11 @@ Status Storage::CreateBackup() {
   }
 
   // 2) Rename tmp backup to real backup dir
-  if (!(s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options())).ok()) {
+  if (!(s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options())).ok()) {
     LOG(WARNING) << "[storage] Fail to clean old backup, error:" << s.ToString();
     return Status(Status::NotOK, s.ToString());
   }
-  if (!(s = env_->RenameFile(tmpdir, config_->backup_dir)).ok()) {
+  if (!(s = env_->RenameFile(tmpdir, task_backup_dir)).ok()) {
     LOG(WARNING) << "[storage] Fail to rename tmp backup, error:" << s.ToString();
     // Just try best effort
     if (!(s = rocksdb::DestroyDB(tmpdir, rocksdb::Options())).ok()) {
@@ -468,15 +486,16 @@ void Storage::EmptyDB() {
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = time(nullptr);
   std::lock_guard<std::mutex> lg(backup_mu_);
+  std::string task_backup_dir = config_->backup_dir;
 
   // Return if there is no backup
-  auto s = env_->FileExists(config_->backup_dir);
+  auto s = env_->FileExists(task_backup_dir);
   if (!s.ok()) return;
 
   // No backup is needed to keep or the backup is expired, we will clean it.
   if (num_backups_to_keep == 0 ||
       (backup_max_keep_hours != 0 && backup_creating_time_ + backup_max_keep_hours * 3600 < now)) {
-    s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options());
+    s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options());
     if (s.ok()) {
       LOG(INFO) << "[storage] Succeeded cleaning old backup that was born at " << backup_creating_time_;
     } else {

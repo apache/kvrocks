@@ -329,12 +329,16 @@ void Config::initFieldCallback() {
       {"dir",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          db_dir = dir + "/db";
-         if (backup_dir.empty()) backup_dir = dir + "/backup";
+         srv->storage_->SetBackupDirIfEmpty(dir + "/backup");
          if (log_dir.empty()) log_dir = dir;
          checkpoint_dir = dir + "/checkpoint";
          sync_checkpoint_dir = dir + "/sync_checkpoint";
          backup_sync_dir = dir + "/backup_for_sync";
          return Status::OK();
+       }},
+      {"backup-dir", [](Server *srv, const std::string &k, const std::string &v) -> Status {
+        srv->storage_->SetBackupDir(v);
+        return Status::OK();
        }},
       {"cluster-enabled",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {

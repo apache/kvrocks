@@ -68,8 +68,8 @@ jobs:
         run: ./x.py check golangci-lint
       - name: Check cpp code via clang-tidy
         run: |
-          ./x.py build tidy-build --config-only
-          ./x.py check tidy tidy-build -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
+          ./x.py build --skip-build
+          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
 
   build-and-test:
     name: Build and test

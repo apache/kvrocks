@@ -87,7 +87,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
-def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str], config_only: bool) -> None:
+def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str], skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -114,7 +114,7 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
         cmake_options += [f"-D{o}" for o in D]
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
 
-    if config_only:
+    if skip_build:
         return
 
     target = ["kvrocks", "kvrocks2redis"]
@@ -157,9 +157,8 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     run(command, *options, *sources, verbose=True, cwd=basedir)
 
 def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: str) -> None:
-    # instead of clang-tidy, we use a python script run-clang-tidy provided by LLVM Clang
+    # use the run-clang-tidy Python script provided by LLVM Clang
     run_command = find_command(run_clang_tidy_path, msg="run-clang-tidy is required")
-
     tidy_command = find_command(clang_tidy_path, msg="clang-tidy is required")
 
     version_res = run_pipe(tidy_command, '--version').read().strip()
@@ -168,11 +167,11 @@ def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: s
     check_version(version_str, CLANG_TIDY_REQUIRED_VERSION, "clang-tidy")
 
     if not (Path(dir) / 'compile_commands.json').exists():
-        raise RuntimeError("expect compile_commands.json in build directory {}".format(dir))
+        raise RuntimeError(f"expect compile_commands.json in build directory {dir}")
 
     basedir = Path(__file__).parent.absolute()
 
-    options = ['-p', dir, '-clang-tidy-binary', tidy_command, '-j', jobs]
+    options = ['-p', dir, '-clang-tidy-binary', tidy_command, f'-j{jobs}']
 
     run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
 
@@ -333,7 +332,7 @@ if __name__ == '__main__':
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
     parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
-    parser_build.add_argument('--config-only', default=False, action='store_true', help='configure only, no build step')
+    parser_build.add_argument('--skip-build', default=False, action='store_true', help='runs only the configure stage, skip the build stage')
     parser_build.set_defaults(func=build)
 
     parser_package = subparsers.add_parser(

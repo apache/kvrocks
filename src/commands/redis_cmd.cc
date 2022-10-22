@@ -104,12 +104,12 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
   int ttl = 0;
   int64_t expire = 0;
   bool last_arg = false;
-  int ex_exist = 0, exat_exist = 0, pxat_exist = 0, px_exist = 0;
+  bool has_ex = false, has_exat = false, has_pxat = false, has_px = false;
   for (size_t i = 0; i < args.size(); i++) {
     last_arg = (i == args.size() - 1);
     std::string opt = Util::ToLower(args[i]);
     if (opt == "ex" && !last_arg) {
-      ex_exist = 1;
+      has_ex = 1;
       auto parse_result = ParseInt<int>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
@@ -117,7 +117,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
       ttl = *parse_result;
       if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
     } else if (opt == "exat" && !last_arg) {
-      exat_exist = 1;
+      has_exat = 1;
       auto parse_result = ParseInt<int64_t>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
@@ -125,7 +125,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
       expire = *parse_result;
       if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
     } else if (opt == "pxat" && !last_arg) {
-      pxat_exist = 1;
+      has_pxat = 1;
       auto parse_result = ParseInt<uint64_t>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
@@ -138,7 +138,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
         expire = static_cast<int64_t>(expire_ms / 1000);
       }
     } else if (opt == "px" && !last_arg) {
-      px_exist = 1;
+      has_px = 1;
       int64_t ttl_ms = 0;
       auto parse_result = ParseInt<int64_t>(args[++i], 10);
       if (!parse_result) {
@@ -160,7 +160,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
       }
     }
   }
-  if (px_exist + ex_exist + exat_exist + pxat_exist >= 2) {
+  if (has_px + has_ex + has_exat + has_pxat > 1) {
     return Status(Status::NotOK, errInvalidSyntax);
   }
   if (!ttl && expire) {
@@ -870,7 +870,7 @@ class CommandCAS : public Commander {
         return Status(Status::NotOK, errInvalidSyntax);
       }
     }
-    if (ex_exist && px_exist) {
+    if (ex_exist + px_exist > 1) {
       return Status(Status::NotOK, errInvalidSyntax);
     }
     return Commander::Parse(args);

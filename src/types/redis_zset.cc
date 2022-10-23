@@ -500,7 +500,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std:
     if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
-  if (spec.removed && *size > 0) {
+  if (spec.removed && size && *size > 0) {
     metadata.size -= *size;
     std::string bytes;
     metadata.Encode(&bytes);

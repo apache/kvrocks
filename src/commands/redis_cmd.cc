@@ -43,6 +43,7 @@
 #include "server/server.h"
 #include "stats/disk_stats.h"
 #include "stats/log_collector.h"
+#include "status.h"
 #include "storage/redis_db.h"
 #include "storage/redis_pubsub.h"
 #include "storage/scripting.h"
@@ -104,24 +105,28 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
   int ttl = 0;
   int64_t expire = 0;
   bool last_arg = false;
+  bool has_ex = false, has_exat = false, has_pxat = false, has_px = false;
   for (size_t i = 0; i < args.size(); i++) {
     last_arg = (i == args.size() - 1);
     std::string opt = Util::ToLower(args[i]);
-    if (opt == "ex" && !ttl && !last_arg) {
+    if (opt == "ex" && !last_arg) {
+      has_ex = 1;
       auto parse_result = ParseInt<int>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
       }
       ttl = *parse_result;
       if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "exat" && !ttl && !expire && !last_arg) {
+    } else if (opt == "exat" && !last_arg) {
+      has_exat = 1;
       auto parse_result = ParseInt<int64_t>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
       }
       expire = *parse_result;
       if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "pxat" && !ttl && !expire && !last_arg) {
+    } else if (opt == "pxat" && !last_arg) {
+      has_pxat = 1;
       auto parse_result = ParseInt<uint64_t>(args[++i], 10);
       if (!parse_result) {
         return Status(Status::RedisParseErr, errValueNotInteger);
@@ -133,7 +138,8 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
       } else {
         expire = static_cast<int64_t>(expire_ms / 1000);
       }
-    } else if (opt == "px" && !ttl && !last_arg) {
+    } else if (opt == "px" && !last_arg) {
+      has_px = 1;
       int64_t ttl_ms = 0;
       auto parse_result = ParseInt<int64_t>(args[++i], 10);
       if (!parse_result) {
@@ -154,6 +160,9 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
         return Status(Status::NotOK, errInvalidSyntax);
       }
     }
+  }
+  if (has_px + has_ex + has_exat + has_pxat > 1) {
+    return Status(Status::NotOK, errInvalidSyntax);
   }
   if (!ttl && expire) {
     int64_t now;
@@ -585,7 +594,7 @@ class CommandSet : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s;
 
@@ -830,10 +839,12 @@ class CommandCAS : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     bool last_arg;
+    bool ex_exist = false, px_exist = false;
     for (size_t i = 4; i < args.size(); i++) {
       last_arg = (i == args.size() - 1);
       std::string opt = Util::ToLower(args[i]);
       if (opt == "ex") {
+        ex_exist = true;
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
         if (!parse_result) {
@@ -842,6 +853,7 @@ class CommandCAS : public Commander {
         ttl_ = *parse_result;
         if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
       } else if (opt == "px") {
+        px_exist = true;
         if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
         auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
         if (!parse_result) {
@@ -858,6 +870,9 @@ class CommandCAS : public Commander {
       } else {
         return Status(Status::NotOK, errInvalidSyntax);
       }
+    }
+    if (ex_exist + px_exist > 1) {
+      return Status(Status::NotOK, errInvalidSyntax);
     }
     return Commander::Parse(args);
   }

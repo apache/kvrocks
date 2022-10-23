@@ -2389,8 +2389,9 @@ class CommandZAdd : public Commander {
     if (auto left = (args.size() - index); left > 0) {
       if ((flags_ & kZSetIncr) && left != 2) {
         return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
-      } else if (left % 2 != 0)
+      } else if (left % 2 != 0) {
         return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
     }
     try {
       for (unsigned i = index; i < args.size(); i += 2) {
@@ -2409,12 +2410,12 @@ class CommandZAdd : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     double old_score = member_scores_[0].score;
-    bool incr = (flags_ & kZSetIncr) != 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
+    bool incr = (flags_ & kZSetIncr) != 0;
     if (incr) {
       auto new_score = member_scores_[0].score;
       bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_ & kZSetLT), gt = (flags_ & kZSetGT);
@@ -2435,7 +2436,7 @@ class CommandZAdd : public Commander {
   uint8_t flags_ = 0;
 
   void parseOptions(const std::vector<std::string> &args, unsigned &index);
-  Status validateFlags();
+  Status validateFlags() const;
 };
 
 void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &index) {
@@ -2453,9 +2454,9 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &i
   }
 }
 
-Status CommandZAdd::validateFlags() {
+Status CommandZAdd::validateFlags() const {
   if (!flags_) {
-    return {};
+    return Status::OK();
   }
   bool nx = (flags_ & kZSetNX) != 0;
   bool xx = (flags_ & kZSetXX) != 0;
@@ -2473,7 +2474,7 @@ Status CommandZAdd::validateFlags() {
   if (gt && nx) {
     return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
-  return {};
+  return Status::OK();
 }
 
 class CommandZCount : public Commander {

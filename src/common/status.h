@@ -67,7 +67,7 @@ class Status {
   };
 
   Status() : Status(cOK) {}
-  explicit Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}
+  Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}  // NOLINT
 
   template <Code code>
   bool Is() const {
@@ -75,7 +75,7 @@ class Status {
   }
 
   bool IsOK() const { return Is<cOK>(); }
-  operator bool() const { return IsOK(); }
+  explicit operator bool() const { return IsOK(); }
 
   Code GetCode() const { return code_; }
 
@@ -92,6 +92,8 @@ class Status {
   static Status OK() { return {}; }
 
   static Status FromErrno() { return Status(NotOK, strerror(errno)); }
+
+  void GetValue() {}
 
  private:
   Code code_;
@@ -132,7 +134,7 @@ struct StatusOr {
 
   using Code = Status::Code;
 
-  explicit StatusOr(Status s) : code_(s.code_) {
+  StatusOr(Status s) : code_(s.code_) {  // NOLINT
     CHECK(!s);
     new (&error_) error_type(new std::string(std::move(s.msg_)));
   }
@@ -186,7 +188,7 @@ struct StatusOr {
   }
 
   bool IsOK() const { return Is<Code::cOK>(); }
-  operator bool() const { return IsOK(); }
+  explicit operator bool() const { return IsOK(); }
 
   Status ToStatus() const& {
     if (*this) return Status::OK();
@@ -197,6 +199,10 @@ struct StatusOr {
     if (*this) return Status::OK();
     return Status(code_, std::move(*error_));
   }
+
+  operator Status() const& { return ToStatus(); }
+
+  operator Status() && { return std::move(*this).ToStatus(); }
 
   Code GetCode() const { return code_; }
 
@@ -285,3 +291,10 @@ struct StatusOr {
   template <typename>
   friend struct StatusOr;
 };
+
+#define GET_OR_RET(...)                                         \
+  ({                                                            \
+    auto&& status = (__VA_ARGS__);                              \
+    if (!status) return std::forward<decltype(status)>(status); \
+    std::forward<decltype(status)>(status);                     \
+  }).GetValue()

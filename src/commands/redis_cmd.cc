@@ -36,6 +36,7 @@
 #include "cluster/redis_slot.h"
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
+#include "command_parser.h"
 #include "fd_util.h"
 #include "parse_util.h"
 #include "server/redis_connection.h"
@@ -100,77 +101,38 @@ AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string 
   return AuthResult::OK;
 }
 
-Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::string, bool> *white_list, int *result) {
-  int ttl = 0;
-  int64_t expire = 0;
-  bool last_arg = false;
-  bool has_ex = false, has_exat = false, has_pxat = false, has_px = false;
-  for (size_t i = 0; i < args.size(); i++) {
-    last_arg = (i == args.size() - 1);
-    std::string opt = Util::ToLower(args[i]);
-    if (opt == "ex" && !last_arg) {
-      has_ex = 1;
-      auto parse_result = ParseInt<int>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      ttl = *parse_result;
-      if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "exat" && !last_arg) {
-      has_exat = 1;
-      auto parse_result = ParseInt<int64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      expire = *parse_result;
-      if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "pxat" && !last_arg) {
-      has_pxat = 1;
-      auto parse_result = ParseInt<uint64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      uint64_t expire_ms = *parse_result;
-      if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      if (expire_ms < 1000) {
-        expire = 1;
-      } else {
-        expire = static_cast<int64_t>(expire_ms / 1000);
-      }
-    } else if (opt == "px" && !last_arg) {
-      has_px = 1;
-      int64_t ttl_ms = 0;
-      auto parse_result = ParseInt<int64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      ttl_ms = *parse_result;
-      if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      if (ttl_ms > 0 && ttl_ms < 1000) {
-        ttl = 1;  // round up the pttl to second
-      } else {
-        ttl = static_cast<int>(ttl_ms / 1000);
-      }
-    } else {
-      auto iter = white_list->find(opt);
-      if (iter != white_list->end()) {
-        iter->second = true;
-      } else {
-        return Status(Status::NotOK, errInvalidSyntax);
-      }
-    }
-  }
-  if (has_px + has_ex + has_exat + has_pxat > 1) {
-    return Status(Status::NotOK, errInvalidSyntax);
-  }
-  if (!ttl && expire) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
-    *result = expire - now;
+template <typename T>
+T TTLMsToS(T ttl) {
+  if (ttl <= 0) {
+    return ttl;
+  } else if (ttl < 1000) {
+    return 1;
   } else {
-    *result = ttl;
+    return ttl / 1000;
   }
-  return Status::OK();
+}
+
+int ExpireToTTL(int64_t expire) {
+  int64_t now = 0;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
+  return static_cast<int>(expire - now);
+}
+
+constexpr auto TTL_RANGE = NumericRange<int>{1, INT_MAX};
+
+template <typename T>
+StatusOr<int> ParseTTL(CommandParser<T> &parser, std::string_view curr_flag) {
+  if (parser.EatEqICaseFlag("EX", curr_flag)) {
+    return GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE));
+  } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
+    return ExpireToTTL(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE)));
+  } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
+    return TTLMsToS(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE)));
+  } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
+    return ExpireToTTL(TTLMsToS(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE))));
+  } else {
+    return {Status::NotOK, "other option found"};
+  }
 }
 
 class CommandAuth : public Commander {
@@ -393,15 +355,17 @@ class CommandGet : public Commander {
 class CommandGetEx : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_ = {{"persist", false}};
-    auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
-    if (!s.IsOK()) {
-      return s;
+    CommandParser parser(args, 2);
+    std::string_view ttl_flag;
+    while (parser.Good()) {
+      if (auto status = ParseTTL(parser, ttl_flag)) {
+        ttl_ = *status;
+      } else if (parser.EatEqICaseFlag("PERSIST", ttl_flag)) {
+        persist_ = true;
+      } else {
+        return {Status::RedisParseErr, "encounter unexpected options"};
+      }
     }
-    if (white_list_["persist"] && args.size() > 3) {
-      return Status(Status::NotOK, errInvalidSyntax);
-    }
-    return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
@@ -426,7 +390,7 @@ class CommandGetEx : public Commander {
 
  private:
   int ttl_ = 0;
-  std::unordered_map<std::string, bool> white_list_;
+  bool persist_ = false;
 };
 
 class CommandStrlen : public Commander {
@@ -582,15 +546,21 @@ class CommandAppend : public Commander {
 class CommandSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_ = {{"nx", false}, {"xx", false}};
-    auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), &white_list_, &ttl_);
-    if (white_list_["nx"] && white_list_["xx"]) {
-      return Status(Status::NotOK, errInvalidSyntax);
+    CommandParser parser(args, 3);
+    std::string_view ttl_flag, set_flag;
+    while (parser.Good()) {
+      if (auto status = ParseTTL(parser, ttl_flag)) {
+        ttl_ = *status;
+      } else if (parser.EatEqICaseFlag("NX", set_flag)) {
+        set_flag_ = NX;
+      } else if (parser.EatEqICaseFlag("XX", set_flag)) {
+        set_flag_ = XX;
+      } else {
+        return {Status::RedisParseErr, "encounter unexpected options"};
+      }
     }
-    if (!s.IsOK()) {
-      return s;
-    }
-    return Commander::Parse(args);
+
+    return Status::OK();
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
@@ -603,9 +573,9 @@ class CommandSet : public Commander {
       return Status::OK();
     }
 
-    if (white_list_["nx"]) {
+    if (set_flag_ == NX) {
       s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
-    } else if (white_list_["xx"]) {
+    } else if (set_flag_ == XX) {
       s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
     } else {
       s = string_db.SetEX(args_[1], args_[2], ttl_);
@@ -614,7 +584,7 @@ class CommandSet : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    if ((white_list_["nx"] || white_list_["xx"]) && !ret) {
+    if (set_flag_ != NONE && !ret) {
       *output = Redis::NilString();
     } else {
       *output = Redis::SimpleString("OK");
@@ -624,7 +594,7 @@ class CommandSet : public Commander {
 
  private:
   int ttl_ = 0;
-  std::unordered_map<std::string, bool> white_list_;
+  enum { NONE, NX, XX } set_flag_ = NONE;
 };
 
 class CommandSetEX : public Commander {
@@ -837,43 +807,17 @@ class CommandDecrBy : public Commander {
 class CommandCAS : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool last_arg;
-    bool ex_exist = false, px_exist = false;
-    for (size_t i = 4; i < args.size(); i++) {
-      last_arg = (i == args.size() - 1);
-      std::string opt = Util::ToLower(args[i]);
-      if (opt == "ex") {
-        ex_exist = true;
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        ttl_ = *parse_result;
-        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "px") {
-        px_exist = true;
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        auto ttl_ms = *parse_result;
-        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        if (ttl_ms > 0 && ttl_ms < 1000) {
-          // round up the pttl to second
-          ttl_ = 1;
-        } else {
-          ttl_ = static_cast<int>(ttl_ms / 1000);
-        }
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("EX")) {
+        ttl_ = GET_OR_RET(parser.TakeInt<int>(TTL_RANGE));
+      } else if (parser.EatEqICase("PX")) {
+        ttl_ = TTLMsToS(GET_OR_RET(parser.TakeInt<int>(TTL_RANGE)));
       } else {
-        return Status(Status::NotOK, errInvalidSyntax);
+        return {Status::NotOK, errInvalidSyntax};
       }
     }
-    if (ex_exist + px_exist > 1) {
-      return Status(Status::NotOK, errInvalidSyntax);
-    }
-    return Commander::Parse(args);
+    return {};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {

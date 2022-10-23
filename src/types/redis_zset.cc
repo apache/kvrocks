@@ -76,13 +76,13 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
     bool gt = (flags & kZSetGT) != 0;
 
     if (metadata.size > 0) {
-      if (flags & kZSetNX) {
-        continue;
-      }
       std::string old_score_bytes;
       s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
+        if (!s.IsNotFound() && (flags & kZSetNX)) {
+          continue;
+        }
         double old_score = DecodeDouble(old_score_bytes.data());
         if (flags & kZSetIncr) {
           if (lt && (*mscores)[i].score >= 0) {

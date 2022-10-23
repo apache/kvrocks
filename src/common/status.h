@@ -148,19 +148,10 @@ struct StatusOr {
             typename std::enable_if<(sizeof...(Ts) > 0 &&
                                      !std::is_same<Status, remove_cvref_t<first_element<Ts...>>>::value &&
                                      !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
-                                     !std::is_same<value_type, remove_cvref_t<first_element<Ts...>>>::value &&
                                      !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value),
                                     int>::type = 0>  // NOLINT
-  explicit StatusOr(Ts&&... args) : code_(Code::cOK) {
+  StatusOr(Ts&&... args) : code_(Code::cOK) {
     new (&value_) value_type(std::forward<Ts>(args)...);
-  }
-
-  StatusOr(T&& value) : code_(Code::cOK) {  // NOLINT
-    new (&value_) value_type(std::move(value));
-  }
-
-  StatusOr(const T& value) : code_(Code::cOK) {  // NOLINT
-    new (&value_) value_type(value);
   }
 
   StatusOr(const StatusOr&) = delete;
@@ -298,3 +289,6 @@ struct StatusOr {
     if (!status) return std::forward<decltype(status)>(status); \
     std::forward<decltype(status)>(status);                     \
   }).GetValue()
+
+template <typename T>
+StatusOr(T&&) -> StatusOr<remove_cvref_t<T>>;

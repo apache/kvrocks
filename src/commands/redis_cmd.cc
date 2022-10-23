@@ -28,6 +28,8 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <limits>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -118,20 +120,21 @@ int ExpireToTTL(int64_t expire) {
   return static_cast<int>(expire - now);
 }
 
-constexpr auto TTL_RANGE = NumericRange<int>{1, INT_MAX};
+template <typename T>
+constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
 
 template <typename T>
-StatusOr<int> ParseTTL(CommandParser<T> &parser, std::string_view curr_flag) {
+StatusOr<std::optional<int>> ParseTTL(CommandParser<T> &parser, std::string_view &curr_flag) {
   if (parser.EatEqICaseFlag("EX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE));
+    return GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE<int>));
   } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
-    return ExpireToTTL(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE)));
+    return ExpireToTTL(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
   } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
-    return TTLMsToS(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE)));
+    return TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
   } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
-    return ExpireToTTL(TTLMsToS(GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE))));
+    return ExpireToTTL(TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>))));
   } else {
-    return {Status::NotOK, "other option found"};
+    return std::nullopt;
   }
 }
 
@@ -358,14 +361,15 @@ class CommandGetEx : public Commander {
     CommandParser parser(args, 2);
     std::string_view ttl_flag;
     while (parser.Good()) {
-      if (auto status = ParseTTL(parser, ttl_flag)) {
-        ttl_ = *status;
+      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
+        ttl_ = *v;
       } else if (parser.EatEqICaseFlag("PERSIST", ttl_flag)) {
         persist_ = true;
       } else {
-        return {Status::RedisParseErr, "encounter unexpected options"};
+        return parser.InvalidSyntax();
       }
     }
+    return {};
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
@@ -549,14 +553,14 @@ class CommandSet : public Commander {
     CommandParser parser(args, 3);
     std::string_view ttl_flag, set_flag;
     while (parser.Good()) {
-      if (auto status = ParseTTL(parser, ttl_flag)) {
-        ttl_ = *status;
+      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
+        ttl_ = *v;
       } else if (parser.EatEqICaseFlag("NX", set_flag)) {
         set_flag_ = NX;
       } else if (parser.EatEqICaseFlag("XX", set_flag)) {
         set_flag_ = XX;
       } else {
-        return {Status::RedisParseErr, "encounter unexpected options"};
+        return parser.InvalidSyntax();
       }
     }
 
@@ -807,14 +811,15 @@ class CommandDecrBy : public Commander {
 class CommandCAS : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 3);
+    CommandParser parser(args, 4);
+    std::string_view flag;
     while (parser.Good()) {
-      if (parser.EatEqICase("EX")) {
-        ttl_ = GET_OR_RET(parser.TakeInt<int>(TTL_RANGE));
-      } else if (parser.EatEqICase("PX")) {
-        ttl_ = TTLMsToS(GET_OR_RET(parser.TakeInt<int>(TTL_RANGE)));
+      if (parser.EatEqICaseFlag("EX", flag)) {
+        ttl_ = GET_OR_RET(parser.TakeInt<int>(TTL_RANGE<int>));
+      } else if (parser.EatEqICaseFlag("PX", flag)) {
+        ttl_ = static_cast<int>(TTLMsToS(GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>))));
       } else {
-        return {Status::NotOK, errInvalidSyntax};
+        return parser.InvalidSyntax();
       }
     }
     return {};

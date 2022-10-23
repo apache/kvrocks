@@ -369,7 +369,7 @@ std::string ToLower(std::string in) {
   return in;
 }
 
-bool CaseInsensitiveCompare(const std::string &lhs, const std::string &rhs) {
+bool EqualICase(const std::string_view &lhs, const std::string_view &rhs) {
   return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(),
                                                 [](char l, char r) { return std::tolower(l) == std::tolower(r); });
 }

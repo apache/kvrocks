@@ -27,10 +27,11 @@
 
 #include "parse_util.h"
 #include "status.h"
+#include "util.h"
 
 template <typename Iter>
 struct MoveIterator : Iter {
-  using Iter::Iter;
+  explicit MoveIterator(Iter iter) : Iter(iter){};
 
   typename Iter::value_type&& operator*() const { return std::move(this->Iter::operator*()); }
 };
@@ -48,13 +49,13 @@ struct CommandParser {
   explicit CommandParser(Container&& con, size_t skip_num = 0)
       : begin(MoveIterator(std::begin(con) + skip_num)), end(MoveIterator(std::end(con))) {}
 
-  decltype(auto) RawPeek() { return *begin; }
+  decltype(auto) RawPeek() const { return *begin; }
 
   decltype(auto) RawTake() { return *begin++; }
 
   decltype(auto) RawNext() { ++begin; }
 
-  bool Good() { return begin != end; }
+  bool Good() const { return begin != end; }
 
   template <typename Pred>
   bool EatPred(Pred&& pred) {
@@ -67,10 +68,7 @@ struct CommandParser {
   }
 
   bool EatEqICase(std::string_view str) {
-    return EatPred([str](const auto& v) {
-      return std::equal(v.begin(), v.end(), str.begin(),
-                        [](char l, char r) { return std::tolower(l) == std::tolower(r); });
-    });
+    return EatPred([str](const auto& v) { return Util::EqualICase(str, v); });
   }
 
   bool EatEqICaseFlag(std::string_view str, std::string_view& flag) {
@@ -99,10 +97,10 @@ struct CommandParser {
   StatusOr<std::string> TakeStr() {
     if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
 
-    return *begin;
+    return RawTake();
   }
 
-  template <typename T, typename... Args>
+  template <typename T = long long, typename... Args>
   StatusOr<T> TakeInt(Args&&... args) {
     if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
 
@@ -115,13 +113,15 @@ struct CommandParser {
     return res;
   }
 
+  static Status InvalidSyntax() { return {Status::RedisParseErr, "syntax error"}; }
+
  private:
   Iter begin;
   Iter end;
 };
 
 template <typename Container>
-CommandParser(const Container& con, size_t) -> CommandParser<typename Container::const_iterator>;
+CommandParser(const Container&, size_t = 0) -> CommandParser<typename Container::const_iterator>;
 
 template <typename Container>
-CommandParser(Container&& con, size_t) -> CommandParser<MoveIterator<typename Container::iterator>>;
+CommandParser(Container&&, size_t = 0) -> CommandParser<MoveIterator<typename Container::iterator>>;

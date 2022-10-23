@@ -128,7 +128,7 @@ Config::Config() {
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", true, new StringField(&backup_dir, "")},
+      {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
@@ -302,7 +302,7 @@ void Config::initFieldValidator() {
 }
 
 // The callback function would be invoked after the field was set,
-// it may change related fileds or re-format the field. for example,
+// it may change related fields or re-format the field. for example,
 // when the 'dir' was set, the db-dir or backup-dir should be reset as well.
 void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -329,11 +329,31 @@ void Config::initFieldCallback() {
       {"dir",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          db_dir = dir + "/db";
-         if (backup_dir.empty()) backup_dir = dir + "/backup";
+         {
+           std::lock_guard<std::mutex> lg(this->backup_mu_);
+           if (backup_dir.empty()) {
+             backup_dir = dir + "/backup";
+           }
+         }
          if (log_dir.empty()) log_dir = dir;
          checkpoint_dir = dir + "/checkpoint";
          sync_checkpoint_dir = dir + "/sync_checkpoint";
          backup_sync_dir = dir + "/backup_for_sync";
+         return Status::OK();
+       }},
+      {"backup-dir",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         std::string previous_backup;
+         {
+           // Note: currently, backup_mu_ may block by backing up or purging,
+           //  the command may wait for seconds.
+           std::lock_guard<std::mutex> lg(this->backup_mu_);
+           previous_backup = std::move(backup_dir);
+           backup_dir = v;
+         }
+         if (!previous_backup.empty()) {
+           LOG(INFO) << "change backup dir from " << backup_dir << " to " << v;
+         }
          return Status::OK();
        }},
       {"cluster-enabled",
@@ -581,6 +601,25 @@ void Config::ClearMaster() {
   }
 }
 
+Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
+  std::string field_key = Util::ToLower(input.first);
+  const char ns_str[] = "namespace.";
+  size_t ns_str_size = sizeof(ns_str) - 1;
+  if (!strncasecmp(input.first.data(), ns_str, ns_str_size)) {
+    // namespace should keep key case-sensitive
+    field_key = input.first;
+    tokens[input.second] = input.first.substr(ns_str_size);
+  }
+  auto iter = fields_.find(field_key);
+  if (iter != fields_.end()) {
+    auto &field = iter->second;
+    field->line_number = line_number;
+    auto s = field->Set(input.second);
+    if (!s.IsOK()) return s;
+  }
+  return Status::OK();
+}
+
 Status Config::parseConfigFromString(const std::string &input, int line_number) {
   auto parsed = ParseConfigLine(input);
   if (!parsed) return parsed.ToStatus();
@@ -589,22 +628,7 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 
   if (kv.first.empty() || kv.second.empty()) return Status::OK();
 
-  std::string field_key = Util::ToLower(kv.first);
-  const char ns_str[] = "namespace.";
-  size_t ns_str_size = sizeof(ns_str) - 1;
-  if (!strncasecmp(kv.first.data(), ns_str, ns_str_size)) {
-    // namespace should keep key case-sensitive
-    field_key = kv.first;
-    tokens[kv.second] = kv.first.substr(ns_str_size);
-  }
-  auto iter = fields_.find(field_key);
-  if (iter != fields_.end()) {
-    auto &field = iter->second;
-    field->line_number = line_number;
-    auto s = field->Set(kv.second);
-    if (!s.IsOK()) return s;
-  }
-  return Status::OK();
+  return parseConfigFromPair(kv, line_number);
 }
 
 Status Config::finish() {
@@ -637,28 +661,38 @@ Status Config::finish() {
   return Status::OK();
 }
 
-Status Config::Load(const std::string &path) {
-  if (!path.empty()) {
-    path_ = path;
-    std::ifstream file(path_);
-    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+Status Config::Load(const CLIOptions &opts) {
+  if (!opts.conf_file.empty()) {
+    std::ifstream file;
+    std::istream *in = nullptr;
+    if (opts.conf_file == "-") {
+      in = &std::cin;
+    } else {
+      path_ = opts.conf_file;
+      file.open(path_);
+      if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+      in = &file;
+    }
 
     std::string line;
     int line_num = 1;
-    while (!file.eof()) {
-      std::getline(file, line);
-      Status s = parseConfigFromString(line, line_num);
-      if (!s.IsOK()) {
-        file.close();
+    while (!in->eof()) {
+      std::getline(*in, line);
+      if (auto s = parseConfigFromString(line, line_num); !s) {
         return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
       }
       line_num++;
     }
-    file.close();
   } else {
     std::cout << "Warn: no config file specified, using the default config. "
                  "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf"
               << std::endl;
+  }
+
+  for (const auto &opt : opts.cli_options) {
+    if (Status s = parseConfigFromPair(opt, -1); !s) {
+      return Status(Status::NotOK, "CLI config option error: " + s.Msg());
+    }
   }
 
   for (const auto &iter : fields_) {

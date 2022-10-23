@@ -71,7 +71,7 @@ Storage::Storage(Config *config) : env_(rocksdb::Env::Default()), config_(config
   Metadata::InitVersionCounter();
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
-  backup_creating_time_ = std::time(nullptr);
+  backup_creating_time_ = Util::GetTimeStamp();
   SetWriteOptions(config->RocksDB.write_options);
 }
 
@@ -327,15 +327,12 @@ Status Storage::Open(bool read_only) {
   return Status::OK();
 }
 
-Status Storage::Open() { return Open(false); }
-
-Status Storage::OpenForReadOnly() { return Open(true); }
-
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
-  std::lock_guard<std::mutex> lg(backup_mu_);
+  std::lock_guard<std::mutex> lg(config_->backup_mu_);
+  std::string task_backup_dir = config_->backup_dir;
 
-  std::string tmpdir = config_->backup_dir + ".tmp";
+  std::string tmpdir = task_backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
 
@@ -354,11 +351,11 @@ Status Storage::CreateBackup() {
   }
 
   // 2) Rename tmp backup to real backup dir
-  if (!(s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options())).ok()) {
+  if (!(s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options())).ok()) {
     LOG(WARNING) << "[storage] Fail to clean old backup, error:" << s.ToString();
     return Status(Status::NotOK, s.ToString());
   }
-  if (!(s = env_->RenameFile(tmpdir, config_->backup_dir)).ok()) {
+  if (!(s = env_->RenameFile(tmpdir, task_backup_dir)).ok()) {
     LOG(WARNING) << "[storage] Fail to rename tmp backup, error:" << s.ToString();
     // Just try best effort
     if (!(s = rocksdb::DestroyDB(tmpdir, rocksdb::Options())).ok()) {
@@ -367,7 +364,7 @@ Status Storage::CreateBackup() {
     return Status(Status::NotOK, s.ToString());
   }
   // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
-  backup_creating_time_ = std::time(nullptr);
+  backup_creating_time_ = static_cast<time_t>(Util::GetTimeStamp());
 
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
@@ -467,16 +464,17 @@ void Storage::EmptyDB() {
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = time(nullptr);
-  std::lock_guard<std::mutex> lg(backup_mu_);
+  std::lock_guard<std::mutex> lg(config_->backup_mu_);
+  std::string task_backup_dir = config_->backup_dir;
 
   // Return if there is no backup
-  auto s = env_->FileExists(config_->backup_dir);
+  auto s = env_->FileExists(task_backup_dir);
   if (!s.ok()) return;
 
   // No backup is needed to keep or the backup is expired, we will clean it.
   if (num_backups_to_keep == 0 ||
       (backup_max_keep_hours != 0 && backup_creating_time_ + backup_max_keep_hours * 3600 < now)) {
-    s = rocksdb::DestroyDB(config_->backup_dir, rocksdb::Options());
+    s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options());
     if (s.ok()) {
       LOG(INFO) << "[storage] Succeeded cleaning old backup that was born at " << backup_creating_time_;
     } else {
@@ -742,8 +740,9 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
     // Create checkpoint of rocksdb
     s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB);
-    storage->SetCheckpointCreateTime(std::time(nullptr));
-    storage->SetCheckpointAccessTime(std::time(nullptr));
+    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    storage->SetCheckpointCreateTime(now);
+    storage->SetCheckpointAccessTime(now);
     if (!s.ok()) {
       LOG(WARNING) << "[storage] Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
@@ -755,7 +754,8 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     int64_t can_shared_time = storage->config_->RocksDB.WAL_ttl_seconds / 2;
     if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
-    if (std::time(nullptr) - storage->GetCheckpointCreateTime() > can_shared_time) {
+    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    if (now - storage->GetCheckpointCreateTime() > can_shared_time) {
       LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
       return Status(Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint");
     }

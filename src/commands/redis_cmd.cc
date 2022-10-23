@@ -165,8 +165,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
     return Status(Status::NotOK, errInvalidSyntax);
   }
   if (!ttl && expire) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     *result = expire - now;
   } else {
     *result = ttl;
@@ -1179,8 +1178,7 @@ class CommandExists : public Commander {
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInteger);
@@ -1211,8 +1209,7 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     auto ttl_ms = ParseInt<int64_t>(args[2], 10);
     if (!ttl_ms) {
       return Status(Status::RedisParseErr, errValueNotInteger);
@@ -2382,12 +2379,12 @@ class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
-    parseOptions(args, index);
+    parseFlags(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
     if (auto left = (args.size() - index); left > 0) {
-      if ((flags_ & kZSetIncr) && left != 2) {
+      if (flags_.HasIncr() && left != 2) {
         return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
       } else if (left % 2 != 0) {
         return Status(Status::RedisParseErr, errInvalidSyntax);
@@ -2415,10 +2412,10 @@ class CommandZAdd : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    bool incr = (flags_ & kZSetIncr) != 0;
+    bool incr = flags_.HasIncr();
     if (incr) {
       auto new_score = member_scores_[0].score;
-      bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_ & kZSetLT), gt = (flags_ & kZSetGT);
+      bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
       if ((nx || xx || lt || gt) && old_score == new_score &&
           ret == 0) {  // not the first time using incr && score not changed
         *output = Redis::NilString();
@@ -2433,20 +2430,20 @@ class CommandZAdd : public Commander {
 
  private:
   std::vector<MemberScore> member_scores_;
-  uint8_t flags_ = 0;
+  ZAddFlags flags_{0};
 
-  void parseOptions(const std::vector<std::string> &args, unsigned &index);
+  void parseFlags(const std::vector<std::string> &args, unsigned &index);
   Status validateFlags() const;
 };
 
-void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &index) {
+void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &index) {
   std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
                                                         {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
   for (unsigned i = 2; i < args.size(); i++) {
     auto option = Util::ToLower(args[i]);
     auto it = options.find(option);
     if (it != options.end()) {
-      flags_ |= it->second;
+      flags_.SetFlag(it->second);
       index++;
     } else {
       break;
@@ -2455,23 +2452,14 @@ void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &i
 }
 
 Status CommandZAdd::validateFlags() const {
-  if (!flags_) {
+  if (!flags_.HasFlag()) {
     return Status::OK();
   }
-  bool nx = (flags_ & kZSetNX) != 0;
-  bool xx = (flags_ & kZSetXX) != 0;
-  bool lt = (flags_ & kZSetLT) != 0;
-  bool gt = (flags_ & kZSetGT) != 0;
+  bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
   if (nx && xx) {
     return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
   }
-  if (lt && gt) {
-    return Status(Status::RedisParseErr, errZSetLTGTNX);
-  }
-  if (lt && nx) {
-    return Status(Status::RedisParseErr, errZSetLTGTNX);
-  }
-  if (gt && nx) {
+  if ((lt && gt) || (lt && nx) || (gt && nx)) {
     return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   return Status::OK();
@@ -4717,7 +4705,8 @@ class CommandFetchMeta : public Commander {
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
     });
     t.detach();
 
@@ -4778,7 +4767,8 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
     });
     t.detach();

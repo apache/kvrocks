@@ -19,24 +19,21 @@ name: CI
 
 on: [push, pull_request]
 
-# Cancel previous workflows if they are the same workflow on same ref (branch/tags)
-# with the same event (push/pull_request) even they are in progress.
-# This setting will help reduce the number of duplicated workflows.
+# Concurrency strategy:
+#   github.workflow: distinguish this workflow from others
+#   github.event_name: distinguish `push` event from `pull_request` event
+#   github.event.number: set to the number of the pull request if `pull_request` event
+#   github.run_id: otherwise, it's a `push` event, only cancel if we rerun the workflow
+#
+# Reference:
+#   https://docs.github.com/en/actions/using-jobs/using-concurrency
+#   https://docs.github.com/en/actions/learn-github-actions/contexts#github-context
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  license:
-    name: Check license header
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: apache/skywalking-eyes/header@v0.4.0
-        with:
-          config: tools/ci/licenserc.yml
-
-  lint:
+  check-and-lint:
     name: Lint and check code
     runs-on: ubuntu-20.04
     steps:
@@ -48,6 +45,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y clang-format-12 clang-tidy-12
+      - uses: apache/skywalking-eyes/header@v0.4.0
+        with:
+          config: tools/ci/licenserc.yml
       - name: Check with clang-format
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-12
@@ -72,7 +72,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [license, lint]
+    needs: [check-and-lint]
     strategy:
       fail-fast: false
       matrix:
@@ -156,21 +156,12 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Cache redis
-        id: cache-redis
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
-
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
-
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
@@ -178,6 +169,13 @@ jobs:
           sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/local/bin/redis-cli
+          key: ${{ runner.os }}-redis-cli
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
@@ -186,13 +184,13 @@ jobs:
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
-      - name: Checkout Code Base
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.x
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'tests/gocase/go.mod'
 
       - name: Build Kvrocks
         run: |
@@ -202,12 +200,7 @@ jobs:
       - name: Run Unit Test
         run: |
           export ${{ matrix.runtime_env_vars }}
-          ./build/unittest
-
-      - name: Setup Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.19.x
+          ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |

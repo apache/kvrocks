@@ -188,7 +188,7 @@ void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]) {
   state[3] += d;
   state[4] += e;
   /* Wipe variables */
-  a = b = c = d = e = 0;
+  a = b = c = d = e = 0;  // NOLINT
 #ifdef SHA1HANDSOFF
   memset(block, '\0', sizeof(block));
 #endif

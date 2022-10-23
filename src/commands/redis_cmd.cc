@@ -584,7 +584,7 @@ class CommandSet : public Commander {
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s;
 

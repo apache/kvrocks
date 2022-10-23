@@ -148,6 +148,10 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 	t.Run(fmt.Sprintf("ZSET ZADD NX/XX option supports a single pair - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
+		require.Equal(t, int64(2), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX: true, Members: []redis.Z{{Member: "a", Score: 1}, {Member: "b", Score: 2}}}).Val())
+		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX: true, Members: []redis.Z{{Member: "c", Score: 3}}}).Val())
+
+		rdb.Del(ctx, "ztmp")
 		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX: true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
 		require.Equal(t, int64(0), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{NX: true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
 		require.Equal(t, int64(1), rdb.ZAddArgs(ctx, "ztmp", redis.ZAddArgs{XX: true, Ch: true, Members: []redis.Z{{Member: "abc", Score: 2.5}}}).Val())

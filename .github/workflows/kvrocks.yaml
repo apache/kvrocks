@@ -40,20 +40,22 @@ jobs:
     name: Lint and check code
     runs-on: ubuntu-20.04
     steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v3
-      - name: Install Check Tools
+      - uses: actions/checkout@v3
+      - name: Prepare Dependencies
         run: |
           sudo apt update
           sudo apt install -y clang-format-12 clang-tidy-12
-      - name: Setup Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.19.x
-      - name: Check code format
+      - name: Check with clang-format
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-12
-      - name: Format code
+      - name: Check with clang-tidy
+        run: |
+          ./x.py build --skip-build
+          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
+      - name: Lint with golangci-lint
+        run: ./x.py check golangci-lint
+
+      - name: Prepare format patch
         if: always() && steps.check-format.outcome != 'success'
         run: |
           ./x.py format --clang-format-path clang-format-12
@@ -64,12 +66,6 @@ jobs:
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
-      - name: Lint gocase code
-        run: ./x.py check golangci-lint
-      - name: Check cpp code via clang-tidy
-        run: |
-          ./x.py build --skip-build
-          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
 
   build-and-test:
     name: Build and test

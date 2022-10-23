@@ -289,6 +289,3 @@ struct StatusOr {
     if (!status) return std::forward<decltype(status)>(status); \
     std::forward<decltype(status)>(status);                     \
   }).GetValue()
-
-template <typename T>
-StatusOr(T&&) -> StatusOr<remove_cvref_t<T>>;

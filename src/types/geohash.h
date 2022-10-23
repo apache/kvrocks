@@ -88,13 +88,13 @@ typedef enum {
 } GeoDirection;
 
 typedef struct {
-  uint64_t bits;
-  uint8_t step;
+  uint64_t bits = 0;
+  uint8_t step = 0;
 } GeoHashBits;
 
 typedef struct {
-  double min;
-  double max;
+  double min = 0;
+  double max = 0;
 } GeoHashRange;
 
 typedef struct {

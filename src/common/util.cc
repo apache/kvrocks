@@ -637,9 +637,9 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
 }
 
 bool IsPortInUse(int port) {
-  int fd;
+  int fd = NullFD;
   Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
-  if (fd > 0) close(fd);
+  if (fd != NullFD) close(fd);
   return s.IsOK();
 }
 

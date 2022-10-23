@@ -45,8 +45,7 @@ jobs:
       - name: Install Check Tools
         run: |
           sudo apt update
-          sudo apt install -y cppcheck
-          sudo apt install -y clang-format-12
+          sudo apt install -y clang-format-12 clang-tidy-12
       - name: Setup Go
         uses: actions/setup-go@v3
         with:
@@ -65,10 +64,12 @@ jobs:
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
-      - name: Lint and check code
+      - name: Lint gocase code
+        run: ./x.py check golangci-lint
+      - name: Check cpp code via clang-tidy
         run: |
-          ./x.py check cppcheck
-          ./x.py check golangci-lint
+          ./x.py build --skip-build
+          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
 
   build-and-test:
     name: Build and test

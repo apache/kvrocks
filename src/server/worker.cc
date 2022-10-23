@@ -101,7 +101,7 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  int local_port = Util::GetLocalPort(fd);
+  int local_port = Util::GetLocalPort(fd);  // NOLINT
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {

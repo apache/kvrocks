@@ -29,7 +29,7 @@
 template <typename F, F *f>
 struct StaticFunction {
   template <typename... Ts>
-  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {
+  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
     return f(std::forward<Ts>(args)...);
   }
 };
@@ -44,7 +44,6 @@ struct UniqueFreePtr : std::unique_ptr<T, StaticFree> {
 };
 
 struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
-  // cppcheck-suppress uninitMemberVar
   UniqueEvbufReadln(evbuffer *buffer, evbuffer_eol_style eol_style)
       : UniqueFreePtr(evbuffer_readln(buffer, &length, eol_style)) {}
 

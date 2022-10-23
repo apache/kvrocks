@@ -82,18 +82,6 @@ struct CommandParser {
     return false;
   }
 
-  template <typename Pred>
-  auto TakePred(Pred&& pred) {
-    if (!Good()) return Status{Status::RedisParseErr, "no more item to parse"};
-
-    auto status = std::forward<Pred>(pred)(RawPeek());
-    if (status) {
-      RawNext();
-    }
-
-    return status;
-  }
-
   StatusOr<std::string> TakeStr() {
     if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
 

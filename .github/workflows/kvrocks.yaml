@@ -38,24 +38,37 @@ jobs:
 
   lint:
     name: Lint and check code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout Code Base
-        uses: actions/checkout@v3
-      - name: Install Check Tools
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'tests/gocase/go.mod'
+      - name: Prepare Dependencies
         run: |
           sudo apt update
-          sudo apt install -y cppcheck
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.x
-      - name: Setup dependencies
-        run: pip install cpplint==1.5.0
-      - name: Lint and check code
+          sudo apt install -y clang-format-12 clang-tidy-12
+      - name: Check with clang-format
+        id: check-format
+        run: ./x.py check format --clang-format-path clang-format-12
+      - name: Check with clang-tidy
         run: |
-          ./x.py check cpplint
-          ./x.py check cppcheck
+          ./x.py build --skip-build
+          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-12 --run-clang-tidy-path run-clang-tidy-12
+      - name: Lint with golangci-lint
+        run: ./x.py check golangci-lint
+
+      - name: Prepare format patch
+        if: always() && steps.check-format.outcome != 'success'
+        run: |
+          ./x.py format --clang-format-path clang-format-12
+          git diff -p > clang-format.patch
+          cat clang-format.patch
+      - name: Upload format patch
+        uses: actions/upload-artifact@v3
+        if: always() && steps.check-format.outcome != 'success'
+        with:
+          path: clang-format.patch
 
   build-and-test:
     name: Build and test
@@ -65,59 +78,87 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang
-            os: macos-latest
+            os: macos-11
             compiler: auto
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Darwin Clang without Jemalloc
-            os: macos-latest
+            os: macos-11
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             compiler: gcc
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             compiler: clang
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC ASan
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC TSan
-            os: ubuntu-18.04
+          - name: Ubuntu Clang ASan
+            os: ubuntu-20.04
+            with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: clang
+          - name: Ubuntu GCC TSan
+            os: ubuntu-20.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
-          - name: Ubuntu Clang ASan
-            os: ubuntu-18.04
-            with_sanitizer: -DENABLE_ASAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            compiler: clang
           - name: Ubuntu Clang TSan
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
             runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_ninja: --ninja
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu GCC Ninja without Jemalloc
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             with_ninja: --ninja
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC without luajit
-            os: ubuntu-18.04
-            without_luajit: -DUSE_LUAJIT=OFF
+          - name: Ubuntu GCC with luaJIT
+            os: ubuntu-20.04
+            with_openssl: -DENABLE_OPENSSL=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            compiler: gcc
+          - name: Ubuntu GCC ASan with luaJIT
+            os: ubuntu-20.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_ASAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC TSan with luaJIT
+            os: ubuntu-20.04
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_luajit: -DUSE_LUAJIT=ON
+            with_sanitizer: -DENABLE_TSAN=ON
+            with_openssl: -DENABLE_OPENSSL=ON
+            compiler: gcc
+          - name: Ubuntu GCC without OpenSSL
+            os: ubuntu-20.04
             compiler: gcc
 
     runs-on: ${{ matrix.os }}
     steps:
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/local/bin/redis-cli
@@ -126,51 +167,68 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install cmake gcc autoconf automake libtool
+          brew install cmake gcc autoconf automake libtool openssl
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y tcl8.5 ninja-build
+          sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.6.tar.gz
-          tar -xzvf redis-6.2.6.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
+          tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.6 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Checkout Code Base
         uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.x
 
       - name: Build Kvrocks
-        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }}
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.with_luajit }} \
+            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Run Unit Test
         run: |
           export ${{ matrix.runtime_env_vars }}
           ./build/unittest
 
-      - name: Run Redis Tcl Test
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.x
+
+      - name: Run Go Integration Cases
         run: |
           export ${{ matrix.runtime_env_vars }}
-          cp $HOME/local/bin/redis-cli tests/tcl/redis-cli
-          cd tests/tcl
-          ./runtest --dont-clean
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/tmp -r || true)
+          export PATH=$PATH:$HOME/local/bin/
+          GOCASE_RUN_ARGS=""
+          if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            git clone https://github.com/jsha/minica
+            cd minica && go build && cd ..
+            ./minica/minica --domains localhost
+            cp localhost/cert.pem tests/gocase/tls/cert/server.crt
+            cp localhost/key.pem tests/gocase/tls/cert/server.key
+            cp minica.pem tests/gocase/tls/cert/ca.crt
+            GOCASE_RUN_ARGS="-tlsEnable"
+          fi
+          ./x.py test go build $GOCASE_RUN_ARGS
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "$SANITIZER_OUTPUT"
             echo "\ndetail reports:\n"
-            cat $(find tests/tmp -iname stderr)
+            cat $(find tests/gocase/workspace -iname stderr)
             echo "sanitizer error was reported, exiting..."
             exit 1
           fi

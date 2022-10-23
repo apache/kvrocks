@@ -25,9 +25,9 @@
 
 #include <memory>
 
-#include "../../src/redis_slot.h"
-#include "../../src/redis_reply.h"
+#include "cluster/redis_slot.h"
 #include "db_util.h"
+#include "server/redis_reply.h"
 
 Status Parser::ParseFullDB() {
   rocksdb::DB *db_ = storage_->GetDB();
@@ -60,8 +60,7 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire
   std::string op, ns, user_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, is_slotid_encoded_);
   std::string output;
-  output = Redis::Command2RESP(
-      {"SET", user_key, value.ToString().substr(5, value.size() - 5)});
+  output = Redis::Command2RESP({"SET", user_key, value.ToString().substr(5, value.size() - 5)});
   Status s = writer_->Write(ns, {output});
   if (!s.IsOK()) return s;
 
@@ -124,7 +123,8 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
         output = Redis::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
-      default:break;  // should never get here
+      default:
+        break;  // should never get here
     }
     if (type != kRedisBitmap) {
       s = writer_->Write(ns, {output});
@@ -147,9 +147,9 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
     if (bitmap[i] == 0) continue;  // ignore zero byte
     for (int j = 0; j < 8; j++) {
       if (!(bitmap[i] & (1 << j))) continue;  // ignore zero bit
-      s = writer_->Write(ns.ToString(), {Redis::Command2RESP(
-          {"SETBIT", user_key.ToString(), std::to_string(index * 8 + i * 8 + j), "1"})
-      });
+      s = writer_->Write(
+          ns.ToString(),
+          {Redis::Command2RESP({"SETBIT", user_key.ToString(), std::to_string(index * 8 + i * 8 + j), "1"})});
       if (!s.IsOK()) return s;
     }
   }

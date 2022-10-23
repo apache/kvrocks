@@ -21,11 +21,12 @@
 #define KVROCKS_TEST_BASE_H
 
 #include <gtest/gtest.h>
-#include "redis_db.h"
-#include "redis_hash.h"
+
+#include "storage/redis_db.h"
+#include "types/redis_hash.h"
 
 class TestBase : public testing::Test {
-protected:
+ protected:
   explicit TestBase() {
     config_ = new Config();
     config_->db_dir = "testsdb";
@@ -43,11 +44,11 @@ protected:
     delete config_;
   }
 
-protected:
+ protected:
   Engine::Storage *storage_;
   Config *config_ = nullptr;
   std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
 };
-#endif //KVROCKS_TEST_BASE_H
+#endif  // KVROCKS_TEST_BASE_H

@@ -20,13 +20,14 @@
 
 #include "redis_writer.h"
 
+#include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <assert.h>
+
 #include <system_error>
 
-#include "../../src/util.h"
-#include "../../src/redis_reply.h"
+#include "server/redis_reply.h"
+#include "util.h"
 
 RedisWriter::RedisWriter(Kvrocks2redis::Config *config) : Writer(config) {
   try {
@@ -142,10 +143,7 @@ void RedisWriter::sync() {
   delete[] buffer;
 }
 
-Status RedisWriter::getRedisConn(const std::string &ns,
-                                 const std::string &host,
-                                 uint32_t port,
-                                 const std::string &auth,
+Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host, uint32_t port, const std::string &auth,
                                  int db_index) {
   auto iter = redis_fds_.find(ns);
   if (iter == redis_fds_.end()) {
@@ -177,8 +175,7 @@ Status RedisWriter::getRedisConn(const std::string &ns,
 
 Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   const auto auth_len_str = std::to_string(auth.length());
-  Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF +
-      auth + CRLF);
+  Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
   std::string line;
   auto s = Util::SockReadLine(redis_fds_[ns], &line);
   if (!s.IsOK()) {
@@ -193,8 +190,8 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
 Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   const auto db_number_str = std::to_string(db_number);
   const auto db_number_str_len = std::to_string(db_number_str.length());
-  Util::SockSend(redis_fds_[ns], "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF +
-      db_number_str + CRLF);
+  Util::SockSend(redis_fds_[ns],
+                 "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
   std::string line;
   auto s = Util::SockReadLine(redis_fds_[ns], &line);

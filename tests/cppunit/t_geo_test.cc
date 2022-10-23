@@ -20,24 +20,24 @@
 
 #include <gtest/gtest.h>
 #include <math.h>
+
 #include <memory>
+
 #include "test_base.h"
-#include "redis_geo.h"
+#include "types/redis_geo.h"
 
 class RedisGeoTest : public TestBase {
  protected:
-  RedisGeoTest() : TestBase() {
-    geo = Util::MakeUnique<Redis::Geo>(storage_, "geo_ns");
-  }
+  RedisGeoTest() : TestBase() { geo = std::make_unique<Redis::Geo>(storage_, "geo_ns"); }
   ~RedisGeoTest() = default;
   void SetUp() {
     key_ = "test_geo_key";
-    fields_ = {"geo_test_key-1", "geo_test_key-2", "geo_test_key-3", "geo_test_key-4", "geo_test_key-5",
-               "geo_test_key-6", "geo_test_key-7"};
+    fields_ = {"geo_test_key-1", "geo_test_key-2", "geo_test_key-3", "geo_test_key-4",
+               "geo_test_key-5", "geo_test_key-6", "geo_test_key-7"};
     longitudes_ = {-180, -1.23402, -1.23402, 0, 1.23402, 1.23402, 179.12345};
     latitudes_ = {-85.05112878, -1.23402, -1.23402, 0, 1.23402, 1.23402, 85.0511};
-    geoHashes_ = {"00bh0hbj200", "7zz0gzm7m10", "7zz0gzm7m10", "s0000000000", "s00zh0dsdy0",
-                  "s00zh0dsdy0", "zzp7u51dwf0"};
+    geoHashes_ = {"00bh0hbj200", "7zz0gzm7m10", "7zz0gzm7m10", "s0000000000",
+                  "s00zh0dsdy0", "s00zh0dsdy0", "zzp7u51dwf0"};
   }
 
  protected:
@@ -122,11 +122,7 @@ TEST_F(RedisGeoTest, Radius) {
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::vector<GeoPoint> gps;
-  geo->Radius(key_, longitudes_[0], latitudes_[0], 100000000,
-              100,
-              kSortASC,
-              std::string(),
-              false, 1, &gps);
+  geo->Radius(key_, longitudes_[0], latitudes_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
@@ -144,11 +140,7 @@ TEST_F(RedisGeoTest, RadiusByMember) {
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::vector<GeoPoint> gps;
-  geo->RadiusByMember(key_, fields_[0], 100000000,
-                      100,
-                      kSortASC,
-                      std::string(),
-                      false, 1, &gps);
+  geo->RadiusByMember(key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());

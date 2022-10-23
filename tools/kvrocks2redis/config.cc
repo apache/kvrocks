@@ -20,16 +20,16 @@
 
 #include "config.h"
 
-#include <strings.h>
 #include <rocksdb/env.h>
+#include <strings.h>
 
 #include <fstream>
 #include <iostream>
 #include <utility>
 #include <vector>
 
-#include "../../src/util.h"
-#include "../../src/config.h"
+#include "config/config.h"
+#include "util.h"
 
 namespace Kvrocks2redis {
 
@@ -50,6 +50,7 @@ Status Config::parseConfigFromString(std::string input) {
   // omit empty line and comment
   if (args.empty() || args[0].front() == '#') return Status::OK();
 
+  args[0] = Util::ToLower(args[0]);
   size_t size = args.size();
   if (size == 2 && args[0] == "daemonize") {
     int i;
@@ -89,7 +90,7 @@ Status Config::parseConfigFromString(std::string input) {
     kvrocks_host = args[1];
     // In new versions, we don't use extra port to implement replication
     kvrocks_port = std::stoi(args[2]);
-    if (kvrocks_port <= 0 || kvrocks_port >= 65535) {
+    if (kvrocks_port <= 0 || kvrocks_port > 65535) {
       return Status(Status::NotOK, "kvrocks port range should be between 0 and 65535");
     }
     if (size == 4) {
@@ -129,7 +130,6 @@ Status Config::Load(std::string path) {
   int line_num = 1;
   while (!file.eof()) {
     std::getline(file, line);
-    line = Util::ToLower(line);
     Status s = parseConfigFromString(line);
     if (!s.IsOK()) {
       file.close();

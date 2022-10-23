@@ -19,14 +19,16 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <memory>
-#include "redis_sortedint.h"
+
 #include "test_base.h"
+#include "types/redis_sortedint.h"
 
 class RedisSortedintTest : public TestBase {
-protected:
+ protected:
   explicit RedisSortedintTest() : TestBase() {
-    sortedint = Util::MakeUnique<Redis::Sortedint>(storage_, "sortedint_ns");
+    sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns");
   }
   ~RedisSortedintTest() = default;
   void SetUp() override {
@@ -34,16 +36,16 @@ protected:
     ids_ = {1, 2, 3, 4};
   }
 
-protected:
+ protected:
   std::unique_ptr<Redis::Sortedint> sortedint;
-  std::vector<uint64_t > ids_;
+  std::vector<uint64_t> ids_;
 };
 
 TEST_F(RedisSortedintTest, AddAndRemove) {
   int ret;
-   rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
-   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
-   s = sortedint->Card(key_, &ret);
+  rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
+  s = sortedint->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   s = sortedint->Remove(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);

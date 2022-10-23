@@ -18,15 +18,17 @@
  *
  */
 
-#include <gtest/gtest.h>
-#include <atomic>
 #include "task_runner.h"
+
+#include <gtest/gtest.h>
+
+#include <atomic>
 
 TEST(TaskRunner, PublishOverflow) {
   TaskRunner tr(2, 3);
   Task t;
   Status s;
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     s = tr.Publish(t);
     if (i < 3) {
       ASSERT_TRUE(s.IsOK());
@@ -42,7 +44,7 @@ TEST(TaskRunner, PublishToStopQueue) {
 
   Task t;
   Status s;
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     s = tr.Publish(t);
     ASSERT_FALSE(s.IsOK());
   }
@@ -55,8 +57,8 @@ TEST(TaskRunner, Run) {
 
   Status s;
   Task t;
-  for(int i = 0; i < 100; i++) {
-    t = [&counter]{counter.fetch_add(1);};
+  for (int i = 0; i < 100; i++) {
+    t = [&counter] { counter.fetch_add(1); };
     s = tr.Publish(t);
     ASSERT_TRUE(s.IsOK());
   }

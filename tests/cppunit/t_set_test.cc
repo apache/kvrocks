@@ -19,30 +19,30 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <memory>
-#include "redis_set.h"
+
 #include "test_base.h"
+#include "types/redis_set.h"
 
 class RedisSetTest : public TestBase {
-protected:
-  explicit RedisSetTest() : TestBase() {
-    set = Util::MakeUnique<Redis::Set>(storage_, "set_ns");
-  }
+ protected:
+  explicit RedisSetTest() : TestBase() { set = std::make_unique<Redis::Set>(storage_, "set_ns"); }
   ~RedisSetTest() = default;
   void SetUp() override {
     key_ = "test-set-key";
     fields_ = {"set-key-1", "set-key-2", "set-key-3", "set-key-4"};
   }
 
-protected:
+ protected:
   std::unique_ptr<Redis::Set> set;
 };
 
 TEST_F(RedisSetTest, AddAndRemove) {
   int ret;
-   rocksdb::Status s = set->Add(key_, fields_, &ret);
-   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
-   s = set->Card(key_, &ret);
+  rocksdb::Status s = set->Add(key_, fields_, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  s = set->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   s = set->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
@@ -82,6 +82,26 @@ TEST_F(RedisSetTest, IsMember) {
   set->Del(key_);
 }
 
+TEST_F(RedisSetTest, MIsMember) {
+  int ret;
+  std::vector<int> exists;
+  rocksdb::Status s = set->Add(key_, fields_, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  s = set->MIsMember(key_, fields_, &exists);
+  EXPECT_TRUE(s.ok());
+  for (size_t i = 0; i < fields_.size(); i++) {
+    EXPECT_TRUE(exists[i] == 1);
+  }
+  s = set->Remove(key_, {fields_[0]}, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+  s = set->MIsMember(key_, fields_, &exists);
+  EXPECT_TRUE(s.ok() && exists[0] == 0);
+  for (size_t i = 1; i < fields_.size(); i++) {
+    EXPECT_TRUE(exists[i] == 1);
+  }
+  set->Del(key_);
+}
+
 TEST_F(RedisSetTest, Move) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);
@@ -109,9 +129,9 @@ TEST_F(RedisSetTest, TakeWithPop) {
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   std::vector<std::string> members;
   s = set->Take(key_, &members, 3, true);
-  EXPECT_EQ(members.size(),3);
+  EXPECT_EQ(members.size(), 3);
   s = set->Take(key_, &members, 2, true);
-  EXPECT_EQ(members.size(),1);
+  EXPECT_EQ(members.size(), 1);
   s = set->Take(key_, &members, 1, true);
   EXPECT_TRUE(s.ok() && members.size() == 0);
   set->Del(key_);
@@ -184,10 +204,10 @@ TEST_F(RedisSetTest, TakeWithoutPop) {
   rocksdb::Status s = set->Add(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   std::vector<std::string> members;
-  s = set->Take(key_, &members, int(fields_.size()+1), false);
+  s = set->Take(key_, &members, int(fields_.size() + 1), false);
   EXPECT_EQ(members.size(), fields_.size());
-  s = set->Take(key_, &members, int(fields_.size()-1), false);
-  EXPECT_EQ(members.size(), fields_.size()-1);
+  s = set->Take(key_, &members, int(fields_.size() - 1), false);
+  EXPECT_EQ(members.size(), fields_.size() - 1);
   s = set->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set->Del(key_);

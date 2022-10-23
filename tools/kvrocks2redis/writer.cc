@@ -19,8 +19,10 @@
  */
 
 #include "writer.h"
+
 #include <fcntl.h>
 #include <unistd.h>
+
 #include <cstring>
 
 Writer::~Writer() {

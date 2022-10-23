@@ -20,14 +20,13 @@
 
 #include <gtest/gtest.h>
 
-#include "server.h"
+#include "server/server.h"
 
-Server *GetServer() {
-  return nullptr;
-}
+Server *GetServer() { return nullptr; }
 
 int main(int argc, char **argv) {
-//  gflags::SetUsageMessage("kvrocks unittest");
   testing::InitGoogleTest(&argc, argv);
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }

@@ -19,14 +19,17 @@
  */
 
 #include "cron.h"
-#include "util.h"
+
 #include <gtest/gtest.h>
+
 #include <memory>
+
+#include "util.h"
 
 class CronTest : public testing::Test {
  protected:
   explicit CronTest() {
-    cron = Util::MakeUnique<Cron>();
+    cron = std::make_unique<Cron>();
     std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
     cron->SetScheduleTime(schedule);
   }

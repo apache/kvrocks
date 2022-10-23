@@ -20,13 +20,13 @@
 <img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
-[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE) 
+[![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/stargazers)
 
 ---
 
-* [Google Group](https://groups.google.com/g/kvrocks)
 * [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
+* [Mailing List](https://lists.apache.org/list.html?dev@kvrocks.apache.org) ([how to subscribe](https://www.apache.org/foundation/mailinglists.html#subscribing))
 
 **Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
 
@@ -40,7 +40,7 @@ Kvrocks has the following key features:
 
 > Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
 
-## Who uses kvrocks 
+## Who uses kvrocks
 
 <table>
 <tr>
@@ -69,14 +69,17 @@ Kvrocks has the following key features:
 ```shell
 # CentOS / RedHat
 sudo yum install -y epel-release
-sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool which
+sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static python3 which openssl-devel
 
 # Ubuntu / Debian
 sudo apt update
-sudo apt install -y gcc g++ make cmake autoconf automake libtool
+sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
 
 # macOS
-brew install autoconf automake libtool cmake
+brew install autoconf automake libtool cmake openssl
+
+# Please force linking the openssl if still can't find after installing openssl
+brew link --force openssl
 ```
 
 ### Build
@@ -88,6 +91,18 @@ $ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd incubator-kvrocks
 $ ./x.py build # `./x.py build -h` to check more options;
                # especially, `./x.py build --ghproxy` will fetch dependencies via ghproxy.com.
+```
+
+To build with TLS support, you'll need OpenSSL development libraries (e.g. libssl-dev on Debian/Ubuntu) and run:
+
+```shell
+$ ./x.py build -DENABLE_OPENSSL=ON
+```
+
+To build with luaJIT instead of lua for better performance, run:
+
+```shell
+$ ./x.py build -DUSE_LUAJIT=ON
 ```
 
 ### Running kvrocks
@@ -114,7 +129,7 @@ $ redis-cli -p 6666
 ### Running test cases
 
 ```shell
-$ ./build.sh build --unittest
+$ ./x.py build --unittest
 $ cd build
 $ ./unittest
 ```
@@ -122,10 +137,11 @@ $ ./unittest
 ### Supported platforms
 
 * Linux distributions
-  * CentOS 6 or 7
+  * CentOS
   * Ubuntu
   * and most other distros
 * macOS
+
 
 ##  Namespace
 

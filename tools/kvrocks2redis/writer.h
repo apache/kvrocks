@@ -20,14 +20,13 @@
 
 #pragma once
 
-#include <string>
-#include <map>
 #include <fstream>
+#include <map>
+#include <string>
 #include <vector>
 
-#include "../../src/status.h"
-
 #include "config.h"
+#include "status.h"
 
 class Writer {
  public:

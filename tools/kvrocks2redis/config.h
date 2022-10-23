@@ -20,11 +20,11 @@
 
 #pragma once
 
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
-#include "../../src/status.h"
+#include "status.h"
 
 namespace Kvrocks2redis {
 

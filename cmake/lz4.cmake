@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(lz4
-  lz4/lz4 v1.9.3
-  MD5=72defe037b2c3db7a69affe7fe4bffd6
+  lz4/lz4 v1.9.4
+  MD5=9c6b76f71921dd986468dcde7c095793
 )
 
 FetchContent_GetProperties(lz4)

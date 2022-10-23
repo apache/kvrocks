@@ -20,15 +20,20 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(libevent
-  libevent/libevent release-2.1.11-stable
-  MD5=b3185885cad72a4fc2f2d2194dfee2cc
+  libevent/libevent release-2.1.12-stable
+  MD5=041edf4f20251f429d1674759ab6882c
 )
+
+set(libevent_disable_ssl ON)
+if(ENABLE_OPENSSL)
+  set(libevent_disable_ssl OFF)
+endif()
 
 FetchContent_MakeAvailableWithArgs(libevent
   EVENT__DISABLE_TESTS=ON
   EVENT__DISABLE_REGRESS=ON
   EVENT__DISABLE_SAMPLES=ON
-  EVENT__DISABLE_OPENSSL=ON
+  EVENT__DISABLE_OPENSSL=${libevent_disable_ssl}
   EVENT__LIBRARY_TYPE=STATIC
   EVENT__DISABLE_BENCHMARK=ON
 )
@@ -36,3 +41,6 @@ FetchContent_MakeAvailableWithArgs(libevent
 add_library(event_with_headers INTERFACE)
 target_include_directories(event_with_headers INTERFACE ${libevent_SOURCE_DIR}/include ${libevent_BINARY_DIR}/include)
 target_link_libraries(event_with_headers INTERFACE event event_pthreads)
+if(ENABLE_OPENSSL)
+  target_link_libraries(event_with_headers INTERFACE event_openssl)
+endif()

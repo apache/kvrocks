@@ -345,6 +345,8 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          std::string previous_backup;
          {
+           // Note: currently, backup_mu_ may block by backing up or purging,
+           //  the command may wait for seconds.
            std::lock_guard<std::mutex> lg(this->backup_mu_);
            previous_backup = std::move(backup_dir);
            backup_dir = v;

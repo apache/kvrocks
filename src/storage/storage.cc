@@ -334,7 +334,6 @@ Status Storage::OpenForReadOnly() { return Open(true); }
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu_);
-  // Note: `config_->backup_dir` may change, so we should use same dir during the task.
   std::string task_backup_dir = config_->backup_dir;
 
   std::string tmpdir = task_backup_dir + ".tmp";

@@ -1124,21 +1124,21 @@ class CommandExists : public Commander {
   }
 };
 
+StatusOr<int> TTLToTimestamp(int ttl) {
+  int64_t now = 0;
+  rocksdb::Env::Default()->GetCurrentTime(&now);
+  if (ttl >= INT32_MAX - now) {
+    return {Status::RedisParseErr, "the expire time was overflow"};
+  }
+
+  return ttl + now;
+}
+
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
-    auto parse_result = ParseInt<int>(args[2], 10);
-    if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
-    }
-    seconds_ = *parse_result;
-    if (seconds_ >= INT32_MAX - now) {
-      return Status(Status::RedisParseErr, "the expire time was overflow");
-    }
-    seconds_ += now;
-    return Commander::Parse(args);
+    seconds_ = GET_OR_RET(TTLToTimestamp(GET_OR_RET(ParseInt<int>(args[2], 10))));
+    return {};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1159,22 +1159,8 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
-    auto ttl_ms = ParseInt<int64_t>(args[2], 10);
-    if (!ttl_ms) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
-    }
-    if (*ttl_ms > 0 && *ttl_ms < 1000) {
-      seconds_ = 1;
-    } else {
-      seconds_ = *ttl_ms / 1000;
-      if (seconds_ >= INT32_MAX - now) {
-        return Status(Status::RedisParseErr, "the expire time was overflow");
-      }
-    }
-    seconds_ += now;
-    return Commander::Parse(args);
+    seconds_ = GET_OR_RET(TTLToTimestamp(TTLMsToS(GET_OR_RET(ParseInt<int64_t>(args[2], 10)))));
+    return {};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {

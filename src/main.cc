@@ -110,13 +110,12 @@ void setupSigSegvAction() {
   sigaction(SIGINT, &act, nullptr);
 }
 
-constexpr const char *description = "implements the Redis protocol based on rocksdb";
 struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
 } new_opt;
 
 static void printUsage(const char *program) {
-  std::cout << program << description << std::endl
+  std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
             << "Usage:" << std::endl
             << std::left << new_opt << "-c, --config <filename>"
             << "set config file to <filename>, or `-' for stdin" << std::endl

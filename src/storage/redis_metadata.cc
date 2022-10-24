@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "cluster/redis_slot.h"
+#include "util.h"
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;
@@ -194,19 +195,14 @@ void Metadata::Encode(std::string *dst) {
 }
 
 void Metadata::InitVersionCounter() {
-  struct timeval now;
-  gettimeofday(&now, nullptr);
   // use random position for initial counter to avoid conflicts,
   // when the slave was promoted as master and the system clock may backoff
-  srand(static_cast<unsigned>(now.tv_sec));
+  srand(static_cast<unsigned>(Util::GetTimeStamp()));
   version_counter_ = static_cast<uint64_t>(std::rand());
 }
 
 uint64_t Metadata::generateVersion() {
-  struct timeval now;
-  gettimeofday(&now, nullptr);
-  uint64_t version = static_cast<uint64_t>(now.tv_sec) * 1000000;
-  version += static_cast<uint64_t>(now.tv_usec);
+  uint64_t version = Util::GetTimeStampUS();
   uint64_t counter = version_counter_.fetch_add(1);
   return (version << VersionCounterBits) + (counter % (1 << VersionCounterBits));
 }
@@ -224,11 +220,10 @@ bool Metadata::operator==(const Metadata &that) const {
 RedisType Metadata::Type() const { return static_cast<RedisType>(flags & (uint8_t)0x0f); }
 
 int32_t Metadata::TTL() const {
-  int64_t now;
   if (expire <= 0) {
     return -1;
   }
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  auto now = Util::GetTimeStamp();
   if (expire < now) {
     return -2;
   }
@@ -252,8 +247,7 @@ bool Metadata::Expired() const {
     return false;
   }
 
-  int64_t now;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  int64_t now = Util::GetTimeStamp();
   return expire < now;
 }
 

@@ -68,6 +68,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);
+int64_t GetTimeStamp();
 uint64_t GetTimeStampMS();
 uint64_t GetTimeStampUS();
 

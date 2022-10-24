@@ -77,3 +77,42 @@ TEST(CommandParser, Parse) {
   ASSERT_FALSE(parse(CommandParser(d5)));
   ASSERT_FALSE(parse(CommandParser(d6)));
 }
+
+TEST(CommandParser, ParseMove) {
+  // k v [ HELLO a b | HI c ]
+  std::vector<std::string> c1{"h", "i"}, c2{"g", "k", "HELLO", "l", "m"}, c3{"n", "o", "HI", "p"}, d1{"x"},
+      d2{"x", "y", "HAHA"}, d3{};
+
+  std::string k, v, a, b, c;
+
+  auto parse = [&](auto&& parser) -> Status {
+    k = GET_OR_RET(parser.TakeStr());
+    v = GET_OR_RET(parser.TakeStr());
+    if (parser.EatEqICase("HELLO")) {
+      a = GET_OR_RET(parser.TakeStr());
+      b = GET_OR_RET(parser.TakeStr());
+    } else if (parser.EatEqICase("HI")) {
+      c = GET_OR_RET(parser.TakeStr());
+    } else if (parser.Good()) {
+      return parser.InvalidSyntax();
+    }
+
+    return Status::OK();
+  };
+
+  ASSERT_TRUE(parse(CommandParser(std::move(c1))));
+  ASSERT_EQ(k, "h");
+  ASSERT_EQ(v, "i");
+  ASSERT_TRUE(parse(CommandParser(std::move(c2))));
+  ASSERT_EQ(k, "g");
+  ASSERT_EQ(v, "k");
+  ASSERT_EQ(a, "l");
+  ASSERT_EQ(b, "m");
+  ASSERT_TRUE(parse(CommandParser(std::move(c3))));
+  ASSERT_EQ(k, "n");
+  ASSERT_EQ(v, "o");
+  ASSERT_EQ(c, "p");
+  ASSERT_FALSE(parse(CommandParser(std::move(d1))));
+  ASSERT_FALSE(parse(CommandParser(std::move(d2))));
+  ASSERT_FALSE(parse(CommandParser(std::move(d3))));
+}

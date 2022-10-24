@@ -41,15 +41,18 @@ struct CommandParser {
  public:
   using value_type = typename Iter::value_type;
 
-  CommandParser(Iter begin, Iter end) : begin(begin), end(end) {}
+  CommandParser(Iter begin, Iter end) : begin(std::move(begin)), end(std::move(end)) {}
 
   template <typename Container>
-  explicit CommandParser(const Container& con, size_t skip_num = 0)
-      : begin(std::begin(con) + skip_num), end(std::end(con)) {}
+  explicit CommandParser(const Container& con, size_t skip_num = 0) : CommandParser(std::begin(con), std::end(con)) {
+    std::advance(begin, skip_num);
+  }
 
   template <typename Container>
   explicit CommandParser(Container&& con, size_t skip_num = 0)
-      : begin(MoveIterator(std::begin(con) + skip_num)), end(MoveIterator(std::end(con))) {}
+      : CommandParser(MoveIterator(std::begin(con)), MoveIterator(std::end(con))) {
+    std::advance(begin, skip_num);
+  }
 
   decltype(auto) RawPeek() const { return *begin; }
 

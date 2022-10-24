@@ -369,7 +369,7 @@ class CommandGetEx : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    return {};
+    return Status::OK();
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
@@ -822,7 +822,7 @@ class CommandCAS : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    return {};
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1138,7 +1138,7 @@ class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     seconds_ = GET_OR_RET(TTLToTimestamp(GET_OR_RET(ParseInt<int>(args[2], 10))));
-    return {};
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1160,7 +1160,7 @@ class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     seconds_ = GET_OR_RET(TTLToTimestamp(TTLMsToS(GET_OR_RET(ParseInt<int64_t>(args[2], 10)))));
-    return {};
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {

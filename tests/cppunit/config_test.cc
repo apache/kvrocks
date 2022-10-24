@@ -60,6 +60,7 @@ TEST(Config, GetAndSet) {
       {"profiling-sample-record-max-len", "1"},
       {"profiling-sample-record-threshold-ms", "50"},
       {"profiling-sample-commands", "get,set"},
+      {"backup-dir", "test_dir/backup"},
 
       {"rocksdb.compression", "no"},
       {"rocksdb.max_open_files", "1234"},
@@ -114,7 +115,6 @@ TEST(Config, GetAndSet) {
       {"slaveof", "no one"},
       {"db-name", "test_dbname"},
       {"dir", "test_dir"},
-      {"backup-dir", "test_dir/backup"},
       {"pidfile", "test.pid"},
       {"supervised", "no"},
       {"rocksdb.block_size", "1234"},

@@ -128,7 +128,7 @@ Config::Config() {
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", true, new StringField(&backup_dir, "")},
+      {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
@@ -302,7 +302,7 @@ void Config::initFieldValidator() {
 }
 
 // The callback function would be invoked after the field was set,
-// it may change related fileds or re-format the field. for example,
+// it may change related fields or re-format the field. for example,
 // when the 'dir' was set, the db-dir or backup-dir should be reset as well.
 void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -329,11 +329,31 @@ void Config::initFieldCallback() {
       {"dir",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          db_dir = dir + "/db";
-         if (backup_dir.empty()) backup_dir = dir + "/backup";
+         {
+           std::lock_guard<std::mutex> lg(this->backup_mu_);
+           if (backup_dir.empty()) {
+             backup_dir = dir + "/backup";
+           }
+         }
          if (log_dir.empty()) log_dir = dir;
          checkpoint_dir = dir + "/checkpoint";
          sync_checkpoint_dir = dir + "/sync_checkpoint";
          backup_sync_dir = dir + "/backup_for_sync";
+         return Status::OK();
+       }},
+      {"backup-dir",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         std::string previous_backup;
+         {
+           // Note: currently, backup_mu_ may block by backing up or purging,
+           //  the command may wait for seconds.
+           std::lock_guard<std::mutex> lg(this->backup_mu_);
+           previous_backup = std::move(backup_dir);
+           backup_dir = v;
+         }
+         if (!previous_backup.empty()) {
+           LOG(INFO) << "change backup dir from " << backup_dir << " to " << v;
+         }
          return Status::OK();
        }},
       {"cluster-enabled",

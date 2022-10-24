@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 
 #include <iomanip>
+#include <ostream>
 #ifdef __linux__
 #define _XOPEN_SOURCE 700
 #else
@@ -109,20 +110,21 @@ void setupSigSegvAction() {
   sigaction(SIGINT, &act, nullptr);
 }
 
-constexpr const char *description =
-    "a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol";
+constexpr const char *description = "implements the Redis protocol based on rocksdb";
+struct NewOpt {
+  friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
+} new_opt;
 
 static void printUsage(const char *program) {
-  const int width = 32;
-
   std::cout << program << description << std::endl
-            << std::left << std::setw(width) << "-c, --config <filename>"
+            << "Usage:" << std::endl
+            << std::left << new_opt << "-c, --config <filename>"
             << "set config file to <filename>, or `-' for stdin" << std::endl
-            << std::setw(width) << "-v, --version"
+            << new_opt << "-v, --version"
             << "print version information" << std::endl
-            << std::setw(width) << "-h, --help"
+            << new_opt << "-h, --help"
             << "print this help message" << std::endl
-            << std::setw(width) << "--<config-key> <config-value>"
+            << new_opt << "--<config-key> <config-value>"
             << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 

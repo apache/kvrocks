@@ -163,7 +163,6 @@ class Storage {
  private:
   rocksdb::DB *db_ = nullptr;
   std::string replid_;
-  std::mutex backup_mu_;
   time_t backup_creating_time_;
   rocksdb::BackupEngine *backup_ = nullptr;
   rocksdb::Env *env_;

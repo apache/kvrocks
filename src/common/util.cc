@@ -672,17 +672,4 @@ int aeWait(int fd, int mask, uint64_t timeout) {
     return retval;
   }
 }
-
-uint64_t GetTimeStampMS() {
-  auto tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-  auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
-  return ts.count();
-}
-
-uint64_t GetTimeStampUS() {
-  auto tp = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now());
-  auto ts = std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch());
-  return ts.count();
-}
-
 }  // namespace Util

@@ -226,7 +226,7 @@ def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) ->
 
     version = write_version(release_version)
 
-    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, compiler='auto', cmake_path='cmake', D=[])
+    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, skip_build=False, compiler='auto', cmake_path='cmake', D=[])
 
     package_dir = Path(dir) / 'package-fpm'
     makedirs(str(package_dir), exist_ok=False)
@@ -257,6 +257,12 @@ def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) ->
     ]
 
     run(fpm, *fpm_opts, verbose=True)
+
+def test_cpp(dir: str, rest: List[str]) -> None:
+    basedir = Path(dir).absolute()
+    unittest = basedir / 'unittest'
+
+    run(str(unittest), *rest, cwd=str(basedir), verbose=True)
 
 def test_go(dir: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
@@ -369,6 +375,15 @@ if __name__ == '__main__':
     )
     parser_test.set_defaults(func=parser_test.print_help)
     parser_test_subparsers = parser_test.add_subparsers()
+
+    parser_test_cpp = parser_test_subparsers.add_parser(
+        'cpp',
+        description="Test kvrocks via cpp unit tests",
+        help="Test kvrocks via cpp unit tests",
+    )
+    parser_test_cpp.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_cpp.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to cpp unittest")
+    parser_test_cpp.set_defaults(func=test_cpp)
 
     parser_test_go = parser_test_subparsers.add_parser(
         'go',

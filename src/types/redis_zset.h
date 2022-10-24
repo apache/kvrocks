@@ -98,13 +98,13 @@ typedef struct ZAddFlags {
   bool HasIncr() const { return (flags & kZSetIncr) != 0; }
   bool HasFlag() const { return flags != 0; }
 
-  void SetFlag(ZSetFlags setFlags) { flags |= setFlags;}
+  void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
 
-  static const ZAddFlags Incr() { return ZAddFlags{kZSetIncr};}
+  static const ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
 
-  static const ZAddFlags Default() { return ZAddFlags{0};}
+  static const ZAddFlags Default() { return ZAddFlags{0}; }
 
-private:
+ private:
   uint8_t flags = 0;
 } ZAddFlags;
 

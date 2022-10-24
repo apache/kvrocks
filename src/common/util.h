@@ -72,7 +72,7 @@ template <typename Duration = std::chrono::seconds>
 auto GetTimeStamp() {
   return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
-uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
-uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
+inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
+inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
 
 }  // namespace Util

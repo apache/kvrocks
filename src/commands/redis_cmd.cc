@@ -2382,7 +2382,7 @@ class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     unsigned index = 2;
-    parseOptions(args, index);
+    parseFlags(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
@@ -2435,11 +2435,11 @@ class CommandZAdd : public Commander {
   std::vector<MemberScore> member_scores_;
   uint8_t flags_ = 0;
 
-  void parseOptions(const std::vector<std::string> &args, unsigned &index);
+  void parseFlags(const std::vector<std::string> &args, unsigned &index);
   Status validateFlags() const;
 };
 
-void CommandZAdd::parseOptions(const std::vector<std::string> &args, unsigned &index) {
+void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &index) {
   std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
                                                         {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
   for (unsigned i = 2; i < args.size(); i++) {

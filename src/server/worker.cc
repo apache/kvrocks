@@ -397,10 +397,9 @@ void Worker::BecomeMonitorConn(Redis::Connection *conn) {
 }
 
 void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
+  auto now = Util::GetTimeStampUS();
   std::string output;
-  output += std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
+  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
   output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
   for (const auto &token : tokens) {
     output += " \"" + token + "\"";

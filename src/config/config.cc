@@ -663,21 +663,26 @@ Status Config::finish() {
 
 Status Config::Load(const CLIOptions &opts) {
   if (!opts.conf_file.empty()) {
-    path_ = opts.conf_file;
-    std::ifstream file(path_);
-    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+    std::ifstream file;
+    std::istream *in = nullptr;
+    if (opts.conf_file == "-") {
+      in = &std::cin;
+    } else {
+      path_ = opts.conf_file;
+      file.open(path_);
+      if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+      in = &file;
+    }
 
     std::string line;
     int line_num = 1;
-    while (!file.eof()) {
-      std::getline(file, line);
-      Status s = parseConfigFromString(line, line_num);
-      if (!s.IsOK()) {
+    while (!in->eof()) {
+      std::getline(*in, line);
+      if (auto s = parseConfigFromString(line, line_num); !s) {
         return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
       }
       line_num++;
     }
-    file.close();
   } else {
     std::cout << "Warn: no config file specified, using the default config. "
                  "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf"

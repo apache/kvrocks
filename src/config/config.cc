@@ -601,6 +601,25 @@ void Config::ClearMaster() {
   }
 }
 
+Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
+  std::string field_key = Util::ToLower(input.first);
+  const char ns_str[] = "namespace.";
+  size_t ns_str_size = sizeof(ns_str) - 1;
+  if (!strncasecmp(input.first.data(), ns_str, ns_str_size)) {
+    // namespace should keep key case-sensitive
+    field_key = input.first;
+    tokens[input.second] = input.first.substr(ns_str_size);
+  }
+  auto iter = fields_.find(field_key);
+  if (iter != fields_.end()) {
+    auto &field = iter->second;
+    field->line_number = line_number;
+    auto s = field->Set(input.second);
+    if (!s.IsOK()) return s;
+  }
+  return Status::OK();
+}
+
 Status Config::parseConfigFromString(const std::string &input, int line_number) {
   auto parsed = ParseConfigLine(input);
   if (!parsed) return parsed.ToStatus();
@@ -609,22 +628,7 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 
   if (kv.first.empty() || kv.second.empty()) return Status::OK();
 
-  std::string field_key = Util::ToLower(kv.first);
-  const char ns_str[] = "namespace.";
-  size_t ns_str_size = sizeof(ns_str) - 1;
-  if (!strncasecmp(kv.first.data(), ns_str, ns_str_size)) {
-    // namespace should keep key case-sensitive
-    field_key = kv.first;
-    tokens[kv.second] = kv.first.substr(ns_str_size);
-  }
-  auto iter = fields_.find(field_key);
-  if (iter != fields_.end()) {
-    auto &field = iter->second;
-    field->line_number = line_number;
-    auto s = field->Set(kv.second);
-    if (!s.IsOK()) return s;
-  }
-  return Status::OK();
+  return parseConfigFromPair(kv, line_number);
 }
 
 Status Config::finish() {
@@ -657,28 +661,38 @@ Status Config::finish() {
   return Status::OK();
 }
 
-Status Config::Load(const std::string &path) {
-  if (!path.empty()) {
-    path_ = path;
-    std::ifstream file(path_);
-    if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+Status Config::Load(const CLIOptions &opts) {
+  if (!opts.conf_file.empty()) {
+    std::ifstream file;
+    std::istream *in = nullptr;
+    if (opts.conf_file == "-") {
+      in = &std::cin;
+    } else {
+      path_ = opts.conf_file;
+      file.open(path_);
+      if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+      in = &file;
+    }
 
     std::string line;
     int line_num = 1;
-    while (!file.eof()) {
-      std::getline(file, line);
-      Status s = parseConfigFromString(line, line_num);
-      if (!s.IsOK()) {
-        file.close();
+    while (!in->eof()) {
+      std::getline(*in, line);
+      if (auto s = parseConfigFromString(line, line_num); !s) {
         return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
       }
       line_num++;
     }
-    file.close();
   } else {
     std::cout << "Warn: no config file specified, using the default config. "
                  "In order to specify a config file use kvrocks -c /path/to/kvrocks.conf"
               << std::endl;
+  }
+
+  for (const auto &opt : opts.cli_options) {
+    if (Status s = parseConfigFromPair(opt, -1); !s) {
+      return Status(Status::NotOK, "CLI config option error: " + s.Msg());
+    }
   }
 
   for (const auto &iter : fields_) {

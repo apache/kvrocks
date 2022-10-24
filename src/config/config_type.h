@@ -29,13 +29,13 @@
 // forward declaration
 class Server;
 
-typedef std::function<Status(const std::string &, const std::string &)> validate_fn;
-typedef std::function<Status(Server *srv, const std::string &, const std::string &)> callback_fn;
+using validate_fn = std::function<Status(const std::string &, const std::string &)>;
+using callback_fn = std::function<Status(Server *, const std::string &, const std::string &)>;
 
-typedef struct configEnum {
+struct configEnum {
   const char *name;
   const int val;
-} configEnum;
+};
 int configEnumGetValue(configEnum *ce, const char *name);
 const char *configEnumGetName(configEnum *ce, int val);
 

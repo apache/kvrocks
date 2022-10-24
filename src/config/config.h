@@ -61,6 +61,14 @@ struct CompactionCheckerRange {
   bool Enabled() { return Start != -1 || Stop != -1; }
 };
 
+struct CLIOptions {
+  std::string conf_file;
+  std::vector<std::pair<std::string, std::string>> cli_options;
+
+  CLIOptions() = default;
+  explicit CLIOptions(std::string_view file) : conf_file(file) {}
+};
+
 struct Config {
  public:
   Config();
@@ -186,7 +194,7 @@ struct Config {
 
  public:
   Status Rewrite();
-  Status Load(const std::string &path);
+  Status Load(const CLIOptions &path);
   void Get(std::string key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);
@@ -209,6 +217,7 @@ struct Config {
 
   void initFieldValidator();
   void initFieldCallback();
+  Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
   Status isNamespaceLegal(const std::string &ns);

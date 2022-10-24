@@ -2387,7 +2387,7 @@ class CommandZAdd : public Commander {
       return s;
     }
     if (auto left = (args.size() - index); left > 0) {
-      if ((flags_ & kZSetIncr) && left != 2) {
+      if (flags_.HasIncr() && left != 2) {
         return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
       } else if (left % 2 != 0) {
         return Status(Status::RedisParseErr, errInvalidSyntax);
@@ -2415,10 +2415,10 @@ class CommandZAdd : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    bool incr = (flags_ & kZSetIncr) != 0;
+    bool incr = flags_.HasIncr();
     if (incr) {
       auto new_score = member_scores_[0].score;
-      bool nx = (flags_ & kZSetNX), xx = (flags_ & kZSetXX), lt = (flags_ & kZSetLT), gt = (flags_ & kZSetGT);
+      bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
       if ((nx || xx || lt || gt) && old_score == new_score &&
           ret == 0) {  // not the first time using incr && score not changed
         *output = Redis::NilString();
@@ -2433,7 +2433,7 @@ class CommandZAdd : public Commander {
 
  private:
   std::vector<MemberScore> member_scores_;
-  uint8_t flags_ = 0;
+  ZAddFlags flags_{0};
 
   void parseFlags(const std::vector<std::string> &args, unsigned &index);
   Status validateFlags() const;
@@ -2446,7 +2446,7 @@ void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &ind
     auto option = Util::ToLower(args[i]);
     auto it = options.find(option);
     if (it != options.end()) {
-      flags_ |= it->second;
+      flags_.SetFlag(it->second);
       index++;
     } else {
       break;
@@ -2455,13 +2455,10 @@ void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &ind
 }
 
 Status CommandZAdd::validateFlags() const {
-  if (!flags_) {
+  if (!flags_.HasFlag()) {
     return Status::OK();
   }
-  bool nx = (flags_ & kZSetNX) != 0;
-  bool xx = (flags_ & kZSetXX) != 0;
-  bool lt = (flags_ & kZSetLT) != 0;
-  bool gt = (flags_ & kZSetGT) != 0;
+  bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
   if (nx && xx) {
     return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
   }

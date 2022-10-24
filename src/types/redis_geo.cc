@@ -35,7 +35,7 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
     member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
-  return ZSet::Add(user_key, 0, &member_scores, ret);
+  return ZSet::Add(user_key, ZAddFlags::Default(), &member_scores, ret);
 }
 
 rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist) {
@@ -120,7 +120,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
       int ret;
-      ZSet::Add(store_key, 0, &member_scores, &ret);
+      ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
     }
   }
 

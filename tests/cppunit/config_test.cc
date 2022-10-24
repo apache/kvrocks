@@ -34,7 +34,7 @@ TEST(Config, GetAndSet) {
   const char *path = "test.conf";
   Config config;
 
-  config.Load(path);
+  config.Load(CLIOptions(path));
   // Config.Set need accessing commands, so we should init and populate
   // the command table here.
   Redis::InitCommandsTable();
@@ -94,7 +94,7 @@ TEST(Config, GetAndSet) {
     EXPECT_EQ(values[1], iter.second);
   }
   ASSERT_TRUE(config.Rewrite().IsOK());
-  config.Load(path);
+  config.Load(CLIOptions(path));
   for (const auto &iter : mutable_cases) {
     auto s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_TRUE(s.IsOK());
@@ -150,11 +150,11 @@ TEST(Config, Rewrite) {
 
   Config config;
   Redis::PopulateCommands();
-  ASSERT_TRUE(config.Load(path).IsOK());
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
   Redis::PopulateCommands();
-  ASSERT_TRUE(config.Load(path).IsOK());
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   unlink(path);
 }
 
@@ -163,7 +163,7 @@ TEST(Namespace, Add) {
   unlink(path);
 
   Config config;
-  config.Load(path);
+  config.Load(CLIOptions(path));
   config.slot_id_encoded = false;
   EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
   config.requirepass = "foobared";
@@ -198,7 +198,7 @@ TEST(Namespace, Set) {
   unlink(path);
 
   Config config;
-  config.Load(path);
+  config.Load(CLIOptions(path));
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
@@ -233,7 +233,7 @@ TEST(Namespace, Delete) {
   unlink(path);
 
   Config config;
-  config.Load(path);
+  config.Load(CLIOptions(path));
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
@@ -259,7 +259,7 @@ TEST(Namespace, RewriteNamespaces) {
   const char *path = "test.conf";
   unlink(path);
   Config config;
-  config.Load(path);
+  config.Load(CLIOptions(path));
   config.requirepass = "test";
   config.backup_dir = "test";
   config.slot_id_encoded = false;
@@ -272,7 +272,7 @@ TEST(Namespace, RewriteNamespaces) {
   EXPECT_TRUE(config.DelNamespace("to-be-deleted-ns").IsOK());
 
   Config new_config;
-  auto s = new_config.Load(path);
+  auto s = new_config.Load(CLIOptions(path));
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
     new_config.GetNamespace(namespaces[i], &token);

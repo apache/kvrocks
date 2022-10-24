@@ -71,7 +71,7 @@ Storage::Storage(Config *config) : env_(rocksdb::Env::Default()), config_(config
   Metadata::InitVersionCounter();
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
-  backup_creating_time_ = std::time(nullptr);
+  backup_creating_time_ = Util::GetTimeStamp();
   SetWriteOptions(config->RocksDB.write_options);
 }
 
@@ -368,7 +368,7 @@ Status Storage::CreateBackup() {
     return Status(Status::NotOK, s.ToString());
   }
   // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
-  backup_creating_time_ = std::time(nullptr);
+  backup_creating_time_ = static_cast<time_t>(Util::GetTimeStamp());
 
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
@@ -744,8 +744,9 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
     // Create checkpoint of rocksdb
     s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB);
-    storage->SetCheckpointCreateTime(std::time(nullptr));
-    storage->SetCheckpointAccessTime(std::time(nullptr));
+    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    storage->SetCheckpointCreateTime(now);
+    storage->SetCheckpointAccessTime(now);
     if (!s.ok()) {
       LOG(WARNING) << "[storage] Fail to create checkpoint, error:" << s.ToString();
       return Status(Status::NotOK, s.ToString());
@@ -757,7 +758,8 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     int64_t can_shared_time = storage->config_->RocksDB.WAL_ttl_seconds / 2;
     if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
-    if (std::time(nullptr) - storage->GetCheckpointCreateTime() > can_shared_time) {
+    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    if (now - storage->GetCheckpointCreateTime() > can_shared_time) {
       LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
       return Status(Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint");
     }

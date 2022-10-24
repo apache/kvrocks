@@ -164,8 +164,7 @@ Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::st
     return Status(Status::NotOK, errInvalidSyntax);
   }
   if (!ttl && expire) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     *result = expire - now;
   } else {
     *result = ttl;
@@ -1178,8 +1177,7 @@ class CommandExists : public Commander {
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInteger);
@@ -1210,8 +1208,7 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     auto ttl_ms = ParseInt<int64_t>(args[2], 10);
     if (!ttl_ms) {
       return Status(Status::RedisParseErr, errValueNotInteger);
@@ -4653,7 +4650,8 @@ class CommandFetchMeta : public Commander {
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
     });
     t.detach();
 
@@ -4714,7 +4712,8 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
     });
     t.detach();

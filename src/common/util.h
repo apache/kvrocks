@@ -68,7 +68,12 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 
 void ThreadSetName(const char *name);
 int aeWait(int fd, int mask, uint64_t milliseconds);
-uint64_t GetTimeStampMS();
-uint64_t GetTimeStampUS();
+
+template <typename Duration = std::chrono::seconds>
+auto GetTimeStamp() {
+  return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
+inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
 
 }  // namespace Util

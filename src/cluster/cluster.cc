@@ -491,8 +491,9 @@ std::string Cluster::GenNodesDescription() {
     }
 
     // Ping sent, pong received, config epoch, link status
-    node_str.append(std::to_string(std::time(nullptr) * 1000 - 1) + " " + std::to_string(std::time(nullptr) * 1000) +
-                    " " + std::to_string(version_) + " " + "connected");
+    auto now = Util::GetTimeStampMS();
+    node_str.append(std::to_string(now - 1) + " " + std::to_string(now) + " " + std::to_string(version_) + " " +
+                    "connected");
 
     // Slots
     if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Trim space

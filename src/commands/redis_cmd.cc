@@ -2462,13 +2462,7 @@ Status CommandZAdd::validateFlags() const {
   if (nx && xx) {
     return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
   }
-  if (lt && gt) {
-    return Status(Status::RedisParseErr, errZSetLTGTNX);
-  }
-  if (lt && nx) {
-    return Status(Status::RedisParseErr, errZSetLTGTNX);
-  }
-  if (gt && nx) {
+  if ((lt && gt) || (lt && nx) || (gt && nx)) {
     return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   return Status::OK();

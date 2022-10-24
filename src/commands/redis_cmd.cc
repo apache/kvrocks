@@ -115,8 +115,7 @@ T TTLMsToS(T ttl) {
 }
 
 int ExpireToTTL(int64_t expire) {
-  int64_t now = 0;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  int64_t now = Util::GetTimeStamp();
   return static_cast<int>(expire - now);
 }
 
@@ -1125,8 +1124,7 @@ class CommandExists : public Commander {
 };
 
 StatusOr<int> TTLToTimestamp(int ttl) {
-  int64_t now = 0;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  int64_t now = Util::GetTimeStamp();
   if (ttl >= INT32_MAX - now) {
     return {Status::RedisParseErr, "the expire time was overflow"};
   }
@@ -4588,7 +4586,8 @@ class CommandFetchMeta : public Commander {
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
     });
     t.detach();
 
@@ -4649,7 +4648,8 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
-      svr->storage_->SetCheckpointAccessTime(std::time(nullptr));
+      auto now = static_cast<time_t>(Util::GetTimeStamp());
+      svr->storage_->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
     });
     t.detach();

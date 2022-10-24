@@ -21,7 +21,12 @@ package config
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
+	"time"
+
+	"path/filepath"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -40,4 +45,56 @@ func TestRenameCommand(t *testing.T) {
 	require.ErrorContains(t, err, "unknown command")
 	r := rdb.Do(ctx, "KEYSNEW", "*")
 	require.Equal(t, []interface{}{}, r.Val())
+}
+
+func TestSetConfigBackupDir(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	originBackupDir := filepath.Join(configs["dir"], "backup")
+
+	r := rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
+	rList := r.Val().([]interface{})
+	require.EqualValues(t, rList[0], "backup-dir")
+	require.EqualValues(t, rList[1], originBackupDir)
+
+	hasCompactionFiles := func(dir string) bool {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return false
+		}
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return len(files) != 0
+	}
+
+	require.False(t, hasCompactionFiles(originBackupDir))
+
+	require.NoError(t, rdb.Do(ctx, "bgsave").Err())
+	time.Sleep(2000 * time.Millisecond)
+
+	require.True(t, hasCompactionFiles(originBackupDir))
+
+	newBackupDir := filepath.Join(configs["dir"], "backup2")
+
+	require.False(t, hasCompactionFiles(newBackupDir))
+
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "backup-dir", newBackupDir).Err())
+
+	r = rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
+	rList = r.Val().([]interface{})
+	require.EqualValues(t, rList[0], "backup-dir")
+	require.EqualValues(t, rList[1], newBackupDir)
+
+	require.NoError(t, rdb.Do(ctx, "bgsave").Err())
+	time.Sleep(2000 * time.Millisecond)
+
+	require.True(t, hasCompactionFiles(newBackupDir))
+	require.True(t, hasCompactionFiles(originBackupDir))
 }

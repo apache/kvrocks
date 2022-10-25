@@ -95,7 +95,7 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
 
     output = run_pipe(cmake, "-version")
     output = run_pipe("head", "-n", "1", stdin=output)
-    output = run_pipe("sed", "s/[^0-9.]*//g", stdin=output)
+    output = run_pipe("awk", "{print $(NF)}", stdin=output)
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 

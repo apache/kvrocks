@@ -101,7 +101,7 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  int local_port = Util::GetLocalPort(fd);
+  int local_port = Util::GetLocalPort(fd);  // NOLINT
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
@@ -397,10 +397,9 @@ void Worker::BecomeMonitorConn(Redis::Connection *conn) {
 }
 
 void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
+  auto now = Util::GetTimeStampUS();
   std::string output;
-  output += std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
+  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
   output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
   for (const auto &token : tokens) {
     output += " \"" + token + "\"";

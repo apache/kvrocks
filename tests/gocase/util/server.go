@@ -173,6 +173,10 @@ func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
+	return StartServerWithCLIOptions(t, configs, []string{})
+}
+
+func StartServerWithCLIOptions(t testing.TB, configs map[string]string, options []string) *KvrocksServer {
 	b := *binPath
 	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
@@ -198,6 +202,7 @@ func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	}
 
 	cmd.Args = append(cmd.Args, "-c", f.Name())
+	cmd.Args = append(cmd.Args, options...)
 
 	stdout, err := os.Create(filepath.Join(dir, "stdout"))
 	require.NoError(t, err)

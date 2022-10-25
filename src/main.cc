@@ -20,10 +20,12 @@
 
 #include <dlfcn.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#include <iomanip>
+#include <ostream>
 #ifdef __linux__
 #define _XOPEN_SOURCE 700
 #else
@@ -48,11 +50,6 @@ bool Symbolize(void *pc, char *out, size_t out_size);
 }  // namespace google
 
 std::function<void()> hup_handler;
-
-struct Options {
-  std::string conf_file;
-  bool show_usage = false;
-};
 
 Server *srv = nullptr;
 
@@ -112,30 +109,47 @@ void setupSigSegvAction() {
   sigaction(SIGINT, &act, nullptr);
 }
 
-static void usage(const char *program) {
-  std::cout << program << " implements the Redis protocol based on rocksdb\n"
-            << "\t-c config file\n"
-            << "\t-h help\n";
-  exit(0);
+struct NewOpt {
+  friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
+} new_opt;
+
+static void printUsage(const char *program) {
+  std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
+            << "Usage:" << std::endl
+            << std::left << new_opt << "-c, --config <filename>"
+            << "set config file to <filename>, or `-' for stdin" << std::endl
+            << new_opt << "-v, --version"
+            << "print version information" << std::endl
+            << new_opt << "-h, --help"
+            << "print this help message" << std::endl
+            << new_opt << "--<config-key> <config-value>"
+            << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 
-static Options parseCommandLineOptions(int argc, char **argv) {
-  int ch;
-  Options opts;
-  while ((ch = ::getopt(argc, argv, "c:hv")) != -1) {
-    switch (ch) {
-      case 'c':
-        opts.conf_file = optarg;
-        break;
-      case 'h':
-        opts.show_usage = true;
-        break;
-      case 'v':
-        exit(0);
-      default:
-        usage(argv[0]);
+static void printVersion(std::ostream &os) { os << "kvrocks version " << VERSION << " @" << GIT_COMMIT << std::endl; }
+
+static CLIOptions parseCommandLineOptions(int argc, char **argv) {
+  using namespace std::string_view_literals;
+  CLIOptions opts;
+
+  for (int i = 1; i < argc; ++i) {
+    if ((argv[i] == "-c"sv || argv[i] == "--config"sv) && i + 1 < argc) {
+      opts.conf_file = argv[++i];
+    } else if (argv[i] == "-v"sv || argv[i] == "--version"sv) {
+      printVersion(std::cout);
+      std::exit(0);
+    } else if (argv[i] == "-h"sv || argv[i] == "--help"sv) {
+      printUsage(*argv);
+      std::exit(0);
+    } else if (std::string_view(argv[i], 2) == "--" && std::string_view(argv[i]).size() > 2 && i + 1 < argc) {
+      auto key = std::string_view(argv[i] + 2);
+      opts.cli_options.emplace_back(key, argv[++i]);
+    } else {
+      printUsage(*argv);
+      std::exit(1);
     }
   }
+
   return opts;
 }
 
@@ -272,19 +286,18 @@ int main(int argc, char *argv[]) {
   setupSigSegvAction();
 
   auto opts = parseCommandLineOptions(argc, argv);
-  if (opts.show_usage) usage(argv[0]);
 
   Redis::InitCommandsTable();
   Redis::PopulateCommands();
 
   Config config;
-  Status s = config.Load(opts.conf_file);
+  Status s = config.Load(opts);
   if (!s.IsOK()) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
     exit(1);
   }
   initGoogleLog(&config);
-  LOG(INFO) << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
+  printVersion(LOG(INFO));
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.

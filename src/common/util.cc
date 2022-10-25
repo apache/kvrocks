@@ -637,9 +637,9 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
 }
 
 bool IsPortInUse(int port) {
-  int fd;
+  int fd = NullFD;
   Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
-  if (fd > 0) close(fd);
+  if (fd != NullFD) close(fd);
   return s.IsOK();
 }
 
@@ -672,17 +672,4 @@ int aeWait(int fd, int mask, uint64_t timeout) {
     return retval;
   }
 }
-
-uint64_t GetTimeStampMS() {
-  auto tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-  auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
-  return ts.count();
-}
-
-uint64_t GetTimeStampUS() {
-  auto tp = std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now());
-  auto ts = std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch());
-  return ts.count();
-}
-
 }  // namespace Util

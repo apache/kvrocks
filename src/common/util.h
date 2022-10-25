@@ -75,5 +75,7 @@ auto GetTimeStamp() {
 }
 inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
 inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
-
+// file util
+Status Write(int fd, const std::string &data);
+Status Pwrite(int fd, const std::string &data, std::istream::off_type offset);
 }  // namespace Util

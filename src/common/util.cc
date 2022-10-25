@@ -672,4 +672,28 @@ int aeWait(int fd, int mask, uint64_t timeout) {
     return retval;
   }
 }
+
+Status Write(int fd, const std::string &data) {
+  ssize_t n = 0;
+  while (n < static_cast<ssize_t>(data.size())) {
+    ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
+    if (nwritten == -1) {
+      return Status(Status::NotOK, strerror(errno));
+    }
+    n += nwritten;
+  }
+  return Status::OK();
+}
+
+Status Pwrite(int fd, const std::string &data, std::istream::off_type offset) {
+  ssize_t n = 0;
+  while (n < static_cast<ssize_t>(data.size())) {
+    ssize_t nwritten = pwrite(fd, data.c_str() + n, data.size() - n, offset);
+    if (nwritten == -1) {
+      return Status(Status::NotOK, strerror(errno));
+    }
+    n += nwritten;
+  }
+  return Status::OK();
+}
 }  // namespace Util

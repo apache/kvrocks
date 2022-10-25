@@ -186,7 +186,7 @@ Status Server::Start() {
       }
     }
   });
-
+  memory_startup_use_ = Stats::GetMemoryRSS();
   LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();
@@ -818,6 +818,7 @@ void Server::GetMemoryInfo(std::string *info) {
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
+  string_stream << "used_memory_startup:" << memory_startup_use_ << "\r\n";
   *info = string_stream.str();
 }
 

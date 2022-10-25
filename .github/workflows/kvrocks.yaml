@@ -200,7 +200,7 @@ jobs:
       - name: Run Unit Test
         run: |
           export ${{ matrix.runtime_env_vars }}
-          ./build/unittest
+          ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |

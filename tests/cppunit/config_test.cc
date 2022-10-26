@@ -153,8 +153,9 @@ TEST(Config, Rewrite) {
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
+  Config new_config;
   Redis::PopulateCommands();
-  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);
 }
 

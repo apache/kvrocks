@@ -36,6 +36,9 @@ struct configEnum {
   const char *name;
   const int val;
 };
+
+enum configType { SingleConfig, MultiConfig };
+
 int configEnumGetValue(configEnum *ce, const char *name);
 const char *configEnumGetName(configEnum *ce, int val);
 
@@ -47,12 +50,14 @@ class ConfigField {
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) { return Status(Status::NotOK, "not supported"); }
   virtual Status ToBool(bool *b) { return Status(Status::NotOK, "not supported"); }
+  virtual configType GetConfigType() { return config_type; }
 
  public:
   int line_number = 0;
   bool readonly = true;
   validate_fn validate = nullptr;
   callback_fn callback = nullptr;
+  configType config_type = configType::SingleConfig;
 };
 
 class StringField : public ConfigField {
@@ -67,6 +72,29 @@ class StringField : public ConfigField {
 
  private:
   std::string *receiver_;
+};
+
+class MultiStringField : public ConfigField {
+ public:
+  MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input) : receiver_(receiver) {
+    *receiver_ = std::move(input);
+    this->config_type = configType::MultiConfig;
+  }
+  ~MultiStringField() override = default;
+  std::string ToString() override {
+    std::string tmp;
+    for (auto &p : *receiver_) {
+      tmp += p + "\n";
+    }
+    return tmp;
+  }
+  Status Set(const std::string &v) override {
+    receiver_->push_back(v);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<std::string> *receiver_;
 };
 
 class IntField : public ConfigField {

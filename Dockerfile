@@ -40,7 +40,7 @@ COPY ./kvrocks.conf  ./conf/
 RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' ./conf/kvrocks.conf
 VOLUME /var/lib/kvrocks
 
-COPY ./LICENSE ./NOTICE ./DISCLAIMER .
+COPY ./LICENSE ./NOTICE ./DISCLAIMER ./
 COPY ./licenses ./licenses
 
 EXPOSE 6666:6666

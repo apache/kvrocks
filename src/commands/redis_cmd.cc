@@ -2383,10 +2383,10 @@ class CommandZAdd : public Commander {
     if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
-    if (auto left = (args.size() - index); left > 0) {
+    if (auto left = (args.size() - index); left >= 0) {
       if (flags_.HasIncr() && left != 2) {
         return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
-      } else if (left % 2 != 0) {
+      } else if (left % 2 != 0 || left == 0) {
         return Status(Status::RedisParseErr, errInvalidSyntax);
       }
     }

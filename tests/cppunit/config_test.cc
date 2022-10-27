@@ -133,6 +133,33 @@ TEST(Config, GetAndSet) {
   }
 }
 
+TEST(Config, GetAndSetRenameCommand) {
+  const char *path = "test.conf";
+  unlink(path);
+
+  std::ostringstream string_stream;
+  string_stream << "rename-command KEYS KEYS_NEW"
+                << "\n";
+  string_stream << "rename-command GET GET_NEW"
+                << "\n";
+  string_stream << "rename-command SET SET_NEW"
+                << "\n";
+  std::ofstream output_file(path, std::ios::out);
+  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file.close();
+  Config config;
+  Redis::PopulateCommands();
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  std::vector<std::string> values;
+  config.Get("rename-command", &values);
+  ASSERT_EQ(values[1],"KEYS KEYS_NEW");
+  ASSERT_EQ(values[3],"GET GET_NEW");
+  ASSERT_EQ(values[5],"SET SET_NEW");
+  ASSERT_EQ(values[0],"rename-command");
+  ASSERT_EQ(values[2],"rename-command");
+  ASSERT_EQ(values[4],"rename-command");
+}
+
 TEST(Config, Rewrite) {
   const char *path = "test.conf";
   unlink(path);

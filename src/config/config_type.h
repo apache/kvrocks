@@ -89,7 +89,7 @@ class MultiStringField : public ConfigField {
     return tmp;
   }
   Status Set(const std::string &v) override {
-    receiver_->push_back(v);
+    receiver_->emplace_back(v);
     return Status::OK();
   }
 

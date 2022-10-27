@@ -725,12 +725,13 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || Util::ToLower(key) == iter.first) {
-      values->emplace_back(iter.first);
       if (iter.second->GetConfigType() == configType::MultiConfig) {
         for (const auto &p : Util::Split(iter.second->ToString(), "\n")) {
-          values->push_back(p);
+          values->emplace_back(iter.first);
+          values->emplace_back(p);
         }
       } else {
+        values->emplace_back(iter.first);
         values->emplace_back(iter.second->ToString());
       }
     }

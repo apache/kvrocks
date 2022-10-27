@@ -87,7 +87,8 @@ enum ZSetFlags {
   kZSetCH = 1 << 7,
 };
 
-typedef struct ZAddFlags {
+class ZAddFlags {
+ public:
   explicit ZAddFlags(uint8_t flags = 0) : flags(flags) {}
 
   bool HasNX() const { return (flags & kZSetNX) != 0; }
@@ -106,7 +107,7 @@ typedef struct ZAddFlags {
 
  private:
   uint8_t flags = 0;
-} ZAddFlags;
+};
 
 namespace Redis {
 

@@ -54,8 +54,8 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   if (props.size() / 360 > maxFilesToCompact) {
     maxFilesToCompact = props.size() / 360;
   }
-  int64_t now, forceCompactSeconds = 2 * 24 * 3600;
-  rocksdb::Env::Default()->GetCurrentTime(&now);
+  int64_t forceCompactSeconds = 2 * 24 * 3600;
+  int64_t now = Util::GetTimeStamp();
   std::string best_filename;
   double best_delete_ratio = 0;
   int64_t total_keys = 0, deleted_keys = 0;

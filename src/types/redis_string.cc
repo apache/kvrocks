@@ -153,8 +153,7 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
 rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, int ttl) {
   uint32_t expire = 0;
   if (ttl > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     expire = uint32_t(now) + ttl;
   }
   std::string ns_key;
@@ -225,8 +224,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   int exists = 0;
   uint32_t expire = 0;
   if (ttl > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     expire = uint32_t(now) + ttl;
   }
 
@@ -365,8 +363,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
 rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
   uint32_t expire = 0;
   if (ttl > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     expire = uint32_t(now) + ttl;
   }
 
@@ -396,8 +393,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
 
   uint32_t expire = 0;
   if (ttl > 0) {
-    int64_t now;
-    rocksdb::Env::Default()->GetCurrentTime(&now);
+    int64_t now = Util::GetTimeStamp();
     expire = uint32_t(now) + ttl;
   }
 
@@ -462,8 +458,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     uint32_t expire = 0;
     Metadata metadata(kRedisString, false);
     if (ttl > 0) {
-      int64_t now;
-      rocksdb::Env::Default()->GetCurrentTime(&now);
+      int64_t now = Util::GetTimeStamp();
       expire = uint32_t(now) + ttl;
     }
     metadata.expire = expire;

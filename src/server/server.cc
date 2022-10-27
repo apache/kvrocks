@@ -167,7 +167,7 @@ Status Server::Start() {
 
       if (is_loading_ == false && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
-        auto now = std::time(nullptr);
+        auto now = static_cast<time_t>(Util::GetTimeStamp());
         std::tm local_time{};
         localtime_r(&now, &local_time);
         if (local_time.tm_hour >= config_->compaction_checker_range.Start &&
@@ -186,7 +186,7 @@ Status Server::Start() {
       }
     }
   });
-
+  memory_startup_use_ = Stats::GetMemoryRSS();
   LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();
@@ -635,7 +635,7 @@ void Server::cron() {
     }
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (counter != 0 && counter % 200 == 0) {
-      auto t = std::time(nullptr);
+      auto t = static_cast<time_t>(Util::GetTimeStamp());
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
@@ -667,8 +667,8 @@ void Server::cron() {
 
       if (storage_->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
-        if ((GetFetchFileThreadNum() == 0 && std::time(nullptr) - access_time > 30) ||
-            (std::time(nullptr) - create_time > 24 * 60 * 60)) {
+        auto now = static_cast<time_t>(Util::GetTimeStamp());
+        if ((GetFetchFileThreadNum() == 0 && now - access_time > 30) || (now - create_time > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
             LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
@@ -818,6 +818,7 @@ void Server::GetMemoryInfo(std::string *info) {
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
+  string_stream << "used_memory_startup:" << memory_startup_use_ << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1157,9 +1158,9 @@ Status Server::AsyncBgsaveDB() {
   is_bgsave_in_progress_ = true;
 
   Task task = [this] {
-    auto start_bgsave_time = std::time(nullptr);
+    auto start_bgsave_time = static_cast<time_t>(Util::GetTimeStamp());
     Status s = storage_->CreateBackup();
-    auto stop_bgsave_time = std::time(nullptr);
+    auto stop_bgsave_time = static_cast<time_t>(Util::GetTimeStamp());
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;

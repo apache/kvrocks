@@ -152,12 +152,12 @@ TEST(Config, GetAndSetRenameCommand) {
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   std::vector<std::string> values;
   config.Get("rename-command", &values);
-  ASSERT_EQ(values[1],"KEYS KEYS_NEW");
-  ASSERT_EQ(values[3],"GET GET_NEW");
-  ASSERT_EQ(values[5],"SET SET_NEW");
-  ASSERT_EQ(values[0],"rename-command");
-  ASSERT_EQ(values[2],"rename-command");
-  ASSERT_EQ(values[4],"rename-command");
+  ASSERT_EQ(values[1], "KEYS KEYS_NEW");
+  ASSERT_EQ(values[3], "GET GET_NEW");
+  ASSERT_EQ(values[5], "SET SET_NEW");
+  ASSERT_EQ(values[0], "rename-command");
+  ASSERT_EQ(values[2], "rename-command");
+  ASSERT_EQ(values[4], "rename-command");
 }
 
 TEST(Config, Rewrite) {

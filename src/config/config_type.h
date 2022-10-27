@@ -51,6 +51,8 @@ class ConfigField {
   virtual Status ToNumber(int64_t *n) { return Status(Status::NotOK, "not supported"); }
   virtual Status ToBool(bool *b) { return Status(Status::NotOK, "not supported"); }
   virtual configType GetConfigType() { return config_type; }
+  virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
+  virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
 
  public:
   int line_number = 0;

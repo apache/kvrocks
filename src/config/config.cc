@@ -725,7 +725,7 @@ void Config::Get(std::string key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || Util::ToLower(key) == iter.first) {
-      if (iter.second->GetConfigType() == configType::MultiConfig) {
+      if (iter.second->IsMultiConfig()) {
         for (const auto &p : Util::Split(iter.second->ToString(), "\n")) {
           values->emplace_back(iter.first);
           values->emplace_back(p);
@@ -764,7 +764,7 @@ Status Config::Rewrite() {
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {
-    if (iter.first == "rename-command") {
+    if (iter.second->IsMultiConfig()) {
       // We should NOT overwrite the rename command since it cannot be rewritten in-flight,
       // so skip it here to avoid rewriting it as new item.
       continue;

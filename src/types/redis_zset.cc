@@ -72,9 +72,6 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
     }
     added_member_keys.insert(member_key);
 
-    bool lt = flags.HasLT();
-    bool gt = flags.HasGT();
-
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
@@ -85,7 +82,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
         }
         double old_score = DecodeDouble(old_score_bytes.data());
         if (flags.HasIncr()) {
-          if ((lt && (*mscores)[i].score >= 0) || (gt && (*mscores)[i].score <= 0)) {
+          if ((flags.HasLT() && (*mscores)[i].score >= 0) || (flags.HasGT() && (*mscores)[i].score <= 0)) {
             continue;
           }
           (*mscores)[i].score += old_score;
@@ -94,7 +91,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
           }
         }
         if ((*mscores)[i].score != old_score) {
-          if ((lt && (*mscores)[i].score >= old_score) || (gt && (*mscores)[i].score <= old_score)) {
+          if ((flags.HasLT() && (*mscores)[i].score >= old_score) || (flags.HasGT() && (*mscores)[i].score <= old_score)) {
             continue;
           }
           old_score_bytes.append((*mscores)[i].member);

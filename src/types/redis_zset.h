@@ -96,7 +96,7 @@ typedef struct ZAddFlags {
   bool HasGT() const { return (flags & kZSetGT) != 0; }
   bool HasCH() const { return (flags & kZSetCH) != 0; }
   bool HasIncr() const { return (flags & kZSetIncr) != 0; }
-  bool HasFlag() const { return flags != 0; }
+  bool HasAnyFlags() const { return flags != 0; }
 
   void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
 

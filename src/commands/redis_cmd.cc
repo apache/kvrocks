@@ -2412,11 +2412,9 @@ class CommandZAdd : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    bool incr = flags_.HasIncr();
-    if (incr) {
+    if (flags_.HasIncr()) {
       auto new_score = member_scores_[0].score;
-      bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
-      if ((nx || xx || lt || gt) && old_score == new_score &&
+      if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
           ret == 0) {  // not the first time using incr && score not changed
         *output = Redis::NilString();
         return Status::OK();
@@ -2452,14 +2450,13 @@ void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &ind
 }
 
 Status CommandZAdd::validateFlags() const {
-  if (!flags_.HasFlag()) {
+  if (!flags_.HasAnyFlags()) {
     return Status::OK();
   }
-  bool nx = flags_.HasNX(), xx = flags_.HasXX(), lt = flags_.HasLT(), gt = flags_.HasGT();
-  if (nx && xx) {
+  if (flags_.HasNX() && flags_.HasXX()) {
     return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
   }
-  if ((lt && gt) || (lt && nx) || (gt && nx)) {
+  if ((flags_.HasLT() && flags_.HasGT()) || (flags_.HasLT() && flags_.HasNX()) || (flags_.HasGT() && flags_.HasNX())) {
     return Status(Status::RedisParseErr, errZSetLTGTNX);
   }
   return Status::OK();

@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
   kvrocks_config.cluster_enabled = config.cluster_enable;
 
   Engine::Storage storage(&kvrocks_config);
-  s = storage.OpenForReadOnly();
+  s = storage.Open(true);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
     exit(1);

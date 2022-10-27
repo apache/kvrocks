@@ -327,10 +327,6 @@ Status Storage::Open(bool read_only) {
   return Status::OK();
 }
 
-Status Storage::Open() { return Open(false); }
-
-Status Storage::OpenForReadOnly() { return Open(true); }
-
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu_);

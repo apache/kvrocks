@@ -765,7 +765,7 @@ Status Config::Rewrite() {
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {
     if (iter.second->IsMultiConfig()) {
-      // We should NOT overwrite the rename command since it cannot be rewritten in-flight,
+      // We should NOT overwrite the commands which are MultiConfig since it cannot be rewritten in-flight,
       // so skip it here to avoid rewriting it as new item.
       continue;
     }

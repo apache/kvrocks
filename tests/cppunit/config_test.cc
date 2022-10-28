@@ -133,19 +133,17 @@ TEST(Config, GetAndSet) {
   }
 }
 
-TEST(Config, GetAndSetRenameCommand) {
+TEST(Config, GetRenameCommand) {
   const char *path = "test.conf";
   unlink(path);
 
-  std::ostringstream string_stream;
-  string_stream << "rename-command KEYS KEYS_NEW"
-                << "\n";
-  string_stream << "rename-command GET GET_NEW"
-                << "\n";
-  string_stream << "rename-command SET SET_NEW"
-                << "\n";
   std::ofstream output_file(path, std::ios::out);
-  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file << "rename-command KEYS KEYS_NEW"
+                << "\n";
+  output_file << "rename-command GET GET_NEW"
+                << "\n";
+  output_file << "rename-command SET SET_NEW"
+                << "\n";
   output_file.close();
   Config config;
   Redis::PopulateCommands();
@@ -164,15 +162,13 @@ TEST(Config, Rewrite) {
   const char *path = "test.conf";
   unlink(path);
 
-  std::ostringstream string_stream;
-  string_stream << "rename-command KEYS KEYS_NEW"
-                << "\n";
-  string_stream << "rename-command GET GET_NEW"
-                << "\n";
-  string_stream << "rename-command SET SET_NEW"
-                << "\n";
   std::ofstream output_file(path, std::ios::out);
-  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file << "rename-command KEYS KEYS_NEW"
+                << "\n";
+  output_file << "rename-command GET GET_NEW"
+                << "\n";
+  output_file << "rename-command SET SET_NEW"
+                << "\n";
   output_file.close();
 
   Config config;

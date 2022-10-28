@@ -75,7 +75,7 @@ TEST(Compact, Filter) {
   auto zset = std::make_unique<Redis::ZSet>(storage_.get(), ns);
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores = {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
-  zset->Add(expired_zset_key, 0, &member_scores, &ret);
+  zset->Add(expired_zset_key, ZAddFlags::Default(), &member_scores, &ret);
   zset->Expire(expired_zset_key, 1);  // expired
   usleep(10000);
 

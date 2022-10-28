@@ -148,7 +148,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
     mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];
     approximate_size += (key_.size() + 8 + mscores[i].member.size() + 8) * 2;
   }
-  rocksdb::Status s = zset->Add(key_, 0, &mscores, &ret);
+  rocksdb::Status s = zset->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisZSet, &key_size).ok());

@@ -37,7 +37,7 @@ rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
   return Database::GetMetadata(kRedisZSet, ns_key, metadata);
 }
 
-rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret) {
+rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<MemberScore> *mscores, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -49,6 +49,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
   if (!s.ok() && !s.IsNotFound()) return s;
 
   int added = 0;
+  int changed = 0;
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisZSet);
   batch.PutLogData(log_data.Encode());
@@ -76,14 +77,24 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
       s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
+        if (!s.IsNotFound() && flags.HasNX()) {
+          continue;
+        }
         double old_score = DecodeDouble(old_score_bytes.data());
-        if (flags == kZSetIncr) {
+        if (flags.HasIncr()) {
+          if ((flags.HasLT() && (*mscores)[i].score >= 0) || (flags.HasGT() && (*mscores)[i].score <= 0)) {
+            continue;
+          }
           (*mscores)[i].score += old_score;
           if (std::isnan((*mscores)[i].score)) {
             return rocksdb::Status::InvalidArgument("resulting score is not a number (NaN)");
           }
         }
         if ((*mscores)[i].score != old_score) {
+          if ((flags.HasLT() && (*mscores)[i].score >= old_score) ||
+              (flags.HasGT() && (*mscores)[i].score <= old_score)) {
+            continue;
+          }
           old_score_bytes.append((*mscores)[i].member);
           std::string old_score_key;
           InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&old_score_key);
@@ -94,9 +105,13 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
           new_score_bytes.append((*mscores)[i].member);
           InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&new_score_key);
           batch.Put(score_cf_handle_, new_score_key, Slice());
+          changed++;
         }
         continue;
       }
+    }
+    if (flags.HasXX()) {
+      continue;
     }
     std::string score_bytes, score_key;
     PutDouble(&score_bytes, (*mscores)[i].score);
@@ -112,6 +127,9 @@ rocksdb::Status ZSet::Add(const Slice &user_key, uint8_t flags, std::vector<Memb
     std::string bytes;
     metadata.Encode(&bytes);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
+  }
+  if (flags.HasCH()) {
+    *ret += changed;
   }
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
@@ -138,7 +156,7 @@ rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double 
   int ret;
   std::vector<MemberScore> mscores;
   mscores.emplace_back(MemberScore{member.ToString(), increment});
-  rocksdb::Status s = Add(user_key, kZSetIncr, &mscores, &ret);
+  rocksdb::Status s = Add(user_key, ZAddFlags::Incr(), &mscores, &ret);
   if (!s.ok()) return s;
   *score = mscores[0].score;
   return rocksdb::Status::OK();

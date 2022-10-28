@@ -82,6 +82,31 @@ enum ZSetFlags {
   kZSetXX = 1 << 2,
   kZSetReversed = 1 << 3,
   kZSetRemoved = 1 << 4,
+  kZSetGT = 1 << 5,
+  kZSetLT = 1 << 6,
+  kZSetCH = 1 << 7,
+};
+
+class ZAddFlags {
+ public:
+  explicit ZAddFlags(uint8_t flags = 0) : flags(flags) {}
+
+  bool HasNX() const { return (flags & kZSetNX) != 0; }
+  bool HasXX() const { return (flags & kZSetXX) != 0; }
+  bool HasLT() const { return (flags & kZSetLT) != 0; }
+  bool HasGT() const { return (flags & kZSetGT) != 0; }
+  bool HasCH() const { return (flags & kZSetCH) != 0; }
+  bool HasIncr() const { return (flags & kZSetIncr) != 0; }
+  bool HasAnyFlags() const { return flags != 0; }
+
+  void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
+
+  static const ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
+
+  static const ZAddFlags Default() { return ZAddFlags{0}; }
+
+ private:
+  uint8_t flags = 0;
 };
 
 namespace Redis {
@@ -90,7 +115,7 @@ class ZSet : public SubKeyScanner {
  public:
   explicit ZSet(Engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle("zset_score")) {}
-  rocksdb::Status Add(const Slice &user_key, uint8_t flags, std::vector<MemberScore> *mscores, int *ret);
+  rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status Count(const Slice &user_key, const ZRangeSpec &spec, int *ret);
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);

@@ -250,7 +250,7 @@ static Status createPidFile(const std::string &path) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  write(*fd, pid_str.data(), pid_str.size());
+  Util::Write(*fd, pid_str);
   return Status::OK();
 }
 

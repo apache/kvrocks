@@ -51,7 +51,7 @@ Status FeedSlaveThread::Start() {
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      write(conn_->GetFD(), "+OK\r\n", 5);
+      Util::SockSend(conn_->GetFD(), "+OK\r\n");
       this->loop();
     });
   } catch (const std::system_error &e) {

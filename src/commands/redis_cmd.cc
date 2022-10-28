@@ -4006,7 +4006,7 @@ class CommandPSync : public Commander {
     Status s = svr->AddSlave(conn, next_repl_seq);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      write(conn->GetFD(), err.c_str(), err.length());
+      Util::SockSend(conn->GetFD(), err);
       conn->EnableFlag(Redis::Connection::kCloseAsync);
       LOG(WARNING) << "Failed to add salve: " << conn->GetAddr() << " to start increment syncing";
     } else {
@@ -4690,8 +4690,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
       if (!s.IsOK()) {
-        const char *message = "-ERR can't create db checkpoint";
-        write(repl_fd, message, strlen(message));
+        Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
         LOG(WARNING) << "[replication] Failed to get full data file info,"
                      << " error: " << s.Msg();
         return;

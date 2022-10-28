@@ -234,7 +234,7 @@ Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::o
     offset_string += " ";
   }
   offset_string += '\0';
-  pwrite(next_offset_fds_[ns], offset_string.data(), offset_string.size(), 0);
+  Util::Pwrite(next_offset_fds_[ns], offset_string, 0);
   return Status::OK();
 }
 

@@ -157,7 +157,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
-    write(fd, err_msg.data(), err_msg.size());
+    Util::SockSend(fd, err_msg);
     conn->Close();
     return;
   }
@@ -185,7 +185,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
-    write(fd, err_msg.data(), err_msg.size());
+    Util::SockSend(fd, err_msg);
     conn->Close();
     return;
   }

@@ -23,6 +23,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -34,17 +35,27 @@ import (
 
 func TestRenameCommand(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
-		"rename-command": "KEYS KEYSNEW",
+		"rename-command KEYS": "KEYSNEW",
+		"rename-command GET":  "GETNEW",
+		"rename-command SET":  "SETNEW",
 	})
 	defer srv.Close()
 
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-	err := rdb.Keys(ctx, "*").Err()
-	require.ErrorContains(t, err, "unknown command")
-	r := rdb.Do(ctx, "KEYSNEW", "*")
-	require.Equal(t, []interface{}{}, r.Val())
+	require.ErrorContains(t, rdb.Keys(ctx, "*").Err(), "unknown command")
+	require.ErrorContains(t, rdb.Get(ctx, "key").Err(), "unknown command")
+	require.ErrorContains(t, rdb.Set(ctx, "key", "1", 0).Err(), "unknown command")
+	require.Equal(t, []interface{}{}, rdb.Do(ctx, "KEYSNEW", "*").Val())
+	require.NoError(t, rdb.Do(ctx, "SETNEW", "key", "1").Err())
+	require.Equal(t, "1", rdb.Do(ctx, "GETNEW", "key").Val())
+	val := []string{}
+	for _, v := range rdb.Do(ctx, "config", "get", "rename-command").Val().([]interface{}) {
+		val = append(val, v.(string))
+	}
+	sort.Strings(val)
+	require.EqualValues(t, []string{"GET GETNEW", "KEYS KEYSNEW", "SET SETNEW", "rename-command", "rename-command", "rename-command"}, val)
 }
 
 func TestSetConfigBackupDir(t *testing.T) {

@@ -251,6 +251,6 @@ Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
     seq_string += " ";
   }
   seq_string += '\0';
-  pwrite(next_seq_fd_, seq_string.data(), seq_string.size(), 0);
+  Util::Pwrite(next_seq_fd_, seq_string, 0);
   return Status::OK();
 }

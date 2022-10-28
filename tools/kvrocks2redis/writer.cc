@@ -25,6 +25,8 @@
 
 #include <cstring>
 
+#include "util.h"
+
 Writer::~Writer() {
   for (const auto &iter : aof_fds_) {
     close(iter.second);
@@ -36,8 +38,8 @@ Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs
   if (!s.IsOK()) {
     return Status(Status::NotOK, s.Msg());
   }
-  for (size_t i = 0; i < aofs.size(); i++) {
-    write(aof_fds_[ns], aofs[i].data(), aofs[i].size());
+  for (const auto &aof : aofs) {
+    Util::Write(aof_fds_[ns], aof);
   }
 
   return Status::OK();

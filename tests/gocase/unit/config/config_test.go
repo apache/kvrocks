@@ -23,6 +23,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -49,7 +50,12 @@ func TestRenameCommand(t *testing.T) {
 	require.Equal(t, []interface{}{}, rdb.Do(ctx, "KEYSNEW", "*").Val())
 	require.NoError(t, rdb.Do(ctx, "SETNEW", "key", "1").Err())
 	require.Equal(t, "1", rdb.Do(ctx, "GETNEW", "key").Val())
-	require.EqualValues(t, []interface{}([]interface{}{"rename-command", "KEYS KEYSNEW", "rename-command", "GET GETNEW", "rename-command", "SET SETNEW"}), rdb.Do(ctx, "config", "get", "rename-command").Val())
+	var val []string
+	for _, v := range rdb.Do(ctx, "config", "get", "rename-command").Val().([]interface{}) {
+		val = append(val, v.(string))
+	}
+	sort.Strings(val)
+	require.EqualValues(t, []string{"GET GETNEW", "KEYS KEYSNEW", "SET SETNEW", "rename-command", "rename-command", "rename-command"}, val)
 }
 
 func TestSetConfigBackupDir(t *testing.T) {

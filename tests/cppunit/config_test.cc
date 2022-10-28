@@ -139,11 +139,11 @@ TEST(Config, GetRenameCommand) {
 
   std::ofstream output_file(path, std::ios::out);
   output_file << "rename-command KEYS KEYS_NEW"
-                << "\n";
+              << "\n";
   output_file << "rename-command GET GET_NEW"
-                << "\n";
+              << "\n";
   output_file << "rename-command SET SET_NEW"
-                << "\n";
+              << "\n";
   output_file.close();
   Config config;
   Redis::PopulateCommands();
@@ -164,11 +164,11 @@ TEST(Config, Rewrite) {
 
   std::ofstream output_file(path, std::ios::out);
   output_file << "rename-command KEYS KEYS_NEW"
-                << "\n";
+              << "\n";
   output_file << "rename-command GET GET_NEW"
-                << "\n";
+              << "\n";
   output_file << "rename-command SET SET_NEW"
-                << "\n";
+              << "\n";
   output_file.close();
 
   Config config;

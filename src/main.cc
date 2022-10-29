@@ -40,6 +40,7 @@
 
 #include "config.h"
 #include "fd_util.h"
+#include "scope_exit.h"
 #include "server/server.h"
 #include "storage/storage.h"
 #include "util.h"
@@ -49,14 +50,15 @@ namespace google {
 bool Symbolize(void *pc, char *out, size_t out_size);
 }  // namespace google
 
-std::function<void()> hup_handler;
-
 Server *srv = nullptr;
 
 Server *GetServer() { return srv; }
 
-extern "C" void signal_handler(int sig) {
-  if (hup_handler) hup_handler();
+extern "C" void signalHandler(int sig) {
+  if (srv && !srv->IsStopped()) {
+    LOG(INFO) << "Bye Bye";
+    srv->Stop();
+  }
 }
 
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
@@ -66,10 +68,19 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
              << sig << ") =======";
   int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   char **messages = backtrace_symbols(trace, trace_size);
+
+  size_t max_msg_len = 0;
+  for (int i = 1; i < trace_size; ++i) {
+    auto msg_len = strlen(messages[i]);
+    if (msg_len > max_msg_len) {
+      max_msg_len = msg_len;
+    }
+  }
+
   for (int i = 1; i < trace_size; ++i) {
     char func_info[1024] = {};
     if (google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
-      LOG(ERROR) << messages[i] << ": " << func_info;
+      LOG(ERROR) << std::left << std::setw(max_msg_len) << messages[i] << "  " << func_info;
     } else {
       LOG(ERROR) << messages[i];
     }
@@ -104,7 +115,7 @@ void setupSigSegvAction() {
   sigaction(SIGABRT, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-  act.sa_handler = signal_handler;
+  act.sa_handler = signalHandler;
   sigaction(SIGTERM, &act, nullptr);
   sigaction(SIGINT, &act, nullptr);
 }
@@ -257,9 +268,7 @@ static Status createPidFile(const std::string &path) {
 static void removePidFile(const std::string &path) { std::remove(path.data()); }
 
 static void daemonize() {
-  pid_t pid;
-
-  pid = fork();
+  pid_t pid = fork();
   if (pid < 0) {
     LOG(ERROR) << "Failed to fork the process, err: " << strerror(errno);
     exit(1);
@@ -281,8 +290,8 @@ int main(int argc, char *argv[]) {
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
+  signal(SIGINT, signalHandler);
+  signal(SIGTERM, signalHandler);
   setupSigSegvAction();
 
   auto opts = parseCommandLineOptions(argc, argv);
@@ -294,7 +303,7 @@ int main(int argc, char *argv[]) {
   Status s = config.Load(opts);
   if (!s.IsOK()) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
-    exit(1);
+    return 1;
   }
   initGoogleLog(&config);
   printVersion(LOG(INFO));
@@ -307,7 +316,7 @@ int main(int argc, char *argv[]) {
       if (Util::IsPortInUse(*port)) {
         LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use"
                    << std::endl;
-        exit(1);
+        return 1;
       }
     }
   }
@@ -316,8 +325,9 @@ int main(int argc, char *argv[]) {
   s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
-    exit(1);
+    return 1;
   }
+  auto pidfile_exit = MakeScopeExit([&config] { removePidFile(config.pidfile); });
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL
@@ -330,25 +340,16 @@ int main(int argc, char *argv[]) {
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
-    removePidFile(config.pidfile);
-    exit(1);
+    return 1;
   }
-  srv = new Server(&storage, &config);
-  hup_handler = [] {
-    if (!srv->IsStopped()) {
-      LOG(INFO) << "Bye Bye";
-      srv->Stop();
-    }
-  };
+  Server server(&storage, &config);
+  srv = &server;
   s = srv->Start();
   if (!s.IsOK()) {
-    removePidFile(config.pidfile);
-    exit(1);
+    return 1;
   }
   srv->Join();
 
-  delete srv;
-  removePidFile(config.pidfile);
   google::ShutdownGoogleLogging();
   libevent_global_shutdown();
   return 0;

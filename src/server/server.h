@@ -286,5 +286,4 @@ class Server {
   int64_t memory_startup_use_ = 0;
 };
 
-extern Server *srv;
 Server *GetServer();

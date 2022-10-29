@@ -54,14 +54,14 @@ Server *srv = nullptr;
 
 Server *GetServer() { return srv; }
 
-void signalHandler(int sig) {
+extern "C" void signalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
     LOG(INFO) << "Bye Bye";
     srv->Stop();
   }
 }
 
-void segvHandler(int sig, siginfo_t *info, void *secret) {
+extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
 
   LOG(ERROR) << "======= Ooops! kvrocks " << VERSION << " @" << GIT_COMMIT << " got signal: " << strsignal(sig) << " ("

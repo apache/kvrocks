@@ -303,7 +303,7 @@ int main(int argc, char *argv[]) {
   Status s = config.Load(opts);
   if (!s.IsOK()) {
     std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
-    exit(1);
+    return 1;
   }
   initGoogleLog(&config);
   printVersion(LOG(INFO));
@@ -316,7 +316,7 @@ int main(int argc, char *argv[]) {
       if (Util::IsPortInUse(*port)) {
         LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use"
                    << std::endl;
-        exit(1);
+        return 1;
       }
     }
   }
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
   s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
-    exit(1);
+    return 1;
   }
   auto pidfile_exit = MakeScopeExit([&config] { removePidFile(config.pidfile); });
 

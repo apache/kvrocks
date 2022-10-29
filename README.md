@@ -114,7 +114,9 @@ $ ./build/kvrocks -c kvrocks.conf
 ### Running kvrocks using Docker
 
 ```
-$ docker run -it -p 6666:6666 apache/kvrocks:latest # or run the nightly build via kvrocks/kvrocks:nightly
+$ docker run -it -p 6666:6666 apache/kvrocks
+# or get the nightly image:
+$ docker run -it -p 6666:6666 kvrocks/kvrocks:nightly
 ```
 
 ### Connect kvrocks service

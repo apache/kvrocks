@@ -130,8 +130,8 @@ $ redis-cli -p 6666
 
 ```shell
 $ ./x.py build --unittest
-$ cd build
-$ ./unittest
+$ ./x.py test cpp # run C++ unit tests
+$ ./x.py test go # run Golang (unit and integration) test cases
 ```
 
 ### Supported platforms

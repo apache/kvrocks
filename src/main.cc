@@ -54,7 +54,7 @@ Server *srv = nullptr;
 
 Server *GetServer() { return srv; }
 
-void signal_handler(int sig) {
+void signalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
     LOG(INFO) << "Bye Bye";
     srv->Stop();
@@ -115,7 +115,7 @@ void setupSigSegvAction() {
   sigaction(SIGABRT, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-  act.sa_handler = signal_handler;
+  act.sa_handler = signalHandler;
   sigaction(SIGTERM, &act, nullptr);
   sigaction(SIGINT, &act, nullptr);
 }
@@ -290,8 +290,8 @@ int main(int argc, char *argv[]) {
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
+  signal(SIGINT, signalHandler);
+  signal(SIGTERM, signalHandler);
   setupSigSegvAction();
 
   auto opts = parseCommandLineOptions(argc, argv);

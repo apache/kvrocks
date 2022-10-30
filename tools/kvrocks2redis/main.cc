@@ -87,7 +87,7 @@ static Status createPidFile(const std::string &path) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  write(fd, pid_str.data(), pid_str.size());
+  Util::Write(fd, pid_str);
   close(fd);
   return Status::OK();
 }
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
   kvrocks_config.cluster_enabled = config.cluster_enable;
 
   Engine::Storage storage(&kvrocks_config);
-  s = storage.OpenForReadOnly();
+  s = storage.Open(true);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
     exit(1);

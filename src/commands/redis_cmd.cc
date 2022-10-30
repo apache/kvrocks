@@ -77,6 +77,7 @@ const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
+const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
 
 enum class AuthResult {
   OK,
@@ -2313,12 +2314,20 @@ class CommandSInterStore : public Commander {
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+    unsigned index = 2;
+    parseFlags(args, index);
+    if (auto s = validateFlags(); !s.IsOK()) {
+      return s;
     }
-
+    if (auto left = (args.size() - index); left >= 0) {
+      if (flags_.HasIncr() && left != 2) {
+        return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
+      } else if (left % 2 != 0 || left == 0) {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+    }
     try {
-      for (unsigned i = 2; i < args.size(); i += 2) {
+      for (unsigned i = index; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
         if (std::isnan(score)) {
           return Status(Status::RedisParseErr, "ERR score is not a valid float");
@@ -2333,18 +2342,61 @@ class CommandZAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
+    double old_score = member_scores_[0].score;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], 0, &member_scores_, &ret);
+    rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::Integer(ret);
+    if (flags_.HasIncr()) {
+      auto new_score = member_scores_[0].score;
+      if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
+          ret == 0) {  // not the first time using incr && score not changed
+        *output = Redis::NilString();
+        return Status::OK();
+      }
+      *output = Redis::BulkString(Util::Float2String(new_score));
+    } else {
+      *output = Redis::Integer(ret);
+    }
     return Status::OK();
   }
 
  private:
   std::vector<MemberScore> member_scores_;
+  ZAddFlags flags_{0};
+
+  void parseFlags(const std::vector<std::string> &args, unsigned &index);
+  Status validateFlags() const;
 };
+
+void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &index) {
+  std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
+                                                        {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
+  for (unsigned i = 2; i < args.size(); i++) {
+    auto option = Util::ToLower(args[i]);
+    auto it = options.find(option);
+    if (it != options.end()) {
+      flags_.SetFlag(it->second);
+      index++;
+    } else {
+      break;
+    }
+  }
+}
+
+Status CommandZAdd::validateFlags() const {
+  if (!flags_.HasAnyFlags()) {
+    return Status::OK();
+  }
+  if (flags_.HasNX() && flags_.HasXX()) {
+    return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
+  }
+  if ((flags_.HasLT() && flags_.HasGT()) || (flags_.HasLT() && flags_.HasNX()) || (flags_.HasGT() && flags_.HasNX())) {
+    return Status(Status::RedisParseErr, errZSetLTGTNX);
+  }
+  return Status::OK();
+}
 
 class CommandZCount : public Commander {
  public:
@@ -3890,7 +3942,7 @@ class CommandPSync : public Commander {
     Status s = svr->AddSlave(conn, next_repl_seq);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      write(conn->GetFD(), err.c_str(), err.length());
+      Util::SockSend(conn->GetFD(), err);
       conn->EnableFlag(Redis::Connection::kCloseAsync);
       LOG(WARNING) << "Failed to add salve: " << conn->GetAddr() << " to start increment syncing";
     } else {
@@ -4574,8 +4626,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
       if (!s.IsOK()) {
-        const char *message = "-ERR can't create db checkpoint";
-        write(repl_fd, message, strlen(message));
+        Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
         LOG(WARNING) << "[replication] Failed to get full data file info,"
                      << " error: " << s.Msg();
         return;
@@ -5820,215 +5871,218 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
-#define ADD_CMD(name, arity, description, first_key, last_key, key_step, fn)                \
-  {                                                                                         \
-    name, arity, description, 0, first_key, last_key, key_step,                             \
-        []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new fn()); } \
-  }
+template <typename T>
+CommandAttributes MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key,
+                              int last_key, int key_step) {
+  return {name,        arity,
+          description, 0,
+          first_key,   last_key,
+          key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+}
 
 CommandAttributes redisCommandTable[] = {
-    ADD_CMD("auth", 2, "read-only ok-loading", 0, 0, 0, CommandAuth),
-    ADD_CMD("ping", -1, "read-only", 0, 0, 0, CommandPing),
-    ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
-    ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
-    ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),
-    ADD_CMD("config", -2, "read-only", 0, 0, 0, CommandConfig),
-    ADD_CMD("namespace", -3, "read-only", 0, 0, 0, CommandNamespace),
-    ADD_CMD("keys", 2, "read-only", 0, 0, 0, CommandKeys),
-    ADD_CMD("flushdb", 1, "write", 0, 0, 0, CommandFlushDB),
-    ADD_CMD("flushall", 1, "write", 0, 0, 0, CommandFlushAll),
-    ADD_CMD("dbsize", -1, "read-only", 0, 0, 0, CommandDBSize),
-    ADD_CMD("slowlog", -2, "read-only", 0, 0, 0, CommandSlowlog),
-    ADD_CMD("perflog", -2, "read-only", 0, 0, 0, CommandPerfLog),
-    ADD_CMD("client", -2, "read-only", 0, 0, 0, CommandClient),
-    ADD_CMD("monitor", 1, "read-only no-multi", 0, 0, 0, CommandMonitor),
-    ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
-    ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
-    ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
-    ADD_CMD("randomkey", 1, "read-only no-script", 0, 0, 0, CommandRandomKey),
-    ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
-    ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
-    ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
-    ADD_CMD("disk", 3, "read-only", 0, 0, 0, CommandDisk),
-    ADD_CMD("hello", -1, "read-only ok-loading", 0, 0, 0, CommandHello),
+    MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write", 0, 0, 0),
+    MakeCmdAttr<CommandFlushAll>("flushall", 1, "write", 0, 0, 0),
+    MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi", 0, 0, 0),
+    MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
+    MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
 
-    ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
-    ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),
-    ADD_CMD("type", 2, "read-only", 1, 1, 1, CommandType),
-    ADD_CMD("object", 3, "read-only", 2, 2, 1, CommandObject),
-    ADD_CMD("exists", -2, "read-only", 1, -1, 1, CommandExists),
-    ADD_CMD("persist", 2, "write", 1, 1, 1, CommandPersist),
-    ADD_CMD("expire", 3, "write", 1, 1, 1, CommandExpire),
-    ADD_CMD("pexpire", 3, "write", 1, 1, 1, CommandPExpire),
-    ADD_CMD("expireat", 3, "write", 1, 1, 1, CommandExpireAt),
-    ADD_CMD("pexpireat", 3, "write", 1, 1, 1, CommandPExpireAt),
-    ADD_CMD("del", -2, "write", 1, -1, 1, CommandDel),
-    ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
+    MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+    MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
+    MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
 
-    ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
-    ADD_CMD("getex", -2, "write", 1, 1, 1, CommandGetEx),
-    ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
-    ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
-    ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),
-    ADD_CMD("getdel", 2, "write", 1, 1, 1, CommandGetDel),
-    ADD_CMD("setrange", 4, "write", 1, 1, 1, CommandSetRange),
-    ADD_CMD("mget", -2, "read-only", 1, -1, 1, CommandMGet),
-    ADD_CMD("append", 3, "write", 1, 1, 1, CommandAppend),
-    ADD_CMD("set", -3, "write", 1, 1, 1, CommandSet),
-    ADD_CMD("setex", 4, "write", 1, 1, 1, CommandSetEX),
-    ADD_CMD("psetex", 4, "write", 1, 1, 1, CommandPSetEX),
-    ADD_CMD("setnx", 3, "write", 1, 1, 1, CommandSetNX),
-    ADD_CMD("msetnx", -3, "write exclusive", 1, -1, 2, CommandMSetNX),
-    ADD_CMD("mset", -3, "write", 1, -1, 2, CommandMSet),
-    ADD_CMD("incrby", 3, "write", 1, 1, 1, CommandIncrBy),
-    ADD_CMD("incrbyfloat", 3, "write", 1, 1, 1, CommandIncrByFloat),
-    ADD_CMD("incr", 2, "write", 1, 1, 1, CommandIncr),
-    ADD_CMD("decrby", 3, "write", 1, 1, 1, CommandDecrBy),
-    ADD_CMD("decr", 2, "write", 1, 1, 1, CommandDecr),
-    ADD_CMD("cas", -4, "write", 1, 1, 1, CommandCAS),
-    ADD_CMD("cad", 3, "write", 1, 1, 1, CommandCAD),
+    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write exclusive", 1, -1, 2),
+    MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2),
+    MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1),
 
-    ADD_CMD("getbit", 3, "read-only", 1, 1, 1, CommandGetBit),
-    ADD_CMD("setbit", 4, "write", 1, 1, 1, CommandSetBit),
-    ADD_CMD("bitcount", -2, "read-only", 1, 1, 1, CommandBitCount),
-    ADD_CMD("bitpos", -3, "read-only", 1, 1, 1, CommandBitPos),
-    ADD_CMD("bitop", -4, "write", 2, -1, 1, CommandBitOp),
+    MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
 
-    ADD_CMD("hget", 3, "read-only", 1, 1, 1, CommandHGet),
-    ADD_CMD("hincrby", 4, "write", 1, 1, 1, CommandHIncrBy),
-    ADD_CMD("hincrbyfloat", 4, "write", 1, 1, 1, CommandHIncrByFloat),
-    ADD_CMD("hset", -4, "write", 1, 1, 1, CommandHMSet),
-    ADD_CMD("hsetnx", 4, "write", 1, 1, 1, CommandHSetNX),
-    ADD_CMD("hdel", -3, "write", 1, 1, 1, CommandHDel),
-    ADD_CMD("hstrlen", 3, "read-only", 1, 1, 1, CommandHStrlen),
-    ADD_CMD("hexists", 3, "read-only", 1, 1, 1, CommandHExists),
-    ADD_CMD("hlen", 2, "read-only", 1, 1, 1, CommandHLen),
-    ADD_CMD("hmget", -3, "read-only", 1, 1, 1, CommandHMGet),
-    ADD_CMD("hmset", -4, "write", 1, 1, 1, CommandHMSet),
-    ADD_CMD("hkeys", 2, "read-only", 1, 1, 1, CommandHKeys),
-    ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
-    ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
-    ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
-    ADD_CMD("hrange", -4, "read-only", 1, 1, 1, CommandHRange),
+    MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHSetNX>("hsetnx", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHMGet>("hmget", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHMSet>("hmset", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
 
-    ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
-    ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),
-    ADD_CMD("lpushx", -3, "write", 1, 1, 1, CommandLPushX),
-    ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
-    ADD_CMD("lpop", -2, "write", 1, 1, 1, CommandLPop),
-    ADD_CMD("rpop", -2, "write", 1, 1, 1, CommandRPop),
-    ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
-    ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
-    ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
-    ADD_CMD("linsert", 5, "write", 1, 1, 1, CommandLInsert),
-    ADD_CMD("lrange", 4, "read-only", 1, 1, 1, CommandLRange),
-    ADD_CMD("lindex", 3, "read-only", 1, 1, 1, CommandLIndex),
-    ADD_CMD("ltrim", 4, "write", 1, 1, 1, CommandLTrim),
-    ADD_CMD("llen", 2, "read-only", 1, 1, 1, CommandLLen),
-    ADD_CMD("lset", 4, "write", 1, 1, 1, CommandLSet),
-    ADD_CMD("rpoplpush", 3, "write", 1, 2, 1, CommandRPopLPUSH),
-    ADD_CMD("lmove", 5, "write", 1, 2, 1, CommandLMove),
+    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
+    MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
+    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
+    MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
 
-    ADD_CMD("sadd", -3, "write", 1, 1, 1, CommandSAdd),
-    ADD_CMD("srem", -3, "write", 1, 1, 1, CommandSRem),
-    ADD_CMD("scard", 2, "read-only", 1, 1, 1, CommandSCard),
-    ADD_CMD("smembers", 2, "read-only", 1, 1, 1, CommandSMembers),
-    ADD_CMD("sismember", 3, "read-only", 1, 1, 1, CommandSIsMember),
-    ADD_CMD("smismember", -3, "read-only", 1, 1, 1, CommandSMIsMember),
-    ADD_CMD("spop", -2, "write", 1, 1, 1, CommandSPop),
-    ADD_CMD("srandmember", -2, "read-only", 1, 1, 1, CommandSRandMember),
-    ADD_CMD("smove", 4, "write", 1, 2, 1, CommandSMove),
-    ADD_CMD("sdiff", -2, "read-only", 1, -1, 1, CommandSDiff),
-    ADD_CMD("sunion", -2, "read-only", 1, -1, 1, CommandSUnion),
-    ADD_CMD("sinter", -2, "read-only", 1, -1, 1, CommandSInter),
-    ADD_CMD("sdiffstore", -3, "write", 1, -1, 1, CommandSDiffStore),
-    ADD_CMD("sunionstore", -3, "write", 1, -1, 1, CommandSUnionStore),
-    ADD_CMD("sinterstore", -3, "write", 1, -1, 1, CommandSInterStore),
-    ADD_CMD("sscan", -3, "read-only", 1, 1, 1, CommandSScan),
+    MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSIsMember>("sismember", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMIsMember>("smismember", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSPop>("spop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSRandMember>("srandmember", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMove>("smove", 4, "write", 1, 2, 1),
+    MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1),
 
-    ADD_CMD("zadd", -4, "write", 1, 1, 1, CommandZAdd),
-    ADD_CMD("zcard", 2, "read-only", 1, 1, 1, CommandZCard),
-    ADD_CMD("zcount", 4, "read-only", 1, 1, 1, CommandZCount),
-    ADD_CMD("zincrby", 4, "write", 1, 1, 1, CommandZIncrBy),
-    ADD_CMD("zinterstore", -4, "write", 1, 1, 1, CommandZInterStore),
-    ADD_CMD("zlexcount", 4, "read-only", 1, 1, 1, CommandZLexCount),
-    ADD_CMD("zpopmax", -2, "write", 1, 1, 1, CommandZPopMax),
-    ADD_CMD("zpopmin", -2, "write", 1, 1, 1, CommandZPopMin),
-    ADD_CMD("zrange", -4, "read-only", 1, 1, 1, CommandZRange),
-    ADD_CMD("zrevrange", -4, "read-only", 1, 1, 1, CommandZRevRange),
-    ADD_CMD("zrangebylex", -4, "read-only", 1, 1, 1, CommandZRangeByLex),
-    ADD_CMD("zrevrangebylex", -4, "read-only", 1, 1, 1, CommandZRevRangeByLex),
-    ADD_CMD("zrangebyscore", -4, "read-only", 1, 1, 1, CommandZRangeByScore),
-    ADD_CMD("zrank", 3, "read-only", 1, 1, 1, CommandZRank),
-    ADD_CMD("zrem", -3, "write", 1, 1, 1, CommandZRem),
-    ADD_CMD("zremrangebyrank", 4, "write", 1, 1, 1, CommandZRemRangeByRank),
-    ADD_CMD("zremrangebyscore", -4, "write", 1, 1, 1, CommandZRemRangeByScore),
-    ADD_CMD("zremrangebylex", 4, "write", 1, 1, 1, CommandZRemRangeByLex),
-    ADD_CMD("zrevrangebyscore", -4, "read-only", 1, 1, 1, CommandZRevRangeByScore),
-    ADD_CMD("zrevrank", 3, "read-only", 1, 1, 1, CommandZRevRank),
-    ADD_CMD("zscore", 3, "read-only", 1, 1, 1, CommandZScore),
-    ADD_CMD("zmscore", -3, "read-only", 1, 1, 1, CommandZMScore),
-    ADD_CMD("zscan", -3, "read-only", 1, 1, 1, CommandZScan),
-    ADD_CMD("zunionstore", -4, "write", 1, 1, 1, CommandZUnionStore),
+    MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRangeByLex>("zrevrangebylex", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRangeByScore>("zrangebyscore", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRank>("zrank", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRem>("zrem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByRank>("zremrangebyrank", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByScore>("zremrangebyscore", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByLex>("zremrangebylex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRangeByScore>("zrevrangebyscore", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRank>("zrevrank", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1),
 
-    ADD_CMD("geoadd", -5, "write", 1, 1, 1, CommandGeoAdd),
-    ADD_CMD("geodist", -4, "read-only", 1, 1, 1, CommandGeoDist),
-    ADD_CMD("geohash", -3, "read-only", 1, 1, 1, CommandGeoHash),
-    ADD_CMD("geopos", -3, "read-only", 1, 1, 1, CommandGeoPos),
-    ADD_CMD("georadius", -6, "write", 1, 1, 1, CommandGeoRadius),
-    ADD_CMD("georadiusbymember", -5, "write", 1, 1, 1, CommandGeoRadiusByMember),
-    ADD_CMD("georadius_ro", -6, "read-only", 1, 1, 1, CommandGeoRadiusReadonly),
-    ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
+    MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoDist>("geodist", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoHash>("geohash", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoPos>("geopos", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
 
-    ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPUnSubscribe),
-    ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0, CommandPubSub),
+    MakeCmdAttr<CommandPublish>("publish", 3, "read-only pub-sub", 0, 0, 0),
+    MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0),
 
-    ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
-    ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
-    ADD_CMD("exec", 1, "exclusive multi", 0, 0, 0, CommandExec),
+    MakeCmdAttr<CommandMulti>("multi", 1, "multi", 0, 0, 0),
+    MakeCmdAttr<CommandDiscard>("discard", 1, "multi", 0, 0, 0),
+    MakeCmdAttr<CommandExec>("exec", 1, "exclusive multi", 0, 0, 0),
 
-    ADD_CMD("siadd", -3, "write", 1, 1, 1, CommandSortedintAdd),
-    ADD_CMD("sirem", -3, "write", 1, 1, 1, CommandSortedintRem),
-    ADD_CMD("sicard", 2, "read-only", 1, 1, 1, CommandSortedintCard),
-    ADD_CMD("siexists", -3, "read-only", 1, 1, 1, CommandSortedintExists),
-    ADD_CMD("sirange", -4, "read-only", 1, 1, 1, CommandSortedintRange),
-    ADD_CMD("sirevrange", -4, "read-only", 1, 1, 1, CommandSortedintRevRange),
-    ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRangeByValue),
-    ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
+    MakeCmdAttr<CommandSortedintAdd>("siadd", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRem>("sirem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintCard>("sicard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintExists>("siexists", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRange>("sirange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRevRange>("sirevrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRangeByValue>("sirangebyvalue", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRevRangeByValue>("sirevrangebyvalue", -4, "read-only", 1, 1, 1),
 
-    ADD_CMD("cluster", -2, "cluster no-script", 0, 0, 0, CommandCluster),
-    ADD_CMD("clusterx", -2, "cluster no-script", 0, 0, 0, CommandClusterX),
+    MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0),
+    MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0),
 
-    ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
-    ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
-    ADD_CMD("eval_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalRO),
-    ADD_CMD("evalsha_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalSHARO),
-    ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
+    MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0),
 
-    ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
-    ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
-    ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
-    ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),
-    ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
+    MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
+    MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
 
-    ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
-    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
-    ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
-    ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
+    MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only replication no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPSync>("psync", -2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0),
 
-    ADD_CMD("xadd", -5, "write", 1, 1, 1, CommandXAdd),
-    ADD_CMD("xdel", -3, "write", 1, 1, 1, CommandXDel),
-    ADD_CMD("xlen", 2, "read-only", 1, 1, 1, CommandXLen),
-    ADD_CMD("xinfo", -2, "read-only", 0, 0, 0, CommandXInfo),
-    ADD_CMD("xrange", -4, "read-only", 1, 1, 1, CommandXRange),
-    ADD_CMD("xrevrange", -2, "read-only", 0, 0, 0, CommandXRevRange),
-    ADD_CMD("xread", -4, "read-only", 0, 0, 0, CommandXRead),
-    ADD_CMD("xtrim", -4, "write", 1, 1, 1, CommandXTrim),
+    MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXLen>("xlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
 };
 
 // Command table after rename-command directive

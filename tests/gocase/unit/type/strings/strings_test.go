@@ -605,12 +605,12 @@ func TestString(t *testing.T) {
 	})
 
 	t.Run("Extended SET with incorrect expire value", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "1234xyz").Err(), "not an integer")
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "0").Err(), "invalid expire time")
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "1234xyz").Err(), "not an integer")
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "0").Err(), "invalid expire time")
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1234xyz").Err(), "not an integer")
-		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "0").Err(), "invalid expire time")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "1234xyz").Err(), "non-integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "ex", "0").Err(), "out of numeric range")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "1234xyz").Err(), "non-integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "exat", "0").Err(), "out of numeric range")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "1234xyz").Err(), "non-integer")
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "pxat", "0").Err(), "out of numeric range")
 	})
 
 	t.Run("Extended SET using multiple options at once", func(t *testing.T) {
@@ -646,7 +646,7 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
 		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123").Err(), "ERR wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex").Err(), "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex").Err(), "no more")
 	})
 
 	t.Run("CAS expire", func(t *testing.T) {

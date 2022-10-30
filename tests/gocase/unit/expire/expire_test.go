@@ -213,7 +213,7 @@ func TestExpire(t *testing.T) {
 
 	t.Run("EXPIRE with empty string as TTL should report an error", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), ".*not an integer*.")
+		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), ".*not started as an integer*.")
 	})
 
 }

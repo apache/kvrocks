@@ -5895,7 +5895,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
   return attr;
 }
 
-const std::array redisCommandTable{
+const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -6114,7 +6114,7 @@ const CommandMap original_commands = [] {
 // Command table after rename-command directive
 CommandMap commands = original_commands;
 
-int GetCommandNum() { return redisCommandTable.size(); }
+int GetCommandNum() { return std::size(redisCommandTable); }
 
 const CommandMap *GetOriginalCommands() { return &original_commands; }
 

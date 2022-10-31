@@ -37,8 +37,6 @@ TEST(Config, GetAndSet) {
   config.Load(CLIOptions(path));
   // Config.Set need accessing commands, so we should init and populate
   // the command table here.
-  Redis::InitCommandsTable();
-  Redis::PopulateCommands();
   std::map<std::string, std::string> mutable_cases = {
       {"timeout", "1000"},
       {"maxclients", "2000"},
@@ -146,7 +144,6 @@ TEST(Config, GetRenameCommand) {
               << "\n";
   output_file.close();
   Config config;
-  Redis::PopulateCommands();
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   std::vector<std::string> values;
   config.Get("rename-command", &values);
@@ -172,12 +169,10 @@ TEST(Config, Rewrite) {
   output_file.close();
 
   Config config;
-  Redis::PopulateCommands();
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
   Config new_config;
-  Redis::PopulateCommands();
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);
 }

@@ -103,6 +103,7 @@ using CommandMap = std::map<std::string, const CommandAttributes *>;
 
 int GetCommandNum();
 CommandMap *GetCommands();
+void ResetCommands();
 const CommandMap *GetOriginalCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);

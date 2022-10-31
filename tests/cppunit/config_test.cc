@@ -142,6 +142,7 @@ TEST(Config, GetRenameCommand) {
   output_file << "rename-command SET SET_NEW"
               << "\n";
   output_file.close();
+  Redis::ResetCommands();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   std::vector<std::string> values;
@@ -167,11 +168,12 @@ TEST(Config, Rewrite) {
               << "\n";
   output_file.close();
 
+  Redis::ResetCommands();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
-  *Redis::GetCommands() = *Redis::GetOriginalCommands();
+  Redis::ResetCommands();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);

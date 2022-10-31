@@ -6120,6 +6120,8 @@ const CommandMap *GetOriginalCommands() { return &original_commands; }
 
 CommandMap *GetCommands() { return &commands; }
 
+void ResetCommands() { commands = original_commands; }
+
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;
   command.append(Redis::MultiLen(6));

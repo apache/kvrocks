@@ -26,10 +26,10 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-typedef struct {
+struct StringPair {
   Slice key;
   Slice value;
-} StringPair;
+};
 
 namespace Redis {
 

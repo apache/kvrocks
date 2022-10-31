@@ -27,6 +27,7 @@
 #include <map>
 #include <vector>
 
+#include "commands/redis_cmd.h"
 #include "config/config_util.h"
 #include "server/server.h"
 
@@ -35,8 +36,6 @@ TEST(Config, GetAndSet) {
   Config config;
 
   config.Load(CLIOptions(path));
-  // Config.Set need accessing commands, so we should init and populate
-  // the command table here.
   std::map<std::string, std::string> mutable_cases = {
       {"timeout", "1000"},
       {"maxclients", "2000"},
@@ -172,6 +171,7 @@ TEST(Config, Rewrite) {
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
+  *Redis::GetCommands() = *Redis::GetOriginalCommands();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);

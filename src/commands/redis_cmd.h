@@ -99,11 +99,12 @@ struct CommandAttributes {
   bool is_no_multi() const { return (flags & kCmdNoMulti) != 0; }
 };
 
+using CommandMap = std::map<std::string, const CommandAttributes *>;
+
 int GetCommandNum();
-std::map<std::string, CommandAttributes *> *GetCommands();
-std::map<std::string, CommandAttributes *> *GetOriginalCommands();
-void InitCommandsTable();
-void PopulateCommands();
+CommandMap *GetCommands();
+void ResetCommands();
+const CommandMap *GetOriginalCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
 std::string GetCommandInfo(const CommandAttributes *command_attributes);

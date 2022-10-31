@@ -5872,15 +5872,30 @@ class CommandXTrim : public Commander {
 };
 
 template <typename T>
-CommandAttributes MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key,
-                              int last_key, int key_step) {
-  return {name,        arity,
-          description, 0,
-          first_key,   last_key,
-          key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
+                 int key_step) {
+  CommandAttributes attr{
+      name,        arity,
+      description, 0,
+      first_key,   last_key,
+      key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+
+  for (const auto &flag : Util::Split(attr.description, " ")) {
+    if (flag == "write") attr.flags |= kCmdWrite;
+    if (flag == "read-only") attr.flags |= kCmdReadOnly;
+    if (flag == "replication") attr.flags |= kCmdReplication;
+    if (flag == "pub-sub") attr.flags |= kCmdPubSub;
+    if (flag == "ok-loading") attr.flags |= kCmdLoading;
+    if (flag == "exclusive") attr.flags |= kCmdExclusive;
+    if (flag == "multi") attr.flags |= kCmdMulti;
+    if (flag == "no-multi") attr.flags |= kCmdNoMulti;
+    if (flag == "no-script") attr.flags |= kCmdNoScript;
+  }
+
+  return attr;
 }
 
-CommandAttributes redisCommandTable[] = {
+const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -6085,41 +6100,27 @@ CommandAttributes redisCommandTable[] = {
     MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
 };
 
-// Command table after rename-command directive
-std::map<std::string, CommandAttributes *> commands;
 // Original Command table before rename-command directive
-std::map<std::string, CommandAttributes *> original_commands;
+const CommandMap original_commands = [] {
+  CommandMap cmd;
 
-int GetCommandNum() { return sizeof(redisCommandTable) / sizeof(struct CommandAttributes); }
-
-std::map<std::string, CommandAttributes *> *GetCommands() { return &commands; }
-
-std::map<std::string, CommandAttributes *> *GetOriginalCommands() { return &original_commands; }
-
-void PopulateCommands() {
-  for (int i = 0; i < GetCommandNum(); i++) {
-    original_commands[redisCommandTable[i].name] = &redisCommandTable[i];
+  for (const auto &attr : redisCommandTable) {
+    cmd[attr.name] = &attr;
   }
-  commands = original_commands;
-}
 
-void InitCommandsTable() {
-  for (int i = 0; i < GetCommandNum(); i++) {
-    std::string desc = redisCommandTable[i].description;
-    std::vector<std::string> str_flags = Util::Split(desc, " ");
-    for (const auto &flag : str_flags) {
-      if (flag == "write") redisCommandTable[i].flags |= kCmdWrite;
-      if (flag == "read-only") redisCommandTable[i].flags |= kCmdReadOnly;
-      if (flag == "replication") redisCommandTable[i].flags |= kCmdReplication;
-      if (flag == "pub-sub") redisCommandTable[i].flags |= kCmdPubSub;
-      if (flag == "ok-loading") redisCommandTable[i].flags |= kCmdLoading;
-      if (flag == "exclusive") redisCommandTable[i].flags |= kCmdExclusive;
-      if (flag == "multi") redisCommandTable[i].flags |= kCmdMulti;
-      if (flag == "no-multi") redisCommandTable[i].flags |= kCmdNoMulti;
-      if (flag == "no-script") redisCommandTable[i].flags |= kCmdNoScript;
-    }
-  }
-}
+  return cmd;
+}();
+
+// Command table after rename-command directive
+CommandMap commands = original_commands;
+
+int GetCommandNum() { return std::size(redisCommandTable); }
+
+const CommandMap *GetOriginalCommands() { return &original_commands; }
+
+CommandMap *GetCommands() { return &commands; }
+
+void ResetCommands() { commands = original_commands; }
 
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;

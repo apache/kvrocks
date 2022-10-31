@@ -23,7 +23,6 @@
 #include <cmath>
 #include <limits>
 #include <string>
-#include <utility>
 
 #include "parse_util.h"
 
@@ -466,7 +465,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     raw_value.append(new_value);
     auto write_status = updateRawValue(ns_key, raw_value);
     if (!write_status.ok()) {
-      return s;
+      return write_status;
     }
     *ret = 1;
   }
@@ -498,7 +497,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
     auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
                                           storage_->GetCFHandle(Engine::kMetadataColumnFamilyName), ns_key);
     if (!delete_status.ok()) {
-      return s;
+      return delete_status;
     }
     *ret = 1;
   }

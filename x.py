@@ -266,6 +266,7 @@ def test_cpp(dir: str, rest: List[str]) -> None:
 
 def test_go(dir: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
+    find_command('redis-cli', msg='redis-cli is required for testing')
 
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'

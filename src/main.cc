@@ -303,6 +303,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   initGoogleLog(&config);
+  google::ShutdownGoogleLogging();
+  google::InitGoogleLogging("kvrocks");
   printVersion(LOG(INFO));
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect

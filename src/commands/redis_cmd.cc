@@ -78,6 +78,8 @@ const char *errUnbalancedStreamList =
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
 const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
+const char *errScoreIsNotValidFloat = "score is not a valid float";
+const char *errValueIsNotFloat = "value is not a valid float";
 
 enum class AuthResult {
   OK,
@@ -2330,12 +2332,12 @@ class CommandZAdd : public Commander {
       for (unsigned i = index; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
         if (std::isnan(score)) {
-          return Status(Status::RedisParseErr, "ERR score is not a valid float");
+          return Status(Status::RedisParseErr, errScoreIsNotValidFloat);
         }
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     return Commander::Parse(args);
   }
@@ -2975,7 +2977,7 @@ class CommandGeoBase : public Commander {
       *longitude = std::stod(longitude_para);
       *latitude = std::stod(latitude_para);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
       return Status(Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para);
@@ -3136,7 +3138,7 @@ class CommandGeoRadius : public CommandGeoBase {
     try {
       radius_ = std::stod(args[4]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
@@ -3165,7 +3167,7 @@ class CommandGeoRadius : public CommandGeoBase {
       } else if (Util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
         auto parse_result = ParseInt<int>(args_[i + 1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, "ERR count is not a valid int");
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         count_ = *parse_result;
         i += 2;
@@ -3261,7 +3263,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     try {
       radius_ = std::stod(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;
@@ -3774,7 +3776,7 @@ class CommandPubSub : public Commander {
       }
       return Status::OK();
     }
-    return Status(Status::RedisInvalidCmd, "ERR Unknown subcommand or wrong number of arguments");
+    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -3797,7 +3799,7 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    return Status(Status::RedisInvalidCmd, "ERR Unknown subcommand or wrong number of arguments");
+    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
   }
 
  private:
@@ -4073,7 +4075,7 @@ class CommandClient : public Commander {
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
           return Status(Status::RedisInvalidCmd,
-                        "ERR Client names cannot contain spaces, newlines or special characters");
+                        "Client names cannot contain spaces, newlines or special characters");
         }
       }
       conn_name_ = args[2];
@@ -4214,7 +4216,7 @@ class CommandDebug : public Commander {
       try {
         second = std::stod(args[2]);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr, "ERR invalid debug sleep time");
+        return Status(Status::RedisParseErr, "invalid debug sleep time");
       }
       microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
       return Status::OK();
@@ -4359,7 +4361,7 @@ class CommandScanBase : public Commander {
     } else if (type == "count") {
       auto parse_result = ParseInt<int>(value, 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, "ERR count param should be type int");
+        return Status(Status::RedisParseErr, "count param should be type int");
       }
       limit = *parse_result;
       if (limit <= 0) {

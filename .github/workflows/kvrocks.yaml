@@ -219,8 +219,18 @@ jobs:
           ./x.py test go build $GOCASE_RUN_ARGS
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
+            echo "found sanitizer reports:"
             echo "$SANITIZER_OUTPUT"
-            echo "\ndetail reports:\n"
+            echo "detail log:"
+            cat $(find tests/gocase/workspace -iname stderr)
+            echo "sanitizer error was reported, exiting..."
+            exit 1
+          fi
+          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
+          if [[ $CRASHES ]]; then
+            echo "found crashes:"
+            echo "$CRASHES"
+            echo "detail log:"
             cat $(find tests/gocase/workspace -iname stderr)
             echo "sanitizer error was reported, exiting..."
             exit 1

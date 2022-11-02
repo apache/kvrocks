@@ -226,8 +226,7 @@ jobs:
             echo "found sanitizer reports:"
             echo "$SANITIZER_OUTPUT"
             echo "detail log:"
-            cat $(find tests/gocase/workspace -iname stderr)
-            echo "sanitizer error was reported, exiting..."
+            cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
             exit 1
           fi
           CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
@@ -235,8 +234,7 @@ jobs:
             echo "found crashes:"
             echo "$CRASHES"
             echo "detail log:"
-            cat $(find tests/gocase/workspace -iname stderr)
-            echo "sanitizer error was reported, exiting..."
+            cat $(echo "$CRASHES" | awk -F ':' '{print $1}')
             exit 1
           fi
 

@@ -586,7 +586,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
 
   Redis::Database db(this, ns);
   uint64_t size, total_size = 0;
-  rocksdb::DB::SizeApproximationFlags include_both =
+  uint8_t include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
     if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) || cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {

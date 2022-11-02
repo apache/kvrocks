@@ -199,7 +199,9 @@ jobs:
       
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
+        run: |
+          echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
+          mkdir coredumps
 
       - name: Run Unit Test
         run: |

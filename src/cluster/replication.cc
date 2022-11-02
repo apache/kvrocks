@@ -99,6 +99,7 @@ void FeedSlaveThread::loop() {
         continue;
       }
     }
+    if (!iter_->Valid() || !iter_->status().ok()) continue;
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
     if (batch.sequence != next_repl_seq_) {

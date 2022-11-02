@@ -198,6 +198,7 @@ jobs:
             ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
       
       - name: Setup Coredump
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
 
       - name: Run Unit Test
@@ -244,7 +245,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@v2
-        if: ${{ failure() }}
+        if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
           name: kvrocks-coredumps-${{ matrix.name }}
           path: |

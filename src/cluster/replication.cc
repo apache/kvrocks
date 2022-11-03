@@ -912,7 +912,8 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       }
       break;
     case kBatchTypeStream:
-      InternalKey ikey(write_batch_handler.Key(), storage_->IsSlotIdEncoded());
+      auto key = write_batch_handler.Key();
+      InternalKey ikey(key, storage_->IsSlotIdEncoded());
       Slice entry_id = ikey.GetSubKey();
       Redis::StreamEntryID id;
       GetFixed64(&entry_id, &id.ms);

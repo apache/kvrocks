@@ -839,7 +839,7 @@ Status SlotMigrate::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::stri
 }
 
 Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t endseq) {
-  if (!(*iter) || !(*iter)->Valid()) {
+  if (!(*iter) || !(*iter)->Valid() || !(*iter)->status().ok()) {
     LOG(ERROR) << "[migrate] WAL iterator is invalid";
     return Status(Status::NotOK);
   }

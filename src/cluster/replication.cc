@@ -38,9 +38,8 @@
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
-#include "util.h"
-
 #include "storage/batch_debugger.h"
+#include "util.h"
 
 Status FeedSlaveThread::Start() {
   try {

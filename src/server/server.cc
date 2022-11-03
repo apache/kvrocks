@@ -613,6 +613,72 @@ void Server::recordInstantaneousMetrics() {
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV,
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_MISS,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOCK_CACHE_MISS));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_HIT,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOCK_CACHE_HIT));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_ADD,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOCK_CACHE_ADD));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_BYTES_READ,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOCK_CACHE_BYTES_READ));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_BYTES_WRITE,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOCK_CACHE_BYTES_WRITE));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_USEFUL,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_USEFUL));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_POSITIVE,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_FULL_POSITIVE));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_TRUE_POSITIVE,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_FULL_TRUE_POSITIVE));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_HIT,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::PERSISTENT_CACHE_HIT));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_MISS,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::PERSISTENT_CACHE_MISS));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_MEMTABLE_HIT,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::MEMTABLE_HIT));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_MEMTABLE_MISS,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::MEMTABLE_MISS));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_GET_HIT_L0, rocksdb_stats->getTickerCount(rocksdb::Tickers::GET_HIT_L0));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_GET_HIT_L1, rocksdb_stats->getTickerCount(rocksdb::Tickers::GET_HIT_L1));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_GET_HIT_L2_AND_UP,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::GET_HIT_L2_AND_UP));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_NEWER_ENTRY,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_KEY_DROP_NEWER_ENTRY));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_OBSOLETE,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_KEY_DROP_OBSOLETE));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_RANGE_DEL,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_KEY_DROP_RANGE_DEL));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_USER,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_KEY_DROP_USER));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_RANGE_DEL_DROP_OBSOLETE,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_RANGE_DEL_DROP_OBSOLETE));
+  stats_.TrackInstantaneousMetric(
+      STATS_METRIC_COMPACTION_OPTIMIZED_DEL_DROP_OBSOLETE,
+      rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_OPTIMIZED_DEL_DROP_OBSOLETE));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACTION_CANCELLED,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACTION_CANCELLED));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BYTES_WRITTEN,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BYTES_WRITTEN));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BYTES_READ, rocksdb_stats->getTickerCount(rocksdb::Tickers::BYTES_READ));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_NUMBER_DB_SEEK_FOUND,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK_FOUND));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_NUMBER_DB_NEXT_FOUND,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT_FOUND));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_NUMBER_DB_PREV_FOUND,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV_FOUND));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_PREFIX_CHECKED,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_PREFIX_CHECKED));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_PREFIX_USEFUL,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_PREFIX_USEFUL));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACT_READ_BYTES,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACT_READ_BYTES));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMPACT_WRITE_BYTES,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACT_WRITE_BYTES));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_FLUSH_WRITE_BYTES,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::FLUSH_WRITE_BYTES));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_ROW_CACHE_HIT,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::ROW_CACHE_HIT));
+  stats_.TrackInstantaneousMetric(STATS_METRIC_ROW_CACHE_MISS,
+                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::ROW_CACHE_MISS));
 }
 
 void Server::cron() {
@@ -763,6 +829,61 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "seek_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK) << "\r\n";
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
+  string_stream << "block_cache_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_MISS) << "\r\n";
+  string_stream << "block_cache_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_HIT) << "\r\n";
+  string_stream << "block_cache_add_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_ADD) << "\r\n";
+  string_stream << "block_cache_bytes_read_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_BYTES_READ)
+                << "\r\n";
+  string_stream << "block_cache_bytes_write_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOCK_CACHE_BYTES_WRITE)
+                << "\r\n";
+  string_stream << "bloom_filter_useful_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_USEFUL)
+                << "\r\n";
+  string_stream << "bloom_filter_full_positive_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_POSITIVE) << "\r\n";
+  string_stream << "bloom_filter_full_true_positive_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_TRUE_POSITIVE) << "\r\n";
+  string_stream << "persistent_cache_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_HIT)
+                << "\r\n";
+  string_stream << "persistent_cache_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_MISS)
+                << "\r\n";
+  string_stream << "memtable_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_MEMTABLE_HIT) << "\r\n";
+  string_stream << "memtable_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_MEMTABLE_MISS) << "\r\n";
+  string_stream << "get_hit_l0_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_GET_HIT_L0) << "\r\n";
+  string_stream << "get_hit_l1_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_GET_HIT_L1) << "\r\n";
+  string_stream << "get_hit_l2_and_up_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_GET_HIT_L2_AND_UP) << "\r\n";
+  string_stream << "compaction_key_drop_newer_entry_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_NEWER_ENTRY) << "\r\n";
+  string_stream << "compaction_key_drop_obsolete_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_OBSOLETE) << "\r\n";
+  string_stream << "compaction_key_drop_range_del_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_RANGE_DEL) << "\r\n";
+  string_stream << "compaction_key_drop_user_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_KEY_DROP_USER) << "\r\n";
+  string_stream << "compaction_range_del_drop_obsolete_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_RANGE_DEL_DROP_OBSOLETE) << "\r\n";
+  string_stream << "compaction_optimized_del_drop_obsolete_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_OPTIMIZED_DEL_DROP_OBSOLETE) << "\r\n";
+  string_stream << "compaction_cancelled_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACTION_CANCELLED)
+                << "\r\n";
+  string_stream << "bytes_written_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BYTES_WRITTEN) << "\r\n";
+  string_stream << "bytes_read_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_BYTES_READ) << "\r\n";
+  string_stream << "number_db_seek_found_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_NUMBER_DB_SEEK_FOUND)
+                << "\r\n";
+  string_stream << "number_db_next_found_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_NUMBER_DB_NEXT_FOUND)
+                << "\r\n";
+  string_stream << "number_db_prev_found_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_NUMBER_DB_PREV_FOUND)
+                << "\r\n";
+  string_stream << "bloom_filter_prefix_checked_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_PREFIX_CHECKED) << "\r\n";
+  string_stream << "bloom_filter_prefix_useful_sec:"
+                << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_PREFIX_USEFUL) << "\r\n";
+  string_stream << "compact_read_bytes_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACT_READ_BYTES)
+                << "\r\n";
+  string_stream << "compact_write_bytes_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACT_WRITE_BYTES)
+                << "\r\n";
+  string_stream << "flush_write_bytes_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_FLUSH_WRITE_BYTES) << "\r\n";
+  string_stream << "row_cache_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROW_CACHE_HIT) << "\r\n";
+  string_stream << "row_cache_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROW_CACHE_MISS) << "\r\n";
   string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
   *info = string_stream.str();

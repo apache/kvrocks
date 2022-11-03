@@ -38,7 +38,9 @@
 
 struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
   std::string seen;
+  int cnt = 0;
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice& key, const rocksdb::Slice& value) override {
+    ++cnt;
     if (column_family_id == 0) {
       seen += "Put(" + key.ToString() + ", " + value.ToString() + ")";
     } else {
@@ -47,6 +49,7 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
     return rocksdb::Status::OK();
   }
   rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice& key) override {
+    ++cnt;
     if (column_family_id == 0) {
       seen += "Delete(" + key.ToString() + ")";
     } else {
@@ -55,6 +58,7 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
     return rocksdb::Status::OK();
   }
   rocksdb::Status SingleDeleteCF(uint32_t column_family_id, const rocksdb::Slice& key) override {
+    ++cnt;
     if (column_family_id == 0) {
       seen += "SingleDelete(" + key.ToString() + ")";
     } else {
@@ -64,6 +68,7 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
   }
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice& begin_key,
                                 const rocksdb::Slice& end_key) override {
+    ++cnt;
     if (column_family_id == 0) {
       seen += "DeleteRange(" + begin_key.ToString() + ", " + end_key.ToString() + ")";
     } else {
@@ -73,6 +78,7 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
     return rocksdb::Status::OK();
   }
   rocksdb::Status MergeCF(uint32_t column_family_id, const rocksdb::Slice& key, const rocksdb::Slice& value) override {
+    ++cnt;
     if (column_family_id == 0) {
       seen += "Merge(" + key.ToString() + ", " + value.ToString() + ")";
     } else {
@@ -80,28 +86,37 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
     }
     return rocksdb::Status::OK();
   }
-  void LogData(const rocksdb::Slice& blob) override { seen += "LogData(" + blob.ToString() + ")"; }
+  void LogData(const rocksdb::Slice& blob) override {
+    ++cnt;
+    seen += "LogData(" + blob.ToString() + ")";
+  }
   rocksdb::Status MarkBeginPrepare(bool unprepare) override {
+    ++cnt;
     seen += "MarkBeginPrepare(" + std::string(unprepare ? "true" : "false") + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkEndPrepare(const rocksdb::Slice& xid) override {
+    ++cnt;
     seen += "MarkEndPrepare(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkNoop(bool empty_batch) override {
+    ++cnt;
     seen += "MarkNoop(" + std::string(empty_batch ? "true" : "false") + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkCommit(const rocksdb::Slice& xid) override {
+    ++cnt;
     seen += "MarkCommit(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkCommitWithTimestamp(const rocksdb::Slice& xid, const rocksdb::Slice& ts) override {
+    ++cnt;
     seen += "MarkCommitWithTimestamp(" + xid.ToString() + ", " + ts.ToString(true) + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkRollback(const rocksdb::Slice& xid) override {
+    ++cnt;
     seen += "MarkRollback(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }

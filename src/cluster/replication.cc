@@ -900,7 +900,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
   // TODO(mapleFU): only for debugging, remove it later.
   WriteBatchInspector inspector;
   status = write_batch.Iterate(&inspector);
-  LOG(INFO) << inspector.seen;
+  LOG(INFO) << inspector.seen << ", cnt: " << inspector.cnt;
 
   WriteBatchHandler write_batch_handler;
 

@@ -246,7 +246,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
           name: kvrocks-coredumps-${{ matrix.name }}

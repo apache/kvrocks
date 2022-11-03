@@ -40,6 +40,8 @@
 #include "status.h"
 #include "util.h"
 
+#include "storage/batch_debugger.h"
+
 Status FeedSlaveThread::Start() {
   try {
     t_ = std::thread([this]() {
@@ -894,8 +896,14 @@ void ReplicationThread::EventTimerCB(int, int16_t, void *ctx) {
 
 rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
-  WriteBatchHandler write_batch_handler;
   rocksdb::Status status;
+
+  // TODO(mapleFU): only for debugging, remove it later.
+  WriteBatchInspector inspector;
+  status = write_batch.Iterate(&inspector);
+  LOG(INFO) << inspector.seen;
+
+  WriteBatchHandler write_batch_handler;
 
   status = write_batch.Iterate(&write_batch_handler);
   if (!status.ok()) return status;

@@ -65,48 +65,78 @@
 
 #include <stdint.h>
 
-#define N 16
-#define MASK ((1 << (N - 1)) + (1 << (N - 1)) - 1)
-#define LOW(x) ((unsigned)(x)&MASK)
-#define HIGH(x) LOW((x) >> N)
-#define MUL(x, y, z)                         \
-  {                                          \
-    int32_t l = (int64_t)(x) * (int64_t)(y); \
-    (z)[0] = LOW(l);                         \
-    (z)[1] = HIGH(l);                        \
-  }
-#define CARRY(x, y) ((int32_t)(x) + (int64_t)(y) > MASK)
-#define ADDEQU(x, y, z) (z = CARRY(x, (y)), x = LOW(x + (y)))
-#define X0 0x330E
-#define X1 0xABCD
-#define X2 0x1234
-#define A0 0xE66D
-#define A1 0xDEEC
-#define A2 0x5
-#define C 0xB
-#define SET3(x, x0, x1, x2) ((x)[0] = (x0), (x)[1] = (x1), (x)[2] = (x2))
-#define SETLOW(x, y, n) SET3(x, LOW((y)[n]), LOW((y)[(n) + 1]), LOW((y)[(n) + 2]))
-#define SEED(x0, x1, x2) (SET3(x, x0, x1, x2), SET3(a, A0, A1, A2), c = C)
-#define REST(v)             \
-  for (i = 0; i < 3; i++) { \
-    xsubi[i] = x[i];        \
-    x[i] = temp[i];         \
-  }                         \
-  return (v);
-#define HI_BIT (1L << (2 * N - 1))
+constexpr const int N = 16;
+constexpr const int MASK = ((1 << (N - 1)) + (1 << (N - 1)) - 1);
+template <typename T>
+constexpr T LOW(const T x) {
+  return ((unsigned)(x)&MASK);
+}
+
+template <typename T>
+constexpr T HIGH(const T x) {
+  return LOW(x >> N);
+}
+
+template <typename T>
+constexpr void MUL(const T x, const T y, T *z) {
+  int32_t l = (int64_t)(x) * (int64_t)(y);
+  (z)[0] = LOW(l);
+  (z)[1] = HIGH(l);
+}
+
+template <typename T>
+constexpr T CARRY(const T x, const T y) {
+  return ((int32_t)(x) + (int64_t)(y) > MASK);
+}
+
+template <typename T>
+constexpr void ADDEQU(T &x, const T y, T &z) {
+  z = CARRY(x, (y)), x = LOW(x + (y));
+}
+
+constexpr const uint32_t X0 = 0x330E;
+constexpr const uint32_t X1 = 0xABCD;
+constexpr const uint32_t X2 = 0x1234;
+constexpr const uint32_t A0 = 0xE66D;
+constexpr const uint32_t A1 = 0xDEEC;
+constexpr const uint32_t A2 = 0x5;
+constexpr const uint32_t C = 0xB;
 
 static uint32_t x[3] = {X0, X1, X2}, a[3] = {A0, A1, A2}, c = C;
-static void next(void);
+
+template <typename T>
+constexpr void SET3(T *x, const T x0, const T x1, const T x2) {
+  (x)[0] = (x0), (x)[1] = (x1), (x)[2] = (x2);
+}
+
+template <typename T>
+constexpr void SETLOW(T *x, const T *y, const T n) {
+  SET3(x, LOW((y)[n]), LOW((y)[(n) + 1]), LOW((y)[(n) + 2]));
+}
+
+template <typename T>
+constexpr void SEED(const T x0, const T x1, const T x2) {
+  SET3(x, x0, x1, x2), SET3(a, A0, A1, A2), c = C;
+}
+
+template <typename T>
+constexpr T HI_BIT(const T x) {
+  return (1L << (2 * N - 1));
+}
+
+static void next();
 
 int32_t redisLrand48() {
   next();
-  return (((int32_t)x[2] << (N - 1)) + (x[1] >> 1));
+  return static_cast<int32_t>(x[2] << (N - 1)) + static_cast<int32_t>(x[1] >> 1);
 }
 
-void redisSrand48(int32_t seedval) { SEED(X0, LOW(seedval), HIGH(seedval)); }
+void redisSrand48(int32_t seedval) {
+  SEED(X0, static_cast<uint32_t>(LOW(seedval)), static_cast<uint32_t>(HIGH(seedval)));
+}
 
-static void next(void) {
-  uint32_t p[2], q[2], r[2], carry0, carry1;
+static void next() {
+  uint32_t p[2], q[2], r[2], carry0 = 0, carry1 = 0;
 
   MUL(a[0], x[0], p);
   ADDEQU(p[0], c, carry0);

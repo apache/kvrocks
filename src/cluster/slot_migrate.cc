@@ -82,7 +82,7 @@ SlotMigrate::SlotMigrate(Server *svr, int speed, int pipeline_size, int seq_gap)
   }
 }
 
-Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip, int dst_port,
+Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const std::string &dst_ip, int dst_port,
                                  int slot, int speed, int pipeline_size, int seq_gap) {
   // Only one slot migration job at the same time
   int16_t no_slot = -1;
@@ -127,7 +127,7 @@ SlotMigrate::~SlotMigrate() {
   }
 }
 
-Status SlotMigrate::CreateMigrateHandleThread(void) {
+Status SlotMigrate::CreateMigrateHandleThread() {
   try {
     t_ = std::thread([this]() {
       Util::ThreadSetName("slot-migrate");
@@ -166,7 +166,7 @@ void SlotMigrate::Loop() {
   }
 }
 
-void SlotMigrate::StateMachine(void) {
+void SlotMigrate::StateMachine() {
   state_machine_ = kSlotMigrateStart;
   while (true) {
     if (IsTerminated()) {
@@ -236,7 +236,7 @@ void SlotMigrate::StateMachine(void) {
   }
 }
 
-Status SlotMigrate::Start(void) {
+Status SlotMigrate::Start() {
   // Get snapshot and sequence
   slot_snapshot_ = storage_->GetDB()->GetSnapshot();
   if (slot_snapshot_ == nullptr) {
@@ -275,7 +275,7 @@ Status SlotMigrate::Start(void) {
   return Status::OK();
 }
 
-Status SlotMigrate::SendSnapshot(void) {
+Status SlotMigrate::SendSnapshot() {
   // Create DB iter of snapshot
   uint64_t migratedkey_cnt = 0, expiredkey_cnt = 0, emptykey_cnt = 0;
   std::string restore_cmds;
@@ -338,7 +338,7 @@ Status SlotMigrate::SendSnapshot(void) {
   return Status::OK();
 }
 
-Status SlotMigrate::SyncWal(void) {
+Status SlotMigrate::SyncWal() {
   // Send incremental data in wal circularly until new increment less than a certain amount
   auto s = SyncWalBeforeForbidSlot();
   if (!s.IsOK()) {
@@ -355,7 +355,7 @@ Status SlotMigrate::SyncWal(void) {
   return Status::OK();
 }
 
-Status SlotMigrate::Success(void) {
+Status SlotMigrate::Success() {
   if (stop_migrate_) {
     LOG(ERROR) << "[migrate] Stop migrating slot " << migrate_slot_;
     return Status(Status::NotOK);
@@ -375,7 +375,7 @@ Status SlotMigrate::Success(void) {
   return Status::OK();
 }
 
-Status SlotMigrate::Fail(void) {
+Status SlotMigrate::Fail() {
   // Set destination status
   if (!SetDstImportStatus(slot_job_->slot_fd_, kImportFailed)) {
     LOG(INFO) << "[migrate] Failed to notify the destination that data migration failed";
@@ -386,7 +386,7 @@ Status SlotMigrate::Fail(void) {
   return Status::OK();
 }
 
-Status SlotMigrate::Clean(void) {
+Status SlotMigrate::Clean() {
   LOG(INFO) << "[migrate] Clean resources of migrating slot " << migrate_slot_;
   if (slot_snapshot_) {
     storage_->GetDB()->ReleaseSnapshot(slot_snapshot_);
@@ -404,7 +404,7 @@ Status SlotMigrate::Clean(void) {
   return Status::OK();
 }
 
-bool SlotMigrate::AuthDstServer(int sock_fd, std::string password) {
+bool SlotMigrate::AuthDstServer(int sock_fd, const std::string &password) {
   std::string cmd = Redis::MultiBulkString({"auth", password}, false);
   auto s = Util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
@@ -718,7 +718,7 @@ bool SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &m
 
 bool SlotMigrate::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
                                    std::vector<std::string> *user_cmd, std::string *restore_cmds) {
-  uint32_t index, offset;
+  uint32_t index = 0, offset = 0;
   std::string index_str = inkey.GetSubKey().ToString();
   std::string fragment = (*iter)->value().ToString();
   auto parse_result = ParseInt<int>(index_str, 10);
@@ -803,7 +803,7 @@ void SlotMigrate::ReleaseForbiddenSlot() {
   forbidden_slot_ = -1;
 }
 
-void SlotMigrate::MigrateSpeedLimit(void) {
+void SlotMigrate::MigrateSpeedLimit() {
   if (migrate_speed_ > 0) {
     uint64_t current_time = Util::GetTimeStampUS();
     uint64_t per_request_time = 1000000 * pipeline_size_limit_ / migrate_speed_;
@@ -892,7 +892,7 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
   return Status::OK();
 }
 
-Status SlotMigrate::SyncWalBeforeForbidSlot(void) {
+Status SlotMigrate::SyncWalBeforeForbidSlot() {
   uint32_t count = 0;
   while (count < kMaxLoopTimes) {
     wal_increment_seq_ = storage_->GetDB()->GetLatestSequenceNumber();

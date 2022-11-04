@@ -96,14 +96,14 @@
 #error "Undefined or invalid BYTE_ORDER"
 #endif
 
-void EncodeFixed8(char *buf, uint8_t value) { buf[0] = static_cast<uint8_t>(value & 0xff); }
+void EncodeFixed8(char *buf, uint8_t value) { buf[0] = static_cast<char>(value & 0xff); }
 
 void EncodeFixed16(char *buf, uint16_t value) {
   if (BYTE_ORDER == BIG_ENDIAN) {
     memcpy(buf, &value, sizeof(value));
   } else {
-    buf[0] = static_cast<uint8_t>((value >> 8) & 0xff);
-    buf[1] = static_cast<uint8_t>(value & 0xff);
+    buf[0] = static_cast<char>((value >> 8) & 0xff);
+    buf[1] = static_cast<char>(value & 0xff);
   }
 }
 
@@ -111,10 +111,10 @@ void EncodeFixed32(char *buf, uint32_t value) {
   if (BYTE_ORDER == BIG_ENDIAN) {
     memcpy(buf, &value, sizeof(value));
   } else {
-    buf[0] = static_cast<uint8_t>((value >> 24) & 0xff);
-    buf[1] = static_cast<uint8_t>((value >> 16) & 0xff);
-    buf[2] = static_cast<uint8_t>((value >> 8) & 0xff);
-    buf[3] = static_cast<uint8_t>(value & 0xff);
+    buf[0] = static_cast<char>((value >> 24) & 0xff);
+    buf[1] = static_cast<char>((value >> 16) & 0xff);
+    buf[2] = static_cast<char>((value >> 8) & 0xff);
+    buf[3] = static_cast<char>(value & 0xff);
   }
 }
 
@@ -122,20 +122,20 @@ void EncodeFixed64(char *buf, uint64_t value) {
   if (BYTE_ORDER == BIG_ENDIAN) {
     memcpy(buf, &value, sizeof(value));
   } else {
-    buf[0] = static_cast<uint8_t>((value >> 56) & 0xff);
-    buf[1] = static_cast<uint8_t>((value >> 48) & 0xff);
-    buf[2] = static_cast<uint8_t>((value >> 40) & 0xff);
-    buf[3] = static_cast<uint8_t>((value >> 32) & 0xff);
-    buf[4] = static_cast<uint8_t>((value >> 24) & 0xff);
-    buf[5] = static_cast<uint8_t>((value >> 16) & 0xff);
-    buf[6] = static_cast<uint8_t>((value >> 8) & 0xff);
-    buf[7] = static_cast<uint8_t>(value & 0xff);
+    buf[0] = static_cast<char>((value >> 56) & 0xff);
+    buf[1] = static_cast<char>((value >> 48) & 0xff);
+    buf[2] = static_cast<char>((value >> 40) & 0xff);
+    buf[3] = static_cast<char>((value >> 32) & 0xff);
+    buf[4] = static_cast<char>((value >> 24) & 0xff);
+    buf[5] = static_cast<char>((value >> 16) & 0xff);
+    buf[6] = static_cast<char>((value >> 8) & 0xff);
+    buf[7] = static_cast<char>(value & 0xff);
   }
 }
 
 void PutFixed8(std::string *dst, uint8_t value) {
   char buf[1];
-  buf[0] = static_cast<uint8_t>(value & 0xff);
+  buf[0] = static_cast<char>(value & 0xff);
   dst->append(buf, 1);
 }
 
@@ -158,7 +158,7 @@ void PutFixed64(std::string *dst, uint64_t value) {
 }
 
 void PutDouble(std::string *dst, double value) {
-  uint64_t u64;
+  uint64_t u64 = 0;
   memcpy(&u64, &value, sizeof(value));
   auto ptr = &u64;
   if ((*ptr >> 63) == 1) {
@@ -172,7 +172,7 @@ void PutDouble(std::string *dst, double value) {
 }
 
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value) {
-  const char *data;
+  const char *data = nullptr;
   if (input->size() < sizeof(uint8_t)) {
     return false;
   }
@@ -218,7 +218,7 @@ bool GetDouble(rocksdb::Slice *input, double *value) {
 
 uint16_t DecodeFixed16(const char *ptr) {
   if (BYTE_ORDER == BIG_ENDIAN) {
-    uint16_t value;
+    uint16_t value = 0;
     memcpy(&value, ptr, sizeof(value));
     return value;
   } else {
@@ -229,7 +229,7 @@ uint16_t DecodeFixed16(const char *ptr) {
 
 uint32_t DecodeFixed32(const char *ptr) {
   if (BYTE_ORDER == BIG_ENDIAN) {
-    uint32_t value;
+    uint32_t value = 0;
     memcpy(&value, ptr, sizeof(value));
     return value;
   } else {
@@ -242,7 +242,7 @@ uint32_t DecodeFixed32(const char *ptr) {
 
 uint64_t DecodeFixed64(const char *ptr) {
   if (BYTE_ORDER == BIG_ENDIAN) {
-    uint64_t value;
+    uint64_t value = 0;
     memcpy(&value, ptr, sizeof(value));
     return value;
   } else {
@@ -259,14 +259,14 @@ double DecodeDouble(const char *ptr) {
   } else {
     decoded &= 0x7fffffffffffffff;
   }
-  double value;
+  double value = 0;
   memcpy(&value, &decoded, sizeof(value));
   return value;
 }
 
 char *EncodeVarint32(char *dst, uint32_t v) {
   // Operate on characters as unsigneds
-  unsigned char *ptr = reinterpret_cast<unsigned char *>(dst);
+  auto *ptr = reinterpret_cast<unsigned char *>(dst);
   do {
     *ptr = 0x80 | v;
     v >>= 7, ++ptr;

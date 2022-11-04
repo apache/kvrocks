@@ -50,7 +50,7 @@ static const uint16_t crc16tab[256] = {
     0x2e93, 0x3eb2, 0x0ed1, 0x1ef0};
 
 uint16_t crc16(const char *buf, int len) {
-  int i;
+  int i = 0;
   uint16_t crc = 0;
   for (i = 0; i < len; i++) crc = (crc << 8) ^ crc16tab[((crc >> 8) ^ *buf++) & 0x00FF];
   return crc;
@@ -67,9 +67,9 @@ uint16_t GetSlotNumFromKey(const std::string &key) {
 }
 
 std::string GetTagFromKey(const std::string &key) {
-  auto left_pos = key.find("{");
+  auto left_pos = key.find('{');
   if (left_pos == std::string::npos) return std::string();
-  auto right_pos = key.find("}", left_pos + 1);
+  auto right_pos = key.find('}', left_pos + 1);
   // Note that we hash the whole key if there is nothing between {}.
   if (right_pos == std::string::npos || right_pos <= left_pos + 1) {
     return std::string();

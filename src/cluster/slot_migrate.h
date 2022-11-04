@@ -84,7 +84,7 @@ class SlotMigrate : public Redis::Database {
 
   Status CreateMigrateHandleThread(void);
   void Loop();
-  Status MigrateStart(Server *svr, const std::string &node_id, const std::string dst_ip, int dst_port, int slot,
+  Status MigrateStart(Server *svr, const std::string &node_id, const std::string &dst_ip, int dst_port, int slot,
                       int speed, int pipeline_size, int seq_gap);
   void ReleaseForbiddenSlot();
   void SetMigrateSpeedLimit(int speed) {
@@ -113,7 +113,7 @@ class SlotMigrate : public Redis::Database {
   Status Fail(void);
   Status Clean(void);
 
-  bool AuthDstServer(int sock_fd, std::string password);
+  bool AuthDstServer(int sock_fd, const std::string &password);
   bool SetDstImportStatus(int sock_fd, int status);
   bool CheckResponseOnce(int sock_fd);
   bool CheckResponseWithCounts(int sock_fd, int total);

@@ -78,8 +78,8 @@ class Cluster {
   explicit Cluster(Server *svr, std::vector<std::string> binds, int port);
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
-  Status SetNodeId(std::string node_id);
-  Status SetSlot(int slot, std::string node_id, int64_t version);
+  Status SetNodeId(const std::string &node_id);
+  Status SetSlot(int slot, const std::string &node_id, int64_t version);
   Status SetSlotMigrated(int slot, const std::string &ip_port);
   Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
@@ -99,7 +99,7 @@ class Cluster {
 
  private:
   std::string GenNodesDescription();
-  SlotInfo GenSlotNodeInfo(int start, int end, std::shared_ptr<ClusterNode> n);
+  SlotInfo GenSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                            std::unordered_map<int, std::string> *slots_nodes);
   Server *svr_;

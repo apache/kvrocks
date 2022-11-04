@@ -934,6 +934,7 @@ bool ReplicationThread::isWrongPsyncNum(const char *err) {
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {
+  type_ = kBatchTypeNone;
   if (column_family_id == kColumnFamilyIDPubSub) {
     type_ = kBatchTypePublish;
     kv_ = std::make_pair(key.ToString(), value.ToString());

@@ -49,7 +49,8 @@ enum ReplState {
 };
 
 enum WriteBatchType {
-  kBatchTypePublish = 1,
+  kBatchTypeNone = 0,
+  kBatchTypePublish,
   kBatchTypePropagate,
   kBatchTypeStream,
 };
@@ -217,5 +218,5 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
 
  private:
   std::pair<std::string, std::string> kv_;
-  WriteBatchType type_;
+  WriteBatchType type_ = kBatchTypeNone;
 };

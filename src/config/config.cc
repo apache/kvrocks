@@ -354,8 +354,9 @@ void Config::initFieldCallback() {
            previous_backup = std::move(backup_dir);
            backup_dir = v;
          }
-         if (!previous_backup.empty()) {
-           LOG(INFO) << "change backup dir from " << backup_dir << " to " << v;
+         if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
+           // LOG(INFO) should be called after log is initialized and server is loaded.
+           LOG(INFO) << "change backup dir from " << previous_backup << " to " << v;
          }
          return Status::OK();
        }},

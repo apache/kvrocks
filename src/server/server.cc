@@ -629,10 +629,6 @@ void Server::recordInstantaneousMetrics() {
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_FULL_POSITIVE));
   stats_.TrackInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_TRUE_POSITIVE,
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::BLOOM_FILTER_FULL_TRUE_POSITIVE));
-  stats_.TrackInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_HIT,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::PERSISTENT_CACHE_HIT));
-  stats_.TrackInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_MISS,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::PERSISTENT_CACHE_MISS));
   stats_.TrackInstantaneousMetric(STATS_METRIC_MEMTABLE_HIT,
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::MEMTABLE_HIT));
   stats_.TrackInstantaneousMetric(STATS_METRIC_MEMTABLE_MISS,
@@ -675,10 +671,6 @@ void Server::recordInstantaneousMetrics() {
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::COMPACT_WRITE_BYTES));
   stats_.TrackInstantaneousMetric(STATS_METRIC_FLUSH_WRITE_BYTES,
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::FLUSH_WRITE_BYTES));
-  stats_.TrackInstantaneousMetric(STATS_METRIC_ROW_CACHE_HIT,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::ROW_CACHE_HIT));
-  stats_.TrackInstantaneousMetric(STATS_METRIC_ROW_CACHE_MISS,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::ROW_CACHE_MISS));
 }
 
 void Server::cron() {
@@ -842,10 +834,6 @@ void Server::GetRocksDBInfo(std::string *info) {
                 << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_POSITIVE) << "\r\n";
   string_stream << "bloom_filter_full_true_positive_sec:"
                 << stats_.GetInstantaneousMetric(STATS_METRIC_BLOOM_FILTER_FULL_TRUE_POSITIVE) << "\r\n";
-  string_stream << "persistent_cache_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_HIT)
-                << "\r\n";
-  string_stream << "persistent_cache_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_PERSISTENT_CACHE_MISS)
-                << "\r\n";
   string_stream << "memtable_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_MEMTABLE_HIT) << "\r\n";
   string_stream << "memtable_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_MEMTABLE_MISS) << "\r\n";
   string_stream << "get_hit_l0_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_GET_HIT_L0) << "\r\n";
@@ -882,8 +870,6 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "compact_write_bytes_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMPACT_WRITE_BYTES)
                 << "\r\n";
   string_stream << "flush_write_bytes_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_FLUSH_WRITE_BYTES) << "\r\n";
-  string_stream << "row_cache_hit_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROW_CACHE_HIT) << "\r\n";
-  string_stream << "row_cache_miss_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROW_CACHE_MISS) << "\r\n";
   string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
   *info = string_stream.str();

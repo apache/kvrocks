@@ -31,7 +31,7 @@ jobs:
         - |
           set -ex
           export TZ=Asia/Shanghai
-          IMAGE_NAME="kvrocks/kvrocks"
+          IMAGE_NAME="apache/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
           echo building $IMAGE_NAME:$IMAGE_TAG
           docker build -t $IMAGE_NAME:$IMAGE_TAG .
@@ -46,7 +46,7 @@ jobs:
         - |
           set -ex
           export TZ=Asia/Shanghai
-          IMAGE_NAME="kvrocks/kvrocks"
+          IMAGE_NAME="apache/kvrocks"
           IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}-$TRAVIS_CPU_ARCH"
           echo building $IMAGE_NAME:$IMAGE_TAG
           docker build -t $IMAGE_NAME:$IMAGE_TAG .
@@ -62,7 +62,7 @@ jobs:
           set -ex
           export TZ=Asia/Shanghai
           if [[ "$TRAVIS_EVENT_TYPE" == "push" && "$TRAVIS_BRANCH" == "unstable" ]]; then
-            IMAGE_NAME="kvrocks/kvrocks"
+            IMAGE_NAME="apache/kvrocks"
             IMAGE_TAG="nightly-$(date -d @$(git show -s --format=%ct $TRAVIS_COMMIT) "+%Y%m%d")-${TRAVIS_COMMIT:0:7}"
             echo pushing $IMAGE_NAME:$IMAGE_TAG
             docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN

@@ -32,10 +32,16 @@
 #include <rocksdb/db.h>
 #include <rocksdb/slice.h>
 
-#include <map>
 #include <string>
 #include <vector>
 
+/// Usage:
+///
+/// ```
+/// WriteBatchInspector inspector;
+/// status = write_batch.Iterate(&inspector);
+/// LOG(INFO) << inspector.seen << ", cnt: " << inspector.cnt;
+/// ```
 struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
   std::string seen;
   int cnt = 0;

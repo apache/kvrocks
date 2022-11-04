@@ -35,6 +35,11 @@
 #include <string>
 #include <vector>
 
+/// WriteBatchInspector can be used to Iterate and print rocksdb's WriteBatch,
+///  kvrocks' replication serialize WriteBatch in WAL, but WriteBatch is not
+///  human-readable. WriteBatchInspector can be used to trace and print the
+///  content of the WriteBatch for debugging.
+///
 /// Usage:
 ///
 /// ```

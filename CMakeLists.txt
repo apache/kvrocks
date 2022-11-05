@@ -27,6 +27,7 @@ option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enable
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" OFF)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
+option(ENABLE_UNWIND "enable libunwind in glog" ON)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -165,8 +166,6 @@ if ((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "C
     endif()
 endif()
 
-find_library(FOUND_UNWIND_LIB unwind)
-
 # kvrocks objects target
 file(GLOB_RECURSE KVROCKS_SRCS src/*.cc)
 list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/main.cc)
@@ -183,9 +182,6 @@ elseif((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQU
 endif()
 target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
-if(FOUND_UNWIND_LIB)
-    target_link_libraries(kvrocks_objs PUBLIC ${FOUND_UNWIND_LIB})
-endif()
 if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
 endif()

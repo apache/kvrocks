@@ -38,6 +38,7 @@
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
+#include "storage/batch_debugger.h"
 #include "util.h"
 
 Status FeedSlaveThread::Start() {
@@ -111,7 +112,7 @@ void FeedSlaveThread::loop() {
     batches_bulk += Redis::BulkString(batch.writeBatchPtr->Data());
     // 1. We must send the first replication batch, as said above.
     // 2. To avoid frequently calling 'write' system call to send replication stream,
-    //    we pack multiple bacthes into one big bulk if possible, and only send once.
+    //    we pack multiple batches into one big bulk if possible, and only send once.
     //    But we should send the bulk of batches if its size exceed kMaxDelayBytes,
     //    16Kb by default. Moreover, we also send if updates count in all bathes is
     //    more that kMaxDelayUpdates, to void too many delayed updates.

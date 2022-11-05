@@ -151,7 +151,7 @@ void send_string(bufferevent *bev, const std::string &data) {
 void ReplicationThread::CallbacksStateMachine::ConnEventCB(bufferevent *bev, int16_t events, void *state_machine_ptr) {
   if (events & BEV_EVENT_CONNECTED) {
     // call write_cb when connected
-    bufferevent_data_cb write_cb;
+    bufferevent_data_cb write_cb = nullptr;
     bufferevent_getcb(bev, nullptr, &write_cb, nullptr, nullptr);
     if (write_cb) write_cb(bev, state_machine_ptr);
     return;
@@ -220,7 +220,7 @@ LOOP_LABEL:
 }
 
 void ReplicationThread::CallbacksStateMachine::Start() {
-  int cfd;
+  int cfd = 0;
   struct bufferevent *bev = nullptr;
 
   if (handlers_.empty()) {
@@ -525,7 +525,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (self->incr_bulk_len_ + 2 <= evbuffer_get_length(input)) {  // We got enough data
-          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, self->incr_bulk_len_ + 2));
+          bulk_data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(self->incr_bulk_len_ + 2)));
           std::string bulk_string = std::string(bulk_data, self->incr_bulk_len_);
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
@@ -615,7 +615,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
           return CBState::RESTART;
         }
         std::vector<std::string> need_files = Util::Split(std::string(line.get()), ",");
-        for (auto f : need_files) {
+        for (const auto &f : need_files) {
           meta.files.emplace_back(f, 0);
         }
 
@@ -699,7 +699,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           if (this->stop_flag_) {
             return Status(Status::NotOK, "replication thread was stopped");
           }
-          int sock_fd;
+          int sock_fd = 0;
           Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
           if (!s.IsOK()) {
             return Status(Status::NotOK, "connect the server err: " + s.Msg());
@@ -731,7 +731,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
             crcs.push_back(f_crc);
           }
           unsigned files_count = files.size();
-          fetch_file_callback fn = [&fetch_cnt, &skip_cnt, files_count](const std::string fetch_file,
+          fetch_file_callback fn = [&fetch_cnt, &skip_cnt, files_count](const std::string &fetch_file,
                                                                         const uint32_t fetch_crc) {
             fetch_cnt.fetch_add(1);
             uint32_t cur_skip_cnt = skip_cnt.load();
@@ -788,9 +788,9 @@ Status ReplicationThread::sendAuth(int sock_fd) {
   return Status::OK();
 }
 
-Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, std::string file,
-                                    uint32_t crc, fetch_file_callback fn) {
-  size_t file_size;
+Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file,
+                                    uint32_t crc, const fetch_file_callback &fn) {
+  size_t file_size = 0;
 
   // Read file size line
   while (true) {
@@ -850,9 +850,9 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
 }
 
 Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
-                                     const std::vector<uint32_t> &crcs, fetch_file_callback fn) {
+                                     const std::vector<uint32_t> &crcs, const fetch_file_callback &fn) {
   std::string files_str;
-  for (auto file : files) {
+  for (const auto &file : files) {
     files_str += file;
     files_str.push_back(',');
   }

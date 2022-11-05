@@ -17,9 +17,12 @@
 
 # used for `find_package(ZLIB)` mechanism in rocksdb
 
-if(zstd_SOURCE_DIR)
-  message(STATUS "Found zstd in ${zstd_SOURCE_DIR}")
+if(zlib_SOURCE_DIR)
+  message(STATUS "Found zlib in ${zlib_SOURCE_DIR}")
 
-  add_library(ZLIB::ZLIB ALIAS zlibstatic) # rocksdb use it
-  install(TARGETS zlibstatic EXPORT RocksDBTargets) # export for install(...)
+  add_library(zlib_with_headers INTERFACE) # rocksdb use it
+  target_include_directories(zlib_with_headers INTERFACE $<BUILD_INTERFACE:${zlib_SOURCE_DIR}> $<BUILD_INTERFACE:${zlib_BINARY_DIR}>)
+  target_link_libraries(zlib_with_headers INTERFACE zlibstatic)
+  add_library(ZLIB::ZLIB ALIAS zlib_with_headers)
+  install(TARGETS zlibstatic zlib_with_headers EXPORT RocksDBTargets) # export for install(...)
 endif()

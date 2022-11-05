@@ -27,6 +27,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+// The file is copy and modified from rocksdb:
+// https://github.com/facebook/rocksdb/blob/5cf6ab6f315e2506171aad2504638a7da9af7d1e/db/write_batch_test.cc#L251
+
 #pragma once
 
 #include <rocksdb/db.h>

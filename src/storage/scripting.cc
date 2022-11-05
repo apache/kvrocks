@@ -446,33 +446,28 @@ void removeUnsupportedFunctions(lua_State *lua) {
 }
 
 void enableGlobalsProtection(lua_State *lua) {
-  const char *s[32];
-  int j = 0;
+  const char *code =
+      "local dbg=debug\n"
+      "local mt = {}\n"
+      "setmetatable(_G, mt)\n"
+      "mt.__newindex = function (t, n, v)\n"
+      "  if dbg.getinfo(2) then\n"
+      "    local w = dbg.getinfo(2, \"S\").what\n"
+      "    if w ~= \"main\" and w ~= \"C\" then\n"
+      "      error(\"Script attempted to create global variable '\"..tostring(n)..\"'\", 2)\n"
+      "    end\n"
+      "  end\n"
+      "  rawset(t, n, v)\n"
+      "end\n"
+      "mt.__index = function (t, n)\n"
+      "  if dbg.getinfo(2) and dbg.getinfo(2, \"S\").what ~= \"C\" then\n"
+      "    error(\"Script attempted to access nonexistent global variable '\"..tostring(n)..\"'\", 2)\n"
+      "  end\n"
+      "  return rawget(t, n)\n"
+      "end\n"
+      "debug = nil\n";
 
-  s[j++] = "local dbg=debug\n";
-  s[j++] = "local mt = {}\n";
-  s[j++] = "setmetatable(_G, mt)\n";
-  s[j++] = "mt.__newindex = function (t, n, v)\n";
-  s[j++] = "  if dbg.getinfo(2) then\n";
-  s[j++] = "    local w = dbg.getinfo(2, \"S\").what\n";
-  s[j++] = "    if w ~= \"main\" and w ~= \"C\" then\n";
-  s[j++] = "      error(\"Script attempted to create global variable '\"..tostring(n)..\"'\", 2)\n";
-  s[j++] = "    end\n";
-  s[j++] = "  end\n";
-  s[j++] = "  rawset(t, n, v)\n";
-  s[j++] = "end\n";
-  s[j++] = "mt.__index = function (t, n)\n";
-  s[j++] = "  if dbg.getinfo(2) and dbg.getinfo(2, \"S\").what ~= \"C\" then\n";
-  s[j++] = "    error(\"Script attempted to access nonexistent global variable '\"..tostring(n)..\"'\", 2)\n";
-  s[j++] = "  end\n";
-  s[j++] = "  return rawget(t, n)\n";
-  s[j++] = "end\n";
-  s[j++] = "debug = nil\n";
-  s[j++] = nullptr;
-
-  std::string code;
-  for (j = 0; s[j] != nullptr; j++) code += s[j];
-  luaL_loadbuffer(lua, code.c_str(), code.size(), "@enable_strict_lua");
+  luaL_loadbuffer(lua, code, strlen(code), "@enable_strict_lua");
   lua_pcall(lua, 0, 0, 0);
 }
 

@@ -912,7 +912,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
         }
       }
       break;
-    case kBatchTypeStream:
+    case kBatchTypeStream: {
       auto key = write_batch_handler.Key();
       InternalKey ikey(key, storage_->IsSlotIdEncoded());
       Slice entry_id = ikey.GetSubKey();
@@ -920,6 +920,9 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       GetFixed64(&entry_id, &id.ms);
       GetFixed64(&entry_id, &id.seq);
       srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
+      break;
+    }
+    case kBatchTypeNone:
       break;
   }
   return rocksdb::Status::OK();

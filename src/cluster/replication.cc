@@ -922,7 +922,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
       break;
     }
-    default:
+    case kBatchTypeNone:
       break;
   }
   return rocksdb::Status::OK();

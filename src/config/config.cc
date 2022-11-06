@@ -51,11 +51,10 @@ const char *errNotSetLevelCompactionDynamicLevelBytes =
 
 const char *kDefaultBindAddress = "127.0.0.1";
 
-configEnum compression_type_enum[] = {{"no", rocksdb::CompressionType::kNoCompression},
-                                      {"snappy", rocksdb::CompressionType::kSnappyCompression},
-                                      {"lz4", rocksdb::CompressionType::kLZ4Compression},
-                                      {"zstd", rocksdb::CompressionType::kZSTD},
-                                      {nullptr, 0}};
+configEnum compression_type_enum[] = {
+    {"no", rocksdb::CompressionType::kNoCompression},     {"snappy", rocksdb::CompressionType::kSnappyCompression},
+    {"lz4", rocksdb::CompressionType::kLZ4Compression},   {"zstd", rocksdb::CompressionType::kZSTD},
+    {"zlib", rocksdb::CompressionType::kZlibCompression}, {nullptr, 0}};
 
 configEnum supervised_mode_enum[] = {{"no", kSupervisedNone},
                                      {"auto", kSupervisedAutoDetect},

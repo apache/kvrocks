@@ -77,9 +77,9 @@ For the library glog(https://github.com/google/glog)
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-For the library  googletest(https://github.com/google/googletest):
+For the library googletest(https://github.com/google/googletest):
 
-GoogleTest is the Google testing and mocking framework. It's under a BSD 3-Clause license,
+GoogleTest is the Google testing and mocking framework. It's under the BSD 3-Clause license,
 see: https://github.com/google/googletest/blob/main/LICENSE
 
 For the library lua(https://github.com/KvrocksLabs/lua):
@@ -118,7 +118,7 @@ and commercial purposes at absolutely no cost.
 
 For the library snappy(https://github.com/google/snappy):
 
-Snappy is a compression/decompression library. It's under a a BSD 3-Clause license:
+Snappy is a compression/decompression library. It's under the BSD 3-Clause license:
 
     Copyright 2011, Google Inc.
     All rights reserved.
@@ -152,7 +152,7 @@ Snappy is a compression/decompression library. It's under a a BSD 3-Clause licen
 For the library lz4(https://github.com/lz4/lz4):
 
 LZ4 is lossless compression algorithm, providing compression speed > 500 MB/s per core, scalable with multi-cores CPU.
-We only used the source code in `lib` directory which is under  BSD 2-Clause:
+We only used the source code in `lib` directory which is under the BSD 2-Clause:
 
     This repository uses 2 different licenses :
     - all files in the `lib` directory use a BSD 2-Clause license
@@ -166,6 +166,28 @@ We only used the source code in `lib` directory which is under  BSD 2-Clause:
     while all other files, in `programs`, `tests` or `examples`,
     are intended to be used "as is", as part of their intended scenarios,
     with no intention to support 3rd party integration use cases.
+
+For the library zlib(https://github.com/madler/zlib):
+
+zlib is a massively spiffy yet delicately unobtrusive compression library. It is under the zlib/libpng License:
+
+    (C) 1995-2022 Jean-loup Gailly and Mark Adler
+
+    This software is provided 'as-is', without any express or implied
+    warranty.  In no event will the authors be held liable for any damages
+    arising from the use of this software.
+
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+
+    1. The origin of this software must not be misrepresented; you must not
+       claim that you wrote the original software. If you use this software
+       in a product, an acknowledgment in the product documentation would be
+       appreciated but is not required.
+    2. Altered source versions must be plainly marked as such, and must not be
+       misrepresented as being the original software.
+    3. This notice may not be removed or altered from any source distribution.
 
 For src/types/geohash.*, src/common/rand.*, src/common/sha1.*, src/storage/scripting.* and
 some functions in src/common/util.cc are modified from Redis.

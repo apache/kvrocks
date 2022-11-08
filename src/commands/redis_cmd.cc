@@ -1705,7 +1705,7 @@ class CommandBPop : public Commander {
       timeval tm = {timeout_, 0};
       evtimer_add(timer_, &tm);
     }
-    return Status(Status::kBlockingCmd);
+    return Status::BlockingCommand();
   }
 
   rocksdb::Status TryPopFromList() {

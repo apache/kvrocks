@@ -74,6 +74,7 @@ class Status {
 
   bool IsOK() const { return Is<kOK>(); }
   bool IsNotFound() const { return Is<kNotFound>(); };
+  bool IsBlockingCommand() const { return Is<kBlockingCmd>(); }
   explicit operator bool() const { return IsOK(); }
 
   Code GetCode() const { return code_; }
@@ -99,6 +100,7 @@ class Status {
   static Status DBBackupError(std::string msg = {}) { return {kDBBackupErr, std::move(msg)}; }
   static Status ClusterDownError(std::string msg = {}) { return {kClusterDown, std::move(msg)}; }
   static Status ClusterInvalidInfo(std::string msg = {}) { return {kClusterInvalidInfo, std::move(msg)}; }
+  static Status BlockingCommand() { return {kBlockingCmd}; }
 
   void GetValue() {}
 

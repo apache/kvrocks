@@ -39,7 +39,6 @@ class Status {
     // DB
     kDBOpenErr,
     kDBBackupErr,
-    kDBGetWALErr,
     kDBBackupFileErr,
 
     // Replication

@@ -485,8 +485,8 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
 
 Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter) {
   auto s = db_->GetUpdatesSince(seq, iter);
-  if (!s.ok()) return Status(Status::kDBGetWALErr, s.ToString());
-  if (!(*iter)->Valid()) return Status(Status::kDBGetWALErr, "iterator not valid");
+  if (!s.ok()) return Status::NotOK(s.ToString());
+  if (!(*iter)->Valid()) return Status::NotOK("iterator not valid");
   return Status::OK();
 }
 

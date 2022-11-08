@@ -1024,9 +1024,9 @@ class CommandBitOp : public Commander {
     else if (opname == "not")
       op_flag_ = kBitOpNot;
     else
-      return Status(Status::kRedisInvalidCmd, "Unknown bit operation");
+      return Status::InvalidCommand("Unknown bit operation");
     if (op_flag_ == kBitOpNot && args.size() != 4) {
-      return Status(Status::kRedisInvalidCmd, "BITOP NOT must be called with a single source key.");
+      return Status::InvalidCommand("BITOP NOT must be called with a single source key.");
     }
     return Commander::Parse(args);
   }
@@ -1510,7 +1510,7 @@ class CommandHRange : public Commander {
       return Status::ParseError(errWrongNumOfArguments);
     }
     if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
-      return Status(Status::kRedisInvalidCmd, errInvalidSyntax);
+      return Status::InvalidCommand(errInvalidSyntax);
     }
     if (args.size() == 6) {
       auto parse_result = ParseInt<int64_t>(args_[5], 10);
@@ -3529,7 +3529,7 @@ class CommandDisk : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     std::string opname = Util::ToLower(args[1]);
-    if (opname != "usage") return Status(Status::kRedisInvalidCmd, "Unknown operation");
+    if (opname != "usage") return Status::InvalidCommand("Unknown operation");
     return Commander::Parse(args);
   }
 
@@ -3789,7 +3789,7 @@ class CommandPubSub : public Commander {
       }
       return Status::OK();
     }
-    return Status(Status::kRedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
+    return Status::InvalidCommand("Unknown subcommand or wrong number of arguments");
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -3812,7 +3812,7 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    return Status(Status::kRedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
+    return Status::InvalidCommand("Unknown subcommand or wrong number of arguments");
   }
 
  private:
@@ -4088,7 +4088,7 @@ class CommandClient : public Commander {
       // split by space to get the different fields.
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
-          return Status(Status::kRedisInvalidCmd, "Client names cannot contain spaces, newlines or special characters");
+          return Status::InvalidCommand("Client names cannot contain spaces, newlines or special characters");
         }
       }
       conn_name_ = args[2];
@@ -4142,7 +4142,7 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return Status(Status::kRedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
+    return Status::InvalidCommand("Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -4174,7 +4174,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
-    return Status(Status::kRedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
+    return Status::InvalidCommand("Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
   }
 
  private:
@@ -4234,7 +4234,7 @@ class CommandDebug : public Commander {
       microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
       return Status::OK();
     }
-    return Status(Status::kRedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>");
+    return Status::InvalidCommand("Syntax error, DEBUG SLEEP <seconds>");
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {

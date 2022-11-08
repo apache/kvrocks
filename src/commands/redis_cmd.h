@@ -64,7 +64,7 @@ class Commander {
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
-    return Status(Status::kRedisExecErr, "not implemented");
+    return Status::ExecError("not implemented");
   }
 
   virtual ~Commander() = default;

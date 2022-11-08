@@ -246,7 +246,7 @@ class CommandFlushDB : public Commander {
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
-    return Status(Status::kRedisExecErr, s.ToString());
+    return Status::ExecError(s.ToString());
   }
 };
 
@@ -270,7 +270,7 @@ class CommandFlushAll : public Commander {
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
-    return Status(Status::kRedisExecErr, s.ToString());
+    return Status::ExecError(s.ToString());
   }
 };
 
@@ -312,7 +312,7 @@ class CommandConfig : public Commander {
     }
     if (args_.size() == 2 && sub_command == "rewrite") {
       Status s = config->Rewrite();
-      if (!s.IsOK()) return Status(Status::kRedisExecErr, s.Msg());
+      if (!s.IsOK()) return Status::ExecError(s.Msg());
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success";
     } else if (args_.size() == 3 && sub_command == "get") {
@@ -349,7 +349,7 @@ class CommandGet : public Commander {
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
@@ -388,7 +388,7 @@ class CommandGetEx : public Commander {
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
@@ -406,7 +406,7 @@ class CommandStrlen : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Get(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::Integer(0);
@@ -424,7 +424,7 @@ class CommandGetSet : public Commander {
     std::string old_value;
     rocksdb::Status s = string_db.GetSet(args_[1], args_[2], &old_value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -442,7 +442,7 @@ class CommandGetDel : public Commander {
     std::string value;
     rocksdb::Status s = string_db.GetDel(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -471,7 +471,7 @@ class CommandGetRange : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Get(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -509,7 +509,7 @@ class CommandSetRange : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.SetRange(args_[1], offset_, args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -542,7 +542,7 @@ class CommandAppend : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.Append(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -589,7 +589,7 @@ class CommandSet : public Commander {
     }
 
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (set_flag_ != NONE && !ret) {
       *output = Redis::NilString();
@@ -670,7 +670,7 @@ class CommandMSet : public Commander {
     }
     rocksdb::Status s = string_db.MSet(kvs);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::SimpleString("OK");
     return Status::OK();
@@ -684,7 +684,7 @@ class CommandSetNX : public Commander {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.SetNX(args_[1], args_[2], 0, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -709,7 +709,7 @@ class CommandMSetNX : public Commander {
     }
     rocksdb::Status s = string_db.MSetNX(kvs, 0, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -722,7 +722,7 @@ class CommandIncr : public Commander {
     int64_t ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], 1, &ret);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -734,7 +734,7 @@ class CommandDecr : public Commander {
     int64_t ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], -1, &ret);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -755,7 +755,7 @@ class CommandIncrBy : public Commander {
     int64_t ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], increment_, &ret);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -779,7 +779,7 @@ class CommandIncrByFloat : public Commander {
     double ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrByFloat(args_[1], increment_, &ret);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
   }
@@ -803,7 +803,7 @@ class CommandDecrBy : public Commander {
     int64_t ret;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = string_db.IncrBy(args_[1], -1 * increment_, &ret);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -835,7 +835,7 @@ class CommandCAS : public Commander {
     int ret = 0;
     s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -853,7 +853,7 @@ class CommandCAD : public Commander {
     int ret = 0;
     s = string_db.CAD(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -896,7 +896,7 @@ class CommandGetBit : public Commander {
     bool bit;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = bitmap_db.GetBit(args_[1], offset_, &bit);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(bit ? 1 : 0);
     return Status::OK();
   }
@@ -925,7 +925,7 @@ class CommandSetBit : public Commander {
     bool old_bit;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(old_bit ? 1 : 0);
     return Status::OK();
   }
@@ -960,7 +960,7 @@ class CommandBitCount : public Commander {
     uint32_t cnt;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(cnt);
     return Status::OK();
   }
@@ -1001,7 +1001,7 @@ class CommandBitPos : public Commander {
     int64_t pos;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(pos);
     return Status::OK();
   }
@@ -1039,7 +1039,7 @@ class CommandBitOp : public Commander {
       op_keys.emplace_back(Slice(args_[i]));
     }
     rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(destkey_len);
     return Status::OK();
   }
@@ -1058,7 +1058,7 @@ class CommandType : public Commander {
       *output = Redis::BulkString(RedisTypeNames[type]);
       return Status::OK();
     }
-    return Status(Status::kRedisExecErr, s.ToString());
+    return Status::ExecError(s.ToString());
   }
 };
 
@@ -1070,7 +1070,7 @@ class CommandObject : public Commander {
       std::vector<std::string> infos;
       rocksdb::Status s = redis.Dump(args_[2], &infos);
       if (!s.ok()) {
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
       output->append(Redis::MultiLen(infos.size()));
       for (const auto &info : infos) {
@@ -1093,7 +1093,7 @@ class CommandTTL : public Commander {
       *output = Redis::Integer(ttl);
       return Status::OK();
     } else {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
   }
 };
@@ -1104,7 +1104,7 @@ class CommandPTTL : public Commander {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     int ttl;
     rocksdb::Status s = redis.TTL(args_[1], &ttl);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     if (ttl > 0) {
       *output = Redis::Integer(ttl * 1000);
     } else {
@@ -1245,13 +1245,13 @@ class CommandPersist : public Commander {
     int ttl;
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.TTL(args_[1], &ttl);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     if (ttl == -1 || ttl == -2) {
       *output = Redis::Integer(0);
       return Status::OK();
     }
     s = redis.Expire(args_[1], 0);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(1);
     return Status::OK();
   }
@@ -1264,7 +1264,7 @@ class CommandHGet : public Commander {
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
@@ -1278,7 +1278,7 @@ class CommandHSetNX : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1292,7 +1292,7 @@ class CommandHStrlen : public Commander {
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(static_cast<int>(value.size()));
     return Status::OK();
@@ -1310,7 +1310,7 @@ class CommandHDel : public Commander {
     }
     rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1324,7 +1324,7 @@ class CommandHExists : public Commander {
     std::string value;
     rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(1);
     return Status::OK();
@@ -1338,7 +1338,7 @@ class CommandHLen : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(count);
     return Status::OK();
@@ -1360,7 +1360,7 @@ class CommandHIncrBy : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1385,7 +1385,7 @@ class CommandHIncrByFloat : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
@@ -1407,7 +1407,7 @@ class CommandHMGet : public Commander {
     std::vector<rocksdb::Status> statuses;
     rocksdb::Status s = hash_db.MGet(args_[1], fields, &values, &statuses);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
@@ -1437,7 +1437,7 @@ class CommandHMSet : public Commander {
     }
     rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (GetAttributes()->name == "hset") {
       *output = Redis::Integer(ret);
@@ -1455,7 +1455,7 @@ class CommandHKeys : public Commander {
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> keys;
     for (const auto &fv : field_values) {
@@ -1473,7 +1473,7 @@ class CommandHVals : public Commander {
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> values;
     for (const auto &p : field_values) {
@@ -1491,7 +1491,7 @@ class CommandHGetAll : public Commander {
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
@@ -1524,7 +1524,7 @@ class CommandHRange : public Commander {
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
@@ -1557,7 +1557,7 @@ class CommandPush : public Commander {
       s = list_db.PushX(args_[1], elems, left_, &ret);
     }
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     svr->WakeupBlockingConns(args_[1], elems.size());
@@ -1619,7 +1619,7 @@ class CommandPop : public Commander {
       std::vector<std::string> elems;
       rocksdb::Status s = list_db.PopMulti(args_[1], left_, count_, &elems);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
       if (s.IsNotFound()) {
         *output = Redis::MultiLen(-1);
@@ -1630,7 +1630,7 @@ class CommandPop : public Commander {
       std::string elem;
       rocksdb::Status s = list_db.Pop(args_[1], left_, &elem);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
       if (s.IsNotFound()) {
         *output = Redis::NilString();
@@ -1824,7 +1824,7 @@ class CommandLRem : public Commander {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Rem(args_[1], count_, args_[3], &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1852,7 +1852,7 @@ class CommandLInsert : public Commander {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -1880,7 +1880,7 @@ class CommandLRange : public Commander {
     std::vector<std::string> elems;
     rocksdb::Status s = list_db.Range(args_[1], start_, stop_, &elems);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(elems, false);
     return Status::OK();
@@ -1897,7 +1897,7 @@ class CommandLLen : public Commander {
     uint32_t count;
     rocksdb::Status s = list_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(count);
     return Status::OK();
@@ -1920,7 +1920,7 @@ class CommandLIndex : public Commander {
     std::string elem;
     rocksdb::Status s = list_db.Index(args_[1], index_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -1949,7 +1949,7 @@ class CommandLSet : public Commander {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Set(args_[1], index_, args_[3]);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::SimpleString("OK");
     return Status::OK();
@@ -1977,7 +1977,7 @@ class CommandLTrim : public Commander {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Trim(args_[1], start_, stop_);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::SimpleString("OK");
     return Status::OK();
@@ -1994,7 +1994,7 @@ class CommandRPopLPUSH : public Commander {
     std::string elem;
     rocksdb::Status s = list_db.RPopLPush(args_[1], args_[2], &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
     return Status::OK();
@@ -2022,7 +2022,7 @@ class CommandLMove : public Commander {
     std::string elem;
     auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
     return Status::OK();
@@ -2044,7 +2044,7 @@ class CommandSAdd : public Commander {
     int ret;
     rocksdb::Status s = set_db.Add(args_[1], members, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2062,7 +2062,7 @@ class CommandSRem : public Commander {
     int ret;
     rocksdb::Status s = set_db.Remove(args_[1], members, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2076,7 +2076,7 @@ class CommandSCard : public Commander {
     int ret;
     rocksdb::Status s = set_db.Card(args_[1], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2090,7 +2090,7 @@ class CommandSMembers : public Commander {
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Members(args_[1], &members);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2104,7 +2104,7 @@ class CommandSIsMember : public Commander {
     int ret;
     rocksdb::Status s = set_db.IsMember(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2123,7 +2123,7 @@ class CommandSMIsMember : public Commander {
     std::vector<int> exists;
     rocksdb::Status s = set_db.MIsMember(args_[1], members, &exists);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       exists.resize(members.size(), 0);
@@ -2155,7 +2155,7 @@ class CommandSPop : public Commander {
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Take(args_[1], &members, count_, true);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (with_count_) {
       *output = Redis::MultiBulkString(members, false);
@@ -2192,7 +2192,7 @@ class CommandSRandMember : public Commander {
     std::vector<std::string> members;
     rocksdb::Status s = set_db.Take(args_[1], &members, count_, false);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2209,7 +2209,7 @@ class CommandSMove : public Commander {
     int ret;
     rocksdb::Status s = set_db.Move(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2227,7 +2227,7 @@ class CommandSDiff : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Diff(keys, &members);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2245,7 +2245,7 @@ class CommandSUnion : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Union(keys, &members);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2263,7 +2263,7 @@ class CommandSInter : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Inter(keys, &members);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2281,7 +2281,7 @@ class CommandSDiffStore : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.DiffStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2299,7 +2299,7 @@ class CommandSUnionStore : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.UnionStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2317,7 +2317,7 @@ class CommandSInterStore : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.InterStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2359,7 +2359,7 @@ class CommandZAdd : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (flags_.HasIncr()) {
       auto new_score = member_scores_[0].score;
@@ -2427,7 +2427,7 @@ class CommandZCount : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2445,7 +2445,7 @@ class CommandZCard : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2469,7 +2469,7 @@ class CommandZIncrBy : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.IncrBy(args_[1], args_[3], incr_, &score);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::BulkString(Util::Float2String(score));
     return Status::OK();
@@ -2494,7 +2494,7 @@ class CommandZLexCount : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -2524,7 +2524,7 @@ class CommandZPop : public Commander {
     std::vector<MemberScore> memeber_scores;
     rocksdb::Status s = zset_db.Pop(args_[1], count_, min_, &memeber_scores);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     output->append(Redis::MultiLen(memeber_scores.size() * 2));
     for (const auto &ms : memeber_scores) {
@@ -2573,7 +2573,7 @@ class CommandZRange : public Commander {
     uint8_t flags = !reversed_ ? 0 : kZSetReversed;
     rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (!with_scores_) {
       output->append(Redis::MultiLen(member_scores.size()));
@@ -2631,7 +2631,7 @@ class CommandZRangeByLex : public Commander {
     std::vector<std::string> members;
     rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2681,7 +2681,7 @@ class CommandZRangeByScore : public Commander {
     std::vector<MemberScore> member_scores;
     rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (!with_scores_) {
       output->append(Redis::MultiLen(member_scores.size()));
@@ -2708,7 +2708,7 @@ class CommandZRank : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (rank == -1) {
       *output = Redis::NilString();
@@ -2748,7 +2748,7 @@ class CommandZRem : public Commander {
     }
     rocksdb::Status s = zset_db.Remove(args_[1], members, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -2774,7 +2774,7 @@ class CommandZRemRangeByRank : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -2800,7 +2800,7 @@ class CommandZRemRangeByScore : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -2825,7 +2825,7 @@ class CommandZRemRangeByLex : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -2842,7 +2842,7 @@ class CommandZScore : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.Score(args_[1], args_[2], &score);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -2864,7 +2864,7 @@ class CommandZMScore : public Commander {
     std::map<std::string, double> mscores;
     rocksdb::Status s = zset_db.MGet(args_[1], members, &mscores);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> values;
     if (s.IsNotFound()) {
@@ -2939,7 +2939,7 @@ class CommandZUnionStore : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -2960,7 +2960,7 @@ class CommandZInterStore : public CommandZUnionStore {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(size);
     return Status::OK();
@@ -3046,7 +3046,7 @@ class CommandGeoAdd : public CommandGeoBase {
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = geo_db.Add(args_[1], &geo_points_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -3072,7 +3072,7 @@ class CommandGeoDist : public CommandGeoBase {
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       *output = Redis::NilString();
@@ -3097,7 +3097,7 @@ class CommandGeoHash : public Commander {
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = geo_db.Hash(args_[1], members_, &hashes);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::MultiBulkString(hashes);
     return Status::OK();
@@ -3121,7 +3121,7 @@ class CommandGeoPos : public Commander {
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = geo_db.Pos(args_[1], members_, &geo_points);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> list;
     for (const auto &member : members_) {
@@ -3216,7 +3216,7 @@ class CommandGeoRadius : public CommandGeoBase {
     rocksdb::Status s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_,
                                       store_key_, store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (store_key_.size() != 0) {
       *output = Redis::Integer(geo_points.size());
@@ -3291,7 +3291,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     rocksdb::Status s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
                                               store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = GenerateOutput(geo_points);
     return Status::OK();
@@ -3326,7 +3326,7 @@ class CommandSortedintAdd : public Commander {
     int ret;
     rocksdb::Status s = sortedint_db.Add(args_[1], ids_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -3354,7 +3354,7 @@ class CommandSortedintRem : public Commander {
     int ret;
     rocksdb::Status s = sortedint_db.Remove(args_[1], ids_, &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -3371,7 +3371,7 @@ class CommandSortedintCard : public Commander {
     int ret;
     rocksdb::Status s = sortedint_db.Card(args_[1], &ret);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = Redis::Integer(ret);
     return Status::OK();
@@ -3394,7 +3394,7 @@ class CommandSortedintExists : public Commander {
     std::vector<int> exists;
     rocksdb::Status s = sortedint_db.MExist(args_[1], ids, &exists);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     if (s.IsNotFound()) {
       exists.resize(ids.size(), 0);
@@ -3437,7 +3437,7 @@ class CommandSortedintRange : public Commander {
     std::vector<uint64_t> ids;
     rocksdb::Status s = sortedint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     output->append(Redis::MultiLen(ids.size()));
     for (const auto id : ids) {
@@ -3493,7 +3493,7 @@ class CommandSortedintRangeByValue : public Commander {
     int size;
     rocksdb::Status s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     output->append(Redis::MultiLen(ids.size()));
     for (const auto id : ids) {
@@ -3537,12 +3537,12 @@ class CommandDisk : public Commander {
     RedisType type;
     Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = disk_db.Type(args_[2], &type);
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
 
     uint64_t result = 0;
     s = disk_db.GetKeySize(args_[2], type, &result);
 
-    if (!s.ok()) return Status(Status::kRedisExecErr, s.ToString());
+    if (!s.ok()) return Status::ExecError(s.ToString());
     *output = Redis::Integer(result);
     return Status::OK();
   }
@@ -3624,7 +3624,7 @@ class CommandCompact : public Commander {
           *output = Redis::SimpleString("OK");
           return Status::OK();
         }
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
     }
     Status s = svr->AsyncCompactDB(begin_key, end_key);
@@ -3697,7 +3697,7 @@ class CommandPublish : public Commander {
       Redis::PubSub pubsub_db(svr->storage_);
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
     }
 
@@ -3840,10 +3840,10 @@ class CommandSlaveOf : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      return Status(Status::kRedisExecErr, "can't change to slave in cluster mode");
+      return Status::ExecError("can't change to slave in cluster mode");
     }
     if (svr->GetConfig()->RocksDB.write_options.disable_WAL) {
-      return Status(Status::kRedisExecErr, "slaveof doesn't work with disable_wal option");
+      return Status::ExecError("slaveof doesn't work with disable_wal option");
     }
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
@@ -3945,7 +3945,7 @@ class CommandPSync : public Commander {
 
     if (need_full_sync) {
       svr->stats_.IncrPSyncErrCounter();
-      return Status(Status::kRedisExecErr, *output);
+      return Status::ExecError(*output);
     }
 
     // Server would spawn a new thread to sync the batch, and connection would
@@ -4505,7 +4505,7 @@ class CommandScan : public CommandScanBase {
     std::string end_cursor;
     auto s = redis_db.Scan(cursor, limit, prefix, &keys, &end_cursor);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     *output = GenerateOutput(keys, end_cursor);
@@ -4522,7 +4522,7 @@ class CommandHScan : public CommandSubkeyScanBase {
     std::vector<std::string> values;
     auto s = hash_db.Scan(key, cursor, limit, prefix, &fields, &values);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     *output = GenerateOutput(fields, values);
     return Status::OK();
@@ -4537,7 +4537,7 @@ class CommandSScan : public CommandSubkeyScanBase {
     std::vector<std::string> members;
     auto s = set_db.Scan(key, cursor, limit, prefix, &members);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     *output = CommandScanBase::GenerateOutput(members);
@@ -4555,7 +4555,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     std::vector<double> scores;
     auto s = zset_db.Scan(key, cursor, limit, prefix, &members, &scores);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
     std::vector<std::string> score_strings;
     for (const auto &score : scores) {
@@ -5159,7 +5159,7 @@ class CommandXAdd : public Commander {
     StreamEntryID entry_id;
     auto s = stream_db.Add(stream_name_, options, name_value_pairs_, &entry_id);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     if (s.IsNotFound() && nomkstream_) {
@@ -5205,7 +5205,7 @@ class CommandXDel : public Commander {
     uint64_t deleted;
     auto s = stream_db.DeleteEntries(args_[1], ids_, &deleted);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     *output = Redis::Integer(deleted);
@@ -5224,7 +5224,7 @@ class CommandXLen : public Commander {
     uint64_t len;
     auto s = stream_db.Len(args_[1], &len);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     *output = Redis::Integer(len);
@@ -5270,11 +5270,11 @@ class CommandXInfo : public Commander {
     Redis::StreamInfo info;
     auto s = stream_db.GetStreamInfo(args_[2], full_, count_, &info);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     if (s.IsNotFound()) {
-      return Status(Status::kRedisExecErr, errNoSuchKey);
+      return Status::ExecError(errNoSuchKey);
     }
 
     if (!full_) {
@@ -5390,7 +5390,7 @@ class CommandXRange : public Commander {
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     output->append(Redis::MultiLen(result.size()));
@@ -5480,7 +5480,7 @@ class CommandXRevRange : public Commander {
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     output->append(Redis::MultiLen(result.size()));
@@ -5602,7 +5602,7 @@ class CommandXRead : public Commander {
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::kRedisExecErr, s.ToString());
+        return Status::ExecError(s.ToString());
       }
 
       if (result.size() > 0) {
@@ -5656,7 +5656,7 @@ class CommandXRead : public Commander {
         ;
         auto s = stream_db->GetLastGeneratedID(streams_[i], &last_generated_id);
         if (!s.ok()) {
-          return Status(Status::kRedisExecErr, s.ToString());
+          return Status::ExecError(s.ToString());
         }
 
         ids_[i] = last_generated_id;
@@ -5877,7 +5877,7 @@ class CommandXTrim : public Commander {
     uint64_t removed;
     auto s = stream_db.Trim(args_[1], options, &removed);
     if (!s.ok()) {
-      return Status(Status::kRedisExecErr, s.ToString());
+      return Status::ExecError(s.ToString());
     }
 
     *output = Redis::Integer(removed);

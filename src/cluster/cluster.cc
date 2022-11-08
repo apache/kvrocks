@@ -640,7 +640,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     int cur_slot = GetSlotNumFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {
-      return Status(Status::kRedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot");
+      return Status::ExecError("CROSSSLOT Attempted to access keys that don't hash to the same slot");
     }
   }
   if (slot == -1) return Status::OK();
@@ -652,12 +652,12 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     // Server can't change the topology directly, so we record the migrated slots
     // to move the requests of the migrated slots to the destination node.
     if (migrated_slots_.count(slot)) {  // I'm not serving the migrated slot
-      return Status(Status::kRedisExecErr, "MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
+      return Status::ExecError("MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
     if (attributes->is_write() && IsWriteForbiddenSlot(slot)) {
-      return Status(Status::kRedisExecErr, "Can't write to slot being migrated which is in write forbidden phase");
+      return Status::ExecError("Can't write to slot being migrated which is in write forbidden phase");
     }
     return Status::OK();  // I'm serving this slot
   } else if (myself_ && myself_->importing_slot_ == slot && conn->IsImporting()) {
@@ -676,6 +676,6 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     return Status::OK();  // My mater is serving this slot
   } else {
     std::string ip_port = slots_nodes_[slot]->host_ + ":" + std::to_string(slots_nodes_[slot]->port_);
-    return Status(Status::kRedisExecErr, "MOVED " + std::to_string(slot) + " " + ip_port);
+    return Status::ExecError("MOVED " + std::to_string(slot) + " " + ip_port);
   }
 }

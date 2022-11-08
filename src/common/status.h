@@ -32,41 +32,41 @@
 class Status {
  public:
   enum Code : unsigned char {
-    cOK = 0,
-    NotOK,
-    NotFound,
+    kOK = 0,
+    kNotOK,
+    kNotFound,
 
     // DB
-    DBOpenErr,
-    DBBackupErr,
-    DBGetWALErr,
-    DBBackupFileErr,
+    kDBOpenErr,
+    kDBBackupErr,
+    kDBGetWALErr,
+    kDBBackupFileErr,
 
     // Replication
-    DBMismatched,
+    kDBMismatched,
 
     // Redis
-    RedisUnknownCmd,
-    RedisInvalidCmd,
-    RedisParseErr,
-    RedisExecErr,
+    kRedisUnknownCmd,
+    kRedisInvalidCmd,
+    kRedisParseErr,
+    kRedisExecErr,
     RedisReplicationConflict,
 
     // Cluster
-    ClusterDown,
-    ClusterInvalidInfo,
+    kClusterDown,
+    kClusterInvalidInfo,
 
     // Slot
-    SlotImport,
+    kSlotImport,
 
     // Network
-    NetSendErr,
+    kNetSendErr,
 
     // Blocking
-    BlockingCmd,
+    kBlockingCmd,
   };
 
-  Status() : Status(cOK) {}
+  Status() : Status(kOK) {}
   Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}  // NOLINT
 
   template <Code code>
@@ -74,7 +74,7 @@ class Status {
     return code_ == code;
   }
 
-  bool IsOK() const { return Is<cOK>(); }
+  bool IsOK() const { return Is<kOK>(); }
   explicit operator bool() const { return IsOK(); }
 
   Code GetCode() const { return code_; }
@@ -91,7 +91,7 @@ class Status {
 
   static Status OK() { return {}; }
 
-  static Status FromErrno() { return Status(NotOK, strerror(errno)); }
+  static Status FromErrno() { return {kNotOK, strerror(errno)}; }
 
   void GetValue() {}
 
@@ -140,7 +140,7 @@ struct StatusOr {
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT
-    CHECK(code != Code::cOK);
+    CHECK(code != Code::kOK);
     new (&error_) error_type(new std::string(std::move(msg)));
   }
 
@@ -150,7 +150,7 @@ struct StatusOr {
                                      !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
                                      !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value),
                                     int>::type = 0>  // NOLINT
-  StatusOr(Ts&&... args) : code_(Code::cOK) {
+  StatusOr(Ts&&... args) : code_(Code::kOK) {
     new (&value_) value_type(std::forward<Ts>(args)...);
   }
 
@@ -158,7 +158,7 @@ struct StatusOr {
 
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
-    if (code_ == Code::cOK) {
+    if (code_ == Code::kOK) {
       new (&value_) value_type(std::move(other.value_));
     } else {
       new (&error_) error_type(std::move(other.error_));
@@ -167,7 +167,7 @@ struct StatusOr {
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {
-    CHECK(code_ != Code::cOK);
+    CHECK(code_ != Code::kOK);
     new (&error_) error_type(std::move(other.error_));
   }
 
@@ -178,7 +178,7 @@ struct StatusOr {
     return code_ == code;
   }
 
-  bool IsOK() const { return Is<Code::cOK>(); }
+  bool IsOK() const { return Is<Code::kOK>(); }
   explicit operator bool() const { return IsOK(); }
 
   Status ToStatus() const& {

@@ -149,7 +149,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
   if (iter == redis_fds_.end()) {
     auto s = Util::SockConnect(host, port, &redis_fds_[ns]);
     if (!s.IsOK()) {
-      return Status(Status::NotOK, std::string("Failed to connect to redis :") + s.Msg());
+      return Status(Status::kNotOK, std::string("Failed to connect to redis :") + s.Msg());
     }
 
     if (!auth.empty()) {
@@ -157,7 +157,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return Status(Status::NotOK, s.Msg());
+        return Status(Status::kNotOK, s.Msg());
       }
     }
     if (db_index != 0) {
@@ -165,7 +165,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return Status(Status::NotOK, s.Msg());
+        return Status(Status::kNotOK, s.Msg());
       }
     }
   }
@@ -179,10 +179,10 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   std::string line;
   auto s = Util::SockReadLine(redis_fds_[ns], &line);
   if (!s.IsOK()) {
-    return Status(Status::NotOK, std::string("read redis auth response err: ") + s.Msg());
+    return Status(Status::kNotOK, std::string("read redis auth response err: ") + s.Msg());
   }
   if (line.compare(0, 3, "+OK") != 0) {
-    return Status(Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line);
+    return Status(Status::kNotOK, "[kvrocks2redis] redis Auth failed: " + line);
   }
   return Status::OK();
 }
@@ -196,10 +196,10 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   std::string line;
   auto s = Util::SockReadLine(redis_fds_[ns], &line);
   if (!s.IsOK()) {
-    return Status(Status::NotOK, std::string("read select db response err: ") + s.Msg());
+    return Status(Status::kNotOK, std::string("read select db response err: ") + s.Msg());
   }
   if (line.compare(0, 3, "+OK") != 0) {
-    return Status(Status::NotOK, "[kvrocks2redis] redis select db failed: " + line);
+    return Status(Status::kNotOK, "[kvrocks2redis] redis select db failed: " + line);
   }
   return Status::OK();
 }
@@ -212,7 +212,7 @@ Status RedisWriter::updateNextOffset(const std::string &ns, std::istream::off_ty
 Status RedisWriter::readNextOffsetFromFile(const std::string &ns, std::istream::off_type *offset) {
   next_offset_fds_[ns] = open(getNextOffsetFilePath(ns).data(), O_RDWR | O_CREAT, 0666);
   if (next_offset_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open next offset file :") + strerror(errno));
+    return Status(Status::kNotOK, std::string("Failed to open next offset file :") + strerror(errno));
   }
 
   *offset = 0;

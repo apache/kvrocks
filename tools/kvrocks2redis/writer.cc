@@ -36,7 +36,7 @@ Writer::~Writer() {
 Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs) {
   auto s = GetAofFd(ns);
   if (!s.IsOK()) {
-    return Status(Status::NotOK, s.Msg());
+    return Status(Status::kNotOK, s.Msg());
   }
   for (const auto &aof : aofs) {
     Util::Write(aof_fds_[ns], aof);
@@ -48,7 +48,7 @@ Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs
 Status Writer::FlushDB(const std::string &ns) {
   auto s = GetAofFd(ns, true);
   if (!s.IsOK()) {
-    return Status(Status::NotOK, s.Msg());
+    return Status(Status::kNotOK, s.Msg());
   }
 
   return Status::OK();
@@ -63,7 +63,7 @@ Status Writer::GetAofFd(const std::string &ns, bool truncate) {
     return OpenAofFile(ns, truncate);
   }
   if (aof_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open aof file :") + strerror(errno));
+    return Status(Status::kNotOK, std::string("Failed to open aof file :") + strerror(errno));
   }
   return Status::OK();
 }
@@ -75,7 +75,7 @@ Status Writer::OpenAofFile(const std::string &ns, bool truncate) {
   }
   aof_fds_[ns] = open(GetAofFilePath(ns).data(), openmode, 0666);
   if (aof_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open aof file :") + strerror(errno));
+    return Status(Status::kNotOK, std::string("Failed to open aof file :") + strerror(errno));
   }
 
   return Status::OK();

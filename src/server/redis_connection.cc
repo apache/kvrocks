@@ -417,7 +417,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.
-    if (s.Is<Status::BlockingCmd>()) {
+    if (s.Is<Status::kBlockingCmd>()) {
       break;
     }
     // Reply for MULTI

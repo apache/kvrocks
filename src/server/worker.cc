@@ -212,7 +212,7 @@ Status Worker::listenTCP(const std::string &host, int port, int backlog) {
   hints.ai_flags = AI_PASSIVE;
 
   if ((rv = getaddrinfo(host.data(), _port, &hints, &srv_info)) != 0) {
-    return Status(Status::NotOK, gai_strerror(rv));
+    return Status(Status::kNotOK, gai_strerror(rv));
   }
 
   for (p = srv_info; p != nullptr; p = p->ai_next) {
@@ -240,23 +240,23 @@ Status Worker::listenTCP(const std::string &host, int port, int backlog) {
 
 error:
   freeaddrinfo(srv_info);
-  return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+  return Status(Status::kNotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 }
 
 Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) {
   unlink(path.c_str());
   sockaddr_un sa{};
   if (path.size() > sizeof(sa.sun_path) - 1) {
-    return Status(Status::NotOK, "unix socket path too long");
+    return Status(Status::kNotOK, "unix socket path too long");
   }
   sa.sun_family = AF_LOCAL;
   strncpy(sa.sun_path, path.c_str(), sizeof(sa.sun_path) - 1);
   int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
   if (fd == -1) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    return Status(Status::kNotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
   if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    return Status(Status::kNotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
   }
   evutil_make_socket_nonblocking(fd);
   auto lev = evconnlistener_new(base_, newUnixSocketConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
@@ -287,12 +287,12 @@ Status Worker::AddConnection(Redis::Connection *c) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(c->GetFD());
   if (iter != conns_.end()) {
-    return Status(Status::NotOK, "connection was exists");
+    return Status(Status::kNotOK, "connection was exists");
   }
   int max_clients = svr_->GetConfig()->maxclients;
   if (svr_->IncrClientNum() >= max_clients) {
     svr_->DecrClientNum();
-    return Status(Status::NotOK, "max number of clients reached");
+    return Status(Status::kNotOK, "max number of clients reached");
   }
   conns_.insert(std::pair<int, Redis::Connection *>(c->GetFD(), c));
   uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
@@ -372,7 +372,7 @@ Status Worker::EnableWriteEvent(int fd) {
     bufferevent_enable(bev, EV_WRITE);
     return Status::OK();
   }
-  return Status(Status::NotOK);
+  return Status(Status::kNotOK);
 }
 
 Status Worker::Reply(int fd, const std::string &reply) {
@@ -383,7 +383,7 @@ Status Worker::Reply(int fd, const std::string &reply) {
     Redis::Reply(iter->second->Output(), reply);
     return Status::OK();
   }
-  return Status(Status::NotOK, "connection doesn't exist");
+  return Status(Status::kNotOK, "connection doesn't exist");
 }
 
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {

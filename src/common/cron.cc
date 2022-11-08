@@ -35,7 +35,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
     return Status::OK();
   }
   if (args.size() % 5 != 0) {
-    return Status(Status::NotOK, "time expression format error,should only contain 5x fields");
+    return Status(Status::kNotOK, "time expression format error,should only contain 5x fields");
   }
 
   std::vector<Scheduler> new_schedulers;
@@ -43,7 +43,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   for (size_t i = 0; i < args.size(); i += 5) {
     Status s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4], &st);
     if (!s.IsOK()) {
-      return Status(Status::NotOK, "time expression format error : " + s.Msg());
+      return Status(Status::kNotOK, "time expression format error : " + s.Msg());
     }
     new_schedulers.push_back(st);
   }
@@ -102,12 +102,12 @@ Status Cron::convertParam(const std::string &param, int lower_bound, int upper_b
   try {
     *value = std::stoi(param);
   } catch (const std::invalid_argument &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not an integer or *");
+    return Status(Status::kNotOK, "malformed token(`" + param + "`) not an integer or *");
   } catch (const std::out_of_range &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not convertable to int");
+    return Status(Status::kNotOK, "malformed token(`" + param + "`) not convertable to int");
   }
   if (*value < lower_bound || *value > upper_bound) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) out of bound");
+    return Status(Status::kNotOK, "malformed token(`" + param + "`) out of bound");
   }
   return Status::OK();
 }

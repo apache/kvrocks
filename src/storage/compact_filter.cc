@@ -53,7 +53,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
   auto db = stor_->GetDB();
   const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column family handler and DB
-  if (!db || cf_handles->size() < 2) return Status(Status::NotOK, "storage is closed");
+  if (!db || cf_handles->size() < 2) return Status(Status::kNotOK, "storage is closed");
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
@@ -66,20 +66,20 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata
       cached_metadata_.clear();
-      return Status(Status::NotFound, "metadata is not found");
+      return Status(Status::kNotFound, "metadata is not found");
     } else {
       cached_key_.clear();
       cached_metadata_.clear();
-      return Status(Status::NotOK, "fetch error: " + s.ToString());
+      return Status(Status::kNotOK, "fetch error: " + s.ToString());
     }
   }
   // the metadata was not found
-  if (cached_metadata_.empty()) return Status(Status::NotFound, "metadata is not found");
+  if (cached_metadata_.empty()) return Status(Status::kNotFound, "metadata is not found");
   // the metadata is cached
   rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    return Status(Status::NotOK, "decode error: " + s.ToString());
+    return Status(Status::kNotOK, "decode error: " + s.ToString());
     ;
   }
   return Status::OK();
@@ -98,7 +98,7 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, con
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
-  if (s.Is<Status::NotFound>()) {
+  if (s.Is<Status::kNotFound>()) {
     return rocksdb::CompactionFilter::Decision::kRemove;
   }
   if (!s.IsOK()) {
@@ -121,7 +121,7 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
-  if (s.Is<Status::NotFound>()) {
+  if (s.Is<Status::kNotFound>()) {
     return true;
   }
   if (!s.IsOK()) {

@@ -70,11 +70,11 @@ Status Request::Tokenize(evbuffer *input) {
         if (line[0] == '*') {
           auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
           if (!parse_result) {
-            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+            return Status(Status::kNotOK, "Protocol error: invalid multibulk length");
           }
           multi_bulk_len_ = *parse_result;
           if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
-            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+            return Status(Status::kNotOK, "Protocol error: invalid multibulk length");
           }
           if (multi_bulk_len_ <= 0) {
             multi_bulk_len_ = 0;
@@ -83,7 +83,7 @@ Status Request::Tokenize(evbuffer *input) {
           state_ = BulkLen;
         } else {
           if (line.length > PROTO_INLINE_MAX_SIZE) {
-            return Status(Status::NotOK, "Protocol error: invalid bulk length");
+            return Status(Status::kNotOK, "Protocol error: invalid bulk length");
           }
           tokens_ = Util::Split(std::string(line.get(), line.length), " \t");
           commands_.emplace_back(std::move(tokens_));
@@ -96,15 +96,15 @@ Status Request::Tokenize(evbuffer *input) {
         if (!line || line.length <= 0) return Status::OK();
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] != '$') {
-          return Status(Status::NotOK, "Protocol error: expected '$'");
+          return Status(Status::kNotOK, "Protocol error: expected '$'");
         }
         auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
         if (!parse_result) {
-          return Status(Status::NotOK, "Protocol error: invalid bulk length");
+          return Status(Status::kNotOK, "Protocol error: invalid bulk length");
         }
         bulk_len_ = *parse_result;
         if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
-          return Status(Status::NotOK, "Protocol error: invalid bulk length");
+          return Status(Status::kNotOK, "Protocol error: invalid bulk length");
         }
         state_ = BulkData;
         break;

@@ -255,9 +255,9 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
     return s;
   }
   if (numkeys > int64_t(args.size() - 3)) {
-    return Status(Status::NotOK, "Number of keys can't be greater than number of args");
+    return Status(Status::kNotOK, "Number of keys can't be greater than number of args");
   } else if (numkeys < -1) {
-    return Status(Status::NotOK, "Number of keys can't be negative");
+    return Status(Status::kNotOK, "Number of keys can't be negative");
   }
 
   /* We obtain the script SHA1, then check if this function is already
@@ -286,7 +286,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        return Status(Status::kNotOK, "NOSCRIPT No matching script. Please use EVAL");
       }
     } else {
       body = args[1];
@@ -927,12 +927,12 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
-    return Status(Status::NotOK, "Error compiling script (new function): " + errMsg + "\n");
+    return Status(Status::kNotOK, "Error compiling script (new function): " + errMsg + "\n");
   }
   if (lua_pcall(lua, 0, 0, 0)) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
-    return Status(Status::NotOK, "Error running script (new function): " + errMsg + "\n");
+    return Status(Status::kNotOK, "Error running script (new function): " + errMsg + "\n");
   }
   // would store lua function into propagate column family and propagate those scripts to slaves
   srv->ScriptSet(*sha, body);

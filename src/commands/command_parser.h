@@ -88,14 +88,14 @@ struct CommandParser {
   }
 
   StatusOr<value_type> TakeStr() {
-    if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
+    if (!Good()) return {Status::kRedisParseErr, "no more item to parse"};
 
     return RawTake();
   }
 
   template <typename T = long long, typename... Args>
   StatusOr<T> TakeInt(Args&&... args) {
-    if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
+    if (!Good()) return {Status::kRedisParseErr, "no more item to parse"};
 
     auto res = ParseInt<T>(RawPeek(), std::forward<Args>(args)...);
 
@@ -106,7 +106,7 @@ struct CommandParser {
     return res;
   }
 
-  static Status InvalidSyntax() { return {Status::RedisParseErr, "syntax error"}; }
+  static Status InvalidSyntax() { return {Status::kRedisParseErr, "syntax error"}; }
 
  private:
   Iter begin;

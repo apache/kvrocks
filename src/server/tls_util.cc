@@ -89,7 +89,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {  // NO
       has_protocol[3] = true;
 #endif
     } else {
-      return {Status::NotOK, "Failed to set SSL protocols: " + proto + " is not a valid protocol"};
+      return {Status::kNotOK, "Failed to set SSL protocols: " + proto + " is not a valid protocol"};
     }
   }
 
@@ -109,7 +109,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {  // NO
 #endif
 
   if (has_protocol.none()) {
-    return {Status::NotOK, "Failed to set SSL protocols: no protocol is enabled"};
+    return {Status::kNotOK, "Failed to set SSL protocols: no protocol is enabled"};
   }
 
   return ctx_options;

@@ -57,7 +57,7 @@ Status FeedSlaveThread::Start() {
     });
   } catch (const std::system_error &e) {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
-    return Status(Status::NotOK, e.what());
+    return Status(Status::kNotOK, e.what());
   }
   return Status::OK();
 }
@@ -314,7 +314,7 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
       assert(stop_flag_);
     });
   } catch (const std::system_error &e) {
-    return Status(Status::NotOK, e.what());
+    return Status(Status::kNotOK, e.what());
   }
   return Status::OK();
 }
@@ -697,23 +697,23 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
     results.push_back(
         std::async(std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
-            return Status(Status::NotOK, "replication thread was stopped");
+            return Status(Status::kNotOK, "replication thread was stopped");
           }
           int sock_fd = 0;
           Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
           if (!s.IsOK()) {
-            return Status(Status::NotOK, "connect the server err: " + s.Msg());
+            return Status(Status::kNotOK, "connect the server err: " + s.Msg());
           }
           UniqueFD unique_fd{sock_fd};
           s = this->sendAuth(sock_fd);
           if (!s.IsOK()) {
-            return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
+            return Status(Status::kNotOK, "sned the auth command err: " + s.Msg());
           }
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
             if (this->stop_flag_) {
-              return Status(Status::NotOK, "replication thread was stopped");
+              return Status(Status::kNotOK, "replication thread was stopped");
             }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
@@ -772,15 +772,15 @@ Status ReplicationThread::sendAuth(int sock_fd) {
     UniqueEvbuf evbuf;
     const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
     auto s = Util::SockSend(sock_fd, auth_command);
-    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
+    if (!s.IsOK()) return Status(Status::kNotOK, "send auth command err:" + s.Msg());
     while (true) {
       if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
+        return Status(Status::kNotOK, std::string("read auth response err: ") + strerror(errno));
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line.get(), "+OK", 3) != 0) {
-        return Status(Status::NotOK, "auth got invalid response");
+        return Status(Status::kNotOK, "auth got invalid response");
       }
       break;
     }
@@ -797,13 +797,13 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
     UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read size: ") + strerror(errno));
+        return Status(Status::kNotOK, std::string("read size: ") + strerror(errno));
       }
       continue;
     }
     if (line[0] == '-') {
       std::string msg(line.get());
-      return Status(Status::NotOK, msg);
+      return Status(Status::kNotOK, msg);
     }
     file_size = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
     break;
@@ -812,7 +812,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
   // Write to tmp file
   auto tmp_file = Engine::Storage::ReplDataManager::NewTmpFile(storage_, dir, file);
   if (!tmp_file) {
-    return Status(Status::NotOK, "unable to create tmp file");
+    return Status(Status::kNotOK, "unable to create tmp file");
   }
 
   size_t remain = file_size;
@@ -823,14 +823,14 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
       auto data_len = evbuffer_remove(evbuf, data, remain > 16 * 1024 ? 16 * 1024 : remain);
       if (data_len == 0) continue;
       if (data_len < 0) {
-        return Status(Status::NotOK, "read sst file data error");
+        return Status(Status::kNotOK, "read sst file data error");
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       remain -= data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read sst file: ") + strerror(errno));
+        return Status(Status::kNotOK, std::string("read sst file: ") + strerror(errno));
       }
     }
   }
@@ -838,7 +838,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
   if (crc && crc != tmp_crc) {
     char err_buf[64];
     snprintf(err_buf, sizeof(err_buf), "CRC mismatched, %u was expected but got %u", crc, tmp_crc);
-    return Status(Status::NotOK, err_buf);
+    return Status(Status::kNotOK, err_buf);
   }
   // File is OK, rename to formal name
   auto s = Engine::Storage::ReplDataManager::SwapTmpFile(storage_, dir, file);
@@ -860,14 +860,14 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 
   const auto fetch_command = Redis::MultiBulkString({"_fetch_file", files_str});
   auto s = Util::SockSend(sock_fd, fetch_command);
-  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: " + s.Msg());
+  if (!s.IsOK()) return Status(Status::kNotOK, "send fetch file command: " + s.Msg());
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {
     DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
     s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn);
     if (!s.IsOK()) {
-      s = Status(Status::NotOK, "fetch file err: " + s.Msg());
+      s = Status(Status::kNotOK, "fetch file err: " + s.Msg());
       LOG(WARNING) << "[fetch] Fail to fetch file " << files[i] << ", err: " << s.Msg();
       break;
     }

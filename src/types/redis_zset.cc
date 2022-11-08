@@ -766,7 +766,7 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
   char *eptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {
-    return Status(Status::NotOK, "min > max");
+    return Status(Status::kNotOK, "min > max");
   }
 
   if (min == "-inf") {
@@ -779,7 +779,7 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
     }
     spec->min = strtod(sptr, &eptr);
     if ((eptr && eptr[0] != '\0') || isnan(spec->min)) {
-      return Status(Status::NotOK, "the min isn't double");
+      return Status(Status::kNotOK, "the min isn't double");
     }
   }
 
@@ -793,7 +793,7 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
     }
     spec->max = strtod(sptr, &eptr);
     if ((eptr && eptr[0] != '\0') || isnan(spec->max)) {
-      return Status(Status::NotOK, "the max isn't double");
+      return Status(Status::kNotOK, "the max isn't double");
     }
   }
   return Status::OK();
@@ -801,7 +801,7 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
 
 Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, ZRangeLexSpec *spec) {
   if (min == "+" || max == "-") {
-    return Status(Status::NotOK, "min > max");
+    return Status(Status::kNotOK, "min > max");
   }
 
   if (min == "-") {
@@ -812,7 +812,7 @@ Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, Z
     } else if (min[0] == '[') {
       spec->minex = false;
     } else {
-      return Status(Status::NotOK, "the min is illegal");
+      return Status(Status::kNotOK, "the min is illegal");
     }
     spec->min = min.substr(1);
   }
@@ -825,7 +825,7 @@ Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, Z
     } else if (max[0] == '[') {
       spec->maxex = false;
     } else {
-      return Status(Status::NotOK, "the max is illegal");
+      return Status(Status::kNotOK, "the max is illegal");
     }
     spec->max = max.substr(1);
   }

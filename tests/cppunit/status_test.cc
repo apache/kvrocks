@@ -26,7 +26,7 @@
 TEST(StatusOr, Scalar) {
   auto f = [](int x) -> StatusOr<int> {
     if (x > 10) {
-      return {Status::NotOK, "x large than 10"};
+      return {Status::kNotOK, "x large than 10"};
     }
 
     return 2 * x + 5;
@@ -35,10 +35,10 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*f(1), 7);
   ASSERT_EQ(*f(5), 15);
   ASSERT_EQ(f(7).GetValue(), 19);
-  ASSERT_EQ(f(7).GetCode(), Status::cOK);
+  ASSERT_EQ(f(7).GetCode(), Status::kOK);
   ASSERT_EQ(f(7).Msg(), "ok");
   ASSERT_TRUE(f(6));
-  ASSERT_EQ(f(11).GetCode(), Status::NotOK);
+  ASSERT_EQ(f(11).GetCode(), Status::kNotOK);
   ASSERT_EQ(f(11).Msg(), "x large than 10");
   ASSERT_FALSE(f(12));
 
@@ -46,15 +46,15 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*x, 15);
   ASSERT_EQ(x.Msg(), "ok");
   ASSERT_EQ(x.GetValue(), 15);
-  ASSERT_EQ(x.GetCode(), Status::cOK);
+  ASSERT_EQ(x.GetCode(), Status::kOK);
 
   auto y = f(11);
   ASSERT_EQ(y.Msg(), "x large than 10");
-  ASSERT_EQ(y.GetCode(), Status::NotOK);
+  ASSERT_EQ(y.GetCode(), Status::kNotOK);
 
   auto g = [f](int y) -> StatusOr<int> {
     if (y > 5 && y < 15) {
-      return {Status::NotOK, "y large than 5"};
+      return {Status::kNotOK, "y large than 5"};
     }
 
     auto res = f(y);
@@ -66,20 +66,20 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*g(1), 70);
   ASSERT_EQ(*g(5), 150);
   ASSERT_EQ(g(1).GetValue(), 70);
-  ASSERT_EQ(g(1).GetCode(), Status::cOK);
+  ASSERT_EQ(g(1).GetCode(), Status::kOK);
   ASSERT_EQ(g(1).Msg(), "ok");
-  ASSERT_EQ(g(6).GetCode(), Status::NotOK);
+  ASSERT_EQ(g(6).GetCode(), Status::kNotOK);
   ASSERT_EQ(g(6).Msg(), "y large than 5");
-  ASSERT_EQ(g(20).GetCode(), Status::NotOK);
+  ASSERT_EQ(g(20).GetCode(), Status::kNotOK);
   ASSERT_EQ(g(20).Msg(), "x large than 10");
-  ASSERT_EQ(g(11).GetCode(), Status::NotOK);
+  ASSERT_EQ(g(11).GetCode(), Status::kNotOK);
   ASSERT_EQ(g(11).Msg(), "y large than 5");
 }
 
 TEST(StatusOr, String) {
   auto f = [](std::string x) -> StatusOr<std::string> {
     if (x.size() > 10) {
-      return {Status::NotOK, "string too long"};
+      return {Status::kNotOK, "string too long"};
     }
 
     return x + " hello";
@@ -87,7 +87,7 @@ TEST(StatusOr, String) {
 
   auto g = [f](std::string x) -> StatusOr<std::string> {
     if (x.size() < 5) {
-      return {Status::NotOK, "string too short"};
+      return {Status::kNotOK, "string too short"};
     }
 
     auto res = f(x);
@@ -102,18 +102,18 @@ TEST(StatusOr, String) {
 
   ASSERT_EQ(*f("twice"), "twice hello");
   ASSERT_EQ(*g("twice"), "hi twice hello");
-  ASSERT_EQ(g("shrt").GetCode(), Status::NotOK);
+  ASSERT_EQ(g("shrt").GetCode(), Status::kNotOK);
   ASSERT_EQ(g("shrt").Msg(), "string too short");
-  ASSERT_EQ(g("loooooooooooog").GetCode(), Status::NotOK);
+  ASSERT_EQ(g("loooooooooooog").GetCode(), Status::kNotOK);
   ASSERT_EQ(g("loooooooooooog").Msg(), "string too long");
 
-  ASSERT_EQ(g("twice").ToStatus().GetCode(), Status::cOK);
-  ASSERT_EQ(g("").ToStatus().GetCode(), Status::NotOK);
+  ASSERT_EQ(g("twice").ToStatus().GetCode(), Status::kOK);
+  ASSERT_EQ(g("").ToStatus().GetCode(), Status::kNotOK);
 
   auto x = g("twice");
-  ASSERT_EQ(x.ToStatus().GetCode(), Status::cOK);
+  ASSERT_EQ(x.ToStatus().GetCode(), Status::kOK);
   auto y = g("");
-  ASSERT_EQ(y.ToStatus().GetCode(), Status::NotOK);
+  ASSERT_EQ(y.ToStatus().GetCode(), Status::kNotOK);
 }
 
 TEST(StatusOr, SharedPtr) {
@@ -151,15 +151,15 @@ TEST(StatusOr, UniquePtr) {
 }
 
 TEST(StatusOr, ValueOr) {
-  StatusOr<int> a(1), b(Status::NotOK, "err");
+  StatusOr<int> a(1), b(Status::kNotOK, "err");
   ASSERT_EQ(a.ValueOr(0), 1);
   ASSERT_EQ(b.ValueOr(233), 233);
   ASSERT_EQ(StatusOr<int>(1).ValueOr(0), 1);
 
-  StatusOr<std::string> c("hello"), d(Status::NotOK, "err");
+  StatusOr<std::string> c("hello"), d(Status::kNotOK, "err");
   ASSERT_EQ(c.ValueOr("hi"), "hello");
   ASSERT_EQ(d.ValueOr("hi"), "hi");
   ASSERT_EQ(StatusOr<std::string>("hello").ValueOr("hi"), "hello");
   std::string s = "hi";
-  ASSERT_EQ(StatusOr<std::string>(Status::NotOK, "").ValueOr(s), "hi");
+  ASSERT_EQ(StatusOr<std::string>(Status::kNotOK, "").ValueOr(s), "hi");
 }

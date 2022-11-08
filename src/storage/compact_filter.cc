@@ -66,7 +66,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata
       cached_metadata_.clear();
-      return Status(Status::kNotFound, "metadata is not found");
+      return Status::NotFound("metadata is not found");
     } else {
       cached_key_.clear();
       cached_metadata_.clear();
@@ -74,7 +74,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
     }
   }
   // the metadata was not found
-  if (cached_metadata_.empty()) return Status(Status::kNotFound, "metadata is not found");
+  if (cached_metadata_.empty()) return Status::NotFound("metadata is not found");
   // the metadata is cached
   rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
@@ -98,7 +98,7 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, con
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
-  if (s.Is<Status::kNotFound>()) {
+  if (s.IsNotFound()) {
     return rocksdb::CompactionFilter::Decision::kRemove;
   }
   if (!s.IsOK()) {
@@ -121,7 +121,7 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
-  if (s.Is<Status::kNotFound>()) {
+  if (s.IsNotFound()) {
     return true;
   }
   if (!s.IsOK()) {

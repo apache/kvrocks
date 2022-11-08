@@ -830,7 +830,7 @@ Status Config::GetNamespace(const std::string &ns, std::string *token) {
       return Status::OK();
     }
   }
-  return Status(Status::kNotFound);
+  return Status::NotFound();
 }
 
 Status Config::SetNamespace(const std::string &ns, const std::string &token) {

@@ -1382,7 +1382,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, funcname, body);
   if (!s.ok()) {
-    if (s.IsNotFound()) return Status(Status::kNotFound);
+    if (s.IsNotFound()) return Status::NotFound();
     return Status(Status::kNotOK, s.ToString());
   }
   return Status::OK();

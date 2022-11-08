@@ -183,7 +183,7 @@ class CommandNamespace : public Commander {
       } else {
         std::string token;
         auto s = config->GetNamespace(args_[2], &token);
-        if (s.Is<Status::kNotFound>()) {
+        if (s.IsNotFound()) {
           *output = Redis::NilString();
         } else {
           *output = Redis::BulkString(token);

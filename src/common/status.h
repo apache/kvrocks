@@ -75,6 +75,7 @@ class Status {
   }
 
   bool IsOK() const { return Is<kOK>(); }
+  bool IsNotFound() const { return Is<kNotFound>(); };
   explicit operator bool() const { return IsOK(); }
 
   Code GetCode() const { return code_; }
@@ -90,8 +91,8 @@ class Status {
   }
 
   static Status OK() { return {}; }
-
   static Status FromErrno() { return {kNotOK, strerror(errno)}; }
+  static Status NotFound(std::string msg = {}) { return {kNotFound, std::move(msg)}; }
 
   void GetValue() {}
 

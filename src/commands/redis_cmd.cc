@@ -6182,14 +6182,14 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
   auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
   if (cmd_iter == original_commands.end()) {
-    return Status(Status::kRedisUnknownCmd, "Invalid command specified");
+    return Status::InvalidCommand("Invalid command specified");
   }
   auto command_attribute = cmd_iter->second;
   if (command_attribute->first_key == 0) {
-    return Status::NotOK("The command has no key arguments");
+    return Status::InvalidCommand("The command has no key arguments");
   }
   if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
-    return Status::NotOK("Invalid number of arguments specified for command");
+    return Status::InvalidCommand("Invalid number of arguments specified for command");
   }
   auto last = command_attribute->last_key;
   if (last < 0) last = argc + last;

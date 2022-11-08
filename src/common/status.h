@@ -46,7 +46,6 @@ class Status {
     kDBMismatched,
 
     // Redis
-    kRedisUnknownCmd,
     kRedisInvalidCmd,
     kRedisParseErr,
     kRedisExecErr,
@@ -96,7 +95,7 @@ class Status {
   static Status NotOK(std::string msg = {}) { return {kNotOK, std::move(msg)}; }
   static Status ParseError(std::string msg = {}) { return {kRedisParseErr, std::move(msg)}; }
   static Status ExecError(std::string msg = {}) { return {kRedisExecErr, std::move(msg)}; }
-  static Status InvalidCommand(std::string msg = {}) { return { kRedisInvalidCmd, std::move(msg)}; }
+  static Status InvalidCommand(std::string msg = {}) { return {kRedisInvalidCmd, std::move(msg)}; }
 
   void GetValue() {}
 

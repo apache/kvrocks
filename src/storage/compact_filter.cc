@@ -53,7 +53,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
   auto db = stor_->GetDB();
   const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column family handler and DB
-  if (!db || cf_handles->size() < 2) return Status(Status::kNotOK, "storage is closed");
+  if (!db || cf_handles->size() < 2) return Status::NotOK("storage is closed");
   ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
@@ -70,7 +70,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
     } else {
       cached_key_.clear();
       cached_metadata_.clear();
-      return Status(Status::kNotOK, "fetch error: " + s.ToString());
+      return Status::NotOK("fetch error: " + s.ToString());
     }
   }
   // the metadata was not found
@@ -79,7 +79,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
   rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    return Status(Status::kNotOK, "decode error: " + s.ToString());
+    return Status::NotOK("decode error: " + s.ToString());
     ;
   }
   return Status::OK();

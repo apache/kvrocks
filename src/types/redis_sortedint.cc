@@ -241,7 +241,7 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
   const char *sptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {
-    return Status(Status::kNotOK, "min > max");
+    return Status::NotOK("min > max");
   }
 
   if (min == "-inf") {
@@ -254,7 +254,7 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
-      return Status(Status::kNotOK, "the min isn't integer");
+      return Status::NotOK("the min isn't integer");
     }
     spec->min = *parse_result;
   }
@@ -269,7 +269,7 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
-      return Status(Status::kNotOK, "the max isn't integer");
+      return Status::NotOK("the max isn't integer");
     }
     spec->max = *parse_result;
   }

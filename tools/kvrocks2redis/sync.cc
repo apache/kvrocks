@@ -105,14 +105,14 @@ Status Sync::auth() {
   if (!config_->kvrocks_auth.empty()) {
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
-    if (!s.IsOK()) return Status(Status::kNotOK, "send auth command err:" + s.Msg());
+    if (!s.IsOK()) return Status::NotOK("send auth command err:" + s.Msg());
     std::string line;
     s = Util::SockReadLine(sock_fd_, &line);
     if (!s.IsOK()) {
-      return Status(Status::kNotOK, std::string("read auth response err: ") + s.Msg());
+      return Status::NotOK(std::string("read auth response err: ") + s.Msg());
     }
     if (line.compare(0, 3, "+OK") != 0) {
-      return Status(Status::kNotOK, "auth got invalid response");
+      return Status::NotOK("auth got invalid response");
     }
   }
   LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
@@ -125,11 +125,11 @@ Status Sync::tryPSync() {
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
-  if (!s.IsOK()) return Status(Status::kNotOK, "send psync command err:" + s.Msg());
+  if (!s.IsOK()) return Status::NotOK("send psync command err:" + s.Msg());
   std::string line;
   s = Util::SockReadLine(sock_fd_, &line);
   if (!s.IsOK()) {
-    return Status(Status::kNotOK, std::string("read psync response err: ") + s.Msg());
+    return Status::NotOK(std::string("read psync response err: ") + s.Msg());
   }
 
   if (line.compare(0, 3, "+OK") != 0) {
@@ -141,7 +141,7 @@ Status Sync::tryPSync() {
           " last_next_seq config file, and restart kvrocks2redis, redis reply: " +
           std::string(line);
       stop_flag_ = true;
-      return Status(Status::kNotOK, error_msg);
+      return Status::NotOK(error_msg);
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
@@ -162,7 +162,7 @@ Status Sync::incrementBatchLoop() {
   while (!IsStopped()) {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
-      return Status(Status::kNotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
+      return Status::NotOK(std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length
@@ -174,7 +174,7 @@ Status Sync::incrementBatchLoop() {
       incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
       free(line);
       if (incr_bulk_len_ == 0) {
-        return Status(Status::kNotOK, "[kvrocks2redis] Invalid increment data size");
+        return Status::NotOK("[kvrocks2redis] Invalid increment data size");
       }
       incr_state_ = Incr_batch_data;
     }
@@ -229,7 +229,7 @@ Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
 Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
   next_seq_fd_ = open(config_->next_seq_file_path.data(), O_RDWR | O_CREAT, 0666);
   if (next_seq_fd_ < 0) {
-    return Status(Status::kNotOK, std::string("Failed to open next seq file :") + strerror(errno));
+    return Status::NotOK(std::string("Failed to open next seq file :") + strerror(errno));
   }
 
   *seq = 0;

@@ -91,16 +91,16 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
   auto res = details::ParseIntFunc<T>::value(v, &end, base);
 
   if (v == end) {
-    return {Status::kNotOK, "not started as an integer"};
+    return Status::NotOK("not started as an integer");
   }
 
   if (errno) {
-    return {Status::kNotOK, std::strerror(errno)};
+    return Status::FromErrno();
   }
 
   if (!std::is_same<T, decltype(res)>::value &&
       (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
-    return {Status::kNotOK, "out of range of integer type"};
+    return Status::NotOK("out of range of integer type");
   }
 
   return ParseResultAndPos<T>{res, end};
@@ -117,7 +117,7 @@ StatusOr<T> ParseInt(const std::string &v, int base = 0) {
   if (!res) return res;
 
   if (std::get<1>(*res) != begin + v.size()) {
-    return {Status::kNotOK, "encounter non-integer characters"};
+    return Status::NotOK("encounter non-integer characters");
   }
 
   return std::get<0>(*res);
@@ -135,7 +135,7 @@ StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) 
   if (!res) return res;
 
   if (*res < std::get<0>(range) || *res > std::get<1>(range)) {
-    return {Status::kNotOK, "out of numeric range"};
+    return Status::NotOK("out of numeric range");
   }
 
   return *res;

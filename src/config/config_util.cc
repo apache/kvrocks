@@ -140,9 +140,9 @@ StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
   } else if (state == NORMAL) {
     res.second = Util::Trim(current_str, " \t\r\n\v\f\b");
   } else if (state == QUOTED || state == ESCAPE) {
-    return {Status::kNotOK, "config line ends unexpectedly in quoted string"};
+    return Status::NotOK("config line ends unexpectedly in quoted string");
   } else if (state == ERROR) {
-    return {Status::kNotOK, "more than 2 item in config line"};
+    return Status::NotOK("more than 2 item in config line");
   }
 
   return res;

@@ -138,7 +138,7 @@ Status Server::Start() {
     auto s = slot_migrate_->CreateMigrateHandleThread();
     if (!s.IsOK()) {
       LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
-      return Status(Status::kNotOK);
+      return Status::NotOK();
     }
   }
 
@@ -525,7 +525,7 @@ Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocking_keys_.find(key);
   if (iter == blocking_keys_.end() || iter->second.empty()) {
-    return Status(Status::kNotOK);
+    return Status::NotOK();
   }
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
@@ -541,7 +541,7 @@ Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &ke
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocked_stream_consumers_.find(key);
   if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
-    return Status(Status::kNotOK);
+    return Status::NotOK();
   }
 
   for (auto it = iter->second.begin(); it != iter->second.end();) {
@@ -1129,11 +1129,11 @@ void Server::WaitNoMigrateProcessing() {
 
 Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &end_key) {
   if (is_loading_) {
-    return Status(Status::kNotOK, "loading in-progress");
+    return Status::NotOK("loading in-progress");
   }
   std::lock_guard<std::mutex> lg(db_job_mu_);
   if (db_compacting_) {
-    return Status(Status::kNotOK, "compact in-progress");
+    return Status::NotOK("compact in-progress");
   }
   db_compacting_ = true;
 
@@ -1153,7 +1153,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 Status Server::AsyncBgsaveDB() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   if (is_bgsave_in_progress_) {
-    return Status(Status::kNotOK, "bgsave in-progress");
+    return Status::NotOK("bgsave in-progress");
   }
   is_bgsave_in_progress_ = true;
 
@@ -1185,7 +1185,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
   if (db_scan_infos_[ns].is_scanning) {
-    return Status(Status::kNotOK, "scanning the db now");
+    return Status::NotOK("scanning the db now");
   }
   db_scan_infos_[ns].is_scanning = true;
 
@@ -1383,7 +1383,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, funcname, body);
   if (!s.ok()) {
     if (s.IsNotFound()) return Status::NotFound();
-    return Status(Status::kNotOK, s.ToString());
+    return Status::NotOK(s.ToString());
   }
   return Status::OK();
 }
@@ -1498,7 +1498,7 @@ std::string ServerLogData::Encode() {
 
 Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   if (blob.size() == 0) {
-    return Status(Status::kNotOK);
+    return Status::NotOK();
   }
 
   const char *header = blob.data();
@@ -1508,5 +1508,5 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
     content_ = std::string(blob.data() + 2, blob.size() - 2);
     return Status::OK();
   }
-  return Status(Status::kNotOK);
+  return Status::NotOK();
 }

@@ -27,10 +27,10 @@
 Status TaskRunner::Publish(const Task &task) {
   std::lock_guard<std::mutex> guard(mu_);
   if (stop_) {
-    return Status(Status::kNotOK, "the runner was stopped");
+    return Status::NotOK("the runner was stopped");
   }
   if (task_queue_.size() >= max_queue_size_) {
-    return Status(Status::kNotOK, "the task queue was reached max length");
+    return Status::NotOK("the task queue was reached max length");
   }
   task_queue_.emplace_back(task);
   cond_.notify_all();

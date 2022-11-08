@@ -108,22 +108,22 @@ Status Cluster::SetNodeId(const std::string &node_id) {
 Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_version) {
   // Parameters check
   if (new_version <= 0 || new_version != version_ + 1) {
-    return Status(Status::kNotOK, errInvalidClusterVersion);
+    return Status::NotOK(errInvalidClusterVersion);
   }
   if (!IsValidSlot(slot)) {
-    return Status(Status::kNotOK, errInvalidSlotID);
+    return Status::NotOK(errInvalidSlotID);
   }
   if (node_id.size() != kClusterNodeIdLen) {
-    return Status(Status::kNotOK, errInvalidNodeID);
+    return Status::NotOK(errInvalidNodeID);
   }
 
   // Get the node which we want to assign a slot into it
   std::shared_ptr<ClusterNode> to_assign_node = nodes_[node_id];
   if (to_assign_node == nullptr) {
-    return Status(Status::kNotOK, "No this node in the cluster");
+    return Status::NotOK("No this node in the cluster");
   }
   if (to_assign_node->role_ != kClusterMaster) {
-    return Status(Status::kNotOK, errNoMasterNode);
+    return Status::NotOK(errNoMasterNode);
   }
 
   // Update version
@@ -159,12 +159,12 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
 // cluster setnodes $all_nodes_info $version $force
 // one line of $all_nodes: $node_id $host $port $role $master_node_id $slot_range
 Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, bool force) {
-  if (version < 0) return Status(Status::kNotOK, errInvalidClusterVersion);
+  if (version < 0) return Status::NotOK(errInvalidClusterVersion);
 
   if (force == false) {
     // Low version wants to reset current version
     if (version_ > version) {
-      return Status(Status::kNotOK, errInvalidClusterVersion);
+      return Status::NotOK(errInvalidClusterVersion);
     }
     // The same version, it is not needed to update
     if (version_ == version) return Status::OK();
@@ -255,7 +255,7 @@ bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role_ != kCl
 
 Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
   if (!IsValidSlot(slot)) {
-    return Status(Status::kNotOK, errSlotOutOfRange);
+    return Status::NotOK(errSlotOutOfRange);
   }
   // It is called by slot-migrating thread which is an asynchronous thread.
   // Therefore, it should be locked when a record is added to 'migrated_slots_'
@@ -267,7 +267,7 @@ Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
 
 Status Cluster::SetSlotImported(int slot) {
   if (!IsValidSlot(slot)) {
-    return Status(Status::kNotOK, errSlotOutOfRange);
+    return Status::NotOK(errSlotOutOfRange);
   }
   // It is called by command 'cluster import'. When executing the command, the
   // exclusive lock has been locked. Therefore, it can't be locked again.
@@ -277,22 +277,22 @@ Status Cluster::SetSlotImported(int slot) {
 
 Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
   if (nodes_.find(dst_node_id) == nodes_.end()) {
-    return Status(Status::kNotOK, "Can't find the destination node id");
+    return Status::NotOK("Can't find the destination node id");
   }
   if (!IsValidSlot(slot)) {
-    return Status(Status::kNotOK, errSlotOutOfRange);
+    return Status::NotOK(errSlotOutOfRange);
   }
   if (slots_nodes_[slot] != myself_) {
-    return Status(Status::kNotOK, "Can't migrate slot which doesn't belong to me");
+    return Status::NotOK("Can't migrate slot which doesn't belong to me");
   }
   if (IsNotMaster()) {
-    return Status(Status::kNotOK, "Slave can't migrate slot");
+    return Status::NotOK("Slave can't migrate slot");
   }
   if (nodes_[dst_node_id]->role_ != kClusterMaster) {
-    return Status(Status::kNotOK, "Can't migrate slot to a slave");
+    return Status::NotOK("Can't migrate slot to a slave");
   }
   if (nodes_[dst_node_id] == myself_) {
-    return Status(Status::kNotOK, "Can't migrate slot to myself");
+    return Status::NotOK("Can't migrate slot to myself");
   }
 
   const auto dst = nodes_[dst_node_id];
@@ -304,16 +304,16 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
 
 Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
   if (IsNotMaster()) {
-    return Status(Status::kNotOK, "Slave can't import slot");
+    return Status::NotOK("Slave can't import slot");
   }
   if (!IsValidSlot(slot)) {
-    return Status(Status::kNotOK, errSlotOutOfRange);
+    return Status::NotOK(errSlotOutOfRange);
   }
 
   switch (state) {
     case kImportStart:
       if (!svr_->slot_import_->Start(conn->GetFD(), slot)) {
-        return Status(Status::kNotOK, "Can't start importing slot " + std::to_string(slot));
+        return Status::NotOK("Can't start importing slot " + std::to_string(slot));
       }
       // Set link importing
       conn->SetImporting();
@@ -328,7 +328,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       if (!svr_->slot_import_->Success(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
                    << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
-        return Status(Status::kNotOK, "Failed to set slot " + std::to_string(slot) + " importing success");
+        return Status::NotOK("Failed to set slot " + std::to_string(slot) + " importing success");
       }
       LOG(INFO) << "[import] Succeed to import slot " << slot;
       break;
@@ -336,12 +336,12 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       if (!svr_->slot_import_->Fail(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
                    << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
-        return Status(Status::kNotOK, "Failed to set slot " + std::to_string(slot) + " importing error");
+        return Status::NotOK("Failed to set slot " + std::to_string(slot) + " importing error");
       }
       LOG(INFO) << "[import] Failed to import slot " << slot;
       break;
     default:
-      return Status(Status::kNotOK, errInvalidImportState);
+      return Status::NotOK(errInvalidImportState);
   }
   return Status::OK();
 }

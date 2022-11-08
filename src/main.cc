@@ -258,7 +258,7 @@ bool isSupervisedMode(int mode) {
 static Status createPidFile(const std::string &path) {
   auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
   if (!fd) {
-    return Status(Status::kNotOK, strerror(errno));
+    return Status::NotOK(strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
   Util::Write(*fd, pid_str);

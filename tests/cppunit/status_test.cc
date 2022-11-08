@@ -26,7 +26,7 @@
 TEST(StatusOr, Scalar) {
   auto f = [](int x) -> StatusOr<int> {
     if (x > 10) {
-      return {Status::kNotOK, "x large than 10"};
+      return Status::NotOK("x large than 10");
     }
 
     return 2 * x + 5;
@@ -54,7 +54,7 @@ TEST(StatusOr, Scalar) {
 
   auto g = [f](int y) -> StatusOr<int> {
     if (y > 5 && y < 15) {
-      return {Status::kNotOK, "y large than 5"};
+      return Status::NotOK("y large than 5");
     }
 
     auto res = f(y);
@@ -79,7 +79,7 @@ TEST(StatusOr, Scalar) {
 TEST(StatusOr, String) {
   auto f = [](std::string x) -> StatusOr<std::string> {
     if (x.size() > 10) {
-      return {Status::kNotOK, "string too long"};
+      return Status::NotOK("string too long");
     }
 
     return x + " hello";
@@ -87,7 +87,7 @@ TEST(StatusOr, String) {
 
   auto g = [f](std::string x) -> StatusOr<std::string> {
     if (x.size() < 5) {
-      return {Status::kNotOK, "string too short"};
+      return Status::NotOK("string too short");
     }
 
     auto res = f(x);

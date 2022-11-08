@@ -93,6 +93,7 @@ class Status {
   static Status OK() { return {}; }
   static Status FromErrno() { return {kNotOK, strerror(errno)}; }
   static Status NotFound(std::string msg = {}) { return {kNotFound, std::move(msg)}; }
+  static Status NotOK(std::string msg = {}) { return {kNotOK, std::move(msg)}; }
 
   void GetValue() {}
 

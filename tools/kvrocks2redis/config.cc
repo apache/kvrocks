@@ -55,13 +55,13 @@ Status Config::parseConfigFromString(std::string input) {
   if (size == 2 && args[0] == "daemonize") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
-      return Status(Status::kNotOK, "argument must be 'yes' or 'no'");
+      return Status::NotOK("argument must be 'yes' or 'no'");
     }
     daemonize = (i == 1);
   } else if (size == 2 && args[0] == "data-dir") {
     data_dir = args[1];
     if (data_dir.empty()) {
-      return Status(Status::kNotOK, "data_dir is empty");
+      return Status::NotOK("data_dir is empty");
     }
     if (data_dir.back() != '/') {
       data_dir += "/";
@@ -70,7 +70,7 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "output-dir") {
     output_dir = args[1];
     if (output_dir.empty()) {
-      return Status(Status::kNotOK, "output-dir is empty");
+      return Status::NotOK("output-dir is empty");
     }
     if (output_dir.back() != '/') {
       output_dir += "/";
@@ -91,7 +91,7 @@ Status Config::parseConfigFromString(std::string input) {
     // In new versions, we don't use extra port to implement replication
     kvrocks_port = std::stoi(args[2]);
     if (kvrocks_port <= 0 || kvrocks_port > 65535) {
-      return Status(Status::kNotOK, "kvrocks port range should be between 0 and 65535");
+      return Status::NotOK("kvrocks port range should be between 0 and 65535");
     }
     if (size == 4) {
       kvrocks_auth = args[3];
@@ -99,13 +99,13 @@ Status Config::parseConfigFromString(std::string input) {
   } else if (size == 2 && args[0] == "cluster-enable") {
     int i;
     if ((i = yesnotoi(args[1])) == -1) {
-      return Status(Status::kNotOK, "argument must be 'yes' or 'no'");
+      return Status::NotOK("argument must be 'yes' or 'no'");
     }
     cluster_enable = (i == 1);
   } else if (size >= 3 && !strncasecmp(args[0].data(), "namespace.", 10)) {
     std::string ns = args[0].substr(10, args.size() - 10);
     if (ns.size() > INT8_MAX) {
-      return Status(Status::kNotOK, std::string("namespace size exceed limit ") + std::to_string(INT8_MAX));
+      return Status::NotOK(std::string("namespace size exceed limit ") + std::to_string(INT8_MAX));
     }
     tokens[ns].host = args[1];
     tokens[ns].port = std::stoi(args[2]);
@@ -114,7 +114,7 @@ Status Config::parseConfigFromString(std::string input) {
     }
     tokens[ns].db_number = size == 5 ? std::atoi(args[4].c_str()) : 0;
   } else {
-    return Status(Status::kNotOK, "Bad directive or wrong number of arguments");
+    return Status::NotOK("Bad directive or wrong number of arguments");
   }
   return Status::OK();
 }
@@ -123,7 +123,7 @@ Status Config::Load(std::string path) {
   path_ = std::move(path);
   std::ifstream file(path_);
   if (!file.is_open()) {
-    return Status(Status::kNotOK, strerror(errno));
+    return Status::NotOK(strerror(errno));
   }
 
   std::string line;
@@ -133,13 +133,13 @@ Status Config::Load(std::string path) {
     Status s = parseConfigFromString(line);
     if (!s.IsOK()) {
       file.close();
-      return Status(Status::kNotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+      return Status::NotOK("at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
     }
     line_num++;
   }
 
   auto s = rocksdb::Env::Default()->FileExists(data_dir);
-  if (!s.ok()) return Status(Status::kNotOK, s.ToString());
+  if (!s.ok()) return Status::NotOK(s.ToString());
 
   file.close();
   return Status::OK();

@@ -282,7 +282,7 @@ class CommandPing : public Commander {
     } else if (args_.size() == 2) {
       *output = Redis::BulkString(args_[1]);
     } else {
-      return Status(Status::kNotOK, errWrongNumOfArguments);
+      return Status::NotOK(errWrongNumOfArguments);
     }
     return Status::OK();
   }
@@ -3979,7 +3979,7 @@ class CommandPSync : public Commander {
     }
     // Upper bound
     if (seq > storage->LatestSeq() + 1) {
-      return Status(Status::kNotOK);
+      return Status::NotOK();
     }
     // Lower bound
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
@@ -3991,11 +3991,11 @@ class CommandPSync : public Commander {
           LOG(ERROR) << "checkWALBoundary with sequence: " << seq
                      << ", but GetWALIter return older sequence: " << batch.sequence;
         }
-        return Status(Status::kNotOK);
+        return Status::NotOK();
       }
       return Status::OK();
     }
-    return Status(Status::kNotOK);
+    return Status::NotOK();
   }
 };
 
@@ -4004,7 +4004,7 @@ class CommandPerfLog : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
-      return Status(Status::kNotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
+      return Status::NotOK("PERFLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
       if (args[2] == "*") {
@@ -4040,7 +4040,7 @@ class CommandSlowlog : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
-      return Status(Status::kNotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
+      return Status::NotOK("SLOWLOG subcommand must be one of RESET, LEN, GET");
     }
     if (subcommand_ == "get" && args.size() >= 3) {
       if (args[2] == "*") {
@@ -4066,7 +4066,7 @@ class CommandSlowlog : public Commander {
       *output = slowlog->GetLatestEntries(cnt_);
       return Status::OK();
     }
-    return Status(Status::kNotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
+    return Status::NotOK("SLOWLOG subcommand must be one of RESET, LEN, GET");
   }
 
  private:
@@ -4305,7 +4305,7 @@ class CommandHello final : public Commander {
       auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
-        return Status(Status::kNotOK, "Protocol version is not an integer or out of range");
+        return Status(Status::kRedisParseErr, "Protocol version is not an integer or out of range");
       }
       protocol = *parse_result;
 
@@ -4313,7 +4313,7 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        return Status(Status::kNotOK, "-NOPROTO unsupported protocol version");
+        return Status::NotOK("-NOPROTO unsupported protocol version");
       }
     }
 
@@ -4326,9 +4326,9 @@ class CommandHello final : public Commander {
         auto authResult = AuthenticateUser(conn, svr->GetConfig(), user_password);
         switch (authResult) {
           case AuthResult::INVALID_PASSWORD:
-            return Status(Status::kNotOK, "invalid password");
+            return Status::NotOK("invalid password");
           case AuthResult::NO_REQUIRE_PASS:
-            return Status(Status::kNotOK, "Client sent AUTH, but no password is set");
+            return Status::NotOK("Client sent AUTH, but no password is set");
           case AuthResult::OK:
             break;
         }
@@ -4758,7 +4758,7 @@ class CommandCluster : public Commander {
       int64_t state;
       s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart),
                                    static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return Status(Status::kNotOK, "Invalid import state");
+      if (!s.IsOK()) return Status::NotOK("Invalid import state");
       state_ = static_cast<ImportStatus>(state);
       return Status::OK();
     }
@@ -4960,7 +4960,7 @@ class CommandEvalSHA : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args[1].size() != 40) {
-      return Status(Status::kNotOK, "NOSCRIPT No matching script. Please use EVAL");
+      return Status::NotOK("NOSCRIPT No matching script. Please use EVAL");
     }
     return Status::OK();
   }
@@ -4981,7 +4981,7 @@ class CommandEvalSHARO : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args[1].size() != 40) {
-      return Status(Status::kNotOK, "NOSCRIPT No matching script. Please use EVAL");
+      return Status::NotOK("NOSCRIPT No matching script. Please use EVAL");
     }
     return Status::OK();
   }
@@ -5003,7 +5003,7 @@ class CommandScript : public Commander {
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
     if (svr->IsSlave() && subcommand_ != "exists") {
-      return Status(Status::kNotOK, "READONLY You can't write against a read only slave");
+      return Status::NotOK("READONLY You can't write against a read only slave");
     }
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
@@ -5026,7 +5026,7 @@ class CommandScript : public Commander {
       }
       *output = Redis::SimpleString(sha);
     } else {
-      return Status(Status::kNotOK, "Unknown SCRIPT subcommand or wrong # of args");
+      return Status::NotOK("Unknown SCRIPT subcommand or wrong # of args");
     }
     return Status::OK();
   }
@@ -6186,10 +6186,10 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
   }
   auto command_attribute = cmd_iter->second;
   if (command_attribute->first_key == 0) {
-    return Status(Status::kNotOK, "The command has no key arguments");
+    return Status::NotOK("The command has no key arguments");
   }
   if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
-    return Status(Status::kNotOK, "Invalid number of arguments specified for command");
+    return Status::NotOK("Invalid number of arguments specified for command");
   }
   auto last = command_attribute->last_key;
   if (last < 0) last = argc + last;

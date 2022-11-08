@@ -77,7 +77,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   hints.ai_socktype = SOCK_STREAM;
 
   if ((rv = getaddrinfo(host.c_str(), portstr, &hints, &servinfo)) != 0) {
-    return Status(Status::kNotOK, gai_strerror(rv));
+    return Status::NotOK(gai_strerror(rv));
   }
 
   auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
@@ -115,7 +115,7 @@ const std::string Float2String(double d) {
 
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
-    return Status(Status::kNotOK, strerror(errno));
+    return Status::FromErrno();
   }
   return Status::OK();
 }
@@ -123,7 +123,7 @@ Status SockSetTcpNoDelay(int fd, int val) {
 Status SockSetTcpKeepalive(int fd, int interval) {
   int val = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1) {
-    return Status(Status::kNotOK, strerror(errno));
+    return Status::FromErrno();
   }
 
 #ifdef __linux__
@@ -134,7 +134,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   // Send first probe after interval.
   val = interval;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-    return Status(Status::kNotOK, std::string("setsockopt TCP_KEEPIDLE: ") + strerror(errno));
+    return Status::NotOK(std::string("setsockopt TCP_KEEPIDLE: ") + strerror(errno));
   }
 
   // Send next probes after the specified interval. Note that we set the
@@ -143,14 +143,14 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   val = interval / 3;
   if (val == 0) val = 1;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-    return Status(Status::kNotOK, std::string("setsockopt TCP_KEEPINTVL: ") + strerror(errno));
+    return Status::NotOK(std::string("setsockopt TCP_KEEPINTVL: ") + strerror(errno));
   }
 
   // Consider the socket in error state after three we send three ACK
   // probes without getting a reply.
   val = 3;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-    return Status(Status::kNotOK, std::string("setsockopt TCP_KEEPCNT: ") + strerror(errno));
+    return Status::NotOK(std::string("setsockopt TCP_KEEPCNT: ") + strerror(errno));
   }
 #else
   ((void)interval);  // Avoid unused var warning for non Linux systems.
@@ -207,7 +207,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     tv.tv_sec = timeout / 1000;
     tv.tv_usec = (timeout % 1000) * 1000;
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
-      return Status(Status::kNotOK, std::string("setsockopt failed: ") + strerror(errno));
+      return Status::NotOK(std::string("setsockopt failed: ") + strerror(errno));
     }
   }
 
@@ -221,7 +221,7 @@ Status SockSend(int fd, const std::string &data) {
   while (n < static_cast<ssize_t>(data.size())) {
     ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
     if (nwritten == -1) {
-      return Status(Status::kNotOK, strerror(errno));
+      return Status::FromErrno();
     }
     n += nwritten;
   }
@@ -266,7 +266,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
       if (errno == EINTR)
         continue;
       else
-        return Status(Status::kNotOK, strerror(errno));
+        return Status::FromErrno();
     }
     size -= nwritten;
     offset += nwritten;
@@ -278,7 +278,7 @@ Status SockSetBlocking(int fd, int blocking) {
   int flags;
   // Old flags
   if ((flags = fcntl(fd, F_GETFL)) == -1) {
-    return Status(Status::kNotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
+    return Status::NotOK(std::string("fcntl(F_GETFL): ") + strerror(errno));
   }
 
   // New flags
@@ -288,7 +288,7 @@ Status SockSetBlocking(int fd, int blocking) {
     flags |= O_NONBLOCK;
 
   if (fcntl(fd, F_SETFL, flags) == -1) {
-    return Status(Status::kNotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
+    return Status::NotOK(std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
   }
   return Status::OK();
 }
@@ -296,11 +296,11 @@ Status SockSetBlocking(int fd, int blocking) {
 Status SockReadLine(int fd, std::string *data) {
   UniqueEvbuf evbuf;
   if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
-    return Status(Status::kNotOK, std::string("read response err: ") + strerror(errno));
+    return Status::NotOK(std::string("read response err: ") + strerror(errno));
   }
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
-    return Status(Status::kNotOK, std::string("read response err(empty): ") + strerror(errno));
+    return Status::NotOK(std::string("read response err(empty): ") + strerror(errno));
   }
   *data = std::string(line.get(), line.length);
   return Status::OK();
@@ -678,7 +678,7 @@ Status Write(int fd, const std::string &data) {
   while (n < static_cast<ssize_t>(data.size())) {
     ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
     if (nwritten == -1) {
-      return Status(Status::kNotOK, strerror(errno));
+      return Status::FromErrno();
     }
     n += nwritten;
   }
@@ -690,10 +690,11 @@ Status Pwrite(int fd, const std::string &data, off_t offset) {
   while (n < static_cast<ssize_t>(data.size())) {
     ssize_t nwritten = pwrite(fd, data.c_str() + n, data.size() - n, offset);
     if (nwritten == -1) {
-      return Status(Status::kNotOK, strerror(errno));
+      return Status::FromErrno();
     }
     n += nwritten;
   }
   return Status::OK();
 }
+
 }  // namespace Util

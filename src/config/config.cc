@@ -225,17 +225,17 @@ void Config::initFieldValidator() {
       {"requirepass",
        [this](const std::string &k, const std::string &v) -> Status {
          if (v.empty() && !tokens.empty()) {
-           return Status(Status::kNotOK, "requirepass empty not allowed while the namespace exists");
+           return Status::NotOK("requirepass empty not allowed while the namespace exists");
          }
          if (tokens.find(v) != tokens.end()) {
-           return Status(Status::kNotOK, "requirepass is duplicated with namespace tokens");
+           return Status::NotOK("requirepass is duplicated with namespace tokens");
          }
          return Status::OK();
        }},
       {"masterauth",
        [this](const std::string &k, const std::string &v) -> Status {
          if (tokens.find(v) != tokens.end()) {
-           return Status(Status::kNotOK, "masterauth is duplicated with namespace tokens");
+           return Status::NotOK("masterauth is duplicated with namespace tokens");
          }
          return Status::OK();
        }},
@@ -258,14 +258,14 @@ void Config::initFieldValidator() {
          }
          std::vector<std::string> args = Util::Split(v, "-");
          if (args.size() != 2) {
-           return Status(Status::kNotOK, "invalid range format, the range should be between 0 and 24");
+           return Status::NotOK("invalid range format, the range should be between 0 and 24");
          }
          int64_t start, stop;
          Status s = Util::DecimalStringToNum(args[0], &start, 0, 24);
          if (!s.IsOK()) return s;
          s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
          if (!s.IsOK()) return s;
-         if (start > stop) return Status(Status::kNotOK, "invalid range format, start should be smaller than stop");
+         if (start > stop) return Status::NotOK("invalid range format, start should be smaller than stop");
          compaction_checker_range.Start = start;
          compaction_checker_range.Stop = stop;
          return Status::OK();
@@ -276,17 +276,17 @@ void Config::initFieldValidator() {
          for (auto &p : all_args) {
            std::vector<std::string> args = Util::Split(p, " \t");
            if (args.size() != 2) {
-             return Status(Status::kNotOK, "Invalid rename-command format");
+             return Status::NotOK("Invalid rename-command format");
            }
            auto commands = Redis::GetCommands();
            auto cmd_iter = commands->find(Util::ToLower(args[0]));
            if (cmd_iter == commands->end()) {
-             return Status(Status::kNotOK, "No such command in rename-command");
+             return Status::NotOK("No such command in rename-command");
            }
            if (args[1] != "\"\"") {
              auto new_command_name = Util::ToLower(args[1]);
              if (commands->find(new_command_name) != commands->end()) {
-               return Status(Status::kNotOK, "Target command name already exists");
+               return Status::NotOK("Target command name already exists");
              }
              (*commands)[new_command_name] = cmd_iter->second;
            }
@@ -320,7 +320,7 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     auto new_ctx = CreateSSLContext(srv->GetConfig());
     if (!new_ctx) {
-      return Status(Status::kNotOK, "Failed to configure SSL context, check server log for more details");
+      return Status::NotOK("Failed to configure SSL context, check server log for more details");
     }
     srv->ssl_ctx_ = std::move(new_ctx);
     return Status::OK();
@@ -383,12 +383,12 @@ void Config::initFieldCallback() {
            return Status::OK();
          }
          std::vector<std::string> args = Util::Split(v, " \t");
-         if (args.size() != 2) return Status(Status::kNotOK, "wrong number of arguments");
+         if (args.size() != 2) return Status::NotOK("wrong number of arguments");
          if (args[0] != "no" && args[1] != "one") {
            master_host = args[0];
            auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, PORT_LIMIT - 1}, 10);
            if (!parse_result) {
-             return Status(Status::kNotOK, "should be between 0 and 65535");
+             return Status::NotOK("should be between 0 and 65535");
            }
            master_port = *parse_result;
          }
@@ -406,7 +406,7 @@ void Config::initFieldCallback() {
              return Status::OK();
            }
            if (!Redis::IsCommandExists(cmd)) {
-             return Status(Status::kNotOK, cmd + " is not Kvrocks supported command");
+             return Status::NotOK(cmd + " is not Kvrocks supported command");
            }
            // profiling_sample_commands use command's original name, regardless of rename-command directive
            profiling_sample_commands.insert(cmd);
@@ -488,7 +488,7 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.enable_blob_files) {
-           return Status(Status::kNotOK, errNotEnableBlobDB);
+           return Status::NotOK(errNotEnableBlobDB);
          }
          return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
        }},
@@ -496,7 +496,7 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.enable_blob_files) {
-           return Status(Status::kNotOK, errNotEnableBlobDB);
+           return Status::NotOK(errNotEnableBlobDB);
          }
          return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), std::to_string(RocksDB.blob_file_size));
        }},
@@ -504,7 +504,7 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.enable_blob_files) {
-           return Status(Status::kNotOK, errNotEnableBlobDB);
+           return Status::NotOK(errNotEnableBlobDB);
          }
          std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
          return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), enable_blob_garbage_collection);
@@ -513,16 +513,16 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.enable_blob_files) {
-           return Status(Status::kNotOK, errNotEnableBlobDB);
+           return Status::NotOK(errNotEnableBlobDB);
          }
          int val;
          auto parse_result = ParseInt<int>(v, 10);
          if (!parse_result) {
-           return Status(Status::kNotOK, "Illegal blob_garbage_collection_age_cutoff value.");
+           return Status::NotOK("Illegal blob_garbage_collection_age_cutoff value.");
          }
          val = *parse_result;
          if (val < 0 || val > 100) {
-           return Status(Status::kNotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
+           return Status::NotOK("blob_garbage_collection_age_cutoff must >= 0 and <= 100.");
          }
 
          double cutoff = val / 100.0;
@@ -538,7 +538,7 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.level_compaction_dynamic_level_bytes) {
-           return Status(Status::kNotOK, errNotSetLevelCompactionDynamicLevelBytes);
+           return Status::NotOK(errNotSetLevelCompactionDynamicLevelBytes);
          }
          return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k),
                                                      std::to_string(RocksDB.max_bytes_for_level_base));
@@ -547,7 +547,7 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (!RocksDB.level_compaction_dynamic_level_bytes) {
-           return Status(Status::kNotOK, errNotSetLevelCompactionDynamicLevelBytes);
+           return Status::NotOK(errNotSetLevelCompactionDynamicLevelBytes);
          }
          return srv->storage_->SetColumnFamilyOption(trimRocksDBPrefix(k), v);
        }},
@@ -636,21 +636,21 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 
 Status Config::finish() {
   if (requirepass.empty() && !tokens.empty()) {
-    return Status(Status::kNotOK, "requirepass empty wasn't allowed while the namespace exists");
+    return Status::NotOK("requirepass empty wasn't allowed while the namespace exists");
   }
   if ((cluster_enabled) && !tokens.empty()) {
-    return Status(Status::kNotOK, "enabled cluster mode wasn't allowed while the namespace exists");
+    return Status::NotOK("enabled cluster mode wasn't allowed while the namespace exists");
   }
   if (unixsocket.empty() && binds.size() == 0) {
     binds.emplace_back(kDefaultBindAddress);
   }
   if (cluster_enabled && binds.size() == 0) {
-    return Status(Status::kNotOK,
-                  "node is in cluster mode, but TCP listen address "
-                  "wasn't specified via configuration file");
+    return Status::NotOK(
+        "node is in cluster mode, but TCP listen address "
+        "wasn't specified via configuration file");
   }
   if (master_port != 0 && binds.size() == 0) {
-    return Status(Status::kNotOK, "replication doesn't supports unix socket");
+    return Status::NotOK("replication doesn't supports unix socket");
   }
   if (db_dir.empty()) db_dir = dir + "/db";
   if (backup_dir.empty()) backup_dir = dir + "/backup";
@@ -659,7 +659,7 @@ Status Config::finish() {
   std::vector<std::string> createDirs = {dir};
   for (const auto &name : createDirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);
-    if (!s.ok()) return Status(Status::kNotOK, s.ToString());
+    if (!s.ok()) return Status::NotOK(s.ToString());
   }
   return Status::OK();
 }
@@ -673,7 +673,7 @@ Status Config::Load(const CLIOptions &opts) {
     } else {
       path_ = opts.conf_file;
       file.open(path_);
-      if (!file.is_open()) return Status(Status::kNotOK, strerror(errno));
+      if (!file.is_open()) return Status::NotOK(strerror(errno));
       in = &file;
     }
 
@@ -682,7 +682,7 @@ Status Config::Load(const CLIOptions &opts) {
     while (!in->eof()) {
       std::getline(*in, line);
       if (auto s = parseConfigFromString(line, line_num); !s) {
-        return Status(Status::kNotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+        return Status::NotOK("at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
       }
       line_num++;
     }
@@ -694,7 +694,7 @@ Status Config::Load(const CLIOptions &opts) {
 
   for (const auto &opt : opts.cli_options) {
     if (Status s = parseConfigFromPair(opt, -1); !s) {
-      return Status(Status::kNotOK, "CLI config option error: " + s.Msg());
+      return Status::NotOK("CLI config option error: " + s.Msg());
     }
   }
 
@@ -704,8 +704,8 @@ Status Config::Load(const CLIOptions &opts) {
     if (iter.second->line_number != 0 && iter.second->validate) {
       auto s = iter.second->validate(iter.first, iter.second->ToString());
       if (!s.IsOK()) {
-        return Status(Status::kNotOK, "at line: #L" + std::to_string(iter.second->line_number) + ", " + iter.first +
-                                      " is invalid: " + s.Msg());
+        return Status::NotOK("at line: #L" + std::to_string(iter.second->line_number) + ", " + iter.first +
+                             " is invalid: " + s.Msg());
       }
     }
   }
@@ -714,7 +714,7 @@ Status Config::Load(const CLIOptions &opts) {
     if (iter.second->callback) {
       auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
       if (!s.IsOK()) {
-        return Status(Status::kNotOK, s.Msg() + " in key '" + iter.first + "'");
+        return Status::NotOK(s.Msg() + " in key '" + iter.first + "'");
       }
     }
   }
@@ -742,7 +742,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
   key = Util::ToLower(key);
   auto iter = fields_.find(key);
   if (iter == fields_.end() || iter->second->readonly) {
-    return Status(Status::kNotOK, "Unsupported CONFIG parameter: " + key);
+    return Status::NotOK("Unsupported CONFIG parameter: " + key);
   }
   auto &field = iter->second;
   if (field->validate) {
@@ -759,7 +759,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 
 Status Config::Rewrite() {
   if (path_.empty()) {
-    return Status(Status::kNotOK, "the server is running without a config file");
+    return Status::NotOK("the server is running without a config file");
   }
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
@@ -817,7 +817,7 @@ Status Config::Rewrite() {
   output_file.write(string_stream.str().c_str(), string_stream.str().size());
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
-    return Status(Status::kNotOK, std::string("rename file encounter error: ") + strerror(errno));
+    return Status::NotOK(std::string("rename file encounter error: ") + strerror(errno));
   }
   return Status::OK();
 }
@@ -835,14 +835,14 @@ Status Config::GetNamespace(const std::string &ns, std::string *token) {
 
 Status Config::SetNamespace(const std::string &ns, const std::string &token) {
   if (ns == kDefaultNamespace) {
-    return Status(Status::kNotOK, "forbidden to update the default namespace");
+    return Status::NotOK("forbidden to update the default namespace");
   }
   if (tokens.find(token) != tokens.end()) {
-    return Status(Status::kNotOK, "the token has already exists");
+    return Status::NotOK("the token has already exists");
   }
 
   if (token == requirepass || token == masterauth) {
-    return Status(Status::kNotOK, "the token is duplicated with requirepass or masterauth");
+    return Status::NotOK("the token is duplicated with requirepass or masterauth");
   }
 
   for (const auto &iter : tokens) {
@@ -858,32 +858,32 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
       return s;
     }
   }
-  return Status(Status::kNotOK, "the namespace was not found");
+  return Status::NotOK("the namespace was not found");
 }
 
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   if (requirepass.empty()) {
-    return Status(Status::kNotOK, "forbidden to add namespace when requirepass was empty");
+    return Status::NotOK("forbidden to add namespace when requirepass was empty");
   }
   if (cluster_enabled) {
-    return Status(Status::kNotOK, "forbidden to add namespace when cluster mode was enabled");
+    return Status::NotOK("forbidden to add namespace when cluster mode was enabled");
   }
   if (ns == kDefaultNamespace) {
-    return Status(Status::kNotOK, "forbidden to add the default namespace");
+    return Status::NotOK("forbidden to add the default namespace");
   }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;
   if (tokens.find(token) != tokens.end()) {
-    return Status(Status::kNotOK, "the token has already exists");
+    return Status::NotOK("the token has already exists");
   }
 
   if (token == requirepass || token == masterauth) {
-    return Status(Status::kNotOK, "the token is duplicated with requirepass or masterauth");
+    return Status::NotOK("the token is duplicated with requirepass or masterauth");
   }
 
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
-      return Status(Status::kNotOK, "the namespace has already exists");
+      return Status::NotOK("the namespace has already exists");
     }
   }
   tokens[token] = ns;
@@ -897,7 +897,7 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
 
 Status Config::DelNamespace(const std::string &ns) {
   if (ns == kDefaultNamespace) {
-    return Status(Status::kNotOK, "forbidden to delete the default namespace");
+    return Status::NotOK("forbidden to delete the default namespace");
   }
   for (const auto &iter : tokens) {
     if (iter.second == ns) {
@@ -909,16 +909,16 @@ Status Config::DelNamespace(const std::string &ns) {
       return s;
     }
   }
-  return Status(Status::kNotOK, "the namespace was not found");
+  return Status::NotOK("the namespace was not found");
 }
 
 Status Config::isNamespaceLegal(const std::string &ns) {
   if (ns.size() > UINT8_MAX) {
-    return Status(Status::kNotOK, std::string("size exceed limit ") + std::to_string(UINT8_MAX));
+    return Status::NotOK(std::string("size exceed limit ") + std::to_string(UINT8_MAX));
   }
   char last_char = ns.back();
   if (last_char == std::numeric_limits<char>::max()) {
-    return Status(Status::kNotOK, std::string("namespace contain illegal letter"));
+    return Status::NotOK(std::string("namespace contain illegal letter"));
   }
   return Status::OK();
 }

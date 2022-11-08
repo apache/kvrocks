@@ -215,7 +215,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     s = tmp_db->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
       delete tmp_db;
-      return Status(Status::kDBOpenErr, s.ToString());
+      return Status::DBOpenError(s.ToString());
     }
     for (auto handle : cf_handles) tmp_db->DestroyColumnFamilyHandle(handle);
     tmp_db->Close();
@@ -321,7 +321,7 @@ Status Storage::Open(bool read_only) {
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
   if (!s.ok()) {
     LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
-    return Status(Status::kDBOpenErr, s.ToString());
+    return Status::DBOpenError(s.ToString());
   }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
   return Status::OK();
@@ -347,7 +347,7 @@ Status Storage::CreateBackup() {
   s = checkpoint->CreateCheckpoint(tmpdir, config_->RocksDB.write_buffer_size * MiB);
   if (!s.ok()) {
     LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
-    return Status(Status::kDBBackupErr, s.ToString());
+    return Status::DBBackupError(s.ToString());
   }
 
   // 2) Rename tmp backup to real backup dir
@@ -381,7 +381,7 @@ Status Storage::RestoreFromBackup() {
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupEngineOptions bk_option(config_->backup_sync_dir);
   auto s = rocksdb::BackupEngine::Open(db_->GetEnv(), bk_option, &backup_);
-  if (!s.ok()) return Status(Status::kDBBackupErr, s.ToString());
+  if (!s.ok()) return Status::DBBackupError(s.ToString());
 
   s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
@@ -393,7 +393,7 @@ Status Storage::RestoreFromBackup() {
   auto s2 = Open();
   if (!s2.IsOK()) {
     LOG(ERROR) << "[storage] Failed to reopen db: " << s2.Msg();
-    return Status(Status::kDBOpenErr, s2.Msg());
+    return Status::DBOpenError(s2.Msg());
   }
 
   // Clean up backup engine
@@ -401,7 +401,7 @@ Status Storage::RestoreFromBackup() {
   DestroyBackup();
   backup_ = nullptr;
 
-  return s.ok() ? Status::OK() : Status(Status::kDBBackupErr, s.ToString());
+  return s.ok() ? Status::OK() : Status::DBBackupError(s.ToString());
 }
 
 Status Storage::RestoreFromCheckpoint() {
@@ -441,7 +441,7 @@ Status Storage::RestoreFromCheckpoint() {
     rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
     env_->RenameFile(tmp_dir, config_->db_dir);
     if (!Open().IsOK()) LOG(ERROR) << "[storage] Fail to reopen db";
-    return Status(Status::kDBOpenErr, "Fail to open master checkpoint, error: " + s2.Msg());
+    return Status::DBOpenError("Fail to open master checkpoint, error: " + s2.Msg());
   }
 
   // Destory origin db

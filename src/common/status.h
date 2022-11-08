@@ -96,6 +96,8 @@ class Status {
   static Status ParseError(std::string msg = {}) { return {kRedisParseErr, std::move(msg)}; }
   static Status ExecError(std::string msg = {}) { return {kRedisExecErr, std::move(msg)}; }
   static Status InvalidCommand(std::string msg = {}) { return {kRedisInvalidCmd, std::move(msg)}; }
+  static Status DBOpenError(std::string msg = {}) { return {kDBOpenErr, std::move(msg)}; }
+  static Status DBBackupError(std::string msg = {}) { return {kDBBackupErr, std::move(msg)}; }
 
   void GetValue() {}
 

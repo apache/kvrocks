@@ -97,6 +97,8 @@ class Status {
   static Status InvalidCommand(std::string msg = {}) { return {kRedisInvalidCmd, std::move(msg)}; }
   static Status DBOpenError(std::string msg = {}) { return {kDBOpenErr, std::move(msg)}; }
   static Status DBBackupError(std::string msg = {}) { return {kDBBackupErr, std::move(msg)}; }
+  static Status ClusterDownError(std::string msg = {}) { return {kClusterDown, std::move(msg)}; }
+  static Status ClusterInvalidInfo(std::string msg = {}) { return {kClusterInvalidInfo, std::move(msg)}; }
 
   void GetValue() {}
 

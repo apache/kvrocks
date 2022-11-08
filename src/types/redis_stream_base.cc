@@ -68,14 +68,14 @@ Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
     auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
     auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
     if (!parse_ms || !parse_seq) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_ms;
     id->seq = *parse_seq;
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
     if (!parse_input) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_input;
     id->seq = 0;
@@ -90,7 +90,7 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
     auto seq_str = input.substr(pos + 1);
     auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
     if (!parse_ms) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_ms;
 
@@ -99,14 +99,14 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
     } else {
       auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
       if (!parse_seq) {
-        return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+        return Status::ParseError(kErrInvalidEntryIdSpecified);
       }
       id->seq = *parse_seq;
     }
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
     if (!parse_input) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_input;
     id->seq = 0;
@@ -125,14 +125,14 @@ Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
     auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
     auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
     if (!parse_ms || !parse_seq) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_ms;
     id->seq = *parse_seq;
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
     if (!parse_input) {
-      return Status(Status::kRedisParseErr, kErrInvalidEntryIdSpecified);
+      return Status::ParseError(kErrInvalidEntryIdSpecified);
     }
     id->ms = *parse_input;
     id->seq = UINT64_MAX;
@@ -157,7 +157,7 @@ Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::stri
   while (!s.empty()) {
     uint32_t len;
     if (!GetVarint32(&s, &len)) {
-      return Status(Status::kRedisParseErr, kErrDecodingStreamEntryValueFailure);
+      return Status::ParseError(kErrDecodingStreamEntryValueFailure);
     }
     result->emplace_back(s.data(), len);
     s.remove_prefix(len);

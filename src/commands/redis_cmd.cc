@@ -5998,7 +5998,6 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
 
     MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),

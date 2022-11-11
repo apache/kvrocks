@@ -371,7 +371,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
       return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
     }
     if (metadata.size > max_size) max_size = metadata.size;
-    meta_pairs.emplace_back(std::make_pair(ns_op_key, metadata));
+    meta_pairs.emplace_back(ns_op_key, metadata);
   }
 
   rocksdb::WriteBatch batch;

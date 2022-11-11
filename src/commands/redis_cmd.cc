@@ -1036,7 +1036,7 @@ class CommandBitOp : public Commander {
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> op_keys;
     for (uint64_t i = 3; i < args_.size(); i++) {
-      op_keys.emplace_back(Slice(args_[i]));
+      op_keys.emplace_back(args_[i]);
     }
     rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
@@ -1306,7 +1306,7 @@ class CommandHDel : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      fields.emplace_back(Slice(args_[i]));
+      fields.emplace_back(args_[i]);
     }
     rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {
@@ -1401,7 +1401,7 @@ class CommandHMGet : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      fields.emplace_back(Slice(args_[i]));
+      fields.emplace_back(args_[i]);
     }
     std::vector<std::string> values;
     std::vector<rocksdb::Status> statuses;
@@ -2117,7 +2117,7 @@ class CommandSMIsMember : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (size_t i = 2; i < args_.size(); i++) {
-      members.emplace_back(Slice(args_[i]));
+      members.emplace_back(args_[i]);
     }
 
     std::vector<int> exists;
@@ -2859,7 +2859,7 @@ class CommandZMScore : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      members.emplace_back(Slice(args_[i]));
+      members.emplace_back(args_[i]);
     }
     std::map<std::string, double> mscores;
     rocksdb::Status s = zset_db.MGet(args_[1], members, &mscores);

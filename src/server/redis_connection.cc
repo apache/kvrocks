@@ -232,7 +232,7 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
   }
 }
 
-void Connection::PUnSubscribeAll(unsubscribe_callback reply) {
+void Connection::PUnSubscribeAll(const unsubscribe_callback &reply) {
   if (subcribe_patterns_.empty()) {
     if (reply != nullptr) reply("", subscribe_channels_.size());
     return;

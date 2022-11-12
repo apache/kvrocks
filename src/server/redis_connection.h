@@ -63,7 +63,7 @@ class Connection {
   int SubscriptionsCount();
   void PSubscribeChannel(const std::string &pattern);
   void PUnSubscribeChannel(const std::string &pattern);
-  void PUnSubscribeAll(unsubscribe_callback reply = nullptr);
+  void PUnSubscribeAll(const unsubscribe_callback &reply = nullptr);
   int PSubscriptionsCount();
 
   uint64_t GetAge();

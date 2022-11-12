@@ -4711,8 +4711,7 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        uint64_t shortest =
-            static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
+        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
                     << " ms since of sending files too quickly";

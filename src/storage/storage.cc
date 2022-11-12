@@ -643,7 +643,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   return Status::OK();
 }
 
-bool Storage::ShiftReplId(void) {
+bool Storage::ShiftReplId() {
   const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const int charset_len = strlen(charset);
 
@@ -695,7 +695,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
         }
       }
     };
-    std::string GetReplId(void) { return replid_in_wal_; }
+    std::string GetReplId() { return replid_in_wal_; }
 
    private:
     std::string replid_in_wal_;
@@ -708,7 +708,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
   return write_batch_handler.GetReplId();
 }
 
-std::string Storage::GetReplIdFromDbEngine(void) {
+std::string Storage::GetReplIdFromDbEngine() {
   std::string replid_in_db;
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   auto s = db_->Get(rocksdb::ReadOptions(), cf, kReplicationIdKey, &replid_in_db);
@@ -775,12 +775,12 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   return Status::OK();
 }
 
-bool Storage::ExistCheckpoint(void) {
+bool Storage::ExistCheckpoint() {
   std::lock_guard<std::mutex> lg(checkpoint_mu_);
   return env_->FileExists(config_->checkpoint_dir).ok();
 }
 
-bool Storage::ExistSyncCheckpoint(void) { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
+bool Storage::ExistSyncCheckpoint() { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::string &dir,
                                                    std::vector<std::string> valid_files) {

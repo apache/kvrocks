@@ -216,17 +216,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
 }
 
 // NOTE: fd should be blocking here
-Status SockSend(int fd, const std::string &data) {
-  ssize_t n = 0;
-  while (n < static_cast<ssize_t>(data.size())) {
-    ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
-    if (nwritten == -1) {
-      return Status(Status::NotOK, strerror(errno));
-    }
-    n += nwritten;
-  }
-  return Status::OK();
-}
+Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 
 // Implements SockSendFileCore to transfer data between file descriptors and
 // avoid transferring data to and from user space.
@@ -623,7 +613,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        tokens.emplace_back(std::string(start, start + bulk_len));
+        tokens.emplace_back(start, start + bulk_len);
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
@@ -673,27 +663,20 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   }
 }
 
-Status Write(int fd, const std::string &data) {
+template <auto syscall, typename... Args>
+Status WriteImpl(int fd, std::string_view data, Args &&...args) {
   ssize_t n = 0;
   while (n < static_cast<ssize_t>(data.size())) {
-    ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
+    ssize_t nwritten = syscall(fd, data.data() + n, data.size() - n, std::forward<Args>(args)...);
     if (nwritten == -1) {
-      return Status(Status::NotOK, strerror(errno));
+      return Status::FromErrno();
     }
     n += nwritten;
   }
   return Status::OK();
 }
 
-Status Pwrite(int fd, const std::string &data, off_t offset) {
-  ssize_t n = 0;
-  while (n < static_cast<ssize_t>(data.size())) {
-    ssize_t nwritten = pwrite(fd, data.c_str() + n, data.size() - n, offset);
-    if (nwritten == -1) {
-      return Status(Status::NotOK, strerror(errno));
-    }
-    n += nwritten;
-  }
-  return Status::OK();
-}
+Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
+
+Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
 }  // namespace Util

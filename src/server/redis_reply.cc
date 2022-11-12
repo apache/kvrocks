@@ -34,17 +34,17 @@ std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
-std::string NilString() { return "$-1\r\n"; }
+std::string NilString() { return "$-1" CRLF; }
 
-std::string MultiLen(int64_t len) { return "*" + std::to_string(len) + "\r\n"; }
+std::string MultiLen(int64_t len) { return "*" + std::to_string(len) + CRLF; }
 
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
-  for (size_t i = 0; i < values.size(); i++) {
-    if (values[i].empty() && output_nil_for_empty_string) {
+  for (const auto &value : values) {
+    if (value.empty() && output_nil_for_empty_string) {
       result += NilString();
     } else {
-      result += BulkString(values[i]);
+      result += BulkString(value);
     }
   }
   return result;
@@ -71,14 +71,6 @@ std::string Array(const std::vector<std::string> &list) {
   return result;
 }
 
-std::string Command2RESP(const std::vector<std::string> &cmd_args) {
-  std::string output;
-  output.append("*" + std::to_string(cmd_args.size()) + CRLF);
-  for (const auto &arg : cmd_args) {
-    output.append("$" + std::to_string(arg.size()) + CRLF);
-    output.append(arg + CRLF);
-  }
-  return output;
-}
+std::string Command2RESP(const std::vector<std::string> &cmd_args) { return MultiBulkString(cmd_args, false); }
 
 }  // namespace Redis

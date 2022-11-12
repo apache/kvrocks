@@ -195,7 +195,7 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
   }
 }
 
-void Connection::UnSubscribeAll(unsubscribe_callback reply) {
+void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
   if (subscribe_channels_.empty()) {
     if (reply != nullptr) reply("", subcribe_patterns_.size());
     return;

@@ -458,7 +458,7 @@ void Worker::KickoutIdleClients(int timeout) {
     while (iterations--) {
       if (iter == conns_.end()) iter = conns_.begin();
       if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
-        to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+        to_be_killed_conns.emplace_back(iter->first, iter->second->GetID());
       }
       iter++;
     }

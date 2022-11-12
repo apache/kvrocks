@@ -40,7 +40,7 @@ enum ImportStatus {
 class SlotImport : public Redis::Database {
  public:
   explicit SlotImport(Server *svr);
-  ~SlotImport() {}
+  ~SlotImport() = default;
   bool Start(int fd, int slot);
   bool Success(int slot);
   bool Fail(int slot);

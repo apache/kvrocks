@@ -302,12 +302,12 @@ Status Storage::Open(bool read_only) {
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPropagateColumnFamilyName, propagate_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kStreamColumnFamilyName, subkey_opts));
+  column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kMetadataColumnFamilyName, metadata_opts);
+  column_families.emplace_back(kZSetScoreColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kPubSubColumnFamilyName, pubsub_opts);
+  column_families.emplace_back(kPropagateColumnFamilyName, propagate_opts);
+  column_families.emplace_back(kStreamColumnFamilyName, subkey_opts);
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());

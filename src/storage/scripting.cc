@@ -360,7 +360,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
       size_t obj_len;
       obj_s = lua_tolstring(lua, j + 1, &obj_len);
       if (obj_s == nullptr) break; /* no a string */
-      args.emplace_back(std::string(obj_s, obj_len));
+      args.emplace_back(obj_s, obj_len);
     }
   }
   if (j != argc) {

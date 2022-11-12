@@ -509,7 +509,7 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
     }
 
     for (auto it = iter->second.begin(); it != iter->second.end();) {
-      auto consumer = *it;
+      const auto &consumer = *it;
       if (conn->GetFD() == consumer->fd && conn->Owner() == consumer->owner) {
         iter->second.erase(it);
         if (iter->second.empty()) {

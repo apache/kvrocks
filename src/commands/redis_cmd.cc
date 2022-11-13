@@ -241,7 +241,7 @@ class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
@@ -267,7 +267,7 @@ class CommandFlushAll : public Commander {
     }
 
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
@@ -5228,7 +5228,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisParseErr, errValueNotInteger};
       }
 
-      if (set_version_ < 0) return {Status::RedisParseErr, "Invalid version"};
+      if (*parse_version < 0) return {Status::RedisParseErr, "Invalid version"};
 
       set_version_ = *parse_version;
 
@@ -5289,11 +5289,11 @@ class CommandClusterX : public Commander {
  private:
   std::string subcommand_;
   std::string nodes_str_;
+  std::string dst_node_id_;
   int64_t set_version_ = 0;
+  int64_t slot_ = -1;
   int slot_id_ = -1;
   bool force_ = false;
-  std::string dst_node_id_;
-  int64_t slot_ = -1;
 };
 
 class CommandEval : public Commander {
@@ -6254,6 +6254,66 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
+class CommandXSetId : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    stream_name_ = args[1];
+
+    auto s = Redis::ParseStreamEntryID(args[2], &last_id_);
+    if (!s.IsOK()) {
+      return {Status::RedisParseErr, s.Msg()};
+    }
+
+    if (args.size() == 3) {
+      return Status::OK();
+    }
+
+    for (size_t i = 3; i < args.size(); /* manual increment */) {
+      if (Util::ToLower(args[i]) == "entriesadded" && i + 1 < args.size()) {
+        auto parse_result = ParseInt<uint64_t>(args[i + 1]);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+
+        entries_added_ = *parse_result;
+        i += 2;
+      } else if (Util::ToLower(args[i]) == "maxdeletedid" && i + 1 < args.size()) {
+        StreamEntryID id;
+        s = Redis::ParseStreamEntryID(args[i + 1], &id);
+        if (!s.IsOK()) {
+          return {Status::RedisParseErr, s.Msg()};
+        }
+
+        max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms, id.seq);
+        i += 2;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
+
+    auto s = stream_db.SetId(stream_name_, last_id_, entries_added_, max_deleted_id_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = Redis::SimpleString("OK");
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  StreamEntryID last_id_;
+  std::optional<StreamEntryID> max_deleted_id_;
+  std::optional<uint64_t> entries_added_;
+};
+
 REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
@@ -6439,7 +6499,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1));
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
   for (const auto &attr : list) {

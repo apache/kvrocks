@@ -268,6 +268,22 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{3, "c"},
 			{4, "d"},
 		}, rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
+
+		// use limit and offset
+		require.Equal(t, []interface{}([]interface{}{"a", "b", "c", "d"}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, -1).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, 0).Val())
+		require.Equal(t, []interface{}([]interface{}{"a", "b"}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, 2).Val())
+		require.Equal(t, []interface{}([]interface{}{"b", "c"}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 1, 2).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 5, 5).Val())
+		require.Equal(t, []interface{}([]interface{}{"c"}), rdb.Do(ctx, "zrange", "ztmp", 1, 2, "limit", 1, 1).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, 0).Val())
+
+		// use withscores
+		require.Equal(t, []interface{}{"a", "1", "b", "2", "c", "3", "d", "4"}, rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, -1, "withscores").Val())
+
+		// use rev
+		require.Equal(t, []interface{}{"d", "4", "c", "3", "b", "2", "a", "1"}, rdb.Do(ctx, "zrange", "ztmp", 0, -1, "limit", 0, -1, "withscores", "rev").Val())
+
 	})
 
 	t.Run(fmt.Sprintf("ZREVRANGE basics - %s", encoding), func(t *testing.T) {
@@ -355,24 +371,40 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 		// inclusive range
 		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: "2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"a", "b", "c"}), rdb.Do(ctx, "zrange", "zset", "-inf", "2", "BYSCORE").Val())
 		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"b", "c", "d"}), rdb.Do(ctx, "zrange", "zset", "0", "3", "BYSCORE").Val())
 		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "3", Max: "6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "e", "f"}), rdb.Do(ctx, "zrange", "zset", "3", "6", "BYSCORE").Val())
 		require.Equal(t, []string{"e", "f", "g"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "4", Max: "+inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"e", "f", "g"}), rdb.Do(ctx, "zrange", "zset", "4", "+inf", "BYSCORE").Val())
 		require.Equal(t, []string{"c", "b", "a"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "2", Min: "-inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"c", "b", "a"}), rdb.Do(ctx, "zrange", "zset", "2", "-inf", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "3", Min: "0"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "c", "b"}), rdb.Do(ctx, "zrange", "zset", "3", "0", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"f", "e", "d"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "6", Min: "3"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"f", "e", "d"}), rdb.Do(ctx, "zrange", "zset", "6", "3", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"g", "f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "4"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"g", "f", "e"}), rdb.Do(ctx, "zrange", "zset", "+inf", "4", "BYSCORE", "REV").Val())
 		require.Equal(t, int64(3), rdb.ZCount(ctx, "zset", "0", "3").Val())
 
 		// exclusive range
 		require.Equal(t, []string{"b"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"b"}), rdb.Do(ctx, "zrange", "zset", "(-inf", "(2", "BYSCORE").Val())
 		require.Equal(t, []string{"b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(0", Max: "(3"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"b", "c"}), rdb.Do(ctx, "zrange", "zset", "(0", "(3", "BYSCORE").Val())
 		require.Equal(t, []string{"e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(3", Max: "(6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"e", "f"}), rdb.Do(ctx, "zrange", "zset", "(3", "(6", "BYSCORE").Val())
 		require.Equal(t, []string{"f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(4", Max: "(+inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"f"}), rdb.Do(ctx, "zrange", "zset", "(4", "(+inf", "BYSCORE").Val())
 		require.Equal(t, []string{"b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(2", Min: "(-inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"b"}), rdb.Do(ctx, "zrange", "zset", "(2", "(-inf", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(3", Min: "(0"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"c", "b"}), rdb.Do(ctx, "zrange", "zset", "(3", "(0", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(6", Min: "(3"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"f", "e"}), rdb.Do(ctx, "zrange", "zset", "(6", "(3", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"f"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(4"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"f"}), rdb.Do(ctx, "zrange", "zset", "(+inf", "(4", "BYSCORE", "REV").Val())
 		require.Equal(t, int64(2), rdb.ZCount(ctx, "zset", "(0", "(3").Val())
 
 		// test empty ranges
@@ -381,55 +413,86 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 		// inclusive range
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "4", Max: "2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "4", "2", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "6", Max: "+inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "6", "+inf", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: "-6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "-inf", "-6", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "+inf", "6", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "-6", Min: "-inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "-6", "-inf", "BYSCORE", "REV").Val())
 
 		// exclusive range
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(4", Max: "(2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(4", "(2", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2", Max: "(2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "2", "(2", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2", Max: "2"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(2", "2", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(6", Max: "(+inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(6", "(+inf", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(-6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(-inf", "(-6", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(+inf", "(6", "BYSCORE", "REV").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(-6", Min: "(-inf"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(-6", "(-inf", "BYSCORE", "REV").Val())
 
 		// empty inner range
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "2.6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "2.4", "2.6", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "2.6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(2.4", "2.6", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "(2.6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "2.4", "(2.6", "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "(2.6"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(2.4", "(2.6", "BYSCORE").Val())
 	})
 
 	t.Run("ZRANGEBYSCORE with WITHSCORES", func(t *testing.T) {
 		createDefaultZset(rdb, ctx)
 		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}, {3, "d"}}, rdb.ZRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+		require.Equal(t, []interface{}{"b", "1", "c", "2", "d", "3"}, rdb.Do(ctx, "zrange", "zset", "0", "3", "BYSCORE", "withscores").Val())
 		require.Equal(t, []redis.Z{{3, "d"}, {2, "c"}, {1, "b"}}, rdb.ZRevRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "3"}).Val())
+		require.Equal(t, []interface{}{"d", "3", "c", "2", "b", "1"}, rdb.Do(ctx, "zrange", "zset", "3", "0", "BYSCORE", "withscores", "REV").Val())
 	})
 
 	t.Run("ZRANGEBYSCORE with LIMIT", func(t *testing.T) {
 		createDefaultZset(rdb, ctx)
 		require.Equal(t, []string{"b", "c"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []interface{}([]interface{}{"b", "c"}), rdb.Do(ctx, "zrange", "zset", "0", "10", "limit", 0, 2, "BYSCORE").Val())
 		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "e", "f"}), rdb.Do(ctx, "zrange", "zset", "0", "10", "limit", 2, 3, "BYSCORE").Val())
 		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 10}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "e", "f"}), rdb.Do(ctx, "zrange", "zset", "0", "10", "limit", 2, 10, "BYSCORE").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 20, Count: 10}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "0", "10", "limit", 20, 10, "BYSCORE").Val())
 		require.Equal(t, []string{"f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []interface{}([]interface{}{"f", "e"}), rdb.Do(ctx, "zrange", "zset", "10", "0", "limit", 0, 2, "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "c", "b"}), rdb.Do(ctx, "zrange", "zset", "10", "0", "limit", 2, 3, "BYSCORE", "REV").Val())
 		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 2, Count: 10}).Val())
+		require.Equal(t, []interface{}([]interface{}{"d", "c", "b"}), rdb.Do(ctx, "zrange", "zset", "10", "0", "limit", 2, 10, "BYSCORE", "REV").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "0", Max: "10", Offset: 20, Count: 10}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "10", "0", "limit", 20, 10, "BYSCORE", "REV").Val())
 	})
 
 	t.Run("ZRANGEBYSCORE with LIMIT and WITHSCORES", func(t *testing.T) {
 		createDefaultZset(rdb, ctx)
 		require.Equal(t, []redis.Z{{4, "e"}, {5, "f"}}, rdb.ZRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "2", Max: "5", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []interface{}{"e", "4", "f", "5"}, rdb.Do(ctx, "zrange", "zset", "2", "5", "limit", 2, 3, "BYSCORE", "withscores").Val())
 		require.Equal(t, []redis.Z{{3, "d"}, {2, "c"}}, rdb.ZRevRangeByScoreWithScores(ctx, "zset", &redis.ZRangeBy{Min: "2", Max: "5", Offset: 2, Count: 3}).Val())
+		require.Equal(t, []interface{}{"d", "3", "c", "2"}, rdb.Do(ctx, "zrange", "zset", "5", "2", "limit", 2, 3, "BYSCORE", "REV", "withscores").Val())
 	})
 
 	t.Run("ZRANGEBYSCORE with non-value min or max", func(t *testing.T) {
 		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "str", Max: "1"}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "str", "1", "BYSCORE").Err(), ".*double.*")
 		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "1", Max: "str"}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "1", "str", "BYSCORE").Err(), ".*double.*")
 		util.ErrorRegexp(t, rdb.ZRangeByScore(ctx, "fooz", &redis.ZRangeBy{Min: "1", Max: "NaN"}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "1", "NaN", "BYSCORE").Err(), ".*double.*")
 	})
 
 	t.Run("ZRANGEBYSCORE for min/max score with multi member", func(t *testing.T) {
@@ -443,9 +506,10 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{math.Inf(1), "g"}}
 		createZset(rdb, ctx, "mzset", zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+		require.Equal(t, []interface{}{"a", "-inf", "b", "-inf", "c", "-1", "d", "2", "e", "3", "f", "inf", "g", "inf"}, rdb.Do(ctx, "zrange", "mzset", "-inf", "+inf", "BYSCORE", "withscores").Val())
 		util.ReverseSlice(zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
-
+		require.Equal(t, []interface{}{"g", "inf", "f", "inf", "e", "3", "d", "2", "c", "-1", "b", "-inf", "a", "-inf"}, rdb.Do(ctx, "zrange", "mzset", "+inf", "-inf", "BYSCORE", "withscores", "REV").Val())
 		zsetDouble := []redis.Z{
 			{-1.004, "a"},
 			{-1.004, "b"},
@@ -455,8 +519,10 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{1.004, "f"}}
 		createZset(rdb, ctx, "mzset", zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+		require.Equal(t, []interface{}{"a", "-1.004", "b", "-1.004", "c", "-1.002", "d", "1.002", "e", "1.004", "f", "1.004"}, rdb.Do(ctx, "zrange", "mzset", "-inf", "+inf", "BYSCORE", "withscores").Val())
 		util.ReverseSlice(zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+		require.Equal(t, []interface{}{"f", "1.004", "e", "1.004", "d", "1.002", "c", "-1.002", "b", "-1.004", "a", "-1.004"}, rdb.Do(ctx, "zrange", "mzset", "+inf", "-inf", "BYSCORE", "withscores", "REV").Val())
 	})
 
 	t.Run("ZRANGEBYLEX/ZREVRANGEBYLEX/ZLEXCOUNT basics", func(t *testing.T) {
@@ -464,47 +530,77 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 		// inclusive range
 		require.Equal(t, []string{"alpha", "bar", "cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"alpha", "bar", "cool"}), rdb.Do(ctx, "zrange", "zset", "-", "[cool", "BYLEX").Val())
 		require.Equal(t, []string{"bar", "cool", "down"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"bar", "cool", "down"}), rdb.Do(ctx, "zrange", "zset", "[bar", "[down", "BYLEX").Val())
 		require.Equal(t, []string{"great", "hill", "omega"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[g", Max: "+"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"great", "hill", "omega"}), rdb.Do(ctx, "zrange", "zset", "[g", "+", "BYLEX").Val())
 		require.Equal(t, []string{"cool", "bar", "alpha"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"cool", "bar", "alpha"}), rdb.Do(ctx, "zrange", "zset", "[cool", "-", "BYLEX", "REV").Val())
 		require.Equal(t, []string{"down", "cool", "bar"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"down", "cool", "bar"}), rdb.Do(ctx, "zrange", "zset", "[down", "[bar", "BYLEX", "REV").Val())
 		require.Equal(t, []string{"omega", "hill", "great", "foo", "elephant", "down"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[d", Max: "+"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"omega", "hill", "great", "foo", "elephant", "down"}), rdb.Do(ctx, "zrange", "zset", "+", "[d", "BYLEX", "rev").Val())
 
 		// exclusive range
 		require.Equal(t, []string{"alpha", "bar"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "(cool"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"alpha", "bar"}), rdb.Do(ctx, "zrange", "zset", "-", "(cool", "BYLEX").Val())
 		require.Equal(t, []string{"cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(bar", Max: "(down"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"cool"}), rdb.Do(ctx, "zrange", "zset", "(bar", "(down", "BYLEX").Val())
 		require.Equal(t, []string{"hill", "omega"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(great", Max: "+"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"hill", "omega"}), rdb.Do(ctx, "zrange", "zset", "(great", "+", "BYLEX").Val())
 		require.Equal(t, []string{"bar", "alpha"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "(cool"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"bar", "alpha"}), rdb.Do(ctx, "zrange", "zset", "(cool", "-", "BYLEX", "REV").Val())
 		require.Equal(t, []string{"cool"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(bar", Max: "(down"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"cool"}), rdb.Do(ctx, "zrange", "zset", "(down", "(bar", "BYLEX", "REV").Val())
 		require.Equal(t, []string{"omega", "hill"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(great", Max: "+"}).Val())
+		require.Equal(t, []interface{}([]interface{}{"omega", "hill"}), rdb.Do(ctx, "zrange", "zset", "+", "(great", "BYLEX", "REV").Val())
 
 		// inclusive and exclusive
 		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(az", Max: "(b"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(az", "(b", "BYLEX").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(z", Max: "+"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(z", "+", "BYLEX").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[aaaa"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "-", "[aaaa", "BYLEX").Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[elez", Max: "[elex"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "[elex", "[elez", "BYLEX", "REV").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "(hill", Max: "(omega"}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "(hill", "(omega", "BYLEX").Val())
 	})
 
 	t.Run("ZRANGEBYLEX with LIMIT", func(t *testing.T) {
 		createDefaultLexZset(rdb, ctx)
 		require.Equal(t, []string{"alpha", "bar"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool", Offset: 0, Count: 2}).Val())
+		require.Equal(t, []interface{}([]interface{}{"alpha", "bar"}), rdb.Do(ctx, "zrange", "zset", "-", "[cool", "BYLEX", "limit", 0, 2).Val())
 		require.Equal(t, []string{"bar", "cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "-", Max: "[cool", Offset: 1, Count: 2}).Val())
+		require.Equal(t, []interface{}([]interface{}{"bar", "cool"}), rdb.Do(ctx, "zrange", "zset", "-", "[cool", "BYLEX", "limit", 1, 2).Val())
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "zrangebylex", "zset", "[bar", "[down", "limit", "0", "0").Val())
 		require.Equal(t, []string{}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 2, Count: 0}).Val())
+		require.Equal(t, []interface{}([]interface{}{}), rdb.Do(ctx, "zrange", "zset", "[bar", "[down", "BYLEX", "limit", 2, 0).Val())
 		require.Equal(t, []string{"bar"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 0, Count: 1}).Val())
+		require.Equal(t, []interface{}([]interface{}{"bar"}), rdb.Do(ctx, "zrange", "zset", "[bar", "[down", "BYLEX", "limit", 0, 1).Val())
 		require.Equal(t, []string{"cool"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 1, Count: 1}).Val())
+		require.Equal(t, []interface{}([]interface{}{"cool"}), rdb.Do(ctx, "zrange", "zset", "[bar", "[down", "BYLEX", "limit", 1, 1).Val())
 		require.Equal(t, []string{"bar", "cool", "down"}, rdb.ZRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[bar", Max: "[down", Offset: 0, Count: 100}).Val())
+		require.Equal(t, []interface{}([]interface{}{"bar", "cool", "down"}), rdb.Do(ctx, "zrange", "zset", "[bar", "[down", "BYLEX", "limit", 0, 100).Val())
 		require.Equal(t, []string{"omega", "hill", "great", "foo", "elephant"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[d", Max: "+", Offset: 0, Count: 5}).Val())
+		require.Equal(t, []interface{}([]interface{}{"omega", "hill", "great", "foo", "elephant"}), rdb.Do(ctx, "zrange", "zset", "+", "[d", "BYLEX", "limit", 0, 5, "REV").Val())
 		require.Equal(t, []string{"omega", "hill", "great", "foo"}, rdb.ZRevRangeByLex(ctx, "zset", &redis.ZRangeBy{Min: "[d", Max: "+", Offset: 0, Count: 4}).Val())
+		require.Equal(t, []interface{}([]interface{}{"omega", "hill", "great", "foo"}), rdb.Do(ctx, "zrange", "zset", "+", "[d", "BYLEX", "limit", 0, 4, "REV").Val())
 	})
 
 	t.Run("ZRANGEBYLEX with invalid lex range specifiers", func(t *testing.T) {
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "foo", Max: "bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "foo", "bar", "BYLEX").Err(), ".*illegal.*")
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "[foo", Max: "bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "[foo", "bar", "BYLEX").Err(), ".*illegal.*")
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "foo", Max: "[bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "foo", "[bar", "BYLEX").Err(), ".*illegal.*")
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "+x", Max: "[bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "+x", "[bar", "BYLEX").Err(), ".*illegal.*")
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "-x", Max: "[bar"}).Err(), ".*illegal.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "-x", "[bar", "BYLEX").Err(), ".*illegal.*")
 	})
 
 	t.Run("ZREMRANGEBYSCORE basics", func(t *testing.T) {

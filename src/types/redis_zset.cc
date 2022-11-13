@@ -224,7 +224,10 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
 }
 
 rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t flags,
-                            std::vector<MemberScore> *mscores) {
+                            std::vector<MemberScore> *mscores, int limit_offset, int limit_count) {
+  if (limit_offset > -1 && limit_count == 0) {
+    return rocksdb::Status::OK();
+  }
   mscores->clear();
 
   std::string ns_key;
@@ -271,8 +274,9 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
-
+  int pos = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !reversed ? iter->Next() : iter->Prev()) {
+    if (limit_offset >= 0 && pos++ < limit_offset) continue;
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
@@ -287,6 +291,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
       mscores->emplace_back(MemberScore{score_key.ToString(), score});
     }
     if (count++ >= stop) break;
+    if (limit_count >= 0 && mscores && mscores->size() >= static_cast<unsigned>(limit_count)) break;
   }
 
   if (removed_subkey) {

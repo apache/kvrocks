@@ -188,6 +188,27 @@ TEST_F(RedisSetTest, Inter) {
   set->Del(k3);
 }
 
+TEST_F(RedisSetTest, InterCard) {
+  int ret;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set->Add(k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set->Add(k2, {"a", "c"}, &ret);
+  EXPECT_EQ(ret, 2);
+  set->Add(k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  int64_t intercard;
+  set->InterCard({k1, k2, k3}, 0, &intercard);
+  EXPECT_EQ(2, intercard);
+  set->InterCard({k1, k2, k3}, 1, &intercard);
+  EXPECT_EQ(1, intercard);
+  set->InterCard({k1, k2, k3}, 3, &intercard);
+  EXPECT_EQ(2, intercard);
+  set->Del(k1);
+  set->Del(k2);
+  set->Del(k3);
+}
+
 TEST_F(RedisSetTest, Overwrite) {
   int ret;
   rocksdb::Status s = set->Add(key_, fields_, &ret);

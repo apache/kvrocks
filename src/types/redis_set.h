@@ -49,6 +49,7 @@ class Set : public SubKeyScanner {
   rocksdb::Status InterStore(const Slice &dst, const std::vector<Slice> &keys, int *ret);
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &member_prefix, std::vector<std::string> *members);
+  rocksdb::Status InterCard(const std::vector<Slice> &keys, int64_t limit, int64_t *ret);
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, SetMetadata *metadata);

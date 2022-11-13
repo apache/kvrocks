@@ -133,6 +133,17 @@ rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, int64_t limit, int64_t *ret) {
+  std::vector<std::string> members;
+  rocksdb::Status s = Inter(keys, &members);
+  if (!s.ok()) return s;
+  *ret = members.size();
+  if (limit > 0 && *ret > limit) {
+    *ret = limit;
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *members) {
   members->clear();
 

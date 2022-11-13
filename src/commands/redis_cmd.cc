@@ -662,6 +662,7 @@ class CommandMSet : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     std::vector<StringPair> kvs;
@@ -1195,6 +1196,7 @@ class CommandExpireAt : public Commander {
     timestamp_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.Expire(args_[1], timestamp_);
@@ -1355,6 +1357,7 @@ class CommandHIncrBy : public Commander {
     increment_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ret;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
@@ -1380,6 +1383,7 @@ class CommandHIncrByFloat : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double ret;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
@@ -1519,6 +1523,7 @@ class CommandHRange : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
@@ -1594,6 +1599,7 @@ class CommandRPushX : public CommandPush {
 class CommandPop : public Commander {
  public:
   explicit CommandPop(bool left) { left_ = left; }
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() > 3) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
@@ -1661,6 +1667,7 @@ class CommandRPop : public CommandPop {
 class CommandBPop : public Commander {
  public:
   explicit CommandBPop(bool left) : left_(left) {}
+
   ~CommandBPop() override {
     if (timer_ != nullptr) {
       event_free(timer_);
@@ -2270,6 +2277,54 @@ class CommandSInter : public Commander {
   }
 };
 
+class CommandSInterCard : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    // args_ will be like: sintercard 2 key1 key2 LIMIT 1, where 2 is the number of keys, limit is optional
+    uint64_t num_keys = 0;
+    auto parse_num_keys = ParseInt<uint64_t>(args_[1], 10);
+    if (!parse_num_keys) {
+      return Status(Status::RedisParseErr, errValueNotInteger);
+    }
+    num_keys = *parse_num_keys;
+    if (num_keys <= 0) {
+      return Status(Status::NotOK, "numkeys should be greater than 0");
+    }
+    if (args_.size() < num_keys + 2) {
+      return Status(Status::NotOK, "numkeys should be equal to the number of keys");
+    }
+    if (args_.size() != num_keys + 2 && args_.size() != num_keys + 4) {
+      return Status(Status::NotOK, "invalid number of arguments");
+    }
+    int64_t limit = 0;
+    if (args_.size() == num_keys + 4) {
+      if (Util::ToLower(args_[num_keys + 2]) != "limit") {
+        return Status(Status::NotOK, "invalid number of arguments");
+      }
+      auto parse_limit = ParseInt<int64_t>(args_[num_keys + 3], 10);
+      if (!parse_limit) {
+        return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      limit = *parse_limit;
+      if (limit < 0) {
+        return Status(Status::NotOK, "limit can't be negative");
+      }
+    }
+    std::vector<Slice> keys;
+    for (uint64_t i = 2; i < num_keys + 2; i++) {
+      keys.emplace_back(args_[i]);
+    }
+    Redis::Set set_db(svr->storage_, conn->GetNamespace());
+    int64_t ret = 0;
+    auto s = set_db.InterCard(keys, limit, &ret);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::Integer(ret);
+    return Status::OK();
+  }
+};
+
 class CommandSDiffStore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -2380,6 +2435,7 @@ class CommandZAdd : public Commander {
   ZAddFlags flags_{0};
 
   void parseFlags(const std::vector<std::string> &args, unsigned &index);
+
   Status validateFlags() const;
 };
 
@@ -2644,6 +2700,7 @@ class CommandZRangeByLex : public Commander {
 class CommandZRangeByScore : public Commander {
  public:
   explicit CommandZRangeByScore(bool reversed = false) { spec_.reversed = reversed; }
+
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
     if (spec_.reversed) {
@@ -2703,6 +2760,7 @@ class CommandZRangeByScore : public Commander {
 class CommandZRank : public Commander {
  public:
   explicit CommandZRank(bool reversed = false) : reversed_(reversed) {}
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
@@ -3028,6 +3086,7 @@ class CommandGeoBase : public Commander {
 class CommandGeoAdd : public CommandGeoBase {
  public:
   CommandGeoAdd() : CommandGeoBase() {}
+
   Status Parse(const std::vector<std::string> &args) override {
     if ((args.size() - 5) % 3 != 0) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
@@ -3059,6 +3118,7 @@ class CommandGeoAdd : public CommandGeoBase {
 class CommandGeoDist : public CommandGeoBase {
  public:
   CommandGeoDist() : CommandGeoBase() {}
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() == 5) {
       auto s = ParseDistanceUnit(args[4]);
@@ -4516,6 +4576,7 @@ class CommandScan : public CommandScanBase {
 class CommandHScan : public CommandSubkeyScanBase {
  public:
   CommandHScan() : CommandSubkeyScanBase() {}
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
@@ -4532,6 +4593,7 @@ class CommandHScan : public CommandSubkeyScanBase {
 class CommandSScan : public CommandSubkeyScanBase {
  public:
   CommandSScan() : CommandSubkeyScanBase() {}
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
@@ -6030,6 +6092,7 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
     MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
     MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),

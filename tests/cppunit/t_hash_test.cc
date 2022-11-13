@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <climits>
 #include <memory>
 #include <random>
 #include <string>
@@ -160,8 +161,8 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   hash->Del(key_);
 }
 
-TEST_F(RedisHashTest, HRange) {
-  int ret;
+TEST_F(RedisHashTest, HRangeByLex) {
+  int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < 4; i++) {
     fvs.emplace_back(FieldValue{"key" + std::to_string(i), "value" + std::to_string(i)});
@@ -180,19 +181,195 @@ TEST_F(RedisHashTest, HRange) {
     s = hash->MSet(key_, fvs, false, &ret);
     EXPECT_EQ(ret, 0);
     std::vector<FieldValue> result;
-    s = hash->Range(key_, "key0", "key4", INT_MAX, &result);
+    HashSpec spec;
+    spec.offset = 0;
+    spec.count = INT_MAX;
+    spec.min = "key0";
+    spec.max = "key3";
+    s = hash->RangeByLex(key_, spec, &result);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(4, result.size());
     EXPECT_EQ("key0", result[0].field);
     EXPECT_EQ("key1", result[1].field);
     EXPECT_EQ("key2", result[2].field);
+    EXPECT_EQ("key3", result[3].field);
     hash->Del(key_);
   }
+
+  rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+  // use offset and count
+  std::vector<FieldValue> result;
+  HashSpec spec;
+  spec.offset = 0;
+  spec.count = INT_MAX;
+  spec.min = "key0";
+  spec.max = "key3";
+  spec.offset = 1;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(3, result.size());
+  EXPECT_EQ("key1", result[0].field);
+  EXPECT_EQ("key2", result[1].field);
+  EXPECT_EQ("key3", result[2].field);
+
+  spec.offset = 1;
+  spec.count = 1;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(1, result.size());
+  EXPECT_EQ("key1", result[0].field);
+
+  spec.offset = 0;
+  spec.count = 0;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+
+  spec.offset = 1000;
+  spec.count = 1000;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+  // exclusive range
+  spec.offset = 0;
+  spec.count = -1;
+  spec.minex = true;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(3, result.size());
+  EXPECT_EQ("key1", result[0].field);
+  EXPECT_EQ("key2", result[1].field);
+  EXPECT_EQ("key3", result[2].field);
+
+  spec.offset = 0;
+  spec.count = -1;
+  spec.maxex = true;
+  spec.minex = false;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(3, result.size());
+  EXPECT_EQ("key0", result[0].field);
+  EXPECT_EQ("key1", result[1].field);
+  EXPECT_EQ("key2", result[2].field);
+
+  spec.offset = 0;
+  spec.count = -1;
+  spec.maxex = true;
+  spec.minex = true;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("key1", result[0].field);
+  EXPECT_EQ("key2", result[1].field);
+
+  // inf and revered
+  spec.minex = false;
+  spec.maxex = false;
+  spec.min = "-";
+  spec.max = "+";
+  spec.max_infinite = true;
+  spec.reversed = true;
+  s = hash->RangeByLex(key_, spec, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(4 + 26, result.size());
+  EXPECT_EQ("key3", result[0].field);
+  EXPECT_EQ("key2", result[1].field);
+  EXPECT_EQ("key1", result[2].field);
+  EXPECT_EQ("key0", result[3].field);
+  hash->Del(key_);
 }
 
-TEST_F(RedisHashTest, HRangeNonExistingKey) {
+TEST_F(RedisHashTest, HRangeUseIndex) {
+  hash->Del(key_);
+  int ret = 0;
+  std::vector<FieldValue> fvs;
+  for (size_t i = 0; i < 10; i++) {
+    fvs.emplace_back(FieldValue{std::string("key") + static_cast<char>(i + 'a'), std::to_string(i)});
+  }
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::vector<FieldValue> tmp(fvs);
   std::vector<FieldValue> result;
-  auto s = hash->Range("non-existing-key", "any-start-key", "any-end-key", 10, &result);
+  for (size_t i = 0; i < 100; i++) {
+    std::shuffle(tmp.begin(), tmp.end(), g);
+    rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+    EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+    s = hash->MSet(key_, fvs, false, &ret);
+    EXPECT_EQ(ret, 0);
+    s = hash->Range(key_, 0, -1, 0, -1, false, &result);
+    EXPECT_TRUE(s.ok());
+    for (size_t j = 0; j < fvs.size(); j++) {
+      EXPECT_EQ(fvs[j].field, result[j].field);
+      EXPECT_EQ(fvs[j].value, result[j].value);
+    }
+    hash->Del(key_);
+  }
+  rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+
+  // test limit and rev
+  s = hash->Range(key_, 0, -1, 0, 2, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keya", result[0].field);
+  EXPECT_EQ("keyb", result[1].field);
+
+  s = hash->Range(key_, 0, -1, 1, 2, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keyb", result[0].field);
+  EXPECT_EQ("keyc", result[1].field);
+
+  s = hash->Range(key_, 0, -1, 1000, -1, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+
+  s = hash->Range(key_, 0, -1, 0, 0, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+
+  s = hash->Range(key_, 1, 2, 0, -1, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keyb", result[0].field);
+  EXPECT_EQ("keyc", result[1].field);
+
+  s = hash->Range(key_, 1, 2, 1, 2, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keyc", result[0].field);
+  EXPECT_EQ("keyd", result[1].field);
+
+  s = hash->Range(key_, 5, 10, 6, 2, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+
+  s = hash->Range(key_, 10, 1, 0, -1, false, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, result.size());
+
+  s = hash->Range(key_, 0, 10, 0, 2, true, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keyj", result[0].field);
+  EXPECT_EQ("keyi", result[1].field);
+
+  s = hash->Range(key_, 0, 10, 1, 2, true, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, result.size());
+  EXPECT_EQ("keyi", result[0].field);
+  EXPECT_EQ("keyh", result[1].field);
+}
+
+TEST_F(RedisHashTest, HRangeByLexNonExistingKey) {
+  std::vector<FieldValue> result;
+  HashSpec spec;
+  spec.offset = 0;
+  spec.count = INT_MAX;
+  spec.min = "any-start-key";
+  spec.max = "any-end-key";
+  auto s = hash->RangeByLex("non-existing-key", spec, &result);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(result.size(), 0);
 }

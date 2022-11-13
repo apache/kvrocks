@@ -1506,25 +1506,60 @@ class CommandHGetAll : public Commander {
 class CommandHRange : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 6 && args.size() != 4) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
+      } else if (parser.EatEqICase("REV")) {
+        reversed_ = true;
+      } else if (parser.EatEqICase("LIMIT")) {
+        offset_ = GET_OR_RET(parser.TakeInt());
+        count_ = GET_OR_RET(parser.TakeInt());
+      } else {
+        return parser.InvalidSyntax();
+      }
     }
-    if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
-      return Status(Status::RedisInvalidCmd, errInvalidSyntax);
+    if (by_flag_ == "BYLEX") {
+      spec_.reversed = reversed_;
+      spec_.count = count_;
+      spec_.offset = offset_;
+      Status s;
+      if (spec_.reversed) {
+        s = Redis::Hash::ParseRangeLexSpec(args[3], args[2], &spec_);
+      } else {
+        s = Redis::Hash::ParseRangeLexSpec(args[2], args[3], &spec_);
+      }
+      if (!s.IsOK()) {
+        return Status(Status::RedisParseErr, s.Msg());
+      }
+    } else {
+      by_flag_ = "BYINDEX";
+      auto parse_start = ParseInt<int>(args[2], 10);
+      auto parse_stop = ParseInt<int>(args[3], 10);
+      if (!parse_start || !parse_stop) {
+        return Status(Status::RedisParseErr, errValueNotInteger);
+      }
+      start_ = *parse_start;
+      stop_ = *parse_stop;
+      if (reversed_) std::swap(start_, stop_);
+      return Commander::Parse(args);
     }
-    if (args.size() == 6) {
-      auto parse_result = ParseInt<int64_t>(args_[5], 10);
-      if (!parse_result) return Status(Status::RedisParseErr, errValueNotInteger);
-      limit_ = *parse_result;
-    }
-    return Commander::Parse(args);
+    return Status::OK();
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+    if (by_flag_ == "BYLEX") {
+      rocksdb::Status s = hash_db.RangeByLex(args_[1], spec_, &field_values);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+    } else if (by_flag_ == "BYINDEX") {
+      rocksdb::Status s = hash_db.Range(args_[1], start_, stop_, offset_, count_, reversed_, &field_values);
+      if (!s.ok()) {
+        return Status(Status::RedisExecErr, s.ToString());
+      }
+    } else {
+      assert(false);
     }
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
@@ -1536,7 +1571,13 @@ class CommandHRange : public Commander {
   }
 
  private:
-  int64_t limit_ = LONG_MAX;
+  std::string_view by_flag_ = "";
+  bool reversed_ = false;
+  int64_t offset_ = 0;
+  int64_t count_ = -1;
+  HashSpec spec_;
+  int64_t start_;
+  int64_t stop_;
 };
 
 class CommandPush : public Commander {

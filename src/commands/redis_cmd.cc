@@ -2558,9 +2558,7 @@ class CommandZRange : public Commander {
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("BYSCORE", by_flag_)) {
-        by_flag_ = "BYSCORE";
-      } else if (parser.EatEqICase("BYLEX")) {
-        by_flag_ = "BYLEX";
+      } else if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
       } else if (parser.EatEqICase("REV")) {
         reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {

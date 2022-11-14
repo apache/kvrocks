@@ -44,7 +44,7 @@ class Database {
   rocksdb::Status FlushDB();
   rocksdb::Status FlushAll();
   void GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
-  void Keys(std::string prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
+  void Keys(const std::string &prefix, std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
   rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
                        std::vector<std::string> *keys, std::string *end_cursor = nullptr);
   rocksdb::Status RandomKey(const std::string &cursor, std::string *key);

@@ -212,7 +212,7 @@ void Server::Join() {
   if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 
-Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
+Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {
   std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
@@ -403,7 +403,7 @@ void Server::GetChannelsByPattern(const std::string &pattern, std::vector<std::s
   }
 }
 
-void Server::ListChannelSubscribeNum(std::vector<std::string> channels,
+void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                      std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   for (const auto &chan : channels) {
@@ -1321,7 +1321,7 @@ std::string Server::GetClientsStr() {
   return clients;
 }
 
-void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme,
+void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                         Redis::Connection *conn) {
   *killed = 0;
 

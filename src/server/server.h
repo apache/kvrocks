@@ -123,7 +123,7 @@ class Server {
   Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
 
-  Status AddMaster(std::string host, uint32_t port, bool force_reconnect);
+  Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
   Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
@@ -138,7 +138,7 @@ class Server {
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
-  void ListChannelSubscribeNum(std::vector<std::string> channels,
+  void ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
   void PSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
   void PUnSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
@@ -185,7 +185,8 @@ class Server {
   int DecrBlockedClientNum();
   std::string GetClientsStr();
   std::atomic<uint64_t> *GetClientID();
-  void KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme, Redis::Connection *conn);
+  void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
+                  Redis::Connection *conn);
 
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);

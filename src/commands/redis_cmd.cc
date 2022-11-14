@@ -875,7 +875,7 @@ class CommandDel : public Commander {
   }
 };
 
-Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
+Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
   auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -3698,7 +3698,7 @@ class CommandPublish : public Commander {
   }
 };
 
-void SubscribeCommandReply(std::string *output, std::string name, std::string sub_name, int num) {
+void SubscribeCommandReply(std::string *output, const std::string &name, const std::string &sub_name, int num) {
   output->append(Redis::MultiLen(3));
   output->append(Redis::BulkString(name));
   output->append(sub_name.empty() ? Redis::NilString() : Redis::BulkString(sub_name));

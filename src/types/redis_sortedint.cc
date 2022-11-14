@@ -33,7 +33,7 @@ rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *m
   return Database::GetMetadata(kRedisSortedint, ns_key, metadata);
 }
 
-rocksdb::Status Sortedint::Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
+rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -67,7 +67,7 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, std::vector<uint64_t> ids,
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Sortedint::Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret) {
+rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -210,7 +210,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::MExist(const Slice &user_key, std::vector<uint64_t> ids, std::vector<int> *exists) {
+rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint64_t> &ids, std::vector<int> *exists) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 

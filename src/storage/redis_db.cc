@@ -163,7 +163,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
 
 void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) { Keys(prefix, nullptr, stats); }
 
-void Database::Keys(std::string prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
+void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   uint16_t slot_id = 0;
   std::string ns_prefix, ns, user_key, value;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {

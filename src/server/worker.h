@@ -60,7 +60,8 @@ class Worker {
   void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
 
   std::string GetClientsStr();
-  void KillClient(Redis::Connection *self, uint64_t id, std::string addr, uint64_t type, bool skipme, int64_t *killed);
+  void KillClient(Redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
+                  int64_t *killed);
   void KickoutIdleClients(int timeout);
 
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);

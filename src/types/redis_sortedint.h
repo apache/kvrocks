@@ -48,9 +48,9 @@ class Sortedint : public Database {
  public:
   explicit Sortedint(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Card(const Slice &user_key, int *ret);
-  rocksdb::Status MExist(const Slice &user_key, std::vector<uint64_t> ids, std::vector<int> *exists);
-  rocksdb::Status Add(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
-  rocksdb::Status Remove(const Slice &user_key, std::vector<uint64_t> ids, int *ret);
+  rocksdb::Status MExist(const Slice &user_key, const std::vector<uint64_t> &ids, std::vector<int> *exists);
+  rocksdb::Status Add(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret);
+  rocksdb::Status Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret);
   rocksdb::Status Range(const Slice &user_key, uint64_t cursor_id, uint64_t page, uint64_t limit, bool reversed,
                         std::vector<uint64_t> *ids);
   rocksdb::Status RangeByValue(const Slice &user_key, SortedintRangeSpec spec, std::vector<uint64_t> *ids, int *size);

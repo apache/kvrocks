@@ -145,8 +145,8 @@ class Storage {
     static bool FileExists(Storage *storage, const std::string &dir, const std::string &repl_file, uint32_t crc);
   };
 
-  bool ExistCheckpoint(void);
-  bool ExistSyncCheckpoint(void);
+  bool ExistCheckpoint();
+  bool ExistSyncCheckpoint();
   void SetCheckpointCreateTime(time_t t) { checkpoint_info_.create_time = t; }
   time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
@@ -154,9 +154,9 @@ class Storage {
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 
-  bool ShiftReplId(void);
+  bool ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
-  std::string GetReplIdFromDbEngine(void);
+  std::string GetReplIdFromDbEngine();
 
  private:
   rocksdb::DB *db_ = nullptr;

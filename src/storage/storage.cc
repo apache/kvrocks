@@ -766,7 +766,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   // Get checkpoint file list
   std::vector<std::string> result;
   storage->env_->GetChildren(data_files_dir, &result);
-  for (auto f : result) {
+  for (const auto &f : result) {
     if (f == "." || f == "..") continue;
     files->append(f);
     files->push_back(',');
@@ -790,7 +790,7 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::
 
   std::vector<std::string> tmp_files, files;
   storage->env_->GetChildren(dir, &tmp_files);
-  for (auto file : tmp_files) {
+  for (const auto &file : tmp_files) {
     if (file == "." || file == "..") continue;
     files.push_back(file);
   }
@@ -946,8 +946,7 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   uint64_t size;
   s = storage->env_->GetFileSize(file_path, &size);
   if (!s.ok()) return false;
-  std::unique_ptr<rocksdb::SequentialFileWrapper> src_reader;
-  src_reader.reset(new rocksdb::SequentialFileWrapper(src_file.get()));
+  auto src_reader = std::make_unique<rocksdb::SequentialFileWrapper>(src_file.get());
 
   char buffer[4096];
   Slice slice;

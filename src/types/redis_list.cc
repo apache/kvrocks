@@ -51,7 +51,7 @@ rocksdb::Status List::PushX(const Slice &user_key, const std::vector<Slice> &ele
   return push(user_key, elems, false, left, ret);
 }
 
-rocksdb::Status List::push(const Slice &user_key, std::vector<Slice> elems, bool create_if_missing, bool left,
+rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elems, bool create_if_missing, bool left,
                            int *ret) {
   *ret = 0;
   std::string ns_key;

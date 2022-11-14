@@ -23,6 +23,7 @@
 #include <limits>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "storage/redis_db.h"
@@ -71,10 +72,10 @@ typedef struct KeyWeight {
   double weight;
 } KeyWeight;
 
-typedef struct {
+struct MemberScore {
   std::string member;
   double score;
-} MemberScore;
+};
 
 enum ZSetFlags {
   kZSetIncr = 1,
@@ -122,7 +123,8 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Range(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores,
                         int limit_offset = 0, int limit_count = -1);
   rocksdb::Status RangeByScore(const Slice &user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
-  rocksdb::Status RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std::vector<std::string> *members, int *size);
+  rocksdb::Status RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<MemberScore> *mscores,
+                             int *size);
   rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *ret);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec, int *ret);

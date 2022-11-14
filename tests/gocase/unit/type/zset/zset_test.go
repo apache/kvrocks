@@ -590,6 +590,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []interface{}([]interface{}{"omega", "hill", "great", "foo"}), rdb.Do(ctx, "zrange", "zset", "+", "[d", "BYLEX", "limit", 0, 4, "REV").Val())
 	})
 
+	t.Run("ZRANGEBYLEX withscores", func(t *testing.T) {
+		createDefaultLexZset(rdb, ctx)
+		require.Equal(t, []interface{}{"alpha", "0", "bar", "0", "cool", "0"}, rdb.Do(ctx, "zrange", "zset", "-", "[cool", "BYLEX", "withscores").Val())
+		require.Equal(t, []interface{}{"cool", "0", "bar", "0", "alpha", "0"}, rdb.Do(ctx, "zrange", "zset", "[cool", "-", "BYLEX", "withscores", "REV").Val())
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "zrange", "zset", "(a", "(a", "BYLEX", "withscores").Val())
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "zrange", "zset", "(a", "(a", "BYLEX", "withscores", "REV").Val())
+	})
+
 	t.Run("ZRANGEBYLEX with invalid lex range specifiers", func(t *testing.T) {
 		util.ErrorRegexp(t, rdb.ZRangeByLex(ctx, "fooz", &redis.ZRangeBy{Min: "foo", Max: "bar"}).Err(), ".*illegal.*")
 		util.ErrorRegexp(t, rdb.Do(ctx, "zrange", "fooz", "foo", "bar", "BYLEX").Err(), ".*illegal.*")

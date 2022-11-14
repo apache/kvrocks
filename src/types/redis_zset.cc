@@ -388,7 +388,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
-    double score;
+    double score = 0;
     GetDouble(&score_key, &score);
     if (spec.reversed) {
       if ((spec.minex && score == spec.min) || score < spec.min) break;
@@ -420,10 +420,10 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std::vector<std::string> *members,
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<MemberScore> *mscores,
                                  int *size) {
   if (size) *size = 0;
-  if (members) members->clear();
+  if (mscores) mscores->clear();
   if (spec.offset > -1 && spec.count == 0) {
     return rocksdb::Status::OK();
   }
@@ -493,10 +493,14 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std:
       batch.Delete(score_cf_handle_, score_key);
       batch.Delete(iter->key());
     } else {
-      if (members) members->emplace_back(member.ToString());
+      if (mscores) {
+        double score = 0;
+        Score(user_key, member, &score);
+        mscores->emplace_back(MemberScore{member.ToString(), score});
+      }
     }
     if (size) *size += 1;
-    if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
+    if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
   if (spec.removed && size && *size > 0) {

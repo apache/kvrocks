@@ -2553,7 +2553,6 @@ class CommandZPopMax : public CommandZPop {
 class CommandZRange : public Commander {
  public:
   explicit CommandZRange(bool reversed = false) : reversed_(reversed) {}
-
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 4);
     while (parser.Good()) {
@@ -2584,13 +2583,13 @@ class CommandZRange : public Commander {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } else if (by_flag_ == "BYLEX") {
-      specLex_.count = count_;
-      specLex_.offset = offset_;
-      specLex_.reversed = reversed_;
-      if (specLex_.reversed) {
-        s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &specLex_);
+      spec_lex_.count = count_;
+      spec_lex_.offset = offset_;
+      spec_lex_.reversed = reversed_;
+      if (spec_lex_.reversed) {
+        s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_lex_);
       } else {
-        s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &specLex_);
+        s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_lex_);
       }
       if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.Msg());
@@ -2610,53 +2609,38 @@ class CommandZRange : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    std::vector<MemberScore> member_scores;
+    rocksdb::Status s;
+    int size = 0;
     if (by_flag_ == "BYLEX") {
-      int size = 0;
-      std::vector<std::string> members;
-      rocksdb::Status s = zset_db.RangeByLex(args_[1], specLex_, &members, &size);
-      if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-      *output = Redis::MultiBulkString(members, false);
+      s = zset_db.RangeByLex(args_[1], spec_lex_, &member_scores, &size);
     } else if (by_flag_ == "BYSCORE") {
-      int size = 0;
-      std::vector<MemberScore> member_scores;
-      rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
-      if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-      if (!with_scores_) {
-        output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size())));
-      } else {
-        output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size() * 2)));
-      }
-      for (const auto &ms : member_scores) {
-        output->append(Redis::BulkString(ms.member));
-        if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
-      }
+      s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
     } else if (by_flag_ == "BYINDEX") {
-      std::vector<MemberScore> member_scores;
       uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-      rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores, offset_, count_);
-      if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-      if (!with_scores_) {
-        output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size())));
-      } else {
-        output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size() * 2)));
-      }
-      for (const auto &ms : member_scores) {
-        output->append(Redis::BulkString(ms.member));
-        if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
-      }
+      s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores, offset_, count_);
     } else {
       assert(false);
     }
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    packageOutput(member_scores, output);
     return Status::OK();
   }
 
  private:
+  void packageOutput(const std::vector<MemberScore> &member_scores, std::string *output) {
+    if (!with_scores_) {
+      output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size())));
+    } else {
+      output->append(Redis::MultiLen(static_cast<int64_t>(member_scores.size() * 2)));
+    }
+    for (const auto &ms : member_scores) {
+      output->append(Redis::BulkString(ms.member));
+      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
+    }
+  }
   std::string_view by_flag_ = "";
   int offset_ = 0;
   int count_ = -1;
@@ -2664,7 +2648,7 @@ class CommandZRange : public Commander {
   int stop_ = 0;
   bool reversed_ = false;
   bool with_scores_ = false;
-  ZRangeLexSpec specLex_;
+  ZRangeLexSpec spec_lex_;
   ZRangeSpec spec_;
 };
 
@@ -2673,105 +2657,38 @@ class CommandZRevRange : public CommandZRange {
   CommandZRevRange() : CommandZRange(true) {}
 };
 
-class CommandZRangeByLex : public Commander {
+class CommandZRangeByLex : public CommandZRange {
  public:
-  explicit CommandZRangeByLex(bool reversed = false) { spec_.reversed = reversed; }
+  explicit CommandZRangeByLex(bool reversed = false) : reversed_(reversed) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    Status s;
-    if (spec_.reversed) {
-      s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_);
-    } else {
-      s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
-    }
-    if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
-    }
-    if (args.size() == 7 && Util::ToLower(args[4]) == "limit") {
-      auto parse_offset = ParseInt<int>(args[5], 10);
-      auto parse_count = ParseInt<int>(args[6], 10);
-      if (!parse_offset || !parse_count) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      spec_.offset = *parse_offset;
-      spec_.count = *parse_count;
-    }
-    return Commander::Parse(args);
+    const_cast<std::vector<std::string> &>(args).emplace_back("BYLEX");
+    if (reversed_) const_cast<std::vector<std::string> &>(args).emplace_back("REV");
+    return CommandZRange::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    std::vector<std::string> members;
-    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
-    }
-    *output = Redis::MultiBulkString(members, false);
-    return Status::OK();
+    return CommandZRange::Execute(svr, conn, output);
   }
 
  private:
-  ZRangeLexSpec spec_;
+  bool reversed_;
 };
 
-class CommandZRangeByScore : public Commander {
+class CommandZRangeByScore : public CommandZRange {
  public:
-  explicit CommandZRangeByScore(bool reversed = false) { spec_.reversed = reversed; }
+  explicit CommandZRangeByScore(bool reversed = false) : reversed_(reversed) {}
   Status Parse(const std::vector<std::string> &args) override {
-    Status s;
-    if (spec_.reversed) {
-      s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
-    } else {
-      s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-    }
-    if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
-    }
-    size_t i = 4;
-    while (i < args.size()) {
-      if (Util::ToLower(args[i]) == "withscores") {
-        with_scores_ = true;
-        i++;
-      } else if (Util::ToLower(args[i]) == "limit" && i + 2 < args.size()) {
-        auto parse_offset = ParseInt<int>(args[i + 1], 10);
-        auto parse_count = ParseInt<int>(args[i + 2], 10);
-        if (!parse_offset || !parse_count) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        spec_.offset = *parse_offset;
-        spec_.count = *parse_count;
-        i += 3;
-      } else {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
-      }
-    }
-    return Commander::Parse(args);
+    const_cast<std::vector<std::string> &>(args).emplace_back("BYSCORE");
+    if (reversed_) const_cast<std::vector<std::string> &>(args).emplace_back("REV");
+    return CommandZRange::Parse(args);
   }
-
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    std::vector<MemberScore> member_scores;
-    rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
-    if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
-    }
-    if (!with_scores_) {
-      output->append(Redis::MultiLen(member_scores.size()));
-    } else {
-      output->append(Redis::MultiLen(member_scores.size() * 2));
-    }
-    for (const auto &ms : member_scores) {
-      output->append(Redis::BulkString(ms.member));
-      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
-    }
-    return Status::OK();
+    return CommandZRange::Execute(svr, conn, output);
   }
 
  private:
-  ZRangeSpec spec_;
-  bool with_scores_ = false;
+  bool reversed_;
 };
 
 class CommandZRank : public Commander {

@@ -230,7 +230,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   // replication, and uses 'listen-port + 1' as thread listening port.
   uint32_t master_listen_port = port;
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
-  replication_thread_ = std::unique_ptr<ReplicationThread>(new ReplicationThread(host, master_listen_port, this));
+  replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;

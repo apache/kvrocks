@@ -420,6 +420,11 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::RangeByIndex(const Slice &user_key, const ZRangeIndexSpec &spec,
+                                   std::vector<MemberScore> *mscores) {
+  uint8_t flags = !spec.reversed ? 0 : kZSetReversed;
+  return Range(user_key, spec.min, spec.max, flags, mscores, spec.offset, spec.count);
+}
 rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<MemberScore> *mscores,
                                  int *size) {
   if (size) *size = 0;

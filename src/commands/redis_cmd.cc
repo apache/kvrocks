@@ -28,6 +28,7 @@
 #include <climits>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <thread>
@@ -2554,55 +2555,55 @@ class CommandZRange : public Commander {
  public:
   explicit CommandZRange(bool reversed = false) : reversed_(reversed) {}
   Status Parse(const std::vector<std::string> &args) override {
+    int offset = 0;
+    int count = -1;
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("BYSCORE", by_flag_)) {
+        spec_ = std::make_unique<ZRangeSpec>();
       } else if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
+        spec_ = std::make_unique<ZRangeLexSpec>();
       } else if (parser.EatEqICase("REV")) {
         reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {
-        offset_ = GET_OR_RET(parser.TakeInt());
-        count_ = GET_OR_RET(parser.TakeInt());
+        offset = GET_OR_RET(parser.TakeInt());
+        count = GET_OR_RET(parser.TakeInt());
       } else if (parser.EatEqICase("withscores")) {
         with_scores_ = true;
       } else {
         return parser.InvalidSyntax();
       }
     }
+    if (by_flag_.empty()) {
+      by_flag_ = "BYINDEX";
+      spec_ = std::make_unique<ZRangeIndexSpec>();
+    }
     Status s;
+    spec_->count = count;
+    spec_->offset = offset;
+    spec_->reversed = reversed_;
+    auto &args_v = const_cast<std::vector<std::string> &>(args);
+
     if (by_flag_ == "BYSCORE") {
-      spec_.count = count_;
-      spec_.offset = offset_;
-      spec_.reversed = reversed_;
-      if (spec_.reversed) {
-        s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
-      } else {
-        s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
-      }
+      if (spec_->reversed) std::swap(args_v[2], args_v[3]);
+      s = Redis::ZSet::ParseRangeSpec(args[2], args[3], static_cast<ZRangeSpec *>(spec_.get()));
       if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } else if (by_flag_ == "BYLEX") {
-      spec_lex_.count = count_;
-      spec_lex_.offset = offset_;
-      spec_lex_.reversed = reversed_;
-      if (spec_lex_.reversed) {
-        s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_lex_);
-      } else {
-        s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_lex_);
-      }
+      if (spec_->reversed) std::swap(args_v[2], args_v[3]);
+      s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], static_cast<ZRangeLexSpec *>(spec_.get()));
       if (!s.IsOK()) {
         return Status(Status::RedisParseErr, s.Msg());
       }
     } else {
-      by_flag_ = "BYINDEX";
       auto parse_start = ParseInt<int>(args[2], 10);
       auto parse_stop = ParseInt<int>(args[3], 10);
       if (!parse_start || !parse_stop) {
         return Status(Status::RedisParseErr, errValueNotInteger);
       }
-      start_ = *parse_start;
-      stop_ = *parse_stop;
+      static_cast<ZRangeIndexSpec *>(spec_.get())->min = *parse_start;
+      static_cast<ZRangeIndexSpec *>(spec_.get())->max = *parse_stop;
     }
     return Status::OK();
   }
@@ -2613,12 +2614,11 @@ class CommandZRange : public Commander {
     rocksdb::Status s;
     int size = 0;
     if (by_flag_ == "BYLEX") {
-      s = zset_db.RangeByLex(args_[1], spec_lex_, &member_scores, &size);
+      s = zset_db.RangeByLex(args_[1], *static_cast<ZRangeLexSpec *>(spec_.get()), &member_scores, &size);
     } else if (by_flag_ == "BYSCORE") {
-      s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
+      s = zset_db.RangeByScore(args_[1], *static_cast<ZRangeSpec *>(spec_.get()), &member_scores, &size);
     } else if (by_flag_ == "BYINDEX") {
-      uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-      s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores, offset_, count_);
+      s = zset_db.RangeByIndex(args_[1], *static_cast<ZRangeIndexSpec *>(spec_.get()), &member_scores);
     } else {
       assert(false);
     }
@@ -2642,14 +2642,9 @@ class CommandZRange : public Commander {
     }
   }
   std::string_view by_flag_ = "";
-  int offset_ = 0;
-  int count_ = -1;
-  int start_ = 0;
-  int stop_ = 0;
-  bool reversed_ = false;
+  bool reversed_;
   bool with_scores_ = false;
-  ZRangeLexSpec spec_lex_;
-  ZRangeSpec spec_;
+  std::unique_ptr<ZrangeCommon> spec_;
 };
 
 class CommandZRevRange : public CommandZRange {

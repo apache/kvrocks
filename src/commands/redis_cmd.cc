@@ -3729,11 +3729,9 @@ class CommandUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnSubscribeAll(
-          [output](const std::string &sub_name, int num){SubscribeCommandReply(output, "unsubscribe", sub_name, num);}
-      );
-      // conn->UnSubscribeAll(
-      //     std::bind(SubscribeCommandReply, output, "unsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->UnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "unsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
@@ -3760,11 +3758,9 @@ class CommandPUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnSubscribeAll(
-          [output](const std::string &sub_name, int num) {SubscribeCommandReply(output, "punsubscribe", sub_name, num);}
-      );
-      // conn->PUnSubscribeAll(
-      //     std::bind(SubscribeCommandReply, output, "punsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->PUnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "punsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);

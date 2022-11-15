@@ -455,7 +455,7 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
           patternLen--;
         }
         match = 0;
-        while (1) {
+        while (true) {
           if (pattern[0] == '\\' && patternLen >= 2) {
             pattern++;
             patternLen--;

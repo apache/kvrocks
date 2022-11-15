@@ -27,6 +27,7 @@ import sys
 from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 from warnings import warn
+from multiprocessing import cpu_count
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
@@ -337,7 +338,7 @@ if __name__ == '__main__':
     parser_check_tidy.set_defaults(func=clang_tidy)
     parser_check_tidy.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                                    help="directory to store cmake-generated and build files")
-    parser_check_tidy.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_check_tidy.add_argument('-j', '--jobs', default=cpu_count(), metavar='N', help='execute N build jobs concurrently')
     parser_check_tidy.add_argument('--clang-tidy-path', default='clang-tidy',
                                    help="path of clang-tidy used to check source")
     parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy',
@@ -358,7 +359,7 @@ if __name__ == '__main__':
     )
     parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                               help="directory to store cmake-generated and build files")
-    parser_build.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_build.add_argument('-j', '--jobs', default=cpu_count(), metavar='N', help='execute N build jobs concurrently')
     parser_build.add_argument('--ghproxy', default=False, action='store_true',
                               help='use https://ghproxy.com to fetch dependencies')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
@@ -398,7 +399,7 @@ if __name__ == '__main__':
                                     help='package type for fpm to build')
     parser_package_fpm.add_argument('dir', metavar='BUILD_DIR',
                                     help="directory to store cmake-generated and build files")
-    parser_package_fpm.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_package_fpm.add_argument('-j', '--jobs', default=cpu_count(), metavar='N', help='execute N build jobs concurrently')
     parser_package_fpm.set_defaults(func=package_fpm)
 
     parser_test = subparsers.add_parser(

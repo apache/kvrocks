@@ -56,6 +56,9 @@ class PerfEntry {
 template <class T>
 class LogCollector {
  public:
+  LogCollector() = default;
+  LogCollector(const LogCollector &) = delete;
+  LogCollector &operator=(const LogCollector &) = delete;
   ~LogCollector();
   ssize_t Size();
   void Reset();

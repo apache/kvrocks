@@ -70,7 +70,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         if (!parse_result) {
           return rocksdb::Status::InvalidArgument(parse_result.Msg());
         }
-        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
+        auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
           command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
@@ -103,7 +103,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         if (!parse_result) {
           return rocksdb::Status::InvalidArgument(parse_result.Msg());
         }
-        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
+        auto cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLSet:
             if (args->size() < 2) {
@@ -149,7 +149,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         if (!parse_result) {
           return rocksdb::Status::InvalidArgument(parse_result.Msg());
         }
-        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
+        auto cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdSetBit: {
             if (args->size() < 2) {
@@ -240,7 +240,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         if (!parse_result) {
           return rocksdb::Status::InvalidArgument(parse_result.Msg());
         }
-        RedisCommand cmd = static_cast<RedisCommand>(*parse_result);
+        auto cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLTrim:
             if (first_seen_) {

@@ -247,8 +247,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   if (stop > static_cast<int64_t>(metadata.size)) stop = metadata.size;
   if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
 
-  uint32_t u_start = static_cast<uint32_t>(start);
-  uint32_t u_stop = static_cast<uint32_t>(stop);
+  auto u_start = static_cast<uint32_t>(start);
+  auto u_stop = static_cast<uint32_t>(stop);
 
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -297,8 +297,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     *pos = -1;
     return rocksdb::Status::OK();
   }
-  uint32_t u_start = static_cast<uint32_t>(start);
-  uint32_t u_stop = static_cast<uint32_t>(stop);
+  auto u_start = static_cast<uint32_t>(start);
+  auto u_stop = static_cast<uint32_t>(stop);
 
   auto bitPosInByte = [](char byte, bool bit) -> int {
     for (int i = 0; i < 8; i++) {
@@ -430,7 +430,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
 #ifndef USE_ALIGNED_ACCESS
         if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
-          uint64_t *lres = reinterpret_cast<uint64_t *>(frag_res.get());
+          auto *lres = reinterpret_cast<uint64_t *>(frag_res.get());
           const uint64_t *lp[16];
           for (i = 0; i < frag_numkeys; i++) {
             lp[i] = reinterpret_cast<const uint64_t *>(fragments[i].data());

@@ -1662,13 +1662,8 @@ class CommandBPop : public Commander {
  public:
   explicit CommandBPop(bool left) : left_(left) {}
 
-  CommandBPop() = default;
-
-  // Not copyable
   CommandBPop(const CommandBPop &) = delete;
-  CommandBPop(CommandBPop &&) = delete;
   CommandBPop &operator=(const CommandBPop &) = delete;
-  CommandBPop &operator=(CommandBPop &&) = delete;
 
   ~CommandBPop() override {
     if (timer_ != nullptr) {

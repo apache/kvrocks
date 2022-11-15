@@ -415,7 +415,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std::vector<std::string> *members,
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<std::string> *members,
                                  int *size) {
   if (size) *size = 0;
   if (members) members->clear();
@@ -751,6 +751,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   }
   if (!dst_zset.empty()) {
     std::vector<MemberScore> mscores;
+    mscores.reserve(dst_zset.size());
     for (const auto &iter : dst_zset) {
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }

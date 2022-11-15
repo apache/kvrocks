@@ -79,10 +79,10 @@ A million repetitions of "a"
 
 void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]) {
   uint32_t a, b, c, d, e;
-  typedef union {
+  union CHAR64LONG16 {
     unsigned char c[64];
     uint32_t l[16];
-  } CHAR64LONG16;
+  };
 #ifdef SHA1HANDSOFF
   CHAR64LONG16 block[1]; /* use array to appear as a pointer */
   memcpy(block, buffer, 64);

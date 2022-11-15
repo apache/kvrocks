@@ -398,6 +398,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
 
   int exists;
   std::vector<Slice> keys;
+  keys.reserve(pairs.size());
   for (StringPair pair : pairs) {
     keys.emplace_back(pair.key);
   }

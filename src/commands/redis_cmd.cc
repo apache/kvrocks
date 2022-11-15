@@ -874,7 +874,7 @@ class CommandDel : public Commander {
   }
 };
 
-Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
+Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
   auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -1458,6 +1458,7 @@ class CommandHKeys : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> keys;
+    keys.reserve(field_values.size());
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
@@ -1476,6 +1477,7 @@ class CommandHVals : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> values;
+    values.reserve(field_values.size());
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
@@ -1661,6 +1663,10 @@ class CommandRPop : public CommandPop {
 class CommandBPop : public Commander {
  public:
   explicit CommandBPop(bool left) : left_(left) {}
+
+  CommandBPop(const CommandBPop &) = delete;
+  CommandBPop &operator=(const CommandBPop &) = delete;
+
   ~CommandBPop() override {
     if (timer_ != nullptr) {
       event_free(timer_);
@@ -3707,7 +3713,7 @@ class CommandPublish : public Commander {
   }
 };
 
-void SubscribeCommandReply(std::string *output, std::string name, std::string sub_name, int num) {
+void SubscribeCommandReply(std::string *output, const std::string &name, const std::string &sub_name, int num) {
   output->append(Redis::MultiLen(3));
   output->append(Redis::BulkString(name));
   output->append(sub_name.empty() ? Redis::NilString() : Redis::BulkString(sub_name));
@@ -3729,8 +3735,9 @@ class CommandUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnSubscribeAll(
-          std::bind(SubscribeCommandReply, output, "unsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->UnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "unsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
@@ -3757,8 +3764,9 @@ class CommandPUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnSubscribeAll(
-          std::bind(SubscribeCommandReply, output, "punsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->PUnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "punsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);
@@ -4275,6 +4283,7 @@ class CommandCommand : public Commander {
           return Status::OK();
         }
         std::vector<std::string> keys;
+        keys.reserve(keys_indexes.size());
         for (const auto &key_index : keys_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
@@ -4558,6 +4567,7 @@ class CommandZScan : public CommandSubkeyScanBase {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> score_strings;
+    score_strings.reserve(scores.size());
     for (const auto &score : scores) {
       score_strings.emplace_back(Util::Float2String(score));
     }
@@ -4711,8 +4721,7 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        uint64_t shortest =
-            static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
+        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
                     << " ms since of sending files too quickly";

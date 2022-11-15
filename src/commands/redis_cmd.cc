@@ -1458,6 +1458,7 @@ class CommandHKeys : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> keys;
+    keys.reserve(field_values.size());
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
@@ -1476,6 +1477,7 @@ class CommandHVals : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> values;
+    values.reserve(field_values.size());
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
@@ -4281,6 +4283,7 @@ class CommandCommand : public Commander {
           return Status::OK();
         }
         std::vector<std::string> keys;
+        keys.reserve(keys_indexes.size());
         for (const auto &key_index : keys_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
@@ -4564,6 +4567,7 @@ class CommandZScan : public CommandSubkeyScanBase {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> score_strings;
+    score_strings.reserve(scores.size());
     for (const auto &score : scores) {
       score_strings.emplace_back(Util::Float2String(score));
     }

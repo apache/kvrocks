@@ -2560,9 +2560,9 @@ class CommandZRange : public Commander {
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("BYSCORE", by_flag_)) {
-        spec_ = std::make_unique<ZRangeSpec>();
+        spec_ = std::make_shared<ZRangeSpec>();
       } else if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
-        spec_ = std::make_unique<ZRangeLexSpec>();
+        spec_ = std::make_shared<ZRangeLexSpec>();
       } else if (parser.EatEqICase("REV")) {
         reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {
@@ -2576,14 +2576,13 @@ class CommandZRange : public Commander {
     }
     if (by_flag_.empty()) {
       by_flag_ = "BYINDEX";
-      spec_ = std::make_unique<ZRangeIndexSpec>();
+      spec_ = std::make_shared<ZRangeIndexSpec>();
     }
     Status s;
     spec_->count = count;
     spec_->offset = offset;
     spec_->reversed = reversed_;
     auto &args_v = const_cast<std::vector<std::string> &>(args);
-
     if (by_flag_ == "BYSCORE") {
       if (spec_->reversed) std::swap(args_v[2], args_v[3]);
       s = Redis::ZSet::ParseRangeSpec(args[2], args[3], static_cast<ZRangeSpec *>(spec_.get()));
@@ -2644,7 +2643,7 @@ class CommandZRange : public Commander {
   std::string_view by_flag_ = "";
   bool reversed_;
   bool with_scores_ = false;
-  std::unique_ptr<ZrangeCommon> spec_;
+  std::shared_ptr<ZrangeCommon> spec_;
 };
 
 class CommandZRevRange : public CommandZRange {

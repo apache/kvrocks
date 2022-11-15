@@ -765,6 +765,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   }
   if (!dst_zset.empty()) {
     std::vector<MemberScore> mscores;
+    mscores.reserve(dst_zset.size());
     for (const auto &iter : dst_zset) {
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }

@@ -36,22 +36,23 @@ const double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_
 const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
                                                                 : std::numeric_limits<double>::max());
 
-struct ZrangeCommon {
+struct ZrangeCommonSpec {
   bool minex = false, maxex = false; /* are min or max exclusive */
   int offset = -1, count = -1;
   bool removed = false, reversed = false;
+  virtual ~ZrangeCommonSpec() = default;
 };
 
-struct ZRangeSpec : public ZrangeCommon {
+struct ZRangeSpec : public ZrangeCommonSpec {
   double min = kMinScore, max = kMaxScore;
 };
 
-struct ZRangeLexSpec : public ZrangeCommon {
+struct ZRangeLexSpec : public ZrangeCommonSpec {
   std::string min, max;
   bool max_infinite = false; /* are max infinite */
 };
 
-struct ZRangeIndexSpec : public ZrangeCommon {
+struct ZRangeIndexSpec : public ZrangeCommonSpec {
   int min = -1, max = -1;
 };
 

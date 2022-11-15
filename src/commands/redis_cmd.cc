@@ -2562,9 +2562,9 @@ class CommandZRange : public Commander {
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("BYSCORE", by_flag_)) {
-        spec_ = std::make_shared<ZRangeSpec>();
+        spec_ = std::make_unique<ZRangeSpec>();
       } else if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
-        spec_ = std::make_shared<ZRangeLexSpec>();
+        spec_ = std::make_unique<ZRangeLexSpec>();
       } else if (parser.EatEqICase("REV")) {
         reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {
@@ -2578,7 +2578,7 @@ class CommandZRange : public Commander {
     }
     if (by_flag_.empty()) {
       by_flag_ = "BYINDEX";
-      spec_ = std::make_shared<ZRangeIndexSpec>();
+      spec_ = std::make_unique<ZRangeIndexSpec>();
     }
     Status s;
     spec_->count = count;
@@ -2645,7 +2645,7 @@ class CommandZRange : public Commander {
   std::string_view by_flag_ = "";
   bool reversed_;
   bool with_scores_ = false;
-  std::shared_ptr<ZrangeCommon> spec_;
+  std::unique_ptr<ZrangeCommonSpec> spec_;
 };
 
 class CommandZRevRange : public CommandZRange {

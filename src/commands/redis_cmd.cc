@@ -1665,10 +1665,10 @@ class CommandBPop : public Commander {
   CommandBPop() = default;
 
   // Not copyable
-  CommandBPop(const CommandBPop&) = delete;
-  CommandBPop(CommandBPop&&) = delete;
-  CommandBPop& operator=(const CommandBPop&)  = delete;
-  CommandBPop& operator=(CommandBPop&&)  = delete;
+  CommandBPop(const CommandBPop &) = delete;
+  CommandBPop(CommandBPop &&) = delete;
+  CommandBPop &operator=(const CommandBPop &) = delete;
+  CommandBPop &operator=(CommandBPop &&) = delete;
 
   ~CommandBPop() override {
     if (timer_ != nullptr) {

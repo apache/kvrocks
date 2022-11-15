@@ -61,7 +61,7 @@ rocksdb::Status GetNextStreamEntryID(const StreamEntryID &last_id, StreamEntryID
 }
 
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
-  auto pos = input.find("-");
+  auto pos = input.find('-');
   if (pos != std::string::npos) {
     auto ms_str = input.substr(0, pos);
     auto seq_str = input.substr(pos + 1);
@@ -84,7 +84,7 @@ Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
 }
 
 Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
-  auto pos = input.find("-");
+  auto pos = input.find('-');
   if (pos != std::string::npos) {
     auto ms_str = input.substr(0, pos);
     auto seq_str = input.substr(pos + 1);
@@ -118,7 +118,7 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
 Status ParseRangeStart(const std::string &input, StreamEntryID *id) { return ParseStreamEntryID(input, id); }
 
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
-  auto pos = input.find("-");
+  auto pos = input.find('-');
   if (pos != std::string::npos) {
     auto ms_str = input.substr(0, pos);
     auto seq_str = input.substr(pos + 1);

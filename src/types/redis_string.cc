@@ -134,9 +134,6 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
   }
   std::vector<Slice> slice_keys;
   slice_keys.reserve(ns_keys.size());
-  // don't use range-based for loop here, coz the slice member
-  // would refer the address instead of copy the value, and use
-  // range-based for loop may cause all members refer to the same addr
   for (const auto &ns_key : ns_keys) {
     slice_keys.emplace_back(ns_key);
   }

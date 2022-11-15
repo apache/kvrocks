@@ -721,7 +721,7 @@ Status Config::Load(const CLIOptions &opts) {
   return finish();
 }
 
-void Config::Get(std::string key, std::vector<std::string> *values) {
+void Config::Get(const std::string &key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || Util::ToLower(key) == iter.first) {

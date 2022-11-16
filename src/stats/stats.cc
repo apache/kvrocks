@@ -30,8 +30,8 @@ Stats::Stats() {
     im.last_sample_time = 0;
     im.last_sample_count = 0;
     im.idx = 0;
-    for (int j = 0; j < STATS_METRIC_SAMPLES; j++) {
-      im.samples[j] = 0;
+    for (uint64_t &sample : im.samples) {
+      sample = 0;
     }
     inst_metrics.push_back(im);
   }
@@ -105,6 +105,6 @@ void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
 
 uint64_t Stats::GetInstantaneousMetric(int metric) {
   uint64_t sum = 0;
-  for (int j = 0; j < STATS_METRIC_SAMPLES; j++) sum += inst_metrics[metric].samples[j];
+  for (uint64_t sample : inst_metrics[metric].samples) sum += sample;
   return sum / STATS_METRIC_SAMPLES;
 }

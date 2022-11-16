@@ -54,8 +54,8 @@ void TaskRunner::Stop() {
 }
 
 void TaskRunner::Join() {
-  for (size_t i = 0; i < threads_.size(); i++) {
-    if (threads_[i].joinable()) threads_[i].join();
+  for (auto &thread : threads_) {
+    if (thread.joinable()) thread.join();
   }
 }
 

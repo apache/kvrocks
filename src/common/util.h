@@ -55,7 +55,7 @@ Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min = INT6
 Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
 const std::string Float2String(double d);
 std::string ToLower(std::string in);
-bool CaseInsensitiveCompare(const std::string &lhs, const std::string &rhs);
+bool EqualICase(std::string_view lhs, std::string_view rhs);
 void BytesToHuman(char *buf, size_t size, uint64_t n);
 std::string Trim(std::string in, const std::string &chars);
 std::vector<std::string> Split(const std::string &in, const std::string &delim);
@@ -75,5 +75,7 @@ auto GetTimeStamp() {
 }
 inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
 inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
-
+// file util
+Status Write(int fd, const std::string &data);
+Status Pwrite(int fd, const std::string &data, off_t offset);
 }  // namespace Util

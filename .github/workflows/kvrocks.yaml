@@ -196,14 +196,22 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.with_luajit }} \
             ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
+      
+      - name: Setup Coredump
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
+          mkdir coredumps
 
       - name: Run Unit Test
         run: |
+          ulimit -c unlimited
           export ${{ matrix.runtime_env_vars }}
-          ./build/unittest
+          ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |
+          ulimit -c unlimited
           export ${{ matrix.runtime_env_vars }}
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
@@ -217,14 +225,34 @@ jobs:
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS
+          
+      - name: Find reports and crashes
+        if: always()
+        run: |
           SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
           if [[ $SANITIZER_OUTPUT ]]; then
+            echo "found sanitizer reports:"
             echo "$SANITIZER_OUTPUT"
-            echo "\ndetail reports:\n"
-            cat $(find tests/gocase/workspace -iname stderr)
-            echo "sanitizer error was reported, exiting..."
+            echo "detail log:"
+            cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
             exit 1
           fi
+          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
+          if [[ $CRASHES ]]; then
+            echo "found crashes:"
+            echo "$CRASHES"
+            echo "detail log:"
+            cat $(echo "$CRASHES" | awk -F ':' '{print $1}')
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v3
+        if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
+        with:
+          name: kvrocks-coredumps-${{ matrix.name }}
+          path: |
+            ./build/kvrocks
+            ./coredumps/*
 
   required:
     if: always()

@@ -61,7 +61,7 @@ class Commander {
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
   const CommandAttributes *GetAttributes() { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
-  const std::vector<std::string> *Args() { return &args_; }
+  virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
     return Status(Status::RedisExecErr, "not implemented");
@@ -72,6 +72,12 @@ class Commander {
  protected:
   std::vector<std::string> args_;
   const CommandAttributes *attributes_ = nullptr;
+};
+
+class CommanderWithParseMove : Commander {
+ public:
+  Status Parse() override { return ParseMove(std::move(args_)); }
+  virtual Status ParseMove(std::vector<std::string> &&args) { return Status::OK(); }
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
@@ -93,11 +99,12 @@ struct CommandAttributes {
   bool is_no_multi() const { return (flags & kCmdNoMulti) != 0; }
 };
 
+using CommandMap = std::map<std::string, const CommandAttributes *>;
+
 int GetCommandNum();
-std::map<std::string, CommandAttributes *> *GetCommands();
-std::map<std::string, CommandAttributes *> *GetOriginalCommands();
-void InitCommandsTable();
-void PopulateCommands();
+CommandMap *GetCommands();
+void ResetCommands();
+const CommandMap *GetOriginalCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
 std::string GetCommandInfo(const CommandAttributes *command_attributes);

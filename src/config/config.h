@@ -195,7 +195,7 @@ struct Config {
  public:
   Status Rewrite();
   Status Load(const CLIOptions &path);
-  void Get(std::string key, std::vector<std::string> *values);
+  void Get(const std::string &key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, int port);
   void ClearMaster();
@@ -213,7 +213,7 @@ struct Config {
   std::string compaction_checker_range_;
   std::string profiling_sample_commands_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
-  std::string rename_command_;
+  std::vector<std::string> rename_command_;
 
   void initFieldValidator();
   void initFieldCallback();

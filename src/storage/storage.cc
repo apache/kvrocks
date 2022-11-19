@@ -302,12 +302,12 @@ Status Storage::Open(bool read_only) {
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(rocksdb::kDefaultColumnFamilyName, subkey_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kMetadataColumnFamilyName, metadata_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPropagateColumnFamilyName, propagate_opts));
-  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kStreamColumnFamilyName, subkey_opts));
+  column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kMetadataColumnFamilyName, metadata_opts);
+  column_families.emplace_back(kZSetScoreColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kPubSubColumnFamilyName, pubsub_opts);
+  column_families.emplace_back(kPropagateColumnFamilyName, propagate_opts);
+  column_families.emplace_back(kStreamColumnFamilyName, subkey_opts);
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
@@ -326,10 +326,6 @@ Status Storage::Open(bool read_only) {
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
   return Status::OK();
 }
-
-Status Storage::Open() { return Open(false); }
-
-Status Storage::OpenForReadOnly() { return Open(true); }
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
@@ -590,7 +586,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
 
   Redis::Database db(this, ns);
   uint64_t size, total_size = 0;
-  uint8_t include_both =
+  rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
     if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) || cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
@@ -647,7 +643,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   return Status::OK();
 }
 
-bool Storage::ShiftReplId(void) {
+bool Storage::ShiftReplId() {
   const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const int charset_len = strlen(charset);
 
@@ -699,7 +695,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
         }
       }
     };
-    std::string GetReplId(void) { return replid_in_wal_; }
+    std::string GetReplId() { return replid_in_wal_; }
 
    private:
     std::string replid_in_wal_;
@@ -712,7 +708,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
   return write_batch_handler.GetReplId();
 }
 
-std::string Storage::GetReplIdFromDbEngine(void) {
+std::string Storage::GetReplIdFromDbEngine() {
   std::string replid_in_db;
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   auto s = db_->Get(rocksdb::ReadOptions(), cf, kReplicationIdKey, &replid_in_db);
@@ -770,7 +766,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   // Get checkpoint file list
   std::vector<std::string> result;
   storage->env_->GetChildren(data_files_dir, &result);
-  for (auto f : result) {
+  for (const auto &f : result) {
     if (f == "." || f == "..") continue;
     files->append(f);
     files->push_back(',');
@@ -779,12 +775,12 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   return Status::OK();
 }
 
-bool Storage::ExistCheckpoint(void) {
+bool Storage::ExistCheckpoint() {
   std::lock_guard<std::mutex> lg(checkpoint_mu_);
   return env_->FileExists(config_->checkpoint_dir).ok();
 }
 
-bool Storage::ExistSyncCheckpoint(void) { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
+bool Storage::ExistSyncCheckpoint() { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::string &dir,
                                                    std::vector<std::string> valid_files) {
@@ -794,7 +790,7 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::
 
   std::vector<std::string> tmp_files, files;
   storage->env_->GetChildren(dir, &tmp_files);
-  for (auto file : tmp_files) {
+  for (const auto &file : tmp_files) {
     if (file == "." || file == "..") continue;
     files.push_back(file);
   }
@@ -950,8 +946,7 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   uint64_t size;
   s = storage->env_->GetFileSize(file_path, &size);
   if (!s.ok()) return false;
-  std::unique_ptr<rocksdb::SequentialFileWrapper> src_reader;
-  src_reader.reset(new rocksdb::SequentialFileWrapper(src_file.get()));
+  auto src_reader = std::make_unique<rocksdb::SequentialFileWrapper>(src_file.get());
 
   char buffer[4096];
   Slice slice;

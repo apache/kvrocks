@@ -113,8 +113,10 @@ $ ./build/kvrocks -c kvrocks.conf
 
 ### Running kvrocks using Docker
 
-```
-$ docker run -it -p 6666:6666 kvrocks/kvrocks
+```shell
+$ docker run -it -p 6666:6666 apache/kvrocks
+# or get the nightly image:
+$ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```
 
 ### Connect kvrocks service
@@ -130,8 +132,8 @@ $ redis-cli -p 6666
 
 ```shell
 $ ./x.py build --unittest
-$ cd build
-$ ./unittest
+$ ./x.py test cpp # run C++ unit tests
+$ ./x.py test go # run Golang (unit and integration) test cases
 ```
 
 ### Supported platforms

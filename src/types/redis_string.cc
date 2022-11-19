@@ -23,7 +23,6 @@
 #include <cmath>
 #include <limits>
 #include <string>
-#include <utility>
 
 #include "parse_util.h"
 
@@ -135,11 +134,8 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
   }
   std::vector<Slice> slice_keys;
   slice_keys.reserve(ns_keys.size());
-  // don't use range-based for loop here, coz the slice member
-  // would refer the address instead of copy the value, and use
-  // range-based for loop may cause all members refer to the same addr
-  for (size_t i = 0; i < ns_keys.size(); i++) {
-    slice_keys.emplace_back(ns_keys[i]);
+  for (const auto &ns_key : ns_keys) {
+    slice_keys.emplace_back(ns_key);
   }
   return getValues(slice_keys, values);
 }
@@ -399,6 +395,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
 
   int exists;
   std::vector<Slice> keys;
+  keys.reserve(pairs.size());
   for (StringPair pair : pairs) {
     keys.emplace_back(pair.key);
   }
@@ -466,7 +463,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     raw_value.append(new_value);
     auto write_status = updateRawValue(ns_key, raw_value);
     if (!write_status.ok()) {
-      return s;
+      return write_status;
     }
     *ret = 1;
   }
@@ -498,7 +495,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
     auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
                                           storage_->GetCFHandle(Engine::kMetadataColumnFamilyName), ns_key);
     if (!delete_status.ok()) {
-      return s;
+      return delete_status;
     }
     *ret = 1;
   }

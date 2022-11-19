@@ -195,7 +195,7 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
   }
 }
 
-void Connection::UnSubscribeAll(unsubscribe_callback reply) {
+void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
   if (subscribe_channels_.empty()) {
     if (reply != nullptr) reply("", subcribe_patterns_.size());
     return;
@@ -232,7 +232,7 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
   }
 }
 
-void Connection::PUnSubscribeAll(unsubscribe_callback reply) {
+void Connection::PUnSubscribeAll(const unsubscribe_callback &reply) {
   if (subcribe_patterns_.empty()) {
     if (reply != nullptr) reply("", subscribe_channels_.size());
     return;
@@ -361,7 +361,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
     current_cmd_->SetArgs(cmd_tokens);
-    s = current_cmd_->Parse(cmd_tokens);
+    s = current_cmd_->Parse();
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       Reply(Redis::Error("ERR " + s.Msg()));
@@ -411,7 +411,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
-    svr_->SlowlogPushEntryIfNeeded(current_cmd_->Args(), duration);
+    svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);
 

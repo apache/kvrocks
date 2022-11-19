@@ -51,11 +51,10 @@ const char *errNotSetLevelCompactionDynamicLevelBytes =
 
 const char *kDefaultBindAddress = "127.0.0.1";
 
-configEnum compression_type_enum[] = {{"no", rocksdb::CompressionType::kNoCompression},
-                                      {"snappy", rocksdb::CompressionType::kSnappyCompression},
-                                      {"lz4", rocksdb::CompressionType::kLZ4Compression},
-                                      {"zstd", rocksdb::CompressionType::kZSTD},
-                                      {nullptr, 0}};
+configEnum compression_type_enum[] = {
+    {"no", rocksdb::CompressionType::kNoCompression},     {"snappy", rocksdb::CompressionType::kSnappyCompression},
+    {"lz4", rocksdb::CompressionType::kLZ4Compression},   {"zstd", rocksdb::CompressionType::kZSTD},
+    {"zlib", rocksdb::CompressionType::kZlibCompression}, {nullptr, 0}};
 
 configEnum supervised_mode_enum[] = {{"no", kSupervisedNone},
                                      {"auto", kSupervisedAutoDetect},
@@ -149,7 +148,7 @@ Config::Config() {
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
-      {"rename-command", true, new StringField(&rename_command_, "")},
+      {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
@@ -273,23 +272,26 @@ void Config::initFieldValidator() {
        }},
       {"rename-command",
        [](const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> args = Util::Split(v, " \t");
-         if (args.size() != 2) {
-           return Status(Status::NotOK, "Invalid rename-command format");
-         }
-         auto commands = Redis::GetCommands();
-         auto cmd_iter = commands->find(Util::ToLower(args[0]));
-         if (cmd_iter == commands->end()) {
-           return Status(Status::NotOK, "No such command in rename-command");
-         }
-         if (args[1] != "\"\"") {
-           auto new_command_name = Util::ToLower(args[1]);
-           if (commands->find(new_command_name) != commands->end()) {
-             return Status(Status::NotOK, "Target command name already exists");
+         std::vector<std::string> all_args = Util::Split(v, "\n");
+         for (auto &p : all_args) {
+           std::vector<std::string> args = Util::Split(p, " \t");
+           if (args.size() != 2) {
+             return Status(Status::NotOK, "Invalid rename-command format");
            }
-           (*commands)[new_command_name] = cmd_iter->second;
+           auto commands = Redis::GetCommands();
+           auto cmd_iter = commands->find(Util::ToLower(args[0]));
+           if (cmd_iter == commands->end()) {
+             return Status(Status::NotOK, "No such command in rename-command");
+           }
+           if (args[1] != "\"\"") {
+             auto new_command_name = Util::ToLower(args[1]);
+             if (commands->find(new_command_name) != commands->end()) {
+               return Status(Status::NotOK, "Target command name already exists");
+             }
+             (*commands)[new_command_name] = cmd_iter->second;
+           }
+           commands->erase(cmd_iter);
          }
-         commands->erase(cmd_iter);
          return Status::OK();
        }},
   };
@@ -351,8 +353,9 @@ void Config::initFieldCallback() {
            previous_backup = std::move(backup_dir);
            backup_dir = v;
          }
-         if (!previous_backup.empty()) {
-           LOG(INFO) << "change backup dir from " << backup_dir << " to " << v;
+         if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
+           // LOG(INFO) should be called after log is initialized and server is loaded.
+           LOG(INFO) << "change backup dir from " << previous_backup << " to " << v;
          }
          return Status::OK();
        }},
@@ -718,12 +721,19 @@ Status Config::Load(const CLIOptions &opts) {
   return finish();
 }
 
-void Config::Get(std::string key, std::vector<std::string> *values) {
+void Config::Get(const std::string &key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || Util::ToLower(key) == iter.first) {
-      values->emplace_back(iter.first);
-      values->emplace_back(iter.second->ToString());
+      if (iter.second->IsMultiConfig()) {
+        for (const auto &p : Util::Split(iter.second->ToString(), "\n")) {
+          values->emplace_back(iter.first);
+          values->emplace_back(p);
+        }
+      } else {
+        values->emplace_back(iter.first);
+        values->emplace_back(iter.second->ToString());
+      }
     }
   }
 }
@@ -754,8 +764,8 @@ Status Config::Rewrite() {
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
   for (const auto &iter : fields_) {
-    if (iter.first == "rename-command") {
-      // We should NOT overwrite the rename command since it cannot be rewritten in-flight,
+    if (iter.second->IsMultiConfig()) {
+      // We should NOT overwrite the commands which are MultiConfig since it cannot be rewritten in-flight,
       // so skip it here to avoid rewriting it as new item.
       continue;
     }

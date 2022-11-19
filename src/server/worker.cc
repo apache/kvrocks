@@ -157,7 +157,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
-    write(fd, err_msg.data(), err_msg.size());
+    Util::SockSend(fd, err_msg);
     conn->Close();
     return;
   }
@@ -185,7 +185,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   Status status = worker->AddConnection(conn);
   if (!status.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + status.Msg());
-    write(fd, err_msg.data(), err_msg.size());
+    Util::SockSend(fd, err_msg);
     conn->Close();
     return;
   }
@@ -423,7 +423,7 @@ std::string Worker::GetClientsStr() {
   return output;
 }
 
-void Worker::KillClient(Redis::Connection *self, uint64_t id, std::string addr, uint64_t type, bool skipme,
+void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
                         int64_t *killed) {
   std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &iter : conns_) {
@@ -458,7 +458,7 @@ void Worker::KickoutIdleClients(int timeout) {
     while (iterations--) {
       if (iter == conns_.end()) iter = conns_.begin();
       if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
-        to_be_killed_conns.emplace_back(std::make_pair(iter->first, iter->second->GetID()));
+        to_be_killed_conns.emplace_back(iter->first, iter->second->GetID());
       }
       iter++;
     }

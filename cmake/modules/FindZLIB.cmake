@@ -15,18 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# used for `find_package(ZLIB)` mechanism in rocksdb
 
-include(cmake/utils.cmake)
+if(zlib_SOURCE_DIR)
+  message(STATUS "Found zlib in ${zlib_SOURCE_DIR}")
 
-FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.6.0
-  MD5=1b246d4d0e8a011d33e0813b256198ef
-)
-
-FetchContent_MakeAvailableWithArgs(glog
-  WITH_GFLAGS=OFF
-  WITH_GTEST=OFF
-  BUILD_SHARED_LIBS=OFF
-  WITH_UNWIND=${ENABLE_UNWIND}
-)
+  add_library(zlib_with_headers INTERFACE) # rocksdb use it
+  target_include_directories(zlib_with_headers INTERFACE $<BUILD_INTERFACE:${zlib_SOURCE_DIR}> $<BUILD_INTERFACE:${zlib_BINARY_DIR}>)
+  target_link_libraries(zlib_with_headers INTERFACE zlibstatic)
+  add_library(ZLIB::ZLIB ALIAS zlib_with_headers)
+  install(TARGETS zlibstatic zlib_with_headers EXPORT RocksDBTargets) # export for install(...)
+endif()

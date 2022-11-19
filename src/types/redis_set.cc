@@ -308,8 +308,8 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
 
   std::map<std::string, bool> union_members;
   std::vector<std::string> target_members;
-  for (size_t i = 0; i < keys.size(); i++) {
-    auto s = Members(keys[i], &target_members);
+  for (const auto &key : keys) {
+    auto s = Members(key, &target_members);
     if (!s.ok()) return s;
     for (const auto &member : target_members) {
       union_members[member] = true;

@@ -186,7 +186,7 @@ Status Server::Start() {
       }
     }
   });
-
+  memory_startup_use_ = Stats::GetMemoryRSS();
   LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();
@@ -212,7 +212,7 @@ void Server::Join() {
   if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 
-Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
+Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {
   std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
@@ -230,7 +230,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   // replication, and uses 'listen-port + 1' as thread listening port.
   uint32_t master_listen_port = port;
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
-  replication_thread_ = std::unique_ptr<ReplicationThread>(new ReplicationThread(host, master_listen_port, this));
+  replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
@@ -403,7 +403,7 @@ void Server::GetChannelsByPattern(const std::string &pattern, std::vector<std::s
   }
 }
 
-void Server::ListChannelSubscribeNum(std::vector<std::string> channels,
+void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                      std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   for (const auto &chan : channels) {
@@ -509,7 +509,7 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
     }
 
     for (auto it = iter->second.begin(); it != iter->second.end();) {
-      auto consumer = *it;
+      const auto &consumer = *it;
       if (conn->GetFD() == consumer->fd && conn->Owner() == consumer->owner) {
         iter->second.erase(it);
         if (iter->second.empty()) {
@@ -818,6 +818,7 @@ void Server::GetMemoryInfo(std::string *info) {
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
+  string_stream << "used_memory_startup:" << memory_startup_use_ << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1320,7 +1321,7 @@ std::string Server::GetClientsStr() {
   return clients;
 }
 
-void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme,
+void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                         Redis::Connection *conn) {
   *killed = 0;
 

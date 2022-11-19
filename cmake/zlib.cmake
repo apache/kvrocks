@@ -19,14 +19,9 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.6.0
-  MD5=1b246d4d0e8a011d33e0813b256198ef
+FetchContent_DeclareGitHubWithMirror(zlib
+  madler/zlib v1.2.13
+  MD5=fdedf0c8972a04a7c153dd73492d2d91
 )
 
-FetchContent_MakeAvailableWithArgs(glog
-  WITH_GFLAGS=OFF
-  WITH_GTEST=OFF
-  BUILD_SHARED_LIBS=OFF
-  WITH_UNWIND=${ENABLE_UNWIND}
-)
+FetchContent_MakeAvailableWithArgs(zlib)

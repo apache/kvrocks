@@ -216,17 +216,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
 }
 
 // NOTE: fd should be blocking here
-Status SockSend(int fd, const std::string &data) {
-  ssize_t n = 0;
-  while (n < static_cast<ssize_t>(data.size())) {
-    ssize_t nwritten = write(fd, data.c_str() + n, data.size() - n);
-    if (nwritten == -1) {
-      return Status(Status::NotOK, strerror(errno));
-    }
-    n += nwritten;
-  }
-  return Status::OK();
-}
+Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 
 // Implements SockSendFileCore to transfer data between file descriptors and
 // avoid transferring data to and from user space.
@@ -369,7 +359,7 @@ std::string ToLower(std::string in) {
   return in;
 }
 
-bool CaseInsensitiveCompare(const std::string &lhs, const std::string &rhs) {
+bool EqualICase(std::string_view lhs, std::string_view rhs) {
   return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(),
                                                 [](char l, char r) { return std::tolower(l) == std::tolower(r); });
 }
@@ -465,7 +455,7 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
           patternLen--;
         }
         match = 0;
-        while (1) {
+        while (true) {
           if (pattern[0] == '\\' && patternLen >= 2) {
             pattern++;
             patternLen--;
@@ -623,7 +613,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
           tokens.clear();
           return tokens;
         }
-        tokens.emplace_back(std::string(start, start + bulk_len));
+        tokens.emplace_back(start, start + bulk_len);
         start += bulk_len + 2;
         state = stateBulkLen;
         break;
@@ -672,4 +662,21 @@ int aeWait(int fd, int mask, uint64_t timeout) {
     return retval;
   }
 }
+
+template <auto syscall, typename... Args>
+Status WriteImpl(int fd, std::string_view data, Args &&...args) {
+  ssize_t n = 0;
+  while (n < static_cast<ssize_t>(data.size())) {
+    ssize_t nwritten = syscall(fd, data.data() + n, data.size() - n, std::forward<Args>(args)...);
+    if (nwritten == -1) {
+      return Status::FromErrno();
+    }
+    n += nwritten;
+  }
+  return Status::OK();
+}
+
+Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
+
+Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
 }  // namespace Util

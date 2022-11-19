@@ -53,7 +53,8 @@ SEMVER_REGEX = re.compile(
     re.VERBOSE,
 )
 
-def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> Popen:
+
+def run(*args: str, msg: Optional[str] = None, verbose: bool = False, **kwargs: Any) -> Popen:
     sys.stdout.flush()
     if verbose:
         print(f"$ {' '.join(args)}")
@@ -68,14 +69,18 @@ def run(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any)
 
     return p
 
-def run_pipe(*args: str, msg: Optional[str]=None, verbose: bool=False, **kwargs: Any) -> TextIO:
-    p = run(*args, msg=msg, verbose=verbose, stdout=PIPE, universal_newlines=True, **kwargs)
-    return p.stdout # type: ignore
 
-def find_command(command: str, msg: Optional[str]=None) -> str:
+def run_pipe(*args: str, msg: Optional[str] = None, verbose: bool = False, **kwargs: Any) -> TextIO:
+    p = run(*args, msg=msg, verbose=verbose, stdout=PIPE, universal_newlines=True, **kwargs)
+    return p.stdout  # type: ignore
+
+
+def find_command(command: str, msg: Optional[str] = None) -> str:
     return run_pipe("which", command, msg=msg).read().strip()
 
-def check_version(current: str, required: Tuple[int, int, int], prog_name: Optional[str] = None) -> Tuple[int, int, int]:
+
+def check_version(current: str, required: Tuple[int, int, int], prog_name: Optional[str] = None) -> Tuple[
+    int, int, int]:
     require_version = '.'.join(map(str, required))
     semver_match = SEMVER_REGEX.match(current)
     if semver_match is None:
@@ -87,7 +92,9 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
-def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str], skip_build: bool) -> None:
+
+def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
+          skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -95,7 +102,7 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
 
     output = run_pipe(cmake, "-version")
     output = run_pipe("head", "-n", "1", stdin=output)
-    output = run_pipe("sed", "s/[^0-9.]*//g", stdin=output)
+    output = run_pipe("awk", "{print $(NF)}", stdin=output)
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
@@ -122,6 +129,7 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
         target.append("unittest")
     run(cmake, "--build", ".", f"-j{jobs}", "-t", *target, verbose=True, cwd=dir)
 
+
 def get_source_files() -> List[str]:
     return [
         *glob("src/**/*.h", recursive=True),
@@ -131,6 +139,7 @@ def get_source_files() -> List[str]:
         *glob("tools/kvrocks2redis/**/*.h", recursive=True),
         *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
     ]
+
 
 def clang_format(clang_format_path: str, fix: bool = False) -> None:
     command = find_command(clang_format_path, msg="clang-format is required")
@@ -156,6 +165,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
 
     run(command, *options, *sources, verbose=True, cwd=basedir)
 
+
 def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: str) -> None:
     # use the run-clang-tidy Python script provided by LLVM Clang
     run_command = find_command(run_clang_tidy_path, msg="run-clang-tidy is required")
@@ -175,16 +185,19 @@ def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: s
 
     run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
 
+
 def golangci_lint() -> None:
     go = find_command('go', msg='go is required for testing')
     gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
     bindir = Path(gopath).absolute() / 'bin'
     binpath = bindir / 'golangci-lint'
     if not binpath.exists():
-        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh', verbose=True)
+        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh',
+                          verbose=True)
         run('sh', '-s', '--', '-b', str(bindir), 'v1.49.0', verbose=True, stdin=output)
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     run(str(binpath), 'run', '-v', './...', cwd=str(basedir), verbose=True)
+
 
 def write_version(release_version: str) -> str:
     version = release_version.strip()
@@ -195,6 +208,7 @@ def write_version(release_version: str) -> str:
         f.write(version)
 
     return version
+
 
 def package_source(release_version: str) -> None:
     # 0. Write input version to VERSION file
@@ -221,12 +235,14 @@ def package_source(release_version: str) -> None:
     with open(f'{tarball}.sha512', 'w+') as f:
         f.write(payload)
 
+
 def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) -> None:
     fpm = find_command('fpm', msg=f'fpm is required for {package_type} packaging')
 
     version = write_version(release_version)
 
-    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, skip_build=False, compiler='auto', cmake_path='cmake', D=[])
+    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, skip_build=False, compiler='auto',
+          cmake_path='cmake', D=[])
 
     package_dir = Path(dir) / 'package-fpm'
     makedirs(str(package_dir), exist_ok=False)
@@ -258,27 +274,32 @@ def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) ->
 
     run(fpm, *fpm_opts, verbose=True)
 
+
 def test_cpp(dir: str, rest: List[str]) -> None:
     basedir = Path(dir).absolute()
     unittest = basedir / 'unittest'
 
     run(str(unittest), *rest, cwd=str(basedir), verbose=True)
 
-def test_go(dir: str, rest: List[str]) -> None:
+
+def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
+    find_command(cli_path, msg='redis-cli is required for testing')
 
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    worksapce = basedir / 'workspace'
+    workspace = basedir / 'workspace'
 
     args = [
         'test', '-bench=.', './...',
         f'-binPath={binpath}',
-        f'-workspace={worksapce}',
+        f'-cliPath={cli_path}',
+        f'-workspace={workspace}',
         *rest
     ]
 
     run(go, *args, cwd=str(basedir), verbose=True)
+
 
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -291,7 +312,8 @@ if __name__ == '__main__':
         description="Format source code",
         help="Format source code")
     parser_format.set_defaults(func=lambda **args: clang_format(**args, fix=True))
-    parser_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
+    parser_format.add_argument('--clang-format-path', default='clang-format',
+                               help="path of clang-format used to check source")
 
     parser_check = subparsers.add_parser(
         'check',
@@ -304,7 +326,8 @@ if __name__ == '__main__':
         description="Check source format by clang-format",
         help="Check source format by clang-format")
     parser_check_format.set_defaults(func=lambda **args: clang_format(**args, fix=False))
-    parser_check_format.add_argument('--clang-format-path', default='clang-format', help="path of clang-format used to check source")
+    parser_check_format.add_argument('--clang-format-path', default='clang-format',
+                                     help="path of clang-format used to check source")
     parser_check_tidy = parser_check_subparsers.add_parser(
         'tidy',
         description="Check code with clang-tidy",
@@ -312,10 +335,13 @@ if __name__ == '__main__':
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
     parser_check_tidy.set_defaults(func=clang_tidy)
-    parser_check_tidy.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory to store cmake-generated and build files")
+    parser_check_tidy.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
+                                   help="directory to store cmake-generated and build files")
     parser_check_tidy.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
-    parser_check_tidy.add_argument('--clang-tidy-path', default='clang-tidy', help="path of clang-tidy used to check source")
-    parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy', help="path of run-clang-tidy used to check source")
+    parser_check_tidy.add_argument('--clang-tidy-path', default='clang-tidy',
+                                   help="path of clang-tidy used to check source")
+    parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy',
+                                   help="path of run-clang-tidy used to check source")
     parser_check_golangci_lint = parser_check_subparsers.add_parser(
         'golangci-lint',
         description="Check code with golangci-lint (https://golangci-lint.run/)",
@@ -330,15 +356,19 @@ if __name__ == '__main__':
         help="Build executables to BUILD_DIR [default: build]",
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
-    parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory to store cmake-generated and build files")
+    parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
+                              help="directory to store cmake-generated and build files")
     parser_build.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
-    parser_build.add_argument('--ghproxy', default=False, action='store_true', help='use https://ghproxy.com to fetch dependencies')
+    parser_build.add_argument('--ghproxy', default=False, action='store_true',
+                              help='use https://ghproxy.com to fetch dependencies')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
-    parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'), help="compiler used to build kvrocks")
+    parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),
+                              help="compiler used to build kvrocks")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
     parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
-    parser_build.add_argument('--skip-build', default=False, action='store_true', help='runs only the configure stage, skip the build stage')
+    parser_build.add_argument('--skip-build', default=False, action='store_true',
+                              help='runs only the configure stage, skip the build stage')
     parser_build.set_defaults(func=build)
 
     parser_package = subparsers.add_parser(
@@ -354,16 +384,20 @@ if __name__ == '__main__':
         description="Package the source tarball",
         help="Package the source tarball",
     )
-    parser_package_source.add_argument('-v', '--release-version', required=True, metavar='VERSION', help='current releasing version')
+    parser_package_source.add_argument('-v', '--release-version', required=True, metavar='VERSION',
+                                       help='current releasing version')
     parser_package_source.set_defaults(func=package_source)
     parser_package_fpm = parser_package_subparsers.add_parser(
         'fpm',
         description="Package built binaries to an rpm/deb package",
         help="Package built binaries to an rpm/deb package",
     )
-    parser_package_fpm.add_argument('-v', '--release-version', required=True, metavar='VERSION', help='current releasing version')
-    parser_package_fpm.add_argument('-t', '--package-type', required=True, choices=('rpm', 'deb'), help='package type for fpm to build')
-    parser_package_fpm.add_argument('dir', metavar='BUILD_DIR', help="directory to store cmake-generated and build files")
+    parser_package_fpm.add_argument('-v', '--release-version', required=True, metavar='VERSION',
+                                    help='current releasing version')
+    parser_package_fpm.add_argument('-t', '--package-type', required=True, choices=('rpm', 'deb'),
+                                    help='package type for fpm to build')
+    parser_package_fpm.add_argument('dir', metavar='BUILD_DIR',
+                                    help="directory to store cmake-generated and build files")
     parser_package_fpm.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
     parser_package_fpm.set_defaults(func=package_fpm)
 
@@ -381,7 +415,8 @@ if __name__ == '__main__':
         description="Test kvrocks via cpp unit tests",
         help="Test kvrocks via cpp unit tests",
     )
-    parser_test_cpp.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_cpp.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
+                                 help="directory including kvrocks build files")
     parser_test_cpp.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to cpp unittest")
     parser_test_cpp.set_defaults(func=test_cpp)
 
@@ -390,7 +425,9 @@ if __name__ == '__main__':
         description="Test kvrocks via go test cases",
         help="Test kvrocks via go test cases",
     )
-    parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build', help="directory including kvrocks build files")
+    parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
+                                help="directory including kvrocks build files")
+    parser_test_go.add_argument('--cli-path', default='redis-cli', help="path of redis-cli to test kvrocks")
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
 

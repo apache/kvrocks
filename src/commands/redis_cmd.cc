@@ -24,10 +24,11 @@
 #include <glog/logging.h>
 #include <sys/socket.h>
 
-#include <algorithm>
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <limits>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -36,6 +37,7 @@
 #include "cluster/redis_slot.h"
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
+#include "command_parser.h"
 #include "fd_util.h"
 #include "parse_util.h"
 #include "server/redis_connection.h"
@@ -74,6 +76,9 @@ const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 const char *errTimeoutIsNegative = "timeout is negative";
 const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
+const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
+const char *errScoreIsNotValidFloat = "score is not a valid float";
+const char *errValueIsNotFloat = "value is not a valid float";
 
 enum class AuthResult {
   OK,
@@ -100,76 +105,38 @@ AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string 
   return AuthResult::OK;
 }
 
-Status ParseTTL(const std::vector<std::string> &args, std::unordered_map<std::string, bool> *white_list, int *result) {
-  int ttl = 0;
-  int64_t expire = 0;
-  bool last_arg = false;
-  bool has_ex = false, has_exat = false, has_pxat = false, has_px = false;
-  for (size_t i = 0; i < args.size(); i++) {
-    last_arg = (i == args.size() - 1);
-    std::string opt = Util::ToLower(args[i]);
-    if (opt == "ex" && !last_arg) {
-      has_ex = 1;
-      auto parse_result = ParseInt<int>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      ttl = *parse_result;
-      if (ttl <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "exat" && !last_arg) {
-      has_exat = 1;
-      auto parse_result = ParseInt<int64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      expire = *parse_result;
-      if (expire <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    } else if (opt == "pxat" && !last_arg) {
-      has_pxat = 1;
-      auto parse_result = ParseInt<uint64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      uint64_t expire_ms = *parse_result;
-      if (expire_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      if (expire_ms < 1000) {
-        expire = 1;
-      } else {
-        expire = static_cast<int64_t>(expire_ms / 1000);
-      }
-    } else if (opt == "px" && !last_arg) {
-      has_px = 1;
-      int64_t ttl_ms = 0;
-      auto parse_result = ParseInt<int64_t>(args[++i], 10);
-      if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      ttl_ms = *parse_result;
-      if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      if (ttl_ms > 0 && ttl_ms < 1000) {
-        ttl = 1;  // round up the pttl to second
-      } else {
-        ttl = static_cast<int>(ttl_ms / 1000);
-      }
-    } else {
-      auto iter = white_list->find(opt);
-      if (iter != white_list->end()) {
-        iter->second = true;
-      } else {
-        return Status(Status::NotOK, errInvalidSyntax);
-      }
-    }
-  }
-  if (has_px + has_ex + has_exat + has_pxat > 1) {
-    return Status(Status::NotOK, errInvalidSyntax);
-  }
-  if (!ttl && expire) {
-    int64_t now = Util::GetTimeStamp();
-    *result = expire - now;
+template <typename T>
+T TTLMsToS(T ttl) {
+  if (ttl <= 0) {
+    return ttl;
+  } else if (ttl < 1000) {
+    return 1;
   } else {
-    *result = ttl;
+    return ttl / 1000;
   }
-  return Status::OK();
+}
+
+int ExpireToTTL(int64_t expire) {
+  int64_t now = Util::GetTimeStamp();
+  return static_cast<int>(expire - now);
+}
+
+template <typename T>
+constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
+
+template <typename T>
+StatusOr<std::optional<int>> ParseTTL(CommandParser<T> &parser, std::string_view &curr_flag) {
+  if (parser.EatEqICaseFlag("EX", curr_flag)) {
+    return GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE<int>));
+  } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
+    return ExpireToTTL(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
+  } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
+    return TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
+  } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
+    return ExpireToTTL(TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>))));
+  } else {
+    return std::nullopt;
+  }
 }
 
 class CommandAuth : public Commander {
@@ -206,9 +173,9 @@ class CommandNamespace : public Commander {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
         auto tokens = config->tokens;
-        for (auto iter = tokens.begin(); iter != tokens.end(); iter++) {
-          namespaces.emplace_back(iter->second);  // namespace
-          namespaces.emplace_back(iter->first);   // token
+        for (auto &token : tokens) {
+          namespaces.emplace_back(token.second);  // namespace
+          namespaces.emplace_back(token.first);   // token
         }
         namespaces.emplace_back(kDefaultNamespace);
         namespaces.emplace_back(config->requirepass);
@@ -392,16 +359,20 @@ class CommandGet : public Commander {
 class CommandGetEx : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_ = {{"persist", false}};
-    auto s = ParseTTL(std::vector<std::string>(args.begin() + 2, args.end()), &white_list_, &ttl_);
-    if (!s.IsOK()) {
-      return s;
+    CommandParser parser(args, 2);
+    std::string_view ttl_flag;
+    while (parser.Good()) {
+      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
+        ttl_ = *v;
+      } else if (parser.EatEqICaseFlag("PERSIST", ttl_flag)) {
+        persist_ = true;
+      } else {
+        return parser.InvalidSyntax();
+      }
     }
-    if (white_list_["persist"] && args.size() > 3) {
-      return Status(Status::NotOK, errInvalidSyntax);
-    }
-    return Commander::Parse(args);
+    return Status::OK();
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
@@ -425,7 +396,7 @@ class CommandGetEx : public Commander {
 
  private:
   int ttl_ = 0;
-  std::unordered_map<std::string, bool> white_list_;
+  bool persist_ = false;
 };
 
 class CommandStrlen : public Commander {
@@ -581,16 +552,23 @@ class CommandAppend : public Commander {
 class CommandSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    white_list_ = {{"nx", false}, {"xx", false}};
-    auto s = ParseTTL(std::vector<std::string>(args.begin() + 3, args.end()), &white_list_, &ttl_);
-    if (white_list_["nx"] && white_list_["xx"]) {
-      return Status(Status::NotOK, errInvalidSyntax);
+    CommandParser parser(args, 3);
+    std::string_view ttl_flag, set_flag;
+    while (parser.Good()) {
+      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
+        ttl_ = *v;
+      } else if (parser.EatEqICaseFlag("NX", set_flag)) {
+        set_flag_ = NX;
+      } else if (parser.EatEqICaseFlag("XX", set_flag)) {
+        set_flag_ = XX;
+      } else {
+        return parser.InvalidSyntax();
+      }
     }
-    if (!s.IsOK()) {
-      return s;
-    }
-    return Commander::Parse(args);
+
+    return Status::OK();
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
@@ -602,9 +580,9 @@ class CommandSet : public Commander {
       return Status::OK();
     }
 
-    if (white_list_["nx"]) {
+    if (set_flag_ == NX) {
       s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
-    } else if (white_list_["xx"]) {
+    } else if (set_flag_ == XX) {
       s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
     } else {
       s = string_db.SetEX(args_[1], args_[2], ttl_);
@@ -613,7 +591,7 @@ class CommandSet : public Commander {
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    if ((white_list_["nx"] || white_list_["xx"]) && !ret) {
+    if (set_flag_ != NONE && !ret) {
       *output = Redis::NilString();
     } else {
       *output = Redis::SimpleString("OK");
@@ -623,7 +601,7 @@ class CommandSet : public Commander {
 
  private:
   int ttl_ = 0;
-  std::unordered_map<std::string, bool> white_list_;
+  enum { NONE, NX, XX } set_flag_ = NONE;
 };
 
 class CommandSetEX : public Commander {
@@ -721,6 +699,7 @@ class CommandMSetNX : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     std::vector<StringPair> kvs;
@@ -836,43 +815,18 @@ class CommandDecrBy : public Commander {
 class CommandCAS : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool last_arg;
-    bool ex_exist = false, px_exist = false;
-    for (size_t i = 4; i < args.size(); i++) {
-      last_arg = (i == args.size() - 1);
-      std::string opt = Util::ToLower(args[i]);
-      if (opt == "ex") {
-        ex_exist = true;
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args_[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        ttl_ = *parse_result;
-        if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-      } else if (opt == "px") {
-        px_exist = true;
-        if (last_arg) return Status(Status::NotOK, errWrongNumOfArguments);
-        auto parse_result = ParseInt<int>(args[++i].c_str(), 10);
-        if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
-        }
-        auto ttl_ms = *parse_result;
-        if (ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-        if (ttl_ms > 0 && ttl_ms < 1000) {
-          // round up the pttl to second
-          ttl_ = 1;
-        } else {
-          ttl_ = static_cast<int>(ttl_ms / 1000);
-        }
+    CommandParser parser(args, 4);
+    std::string_view flag;
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("EX", flag)) {
+        ttl_ = GET_OR_RET(parser.TakeInt<int>(TTL_RANGE<int>));
+      } else if (parser.EatEqICaseFlag("PX", flag)) {
+        ttl_ = static_cast<int>(TTLMsToS(GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>))));
       } else {
-        return Status(Status::NotOK, errInvalidSyntax);
+        return parser.InvalidSyntax();
       }
     }
-    if (ex_exist + px_exist > 1) {
-      return Status(Status::NotOK, errInvalidSyntax);
-    }
-    return Commander::Parse(args);
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -920,7 +874,7 @@ class CommandDel : public Commander {
   }
 };
 
-Status getBitOffsetFromArgument(std::string arg, uint32_t *offset) {
+Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
   auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -937,6 +891,7 @@ class CommandGetBit : public Commander {
     if (!s.IsOK()) return s;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     bool bit;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
@@ -1081,7 +1036,7 @@ class CommandBitOp : public Commander {
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> op_keys;
     for (uint64_t i = 3; i < args_.size(); i++) {
-      op_keys.emplace_back(Slice(args_[i]));
+      op_keys.emplace_back(args_[i]);
     }
     rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
     if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
@@ -1174,20 +1129,20 @@ class CommandExists : public Commander {
   }
 };
 
+StatusOr<int> TTLToTimestamp(int ttl) {
+  int64_t now = Util::GetTimeStamp();
+  if (ttl >= INT32_MAX - now) {
+    return {Status::RedisParseErr, "the expire time was overflow"};
+  }
+
+  return ttl + now;
+}
+
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now = Util::GetTimeStamp();
-    auto parse_result = ParseInt<int>(args[2], 10);
-    if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
-    }
-    seconds_ = *parse_result;
-    if (seconds_ >= INT32_MAX - now) {
-      return Status(Status::RedisParseErr, "the expire time was overflow");
-    }
-    seconds_ += now;
-    return Commander::Parse(args);
+    seconds_ = GET_OR_RET(TTLToTimestamp(GET_OR_RET(ParseInt<int>(args[2], 10))));
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1208,21 +1163,8 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    int64_t now = Util::GetTimeStamp();
-    auto ttl_ms = ParseInt<int64_t>(args[2], 10);
-    if (!ttl_ms) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
-    }
-    if (*ttl_ms > 0 && *ttl_ms < 1000) {
-      seconds_ = 1;
-    } else {
-      seconds_ = *ttl_ms / 1000;
-      if (seconds_ >= INT32_MAX - now) {
-        return Status(Status::RedisParseErr, "the expire time was overflow");
-      }
-    }
-    seconds_ += now;
-    return Commander::Parse(args);
+    seconds_ = GET_OR_RET(TTLToTimestamp(TTLMsToS(GET_OR_RET(ParseInt<int64_t>(args[2], 10)))));
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -1281,6 +1223,7 @@ class CommandPExpireAt : public Commander {
     timestamp_ = static_cast<int>(*parse_result / 1000);
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = redis.Expire(args_[1], timestamp_);
@@ -1363,7 +1306,7 @@ class CommandHDel : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      fields.emplace_back(Slice(args_[i]));
+      fields.emplace_back(args_[i]);
     }
     rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {
@@ -1458,7 +1401,7 @@ class CommandHMGet : public Commander {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      fields.emplace_back(Slice(args_[i]));
+      fields.emplace_back(args_[i]);
     }
     std::vector<std::string> values;
     std::vector<rocksdb::Status> statuses;
@@ -1484,6 +1427,7 @@ class CommandHMSet : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
@@ -1514,6 +1458,7 @@ class CommandHKeys : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> keys;
+    keys.reserve(field_values.size());
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
@@ -1532,6 +1477,7 @@ class CommandHVals : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> values;
+    values.reserve(field_values.size());
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
@@ -1597,10 +1543,8 @@ class CommandHRange : public Commander {
 
 class CommandPush : public Commander {
  public:
-  CommandPush(bool create_if_missing, bool left) {
-    left_ = left;
-    create_if_missing_ = create_if_missing;
-  }
+  CommandPush(bool create_if_missing, bool left) : left_(left), create_if_missing_(create_if_missing) {}
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> elems;
@@ -1718,8 +1662,12 @@ class CommandRPop : public CommandPop {
 
 class CommandBPop : public Commander {
  public:
-  explicit CommandBPop(bool left) { left_ = left; }
-  ~CommandBPop() {
+  explicit CommandBPop(bool left) : left_(left) {}
+
+  CommandBPop(const CommandBPop &) = delete;
+  CommandBPop &operator=(const CommandBPop &) = delete;
+
+  ~CommandBPop() override {
     if (timer_ != nullptr) {
       event_free(timer_);
       timer_ = nullptr;
@@ -1876,6 +1824,7 @@ class CommandLRem : public Commander {
     count_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     Redis::List list_db(svr->storage_, conn->GetNamespace());
@@ -1903,6 +1852,7 @@ class CommandLInsert : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
     Redis::List list_db(svr->storage_, conn->GetNamespace());
@@ -1930,6 +1880,7 @@ class CommandLRange : public Commander {
     stop_ = *parse_stop;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> elems;
@@ -1962,13 +1913,14 @@ class CommandLLen : public Commander {
 class CommandLIndex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_reuslt = ParseInt<int>(args[2], 10);
-    if (!parse_reuslt) {
+    auto parse_result = ParseInt<int>(args[2], 10);
+    if (!parse_result) {
       return Status(Status::RedisParseErr, errValueNotInteger);
     }
-    index_ = *parse_reuslt;
+    index_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
@@ -1998,6 +1950,7 @@ class CommandLSet : public Commander {
     index_ = *parse_reuslt;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Set(args_[1], index_, args_[3]);
@@ -2025,6 +1978,7 @@ class CommandLTrim : public Commander {
 
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     rocksdb::Status s = list_db.Trim(args_[1], start_, stop_);
@@ -2169,7 +2123,7 @@ class CommandSMIsMember : public Commander {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (size_t i = 2; i < args_.size(); i++) {
-      members.emplace_back(Slice(args_[i]));
+      members.emplace_back(args_[i]);
     }
 
     std::vector<int> exists;
@@ -2201,6 +2155,7 @@ class CommandSPop : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
@@ -2237,6 +2192,7 @@ class CommandSRandMember : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
@@ -2377,38 +2333,89 @@ class CommandSInterStore : public Commander {
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+    unsigned index = 2;
+    parseFlags(args, index);
+    if (auto s = validateFlags(); !s.IsOK()) {
+      return s;
     }
-
+    if (auto left = (args.size() - index); left >= 0) {
+      if (flags_.HasIncr() && left != 2) {
+        return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
+      } else if (left % 2 != 0 || left == 0) {
+        return Status(Status::RedisParseErr, errInvalidSyntax);
+      }
+    }
     try {
-      for (unsigned i = 2; i < args.size(); i += 2) {
+      for (unsigned i = index; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
         if (std::isnan(score)) {
-          return Status(Status::RedisParseErr, "ERR score is not a valid float");
+          return Status(Status::RedisParseErr, errScoreIsNotValidFloat);
         }
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret;
+    double old_score = member_scores_[0].score;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], 0, &member_scores_, &ret);
+    rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = Redis::Integer(ret);
+    if (flags_.HasIncr()) {
+      auto new_score = member_scores_[0].score;
+      if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
+          ret == 0) {  // not the first time using incr && score not changed
+        *output = Redis::NilString();
+        return Status::OK();
+      }
+      *output = Redis::BulkString(Util::Float2String(new_score));
+    } else {
+      *output = Redis::Integer(ret);
+    }
     return Status::OK();
   }
 
  private:
   std::vector<MemberScore> member_scores_;
+  ZAddFlags flags_{0};
+
+  void parseFlags(const std::vector<std::string> &args, unsigned &index);
+  Status validateFlags() const;
 };
+
+void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &index) {
+  std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
+                                                        {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
+  for (unsigned i = 2; i < args.size(); i++) {
+    auto option = Util::ToLower(args[i]);
+    auto it = options.find(option);
+    if (it != options.end()) {
+      flags_.SetFlag(it->second);
+      index++;
+    } else {
+      break;
+    }
+  }
+}
+
+Status CommandZAdd::validateFlags() const {
+  if (!flags_.HasAnyFlags()) {
+    return Status::OK();
+  }
+  if (flags_.HasNX() && flags_.HasXX()) {
+    return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
+  }
+  if ((flags_.HasLT() && flags_.HasGT()) || (flags_.HasLT() && flags_.HasNX()) || (flags_.HasGT() && flags_.HasNX())) {
+    return Status(Status::RedisParseErr, errZSetLTGTNX);
+  }
+  return Status::OK();
+}
 
 class CommandZCount : public Commander {
  public:
@@ -2550,7 +2557,8 @@ class CommandZPopMax : public CommandZPop {
 
 class CommandZRange : public Commander {
  public:
-  explicit CommandZRange(bool reversed = false) { reversed_ = reversed; }
+  explicit CommandZRange(bool reversed = false) : reversed_(reversed) {}
+
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
@@ -2564,20 +2572,21 @@ class CommandZRange : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    std::vector<MemberScore> memeber_scores;
+    std::vector<MemberScore> member_scores;
     uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-    rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &memeber_scores);
+    rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     if (!with_scores_) {
-      output->append(Redis::MultiLen(memeber_scores.size()));
+      output->append(Redis::MultiLen(member_scores.size()));
     } else {
-      output->append(Redis::MultiLen(memeber_scores.size() * 2));
+      output->append(Redis::MultiLen(member_scores.size() * 2));
     }
-    for (const auto &ms : memeber_scores) {
+    for (const auto &ms : member_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
@@ -2675,17 +2684,17 @@ class CommandZRangeByScore : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    std::vector<MemberScore> memeber_scores;
-    rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &memeber_scores, &size);
+    std::vector<MemberScore> member_scores;
+    rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
     if (!with_scores_) {
-      output->append(Redis::MultiLen(memeber_scores.size()));
+      output->append(Redis::MultiLen(member_scores.size()));
     } else {
-      output->append(Redis::MultiLen(memeber_scores.size() * 2));
+      output->append(Redis::MultiLen(member_scores.size() * 2));
     }
-    for (const auto &ms : memeber_scores) {
+    for (const auto &ms : member_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
@@ -2856,7 +2865,7 @@ class CommandZMScore : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (unsigned int i = 2; i < args_.size(); i++) {
-      members.emplace_back(Slice(args_[i]));
+      members.emplace_back(args_[i]);
     }
     std::map<std::string, double> mscores;
     rocksdb::Status s = zset_db.MGet(args_[1], members, &mscores);
@@ -2976,7 +2985,7 @@ class CommandGeoBase : public Commander {
     } else if (Util::ToLower(param) == "mi") {
       distance_unit_ = kDistanceMiles;
     } else {
-      return Status(Status::RedisParseErr, "distance unit para error");
+      return Status(Status::RedisParseErr, "unsupported unit provided. please use M, KM, FT, MI");
     }
     return Status::OK();
   }
@@ -2987,7 +2996,7 @@ class CommandGeoBase : public Commander {
       *longitude = std::stod(longitude_para);
       *latitude = std::stod(latitude_para);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
       return Status(Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para);
@@ -3148,7 +3157,7 @@ class CommandGeoRadius : public CommandGeoBase {
     try {
       radius_ = std::stod(args[4]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
@@ -3177,7 +3186,7 @@ class CommandGeoRadius : public CommandGeoBase {
       } else if (Util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
         auto parse_result = ParseInt<int>(args_[i + 1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, "ERR count is not a valid int");
+          return Status(Status::RedisParseErr, errValueNotInteger);
         }
         count_ = *parse_result;
         i += 2;
@@ -3273,7 +3282,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     try {
       radius_ = std::stod(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "ERR value is not a valid float");
+      return Status(Status::RedisParseErr, errValueIsNotFloat);
     }
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;
@@ -3571,7 +3580,7 @@ class CommandMulti : public Commander {
 class CommandDiscard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (conn->IsFlagEnabled(Connection::kMultiExec) == false) {
+    if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       *output = Redis::Error("ERR DISCARD without MULTI");
       return Status::OK();
     }
@@ -3585,7 +3594,7 @@ class CommandDiscard : public Commander {
 class CommandExec : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (conn->IsFlagEnabled(Connection::kMultiExec) == false) {
+    if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       *output = Redis::Error("ERR EXEC without MULTI");
       return Status::OK();
     }
@@ -3627,7 +3636,7 @@ class CommandCompact : public Commander {
     Status s = svr->AsyncCompactDB(begin_key, end_key);
     if (!s.IsOK()) return s;
     *output = Redis::SimpleString("OK");
-    LOG(INFO) << "Commpact was triggered by manual with executed success";
+    LOG(INFO) << "Compact was triggered by manual with executed success";
     return Status::OK();
   }
 };
@@ -3704,7 +3713,7 @@ class CommandPublish : public Commander {
   }
 };
 
-void SubscribeCommmandReply(std::string *output, std::string name, std::string sub_name, int num) {
+void SubscribeCommandReply(std::string *output, const std::string &name, const std::string &sub_name, int num) {
   output->append(Redis::MultiLen(3));
   output->append(Redis::BulkString(name));
   output->append(sub_name.empty() ? Redis::NilString() : Redis::BulkString(sub_name));
@@ -3716,7 +3725,7 @@ class CommandSubscribe : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
-      SubscribeCommmandReply(output, "subscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      SubscribeCommandReply(output, "subscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3726,13 +3735,14 @@ class CommandUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnSubscribeAll(
-          std::bind(SubscribeCommmandReply, output, "unsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->UnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "unsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
-        SubscribeCommmandReply(output, "unsubscribe", args_[i],
-                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+        SubscribeCommandReply(output, "unsubscribe", args_[i],
+                              conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
     }
     return Status::OK();
@@ -3744,7 +3754,7 @@ class CommandPSubscribe : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
-      SubscribeCommmandReply(output, "psubscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      SubscribeCommandReply(output, "psubscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -3754,13 +3764,14 @@ class CommandPUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnSubscribeAll(
-          std::bind(SubscribeCommmandReply, output, "punsubscribe", std::placeholders::_1, std::placeholders::_2));
+      conn->PUnSubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "punsubscribe", sub_name, num);
+      });
     } else {
       for (unsigned i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);
-        SubscribeCommmandReply(output, "punsubscribe", args_[i],
-                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+        SubscribeCommandReply(output, "punsubscribe", args_[i],
+                              conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
     }
     return Status::OK();
@@ -3786,7 +3797,7 @@ class CommandPubSub : public Commander {
       }
       return Status::OK();
     }
-    return Status(Status::RedisInvalidCmd, "ERR Unknown subcommand or wrong number of arguments");
+    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -3809,7 +3820,7 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    return Status(Status::RedisInvalidCmd, "ERR Unknown subcommand or wrong number of arguments");
+    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
   }
 
  private:
@@ -3822,7 +3833,7 @@ class CommandSlaveOf : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
-    auto port = args[2];
+    const auto &port = args[2];
     if (Util::ToLower(host_) == "no" && Util::ToLower(port) == "one") {
       host_.clear();
       return Status::OK();
@@ -3834,6 +3845,7 @@ class CommandSlaveOf : public Commander {
     port_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
       return Status(Status::RedisExecErr, "can't change to slave in cluster mode");
@@ -3926,7 +3938,7 @@ class CommandPSync : public Commander {
       LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
-      // Or WAL may has nothing when starting from db of old version kvrocks.
+      // Or WAL may have nothing when starting from db of old version kvrocks.
       if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
         *output = "wrong replication id of the last log";
         need_full_sync = true;
@@ -3954,7 +3966,7 @@ class CommandPSync : public Commander {
     Status s = svr->AddSlave(conn, next_repl_seq);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      write(conn->GetFD(), err.c_str(), err.length());
+      Util::SockSend(conn->GetFD(), err);
       conn->EnableFlag(Redis::Connection::kCloseAsync);
       LOG(WARNING) << "Failed to add salve: " << conn->GetAddr() << " to start increment syncing";
     } else {
@@ -4084,8 +4096,7 @@ class CommandClient : public Commander {
       // split by space to get the different fields.
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
-          return Status(Status::RedisInvalidCmd,
-                        "ERR Client names cannot contain spaces, newlines or special characters");
+          return Status(Status::RedisInvalidCmd, "Client names cannot contain spaces, newlines or special characters");
         }
       }
       conn_name_ = args[2];
@@ -4226,7 +4237,7 @@ class CommandDebug : public Commander {
       try {
         second = std::stod(args[2]);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr, "ERR invalid debug sleep time");
+        return Status(Status::RedisParseErr, "invalid debug sleep time");
       }
       microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
       return Status::OK();
@@ -4272,6 +4283,7 @@ class CommandCommand : public Commander {
           return Status::OK();
         }
         std::vector<std::string> keys;
+        keys.reserve(keys_indexes.size());
         for (const auto &key_index : keys_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
@@ -4371,7 +4383,7 @@ class CommandScanBase : public Commander {
     } else if (type == "count") {
       auto parse_result = ParseInt<int>(value, 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, "ERR count param should be type int");
+        return Status(Status::RedisParseErr, "count param should be type int");
       }
       limit = *parse_result;
       if (limit <= 0) {
@@ -4412,6 +4424,7 @@ class CommandScanBase : public Commander {
 class CommandSubkeyScanBase : public CommandScanBase {
  public:
   CommandSubkeyScanBase() : CommandScanBase() {}
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 == 0) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
@@ -4459,6 +4472,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
 class CommandScan : public CommandScanBase {
  public:
   CommandScan() : CommandScanBase() {}
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 != 0) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
@@ -4479,6 +4493,7 @@ class CommandScan : public CommandScanBase {
     }
     return Commander::Parse(args);
   }
+
   std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
@@ -4492,6 +4507,7 @@ class CommandScan : public CommandScanBase {
 
     return Redis::Array(list);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> keys;
@@ -4541,6 +4557,7 @@ class CommandSScan : public CommandSubkeyScanBase {
 class CommandZScan : public CommandSubkeyScanBase {
  public:
   CommandZScan() : CommandSubkeyScanBase() {}
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
@@ -4550,6 +4567,7 @@ class CommandZScan : public CommandSubkeyScanBase {
       return Status(Status::RedisExecErr, s.ToString());
     }
     std::vector<std::string> score_strings;
+    score_strings.reserve(scores.size());
     for (const auto &score : scores) {
       score_strings.emplace_back(Util::Float2String(score));
     }
@@ -4638,8 +4656,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
       if (!s.IsOK()) {
-        const char *message = "-ERR can't create db checkpoint";
-        write(repl_fd, message, strlen(message));
+        Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
         LOG(WARNING) << "[replication] Failed to get full data file info,"
                      << " error: " << s.Msg();
         return;
@@ -4681,7 +4698,7 @@ class CommandFetchFile : public Commander {
       UniqueFD unique_fd{repl_fd};
       svr->IncrFetchFileThread();
 
-      for (auto file : files) {
+      for (const auto &file : files) {
         if (svr->IsStopped()) break;
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
@@ -4704,8 +4721,7 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        uint64_t shortest =
-            static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
+        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
                     << " ms since of sending files too quickly";
@@ -4759,7 +4775,7 @@ class CommandCluster : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled == false) {
+    if (!svr->GetConfig()->cluster_enabled) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }
@@ -4883,7 +4899,7 @@ class CommandClusterX : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled == false) {
+    if (!svr->GetConfig()->cluster_enabled) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }
@@ -5557,7 +5573,7 @@ class CommandXRead : public Commander {
 
     for (size_t i = streams_word_idx + 1; i <= streams_word_idx + number_of_streams; ++i) {
       streams_.push_back(args[i]);
-      auto id_str = args[i + number_of_streams];
+      const auto &id_str = args[i + number_of_streams];
       bool get_latest = id_str == "$";
       latest_marks_.push_back(get_latest);
       StreamEntryID id;
@@ -5623,14 +5639,14 @@ class CommandXRead : public Commander {
   Status sendResults(std::string *output, const std::vector<StreamReadResult> &results) {
     output->append(Redis::MultiLen(results.size()));
 
-    for (size_t i = 0; i < results.size(); ++i) {
+    for (const auto &result : results) {
       output->append(Redis::MultiLen(2));
-      output->append(Redis::BulkString(results[i].name));
-      output->append(Redis::MultiLen(results[i].entries.size()));
-      for (size_t j = 0; j < results[i].entries.size(); ++j) {
+      output->append(Redis::BulkString(result.name));
+      output->append(Redis::MultiLen(result.entries.size()));
+      for (const auto &entry : result.entries) {
         output->append(Redis::MultiLen(2));
-        output->append(Redis::BulkString(results[i].entries[j].key));
-        output->append(Redis::MultiBulkString(results[i].entries[j].values));
+        output->append(Redis::BulkString(entry.key));
+        output->append(Redis::MultiBulkString(entry.values));
       }
     }
 
@@ -5734,14 +5750,14 @@ class CommandXRead : public Commander {
 
     output.append(Redis::MultiLen(results.size()));
 
-    for (size_t i = 0; i < results.size(); ++i) {
+    for (const auto &result : results) {
       output.append(Redis::MultiLen(2));
-      output.append(Redis::BulkString(results[i].name));
-      output.append(Redis::MultiLen(results[i].entries.size()));
-      for (size_t j = 0; j < results[i].entries.size(); ++j) {
+      output.append(Redis::BulkString(result.name));
+      output.append(Redis::MultiLen(result.entries.size()));
+      for (const auto &entry : result.entries) {
         output.append(Redis::MultiLen(2));
-        output.append(Redis::BulkString(results[i].entries[j].key));
-        output.append(Redis::MultiBulkString(results[i].entries[j].values));
+        output.append(Redis::BulkString(entry.key));
+        output.append(Redis::MultiBulkString(entry.values));
       }
     }
 
@@ -5884,252 +5900,256 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
-#define ADD_CMD(name, arity, description, first_key, last_key, key_step, fn)                \
-  {                                                                                         \
-    name, arity, description, 0, first_key, last_key, key_step,                             \
-        []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new fn()); } \
+template <typename T>
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
+                 int key_step) {
+  CommandAttributes attr{
+      name,        arity,
+      description, 0,
+      first_key,   last_key,
+      key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+
+  for (const auto &flag : Util::Split(attr.description, " ")) {
+    if (flag == "write") attr.flags |= kCmdWrite;
+    if (flag == "read-only") attr.flags |= kCmdReadOnly;
+    if (flag == "replication") attr.flags |= kCmdReplication;
+    if (flag == "pub-sub") attr.flags |= kCmdPubSub;
+    if (flag == "ok-loading") attr.flags |= kCmdLoading;
+    if (flag == "exclusive") attr.flags |= kCmdExclusive;
+    if (flag == "multi") attr.flags |= kCmdMulti;
+    if (flag == "no-multi") attr.flags |= kCmdNoMulti;
+    if (flag == "no-script") attr.flags |= kCmdNoScript;
   }
 
-CommandAttributes redisCommandTable[] = {
-    ADD_CMD("auth", 2, "read-only ok-loading", 0, 0, 0, CommandAuth),
-    ADD_CMD("ping", -1, "read-only", 0, 0, 0, CommandPing),
-    ADD_CMD("select", 2, "read-only", 0, 0, 0, CommandSelect),
-    ADD_CMD("info", -1, "read-only ok-loading", 0, 0, 0, CommandInfo),
-    ADD_CMD("role", 1, "read-only ok-loading", 0, 0, 0, CommandRole),
-    ADD_CMD("config", -2, "read-only", 0, 0, 0, CommandConfig),
-    ADD_CMD("namespace", -3, "read-only", 0, 0, 0, CommandNamespace),
-    ADD_CMD("keys", 2, "read-only", 0, 0, 0, CommandKeys),
-    ADD_CMD("flushdb", 1, "write", 0, 0, 0, CommandFlushDB),
-    ADD_CMD("flushall", 1, "write", 0, 0, 0, CommandFlushAll),
-    ADD_CMD("dbsize", -1, "read-only", 0, 0, 0, CommandDBSize),
-    ADD_CMD("slowlog", -2, "read-only", 0, 0, 0, CommandSlowlog),
-    ADD_CMD("perflog", -2, "read-only", 0, 0, 0, CommandPerfLog),
-    ADD_CMD("client", -2, "read-only", 0, 0, 0, CommandClient),
-    ADD_CMD("monitor", 1, "read-only no-multi", 0, 0, 0, CommandMonitor),
-    ADD_CMD("shutdown", 1, "read-only", 0, 0, 0, CommandShutdown),
-    ADD_CMD("quit", 1, "read-only", 0, 0, 0, CommandQuit),
-    ADD_CMD("scan", -2, "read-only", 0, 0, 0, CommandScan),
-    ADD_CMD("randomkey", 1, "read-only no-script", 0, 0, 0, CommandRandomKey),
-    ADD_CMD("debug", -2, "read-only exclusive", 0, 0, 0, CommandDebug),
-    ADD_CMD("command", -1, "read-only", 0, 0, 0, CommandCommand),
-    ADD_CMD("echo", 2, "read-only", 0, 0, 0, CommandEcho),
-    ADD_CMD("disk", 3, "read-only", 0, 0, 0, CommandDisk),
-    ADD_CMD("hello", -1, "read-only ok-loading", 0, 0, 0, CommandHello),
+  return attr;
+}
 
-    ADD_CMD("ttl", 2, "read-only", 1, 1, 1, CommandTTL),
-    ADD_CMD("pttl", 2, "read-only", 1, 1, 1, CommandPTTL),
-    ADD_CMD("type", 2, "read-only", 1, 1, 1, CommandType),
-    ADD_CMD("object", 3, "read-only", 2, 2, 1, CommandObject),
-    ADD_CMD("exists", -2, "read-only", 1, -1, 1, CommandExists),
-    ADD_CMD("persist", 2, "write", 1, 1, 1, CommandPersist),
-    ADD_CMD("expire", 3, "write", 1, 1, 1, CommandExpire),
-    ADD_CMD("pexpire", 3, "write", 1, 1, 1, CommandPExpire),
-    ADD_CMD("expireat", 3, "write", 1, 1, 1, CommandExpireAt),
-    ADD_CMD("pexpireat", 3, "write", 1, 1, 1, CommandPExpireAt),
-    ADD_CMD("del", -2, "write", 1, -1, 1, CommandDel),
-    ADD_CMD("unlink", -2, "write", 1, -1, 1, CommandDel),
+const CommandAttributes redisCommandTable[]{
+    MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
+    MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write", 0, 0, 0),
+    MakeCmdAttr<CommandFlushAll>("flushall", 1, "write", 0, 0, 0),
+    MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi", 0, 0, 0),
+    MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
+    MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
 
-    ADD_CMD("get", 2, "read-only", 1, 1, 1, CommandGet),
-    ADD_CMD("getex", -2, "write", 1, 1, 1, CommandGetEx),
-    ADD_CMD("strlen", 2, "read-only", 1, 1, 1, CommandStrlen),
-    ADD_CMD("getset", 3, "write", 1, 1, 1, CommandGetSet),
-    ADD_CMD("getrange", 4, "read-only", 1, 1, 1, CommandGetRange),
-    ADD_CMD("getdel", 2, "write", 1, 1, 1, CommandGetDel),
-    ADD_CMD("setrange", 4, "write", 1, 1, 1, CommandSetRange),
-    ADD_CMD("mget", -2, "read-only", 1, -1, 1, CommandMGet),
-    ADD_CMD("append", 3, "write", 1, 1, 1, CommandAppend),
-    ADD_CMD("set", -3, "write", 1, 1, 1, CommandSet),
-    ADD_CMD("setex", 4, "write", 1, 1, 1, CommandSetEX),
-    ADD_CMD("psetex", 4, "write", 1, 1, 1, CommandPSetEX),
-    ADD_CMD("setnx", 3, "write", 1, 1, 1, CommandSetNX),
-    ADD_CMD("msetnx", -3, "write exclusive", 1, -1, 2, CommandMSetNX),
-    ADD_CMD("mset", -3, "write", 1, -1, 2, CommandMSet),
-    ADD_CMD("incrby", 3, "write", 1, 1, 1, CommandIncrBy),
-    ADD_CMD("incrbyfloat", 3, "write", 1, 1, 1, CommandIncrByFloat),
-    ADD_CMD("incr", 2, "write", 1, 1, 1, CommandIncr),
-    ADD_CMD("decrby", 3, "write", 1, 1, 1, CommandDecrBy),
-    ADD_CMD("decr", 2, "write", 1, 1, 1, CommandDecr),
-    ADD_CMD("cas", -4, "write", 1, 1, 1, CommandCAS),
-    ADD_CMD("cad", 3, "write", 1, 1, 1, CommandCAD),
+    MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+    MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
+    MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
 
-    ADD_CMD("getbit", 3, "read-only", 1, 1, 1, CommandGetBit),
-    ADD_CMD("setbit", 4, "write", 1, 1, 1, CommandSetBit),
-    ADD_CMD("bitcount", -2, "read-only", 1, 1, 1, CommandBitCount),
-    ADD_CMD("bitpos", -3, "read-only", 1, 1, 1, CommandBitPos),
-    ADD_CMD("bitop", -4, "write", 2, -1, 1, CommandBitOp),
+    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write exclusive", 1, -1, 2),
+    MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2),
+    MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1),
 
-    ADD_CMD("hget", 3, "read-only", 1, 1, 1, CommandHGet),
-    ADD_CMD("hincrby", 4, "write", 1, 1, 1, CommandHIncrBy),
-    ADD_CMD("hincrbyfloat", 4, "write", 1, 1, 1, CommandHIncrByFloat),
-    ADD_CMD("hset", -4, "write", 1, 1, 1, CommandHMSet),
-    ADD_CMD("hsetnx", 4, "write", 1, 1, 1, CommandHSetNX),
-    ADD_CMD("hdel", -3, "write", 1, 1, 1, CommandHDel),
-    ADD_CMD("hstrlen", 3, "read-only", 1, 1, 1, CommandHStrlen),
-    ADD_CMD("hexists", 3, "read-only", 1, 1, 1, CommandHExists),
-    ADD_CMD("hlen", 2, "read-only", 1, 1, 1, CommandHLen),
-    ADD_CMD("hmget", -3, "read-only", 1, 1, 1, CommandHMGet),
-    ADD_CMD("hmset", -4, "write", 1, 1, 1, CommandHMSet),
-    ADD_CMD("hkeys", 2, "read-only", 1, 1, 1, CommandHKeys),
-    ADD_CMD("hvals", 2, "read-only", 1, 1, 1, CommandHVals),
-    ADD_CMD("hgetall", 2, "read-only", 1, 1, 1, CommandHGetAll),
-    ADD_CMD("hscan", -3, "read-only", 1, 1, 1, CommandHScan),
-    ADD_CMD("hrange", -4, "read-only", 1, 1, 1, CommandHRange),
+    MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
 
-    ADD_CMD("lpush", -3, "write", 1, 1, 1, CommandLPush),
-    ADD_CMD("rpush", -3, "write", 1, 1, 1, CommandRPush),
-    ADD_CMD("lpushx", -3, "write", 1, 1, 1, CommandLPushX),
-    ADD_CMD("rpushx", -3, "write", 1, 1, 1, CommandRPushX),
-    ADD_CMD("lpop", -2, "write", 1, 1, 1, CommandLPop),
-    ADD_CMD("rpop", -2, "write", 1, 1, 1, CommandRPop),
-    ADD_CMD("blpop", -3, "write no-script", 1, -2, 1, CommandBLPop),
-    ADD_CMD("brpop", -3, "write no-script", 1, -2, 1, CommandBRPop),
-    ADD_CMD("lrem", 4, "write", 1, 1, 1, CommandLRem),
-    ADD_CMD("linsert", 5, "write", 1, 1, 1, CommandLInsert),
-    ADD_CMD("lrange", 4, "read-only", 1, 1, 1, CommandLRange),
-    ADD_CMD("lindex", 3, "read-only", 1, 1, 1, CommandLIndex),
-    ADD_CMD("ltrim", 4, "write", 1, 1, 1, CommandLTrim),
-    ADD_CMD("llen", 2, "read-only", 1, 1, 1, CommandLLen),
-    ADD_CMD("lset", 4, "write", 1, 1, 1, CommandLSet),
-    ADD_CMD("rpoplpush", 3, "write", 1, 2, 1, CommandRPopLPUSH),
-    ADD_CMD("lmove", 5, "write", 1, 2, 1, CommandLMove),
+    MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHSetNX>("hsetnx", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHMGet>("hmget", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHMSet>("hmset", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
 
-    ADD_CMD("sadd", -3, "write", 1, 1, 1, CommandSAdd),
-    ADD_CMD("srem", -3, "write", 1, 1, 1, CommandSRem),
-    ADD_CMD("scard", 2, "read-only", 1, 1, 1, CommandSCard),
-    ADD_CMD("smembers", 2, "read-only", 1, 1, 1, CommandSMembers),
-    ADD_CMD("sismember", 3, "read-only", 1, 1, 1, CommandSIsMember),
-    ADD_CMD("smismember", -3, "read-only", 1, 1, 1, CommandSMIsMember),
-    ADD_CMD("spop", -2, "write", 1, 1, 1, CommandSPop),
-    ADD_CMD("srandmember", -2, "read-only", 1, 1, 1, CommandSRandMember),
-    ADD_CMD("smove", 4, "write", 1, 2, 1, CommandSMove),
-    ADD_CMD("sdiff", -2, "read-only", 1, -1, 1, CommandSDiff),
-    ADD_CMD("sunion", -2, "read-only", 1, -1, 1, CommandSUnion),
-    ADD_CMD("sinter", -2, "read-only", 1, -1, 1, CommandSInter),
-    ADD_CMD("sdiffstore", -3, "write", 1, -1, 1, CommandSDiffStore),
-    ADD_CMD("sunionstore", -3, "write", 1, -1, 1, CommandSUnionStore),
-    ADD_CMD("sinterstore", -3, "write", 1, -1, 1, CommandSInterStore),
-    ADD_CMD("sscan", -3, "read-only", 1, 1, 1, CommandSScan),
+    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
+    MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
+    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
+    MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
 
-    ADD_CMD("zadd", -4, "write", 1, 1, 1, CommandZAdd),
-    ADD_CMD("zcard", 2, "read-only", 1, 1, 1, CommandZCard),
-    ADD_CMD("zcount", 4, "read-only", 1, 1, 1, CommandZCount),
-    ADD_CMD("zincrby", 4, "write", 1, 1, 1, CommandZIncrBy),
-    ADD_CMD("zinterstore", -4, "write", 1, 1, 1, CommandZInterStore),
-    ADD_CMD("zlexcount", 4, "read-only", 1, 1, 1, CommandZLexCount),
-    ADD_CMD("zpopmax", -2, "write", 1, 1, 1, CommandZPopMax),
-    ADD_CMD("zpopmin", -2, "write", 1, 1, 1, CommandZPopMin),
-    ADD_CMD("zrange", -4, "read-only", 1, 1, 1, CommandZRange),
-    ADD_CMD("zrevrange", -4, "read-only", 1, 1, 1, CommandZRevRange),
-    ADD_CMD("zrangebylex", -4, "read-only", 1, 1, 1, CommandZRangeByLex),
-    ADD_CMD("zrevrangebylex", -4, "read-only", 1, 1, 1, CommandZRevRangeByLex),
-    ADD_CMD("zrangebyscore", -4, "read-only", 1, 1, 1, CommandZRangeByScore),
-    ADD_CMD("zrank", 3, "read-only", 1, 1, 1, CommandZRank),
-    ADD_CMD("zrem", -3, "write", 1, 1, 1, CommandZRem),
-    ADD_CMD("zremrangebyrank", 4, "write", 1, 1, 1, CommandZRemRangeByRank),
-    ADD_CMD("zremrangebyscore", -4, "write", 1, 1, 1, CommandZRemRangeByScore),
-    ADD_CMD("zremrangebylex", 4, "write", 1, 1, 1, CommandZRemRangeByLex),
-    ADD_CMD("zrevrangebyscore", -4, "read-only", 1, 1, 1, CommandZRevRangeByScore),
-    ADD_CMD("zrevrank", 3, "read-only", 1, 1, 1, CommandZRevRank),
-    ADD_CMD("zscore", 3, "read-only", 1, 1, 1, CommandZScore),
-    ADD_CMD("zmscore", -3, "read-only", 1, 1, 1, CommandZMScore),
-    ADD_CMD("zscan", -3, "read-only", 1, 1, 1, CommandZScan),
-    ADD_CMD("zunionstore", -4, "write", 1, 1, 1, CommandZUnionStore),
+    MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSIsMember>("sismember", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMIsMember>("smismember", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSPop>("spop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSRandMember>("srandmember", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSMove>("smove", 4, "write", 1, 2, 1),
+    MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
+    MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
+    MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1),
 
-    ADD_CMD("geoadd", -5, "write", 1, 1, 1, CommandGeoAdd),
-    ADD_CMD("geodist", -4, "read-only", 1, 1, 1, CommandGeoDist),
-    ADD_CMD("geohash", -3, "read-only", 1, 1, 1, CommandGeoHash),
-    ADD_CMD("geopos", -3, "read-only", 1, 1, 1, CommandGeoPos),
-    ADD_CMD("georadius", -6, "write", 1, 1, 1, CommandGeoRadius),
-    ADD_CMD("georadiusbymember", -5, "write", 1, 1, 1, CommandGeoRadiusByMember),
-    ADD_CMD("georadius_ro", -6, "read-only", 1, 1, 1, CommandGeoRadiusReadonly),
-    ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
+    MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRangeByLex>("zrevrangebylex", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRangeByScore>("zrangebyscore", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRank>("zrank", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRem>("zrem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByRank>("zremrangebyrank", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByScore>("zremrangebyscore", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRemRangeByLex>("zremrangebylex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRangeByScore>("zrevrangebyscore", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZRevRank>("zrevrank", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1),
 
-    ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPUnSubscribe),
-    ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0, CommandPubSub),
+    MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoDist>("geodist", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoHash>("geohash", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoPos>("geopos", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
 
-    ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
-    ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
-    ADD_CMD("exec", 1, "exclusive multi", 0, 0, 0, CommandExec),
+    MakeCmdAttr<CommandPublish>("publish", 3, "read-only pub-sub", 0, 0, 0),
+    MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0),
 
-    ADD_CMD("siadd", -3, "write", 1, 1, 1, CommandSortedintAdd),
-    ADD_CMD("sirem", -3, "write", 1, 1, 1, CommandSortedintRem),
-    ADD_CMD("sicard", 2, "read-only", 1, 1, 1, CommandSortedintCard),
-    ADD_CMD("siexists", -3, "read-only", 1, 1, 1, CommandSortedintExists),
-    ADD_CMD("sirange", -4, "read-only", 1, 1, 1, CommandSortedintRange),
-    ADD_CMD("sirevrange", -4, "read-only", 1, 1, 1, CommandSortedintRevRange),
-    ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRangeByValue),
-    ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
+    MakeCmdAttr<CommandMulti>("multi", 1, "multi", 0, 0, 0),
+    MakeCmdAttr<CommandDiscard>("discard", 1, "multi", 0, 0, 0),
+    MakeCmdAttr<CommandExec>("exec", 1, "exclusive multi", 0, 0, 0),
 
-    ADD_CMD("cluster", -2, "cluster no-script", 0, 0, 0, CommandCluster),
-    ADD_CMD("clusterx", -2, "cluster no-script", 0, 0, 0, CommandClusterX),
+    MakeCmdAttr<CommandSortedintAdd>("siadd", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRem>("sirem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintCard>("sicard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintExists>("siexists", -3, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRange>("sirange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRevRange>("sirevrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRangeByValue>("sirangebyvalue", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSortedintRevRangeByValue>("sirevrangebyvalue", -4, "read-only", 1, 1, 1),
 
-    ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
-    ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
-    ADD_CMD("eval_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalRO),
-    ADD_CMD("evalsha_ro", -3, "read-only no-script", 0, 0, 0, CommandEvalSHARO),
-    ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
+    MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0),
+    MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0),
 
-    ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
-    ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
-    ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
-    ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),
-    ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
+    MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0),
 
-    ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
-    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
-    ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
-    ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
+    MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
+    MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
 
-    ADD_CMD("xadd", -5, "write", 1, 1, 1, CommandXAdd),
-    ADD_CMD("xdel", -3, "write", 1, 1, 1, CommandXDel),
-    ADD_CMD("xlen", 2, "read-only", 1, 1, 1, CommandXLen),
-    ADD_CMD("xinfo", -2, "read-only", 0, 0, 0, CommandXInfo),
-    ADD_CMD("xrange", -4, "read-only", 1, 1, 1, CommandXRange),
-    ADD_CMD("xrevrange", -2, "read-only", 0, 0, 0, CommandXRevRange),
-    ADD_CMD("xread", -4, "read-only", 0, 0, 0, CommandXRead),
-    ADD_CMD("xtrim", -4, "write", 1, 1, 1, CommandXTrim),
+    MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only replication no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPSync>("psync", -2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0),
+
+    MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXLen>("xlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
 };
 
-// Command table after rename-command directive
-std::map<std::string, CommandAttributes *> commands;
 // Original Command table before rename-command directive
-std::map<std::string, CommandAttributes *> original_commands;
+const CommandMap original_commands = [] {
+  CommandMap cmd;
 
-int GetCommandNum() { return sizeof(redisCommandTable) / sizeof(struct CommandAttributes); }
-
-std::map<std::string, CommandAttributes *> *GetCommands() { return &commands; }
-
-std::map<std::string, CommandAttributes *> *GetOriginalCommands() { return &original_commands; }
-
-void PopulateCommands() {
-  for (int i = 0; i < GetCommandNum(); i++) {
-    original_commands[redisCommandTable[i].name] = &redisCommandTable[i];
+  for (const auto &attr : redisCommandTable) {
+    cmd[attr.name] = &attr;
   }
-  commands = original_commands;
-}
 
-void InitCommandsTable() {
-  for (int i = 0; i < GetCommandNum(); i++) {
-    std::string desc = redisCommandTable[i].description;
-    std::vector<std::string> str_flags = Util::Split(desc, " ");
-    for (const auto &flag : str_flags) {
-      if (flag == "write") redisCommandTable[i].flags |= kCmdWrite;
-      if (flag == "read-only") redisCommandTable[i].flags |= kCmdReadOnly;
-      if (flag == "replication") redisCommandTable[i].flags |= kCmdReplication;
-      if (flag == "pub-sub") redisCommandTable[i].flags |= kCmdPubSub;
-      if (flag == "ok-loading") redisCommandTable[i].flags |= kCmdLoading;
-      if (flag == "exclusive") redisCommandTable[i].flags |= kCmdExclusive;
-      if (flag == "multi") redisCommandTable[i].flags |= kCmdMulti;
-      if (flag == "no-multi") redisCommandTable[i].flags |= kCmdNoMulti;
-      if (flag == "no-script") redisCommandTable[i].flags |= kCmdNoScript;
-    }
-  }
-}
+  return cmd;
+}();
+
+// Command table after rename-command directive
+CommandMap commands = original_commands;
+
+int GetCommandNum() { return std::size(redisCommandTable); }
+
+const CommandMap *GetOriginalCommands() { return &original_commands; }
+
+CommandMap *GetCommands() { return &commands; }
+
+void ResetCommands() { commands = original_commands; }
 
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;

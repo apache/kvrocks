@@ -84,7 +84,7 @@ func (c *interactiveCli) Read() (string, error) {
 			// to read all bytes, but it's no a good way to wait for the entire
 			// response except parsing the Redis protocol. To make this simple,
 			// we can just check whether the response has the newline or not.
-			if pos < 2 || !(b[pos-2] == '\r' && b[pos-1] == '\n') {
+			if pos < 2 || b[pos-1] != '\n' {
 				continue
 			}
 			r := string(bytes.Trim(b, "\x00"))

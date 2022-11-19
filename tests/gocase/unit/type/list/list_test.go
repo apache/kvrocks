@@ -430,7 +430,7 @@ func TestList(t *testing.T) {
 
 		t.Run(fmt.Sprintf("%s: arguments are empty", popType), func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
-			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
+			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "4"))
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
 			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())

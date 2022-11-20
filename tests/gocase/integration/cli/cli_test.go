@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -67,13 +68,25 @@ func (c *interactiveCli) Close() error {
 }
 
 func (c *interactiveCli) Read() (string, error) {
+	pos := 0
 	b := make([]byte, defaultByteBufLen)
 	for {
-		n, err := c.r.Read(b)
+		if pos >= defaultByteBufLen {
+			return "", errors.New("exceed read buffer size")
+		}
+		n, err := c.r.Read(b[pos:])
 		if err != nil {
 			return "", err
 		}
+		pos += n
 		if n > 0 {
+			// For the big response size scenario, it may need multiple times
+			// to read all bytes, but it's no a good way to wait for the entire
+			// response except parsing the Redis protocol. To make this simple,
+			// we can just check whether the response has the newline or not.
+			if pos < 2 || b[pos-1] != '\n' {
+				continue
+			}
 			r := string(bytes.Trim(b, "\x00"))
 			r = strings.ReplaceAll(r, "\r", "")
 			r = strings.TrimSuffix(r, "\n")

@@ -27,6 +27,7 @@ option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enable
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" OFF)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
+option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
@@ -184,6 +185,20 @@ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+endif()
+
+if(ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_result OUTPUT ipo_output LANGUAGES CXX)
+
+    if(ipo_result)
+        set_property(TARGET kvrocks_objs PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            target_link_libraries(kvrocks_objs PUBLIC "-fuse-ld=lld")
+        endif()
+    else()
+        message(WARNING "IPO is not supported: ${ipo_output}")
+    endif()
 endif()
 
 # kvrocks main target

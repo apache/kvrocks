@@ -366,6 +366,14 @@ assert(bit.bor(1,2,4,8,16,32,64,128) == 255)
 		require.Equal(t, []bool{true, false}, r2.Val())
 	})
 
+	t.Run("SCRIPT LOAD - should return SHA as the bulk string", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("script", "load", "return 'bulk string'"))
+		c.MustRead(t, "$40")
+		c.MustRead(t, "04b85c6fe6dbd424de3fb5914509afa7597570f2")
+	})
+
 	t.Run("SCRIPT LOAD - is able to register scripts in the scripting cache", func(t *testing.T) {
 		r1 := rdb.ScriptLoad(ctx, "return 'loaded'")
 		require.NoError(t, r1.Err())

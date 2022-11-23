@@ -5033,7 +5033,7 @@ class CommandScript : public Commander {
       if (!s.IsOK()) {
         return s;
       }
-      *output = Redis::SimpleString(sha);
+      *output = Redis::BulkString(sha);
     } else {
       return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
     }

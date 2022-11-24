@@ -142,8 +142,8 @@ def get_source_files() -> List[str]:
         *glob("src/**/*.cc", recursive=True),
         *glob("tests/cppunit/**/*.h", recursive=True),
         *glob("tests/cppunit/**/*.cc", recursive=True),
-        *glob("tools/kvrocks2redis/**/*.h", recursive=True),
-        *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
+        *glob("utils/kvrocks2redis/**/*.h", recursive=True),
+        *glob("utils/kvrocks2redis/**/*.cc", recursive=True),
     ]
 
 

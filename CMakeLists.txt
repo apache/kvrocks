@@ -206,7 +206,7 @@ add_executable(kvrocks src/main.cc)
 target_link_libraries(kvrocks PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks2redis sync tool
-file(GLOB KVROCKS2REDIS_SRCS tools/kvrocks2redis/*.cc)
+file(GLOB KVROCKS2REDIS_SRCS utils/kvrocks2redis/*.cc)
 add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 
 target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})

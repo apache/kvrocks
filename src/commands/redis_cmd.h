@@ -144,8 +144,12 @@ inline CommandMap original_commands;
 inline CommandMap commands;
 }  // namespace command_details
 
+#define KVROCKS_CONCAT(a, b) a##b                   // NOLINT
+#define KVROCKS_CONCAT2(a, b) KVROCKS_CONCAT(a, b)  // NOLINT
+
 // NOLINTNEXTLINE
-#define REGISTER_COMMANDS(...) static RegisterToCommandTable register_to_command_table_##__LINE__{__VA_ARGS__};
+#define REDIS_REGISTER_COMMANDS(...) \
+  static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__){__VA_ARGS__};
 
 int GetCommandNum();
 CommandMap *GetCommands();

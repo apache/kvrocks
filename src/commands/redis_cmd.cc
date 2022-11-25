@@ -6262,7 +6262,7 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
-REGISTER_COMMANDS(
+REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),

@@ -676,8 +676,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
              nodes_.find(myself_->master_id_) != nodes_.end() && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
     return Status::OK();  // My mater is serving this slot
   } else {
-    return {
-      Status::RedisExecErr, fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host_, slots_nodes_[slot]->port_)
-    }
+    return {Status::RedisExecErr,
+            fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host_, slots_nodes_[slot]->port_)};
   }
 }

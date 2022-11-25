@@ -6262,31 +6262,7 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
-template <typename T>
-auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step) {
-  CommandAttributes attr{
-      name,        arity,
-      description, 0,
-      first_key,   last_key,
-      key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
-
-  for (const auto &flag : Util::Split(attr.description, " ")) {
-    if (flag == "write") attr.flags |= kCmdWrite;
-    if (flag == "read-only") attr.flags |= kCmdReadOnly;
-    if (flag == "replication") attr.flags |= kCmdReplication;
-    if (flag == "pub-sub") attr.flags |= kCmdPubSub;
-    if (flag == "ok-loading") attr.flags |= kCmdLoading;
-    if (flag == "exclusive") attr.flags |= kCmdExclusive;
-    if (flag == "multi") attr.flags |= kCmdMulti;
-    if (flag == "no-multi") attr.flags |= kCmdNoMulti;
-    if (flag == "no-script") attr.flags |= kCmdNoScript;
-  }
-
-  return attr;
-}
-
-const CommandAttributes redisCommandTable[]{
+REGISTER_COMMANDS(
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -6312,8 +6288,7 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
 
-    MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
     MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
@@ -6322,30 +6297,23 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
-    MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
+    MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1), MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
 
-    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
-    MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1), MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write exclusive", 1, -1, 2),
-    MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2),
-    MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2), MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
     MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1),
 
     MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
@@ -6357,8 +6325,7 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandHSetNX>("hsetnx", 4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1), MakeCmdAttr<CommandHSetNX>("hsetnx", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
@@ -6371,26 +6338,21 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
 
-    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1), MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
     MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
-    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1), MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
     MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1), MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
     MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
 
-    MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1), MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSIsMember>("sismember", 3, "read-only", 1, 1, 1),
@@ -6406,8 +6368,7 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
     MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1),
 
-    MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1), MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
@@ -6419,8 +6380,7 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandZRevRangeByLex>("zrevrangebylex", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandZRangeByScore>("zrangebyscore", -4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandZRank>("zrank", 3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandZRem>("zrem", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandZRank>("zrank", 3, "read-only", 1, 1, 1), MakeCmdAttr<CommandZRem>("zrem", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandZRemRangeByRank>("zremrangebyrank", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandZRemRangeByScore>("zremrangebyscore", -4, "write", 1, 1, 1),
     MakeCmdAttr<CommandZRemRangeByLex>("zremrangebylex", 4, "write", 1, 1, 1),
@@ -6481,37 +6441,29 @@ const CommandAttributes redisCommandTable[]{
     MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0),
 
-    MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
-    MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1), MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandXLen>("xlen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
-};
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1));
 
-// Original Command table before rename-command directive
-const CommandMap original_commands = [] {
-  CommandMap cmd;
-
-  for (const auto &attr : redisCommandTable) {
-    cmd[attr.name] = &attr;
+RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
+  for (const auto &attr : list) {
+    command_details::redis_command_table.emplace_back(attr);
+    command_details::original_commands[attr.name] = &command_details::redis_command_table.back();
+    command_details::commands[attr.name] = &command_details::redis_command_table.back();
   }
+}
 
-  return cmd;
-}();
+int GetCommandNum() { return (int)command_details::redis_command_table.size(); }
 
-// Command table after rename-command directive
-CommandMap commands = original_commands;
+const CommandMap *GetOriginalCommands() { return &command_details::original_commands; }
 
-int GetCommandNum() { return std::size(redisCommandTable); }
+CommandMap *GetCommands() { return &command_details::commands; }
 
-const CommandMap *GetOriginalCommands() { return &original_commands; }
-
-CommandMap *GetCommands() { return &commands; }
-
-void ResetCommands() { commands = original_commands; }
+void ResetCommands() { command_details::commands = command_details::original_commands; }
 
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;
@@ -6528,8 +6480,8 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes) {
 }
 
 void GetAllCommandsInfo(std::string *info) {
-  info->append(Redis::MultiLen(original_commands.size()));
-  for (const auto &iter : original_commands) {
+  info->append(Redis::MultiLen(command_details::original_commands.size()));
+  for (const auto &iter : command_details::original_commands) {
     auto command_attribute = iter.second;
     auto command_info = GetCommandInfo(command_attribute);
     info->append(command_info);
@@ -6539,8 +6491,8 @@ void GetAllCommandsInfo(std::string *info) {
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
   info->append(Redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
-    auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
-    if (cmd_iter == original_commands.end()) {
+    auto cmd_iter = command_details::original_commands.find(Util::ToLower(cmd_name));
+    if (cmd_iter == command_details::original_commands.end()) {
       info->append(Redis::NilString());
     } else {
       auto command_attribute = cmd_iter->second;
@@ -6551,8 +6503,8 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 }
 
 Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
-  auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
-  if (cmd_iter == original_commands.end()) {
+  auto cmd_iter = command_details::original_commands.find(Util::ToLower(cmd_name));
+  if (cmd_iter == command_details::original_commands.end()) {
     return {Status::RedisUnknownCmd, "Invalid command specified"};
   }
 
@@ -6576,7 +6528,7 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
 }
 
 bool IsCommandExists(const std::string &name) {
-  return original_commands.find(Util::ToLower(name)) != original_commands.end();
+  return command_details::original_commands.find(Util::ToLower(name)) != command_details::original_commands.end();
 }
 
 }  // namespace Redis

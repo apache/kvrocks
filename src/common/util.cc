@@ -106,7 +106,7 @@ const std::string Float2String(double d) {
     return d > 0 ? "inf" : "-inf";
   }
 
-  return fmt::format("{.17g}", d);
+  return fmt::format("{:.17g}", d);
 }
 
 Status SockSetTcpNoDelay(int fd, int val) {

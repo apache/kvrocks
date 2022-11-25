@@ -539,25 +539,18 @@ std::string StringToHex(const std::string &input) {
 constexpr unsigned long long expTo1024(unsigned n) { return 1ULL << (n * 10); }
 
 void BytesToHuman(char *buf, size_t size, uint64_t n) {
-  double d = 0;
-
   if (n < expTo1024(1)) {
     fmt::format_to_n(buf, size, "{}B", n);
   } else if (n < expTo1024(2)) {
-    d = static_cast<double>(n) / expTo1024(1);
-    fmt::format_to_n(buf, size, "{.2f}K", d);
+    fmt::format_to_n(buf, size, "{:.2f}K", static_cast<double>(n) / expTo1024(1));
   } else if (n < expTo1024(3)) {
-    d = static_cast<double>(n) / expTo1024(2);
-    fmt::format_to_n(buf, size, "{.2f}M", d);
+    fmt::format_to_n(buf, size, "{:.2f}M", static_cast<double>(n) / expTo1024(2));
   } else if (n < expTo1024(4)) {
-    d = static_cast<double>(n) / expTo1024(3);
-    fmt::format_to_n(buf, size, "{.2f}G", d);
+    fmt::format_to_n(buf, size, "{:.2f}G", static_cast<double>(n) / expTo1024(3));
   } else if (n < expTo1024(5)) {
-    d = static_cast<double>(n) / expTo1024(4);
-    fmt::format_to_n(buf, size, "{.2f}T", d);
+    fmt::format_to_n(buf, size, "{:.2f}T", static_cast<double>(n) / expTo1024(4));
   } else if (n < expTo1024(6)) {
-    d = static_cast<double>(n) / expTo1024(5);
-    fmt::format_to_n(buf, size, "{.2f}P", d);
+    fmt::format_to_n(buf, size, "{:.2f}P", static_cast<double>(n) / expTo1024(5));
   } else {
     fmt::format_to_n(buf, size, "{}B", n);
   }

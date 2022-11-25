@@ -353,7 +353,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   for (j = 0; j < argc; j++) {
     if (lua_type(lua, j + 1) == LUA_TNUMBER) {
       lua_Number num = lua_tonumber(lua, j + 1);
-      args.emplace_back(fmt::format("{.17g}", static_cast<double>(num)));
+      args.emplace_back(fmt::format("{:.17g}", static_cast<double>(num)));
     } else {
       size_t obj_len = 0;
       const char *obj_s = lua_tolstring(lua, j + 1, &obj_len);

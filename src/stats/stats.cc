@@ -22,6 +22,7 @@
 
 #include <chrono>
 
+#include "fmt/format.h"
 #include "util.h"
 
 Stats::Stats() {
@@ -59,9 +60,8 @@ int64_t Stats::GetMemoryRSS() {
 #include "fd_util.h"
 
 int64_t Stats::GetMemoryRSS() {
-  char buf[4096], filename[256];
-  snprintf(filename, sizeof(filename), "/proc/%d/stat", getpid());
-  auto fd = UniqueFD(open(filename, O_RDONLY));
+  char buf[4096];
+  auto fd = UniqueFD(open(fmt::format("/proc/{}/stat", getpid()).c_str(), O_RDONLY));
   if (!fd) return 0;
   if (read(*fd, buf, sizeof(buf)) <= 0) {
     return 0;

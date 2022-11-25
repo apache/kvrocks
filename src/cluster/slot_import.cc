@@ -153,5 +153,5 @@ void SlotImport::GetImportInfo(std::string *info) {
       break;
   }
 
-  *info = "importing_slot: " + std::to_string(import_slot_) + "\r\n" + "import_state: " + import_stat + "\r\n";
+  *info = fmt::format("importing_slot: {}\r\nimport_state: {}\r\n", import_slot_, import_stat);
 }

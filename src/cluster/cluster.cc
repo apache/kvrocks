@@ -26,6 +26,7 @@
 #include <memory>
 
 #include "commands/redis_cmd.h"
+#include "fmt/format.h"
 #include "parse_util.h"
 #include "replication.h"
 #include "server/server.h"
@@ -313,7 +314,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
   switch (state) {
     case kImportStart:
       if (!svr_->slot_import_->Start(conn->GetFD(), slot)) {
-        return Status(Status::NotOK, "Can't start importing slot " + std::to_string(slot));
+        return {Status::NotOK, fmt::format("Can't start importing slot {}", slot)};
       }
       // Set link importing
       conn->SetImporting();
@@ -330,7 +331,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       if (!svr_->slot_import_->Success(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
                    << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
-        return Status(Status::NotOK, "Failed to set slot " + std::to_string(slot) + " importing success");
+        return {Status::NotOK, fmt::format("Failed to set slot {} importing success", slot)};
       }
       LOG(INFO) << "[import] Succeed to import slot " << slot;
       break;
@@ -338,12 +339,12 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       if (!svr_->slot_import_->Fail(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
                    << ", received slot: " << slot << ", current slot: " << svr_->slot_import_->GetSlot();
-        return Status(Status::NotOK, "Failed to set slot " + std::to_string(slot) + " importing error");
+        return {Status::NotOK, fmt::format("Failed to set slot {} importing error", slot)};
       }
       LOG(INFO) << "[import] Failed to import slot " << slot;
       break;
     default:
-      return Status(Status::NotOK, errInvalidImportState);
+      return {Status::NotOK, errInvalidImportState};
   }
   return Status::OK();
 }
@@ -469,9 +470,9 @@ std::string Cluster::GenNodesDescription() {
     // Generate slots info when occur different node with start or end of slot
     if (i == kClusterSlots || n != slots_nodes_[i]) {
       if (start == i - 1) {
-        n->slots_info_ += std::to_string(start) + " ";
+        n->slots_info_ += fmt::format("{} ", start);
       } else {
-        n->slots_info_ += std::to_string(start) + "-" + std::to_string(i - 1) + " ";
+        n->slots_info_ += fmt::format("{}-{} ", start, i - 1);
       }
       if (i == kClusterSlots) break;
       n = slots_nodes_[i];
@@ -486,8 +487,7 @@ std::string Cluster::GenNodesDescription() {
     std::string node_str;
     // ID, host, port
     node_str.append(n->id_ + " ");
-    node_str.append(n->host_ + ":" + std::to_string(n->port_) + "@" + std::to_string(n->port_ + kClusterPortIncr) +
-                    " ");
+    node_str.append(fmt::format("{}:{}@{} ", n->host_, n->port_, n->port_ + kClusterPortIncr));
 
     // Flags
     if (n->id_ == myid_) node_str.append("myself,");
@@ -499,8 +499,7 @@ std::string Cluster::GenNodesDescription() {
 
     // Ping sent, pong received, config epoch, link status
     auto now = Util::GetTimeStampMS();
-    node_str.append(std::to_string(now - 1) + " " + std::to_string(now) + " " + std::to_string(version_) + " " +
-                    "connected");
+    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
 
     // Slots
     if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Trim space
@@ -642,24 +641,24 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     int cur_slot = GetSlotNumFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {
-      return Status(Status::RedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot");
+      return {Status::RedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot"};
     }
   }
   if (slot == -1) return Status::OK();
 
   if (slots_nodes_[slot] == nullptr) {
-    return Status(Status::ClusterDown, "CLUSTERDOWN Hash slot not served");
+    return {Status::ClusterDown, "CLUSTERDOWN Hash slot not served"};
   } else if (myself_ && myself_ == slots_nodes_[slot]) {
     // We use central controller to manage the topology of the cluster.
     // Server can't change the topology directly, so we record the migrated slots
     // to move the requests of the migrated slots to the destination node.
     if (migrated_slots_.count(slot)) {  // I'm not serving the migrated slot
-      return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + migrated_slots_[slot]);
+      return {Status::RedisExecErr, fmt::format("MOVED {} {}", slot, migrated_slots_[slot])};
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
     if (attributes->is_write() && IsWriteForbiddenSlot(slot)) {
-      return Status(Status::RedisExecErr, "Can't write to slot being migrated which is in write forbidden phase");
+      return {Status::RedisExecErr, "Can't write to slot being migrated which is in write forbidden phase"};
     }
     return Status::OK();  // I'm serving this slot
   } else if (myself_ && myself_->importing_slot_ == slot && conn->IsImporting()) {
@@ -677,7 +676,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
              nodes_.find(myself_->master_id_) != nodes_.end() && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
     return Status::OK();  // My mater is serving this slot
   } else {
-    std::string ip_port = slots_nodes_[slot]->host_ + ":" + std::to_string(slots_nodes_[slot]->port_);
-    return Status(Status::RedisExecErr, "MOVED " + std::to_string(slot) + " " + ip_port);
+    return {Status::RedisExecErr,
+            fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host_, slots_nodes_[slot]->port_)};
   }
 }

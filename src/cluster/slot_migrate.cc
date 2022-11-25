@@ -986,5 +986,5 @@ void SlotMigrate::GetMigrateInfo(std::string *info) {
   }
 
   *info =
-      fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: \r\n", slot, dst_node_, task_state);
+      fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot, dst_node_, task_state);
 }

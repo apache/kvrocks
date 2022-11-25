@@ -24,6 +24,7 @@
 #include <utility>
 
 #include "event_util.h"
+#include "fmt/format.h"
 #include "storage/batch_extractor.h"
 
 static std::map<RedisType, std::string> type_to_cmd = {
@@ -481,7 +482,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
   while (true) {
     // Read response data from socket buffer to the event buffer
     if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
-      LOG(ERROR) << "[migrate] Failed to read response, Err: " + std::string(strerror(errno));
+      LOG(ERROR) << "[migrate] Failed to read response, Err: " << strerror(errno);
       return false;
     }
 
@@ -499,8 +500,7 @@ bool SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
           }
 
           if (line[0] == '-') {
-            LOG(ERROR) << "[migrate] Got invalid response: " + std::string(line.get())
-                       << ", line length: " << line.length;
+            LOG(ERROR) << "[migrate] Got invalid response: " << line.get() << ", line length: " << line.length;
             stat_ = Error;
           } else if (line[0] == '$') {
             auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
@@ -985,6 +985,6 @@ void SlotMigrate::GetMigrateInfo(std::string *info) {
       break;
   }
 
-  *info = "migrating_slot: " + std::to_string(slot) + "\r\n" + "destination_node: " + dst_node_ + "\r\n" +
-          "migrating_state: " + task_state + "\r\n";
+  *info =
+      fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot, dst_node_, task_state);
 }

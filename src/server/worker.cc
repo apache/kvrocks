@@ -23,6 +23,8 @@
 #include <event2/util.h>
 #include <glog/logging.h>
 
+#include <string>
+
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
@@ -196,7 +198,6 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
 }
 
 Status Worker::listenTCP(const std::string &host, int port, int backlog) {
-  char _port[6];
   int af, rv, fd, sock_opt = 1;
 
   if (strchr(host.data(), ':')) {
@@ -204,14 +205,13 @@ Status Worker::listenTCP(const std::string &host, int port, int backlog) {
   } else {
     af = AF_INET;
   }
-  snprintf(_port, sizeof(_port), "%d", port);
   struct addrinfo hints, *srv_info, *p;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = af;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if ((rv = getaddrinfo(host.data(), _port, &hints, &srv_info)) != 0) {
+  if ((rv = getaddrinfo(host.data(), std::to_string(port).c_str(), &hints, &srv_info)) != 0) {
     return Status(Status::NotOK, gai_strerror(rv));
   }
 

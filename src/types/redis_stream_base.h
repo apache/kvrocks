@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "fmt/format.h"
 #include "status.h"
 
 namespace Redis {
@@ -66,7 +67,7 @@ struct StreamEntryID {
 
   bool operator==(const StreamEntryID &rhs) const { return ms == rhs.ms && seq == rhs.seq; }
 
-  std::string ToString() const { return std::to_string(ms) + "-" + std::to_string(seq); }
+  std::string ToString() const { return fmt::format("{}-{}", ms, seq); }
 
   static StreamEntryID Minimum() { return StreamEntryID{0, 0}; }
   static StreamEntryID Maximum() { return StreamEntryID{UINT64_MAX, UINT64_MAX}; }

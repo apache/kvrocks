@@ -18,6 +18,7 @@
  *
  */
 
+#include "fmt/core.h"
 #define __STDC_FORMAT_MACROS
 
 #include <event2/buffer.h>
@@ -67,17 +68,14 @@
 
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {
-  int rv;
-  char portstr[6]; /* strlen("65535") + 1; */
   addrinfo hints, *servinfo, *p;
 
-  snprintf(portstr, sizeof(portstr), "%u", port);
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
-  if ((rv = getaddrinfo(host.c_str(), portstr, &hints, &servinfo)) != 0) {
-    return Status(Status::NotOK, gai_strerror(rv));
+  if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
+    return {Status::NotOK, gai_strerror(rv)};
   }
 
   auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
@@ -108,14 +106,12 @@ const std::string Float2String(double d) {
     return d > 0 ? "inf" : "-inf";
   }
 
-  char buf[128];
-  snprintf(buf, sizeof(buf), "%.17g", d);
-  return buf;
+  return fmt::format("{:.17g}", d);
 }
 
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
-    return Status(Status::NotOK, strerror(errno));
+    return Status::FromErrno();
   }
   return Status::OK();
 }
@@ -123,7 +119,7 @@ Status SockSetTcpNoDelay(int fd, int val) {
 Status SockSetTcpKeepalive(int fd, int interval) {
   int val = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1) {
-    return Status(Status::NotOK, strerror(errno));
+    return Status::FromErrno();
   }
 
 #ifdef __linux__
@@ -134,7 +130,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   // Send first probe after interval.
   val = interval;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPIDLE: ") + strerror(errno));
+    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPIDLE: {}", strerror(errno))};
   }
 
   // Send next probes after the specified interval. Note that we set the
@@ -143,14 +139,14 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   val = interval / 3;
   if (val == 0) val = 1;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPINTVL: ") + strerror(errno));
+    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPINTVL: {}", strerror(errno))};
   }
 
   // Consider the socket in error state after three we send three ACK
   // probes without getting a reply.
   val = 3;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-    return Status(Status::NotOK, std::string("setsockopt TCP_KEEPCNT: ") + strerror(errno));
+    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPCNT: {}", strerror(errno))};
   }
 #else
   ((void)interval);  // Avoid unused var warning for non Linux systems.
@@ -540,28 +536,23 @@ std::string StringToHex(const std::string &input) {
   return output;
 }
 
-void BytesToHuman(char *buf, size_t size, uint64_t n) {
-  double d;
+constexpr unsigned long long expTo1024(unsigned n) { return 1ULL << (n * 10); }
 
-  if (n < 1024) {
-    snprintf(buf, size, "%" PRIu64 "B", n);
-  } else if (n < (1024 * 1024)) {
-    d = static_cast<double>(n) / (1024);
-    snprintf(buf, size, "%.2fK", d);
-  } else if (n < (1024LL * 1024 * 1024)) {
-    d = static_cast<double>(n) / (1024 * 1024);
-    snprintf(buf, size, "%.2fM", d);
-  } else if (n < (1024LL * 1024 * 1024 * 1024)) {
-    d = static_cast<double>(n) / (1024LL * 1024 * 1024);
-    snprintf(buf, size, "%.2fG", d);
-  } else if (n < (1024LL * 1024 * 1024 * 1024 * 1024)) {
-    d = static_cast<double>(n) / (1024LL * 1024 * 1024 * 1024);
-    snprintf(buf, size, "%.2fT", d);
-  } else if (n < (1024LL * 1024 * 1024 * 1024 * 1024 * 1024)) {
-    d = static_cast<double>(n) / (1024LL * 1024 * 1024 * 1024 * 1024);
-    snprintf(buf, size, "%.2fP", d);
+void BytesToHuman(char *buf, size_t size, uint64_t n) {
+  if (n < expTo1024(1)) {
+    fmt::format_to_n(buf, size, "{}B", n);
+  } else if (n < expTo1024(2)) {
+    fmt::format_to_n(buf, size, "{:.2f}K", static_cast<double>(n) / expTo1024(1));
+  } else if (n < expTo1024(3)) {
+    fmt::format_to_n(buf, size, "{:.2f}M", static_cast<double>(n) / expTo1024(2));
+  } else if (n < expTo1024(4)) {
+    fmt::format_to_n(buf, size, "{:.2f}G", static_cast<double>(n) / expTo1024(3));
+  } else if (n < expTo1024(5)) {
+    fmt::format_to_n(buf, size, "{:.2f}T", static_cast<double>(n) / expTo1024(4));
+  } else if (n < expTo1024(6)) {
+    fmt::format_to_n(buf, size, "{:.2f}P", static_cast<double>(n) / expTo1024(5));
   } else {
-    snprintf(buf, size, "%" PRIu64 "B", n);
+    fmt::format_to_n(buf, size, "{}B", n);
   }
 }
 

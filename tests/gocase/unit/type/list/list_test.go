@@ -244,8 +244,6 @@ func TestList(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-	rd := srv.NewTCPClient()
-	defer func() { require.NoError(t, rd.Close()) }()
 
 	t.Run("LPUSH, RPUSH, LLENGTH, LINDEX, LPOP - ziplist", func(t *testing.T) {
 		// first lpush then rpush
@@ -325,6 +323,8 @@ func TestList(t *testing.T) {
 
 	for listType, large := range largeValue {
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: single existing list - %s", listType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			createList("blist", []string{"a", "b", large, "c", "d"})
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
 			rd.MustReadStrings(t, []string{"blist", "a"})
@@ -337,6 +337,8 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: multiple existing lists - %s", listType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			createList("blist1", []string{"a", large, "c"})
 			createList("blist2", []string{"d", large, "f"})
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
@@ -354,6 +356,8 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("BLPOP, BRPOP: second list has an entry - %s", listType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1").Err())
 			createList("blist2", []string{"d", large, "f"})
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
@@ -366,6 +370,8 @@ func TestList(t *testing.T) {
 	}
 
 	t.Run("BLPOP with same key multiple times should work (redis issue #801)", func(t *testing.T) {
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rdb.Del(ctx, "list1", "list2").Err())
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
 		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
@@ -382,6 +388,8 @@ func TestList(t *testing.T) {
 	})
 
 	t.Run("BLPOP with variadic LPUSH", func(t *testing.T) {
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rdb.Del(ctx, "blist", "target").Err())
 		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "blist", "0"))
@@ -394,6 +402,8 @@ func TestList(t *testing.T) {
 
 	for _, popType := range []string{"blpop", "brpop"} {
 		t.Run(fmt.Sprintf("%s: with single empty list argument", popType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "1"))
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
@@ -402,6 +412,8 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("%s: with negative timeout", popType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "-1"))
 			rd.MustMatch(t, ".*negative.*")
 		})
@@ -409,6 +421,8 @@ func TestList(t *testing.T) {
 		t.Run(fmt.Sprintf("%s: with zero timeout should block indefinitely", popType), func(t *testing.T) {
 			// To test this, use a timeout of 0 and wait a second.
 			// The blocking pop should still be waiting for a push.
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "0"))
 			time.Sleep(time.Millisecond * 1000)
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
@@ -416,6 +430,8 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("%s: second argument is not a list", popType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rdb.Set(ctx, "blist2", "nolist", 0).Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
@@ -423,12 +439,16 @@ func TestList(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("%s: timeout", popType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rd.MustMatch(t, "")
 		})
 
 		t.Run(fmt.Sprintf("%s: arguments are empty", popType), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
@@ -838,6 +858,8 @@ func TestList(t *testing.T) {
 	for _, from := range []string{"LEFT", "RIGHT"} {
 		for _, to := range []string{"LEFT", "RIGHT"} {
 			t.Run(fmt.Sprintf("LMOVE %s %s on the list node", from, to), func(t *testing.T) {
+				rd := srv.NewTCPClient()
+				defer func() { require.NoError(t, rd.Close()) }()
 				require.NoError(t, rdb.Del(ctx, "target_key{t}").Err())
 				require.NoError(t, rdb.RPush(ctx, "target_key{t}", 1).Err())
 				createList("list{t}", []string{"a", "b", "c", "d"})

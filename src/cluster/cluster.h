@@ -84,7 +84,7 @@ class Cluster {
   Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
-  uint64_t GetVersion() { return version_; }
+  int64_t GetVersion() const { return version_; }
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot);

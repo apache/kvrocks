@@ -38,6 +38,7 @@
 #include "status.h"
 
 class Server;
+
 namespace Redis {
 
 class Connection;
@@ -64,7 +65,7 @@ class Commander {
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
-    return Status(Status::RedisExecErr, "not implemented");
+    return {Status::RedisExecErr, "not implemented"};
   }
 
   virtual ~Commander() = default;
@@ -110,4 +111,5 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 std::string GetCommandInfo(const CommandAttributes *command_attributes);
 Status GetKeysFromCommand(const std::string &name, int argc, std::vector<int> *keys_indexes);
 bool IsCommandExists(const std::string &name);
+
 }  // namespace Redis

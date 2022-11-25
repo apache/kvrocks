@@ -22,7 +22,6 @@
 
 #include <fcntl.h>
 #include <glog/logging.h>
-#include <sys/socket.h>
 
 #include <chrono>
 #include <climits>
@@ -93,15 +92,18 @@ AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string 
     conn->BecomeUser();
     return AuthResult::OK;
   }
+
   const auto &requirepass = config->requirepass;
   if (!requirepass.empty() && user_password != requirepass) {
     return AuthResult::INVALID_PASSWORD;
   }
+
   conn->SetNamespace(kDefaultNamespace);
   conn->BecomeAdmin();
   if (requirepass.empty()) {
     return AuthResult::NO_REQUIRE_PASS;
   }
+
   return AuthResult::OK;
 }
 
@@ -167,6 +169,7 @@ class CommandNamespace : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     Config *config = svr->GetConfig();
     std::string sub_command = Util::ToLower(args_[1]);
     if (args_.size() == 3 && sub_command == "get") {
@@ -223,6 +226,7 @@ class CommandKeys : public Commander {
         *output = Redis::Error("ERR only keys prefix match was supported");
         return Status::OK();
       }
+
       redis.Keys(prefix.substr(0, prefix.size() - 1), &keys);
     }
     *output = Redis::MultiBulkString(keys);
@@ -240,13 +244,14 @@ class CommandFlushDB : public Commander {
       }
     }
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.FlushDB();
-    LOG(WARNING) << "DB keys in namespce: " << conn->GetNamespace() << " was flushed, addr: " << conn->GetAddr();
+    auto s = redis.FlushDB();
+    LOG(WARNING) << "DB keys in namespace: " << conn->GetNamespace() << " was flushed, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
-    return Status(Status::RedisExecErr, s.ToString());
+
+    return {Status::RedisExecErr, s.ToString()};
   }
 };
 
@@ -257,20 +262,23 @@ class CommandFlushAll : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     if (svr->GetConfig()->cluster_enabled) {
       if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
     }
+
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.FlushAll();
-    LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
+    auto s = redis.FlushAll();
     if (s.ok()) {
+      LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
       *output = Redis::SimpleString("OK");
       return Status::OK();
     }
-    return Status(Status::RedisExecErr, s.ToString());
+
+    return {Status::RedisExecErr, s.ToString()};
   }
 };
 
@@ -282,7 +290,7 @@ class CommandPing : public Commander {
     } else if (args_.size() == 2) {
       *output = Redis::BulkString(args_[1]);
     } else {
-      return Status(Status::NotOK, errWrongNumOfArguments);
+      return {Status::NotOK, errWrongNumOfArguments};
     }
     return Status::OK();
   }
@@ -303,6 +311,7 @@ class CommandConfig : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     Config *config = svr->GetConfig();
     std::string sub_command = Util::ToLower(args_[1]);
     if ((sub_command == "rewrite" && args_.size() != 2) || (sub_command == "get" && args_.size() != 3) ||
@@ -310,9 +319,11 @@ class CommandConfig : public Commander {
       *output = Redis::Error(errWrongNumOfArguments);
       return Status::OK();
     }
+
     if (args_.size() == 2 && sub_command == "rewrite") {
       Status s = config->Rewrite();
-      if (!s.IsOK()) return Status(Status::RedisExecErr, s.Msg());
+      if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+
       *output = Redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success";
     } else if (args_.size() == 3 && sub_command == "get") {
@@ -338,7 +349,7 @@ class CommandGet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.Get(args_[1], &value);
+    auto s = string_db.Get(args_[1], &value);
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
     // to the `max-bitmap-to-string-mb` configuration.
@@ -349,8 +360,9 @@ class CommandGet : public Commander {
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
   }
@@ -376,7 +388,7 @@ class CommandGetEx : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.GetEx(args_[1], &value, ttl_);
+    auto s = string_db.GetEx(args_[1], &value, ttl_);
 
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
@@ -388,8 +400,9 @@ class CommandGetEx : public Commander {
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
   }
@@ -404,10 +417,11 @@ class CommandStrlen : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.Get(args_[1], &value);
+    auto s = string_db.Get(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::Integer(0);
     } else {
@@ -422,10 +436,11 @@ class CommandGetSet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     std::string old_value;
-    rocksdb::Status s = string_db.GetSet(args_[1], args_[2], &old_value);
+    auto s = string_db.GetSet(args_[1], args_[2], &old_value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
@@ -440,10 +455,11 @@ class CommandGetDel : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     std::string value;
-    rocksdb::Status s = string_db.GetDel(args_[1], &value);
+    auto s = string_db.GetDel(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
@@ -459,8 +475,9 @@ class CommandGetRange : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     start_ = *parse_start;
     stop_ = *parse_stop;
     return Commander::Parse(args);
@@ -469,14 +486,16 @@ class CommandGetRange : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.Get(args_[1], &value);
+    auto s = string_db.Get(args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
       return Status::OK();
     }
+
     if (start_ < 0) start_ = static_cast<int>(value.size()) + start_;
     if (stop_ < 0) stop_ = static_cast<int>(value.size()) + stop_;
     if (start_ < 0) start_ = 0;
@@ -490,7 +509,8 @@ class CommandGetRange : public Commander {
   }
 
  private:
-  int start_ = 0, stop_ = 0;
+  int start_ = 0;
+  int stop_ = 0;
 };
 
 class CommandSetRange : public Commander {
@@ -498,19 +518,21 @@ class CommandSetRange : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     offset_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.SetRange(args_[1], offset_, args_[3], &ret);
+    auto s = string_db.SetRange(args_[1], offset_, args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -538,12 +560,13 @@ class CommandMGet : public Commander {
 class CommandAppend : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.Append(args_[1], args_[2], &ret);
+    auto s = string_db.Append(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -589,8 +612,9 @@ class CommandSet : public Commander {
     }
 
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (set_flag_ != NONE && !ret) {
       *output = Redis::NilString();
     } else {
@@ -609,16 +633,19 @@ class CommandSetEX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
+    if (*parse_result <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
+
     ttl_ = *parse_result;
-    if (ttl_ <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.SetEX(args_[1], args_[3], ttl_);
+    auto s = string_db.SetEX(args_[1], args_[3], ttl_);
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -632,20 +659,23 @@ class CommandPSetEX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto ttl_ms = ParseInt<int64_t>(args[2], 10);
     if (!ttl_ms) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
-    if (*ttl_ms <= 0) return Status(Status::RedisParseErr, errInvalidExpireTime);
-    if (*ttl_ms > 0 && *ttl_ms < 1000) {
+
+    if (*ttl_ms <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
+
+    if (*ttl_ms < 1000) {
       ttl_ = 1;
     } else {
       ttl_ = *ttl_ms / 1000;
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.SetEX(args_[1], args_[3], ttl_);
+    auto s = string_db.SetEX(args_[1], args_[3], ttl_);
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -658,20 +688,24 @@ class CommandMSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 != 1) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     std::vector<StringPair> kvs;
     for (size_t i = 1; i < args_.size(); i += 2) {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
-    rocksdb::Status s = string_db.MSet(kvs);
+
+    auto s = string_db.MSet(kvs);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -680,12 +714,13 @@ class CommandMSet : public Commander {
 class CommandSetNX : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.SetNX(args_[1], args_[2], 0, &ret);
+    auto s = string_db.SetNX(args_[1], args_[2], 0, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -695,22 +730,25 @@ class CommandMSetNX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 != 1) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     std::vector<StringPair> kvs;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
     for (size_t i = 1; i < args_.size(); i += 2) {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
-    rocksdb::Status s = string_db.MSetNX(kvs, 0, &ret);
+
+    auto s = string_db.MSetNX(kvs, 0, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -719,10 +757,11 @@ class CommandMSetNX : public Commander {
 class CommandIncr : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t ret;
+    int64_t ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.IncrBy(args_[1], 1, &ret);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = string_db.IncrBy(args_[1], 1, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -731,10 +770,11 @@ class CommandIncr : public Commander {
 class CommandDecr : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t ret;
+    int64_t ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.IncrBy(args_[1], -1, &ret);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = string_db.IncrBy(args_[1], -1, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -745,17 +785,19 @@ class CommandIncrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     increment_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t ret;
+    int64_t ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.IncrBy(args_[1], increment_, &ret);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = string_db.IncrBy(args_[1], increment_, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -770,16 +812,18 @@ class CommandIncrByFloat : public Commander {
     try {
       increment_ = std::stod(args[2]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    double ret;
+    double ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.IncrByFloat(args_[1], increment_, &ret);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = string_db.IncrByFloat(args_[1], increment_, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
   }
@@ -793,17 +837,19 @@ class CommandDecrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     increment_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t ret;
+    int64_t ret = 0;
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = string_db.IncrBy(args_[1], -1 * increment_, &ret);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = string_db.IncrBy(args_[1], -1 * increment_, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -831,12 +877,12 @@ class CommandCAS : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s;
     int ret = 0;
-    s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
+    auto s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -849,12 +895,12 @@ class CommandCAD : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s;
     int ret = 0;
-    s = string_db.CAD(args_[1], args_[2], &ret);
+    auto s = string_db.CAD(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -865,8 +911,8 @@ class CommandDel : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    for (unsigned int i = 1; i < args_.size(); i++) {
-      rocksdb::Status s = redis.Del(args_[i]);
+    for (size_t i = 1; i < args_.size(); i++) {
+      auto s = redis.Del(args_[i]);
       if (s.ok()) cnt++;
     }
     *output = Redis::Integer(cnt);
@@ -889,14 +935,16 @@ class CommandGetBit : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = getBitOffsetFromArgument(args[2], &offset_);
     if (!s.IsOK()) return s;
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    bool bit;
+    bool bit = false;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.GetBit(args_[1], offset_, &bit);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = bitmap_db.GetBit(args_[1], offset_, &bit);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(bit ? 1 : 0);
     return Status::OK();
   }
@@ -916,16 +964,18 @@ class CommandSetBit : public Commander {
     } else if (args[3] == "1") {
       bit_ = true;
     } else {
-      return Status(Status::RedisParseErr, "bit is out of range");
+      return {Status::RedisParseErr, "bit is out of range"};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    bool old_bit;
+    bool old_bit = false;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(old_bit ? 1 : 0);
     return Status::OK();
   }
@@ -939,34 +989,40 @@ class CommandBitCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() == 3) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
+
     if (args.size() == 4) {
       auto parse_start = ParseInt<int64_t>(args[2], 10);
       if (!parse_start) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       start_ = *parse_start;
       auto parse_stop = ParseInt<int64_t>(args[3], 10);
       if (!parse_stop) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       stop_ = *parse_stop;
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint32_t cnt;
+    uint32_t cnt = 0;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(cnt);
     return Status::OK();
   }
 
  private:
-  int64_t start_ = 0, stop_ = -1;
+  int64_t start_ = 0;
+  int64_t stop_ = -1;
 };
 
 class CommandBitPos : public Commander {
@@ -975,40 +1031,48 @@ class CommandBitPos : public Commander {
     if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[3], 10);
       if (!parse_start) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       start_ = *parse_start;
     }
+
     if (args.size() >= 5) {
       auto parse_stop = ParseInt<int64_t>(args[4], 10);
       if (!parse_stop) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       stop_given_ = true;
       stop_ = *parse_stop;
     }
+
     if (args[2] == "0") {
       bit_ = false;
     } else if (args[2] == "1") {
       bit_ = true;
     } else {
-      return Status(Status::RedisParseErr, "bit should be 0 or 1");
+      return {Status::RedisParseErr, "bit should be 0 or 1"};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t pos;
+    int64_t pos = 0;
     Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(pos);
     return Status::OK();
   }
 
  private:
-  int64_t start_ = 0, stop_ = -1;
-  bool bit_ = false, stop_given_ = false;
+  int64_t start_ = 0;
+  int64_t stop_ = -1;
+  bool bit_ = false;
+  bool stop_given_ = false;
 };
 
 class CommandBitOp : public Commander {
@@ -1024,23 +1088,26 @@ class CommandBitOp : public Commander {
     else if (opname == "not")
       op_flag_ = kBitOpNot;
     else
-      return Status(Status::RedisInvalidCmd, "Unknown bit operation");
+      return {Status::RedisInvalidCmd, "Unknown bit operation"};
     if (op_flag_ == kBitOpNot && args.size() != 4) {
-      return Status(Status::RedisInvalidCmd, "BITOP NOT must be called with a single source key.");
+      return {Status::RedisInvalidCmd, "BITOP NOT must be called with a single source key."};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t destkey_len = 0;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> op_keys;
     for (uint64_t i = 3; i < args_.size(); i++) {
       op_keys.emplace_back(args_[i]);
     }
-    rocksdb::Status s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &destkey_len);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
-    *output = Redis::Integer(destkey_len);
+
+    int64_t dest_key_len = 0;
+    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    auto s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &dest_key_len);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = Redis::Integer(dest_key_len);
     return Status::OK();
   }
 
@@ -1052,13 +1119,14 @@ class CommandType : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    RedisType type;
-    rocksdb::Status s = redis.Type(args_[1], &type);
+    RedisType type = kRedisNone;
+    auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
       *output = Redis::BulkString(RedisTypeNames[type]);
       return Status::OK();
     }
-    return Status(Status::RedisExecErr, s.ToString());
+
+    return {Status::RedisExecErr, s.ToString()};
   }
 };
 
@@ -1068,10 +1136,11 @@ class CommandObject : public Commander {
     if (Util::ToLower(args_[1]) == "dump") {
       Redis::Database redis(svr->storage_, conn->GetNamespace());
       std::vector<std::string> infos;
-      rocksdb::Status s = redis.Dump(args_[2], &infos);
+      auto s = redis.Dump(args_[2], &infos);
       if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
+        return {Status::RedisExecErr, s.ToString()};
       }
+
       output->append(Redis::MultiLen(infos.size()));
       for (const auto &info : infos) {
         output->append(Redis::BulkString(info));
@@ -1087,14 +1156,14 @@ class CommandTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl;
-    rocksdb::Status s = redis.TTL(args_[1], &ttl);
+    int ttl = 0;
+    auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
       *output = Redis::Integer(ttl);
       return Status::OK();
-    } else {
-      return Status(Status::RedisExecErr, s.ToString());
     }
+
+    return {Status::RedisExecErr, s.ToString()};
   }
 };
 
@@ -1102,14 +1171,16 @@ class CommandPTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl;
-    rocksdb::Status s = redis.TTL(args_[1], &ttl);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    int ttl = 0;
+    auto s = redis.TTL(args_[1], &ttl);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     if (ttl > 0) {
       *output = Redis::Integer(ttl * 1000);
     } else {
       *output = Redis::Integer(ttl);
     }
+
     return Status::OK();
   }
 };
@@ -1117,14 +1188,16 @@ class CommandPTTL : public Commander {
 class CommandExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int cnt = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
     std::vector<rocksdb::Slice> keys;
-    for (unsigned i = 1; i < args_.size(); i++) {
+    for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
+    int cnt = 0;
+    Redis::Database redis(svr->storage_, conn->GetNamespace());
     redis.Exists(keys, &cnt);
     *output = Redis::Integer(cnt);
+
     return Status::OK();
   }
 };
@@ -1147,7 +1220,7 @@ class CommandExpire : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.Expire(args_[1], seconds_);
+    auto s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -1169,7 +1242,7 @@ class CommandPExpire : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.Expire(args_[1], seconds_);
+    auto s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -1187,17 +1260,21 @@ class CommandExpireAt : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     if (*parse_result >= INT32_MAX) {
-      return Status(Status::RedisParseErr, "the expire time was overflow");
+      return {Status::RedisParseErr, "the expire time was overflow"};
     }
+
     timestamp_ = *parse_result;
+
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.Expire(args_[1], timestamp_);
+    auto s = redis.Expire(args_[1], timestamp_);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -1215,18 +1292,21 @@ class CommandPExpireAt : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     if (*parse_result / 1000 >= INT32_MAX) {
-      return Status(Status::RedisParseErr, "the expire time was overflow");
+      return {Status::RedisParseErr, "the expire time was overflow"};
     }
+
     timestamp_ = static_cast<int>(*parse_result / 1000);
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.Expire(args_[1], timestamp_);
+    auto s = redis.Expire(args_[1], timestamp_);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -1242,16 +1322,19 @@ class CommandPExpireAt : public Commander {
 class CommandPersist : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ttl;
+    int ttl = 0;
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = redis.TTL(args_[1], &ttl);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = redis.TTL(args_[1], &ttl);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     if (ttl == -1 || ttl == -2) {
       *output = Redis::Integer(0);
       return Status::OK();
     }
+
     s = redis.Expire(args_[1], 0);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = Redis::Integer(1);
     return Status::OK();
   }
@@ -1262,10 +1345,11 @@ class CommandHGet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
-    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    auto s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(value);
     return Status::OK();
   }
@@ -1274,12 +1358,13 @@ class CommandHGet : public Commander {
 class CommandHSetNX : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
+    auto s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1290,10 +1375,11 @@ class CommandHStrlen : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
-    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    auto s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(static_cast<int>(value.size()));
     return Status::OK();
   }
@@ -1302,16 +1388,18 @@ class CommandHStrlen : public Commander {
 class CommandHDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       fields.emplace_back(args_[i]);
     }
-    rocksdb::Status s = hash_db.Delete(args_[1], fields, &ret);
+
+    int ret = 0;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    auto s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1322,10 +1410,11 @@ class CommandHExists : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::string value;
-    rocksdb::Status s = hash_db.Get(args_[1], args_[2], &value);
+    auto s = hash_db.Get(args_[1], args_[2], &value);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(1);
     return Status::OK();
   }
@@ -1334,12 +1423,13 @@ class CommandHExists : public Commander {
 class CommandHLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint32_t count;
+    uint32_t count = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = hash_db.Size(args_[1], &count);
+    auto s = hash_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::Integer(0) : Redis::Integer(count);
     return Status::OK();
   }
@@ -1350,18 +1440,21 @@ class CommandHIncrBy : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int64_t>(args[3], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     increment_ = *parse_result;
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int64_t ret;
+    int64_t ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
+    auto s = hash_db.IncrBy(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1376,17 +1469,19 @@ class CommandHIncrByFloat : public Commander {
     try {
       increment_ = std::stod(args[3]);
     } catch (std::exception &e) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    double ret;
+    double ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
+    auto s = hash_db.IncrByFloat(args_[1], args_[2], increment_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::BulkString(Util::Float2String(ret));
     return Status::OK();
   }
@@ -1398,17 +1493,19 @@ class CommandHIncrByFloat : public Commander {
 class CommandHMGet : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> fields;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       fields.emplace_back(args_[i]);
     }
+
     std::vector<std::string> values;
     std::vector<rocksdb::Status> statuses;
-    rocksdb::Status s = hash_db.MGet(args_[1], fields, &values, &statuses);
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    auto s = hash_db.MGet(args_[1], fields, &values, &statuses);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
       *output = Redis::MultiBulkString(values);
@@ -1423,22 +1520,24 @@ class CommandHMSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    for (unsigned int i = 2; i < args_.size(); i += 2) {
+    for (size_t i = 2; i < args_.size(); i += 2) {
       field_values.emplace_back(FieldValue{args_[i], args_[i + 1]});
     }
-    rocksdb::Status s = hash_db.MSet(args_[1], field_values, false, &ret);
+
+    int ret = 0;
+    Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
+    auto s = hash_db.MSet(args_[1], field_values, false, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (GetAttributes()->name == "hset") {
       *output = Redis::Integer(ret);
     } else {
@@ -1453,16 +1552,18 @@ class CommandHKeys : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
+    auto s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyKey);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> keys;
     keys.reserve(field_values.size());
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
     *output = Redis::MultiBulkString(keys);
+
     return Status::OK();
   }
 };
@@ -1472,16 +1573,18 @@ class CommandHVals : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
+    auto s = hash_db.GetAll(args_[1], &field_values, HashFetchType::kOnlyValue);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> values;
     values.reserve(field_values.size());
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
     *output = MultiBulkString(values);
+
     return Status::OK();
   }
 };
@@ -1491,16 +1594,19 @@ class CommandHGetAll : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.GetAll(args_[1], &field_values);
+    auto s = hash_db.GetAll(args_[1], &field_values);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> kv_pairs;
+    kv_pairs.reserve(field_values.size());
     for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
     *output = MultiBulkString(kv_pairs);
+
     return Status::OK();
   }
 };
@@ -1509,31 +1615,37 @@ class CommandHRange : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() != 6 && args.size() != 4) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
-      return Status(Status::RedisInvalidCmd, errInvalidSyntax);
+      return {Status::RedisInvalidCmd, errInvalidSyntax};
     }
+
     if (args.size() == 6) {
       auto parse_result = ParseInt<int64_t>(args_[5], 10);
-      if (!parse_result) return Status(Status::RedisParseErr, errValueNotInteger);
+      if (!parse_result) return {Status::RedisParseErr, errValueNotInteger};
+
       limit_ = *parse_result;
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    rocksdb::Status s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
+    auto s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
     *output = MultiBulkString(kv_pairs);
+
     return Status::OK();
   }
 
@@ -1546,20 +1658,21 @@ class CommandPush : public Commander {
   CommandPush(bool create_if_missing, bool left) : left_(left), create_if_missing_(create_if_missing) {}
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> elems;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       elems.emplace_back(args_[i]);
     }
-    int ret;
+
+    int ret = 0;
     rocksdb::Status s;
+    Redis::List list_db(svr->storage_, conn->GetNamespace());
     if (create_if_missing_) {
       s = list_db.Push(args_[1], elems, left_, &ret);
     } else {
       s = list_db.PushX(args_[1], elems, left_, &ret);
     }
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     svr->WakeupBlockingConns(args_[1], elems.size());
@@ -1595,23 +1708,28 @@ class CommandRPushX : public CommandPush {
 
 class CommandPop : public Commander {
  public:
-  explicit CommandPop(bool left) { left_ = left; }
+  explicit CommandPop(bool left) : left_(left) {}
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() > 3) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     if (args.size() == 2) {
       return Status::OK();
     }
+
     auto v = ParseInt<int32_t>(args[2], 10);
     if (!v) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     if (*v < 0) {
-      return Status(Status::RedisParseErr, errValueMustBePositive);
+      return {Status::RedisParseErr, errValueMustBePositive};
     }
+
     count_ = *v;
     with_count_ = true;
+
     return Status::OK();
   }
 
@@ -1619,10 +1737,11 @@ class CommandPop : public Commander {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     if (with_count_) {
       std::vector<std::string> elems;
-      rocksdb::Status s = list_db.PopMulti(args_[1], left_, count_, &elems);
+      auto s = list_db.PopMulti(args_[1], left_, count_, &elems);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::RedisExecErr, s.ToString());
+        return {Status::RedisExecErr, s.ToString()};
       }
+
       if (s.IsNotFound()) {
         *output = Redis::MultiLen(-1);
       } else {
@@ -1630,10 +1749,11 @@ class CommandPop : public Commander {
       }
     } else {
       std::string elem;
-      rocksdb::Status s = list_db.Pop(args_[1], left_, &elem);
+      auto s = list_db.Pop(args_[1], left_, &elem);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::RedisExecErr, s.ToString());
+        return {Status::RedisExecErr, s.ToString()};
       }
+
       if (s.IsNotFound()) {
         *output = Redis::NilString();
       } else {
@@ -1668,7 +1788,7 @@ class CommandBPop : public Commander {
   CommandBPop &operator=(const CommandBPop &) = delete;
 
   ~CommandBPop() override {
-    if (timer_ != nullptr) {
+    if (timer_) {
       event_free(timer_);
       timer_ = nullptr;
     }
@@ -1677,12 +1797,15 @@ class CommandBPop : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, "timeout is not an integer or out of range");
+      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
     }
+
+    if (*parse_result < 0) {
+      return {Status::RedisParseErr, "timeout should not be negative"};
+    }
+
     timeout_ = *parse_result;
-    if (timeout_ < 0) {
-      return Status(Status::RedisParseErr, "timeout should not be negative");
-    }
+
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
   }
@@ -1699,19 +1822,22 @@ class CommandBPop : public Commander {
 
     if (conn->IsInExec()) {
       *output = Redis::MultiLen(-1);
-      return Status::OK();  // No blocking in mult-exec
+      return Status::OK();  // No blocking in multi-exec
     }
 
     for (const auto &key : keys_) {
       svr_->AddBlockingKey(key, conn_);
     }
+
     bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
+
     if (timeout_) {
       timer_ = evtimer_new(bufferevent_get_base(bev), TimerCB, this);
       timeval tm = {timeout_, 0};
       evtimer_add(timer_, &tm);
     }
-    return Status(Status::BlockingCmd);
+
+    return {Status::BlockingCmd};
   }
 
   rocksdb::Status TryPopFromList() {
@@ -1726,8 +1852,9 @@ class CommandBPop : public Commander {
         break;
       }
     }
+
     if (s.ok()) {
-      if (last_key_ptr == nullptr) {
+      if (!last_key_ptr) {
         conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
       } else {
         conn_->Reply(Redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
@@ -1737,6 +1864,7 @@ class CommandBPop : public Commander {
       LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->GetAttributes()->name
                  << ", err: " << s.ToString();
     }
+
     return s;
   }
 
@@ -1751,10 +1879,12 @@ class CommandBPop : public Commander {
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
-    if (self->timer_ != nullptr) {
+
+    if (self->timer_) {
       event_free(self->timer_);
       self->timer_ = nullptr;
     }
+
     self->unBlockingAll();
     bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent,
                       self->conn_);
@@ -1791,7 +1921,7 @@ class CommandBPop : public Commander {
 
  private:
   bool left_ = false;
-  int timeout_ = 0;  // second
+  int timeout_ = 0;  // seconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
@@ -1819,19 +1949,21 @@ class CommandLRem : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     count_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = list_db.Rem(args_[1], count_, args_[3], &ret);
+    auto s = list_db.Rem(args_[1], count_, args_[3], &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1848,18 +1980,19 @@ class CommandLInsert : public Commander {
     } else if ((Util::ToLower(args[2]) == "after")) {
       before_ = false;
     } else {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
+    auto s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -1874,8 +2007,9 @@ class CommandLRange : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     start_ = *parse_start;
     stop_ = *parse_stop;
     return Commander::Parse(args);
@@ -1884,10 +2018,11 @@ class CommandLRange : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> elems;
-    rocksdb::Status s = list_db.Range(args_[1], start_, stop_, &elems);
+    auto s = list_db.Range(args_[1], start_, stop_, &elems);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(elems, false);
     return Status::OK();
   }
@@ -1900,11 +2035,12 @@ class CommandLLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    uint32_t count;
-    rocksdb::Status s = list_db.Size(args_[1], &count);
+    uint32_t count = 0;
+    auto s = list_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(count);
     return Status::OK();
   }
@@ -1915,8 +2051,9 @@ class CommandLIndex : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     index_ = *parse_result;
     return Commander::Parse(args);
   }
@@ -1924,10 +2061,11 @@ class CommandLIndex : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
-    rocksdb::Status s = list_db.Index(args_[1], index_, &elem);
+    auto s = list_db.Index(args_[1], index_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
@@ -1943,20 +2081,22 @@ class CommandLIndex : public Commander {
 class CommandLSet : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_reuslt = ParseInt<int>(args[2], 10);
-    if (!parse_reuslt) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+    auto parse_result = ParseInt<int>(args[2], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
     }
-    index_ = *parse_reuslt;
+
+    index_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = list_db.Set(args_[1], index_, args_[3]);
+    auto s = list_db.Set(args_[1], index_, args_[3]);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -1971,8 +2111,9 @@ class CommandLTrim : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     start_ = *parse_start;
     stop_ = *parse_stop;
 
@@ -1981,16 +2122,18 @@ class CommandLTrim : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = list_db.Trim(args_[1], start_, stop_);
+    auto s = list_db.Trim(args_[1], start_, stop_);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
-  int start_ = 0, stop_ = 0;
+  int start_ = 0;
+  int stop_ = 0;
 };
 
 class CommandRPopLPUSH : public Commander {
@@ -1998,10 +2141,11 @@ class CommandRPopLPUSH : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::List list_db(svr->storage_, conn->GetNamespace());
     std::string elem;
-    rocksdb::Status s = list_db.RPopLPush(args_[1], args_[2], &elem);
+    auto s = list_db.RPopLPush(args_[1], args_[2], &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
     return Status::OK();
   }
@@ -2012,13 +2156,15 @@ class CommandLMove : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto arg_val = Util::ToLower(args_[3]);
     if (arg_val != "left" && arg_val != "right") {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
+
     src_left_ = arg_val == "left";
     arg_val = Util::ToLower(args_[4]);
     if (arg_val != "left" && arg_val != "right") {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
+
     dst_left_ = arg_val == "left";
     return Status::OK();
   }
@@ -2028,8 +2174,9 @@ class CommandLMove : public Commander {
     std::string elem;
     auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = s.IsNotFound() ? Redis::NilString() : Redis::BulkString(elem);
     return Status::OK();
   }
@@ -2042,16 +2189,18 @@ class CommandLMove : public Commander {
 class CommandSAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
     for (unsigned int i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
-    int ret;
-    rocksdb::Status s = set_db.Add(args_[1], members, &ret);
+
+    int ret = 0;
+    Redis::Set set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.Add(args_[1], members, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2060,16 +2209,18 @@ class CommandSAdd : public Commander {
 class CommandSRem : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
-    int ret;
-    rocksdb::Status s = set_db.Remove(args_[1], members, &ret);
+
+    int ret = 0;
+    Redis::Set set_db(svr->storage_, conn->GetNamespace());
+    auto s = set_db.Remove(args_[1], members, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2079,11 +2230,12 @@ class CommandSCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = set_db.Card(args_[1], &ret);
+    int ret = 0;
+    auto s = set_db.Card(args_[1], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2094,10 +2246,11 @@ class CommandSMembers : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    rocksdb::Status s = set_db.Members(args_[1], &members);
+    auto s = set_db.Members(args_[1], &members);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
@@ -2107,11 +2260,12 @@ class CommandSIsMember : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = set_db.IsMember(args_[1], args_[2], &ret);
+    int ret = 0;
+    auto s = set_db.IsMember(args_[1], args_[2], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2127,17 +2281,20 @@ class CommandSMIsMember : public Commander {
     }
 
     std::vector<int> exists;
-    rocksdb::Status s = set_db.MIsMember(args_[1], members, &exists);
+    auto s = set_db.MIsMember(args_[1], members, &exists);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       exists.resize(members.size(), 0);
     }
+
     output->append(Redis::MultiLen(exists.size()));
     for (const auto &exist : exists) {
       output->append(Redis::Integer(exist));
     }
+
     return Status::OK();
   }
 };
@@ -2148,8 +2305,9 @@ class CommandSPop : public Commander {
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       count_ = *parse_result;
       with_count_ = true;
     }
@@ -2159,10 +2317,11 @@ class CommandSPop : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    rocksdb::Status s = set_db.Take(args_[1], &members, count_, true);
+    auto s = set_db.Take(args_[1], &members, count_, true);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (with_count_) {
       *output = Redis::MultiBulkString(members, false);
     } else {
@@ -2186,8 +2345,9 @@ class CommandSRandMember : public Commander {
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       count_ = *parse_result;
     }
     return Commander::Parse(args);
@@ -2196,9 +2356,9 @@ class CommandSRandMember : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    rocksdb::Status s = set_db.Take(args_[1], &members, count_, false);
+    auto s = set_db.Take(args_[1], &members, count_, false);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
@@ -2212,11 +2372,12 @@ class CommandSMove : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = set_db.Move(args_[1], args_[2], args_[3], &ret);
+    int ret = 0;
+    auto s = set_db.Move(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2229,12 +2390,14 @@ class CommandSDiff : public Commander {
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
     std::vector<std::string> members;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Diff(keys, &members);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
@@ -2247,12 +2410,14 @@ class CommandSUnion : public Commander {
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
     std::vector<std::string> members;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Union(keys, &members);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
@@ -2265,12 +2430,14 @@ class CommandSInter : public Commander {
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
     std::vector<std::string> members;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.Inter(keys, &members);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
@@ -2279,16 +2446,18 @@ class CommandSInter : public Commander {
 class CommandSDiffStore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
     std::vector<Slice> keys;
     for (size_t i = 2; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
+    int ret = 0;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.DiffStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2297,16 +2466,18 @@ class CommandSDiffStore : public Commander {
 class CommandSUnionStore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
     std::vector<Slice> keys;
     for (size_t i = 2; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
+    int ret = 0;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.UnionStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2315,16 +2486,18 @@ class CommandSUnionStore : public Commander {
 class CommandSInterStore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
     std::vector<Slice> keys;
     for (size_t i = 2; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
+
+    int ret = 0;
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     auto s = set_db.InterStore(args_[1], keys, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2333,40 +2506,47 @@ class CommandSInterStore : public Commander {
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    unsigned index = 2;
+    size_t index = 2;
     parseFlags(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {
       return s;
     }
+
     if (auto left = (args.size() - index); left >= 0) {
       if (flags_.HasIncr() && left != 2) {
-        return Status(Status::RedisParseErr, "INCR option supports a single increment-element pair");
-      } else if (left % 2 != 0 || left == 0) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, "INCR option supports a single increment-element pair"};
+      }
+
+      if (left % 2 != 0 || left == 0) {
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
+
     try {
-      for (unsigned i = index; i < args.size(); i += 2) {
+      for (size_t i = index; i < args.size(); i += 2) {
         double score = std::stod(args[i]);
         if (std::isnan(score)) {
-          return Status(Status::RedisParseErr, errScoreIsNotValidFloat);
+          return {Status::RedisParseErr, errScoreIsNotValidFloat};
         }
+
         member_scores_.emplace_back(MemberScore{args[i + 1], score});
       }
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, errValueIsNotFloat);
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     double old_score = member_scores_[0].score;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
+    auto s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (flags_.HasIncr()) {
       auto new_score = member_scores_[0].score;
       if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
@@ -2374,6 +2554,7 @@ class CommandZAdd : public Commander {
         *output = Redis::NilString();
         return Status::OK();
       }
+
       *output = Redis::BulkString(Util::Float2String(new_score));
     } else {
       *output = Redis::Integer(ret);
@@ -2385,17 +2566,16 @@ class CommandZAdd : public Commander {
   std::vector<MemberScore> member_scores_;
   ZAddFlags flags_{0};
 
-  void parseFlags(const std::vector<std::string> &args, unsigned &index);
+  void parseFlags(const std::vector<std::string> &args, size_t &index);
   Status validateFlags() const;
 };
 
-void CommandZAdd::parseFlags(const std::vector<std::string> &args, unsigned &index) {
+void CommandZAdd::parseFlags(const std::vector<std::string> &args, size_t &index) {
   std::unordered_map<std::string, ZSetFlags> options = {{"xx", kZSetXX}, {"nx", kZSetNX}, {"ch", kZSetCH},
                                                         {"lt", kZSetLT}, {"gt", kZSetGT}, {"incr", kZSetIncr}};
-  for (unsigned i = 2; i < args.size(); i++) {
+  for (size_t i = 2; i < args.size(); i++) {
     auto option = Util::ToLower(args[i]);
-    auto it = options.find(option);
-    if (it != options.end()) {
+    if (auto it = options.find(option); it != options.end()) {
       flags_.SetFlag(it->second);
       index++;
     } else {
@@ -2408,12 +2588,15 @@ Status CommandZAdd::validateFlags() const {
   if (!flags_.HasAnyFlags()) {
     return Status::OK();
   }
+
   if (flags_.HasNX() && flags_.HasXX()) {
-    return Status(Status::RedisParseErr, "XX and NX options at the same time are not compatible");
+    return {Status::RedisParseErr, "XX and NX options at the same time are not compatible"};
   }
+
   if ((flags_.HasLT() && flags_.HasGT()) || (flags_.HasLT() && flags_.HasNX()) || (flags_.HasGT() && flags_.HasNX())) {
-    return Status(Status::RedisParseErr, errZSetLTGTNX);
+    return {Status::RedisParseErr, errZSetLTGTNX};
   }
+
   return Status::OK();
 }
 
@@ -2422,19 +2605,19 @@ class CommandZCount : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-
+    int ret = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Count(args_[1], spec_, &ret);
+    auto s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2446,13 +2629,13 @@ class CommandZCount : public Commander {
 class CommandZCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-
+    int ret = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Card(args_[1], &ret);
+    auto s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2464,19 +2647,19 @@ class CommandZIncrBy : public Commander {
     try {
       incr_ = std::stod(args[2]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, "value is not an double or out of range");
+      return {Status::RedisParseErr, "value is not an double or out of range"};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    double score;
-
+    double score = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.IncrBy(args_[1], args_[3], incr_, &score);
+    auto s = zset_db.IncrBy(args_[1], args_[3], incr_, &score);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::BulkString(Util::Float2String(score));
     return Status::OK();
   }
@@ -2490,18 +2673,20 @@ class CommandZLexCount : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
+    auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2518,8 +2703,9 @@ class CommandZPop : public Commander {
     if (args.size() > 2) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       count_ = *parse_result;
     }
     return Commander::Parse(args);
@@ -2527,16 +2713,18 @@ class CommandZPop : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    std::vector<MemberScore> memeber_scores;
-    rocksdb::Status s = zset_db.Pop(args_[1], count_, min_, &memeber_scores);
+    std::vector<MemberScore> member_scores;
+    auto s = zset_db.Pop(args_[1], count_, min_, &member_scores);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
-    output->append(Redis::MultiLen(memeber_scores.size() * 2));
-    for (const auto &ms : memeber_scores) {
+
+    output->append(Redis::MultiLen(member_scores.size() * 2));
+    for (const auto &ms : member_scores) {
       output->append(Redis::BulkString(ms.member));
       output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
+
     return Status::OK();
   }
 
@@ -2563,13 +2751,15 @@ class CommandZRange : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     start_ = *parse_start;
     stop_ = *parse_stop;
     if (args.size() > 4 && (Util::ToLower(args[4]) == "withscores")) {
       with_scores_ = true;
     }
+
     return Commander::Parse(args);
   }
 
@@ -2577,19 +2767,22 @@ class CommandZRange : public Commander {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
     uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-    rocksdb::Status s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
+    auto s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (!with_scores_) {
       output->append(Redis::MultiLen(member_scores.size()));
     } else {
       output->append(Redis::MultiLen(member_scores.size() * 2));
     }
+
     for (const auto &ms : member_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
+
     return Status::OK();
   }
 
@@ -2616,15 +2809,18 @@ class CommandZRangeByLex : public Commander {
     } else {
       s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
     }
+
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
+
     if (args.size() == 7 && Util::ToLower(args[4]) == "limit") {
       auto parse_offset = ParseInt<int>(args[5], 10);
       auto parse_count = ParseInt<int>(args[6], 10);
       if (!parse_offset || !parse_count) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       spec_.offset = *parse_offset;
       spec_.count = *parse_count;
     }
@@ -2632,13 +2828,14 @@ class CommandZRangeByLex : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    rocksdb::Status s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
+    auto s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(members, false);
     return Status::OK();
   }
@@ -2657,9 +2854,11 @@ class CommandZRangeByScore : public Commander {
     } else {
       s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
     }
+
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
+
     size_t i = 4;
     while (i < args.size()) {
       if (Util::ToLower(args[i]) == "withscores") {
@@ -2669,35 +2868,39 @@ class CommandZRangeByScore : public Commander {
         auto parse_offset = ParseInt<int>(args[i + 1], 10);
         auto parse_count = ParseInt<int>(args[i + 2], 10);
         if (!parse_offset || !parse_count) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         spec_.offset = *parse_offset;
         spec_.count = *parse_count;
         i += 3;
       } else {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
-    rocksdb::Status s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
+    auto s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (!with_scores_) {
       output->append(Redis::MultiLen(member_scores.size()));
     } else {
       output->append(Redis::MultiLen(member_scores.size() * 2));
     }
+
     for (const auto &ms : member_scores) {
       output->append(Redis::BulkString(ms.member));
       if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
+
     return Status::OK();
   }
 
@@ -2710,12 +2913,13 @@ class CommandZRank : public Commander {
  public:
   explicit CommandZRank(bool reversed = false) : reversed_(reversed) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int rank;
+    int rank = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
+    auto s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (rank == -1) {
       *output = Redis::NilString();
     } else {
@@ -2746,16 +2950,18 @@ class CommandZRevRangeByLex : public CommandZRangeByLex {
 class CommandZRem : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<rocksdb::Slice> members;
-    for (unsigned i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
-    rocksdb::Status s = zset_db.Remove(args_[1], members, &size);
+
+    int size = 0;
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    auto s = zset_db.Remove(args_[1], members, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2767,21 +2973,23 @@ class CommandZRemRangeByRank : public Commander {
     auto parse_start = ParseInt<int>(args[2], 10);
     auto parse_stop = ParseInt<int>(args[3], 10);
     if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     start_ = *parse_start;
     stop_ = *parse_stop;
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
-
+    int ret = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
+    auto s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -2796,18 +3004,19 @@ class CommandZRemRangeByScore : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
+    auto s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2821,18 +3030,19 @@ class CommandZRemRangeByLex : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
+    auto s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2844,12 +3054,13 @@ class CommandZRemRangeByLex : public Commander {
 class CommandZScore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    double score;
+    double score = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.Score(args_[1], args_[2], &score);
+    auto s = zset_db.Score(args_[1], args_[2], &score);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
@@ -2862,16 +3073,17 @@ class CommandZScore : public Commander {
 class CommandZMScore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
     std::vector<Slice> members;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       members.emplace_back(args_[i]);
     }
     std::map<std::string, double> mscores;
-    rocksdb::Status s = zset_db.MGet(args_[1], members, &mscores);
+    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    auto s = zset_db.MGet(args_[1], members, &mscores);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> values;
     if (s.IsNotFound()) {
       values.resize(members.size(), "");
@@ -2895,17 +3107,20 @@ class CommandZUnionStore : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     numkeys_ = *parse_result;
     if (numkeys_ > args.size() - 3) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
+
     size_t j = 0;
     while (j < numkeys_) {
       keys_weights_.emplace_back(KeyWeight{args[j + 3], 1});
       j++;
     }
+
     size_t i = 3 + numkeys_;
     while (i < args.size()) {
       if (Util::ToLower(args[i]) == "aggregate" && i + 1 < args.size()) {
@@ -2916,37 +3131,38 @@ class CommandZUnionStore : public Commander {
         } else if (Util::ToLower(args[i + 1]) == "max") {
           aggregate_method_ = kAggregateMax;
         } else {
-          return Status(Status::RedisParseErr, "aggregate para error");
+          return {Status::RedisParseErr, "aggregate param error"};
         }
         i += 2;
       } else if (Util::ToLower(args[i]) == "weights" && i + numkeys_ < args.size()) {
-        size_t j = 0;
-        while (j < numkeys_) {
+        size_t k = 0;
+        while (k < numkeys_) {
           try {
-            keys_weights_[j].weight = std::stod(args[i + j + 1]);
+            keys_weights_[k].weight = std::stod(args[i + k + 1]);
           } catch (const std::exception &e) {
-            return Status(Status::RedisParseErr, "weight is not an double or out of range");
+            return {Status::RedisParseErr, "weight is not an double or out of range"};
           }
-          if (std::isnan(keys_weights_[j].weight)) {
-            return Status(Status::RedisParseErr, "weight is not an double or out of range");
+          if (std::isnan(keys_weights_[k].weight)) {
+            return {Status::RedisParseErr, "weight is not an double or out of range"};
           }
-          j++;
+          k++;
         }
         i += numkeys_ + 1;
       } else {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
+    auto s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2962,12 +3178,13 @@ class CommandZInterStore : public CommandZUnionStore {
   CommandZInterStore() : CommandZUnionStore() {}
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size;
+    int size = 0;
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
+    auto s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(size);
     return Status::OK();
   }
@@ -2985,7 +3202,7 @@ class CommandGeoBase : public Commander {
     } else if (Util::ToLower(param) == "mi") {
       distance_unit_ = kDistanceMiles;
     } else {
-      return Status(Status::RedisParseErr, "unsupported unit provided. please use M, KM, FT, MI");
+      return {Status::RedisParseErr, "unsupported unit provided. please use M, KM, FT, MI"};
     }
     return Status::OK();
   }
@@ -2996,11 +3213,13 @@ class CommandGeoBase : public Commander {
       *longitude = std::stod(longitude_para);
       *latitude = std::stod(latitude_para);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, errValueIsNotFloat);
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
-      return Status(Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para);
+      return {Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para};
     }
+
     return Status::OK();
   }
 
@@ -3036,24 +3255,28 @@ class CommandGeoAdd : public CommandGeoBase {
   CommandGeoAdd() : CommandGeoBase() {}
   Status Parse(const std::vector<std::string> &args) override {
     if ((args.size() - 5) % 3 != 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    for (unsigned i = 2; i < args.size(); i += 3) {
-      double longitude = 0, latitude = 0;
+
+    for (size_t i = 2; i < args.size(); i += 3) {
+      double longitude = 0;
+      double latitude = 0;
       auto s = ParseLongLat(args[i], args[i + 1], &longitude, &latitude);
       if (!s.IsOK()) return s;
+
       geo_points_.emplace_back(GeoPoint{longitude, latitude, args[i + 2]});
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret;
+    int ret = 0;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.Add(args_[1], &geo_points_, &ret);
+    auto s = geo_db.Add(args_[1], &geo_points_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -3065,6 +3288,7 @@ class CommandGeoAdd : public CommandGeoBase {
 class CommandGeoDist : public CommandGeoBase {
  public:
   CommandGeoDist() : CommandGeoBase() {}
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() == 5) {
       auto s = ParseDistanceUnit(args[4]);
@@ -3074,12 +3298,13 @@ class CommandGeoDist : public CommandGeoBase {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    double distance;
+    double distance = 0;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
+    auto s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       *output = Redis::NilString();
     } else {
@@ -3092,7 +3317,7 @@ class CommandGeoDist : public CommandGeoBase {
 class CommandGeoHash : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    for (unsigned i = 2; i < args.size(); i++) {
+    for (size_t i = 2; i < args.size(); i++) {
       members_.emplace_back(args[i]);
     }
     return Commander::Parse(args);
@@ -3101,10 +3326,11 @@ class CommandGeoHash : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<std::string> hashes;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.Hash(args_[1], members_, &hashes);
+    auto s = geo_db.Hash(args_[1], members_, &hashes);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::MultiBulkString(hashes);
     return Status::OK();
   }
@@ -3116,7 +3342,7 @@ class CommandGeoHash : public Commander {
 class CommandGeoPos : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    for (unsigned i = 2; i < args.size(); i++) {
+    for (size_t i = 2; i < args.size(); i++) {
       members_.emplace_back(args[i]);
     }
     return Commander::Parse(args);
@@ -3125,10 +3351,11 @@ class CommandGeoPos : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::map<std::string, GeoPoint> geo_points;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.Pos(args_[1], members_, &geo_points);
+    auto s = geo_db.Pos(args_[1], members_, &geo_points);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> list;
     for (const auto &member : members_) {
       auto iter = geo_points.find(member.ToString());
@@ -3154,15 +3381,19 @@ class CommandGeoRadius : public CommandGeoBase {
   Status Parse(const std::vector<std::string> &args) override {
     auto s = ParseLongLat(args[2], args[3], &longitude_, &latitude_);
     if (!s.IsOK()) return s;
+
     try {
       radius_ = std::stod(args[4]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, errValueIsNotFloat);
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
+
     s = ParseRadiusExtraOption();
     if (!s.IsOK()) return s;
+
     return Commander::Parse(args);
   }
 
@@ -3186,8 +3417,9 @@ class CommandGeoRadius : public CommandGeoBase {
       } else if (Util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
         auto parse_result = ParseInt<int>(args_[i + 1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         count_ = *parse_result;
         i += 2;
       } else if (attributes_->is_write() &&
@@ -3199,14 +3431,15 @@ class CommandGeoRadius : public CommandGeoBase {
         }
         i += 2;
       } else {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
     /* Trap options not compatible with STORE and STOREDIST. */
     if (!store_key_.empty() && (with_dist_ || with_hash_ || with_coord_)) {
-      return Status(Status::RedisParseErr,
-                    "STORE option in GEORADIUS is not compatible with WITHDIST, WITHHASH and WITHCOORDS options");
+      return {Status::RedisParseErr,
+              "STORE option in GEORADIUS is not compatible with WITHDIST, WITHHASH and WITHCOORDS options"};
     }
+
     /* COUNT without ordering does not make much sense, force ASC
      * ordering if COUNT was specified but no sorting was requested.
      * */
@@ -3219,11 +3452,12 @@ class CommandGeoRadius : public CommandGeoBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_,
-                                      store_key_, store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_, store_key_,
+                           store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (store_key_.size() != 0) {
       *output = Redis::Integer(geo_points.size());
     } else {
@@ -3282,23 +3516,27 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     try {
       radius_ = std::stod(args[3]);
     } catch (const std::exception &e) {
-      return Status(Status::RedisParseErr, errValueIsNotFloat);
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;
+
     s = ParseRadiusExtraOption(5);
     if (!s.IsOK()) return s;
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
     Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
-                                              store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
+                                   store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = GenerateOutput(geo_points);
     return Status::OK();
   }
@@ -3317,11 +3555,12 @@ class CommandGeoRadiusByMemberReadonly : public CommandGeoRadiusByMember {
 class CommandSortedintAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    for (unsigned i = 2; i < args.size(); i++) {
+    for (size_t i = 2; i < args.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args[i], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       ids_.emplace_back(*parse_result);
     }
     return Commander::Parse(args);
@@ -3329,11 +3568,12 @@ class CommandSortedintAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = sortedint_db.Add(args_[1], ids_, &ret);
+    int ret = 0;
+    auto s = sortedint_db.Add(args_[1], ids_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -3345,11 +3585,12 @@ class CommandSortedintAdd : public Commander {
 class CommandSortedintRem : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    for (unsigned i = 2; i < args.size(); i++) {
+    for (size_t i = 2; i < args.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args[i], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       ids_.emplace_back(*parse_result);
     }
     return Commander::Parse(args);
@@ -3357,11 +3598,12 @@ class CommandSortedintRem : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = sortedint_db.Remove(args_[1], ids_, &ret);
+    int ret = 0;
+    auto s = sortedint_db.Remove(args_[1], ids_, &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -3374,11 +3616,12 @@ class CommandSortedintCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
-    int ret;
-    rocksdb::Status s = sortedint_db.Card(args_[1], &ret);
+    int ret = 0;
+    auto s = sortedint_db.Card(args_[1], &ret);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = Redis::Integer(ret);
     return Status::OK();
   }
@@ -3389,66 +3632,76 @@ class CommandSortedintExists : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
     std::vector<uint64_t> ids;
-    for (unsigned int i = 2; i < args_.size(); i++) {
+    for (size_t i = 2; i < args_.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args_[i], 10);
       if (!parse_result) {
-        Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       ids.emplace_back(*parse_result);
     }
 
     std::vector<int> exists;
-    rocksdb::Status s = sortedint_db.MExist(args_[1], ids, &exists);
+    auto s = sortedint_db.MExist(args_[1], ids, &exists);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     if (s.IsNotFound()) {
       exists.resize(ids.size(), 0);
     }
     output->append(Redis::MultiLen(exists.size()));
-    for (const auto &exist : exists) {
+    for (auto exist : exists) {
       output->append(Redis::Integer(exist));
     }
+
     return Status::OK();
   }
 };
 
 class CommandSortedintRange : public Commander {
  public:
-  explicit CommandSortedintRange(bool reversed = false) { reversed_ = reversed; }
+  explicit CommandSortedintRange(bool reversed = false) : reversed_(reversed) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_offset = ParseInt<uint64_t>(args[2], 10);
     auto parse_limit = ParseInt<uint64_t>(args[3], 10);
     if (!parse_offset || !parse_limit) {
-      Status(Status::RedisParseErr, errValueNotInteger);
+      return {Status::RedisParseErr, errValueNotInteger};
     }
+
     offset_ = *parse_offset;
     limit_ = *parse_limit;
+
     if (args.size() == 6) {
       if (Util::ToLower(args[4]) != "cursor") {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
+
       auto parse_result = ParseInt<uint64_t>(args[5], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       cursor_id_ = *parse_result;
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
     std::vector<uint64_t> ids;
-    rocksdb::Status s = sortedint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
+    auto s = sortedint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     output->append(Redis::MultiLen(ids.size()));
     for (const auto id : ids) {
       output->append(Redis::BulkString(std::to_string(id)));
     }
+
     return Status::OK();
   }
 
@@ -3476,35 +3729,41 @@ class CommandSortedintRangeByValue : public Commander {
       s = Redis::Sortedint::ParseRangeSpec(args[2], args[3], &spec_);
     }
     if (!s.IsOK()) {
-      return Status(Status::RedisParseErr, s.Msg());
+      return {Status::RedisParseErr, s.Msg()};
     }
+
     if (args.size() == 7) {
       if (Util::ToLower(args[4]) != "limit") {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
+
       auto parse_offset = ParseInt<int>(args[5], 10);
       auto parse_count = ParseInt<int>(args[6], 10);
       if (!parse_offset || !parse_count) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       spec_.offset = *parse_offset;
       spec_.count = *parse_count;
     }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
     std::vector<uint64_t> ids;
-    int size;
-    rocksdb::Status s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
+    int size = 0;
+    Redis::Sortedint sortedint_db(svr->storage_, conn->GetNamespace());
+    auto s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     output->append(Redis::MultiLen(ids.size()));
-    for (const auto id : ids) {
+    for (auto id : ids) {
       output->append(Redis::BulkString(std::to_string(id)));
     }
+
     return Status::OK();
   }
 
@@ -3535,20 +3794,20 @@ class CommandDisk : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     std::string opname = Util::ToLower(args[1]);
-    if (opname != "usage") return Status(Status::RedisInvalidCmd, "Unknown operation");
+    if (opname != "usage") return {Status::RedisInvalidCmd, "Unknown operation"};
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RedisType type;
+    RedisType type = kRedisNone;
     Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
-    rocksdb::Status s = disk_db.Type(args_[2], &type);
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
+    auto s = disk_db.Type(args_[2], &type);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     uint64_t result = 0;
     s = disk_db.GetKeySize(args_[2], type, &result);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (!s.ok()) return Status(Status::RedisExecErr, s.ToString());
     *output = Redis::Integer(result);
     return Status::OK();
   }
@@ -3584,6 +3843,7 @@ class CommandDiscard : public Commander {
       *output = Redis::Error("ERR DISCARD without MULTI");
       return Status::OK();
     }
+
     conn->ResetMultiExec();
     *output = Redis::SimpleString("OK");
 
@@ -3618,23 +3878,28 @@ class CommandExec : public Commander {
 class CommandCompact : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    auto ns = conn->GetNamespace();
     std::string begin_key, end_key;
+    auto ns = conn->GetNamespace();
+
     if (ns != kDefaultNamespace) {
-      Redis::Database redis_db(svr->storage_, conn->GetNamespace());
       std::string prefix;
       ComposeNamespaceKey(ns, "", &prefix, false);
+
+      Redis::Database redis_db(svr->storage_, conn->GetNamespace());
       auto s = redis_db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key);
       if (!s.ok()) {
         if (s.IsNotFound()) {
           *output = Redis::SimpleString("OK");
           return Status::OK();
         }
-        return Status(Status::RedisExecErr, s.ToString());
+
+        return {Status::RedisExecErr, s.ToString()};
       }
     }
+
     Status s = svr->AsyncCompactDB(begin_key, end_key);
     if (!s.IsOK()) return s;
+
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "Compact was triggered by manual with executed success";
     return Status::OK();
@@ -3648,8 +3913,10 @@ class CommandBGSave : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     Status s = svr->AsyncBgsaveDB();
     if (!s.IsOK()) return s;
+
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "BGSave was triggered by manual with executed success";
     return Status::OK();
@@ -3663,8 +3930,10 @@ class CommandFlushBackup : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     Status s = svr->AsyncPurgeOldBackups(0, 0);
     if (!s.IsOK()) return s;
+
     *output = Redis::SimpleString("OK");
     LOG(INFO) << "flushbackup was triggered by manual with executed success";
     return Status::OK();
@@ -3699,11 +3968,11 @@ class CommandPublish : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!svr->IsSlave()) {
       // Compromise: can't replicate message to sub-replicas in a cascading-like structure.
-      // Replication is rely on wal seq, increase the seq on slave will break the replication, hence the compromise
+      // Replication relies on WAL seq, increase the seq on slave will break the replication, hence the compromise
       Redis::PubSub pubsub_db(svr->storage_);
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
+        return {Status::RedisExecErr, s.ToString()};
       }
     }
 
@@ -3739,7 +4008,7 @@ class CommandUnSubscribe : public Commander {
         SubscribeCommandReply(output, "unsubscribe", sub_name, num);
       });
     } else {
-      for (unsigned i = 1; i < args_.size(); i++) {
+      for (size_t i = 1; i < args_.size(); i++) {
         conn->UnSubscribeChannel(args_[i]);
         SubscribeCommandReply(output, "unsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
@@ -3752,7 +4021,7 @@ class CommandUnSubscribe : public Commander {
 class CommandPSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    for (unsigned i = 1; i < args_.size(); i++) {
+    for (size_t i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
       SubscribeCommandReply(output, "psubscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
@@ -3768,7 +4037,7 @@ class CommandPUnSubscribe : public Commander {
         SubscribeCommandReply(output, "punsubscribe", sub_name, num);
       });
     } else {
-      for (unsigned i = 1; i < args_.size(); i++) {
+      for (size_t i = 1; i < args_.size(); i++) {
         conn->PUnSubscribeChannel(args_[i]);
         SubscribeCommandReply(output, "punsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
@@ -3785,42 +4054,51 @@ class CommandPubSub : public Commander {
     if (subcommand_ == "numpat" && args.size() == 2) {
       return Status::OK();
     }
+
     if ((subcommand_ == "numsub") && args.size() >= 2) {
       if (args.size() > 2) {
         channels_ = std::vector<std::string>(args.begin() + 2, args.end());
       }
       return Status::OK();
     }
+
     if ((subcommand_ == "channels") && args.size() <= 3) {
       if (args.size() == 3) {
         pattern_ = args[2];
       }
       return Status::OK();
     }
-    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
+
+    return {Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "numpat") {
       *output = Redis::Integer(srv->GetPubSubPatternSize());
       return Status::OK();
-    } else if (subcommand_ == "numsub") {
+    }
+
+    if (subcommand_ == "numsub") {
       std::vector<ChannelSubscribeNum> channel_subscribe_nums;
       srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+
       output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
         output->append(Redis::BulkString(chan_subscribe_num.channel));
         output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
       }
+
       return Status::OK();
-    } else if (subcommand_ == "channels") {
+    }
+
+    if (subcommand_ == "channels") {
       std::vector<std::string> channels;
       srv->GetChannelsByPattern(pattern_, &channels);
       *output = Redis::MultiBulkString(channels);
       return Status::OK();
     }
 
-    return Status(Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments");
+    return {Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments"};
   }
 
  private:
@@ -3838,25 +4116,30 @@ class CommandSlaveOf : public Commander {
       host_.clear();
       return Status::OK();
     }
+
     auto parse_result = ParseInt<uint32_t>(port, 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, "port should be number");
+      return {Status::RedisParseErr, "port should be number"};
     }
+
     port_ = *parse_result;
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      return Status(Status::RedisExecErr, "can't change to slave in cluster mode");
+      return {Status::RedisExecErr, "can't change to slave in cluster mode"};
     }
+
     if (svr->GetConfig()->RocksDB.write_options.disable_WAL) {
-      return Status(Status::RedisExecErr, "slaveof doesn't work with disable_wal option");
+      return {Status::RedisExecErr, "slaveof doesn't work with disable_wal option"};
     }
+
     if (!conn->IsAdmin()) {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     Status s;
     if (host_.empty()) {
       s = svr->RemoveMaster();
@@ -3908,18 +4191,21 @@ class CommandPSync : public Commander {
       seq_arg = 2;
       new_psync = true;
     }
+
     auto parse_result = ParseInt<uint64_t>(args[seq_arg], 10);
     if (!parse_result) {
-      return Status(Status::RedisParseErr, "value is not an unsigned long long or out of range");
+      return {Status::RedisParseErr, "value is not an unsigned long long or out of range"};
     }
+
     next_repl_seq = static_cast<rocksdb::SequenceNumber>(*parse_result);
     if (new_psync) {
       assert(args.size() == 3);
       replica_replid = args[1];
       if (replica_replid.size() != kReplIdLength) {
-        return Status(Status::RedisParseErr, "Wrong replication id length");
+        return {Status::RedisParseErr, "Wrong replication id length"};
       }
     }
+
     return Commander::Parse(args);
   }
 
@@ -3953,11 +4239,11 @@ class CommandPSync : public Commander {
 
     if (need_full_sync) {
       svr->stats_.IncrPSyncErrCounter();
-      return Status(Status::RedisExecErr, *output);
+      return {Status::RedisExecErr, *output};
     }
 
     // Server would spawn a new thread to sync the batch, and connection would
-    // be took over, so should never trigger any event in worker thread.
+    // be taken over, so should never trigger any event in worker thread.
     conn->Detach();
     conn->EnableFlag(Redis::Connection::kSlave);
     Util::SockSetBlocking(conn->GetFD(), 1);
@@ -3985,10 +4271,12 @@ class CommandPSync : public Commander {
     if (seq == storage->LatestSeq() + 1) {
       return Status::OK();
     }
+
     // Upper bound
     if (seq > storage->LatestSeq() + 1) {
-      return Status(Status::NotOK);
+      return {Status::NotOK};
     }
+
     // Lower bound
     std::unique_ptr<rocksdb::TransactionLogIterator> iter;
     auto s = storage->GetWALIter(seq, &iter);
@@ -3999,11 +4287,11 @@ class CommandPSync : public Commander {
           LOG(ERROR) << "checkWALBoundary with sequence: " << seq
                      << ", but GetWALIter return older sequence: " << batch.sequence;
         }
-        return Status(Status::NotOK);
+        return {Status::NotOK};
       }
       return Status::OK();
     }
-    return Status(Status::NotOK);
+    return {Status::NotOK};
   }
 };
 
@@ -4012,8 +4300,9 @@ class CommandPerfLog : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
-      return Status(Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET");
+      return {Status::NotOK, "PERFLOG subcommand must be one of RESET, LEN, GET"};
     }
+
     if (subcommand_ == "get" && args.size() >= 3) {
       if (args[2] == "*") {
         cnt_ = 0;
@@ -4022,6 +4311,7 @@ class CommandPerfLog : public Commander {
         return s;
       }
     }
+
     return Status::OK();
   }
 
@@ -4048,8 +4338,9 @@ class CommandSlowlog : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     if (subcommand_ != "reset" && subcommand_ != "get" && subcommand_ != "len") {
-      return Status(Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
+      return {Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET"};
     }
+
     if (subcommand_ == "get" && args.size() >= 3) {
       if (args[2] == "*") {
         cnt_ = 0;
@@ -4058,6 +4349,7 @@ class CommandSlowlog : public Commander {
         return s;
       }
     }
+
     return Status::OK();
   }
 
@@ -4074,7 +4366,7 @@ class CommandSlowlog : public Commander {
       *output = slowlog->GetLatestEntries(cnt_);
       return Status::OK();
     }
-    return Status(Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET");
+    return {Status::NotOK, "SLOWLOG subcommand must be one of RESET, LEN, GET"};
   }
 
  private:
@@ -4090,48 +4382,55 @@ class CommandClient : public Commander {
     if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list") && args.size() == 2) {
       return Status::OK();
     }
+
     if ((subcommand_ == "setname") && args.size() == 3) {
       // Check if the charset is ok. We need to do this otherwise
       // CLIENT LIST format will break. You should always be able to
       // split by space to get the different fields.
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
-          return Status(Status::RedisInvalidCmd, "Client names cannot contain spaces, newlines or special characters");
+          return {Status::RedisInvalidCmd, "Client names cannot contain spaces, newlines or special characters"};
         }
       }
+
       conn_name_ = args[2];
       return Status::OK();
     }
+
     if ((subcommand_ == "kill")) {
       if (args.size() == 2) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
-      } else if (args.size() == 3) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+
+      if (args.size() == 3) {
         addr_ = args[2];
         new_format_ = false;
         return Status::OK();
       }
 
-      uint i = 2;
+      size_t i = 2;
       new_format_ = true;
+
       while (i < args.size()) {
-        bool moreargs = i < args.size();
-        if (!strcasecmp(args[i].c_str(), "addr") && moreargs) {
+        bool more_args = i < args.size();
+        if (!strcasecmp(args[i].c_str(), "addr") && more_args) {
           addr_ = args[i + 1];
-        } else if (!strcasecmp(args[i].c_str(), "id") && moreargs) {
+        } else if (!strcasecmp(args[i].c_str(), "id") && more_args) {
           auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
           if (!parse_result) {
-            return Status(Status::RedisParseErr, errValueNotInteger);
+            return {Status::RedisParseErr, errValueNotInteger};
           }
+
           id_ = *parse_result;
-        } else if (!strcasecmp(args[i].c_str(), "skipme") && moreargs) {
+        } else if (!strcasecmp(args[i].c_str(), "skipme") && more_args) {
           if (!strcasecmp(args[i + 1].c_str(), "yes")) {
             skipme_ = true;
           } else if (!strcasecmp(args[i + 1].c_str(), "no")) {
             skipme_ = false;
           } else {
-            return Status(Status::RedisParseErr, errInvalidSyntax);
+            return {Status::RedisParseErr, errInvalidSyntax};
           }
-        } else if (!strcasecmp(args[i].c_str(), "type") && moreargs) {
+        } else if (!strcasecmp(args[i].c_str(), "type") && more_args) {
           if (!strcasecmp(args[i + 1].c_str(), "normal")) {
             kill_type_ |= kTypeNormal;
           } else if (!strcasecmp(args[i + 1].c_str(), "pubsub")) {
@@ -4141,16 +4440,16 @@ class CommandClient : public Commander {
           } else if (!strcasecmp(args[i + 1].c_str(), "replica") || !strcasecmp(args[i + 1].c_str(), "slave")) {
             kill_type_ |= kTypeSlave;
           } else {
-            return Status(Status::RedisParseErr, errInvalidSyntax);
+            return {Status::RedisParseErr, errInvalidSyntax};
           }
         } else {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
         i += 2;
       }
       return Status::OK();
     }
-    return Status(Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -4182,7 +4481,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
-    return Status(Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME");
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME"};
   }
 
  private:
@@ -4211,6 +4510,7 @@ class CommandShutdown : public Commander {
       *output = Redis::Error(errAdministorPermissionRequired);
       return Status::OK();
     }
+
     if (!srv->IsStopped()) {
       LOG(INFO) << "bye bye";
       srv->Stop();
@@ -4237,12 +4537,13 @@ class CommandDebug : public Commander {
       try {
         second = std::stod(args[2]);
       } catch (const std::exception &e) {
-        return Status(Status::RedisParseErr, "invalid debug sleep time");
+        return {Status::RedisParseErr, "invalid debug sleep time"};
       }
+
       microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
       return Status::OK();
     }
-    return Status(Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>");
+    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -4270,6 +4571,7 @@ class CommandCommand : public Commander {
         *output = Redis::Error(errWrongNumOfArguments);
         return Status::OK();
       }
+
       if (sub_command == "count") {
         *output = Redis::Integer(GetCommandNum());
       } else if (sub_command == "info") {
@@ -4278,10 +4580,12 @@ class CommandCommand : public Commander {
         std::vector<int> keys_indexes;
         auto s = GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
         if (!s.IsOK()) return s;
+
         if (keys_indexes.size() == 0) {
           *output = Redis::Error("Invalid arguments specified for command");
           return Status::OK();
         }
+
         std::vector<std::string> keys;
         keys.reserve(keys_indexes.size());
         for (const auto &key_index : keys_indexes) {
@@ -4310,39 +4614,40 @@ class CommandHello final : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
     if (args_.size() >= 2) {
-      int64_t protocol;
+      int64_t protocol = 0;
       auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
-        return Status(Status::NotOK, "Protocol version is not an integer or out of range");
+        return {Status::NotOK, "Protocol version is not an integer or out of range"};
       }
+
       protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        return Status(Status::NotOK, "-NOPROTO unsupported protocol version");
+        return {Status::NotOK, "-NOPROTO unsupported protocol version"};
       }
     }
 
     // Handling AUTH and SETNAME
     for (; next_arg < args_.size(); ++next_arg) {
-      size_t moreargs = args_.size() - next_arg - 1;
+      size_t more_args = args_.size() - next_arg - 1;
       const std::string &opt = args_[next_arg];
-      if (opt == "AUTH" && moreargs != 0) {
+      if (opt == "AUTH" && more_args != 0) {
         const auto &user_password = args_[next_arg + 1];
         auto authResult = AuthenticateUser(conn, svr->GetConfig(), user_password);
         switch (authResult) {
           case AuthResult::INVALID_PASSWORD:
-            return Status(Status::NotOK, "invalid password");
+            return {Status::NotOK, "invalid password"};
           case AuthResult::NO_REQUIRE_PASS:
-            return Status(Status::NotOK, "Client sent AUTH, but no password is set");
+            return {Status::NotOK, "Client sent AUTH, but no password is set"};
           case AuthResult::OK:
             break;
         }
         next_arg += 1;
-      } else if (opt == "SETNAME" && moreargs != 0) {
+      } else if (opt == "SETNAME" && more_args != 0) {
         const std::string &name = args_[next_arg + 1];
         conn->SetName(name);
         next_arg += 1;
@@ -4379,17 +4684,20 @@ class CommandScanBase : public Commander {
         prefix = prefix.substr(0, prefix.size() - 1);
         return Status::OK();
       }
-      return Status(Status::RedisParseErr, "only keys prefix match was supported");
+
+      return {Status::RedisParseErr, "only keys prefix match was supported"};
     } else if (type == "count") {
       auto parse_result = ParseInt<int>(value, 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, "count param should be type int");
+        return {Status::RedisParseErr, "count param should be type int"};
       }
+
       limit = *parse_result;
       if (limit <= 0) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
+
     return Status::OK();
   }
 
@@ -4427,8 +4735,9 @@ class CommandSubkeyScanBase : public CommandScanBase {
 
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 == 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     key = args[1];
     ParseCursor(args[2]);
     if (args.size() >= 5) {
@@ -4437,6 +4746,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
         return s;
       }
     }
+
     if (args.size() >= 7) {
       Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
       if (!s.IsOK()) {
@@ -4475,7 +4785,7 @@ class CommandScan : public CommandScanBase {
 
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
     ParseCursor(args[1]);
@@ -4485,6 +4795,7 @@ class CommandScan : public CommandScanBase {
         return s;
       }
     }
+
     if (args.size() >= 6) {
       Status s = ParseMatchAndCountParam(Util::ToLower(args[4]), args_[5]);
       if (!s.IsOK()) {
@@ -4514,7 +4825,7 @@ class CommandScan : public CommandScanBase {
     std::string end_cursor;
     auto s = redis_db.Scan(cursor, limit, prefix, &keys, &end_cursor);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     *output = GenerateOutput(keys, end_cursor);
@@ -4531,8 +4842,9 @@ class CommandHScan : public CommandSubkeyScanBase {
     std::vector<std::string> values;
     auto s = hash_db.Scan(key, cursor, limit, prefix, &fields, &values);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     *output = GenerateOutput(fields, values);
     return Status::OK();
   }
@@ -4546,7 +4858,7 @@ class CommandSScan : public CommandSubkeyScanBase {
     std::vector<std::string> members;
     auto s = set_db.Scan(key, cursor, limit, prefix, &members);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     *output = CommandScanBase::GenerateOutput(members);
@@ -4564,8 +4876,9 @@ class CommandZScan : public CommandSubkeyScanBase {
     std::vector<double> scores;
     auto s = zset_db.Scan(key, cursor, limit, prefix, &members, &scores);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> score_strings;
     score_strings.reserve(scores.size());
     for (const auto &score : scores) {
@@ -4593,33 +4906,38 @@ class CommandReplConf : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() % 2 == 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+
     if (args.size() >= 3) {
       Status s = ParseParam(Util::ToLower(args[1]), args_[2]);
       if (!s.IsOK()) {
         return s;
       }
     }
+
     if (args.size() >= 5) {
       Status s = ParseParam(Util::ToLower(args[3]), args_[4]);
       if (!s.IsOK()) {
         return s;
       }
     }
+
     return Commander::Parse(args);
   }
 
   Status ParseParam(const std::string &option, const std::string &value) {
     if (option == "listening-port") {
-      auto parse_result = ParseInt<uint32_t>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
+      auto parse_result = ParseInt<int>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, "listening-port should be number or out of range");
+        return {Status::RedisParseErr, "listening-port should be number or out of range"};
       }
+
       port_ = *parse_result;
     } else {
-      return Status(Status::RedisParseErr, "unknown option");
+      return {Status::RedisParseErr, "unknown option"};
     }
+
     return Status::OK();
   }
 
@@ -4632,7 +4950,7 @@ class CommandReplConf : public Commander {
   }
 
  private:
-  uint32_t port_ = 0;
+  int port_ = 0;
 };
 
 class CommandFetchMeta : public Commander {
@@ -4700,6 +5018,7 @@ class CommandFetchFile : public Commander {
 
       for (const auto &file : files) {
         if (svr->IsStopped()) break;
+
         uint64_t file_size = 0, max_replication_bytes = 0;
         if (svr->GetConfig()->max_replication_mb > 0) {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb * MiB) / svr->GetFetchFileThreadNum();
@@ -4758,20 +5077,24 @@ class CommandCluster : public Commander {
 
     if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
       return Status::OK();
+
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
+
     if (subcommand_ == "import") {
-      if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
       auto s = Util::DecimalStringToNum(args[2], &slot_);
       if (!s.IsOK()) return s;
 
-      int64_t state;
+      int64_t state = 0;
       s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart),
                                    static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return Status(Status::NotOK, "Invalid import state");
+      if (!s.IsOK()) return {Status::NotOK, "Invalid import state"};
+
       state_ = static_cast<ImportStatus>(state);
       return Status::OK();
     }
-    return Status(Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT");
+
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT"};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4848,54 +5171,73 @@ class CommandClusterX : public Commander {
     subcommand_ = Util::ToLower(args[1]);
 
     if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
+
     if (subcommand_ == "setnodeid" && args_.size() == 3 && args_[2].size() == kClusterNodeIdLen) return Status::OK();
+
     if (subcommand_ == "migrate") {
-      if (args.size() != 4) return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
+
       auto s = Util::DecimalStringToNum(args[2], &slot_);
       if (!s.IsOK()) return s;
+
       dst_node_id_ = args[3];
       return Status::OK();
     }
+
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
       nodes_str_ = args_[2];
-      auto parse_result = ParseInt<uint64_t>(args[3].c_str(), 10);
+
+      auto parse_result = ParseInt<int64_t>(args[3].c_str(), 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, "Invalid version");
+        return {Status::RedisParseErr, "Invalid version"};
       }
+
       set_version_ = *parse_result;
+
       if (args_.size() == 4) return Status::OK();
+
       if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
         force_ = true;
         return Status::OK();
       }
-      return Status(Status::RedisParseErr, "Invalid setnodes options");
+
+      return {Status::RedisParseErr, "Invalid setnodes options"};
     }
 
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
       auto parse_id = ParseInt<int>(args[2].c_str(), 10);
       if (!parse_id) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       slot_id_ = *parse_id;
+
       if (!Cluster::IsValidSlot(slot_id_)) {
-        return Status(Status::RedisParseErr, "Invalid slot id");
+        return {Status::RedisParseErr, "Invalid slot id"};
       }
+
       if (strcasecmp(args_[3].c_str(), "node") != 0) {
-        return Status(Status::RedisParseErr, "Invalid setslot options");
+        return {Status::RedisParseErr, "Invalid setslot options"};
       }
+
       if (args_[4].size() != kClusterNodeIdLen) {
-        return Status(Status::RedisParseErr, "Invalid node id");
+        return {Status::RedisParseErr, "Invalid node id"};
       }
-      auto parse_version = ParseInt<uint64_t>(args[5].c_str(), 10);
+
+      auto parse_version = ParseInt<int64_t>(args[5].c_str(), 10);
       if (!parse_version) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
+      if (set_version_ < 0) return {Status::RedisParseErr, "Invalid version"};
+
       set_version_ = *parse_version;
-      if (set_version_ < 0) return Status(Status::RedisParseErr, "Invalid version");
+
       return Status::OK();
     }
-    return Status(Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT|MIGRATE");
+
+    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -4949,7 +5291,7 @@ class CommandClusterX : public Commander {
  private:
   std::string subcommand_;
   std::string nodes_str_;
-  uint64_t set_version_ = 0;
+  int64_t set_version_ = 0;
   int slot_id_ = -1;
   bool force_ = false;
   std::string dst_node_id_;
@@ -4969,7 +5311,7 @@ class CommandEvalSHA : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args[1].size() != 40) {
-      return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+      return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
     }
     return Status::OK();
   }
@@ -4990,7 +5332,7 @@ class CommandEvalSHARO : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args[1].size() != 40) {
-      return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+      return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
     }
     return Status::OK();
   }
@@ -5012,8 +5354,9 @@ class CommandScript : public Commander {
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
     if (svr->IsSlave() && subcommand_ != "exists") {
-      return Status(Status::NotOK, "READONLY You can't write against a read only slave");
+      return {Status::NotOK, "READONLY You can't write against a read only slave"};
     }
+
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
       svr->Propagate(Engine::kPropagateScriptCommand, args_);
@@ -5033,9 +5376,10 @@ class CommandScript : public Commander {
       if (!s.IsOK()) {
         return s;
       }
+
       *output = Redis::BulkString(sha);
     } else {
-      return Status(Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args");
+      return {Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args"};
     }
     return Status::OK();
   }
@@ -5061,10 +5405,10 @@ class CommandXAdd : public Commander {
 
       if (val == "maxlen" && !entry_id_found) {
         if (i + 1 >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
 
-        size_t max_len_idx;
+        size_t max_len_idx = 0;
         bool eq_sign_found = false;
         if (args[i + 1] == "=") {
           max_len_idx = i + 2;
@@ -5074,13 +5418,14 @@ class CommandXAdd : public Commander {
         }
 
         if (max_len_idx >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
 
         auto parse_result = ParseInt<uint64_t>(args[max_len_idx], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         max_len_ = *parse_result;
         with_max_len_ = true;
 
@@ -5090,10 +5435,10 @@ class CommandXAdd : public Commander {
 
       if (val == "minid" && !entry_id_found) {
         if (i + 1 >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
 
-        size_t min_id_idx;
+        size_t min_id_idx = 0;
         bool eq_sign_found = false;
         if (args[i + 1] == "=") {
           min_id_idx = i + 2;
@@ -5103,12 +5448,12 @@ class CommandXAdd : public Commander {
         }
 
         if (min_id_idx >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
 
         auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
         if (!s.IsOK()) {
-          return Status(Status::RedisParseErr, s.Msg());
+          return {Status::RedisParseErr, s.Msg()};
         }
 
         with_min_id_ = true;
@@ -5117,7 +5462,7 @@ class CommandXAdd : public Commander {
       }
 
       if (val == "limit" && !entry_id_found) {
-        return Status(Status::RedisParseErr, errLimitOptionNotAllowed);
+        return {Status::RedisParseErr, errLimitOptionNotAllowed};
       }
 
       if (val == "*" && !entry_id_found) {
@@ -5127,8 +5472,9 @@ class CommandXAdd : public Commander {
       } else if (!entry_id_found) {
         auto s = ParseNewStreamEntryID(val, &entry_id_);
         if (!s.IsOK()) {
-          return Status(Status::RedisParseErr, s.Msg());
+          return {Status::RedisParseErr, s.Msg()};
         }
+
         entry_id_found = true;
         with_entry_id_ = true;
         ++i;
@@ -5142,7 +5488,7 @@ class CommandXAdd : public Commander {
     }
 
     if (name_value_pairs_.empty() || name_value_pairs_.size() % 2 != 0) {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
     return Status::OK();
@@ -5168,7 +5514,7 @@ class CommandXAdd : public Commander {
     StreamEntryID entry_id;
     auto s = stream_db.Add(stream_name_, options, name_value_pairs_, &entry_id);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     if (s.IsNotFound() && nomkstream_) {
@@ -5204,6 +5550,7 @@ class CommandXDel : public Commander {
       if (!s.IsOK()) {
         return s;
       }
+
       ids_.push_back(id);
     }
     return Status::OK();
@@ -5211,10 +5558,10 @@ class CommandXDel : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
-    uint64_t deleted;
+    uint64_t deleted = 0;
     auto s = stream_db.DeleteEntries(args_[1], ids_, &deleted);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     *output = Redis::Integer(deleted);
@@ -5230,10 +5577,10 @@ class CommandXLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
-    uint64_t len;
+    uint64_t len = 0;
     auto s = stream_db.Len(args_[1], &len);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     *output = Redis::Integer(len);
@@ -5248,14 +5595,17 @@ class CommandXInfo : public Commander {
     auto val = Util::ToLower(args[1]);
     if (val == "stream" && args.size() >= 2) {
       stream_ = true;
+
       if (args.size() > 3 && Util::ToLower(args[3]) == "full") {
         full_ = true;
       }
+
       if (args.size() > 5 && Util::ToLower(args[4]) == "count") {
         auto parse_result = ParseInt<uint64_t>(args[5], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         count_ = *parse_result;
       }
     }
@@ -5279,11 +5629,11 @@ class CommandXInfo : public Commander {
     Redis::StreamInfo info;
     auto s = stream_db.GetStreamInfo(args_[2], full_, count_, &info);
     if (!s.ok() && !s.IsNotFound()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     if (s.IsNotFound()) {
-      return Status(Status::RedisExecErr, errNoSuchKey);
+      return {Status::RedisExecErr, errNoSuchKey};
     }
 
     if (!full_) {
@@ -5365,14 +5715,16 @@ class CommandXRange : public Commander {
 
     if (args.size() >= 5 && Util::ToLower(args[4]) == "count") {
       if (args.size() != 6) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
 
       with_count_ = true;
+
       auto parse_result = ParseInt<uint64_t>(args[5], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       count_ = *parse_result;
     }
 
@@ -5399,7 +5751,7 @@ class CommandXRange : public Commander {
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     output->append(Redis::MultiLen(result.size()));
@@ -5456,13 +5808,16 @@ class CommandXRevRange : public Commander {
 
     if (args.size() >= 5 && Util::ToLower(args[4]) == "count") {
       if (args.size() != 6) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
+
       with_count_ = true;
+
       auto parse_result = ParseInt<uint64_t>(args[5]);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       count_ = *parse_result;
     }
 
@@ -5489,7 +5844,7 @@ class CommandXRevRange : public Commander {
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     output->append(Redis::MultiLen(result.size()));
@@ -5528,13 +5883,16 @@ class CommandXRead : public Commander {
 
       if (arg == "count") {
         if (i + 1 >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
+
         with_count_ = true;
+
         auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         count_ = *parse_result;
         i += 2;
         continue;
@@ -5542,17 +5900,20 @@ class CommandXRead : public Commander {
 
       if (arg == "block") {
         if (i + 1 >= args.size()) {
-          return Status(Status::RedisParseErr, errInvalidSyntax);
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
 
         block_ = true;
+
         auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
         if (!parse_result) {
-          return Status(Status::RedisParseErr, errValueNotInteger);
+          return {Status::RedisParseErr, errValueNotInteger};
         }
+
         if (*parse_result < 0) {
-          return Status(Status::RedisParseErr, errTimeoutIsNegative);
+          return {Status::RedisParseErr, errTimeoutIsNegative};
         }
+
         block_timeout_ = *parse_result;
         i += 2;
         continue;
@@ -5562,11 +5923,11 @@ class CommandXRead : public Commander {
     }
 
     if (streams_word_idx == 0) {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
 
     if ((args.size() - streams_word_idx - 1) % 2 != 0) {
-      return Status(Status::RedisParseErr, errUnbalancedStreamList);
+      return {Status::RedisParseErr, errUnbalancedStreamList};
     }
 
     size_t number_of_streams = (args.size() - streams_word_idx - 1) / 2;
@@ -5611,7 +5972,7 @@ class CommandXRead : public Commander {
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok() && !s.IsNotFound()) {
-        return Status(Status::RedisExecErr, s.ToString());
+        return {Status::RedisExecErr, s.ToString()};
       }
 
       if (result.size() > 0) {
@@ -5662,10 +6023,9 @@ class CommandXRead : public Commander {
     for (size_t i = 0; i < streams_.size(); ++i) {
       if (latest_marks_[i]) {
         StreamEntryID last_generated_id;
-        ;
         auto s = stream_db->GetLastGeneratedID(streams_[i], &last_generated_id);
         if (!s.ok()) {
-          return Status(Status::RedisExecErr, s.ToString());
+          return {Status::RedisExecErr, s.ToString()};
         }
 
         ids_[i] = last_generated_id;
@@ -5818,7 +6178,7 @@ class CommandXTrim : public Commander {
     if (trim_strategy == "maxlen") {
       strategy_ = StreamTrimStrategy::MaxLen;
 
-      size_t max_len_idx;
+      size_t max_len_idx = 0;
       if (args[3] != "=") {
         max_len_idx = 3;
       } else {
@@ -5827,17 +6187,19 @@ class CommandXTrim : public Commander {
       }
 
       if (max_len_idx >= args.size()) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
+
       auto parse_result = ParseInt<uint64_t>(args[max_len_idx], 10);
       if (!parse_result) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+
       max_len_ = *parse_result;
     } else if (trim_strategy == "minid") {
       strategy_ = StreamTrimStrategy::MinID;
 
-      size_t min_id_idx;
+      size_t min_id_idx = 0;
       if (args[3] != "=") {
         min_id_idx = 3;
       } else {
@@ -5846,7 +6208,7 @@ class CommandXTrim : public Commander {
       }
 
       if (min_id_idx >= args.size()) {
-        return Status(Status::RedisParseErr, errInvalidSyntax);
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
 
       auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
@@ -5854,7 +6216,7 @@ class CommandXTrim : public Commander {
         return s;
       }
     } else {
-      return Status(Status::RedisParseErr, errInvalidSyntax);
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
 
     bool limit_option_found = false;
@@ -5869,7 +6231,7 @@ class CommandXTrim : public Commander {
     }
 
     if (limit_option_found) {
-      return Status(Status::RedisParseErr, errLimitOptionNotAllowed);
+      return {Status::RedisParseErr, errLimitOptionNotAllowed};
     }
 
     return Status::OK();
@@ -5883,10 +6245,10 @@ class CommandXTrim : public Commander {
     options.max_len = max_len_;
     options.min_id = min_id_;
 
-    uint64_t removed;
+    uint64_t removed = 0;
     auto s = stream_db.Trim(args_[1], options, &removed);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     *output = Redis::Integer(removed);
@@ -6191,21 +6553,25 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
   auto cmd_iter = original_commands.find(Util::ToLower(cmd_name));
   if (cmd_iter == original_commands.end()) {
-    return Status(Status::RedisUnknownCmd, "Invalid command specified");
+    return {Status::RedisUnknownCmd, "Invalid command specified"};
   }
+
   auto command_attribute = cmd_iter->second;
   if (command_attribute->first_key == 0) {
-    return Status(Status::NotOK, "The command has no key arguments");
+    return {Status::NotOK, "The command has no key arguments"};
   }
+
   if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
-    return Status(Status::NotOK, "Invalid number of arguments specified for command");
+    return {Status::NotOK, "Invalid number of arguments specified for command"};
   }
+
   auto last = command_attribute->last_key;
   if (last < 0) last = argc + last;
 
   for (int j = command_attribute->first_key; j <= last; j += command_attribute->key_step) {
     keys_indexes->emplace_back(j);
   }
+
   return Status::OK();
 }
 

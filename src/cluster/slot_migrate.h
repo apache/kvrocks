@@ -42,7 +42,6 @@
 #include "stats/stats.h"
 #include "status.h"
 #include "storage/redis_db.h"
-#include "util.h"
 
 constexpr const auto CLUSTER_SLOTS = HASH_SLOTS_SIZE;
 

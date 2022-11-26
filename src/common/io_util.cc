@@ -18,39 +18,22 @@
  *
  */
 
-#include "fmt/core.h"
-#define __STDC_FORMAT_MACROS
+#include "io_util.h"
 
-#include <event2/buffer.h>
-#include <event2/util.h>
-#include <glog/logging.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <fmt/format.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <sys/poll.h>
 
 #ifdef __linux__
 #include <sys/sendfile.h>
 #endif
 
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <pthread.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
-
-#include <algorithm>
-#include <cerrno>
-#include <cmath>
-#include <string>
-
 #include "event_util.h"
 #include "fd_util.h"
-#include "parse_util.h"
 #include "scope_exit.h"
-#include "status.h"
-#include "util.h"
 
 #ifndef POLLIN
 #define POLLIN 0x0001   /* There is data to read */
@@ -99,14 +82,6 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd) {
   }
 
   return Status::FromErrno();
-}
-
-const std::string Float2String(double d) {
-  if (std::isinf(d)) {
-    return d > 0 ? "inf" : "-inf";
-  }
-
-  return fmt::format("{:.17g}", d);
 }
 
 Status SockSetTcpNoDelay(int fd, int val) {
@@ -332,291 +307,6 @@ int GetLocalPort(int fd) {
   return 0;
 }
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-std::string ToLower(std::string in) {
-  std::transform(in.begin(), in.end(), in.begin(), [](char c) -> char { return static_cast<char>(std::tolower(c)); });
-  return in;
-}
-
-bool EqualICase(std::string_view lhs, std::string_view rhs) {
-  return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(),
-                                                [](char l, char r) { return std::tolower(l) == std::tolower(r); });
-}
-
-std::string Trim(std::string in, const std::string &chars) {
-  if (in.empty()) return in;
-
-  in.erase(0, in.find_first_not_of(chars));
-  in.erase(in.find_last_not_of(chars) + 1);
-
-  return in;
-}
-
-std::vector<std::string> Split(const std::string &in, const std::string &delim) {
-  std::vector<std::string> out;
-
-  if (in.empty()) {
-    return out;
-  }
-
-  if (delim.empty()) {
-    out.resize(in.size());
-    std::transform(in.begin(), in.end(), out.begin(), [](char c) -> std::string { return {c}; });
-    return out;
-  }
-
-  size_t begin = 0, end = in.find_first_of(delim);
-  do {
-    std::string elem = in.substr(begin, end - begin);
-    if (!elem.empty()) out.push_back(std::move(elem));
-    if (end == std::string::npos) break;
-    begin = end + 1;
-    end = in.find_first_of(delim, begin);
-  } while (true);
-
-  return out;
-}
-
-std::vector<std::string> Split2KV(const std::string &in, const std::string &delim) {
-  std::vector<std::string> out;
-
-  std::string::size_type pos = in.find_first_of(delim);
-  if (pos != std::string::npos) {
-    std::string key = in.substr(0, pos);
-    if (!key.empty()) out.push_back(std::move(key));
-
-    std::string value = Trim(in.substr(pos + 1), delim);
-    if (!value.empty()) out.push_back(std::move(value));
-  }
-
-  return out;
-}
-
-bool HasPrefix(const std::string &str, const std::string &prefix) {
-  if (str.empty() || prefix.empty()) return false;
-  return !strncasecmp(str.data(), prefix.data(), prefix.size());
-}
-
-int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
-  return StringMatchLen(pattern.c_str(), pattern.length(), in.c_str(), in.length(), nocase);
-}
-
-// Glob-style pattern matching.
-int StringMatchLen(const char *pattern, int patternLen, const char *string, int stringLen, int nocase) {
-  while (patternLen && stringLen) {
-    switch (pattern[0]) {
-      case '*':
-        while (pattern[1] == '*') {
-          pattern++;
-          patternLen--;
-        }
-        if (patternLen == 1) return 1; /* match */
-        while (stringLen) {
-          if (StringMatchLen(pattern + 1, patternLen - 1, string, stringLen, nocase)) return 1; /* match */
-          string++;
-          stringLen--;
-        }
-        return 0; /* no match */
-        break;
-      case '?':
-        if (stringLen == 0) return 0; /* no match */
-        string++;
-        stringLen--;
-        break;
-      case '[': {
-        int not_symbol, match;
-
-        pattern++;
-        patternLen--;
-        not_symbol = pattern[0] == '^';
-        if (not_symbol) {
-          pattern++;
-          patternLen--;
-        }
-        match = 0;
-        while (true) {
-          if (pattern[0] == '\\' && patternLen >= 2) {
-            pattern++;
-            patternLen--;
-            if (pattern[0] == string[0]) match = 1;
-          } else if (pattern[0] == ']') {
-            break;
-          } else if (patternLen == 0) {
-            pattern--;
-            patternLen++;
-            break;
-          } else if (pattern[1] == '-' && patternLen >= 3) {
-            int start = pattern[0];
-            int end = pattern[2];
-            int c = string[0];
-            if (start > end) {
-              int t = start;
-              start = end;
-              end = t;
-            }
-            if (nocase) {
-              start = tolower(start);
-              end = tolower(end);
-              c = tolower(c);
-            }
-            pattern += 2;
-            patternLen -= 2;
-            if (c >= start && c <= end) match = 1;
-          } else {
-            if (!nocase) {
-              if (pattern[0] == string[0]) match = 1;
-            } else {
-              if (tolower(static_cast<int>(pattern[0])) == tolower(static_cast<int>(string[0]))) match = 1;
-            }
-          }
-          pattern++;
-          patternLen--;
-        }
-        if (not_symbol) match = !match;
-        if (!match) return 0; /* no match */
-        string++;
-        stringLen--;
-        break;
-      }
-      case '\\':
-        if (patternLen >= 2) {
-          pattern++;
-          patternLen--;
-        }
-        /* fall through */
-      default:
-        if (!nocase) {
-          if (pattern[0] != string[0]) return 0; /* no match */
-        } else {
-          if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0]))) return 0; /* no match */
-        }
-        string++;
-        stringLen--;
-        break;
-    }
-    pattern++;
-    patternLen--;
-    if (stringLen == 0) {
-      while (*pattern == '*') {
-        pattern++;
-        patternLen--;
-      }
-      break;
-    }
-  }
-  if (patternLen == 0 && stringLen == 0) return 1;
-  return 0;
-}
-
-std::string StringToHex(const std::string &input) {
-  static const char hex_digits[] = "0123456789ABCDEF";
-  std::string output;
-  output.reserve(input.length() * 2);
-  for (unsigned char c : input) {
-    output.push_back(hex_digits[c >> 4]);
-    output.push_back(hex_digits[c & 15]);
-  }
-  return output;
-}
-
-constexpr unsigned long long expTo1024(unsigned n) { return 1ULL << (n * 10); }
-
-void BytesToHuman(char *buf, size_t size, uint64_t n) {
-  if (n < expTo1024(1)) {
-    fmt::format_to_n(buf, size, "{}B", n);
-  } else if (n < expTo1024(2)) {
-    fmt::format_to_n(buf, size, "{:.2f}K", static_cast<double>(n) / expTo1024(1));
-  } else if (n < expTo1024(3)) {
-    fmt::format_to_n(buf, size, "{:.2f}M", static_cast<double>(n) / expTo1024(2));
-  } else if (n < expTo1024(4)) {
-    fmt::format_to_n(buf, size, "{:.2f}G", static_cast<double>(n) / expTo1024(3));
-  } else if (n < expTo1024(5)) {
-    fmt::format_to_n(buf, size, "{:.2f}T", static_cast<double>(n) / expTo1024(4));
-  } else if (n < expTo1024(6)) {
-    fmt::format_to_n(buf, size, "{:.2f}P", static_cast<double>(n) / expTo1024(5));
-  } else {
-    fmt::format_to_n(buf, size, "{}B", n);
-  }
-}
-
-std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
-  std::vector<std::string> tokens;
-
-  if (value.empty()) {
-    return tokens;
-  }
-
-  enum ParserState { stateArrayLen, stateBulkLen, stateBulkData };
-  uint64_t array_len = 0, bulk_len = 0;
-  int state = stateArrayLen;
-  const char *start = value.data(), *end = start + value.size(), *p;
-  while (start != end) {
-    switch (state) {
-      case stateArrayLen: {
-        if (start[0] != '*') {
-          return tokens;
-        }
-        p = strchr(start, '\r');
-        if (!p || (p == end) || p[1] != '\n') {
-          tokens.clear();
-          return tokens;
-        }
-        // parse_result expects to must be parsed successfully here
-        array_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
-        start = p + 2;
-        state = stateBulkLen;
-        break;
-      }
-      case stateBulkLen: {
-        if (start[0] != '$') {
-          return tokens;
-        }
-        p = strchr(start, '\r');
-        if (!p || (p == end) || p[1] != '\n') {
-          tokens.clear();
-          return tokens;
-        }
-        // parse_result expects to must be parsed successfully here
-        bulk_len = *ParseInt<uint64_t>(std::string(start + 1, p), 10);
-        start = p + 2;
-        state = stateBulkData;
-        break;
-      }
-      case stateBulkData: {
-        if (bulk_len + 2 > static_cast<uint64_t>(end - start)) {
-          tokens.clear();
-          return tokens;
-        }
-        tokens.emplace_back(start, start + bulk_len);
-        start += bulk_len + 2;
-        state = stateBulkLen;
-        break;
-      }
-    }
-  }
-  if (array_len != tokens.size()) {
-    tokens.clear();
-  }
-  return tokens;
-}
-
 bool IsPortInUse(int port) {
   int fd = NullFD;
   Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
@@ -624,18 +314,10 @@ bool IsPortInUse(int port) {
   return s.IsOK();
 }
 
-void ThreadSetName(const char *name) {
-#ifdef __APPLE__
-  pthread_setname_np(name);
-#else
-  pthread_setname_np(pthread_self(), name);
-#endif
-}
-
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
 int aeWait(int fd, int mask, uint64_t timeout) {
-  struct pollfd pfd;
+  pollfd pfd;
   int retmask = 0, retval;
 
   memset(&pfd, 0, sizeof(pfd));
@@ -670,4 +352,5 @@ Status WriteImpl(int fd, std::string_view data, Args &&...args) {
 Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
+
 }  // namespace Util

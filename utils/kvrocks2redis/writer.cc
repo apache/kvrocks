@@ -25,7 +25,7 @@
 
 #include <cstring>
 
-#include "util.h"
+#include "io_util.h"
 
 Writer::~Writer() {
   for (const auto &iter : aof_fds_) {

@@ -47,6 +47,7 @@
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
+#include "time_util.h"
 
 namespace Engine {
 

@@ -24,7 +24,7 @@
 #include <utility>
 
 #include "status.h"
-#include "util.h"
+#include "string_util.h"
 
 // forward declaration
 class Server;

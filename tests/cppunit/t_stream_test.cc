@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_stream.h"
 
 class RedisStreamTest : public TestBase {

@@ -29,7 +29,6 @@
 #include <vector>
 
 #include "config/config.h"
-#include "util.h"
 
 namespace Kvrocks2redis {
 

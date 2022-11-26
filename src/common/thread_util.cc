@@ -18,35 +18,18 @@
  *
  */
 
-#include "cron.h"
+#include "thread_util.h"
 
-#include <gtest/gtest.h>
+#include <pthread.h>
 
-#include <memory>
+namespace Util {
 
-class CronTest : public testing::Test {
- protected:
-  explicit CronTest() {
-    cron = std::make_unique<Cron>();
-    std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
-    cron->SetScheduleTime(schedule);
-  }
-  ~CronTest() = default;
-
- protected:
-  std::unique_ptr<Cron> cron;
-};
-
-TEST_F(CronTest, IsTimeMatch) {
-  std::time_t t = std::time(0);
-  std::tm *now = std::localtime(&t);
-  now->tm_hour = 3;
-  ASSERT_TRUE(cron->IsTimeMatch(now));
-  now->tm_hour = 4;
-  ASSERT_FALSE(cron->IsTimeMatch(now));
+void ThreadSetName(const char *name) {
+#ifdef __APPLE__
+  pthread_setname_np(name);
+#else
+  pthread_setname_np(pthread_self(), name);
+#endif
 }
 
-TEST_F(CronTest, ToString) {
-  std::string got = cron->ToString();
-  ASSERT_EQ("* 3 * * *", got);
-}
+}  // namespace Util

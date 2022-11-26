@@ -67,10 +67,10 @@ struct StreamConsumer {
       : owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
 };
 
-typedef struct {
+struct ChannelSubscribeNum {
   std::string channel;
   size_t subscribe_num;
-} ChannelSubscribeNum;
+};
 
 enum SlowLog {
   kSlowLogMaxArgc = 32,

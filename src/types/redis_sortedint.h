@@ -30,7 +30,7 @@
 struct SortedintRangeSpec {
   uint64_t min = std::numeric_limits<uint64_t>::lowest(), max = std::numeric_limits<uint64_t>::max();
   bool minex = false, maxex = false; /* are min or max exclusive */
-  int offset = -1, count = 1;
+  int offset = -1, count = -1;
   bool reversed = false;
   SortedintRangeSpec() = default;
 };

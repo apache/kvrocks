@@ -38,7 +38,7 @@
 
 #include "server/redis_reply.h"
 #include "status.h"
-#include "util.h"
+#include "string_util.h"
 
 class Server;
 

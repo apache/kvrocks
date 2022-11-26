@@ -56,7 +56,7 @@ class Connection {
   void SendFile(int fd);
   std::string ToString();
 
-  typedef std::function<void(std::string, int)> unsubscribe_callback;
+  using unsubscribe_callback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
   void UnSubscribeChannel(const std::string &channel);
   void UnSubscribeAll(const unsubscribe_callback &reply = nullptr);

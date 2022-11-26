@@ -44,13 +44,13 @@ enum DistanceSort {
 };
 
 // Structures represent points and array of points on the earth.
-typedef struct GeoPoint {
+struct GeoPoint {
   double longitude;
   double latitude;
   std::string member;
   double dist;
   double score;
-} GeoPoint;
+};
 
 namespace Redis {
 

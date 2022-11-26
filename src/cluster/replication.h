@@ -55,7 +55,7 @@ enum WriteBatchType {
   kBatchTypeStream,
 };
 
-typedef std::function<void(const std::string, const uint32_t)> fetch_file_callback;
+using fetch_file_callback = std::function<void(const std::string, const uint32_t)>;
 
 class FeedSlaveThread {
  public:

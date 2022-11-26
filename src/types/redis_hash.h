@@ -29,10 +29,10 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-typedef struct FieldValue {
+struct FieldValue {
   std::string field;
   std::string value;
-} FieldValue;
+};
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
 

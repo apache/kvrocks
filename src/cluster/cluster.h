@@ -69,7 +69,7 @@ struct SlotInfo {
   std::vector<NodeInfo> nodes;
 };
 
-typedef std::unordered_map<std::string, std::shared_ptr<ClusterNode>> ClusterNodes;
+using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;
 
 class Server;
 

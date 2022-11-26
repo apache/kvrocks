@@ -31,6 +31,7 @@
 #include <utility>
 
 #include "config.h"
+#include "fmt/format.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "storage/compaction_checker.h"
@@ -212,7 +213,7 @@ void Server::Join() {
   if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
 }
 
-Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) {
+Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {
   std::lock_guard<std::mutex> guard(slaveof_mu_);
 
   // Don't check host and port if 'force_reconnect' argument is set to true
@@ -230,7 +231,7 @@ Status Server::AddMaster(std::string host, uint32_t port, bool force_reconnect) 
   // replication, and uses 'listen-port + 1' as thread listening port.
   uint32_t master_listen_port = port;
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
-  replication_thread_ = std::unique_ptr<ReplicationThread>(new ReplicationThread(host, master_listen_port, this));
+  replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
@@ -403,7 +404,7 @@ void Server::GetChannelsByPattern(const std::string &pattern, std::vector<std::s
   }
 }
 
-void Server::ListChannelSubscribeNum(std::vector<std::string> channels,
+void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                      std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
   for (const auto &chan : channels) {
@@ -1056,23 +1057,20 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 }
 
 std::string Server::GetRocksDBStatsJson() {
-  char buf[256];
   std::string output;
 
   output.reserve(8 * 1024);
   output.append("{");
   auto stats = storage_->GetDB()->GetDBOptions().statistics;
   for (const auto &iter : rocksdb::TickersNameMap) {
-    snprintf(buf, sizeof(buf), "\"%s\":%" PRIu64 ",", iter.second.c_str(), stats->getTickerCount(iter.first));
-    output.append(buf);
+    output.append(fmt::format(R"("{}":{},)", iter.second.c_str(), stats->getTickerCount(iter.first)));
   }
   for (const auto &iter : rocksdb::HistogramsNameMap) {
     rocksdb::HistogramData hist_data;
     stats->histogramData(iter.first, &hist_data);
     /* P50 P95 P99 P100 COUNT SUM */
-    snprintf(buf, sizeof(buf), "\"%s\":[%f,%f,%f,%f,%" PRIu64 ",%" PRIu64 "],", iter.second.c_str(), hist_data.median,
-             hist_data.percentile95, hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum);
-    output.append(buf);
+    output.append(fmt::format(R"("{}":[{},{},{},{},{},{}],)", iter.second, hist_data.median, hist_data.percentile95,
+                              hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum));
   }
   output.pop_back();
   output.append("}");
@@ -1295,14 +1293,14 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
   for (size_t i = 0; i < argc; i++) {
     if (argc != args->size() && i == argc - 1) {
-      entry->args.emplace_back("... (" + std::to_string(args->size() - argc + 1) + " more arguments)");
+      entry->args.emplace_back(fmt::format("... ({} more arguments)", args->size() - argc + 1));
       break;
     }
     if (args->data()[i].length() <= kSlowLogMaxString) {
       entry->args.emplace_back(args->data()[i]);
     } else {
-      entry->args.emplace_back(args->data()[i].substr(0, kSlowLogMaxString) + "... (" +
-                               std::to_string(args->data()[i].length() - kSlowLogMaxString) + " more bytes)");
+      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", args->data()[i].substr(0, kSlowLogMaxString),
+                                           args->data()[i].length() - kSlowLogMaxString));
     }
   }
   entry->duration = duration;
@@ -1321,7 +1319,7 @@ std::string Server::GetClientsStr() {
   return clients;
 }
 
-void Server::KillClient(int64_t *killed, std::string addr, uint64_t id, uint64_t type, bool skipme,
+void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                         Redis::Connection *conn) {
   *killed = 0;
 

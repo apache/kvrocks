@@ -35,46 +35,32 @@ const double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_
 const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
                                                                 : std::numeric_limits<double>::max());
 
-typedef struct ZRangeSpec {
-  double min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  int offset, count;
-  bool removed, reversed;
-  ZRangeSpec() {
-    min = kMinScore;
-    max = kMaxScore;
-    minex = maxex = false;
-    offset = -1;
-    count = -1;
-    removed = reversed = false;
-  }
-} ZRangeSpec;
+struct ZRangeSpec {
+  double min = kMinScore, max = kMaxScore;
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int offset = -1, count = -1;
+  bool removed = false, reversed = false;
+  ZRangeSpec() = default;
+};
 
-typedef struct ZRangeLexSpec {
+struct ZRangeLexSpec {
   std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int offset, count;
-  bool removed, reversed;
-  ZRangeLexSpec() {
-    minex = maxex = false;
-    max_infinite = false;
-    offset = -1;
-    count = -1;
-    removed = false;
-    reversed = false;
-  }
-} ZRangeLexSpec;
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  bool max_infinite = false;         /* are max infinite */
+  int offset = -1, count = -1;
+  bool removed = false, reversed = false;
+  ZRangeLexSpec() = default;
+};
 
-typedef struct KeyWeight {
+struct KeyWeight {
   std::string key;
   double weight;
-} KeyWeight;
+};
 
-typedef struct {
+struct MemberScore {
   std::string member;
   double score;
-} MemberScore;
+};
 
 enum ZSetFlags {
   kZSetIncr = 1,
@@ -121,7 +107,8 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
   rocksdb::Status Range(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
   rocksdb::Status RangeByScore(const Slice &user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
-  rocksdb::Status RangeByLex(const Slice &user_key, ZRangeLexSpec spec, std::vector<std::string> *members, int *size);
+  rocksdb::Status RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<std::string> *members,
+                             int *size);
   rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *ret);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec, int *ret);

@@ -21,6 +21,8 @@
 #include <glog/logging.h>
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
+
+#include "fmt/format.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #endif
@@ -53,12 +55,9 @@ Connection::~Connection() {
 }
 
 std::string Connection::ToString() {
-  std::ostringstream stream;
-  stream << "id=" << id_ << " addr=" << addr_ << " fd=" << bufferevent_getfd(bev_) << " name=" << name_
-         << " age=" << GetAge() << " idle=" << GetIdleTime() << " flags=" << GetFlags() << " namespace=" << ns_
-         << " qbuf=" << evbuffer_get_length(Input()) << " obuf=" << evbuffer_get_length(Output())
-         << " cmd=" << last_cmd_ << "\n";
-  return stream.str();
+  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} namespace={} qbuf={} obuf={} cmd={}\n", id_,
+                     addr_, bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), ns_,
+                     evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
 }
 
 void Connection::Close() {
@@ -195,7 +194,7 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
   }
 }
 
-void Connection::UnSubscribeAll(unsubscribe_callback reply) {
+void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
   if (subscribe_channels_.empty()) {
     if (reply != nullptr) reply("", subcribe_patterns_.size());
     return;
@@ -232,7 +231,7 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
   }
 }
 
-void Connection::PUnSubscribeAll(unsubscribe_callback reply) {
+void Connection::PUnSubscribeAll(const unsubscribe_callback &reply) {
   if (subcribe_patterns_.empty()) {
     if (reply != nullptr) reply("", subscribe_channels_.size());
     return;

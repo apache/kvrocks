@@ -93,7 +93,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
     return semver
 
 
-def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
+def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
@@ -127,7 +127,13 @@ def build(dir: str, jobs: int, ghproxy: bool, ninja: bool, unittest: bool, compi
     target = ["kvrocks", "kvrocks2redis"]
     if unittest:
         target.append("unittest")
-    run(cmake, "--build", ".", f"-j{jobs}", "-t", *target, verbose=True, cwd=dir)
+
+    options = ["--build", "."]
+    if jobs is not None:
+        options.append(f"-j{jobs}")
+    options += ["-t", *target]
+
+    run(cmake, *options, verbose=True, cwd=dir)
 
 
 def get_source_files() -> List[str]:
@@ -136,8 +142,8 @@ def get_source_files() -> List[str]:
         *glob("src/**/*.cc", recursive=True),
         *glob("tests/cppunit/**/*.h", recursive=True),
         *glob("tests/cppunit/**/*.cc", recursive=True),
-        *glob("tools/kvrocks2redis/**/*.h", recursive=True),
-        *glob("tools/kvrocks2redis/**/*.cc", recursive=True),
+        *glob("utils/kvrocks2redis/**/*.h", recursive=True),
+        *glob("utils/kvrocks2redis/**/*.cc", recursive=True),
     ]
 
 
@@ -166,7 +172,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     run(command, *options, *sources, verbose=True, cwd=basedir)
 
 
-def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: str) -> None:
+def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_tidy_path: str) -> None:
     # use the run-clang-tidy Python script provided by LLVM Clang
     run_command = find_command(run_clang_tidy_path, msg="run-clang-tidy is required")
     tidy_command = find_command(clang_tidy_path, msg="clang-tidy is required")
@@ -181,7 +187,9 @@ def clang_tidy(dir: str, jobs: int, clang_tidy_path: str, run_clang_tidy_path: s
 
     basedir = Path(__file__).parent.absolute()
 
-    options = ['-p', dir, '-clang-tidy-binary', tidy_command, f'-j{jobs}']
+    options = ['-p', dir, '-clang-tidy-binary', tidy_command]
+    if jobs is not None:
+        options.append(f'-j{jobs}')
 
     run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
 
@@ -236,7 +244,7 @@ def package_source(release_version: str) -> None:
         f.write(payload)
 
 
-def package_fpm(package_type: str, release_version: str, dir: str, jobs: int) -> None:
+def package_fpm(package_type: str, release_version: str, dir: str, jobs: Optional[int]) -> None:
     fpm = find_command('fpm', msg=f'fpm is required for {package_type} packaging')
 
     version = write_version(release_version)
@@ -337,7 +345,7 @@ if __name__ == '__main__':
     parser_check_tidy.set_defaults(func=clang_tidy)
     parser_check_tidy.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                                    help="directory to store cmake-generated and build files")
-    parser_check_tidy.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_check_tidy.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
     parser_check_tidy.add_argument('--clang-tidy-path', default='clang-tidy',
                                    help="path of clang-tidy used to check source")
     parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy',
@@ -358,7 +366,7 @@ if __name__ == '__main__':
     )
     parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                               help="directory to store cmake-generated and build files")
-    parser_build.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_build.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
     parser_build.add_argument('--ghproxy', default=False, action='store_true',
                               help='use https://ghproxy.com to fetch dependencies')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
@@ -398,7 +406,7 @@ if __name__ == '__main__':
                                     help='package type for fpm to build')
     parser_package_fpm.add_argument('dir', metavar='BUILD_DIR',
                                     help="directory to store cmake-generated and build files")
-    parser_package_fpm.add_argument('-j', '--jobs', default=4, metavar='N', help='execute N build jobs concurrently')
+    parser_package_fpm.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
     parser_package_fpm.set_defaults(func=package_fpm)
 
     parser_test = subparsers.add_parser(

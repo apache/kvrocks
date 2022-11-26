@@ -34,6 +34,7 @@
 
 #include "event_util.h"
 #include "fd_util.h"
+#include "fmt/format.h"
 #include "rocksdb_crc32c.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -797,13 +798,13 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
     UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read size: ") + strerror(errno));
+        return {Status::NotOK, fmt::format("read size: {}", strerror(errno))};
       }
       continue;
     }
     if (line[0] == '-') {
       std::string msg(line.get());
-      return Status(Status::NotOK, msg);
+      return {Status::NotOK, msg};
     }
     file_size = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
     break;
@@ -812,7 +813,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
   // Write to tmp file
   auto tmp_file = Engine::Storage::ReplDataManager::NewTmpFile(storage_, dir, file);
   if (!tmp_file) {
-    return Status(Status::NotOK, "unable to create tmp file");
+    return {Status::NotOK, "unable to create tmp file"};
   }
 
   size_t remain = file_size;
@@ -823,22 +824,20 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
       auto data_len = evbuffer_remove(evbuf, data, remain > 16 * 1024 ? 16 * 1024 : remain);
       if (data_len == 0) continue;
       if (data_len < 0) {
-        return Status(Status::NotOK, "read sst file data error");
+        return {Status::NotOK, "read sst file data error"};
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       remain -= data_len;
     } else {
       if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read sst file: ") + strerror(errno));
+        return {Status::NotOK, fmt::format("read sst file: {}", strerror(errno))};
       }
     }
   }
   // Verify file crc checksum if crc is not 0
   if (crc && crc != tmp_crc) {
-    char err_buf[64];
-    snprintf(err_buf, sizeof(err_buf), "CRC mismatched, %u was expected but got %u", crc, tmp_crc);
-    return Status(Status::NotOK, err_buf);
+    return {Status::NotOK, fmt::format("CRC mismatched, {} was expected but got {}", crc, tmp_crc)};
   }
   // File is OK, rename to formal name
   auto s = Engine::Storage::ReplDataManager::SwapTmpFile(storage_, dir, file);

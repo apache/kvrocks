@@ -29,13 +29,16 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "config_type.h"
 #include "config_util.h"
+#include "fmt/format.h"
 #include "parse_util.h"
 #include "server/server.h"
 #include "server/tls_util.h"
@@ -673,7 +676,7 @@ Status Config::Load(const CLIOptions &opts) {
     } else {
       path_ = opts.conf_file;
       file.open(path_);
-      if (!file.is_open()) return Status(Status::NotOK, strerror(errno));
+      if (!file.is_open()) return Status::FromErrno();
       in = &file;
     }
 
@@ -682,7 +685,7 @@ Status Config::Load(const CLIOptions &opts) {
     while (!in->eof()) {
       std::getline(*in, line);
       if (auto s = parseConfigFromString(line, line_num); !s) {
-        return Status(Status::NotOK, "at line: #L" + std::to_string(line_num) + ", err: " + s.Msg());
+        return {Status::NotOK, fmt::format("at line: #L{}, err: {}", line_num, s.Msg())};
       }
       line_num++;
     }
@@ -694,7 +697,7 @@ Status Config::Load(const CLIOptions &opts) {
 
   for (const auto &opt : opts.cli_options) {
     if (Status s = parseConfigFromPair(opt, -1); !s) {
-      return Status(Status::NotOK, "CLI config option error: " + s.Msg());
+      return {Status::NotOK, "CLI config option error: " + s.Msg()};
     }
   }
 
@@ -704,8 +707,8 @@ Status Config::Load(const CLIOptions &opts) {
     if (iter.second->line_number != 0 && iter.second->validate) {
       auto s = iter.second->validate(iter.first, iter.second->ToString());
       if (!s.IsOK()) {
-        return Status(Status::NotOK, "at line: #L" + std::to_string(iter.second->line_number) + ", " + iter.first +
-                                         " is invalid: " + s.Msg());
+        return {Status::NotOK,
+                fmt::format("at line: #L{}, {} is invalid: {}", iter.second->line_number, iter.first, s.Msg())};
       }
     }
   }
@@ -714,14 +717,14 @@ Status Config::Load(const CLIOptions &opts) {
     if (iter.second->callback) {
       auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
       if (!s.IsOK()) {
-        return Status(Status::NotOK, s.Msg() + " in key '" + iter.first + "'");
+        return {Status::NotOK, fmt::format("{} in key '{}'", s.Msg(), iter.first)};
       }
     }
   }
   return finish();
 }
 
-void Config::Get(std::string key, std::vector<std::string> *values) {
+void Config::Get(const std::string &key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || Util::ToLower(key) == iter.first) {
@@ -759,7 +762,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 
 Status Config::Rewrite() {
   if (path_.empty()) {
-    return Status(Status::NotOK, "the server is running without a config file");
+    return {Status::NotOK, "the server is running without a config file"};
   }
   std::vector<std::string> lines;
   std::map<std::string, std::string> new_config;
@@ -803,21 +806,21 @@ Status Config::Rewrite() {
   }
   file.close();
 
-  std::ostringstream string_stream;
+  std::string out_buf;
   for (const auto &line : lines) {
-    string_stream << line << "\n";
+    fmt::format_to(std::back_inserter(out_buf), "{}\n", line);
   }
   for (const auto &remain : new_config) {
     if (remain.second.empty()) continue;
-    string_stream << remain.first << " " << remain.second << "\n";
+    fmt::format_to(std::back_inserter(out_buf), "{} {}\n", remain.first, remain.second);
   }
   std::string tmp_path = path_ + ".tmp";
   remove(tmp_path.data());
   std::ofstream output_file(tmp_path, std::ios::out);
-  output_file.write(string_stream.str().c_str(), string_stream.str().size());
+  output_file << out_buf;
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
-    return Status(Status::NotOK, std::string("rename file encounter error: ") + strerror(errno));
+    return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
   }
   return Status::OK();
 }
@@ -909,16 +912,16 @@ Status Config::DelNamespace(const std::string &ns) {
       return s;
     }
   }
-  return Status(Status::NotOK, "the namespace was not found");
+  return {Status::NotOK, "the namespace was not found"};
 }
 
 Status Config::isNamespaceLegal(const std::string &ns) {
   if (ns.size() > UINT8_MAX) {
-    return Status(Status::NotOK, std::string("size exceed limit ") + std::to_string(UINT8_MAX));
+    return {Status::NotOK, fmt::format("size exceed limit {}", UINT8_MAX)};
   }
   char last_char = ns.back();
   if (last_char == std::numeric_limits<char>::max()) {
-    return Status(Status::NotOK, std::string("namespace contain illegal letter"));
+    return {Status::NotOK, "namespace contain illegal letter"};
   }
   return Status::OK();
 }

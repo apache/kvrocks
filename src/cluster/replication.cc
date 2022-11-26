@@ -35,12 +35,13 @@
 #include "event_util.h"
 #include "fd_util.h"
 #include "fmt/format.h"
+#include "io_util.h"
 #include "rocksdb_crc32c.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
 #include "storage/batch_debugger.h"
-#include "util.h"
+#include "thread_util.h"
 
 Status FeedSlaveThread::Start() {
   try {

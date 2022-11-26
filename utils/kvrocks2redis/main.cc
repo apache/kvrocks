@@ -28,6 +28,7 @@
 
 #include "config.h"
 #include "config/config.h"
+#include "io_util.h"
 #include "parser.h"
 #include "redis_writer.h"
 #include "storage/storage.h"

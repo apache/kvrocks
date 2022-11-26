@@ -29,7 +29,6 @@
 #include <set>
 
 #include "db_util.h"
-#include "util.h"
 
 namespace Redis {
 

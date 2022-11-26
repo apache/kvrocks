@@ -37,8 +37,9 @@
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
+#include "thread_util.h"
+#include "time_util.h"
 #include "tls_util.h"
-#include "util.h"
 #include "version.h"
 #include "worker.h"
 

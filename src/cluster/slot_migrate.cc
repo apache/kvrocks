@@ -25,7 +25,10 @@
 
 #include "event_util.h"
 #include "fmt/format.h"
+#include "io_util.h"
 #include "storage/batch_extractor.h"
+#include "thread_util.h"
+#include "time_util.h"
 
 static std::map<RedisType, std::string> type_to_cmd = {
     {kRedisString, "set"}, {kRedisList, "rpush"},    {kRedisHash, "hmset"},      {kRedisSet, "sadd"},

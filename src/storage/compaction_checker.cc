@@ -24,6 +24,7 @@
 
 #include "parse_util.h"
 #include "storage.h"
+#include "time_util.h"
 
 void CompactionChecker::CompactPropagateAndPubSubFiles() {
   rocksdb::CompactRangeOptions compact_opts;

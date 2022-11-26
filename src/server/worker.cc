@@ -25,6 +25,10 @@
 
 #include <string>
 
+#include "io_util.h"
+#include "thread_util.h"
+#include "time_util.h"
+
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
@@ -46,7 +50,6 @@
 #include "redis_request.h"
 #include "server.h"
 #include "storage/scripting.h"
-#include "util.h"
 
 Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   base_ = event_base_new();

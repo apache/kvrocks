@@ -26,8 +26,9 @@
 
 #include <system_error>
 
+#include "io_util.h"
 #include "server/redis_reply.h"
-#include "util.h"
+#include "thread_util.h"
 
 RedisWriter::RedisWriter(Kvrocks2redis::Config *config) : Writer(config) {
   try {

@@ -20,7 +20,7 @@
 
 #include "config_util.h"
 
-#include "util.h"
+#include "string_util.h"
 
 StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
   enum {

@@ -22,8 +22,6 @@
 
 #include <algorithm>
 
-#include "util.h"
-
 namespace Redis {
 
 rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, int *ret) {

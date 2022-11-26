@@ -18,11 +18,11 @@
  *
  */
 
+#include "string_util.h"
+
 #include <gtest/gtest.h>
 
 #include <map>
-
-#include "util.h"
 
 TEST(StringUtil, ToLower) {
   std::map<std::string, std::string> cases{

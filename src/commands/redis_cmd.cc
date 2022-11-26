@@ -38,6 +38,7 @@
 #include "cluster/slot_migrate.h"
 #include "command_parser.h"
 #include "fd_util.h"
+#include "io_util.h"
 #include "parse_util.h"
 #include "server/redis_connection.h"
 #include "server/redis_reply.h"
@@ -49,6 +50,8 @@
 #include "storage/redis_pubsub.h"
 #include "storage/scripting.h"
 #include "storage/storage.h"
+#include "thread_util.h"
+#include "time_util.h"
 #include "types/redis_bitmap.h"
 #include "types/redis_geo.h"
 #include "types/redis_hash.h"
@@ -58,7 +61,6 @@
 #include "types/redis_stream.h"
 #include "types/redis_string.h"
 #include "types/redis_zset.h"
-#include "util.h"
 
 namespace Redis {
 

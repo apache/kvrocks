@@ -29,7 +29,7 @@
 #include <vector>
 
 #include "cluster/redis_slot.h"
-#include "util.h"
+#include "time_util.h"
 
 // 52 bit for microseconds and 11 bit for counter
 const int VersionCounterBits = 11;

@@ -33,7 +33,6 @@
 #include "redis_connection.h"
 #include "redis_reply.h"
 #include "server.h"
-#include "util.h"
 
 namespace Redis {
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;

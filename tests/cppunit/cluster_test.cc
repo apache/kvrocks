@@ -26,7 +26,6 @@
 #include <cstring>
 
 #include "server/server.h"
-#include "util.h"
 
 TEST(Cluster, CluseterSetNodes) {
   Status s;

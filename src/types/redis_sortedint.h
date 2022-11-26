@@ -27,20 +27,13 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-typedef struct SortedintRangeSpec {
-  uint64_t min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  int offset, count;
-  bool reversed;
-  SortedintRangeSpec() {
-    min = std::numeric_limits<uint64_t>::lowest();
-    max = std::numeric_limits<uint64_t>::max();
-    minex = maxex = false;
-    offset = -1;
-    count = -1;
-    reversed = false;
-  }
-} SortedintRangeSpec;
+struct SortedintRangeSpec {
+  uint64_t min = std::numeric_limits<uint64_t>::lowest(), max = std::numeric_limits<uint64_t>::max();
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int offset = -1, count = 1;
+  bool reversed = false;
+  SortedintRangeSpec() = default;
+};
 
 namespace Redis {
 

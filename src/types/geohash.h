@@ -76,7 +76,7 @@
 #define GISZERO(s) (!s.bits && !s.step)
 #define GISNOTZERO(s) (s.bits || s.step)
 
-typedef enum {
+enum GeoDirection {
   GEOHASH_NORTH = 0,
   GEOHASH_EAST,
   GEOHASH_WEST,
@@ -85,7 +85,7 @@ typedef enum {
   GEOHASH_SOUTH_EAST,
   GEOHASH_NORT_WEST,
   GEOHASH_NORT_EAST
-} GeoDirection;
+};
 
 struct GeoHashBits {
   uint64_t bits = 0;
@@ -114,7 +114,7 @@ struct GeoHashNeighbors {
   GeoHashBits south_west;
 };
 
-typedef uint64_t GeoHashFix52Bits;
+using GeoHashFix52Bits = uint64_t;
 
 struct GeoHashRadius {
   GeoHashBits hash;

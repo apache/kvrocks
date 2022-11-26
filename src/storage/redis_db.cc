@@ -28,7 +28,6 @@
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "server/server.h"
-#include "util.h"
 
 namespace Redis {
 

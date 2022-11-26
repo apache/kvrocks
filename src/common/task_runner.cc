@@ -22,7 +22,7 @@
 
 #include <thread>
 
-#include "util.h"
+#include "thread_util.h"
 
 Status TaskRunner::Publish(const Task &task) {
   std::lock_guard<std::mutex> guard(mu_);

@@ -23,7 +23,7 @@
 #include <chrono>
 
 #include "fmt/format.h"
-#include "util.h"
+#include "time_util.h"
 
 Stats::Stats() {
   for (int i = 0; i < STATS_METRIC_COUNT; i++) {

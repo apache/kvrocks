@@ -40,10 +40,11 @@
 
 #include "config.h"
 #include "fd_util.h"
+#include "io_util.h"
 #include "scope_exit.h"
 #include "server/server.h"
 #include "storage/storage.h"
-#include "util.h"
+#include "string_util.h"
 #include "version.h"
 
 namespace google {

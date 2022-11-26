@@ -30,7 +30,8 @@
 #include "parse_util.h"
 #include "replication.h"
 #include "server/server.h"
-#include "util.h"
+#include "string_util.h"
+#include "time_util.h"
 
 const char *errInvalidNodeID = "Invalid cluster node id";
 const char *errInvalidSlotID = "Invalid slot id";

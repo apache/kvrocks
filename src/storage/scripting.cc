@@ -62,7 +62,6 @@
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "sha1.h"
-#include "util.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).

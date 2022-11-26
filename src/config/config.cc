@@ -43,7 +43,6 @@
 #include "server/server.h"
 #include "server/tls_util.h"
 #include "status.h"
-#include "util.h"
 
 const char *kDefaultNamespace = "__namespace";
 

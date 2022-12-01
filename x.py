@@ -212,7 +212,7 @@ def write_version(release_version: str) -> str:
     if SEMVER_REGEX.match(version) is None:
         raise RuntimeError(f"Kvrocks version should follow semver spec, got: {version}")
 
-    with open('src/.VERSION', 'w+') as f:
+    with open('src/VERSION.txt', 'w+') as f:
         f.write(version)
 
     return version

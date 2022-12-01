@@ -147,7 +147,7 @@ list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
-execute_process(COMMAND sh -c "cat VERSION"
+execute_process(COMMAND sh -c "cat src/VERSION"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE PROJECT_VERSION)
 execute_process(COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)

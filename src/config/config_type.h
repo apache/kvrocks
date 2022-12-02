@@ -22,6 +22,7 @@
 
 #include <string>
 #include <utility>
+#include <fmt/format.h>
 
 #include "status.h"
 #include "string_util.h"
@@ -126,7 +127,7 @@ class OctalField : public ConfigField {
  public:
   OctalField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
   ~OctalField() override = default;
-  std::string ToString() override { return std::to_string(*receiver_); }
+  std::string ToString() override { return fmt::format("{:o}", *receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();

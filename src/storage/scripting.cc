@@ -57,11 +57,11 @@
 #include <string>
 
 #include "commands/redis_cmd.h"
+#include "fmt/format.h"
 #include "rand.h"
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "sha1.h"
-#include "util.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
@@ -350,15 +350,12 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? raiseError(lua) : 1;
   }
   for (j = 0; j < argc; j++) {
-    char dbuf[64];
     if (lua_type(lua, j + 1) == LUA_TNUMBER) {
       lua_Number num = lua_tonumber(lua, j + 1);
-      snprintf(dbuf, sizeof(dbuf), "%.17g", static_cast<double>(num));
-      args.emplace_back(dbuf);
+      args.emplace_back(fmt::format("{:.17g}", static_cast<double>(num)));
     } else {
-      const char *obj_s;
-      size_t obj_len;
-      obj_s = lua_tolstring(lua, j + 1, &obj_len);
+      size_t obj_len = 0;
+      const char *obj_s = lua_tolstring(lua, j + 1, &obj_len);
       if (obj_s == nullptr) break; /* no a string */
       args.emplace_back(obj_s, obj_len);
     }

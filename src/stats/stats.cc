@@ -22,7 +22,8 @@
 
 #include <chrono>
 
-#include "util.h"
+#include "fmt/format.h"
+#include "time_util.h"
 
 Stats::Stats() {
   for (int i = 0; i < STATS_METRIC_COUNT; i++) {
@@ -30,8 +31,8 @@ Stats::Stats() {
     im.last_sample_time = 0;
     im.last_sample_count = 0;
     im.idx = 0;
-    for (int j = 0; j < STATS_METRIC_SAMPLES; j++) {
-      im.samples[j] = 0;
+    for (uint64_t &sample : im.samples) {
+      sample = 0;
     }
     inst_metrics.push_back(im);
   }
@@ -59,9 +60,8 @@ int64_t Stats::GetMemoryRSS() {
 #include "fd_util.h"
 
 int64_t Stats::GetMemoryRSS() {
-  char buf[4096], filename[256];
-  snprintf(filename, sizeof(filename), "/proc/%d/stat", getpid());
-  auto fd = UniqueFD(open(filename, O_RDONLY));
+  char buf[4096];
+  auto fd = UniqueFD(open(fmt::format("/proc/{}/stat", getpid()).c_str(), O_RDONLY));
   if (!fd) return 0;
   if (read(*fd, buf, sizeof(buf)) <= 0) {
     return 0;
@@ -105,6 +105,6 @@ void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
 
 uint64_t Stats::GetInstantaneousMetric(int metric) {
   uint64_t sum = 0;
-  for (int j = 0; j < STATS_METRIC_SAMPLES; j++) sum += inst_metrics[metric].samples[j];
+  for (uint64_t sample : inst_metrics[metric].samples) sum += sample;
   return sum / STATS_METRIC_SAMPLES;
 }

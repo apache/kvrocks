@@ -27,6 +27,7 @@ option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enable
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" OFF)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
+option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
@@ -115,6 +116,7 @@ include(cmake/zlib.cmake)
 include(cmake/zstd.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
+include(cmake/fmt.cmake)
 
 if (USE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -131,6 +133,7 @@ list(APPEND EXTERNAL_LIBS event_with_headers)
 list(APPEND EXTERNAL_LIBS lz4)
 list(APPEND EXTERNAL_LIBS zstd)
 list(APPEND EXTERNAL_LIBS zlib_with_headers)
+list(APPEND EXTERNAL_LIBS fmt)
 if (USE_LUAJIT)
 list(APPEND EXTERNAL_LIBS luajit)
 else()
@@ -144,7 +147,7 @@ list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
-execute_process(COMMAND sh -c "cat VERSION"
+execute_process(COMMAND sh -c "cat src/VERSION.txt"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE PROJECT_VERSION)
 execute_process(COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)
@@ -186,12 +189,26 @@ if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
 endif()
 
+if(ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_result OUTPUT ipo_output LANGUAGES CXX)
+
+    if(ipo_result)
+        set_property(TARGET kvrocks_objs PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            target_link_libraries(kvrocks_objs PUBLIC "-fuse-ld=lld")
+        endif()
+    else()
+        message(WARNING "IPO is not supported: ${ipo_output}")
+    endif()
+endif()
+
 # kvrocks main target
 add_executable(kvrocks src/main.cc)
 target_link_libraries(kvrocks PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks2redis sync tool
-file(GLOB KVROCKS2REDIS_SRCS tools/kvrocks2redis/*.cc)
+file(GLOB KVROCKS2REDIS_SRCS utils/kvrocks2redis/*.cc)
 add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 
 target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})

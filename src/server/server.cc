@@ -31,13 +31,15 @@
 #include <utility>
 
 #include "config.h"
+#include "fmt/format.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
+#include "thread_util.h"
+#include "time_util.h"
 #include "tls_util.h"
-#include "util.h"
 #include "version.h"
 #include "worker.h"
 
@@ -1056,23 +1058,20 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 }
 
 std::string Server::GetRocksDBStatsJson() {
-  char buf[256];
   std::string output;
 
   output.reserve(8 * 1024);
   output.append("{");
   auto stats = storage_->GetDB()->GetDBOptions().statistics;
   for (const auto &iter : rocksdb::TickersNameMap) {
-    snprintf(buf, sizeof(buf), "\"%s\":%" PRIu64 ",", iter.second.c_str(), stats->getTickerCount(iter.first));
-    output.append(buf);
+    output.append(fmt::format(R"("{}":{},)", iter.second.c_str(), stats->getTickerCount(iter.first)));
   }
   for (const auto &iter : rocksdb::HistogramsNameMap) {
     rocksdb::HistogramData hist_data;
     stats->histogramData(iter.first, &hist_data);
     /* P50 P95 P99 P100 COUNT SUM */
-    snprintf(buf, sizeof(buf), "\"%s\":[%f,%f,%f,%f,%" PRIu64 ",%" PRIu64 "],", iter.second.c_str(), hist_data.median,
-             hist_data.percentile95, hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum);
-    output.append(buf);
+    output.append(fmt::format(R"("{}":[{},{},{},{},{},{}],)", iter.second, hist_data.median, hist_data.percentile95,
+                              hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum));
   }
   output.pop_back();
   output.append("}");
@@ -1295,14 +1294,14 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
   for (size_t i = 0; i < argc; i++) {
     if (argc != args->size() && i == argc - 1) {
-      entry->args.emplace_back("... (" + std::to_string(args->size() - argc + 1) + " more arguments)");
+      entry->args.emplace_back(fmt::format("... ({} more arguments)", args->size() - argc + 1));
       break;
     }
     if (args->data()[i].length() <= kSlowLogMaxString) {
       entry->args.emplace_back(args->data()[i]);
     } else {
-      entry->args.emplace_back(args->data()[i].substr(0, kSlowLogMaxString) + "... (" +
-                               std::to_string(args->data()[i].length() - kSlowLogMaxString) + " more bytes)");
+      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", args->data()[i].substr(0, kSlowLogMaxString),
+                                           args->data()[i].length() - kSlowLogMaxString));
     }
   }
   entry->duration = duration;

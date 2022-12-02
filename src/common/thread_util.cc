@@ -18,24 +18,18 @@
  *
  */
 
-#pragma once
+#include "thread_util.h"
 
-/* ================ sha1.h ================ */
-/*
-SHA-1 in C
-By Steve Reid <steve@edmweb.com>
-100% Public Domain
-*/
+#include <pthread.h>
 
-#include <cstdint>
+namespace Util {
 
-struct SHA1_CTX {
-  uint32_t state[5];
-  uint32_t count[2];
-  unsigned char buffer[64];
-};
+void ThreadSetName(const char *name) {
+#ifdef __APPLE__
+  pthread_setname_np(name);
+#else
+  pthread_setname_np(pthread_self(), name);
+#endif
+}
 
-void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]);
-void SHA1Init(SHA1_CTX* context);
-void SHA1Update(SHA1_CTX* context, const unsigned char* data, uint32_t len);
-void SHA1Final(unsigned char digest[20], SHA1_CTX* context);
+}  // namespace Util

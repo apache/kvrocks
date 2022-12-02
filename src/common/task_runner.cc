@@ -22,7 +22,7 @@
 
 #include <thread>
 
-#include "util.h"
+#include "thread_util.h"
 
 Status TaskRunner::Publish(const Task &task) {
   std::lock_guard<std::mutex> guard(mu_);
@@ -54,8 +54,8 @@ void TaskRunner::Stop() {
 }
 
 void TaskRunner::Join() {
-  for (size_t i = 0; i < threads_.size(); i++) {
-    if (threads_[i].joinable()) threads_[i].join();
+  for (auto &thread : threads_) {
+    if (thread.joinable()) thread.join();
   }
 }
 

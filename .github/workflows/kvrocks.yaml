@@ -47,7 +47,7 @@ jobs:
           sudo apt install -y clang-format-12 clang-tidy-12
       - uses: apache/skywalking-eyes/header@v0.4.0
         with:
-          config: tools/ci/licenserc.yml
+          config: .github/config/licenserc.yml
       - name: Check with clang-format
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-12

@@ -24,8 +24,6 @@
 
 #include <memory>
 
-#include "util.h"
-
 class CronTest : public testing::Test {
  protected:
   explicit CronTest() {

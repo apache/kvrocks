@@ -28,7 +28,6 @@
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "server/server.h"
-#include "util.h"
 
 namespace Redis {
 
@@ -611,8 +610,8 @@ std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
 
 std::string WriteBatchLogData::Encode() {
   std::string ret = std::to_string(type_);
-  for (size_t i = 0; i < args_.size(); i++) {
-    ret += " " + args_[i];
+  for (const auto &arg : args_) {
+    ret += " " + arg;
   }
   return ret;
 }

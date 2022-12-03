@@ -1618,8 +1618,7 @@ class CommandHRange : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 4);
     while (parser.Good()) {
-      if (parser.EatEqICaseFlag("BYLEX", by_flag_)) {
-      } else if (parser.EatEqICase("REV")) {
+      if (parser.EatEqICase("REV")) {
         reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {
         offset_ = GET_OR_RET(parser.TakeInt());
@@ -1628,51 +1627,24 @@ class CommandHRange : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    if (by_flag_ == "BYLEX") {
-      spec_.reversed = reversed_;
-      spec_.count = count_;
-      spec_.offset = offset_;
-      Status s;
-      if (spec_.reversed) {
-        s = Redis::Hash::ParseRangeLexSpec(args[3], args[2], &spec_);
-      } else {
-        s = Redis::Hash::ParseRangeLexSpec(args[2], args[3], &spec_);
-      }
-      if (!s.IsOK()) {
-        return Status(Status::RedisParseErr, s.Msg());
-      }
-    } else {
-      by_flag_ = "BYINDEX";
-      auto parse_start = ParseInt<int>(args[2], 10);
-      auto parse_stop = ParseInt<int>(args[3], 10);
-      if (!parse_start || !parse_stop) {
-        return Status(Status::RedisParseErr, errValueNotInteger);
-      }
-      start_ = *parse_start;
-      stop_ = *parse_stop;
-      if (reversed_) std::swap(start_, stop_);
-      return Commander::Parse(args);
+    auto parse_start = ParseInt<int>(args[2], 10);
+    auto parse_stop = ParseInt<int>(args[3], 10);
+    if (!parse_start || !parse_stop) {
+      return Status(Status::RedisParseErr, errValueNotInteger);
     }
+    start_ = *parse_start;
+    stop_ = *parse_stop;
+    if (reversed_) std::swap(start_, stop_);
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    if (by_flag_ == "BYLEX") {
-      rocksdb::Status s = hash_db.RangeByLex(args_[1], spec_, &field_values);
-      if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-    } else if (by_flag_ == "BYINDEX") {
-      rocksdb::Status s = hash_db.Range(args_[1], start_, stop_, offset_, count_, reversed_, &field_values);
-      if (!s.ok()) {
-        return Status(Status::RedisExecErr, s.ToString());
-      }
-    } else {
-      assert(false);
+    rocksdb::Status s = hash_db.RangeByLex(args_[1], spec_, &field_values);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
     }
-
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
@@ -1684,11 +1656,10 @@ class CommandHRange : public Commander {
   }
 
  private:
-  std::string_view by_flag_ = "";
   bool reversed_ = false;
   int64_t offset_ = 0;
   int64_t count_ = -1;
-  HashSpec spec_;
+  HashRangeSpec spec_;
   int64_t start_;
   int64_t stop_;
 };
@@ -6376,7 +6347,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHRange>("hrangebylex", -4, "read-only", 1, 1, 1),
 
     MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1), MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),

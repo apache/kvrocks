@@ -614,118 +614,71 @@ func TestHash(t *testing.T) {
 		})
 
 		kvArray := []string{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key2", "value2", "key3", "value3", "key10", "value10", "z", "z", "x", "x"}
-		t.Run("HRange BYLEX normal situation ", func(t *testing.T) {
+		t.Run("HrangeByLex BYLEX normal situation ", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10"}, rdb.Do(ctx, "HRange", "hashkey", "[key1", "[key10", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HRange", "hashkey", "[key1", "[key2", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HRange", "hashkey", "[key1", "(key3", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"key10", "value10", "key2", "value2", "key3", "value3"}, rdb.Do(ctx, "HRange", "hashkey", "(key1", "[key3", "limit", 0, -1, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HRange", "hashkey", "(key1", "(key3", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", "-", "[b", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "[x", "+", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HRange", "hashkey", "+", "[x", "BYLEX", "REV").Val())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "-", "+", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x", "key3", "value3", "key2", "value2", "key10", "value10", "key1", "value1", "e", "e", "d", "d", "c", "c", "b", "b", "a", "a"}, rdb.Do(ctx, "HRange", "hashkey", "+", "-", "BYLEX", "REV").Val())
+			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[key1", "[key10").Val())
+			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[key1", "[key2").Val())
+			require.EqualValues(t, []interface{}{"key1", "value1", "key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[key1", "(key3").Val())
+			require.EqualValues(t, []interface{}{"key10", "value10", "key2", "value2", "key3", "value3"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "(key1", "[key3", "limit", 0, -1).Val())
+			require.EqualValues(t, []interface{}{"key10", "value10", "key2", "value2"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "(key1", "(key3").Val())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "-", "[b").Val())
+			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[x", "+").Val())
+			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "+", "[x", "REV").Val())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "-", "+").Val())
+			require.EqualValues(t, []interface{}{"z", "z", "x", "x", "key3", "value3", "key2", "value2", "key10", "value10", "key1", "value1", "e", "e", "d", "d", "c", "c", "b", "b", "a", "a"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "+", "-", "REV").Val())
 		})
 
-		t.Run("HRange BYLEX stop < start", func(t *testing.T) {
+		t.Run("HrangeByLex BYLEX stop < start", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "[key2", "[key1", "limit", 0, 100, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "(key1", "(key1", "limit", 0, 100, "BYLEX").Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[key2", "[key1", "limit", 0, 100).Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "(key1", "(key1", "limit", 0, 100).Val())
 		})
 
-		t.Run("HRange BYLEX limit", func(t *testing.T) {
+		t.Run("HrangeByLex BYLEX limit", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 0, 2, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HRange", "hashkey", "[z", "[a", "limit", 0, 2, "BYLEX", "REV").Val())
-			require.EqualValues(t, []interface{}{"b", "b", "c", "c"}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 1, 2, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"x", "x", "key3", "value3"}, rdb.Do(ctx, "HRange", "hashkey", "[z", "[a", "limit", 1, 2, "BYLEX", "REV").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 1000, -1, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 0, 0, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[zzz", "limit", 0, 10000, "BYLEX").Val())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 0, 2).Val())
+			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[z", "[a", "limit", 0, 2, "REV").Val())
+			require.EqualValues(t, []interface{}{"b", "b", "c", "c"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 1, 2).Val())
+			require.EqualValues(t, []interface{}{"x", "x", "key3", "value3"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[z", "[a", "limit", 1, 2, "REV").Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 1000, -1).Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 0, 0).Val())
+			require.EqualValues(t, []interface{}{"a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "key1", "value1", "key10", "value10", "key2", "value2", "key3", "value3", "x", "x", "z", "z"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[zzz", "limit", 0, 10000).Val())
 		})
 
-		t.Run("HRange BYLEX limit is negative", func(t *testing.T) {
+		t.Run("HrangeByLex BYLEX limit is negative", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "[x", "[z", "limit", 0, -100, "BYLEX").Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HRange", "hashkey", "[z", "[x", "limit", 0, -100, "BYLEX", "REV").Val())
-			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HRange", "hashkey", "[x", "[z", "limit", 0, -10, "BYLEX").Val())
+			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[x", "[z", "limit", 0, -100).Val())
+			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[z", "[x", "limit", 0, -100, "REV").Val())
+			require.EqualValues(t, []interface{}{"x", "x", "z", "z"}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[x", "[z", "limit", 0, -10).Val())
 		})
 
-		t.Run("HRange BYLEX nonexistent key", func(t *testing.T) {
+		t.Run("HrangeByLex BYLEX nonexistent key", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "BYLEX").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "BYLEX").Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z").Val())
+			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z").Val())
 		})
 
-		t.Run("HRange typo", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limitzz", 0, 10000, "BYLEX").Err(), "ERR syntax")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 0, 10000, "BYLE").Err(), "ERR syntax")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 0, 10000, "BYLEX", "RE").Err(), "ERR syntax")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "a", "z", "BYLEX").Err(), "illegal")
-		})
-
-		t.Run("HRange wrong number of arguments", func(t *testing.T) {
+		t.Run("HrangeByLex typo", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit", 10000, 1, 1, 1, 1, "BYLEX").Err(), "syntax error")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limit").Err(), "no more item to parse")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a").Err(), "wrong number of arguments")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey").Err(), "wrong number of arguments")
-			require.ErrorContains(t, rdb.Do(ctx, "HRange").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limitzz", 0, 10000).Err(), "ERR syntax")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 0, 10000, "BYLE").Err(), "ERR syntax")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 0, 10000, "RE").Err(), "ERR syntax")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "a", "z").Err(), "illegal")
 		})
 
-		t.Run("HRange BYINDEX normal situation ", func(t *testing.T) {
+		t.Run("HrangeByLex wrong number of arguments", func(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
 			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", 0, 1).Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HRange", "hashkey", 1, 0, "REV").Val())
-			require.EqualValues(t, []interface{}{"b", "b", "c", "c"}, rdb.Do(ctx, "HRange", "hashkey", 1, 2).Val())
-			require.EqualValues(t, []interface{}{"x", "x", "key3", "value3"}, rdb.Do(ctx, "HRange", "hashkey", 2, 1, "REV").Val())
-		})
-
-		t.Run("HRange BYINDEX stop < start", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 3, 1).Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 100, 1).Val())
-		})
-
-		t.Run("HRange BYINDEX limit", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", 0, 10, "limit", 0, 2).Val())
-			require.EqualValues(t, []interface{}{"z", "z"}, rdb.Do(ctx, "HRange", "hashkey", 10, 0, "limit", 0, 1, "REV").Val())
-			require.EqualValues(t, []interface{}{"x", "x"}, rdb.Do(ctx, "HRange", "hashkey", 10, 0, "limit", 1, 1, "REV").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 0, 10, "limit", 1000, -1).Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 10, 0, "limit", 1000, -1, "REV").Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 0, 10, "limit", 0, 0).Val())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 5, -1, "limit", 6, 1000).Val())
-		})
-
-		t.Run("HRange BYINDEX limit is negative", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", 0, 1, "limit", 0, -100).Val())
-			require.EqualValues(t, []interface{}{"a", "a", "b", "b"}, rdb.Do(ctx, "HRange", "hashkey", 0, 1, "limit", 0, -10).Val())
-			require.EqualValues(t, []interface{}{"z", "z", "x", "x"}, rdb.Do(ctx, "HRange", "hashkey", 1, 0, "limit", 0, -100, "REV").Val())
-		})
-
-		t.Run("HRange BYINDEX nonexistent key", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "HRange", "hashkey", 0, 1000).Val())
-		})
-
-		t.Run("HRange BYINDEX limit typo", func(t *testing.T) {
-			require.NoError(t, rdb.Del(ctx, "hashkey").Err())
-			require.NoError(t, rdb.HMSet(ctx, "hashkey", kvArray).Err())
-			require.ErrorContains(t, rdb.Do(ctx, "HRange", "hashkey", "[a", "[z", "limitzz", 0, 10000, "BYINDE").Err(), "ERR syntax")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit", 10000, 1, 1, 1, 1).Err(), "syntax error")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a", "[z", "limit").Err(), "no more item to parse")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey").Err(), "wrong number of arguments")
+			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex").Err(), "wrong number of arguments")
 		})
 	}
 }

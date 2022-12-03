@@ -276,7 +276,8 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::RangeByLex(const Slice &user_key, const HashSpec &spec, std::vector<FieldValue> *field_values) {
+rocksdb::Status Hash::RangeByLex(const Slice &user_key, const HashRangeSpec &spec,
+                                 std::vector<FieldValue> *field_values) {
   field_values->clear();
   if (spec.count == 0) {
     return rocksdb::Status::OK();
@@ -337,63 +338,6 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const HashSpec &spec, st
   }
   return rocksdb::Status::OK();
 }
-rocksdb::Status Hash::Range(const Slice &user_key, int64_t start, int64_t stop, int64_t offset, int64_t count,
-                            bool reversed, std::vector<FieldValue> *field_values) {
-  field_values->clear();
-  if (count == 0) {
-    return rocksdb::Status::OK();
-  }
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  if (start < 0) start = static_cast<int64_t>(metadata.size) + start;
-  if (stop < 0) stop = static_cast<int64_t>(metadata.size) + stop;
-  if (start >= static_cast<int64_t>(metadata.size) || stop < 0 || start > stop) return rocksdb::Status::OK();
-  if (start < 0) start = 0;
-  if (count < 0) count = static_cast<int64_t>(metadata.size);
-  std::string prefix_key, next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
-  read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Slice upper_bound(next_version_prefix_key);
-  read_options.iterate_upper_bound = &upper_bound;
-  read_options.fill_cache = false;
-
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
-  iter->Seek(prefix_key);
-  if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
-    iter->SeekForPrev(prefix_key);
-  }
-  if (!reversed) {
-    iter->Seek(prefix_key);
-  } else {
-    iter->SeekForPrev(next_version_prefix_key);
-  }
-  int64_t pos = 0;
-  // go to offset end
-  for (; iter->Valid() && iter->key().starts_with(prefix_key); !reversed ? iter->Next() : iter->Prev()) {
-    if (offset >= 0 && pos++ < offset)
-      continue;
-    else
-      break;
-  }
-  pos = 0;
-  count = std::min(count, stop - start + 1);
-  for (; iter->Valid() && iter->key().starts_with(prefix_key); !reversed ? iter->Next() : iter->Prev()) {
-    if (start >= 0 && pos++ < start) continue;
-    FieldValue tmp_field_value;
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    tmp_field_value.field = ikey.GetSubKey().ToString();
-    tmp_field_value.value = iter->value().ToString();
-    field_values->emplace_back(tmp_field_value);
-    if (count > 0 && field_values && field_values->size() >= static_cast<unsigned>(count)) break;
-  }
-  return rocksdb::Status::OK();
-}
 
 rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *field_values, HashFetchType type) {
   field_values->clear();
@@ -439,7 +383,7 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-Status Hash::ParseRangeLexSpec(const std::string &min, const std::string &max, HashSpec *spec) {
+Status Hash::ParseRangeLexSpec(const std::string &min, const std::string &max, HashRangeSpec *spec) {
   if (min == "+" || max == "-") {
     return Status(Status::NotOK, "min > max");
   }

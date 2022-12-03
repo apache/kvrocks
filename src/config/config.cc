@@ -262,7 +262,7 @@ void Config::initFieldValidator() {
          if (args.size() != 2) {
            return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");
          }
-         int64_t start, stop;
+         int64_t start = 0, stop = 0;
          Status s = Util::DecimalStringToNum(args[0], &start, 0, 24);
          if (!s.IsOK()) return s;
          s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
@@ -517,7 +517,7 @@ void Config::initFieldCallback() {
          if (!RocksDB.enable_blob_files) {
            return Status(Status::NotOK, errNotEnableBlobDB);
          }
-         int val;
+         int val = 0;
          auto parse_result = ParseInt<int>(v, 10);
          if (!parse_result) {
            return Status(Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value.");

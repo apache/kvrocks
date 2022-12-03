@@ -155,7 +155,7 @@ Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::stri
   rocksdb::Slice s(value);
 
   while (!s.empty()) {
-    uint32_t len;
+    uint32_t len = 0;
     if (!GetVarint32(&s, &len)) {
       return Status(Status::RedisParseErr, kErrDecodingStreamEntryValueFailure);
     }

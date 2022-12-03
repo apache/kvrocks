@@ -271,7 +271,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   if (!s.ok()) return s;
 
   std::string buf, start_key, prefix, next_version_prefix;
-  uint64_t pivot_index = metadata.head - 1, new_elem_index;
+  uint64_t pivot_index = metadata.head - 1, new_elem_index = 0;
   PutFixed64(&buf, metadata.head);
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
@@ -397,7 +397,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
-    uint64_t index;
+    uint64_t index = 0;
     GetFixed64(&sub_key, &index);
     // index should be always >= start
     if (index > metadata.head + stop) break;
@@ -436,7 +436,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
 }
 
 rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
-  RedisType type;
+  RedisType type = kRedisNone;
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisList) {
@@ -446,7 +446,7 @@ rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string 
   s = Pop(src, false, elem);
   if (!s.ok()) return s;
 
-  int ret;
+  int ret = 0;
   std::vector<Slice> elems;
   elems.emplace_back(*elem);
   s = Push(dst, elems, true, &ret);

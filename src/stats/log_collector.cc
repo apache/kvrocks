@@ -53,7 +53,7 @@ LogCollector<T>::~LogCollector() {
 
 template <class T>
 ssize_t LogCollector<T>::Size() {
-  size_t n;
+  size_t n = 0;
   std::lock_guard<std::mutex> guard(mu_);
   n = entries_.size();
   return n;
@@ -92,7 +92,7 @@ void LogCollector<T>::PushEntry(T *entry) {
 
 template <class T>
 std::string LogCollector<T>::GetLatestEntries(int64_t cnt) {
-  size_t n;
+  size_t n = 0;
   std::string output;
 
   std::lock_guard<std::mutex> guard(mu_);

@@ -51,7 +51,7 @@
 
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {
-  addrinfo hints, *servinfo, *p;
+  addrinfo hints, *servinfo = nullptr, *p = nullptr;
 
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
@@ -160,7 +160,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
       return Status::FromErrno();
     }
 
-    int socket_arg;
+    int socket_arg = 0;
     // Set to blocking mode again...
     if ((socket_arg = fcntl(*fd, F_GETFL, NULL)) < 0) {
       return Status::FromErrno();
@@ -236,7 +236,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
 }
 
 Status SockSetBlocking(int fd, int blocking) {
-  int flags;
+  int flags = 0;
   // Old flags
   if ((flags = fcntl(fd, F_GETFL)) == -1) {
     return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
@@ -318,7 +318,7 @@ bool IsPortInUse(int port) {
  * writable/readable/exception */
 int aeWait(int fd, int mask, uint64_t timeout) {
   pollfd pfd;
-  int retmask = 0, retval;
+  int retmask = 0, retval = 0;
 
   memset(&pfd, 0, sizeof(pfd));
   pfd.fd = fd;

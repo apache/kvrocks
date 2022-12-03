@@ -436,7 +436,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
 }
 
 rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
-  RedisType type = 0;
+  RedisType type = kRedisNone;
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisList) {

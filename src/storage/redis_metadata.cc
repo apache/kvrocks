@@ -42,8 +42,8 @@ const char *kErrMetadataTooShort = "metadata is too short";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;
-  uint32_t key_size;
-  uint8_t namespace_size;
+  uint32_t key_size = 0;
+  uint8_t namespace_size = 0;
   GetFixed8(&input, &namespace_size);
   namespace_ = Slice(input.data(), namespace_size);
   input.remove_prefix(namespace_size);
@@ -61,7 +61,7 @@ InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
 
 InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded) {
   slot_id_encoded_ = slot_id_encoded;
-  uint8_t namespace_size;
+  uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
   namespace_ = Slice(ns_key.data(), namespace_size);
   ns_key.remove_prefix(namespace_size);
@@ -125,13 +125,13 @@ bool InternalKey::operator==(const InternalKey &that) const {
 }
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded) {
-  uint8_t namespace_size;
+  uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
   *ns = ns_key.ToString().substr(0, namespace_size);
   ns_key.remove_prefix(namespace_size);
 
   if (slot_id_encoded) {
-    uint16_t slot_id;
+    uint16_t slot_id = 0;
     GetFixed16(&ns_key, &slot_id);
   }
 

@@ -130,7 +130,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
  * */
 size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   size_t bits = 0;
-  uint32_t *p4;
+  uint32_t *p4 = nullptr;
 
   /* Count initial bytes not aligned to 32 bit. */
   while (reinterpret_cast<uint64_t>(p) & 3 && count) {
@@ -141,7 +141,7 @@ size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   /* Count bits 28 bytes at a time */
   p4 = reinterpret_cast<uint32_t *>(p);
   while (count >= 28) {
-    uint32_t aux1, aux2, aux3, aux4, aux5, aux6, aux7;
+    uint32_t aux1 = 0, aux2 = 0, aux3 = 0, aux4 = 0, aux5 = 0, aux6 = 0, aux7 = 0;
 
     aux1 = *p4++;
     aux2 = *p4++;
@@ -192,11 +192,11 @@ size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
  * https://github.com/antirez/redis/blob/94f2e7f/src/bitops.c#L101
  * */
 int64_t BitmapString::redisBitpos(unsigned char *c, int64_t count, int bit) {
-  uint64_t *l;
-  uint64_t skipval, word = 0, one;
+  uint64_t *l = nullptr;
+  uint64_t skipval = 0, word = 0, one = 0;
   int64_t pos = 0; /* Position of bit, to return to the caller. */
-  uint64_t j;
-  int found;
+  uint64_t j = 0;
+  int found = 0;
 
   /* Process whole words first, seeking for first word that is not
    * all ones or all zeros respectively if we are lookig for zeros

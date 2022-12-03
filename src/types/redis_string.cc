@@ -245,7 +245,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
 }
 
 rocksdb::Status String::SetRange(const std::string &user_key, int offset, const std::string &value, int *ret) {
-  int size;
+  int size = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -334,7 +334,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   }
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   double n = 0;
-  std::size_t idx;
+  std::size_t idx = 0;
   if (!value.empty()) {
     try {
       n = std::stod(value, &idx);
@@ -394,7 +394,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     expire = uint32_t(now) + ttl;
   }
 
-  int exists;
+  int exists = 0;
   std::vector<Slice> keys;
   keys.reserve(pairs.size());
   for (StringPair pair : pairs) {

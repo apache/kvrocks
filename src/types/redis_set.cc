@@ -244,7 +244,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
 }
 
 rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, int *ret) {
-  RedisType type;
+  RedisType type = kRedisNone;
   rocksdb::Status s = Type(dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisSet) {

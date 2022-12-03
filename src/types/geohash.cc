@@ -387,9 +387,9 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   GeoHashBits hash;
   GeoHashNeighbors neighbors;
   GeoHashArea area;
-  double min_lon, max_lon, min_lat, max_lat;
+  double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
   double bounds[4];
-  int steps;
+  int steps = 0;
 
   BoundingBox(longitude, latitude, radius_meters, bounds);
   min_lon = bounds[0];
@@ -472,7 +472,7 @@ GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits &hash) {
 
 /* Calculate distance using haversin great circle distance formula. */
 double GeoHashHelper::GetDistance(double lon1d, double lat1d, double lon2d, double lat2d) {
-  double lat1r, lon1r, lat2r, lon2r, u, v;
+  double lat1r = NAN, lon1r = NAN, lat2r = NAN, lon2r = NAN, u = NAN, v = NAN;
   lat1r = deg_rad(lat1d);
   lon1r = deg_rad(lon1d);
   lat2r = deg_rad(lat2d);

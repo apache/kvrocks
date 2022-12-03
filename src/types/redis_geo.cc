@@ -117,7 +117,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
         double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
-      int ret;
+      int ret = 0;
       ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
     }
   }
@@ -188,7 +188,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
 
   std::string geoHash;
   for (int i = 0; i < 11; i++) {
-    int idx;
+    int idx = 0;
     if (i == 10) {
       /* We have just 52 bits, but the API used to output
        * an 11 bytes geohash. For compatibility we assume
@@ -211,7 +211,7 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
-  unsigned int i, count = 0, last_processed = 0;
+  unsigned int i = 0, count = 0, last_processed = 0;
 
   neighbors[0] = n.hash;
   neighbors[1] = n.neighbors.north;
@@ -249,7 +249,7 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lo
  * Return the number of points added to the array. */
 int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, double lon,
                              double lat, double radius) {
-  GeoHashFix52Bits min, max;
+  GeoHashFix52Bits min = 0, max = 0;
 
   scoresOfGeoHashBox(hash, &min, &max);
   return getPointsInRange(user_key, min, max, lon, lat, radius, geo_points);
@@ -304,7 +304,7 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, double 
   spec.min = min;
   spec.max = max;
   spec.maxex = true;
-  int size;
+  int size = 0;
   std::vector<MemberScore> member_scores;
   rocksdb::Status s = ZSet::RangeByScore(user_key, spec, &member_scores, &size);
   if (!s.ok()) return 0;
@@ -323,7 +323,7 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, double 
  * returns true if the point is included, or false if it is outside. */
 bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius, double score,
                                const std::string &member) {
-  double distance, xy[2];
+  double distance = NAN, xy[2];
 
   if (!decodeGeoHash(score, xy)) return false; /* Can't decode. */
   /* Note that geohashGetDistanceIfInRadiusWGS84() takes arguments in

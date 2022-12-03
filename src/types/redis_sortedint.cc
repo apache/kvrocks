@@ -141,7 +141,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
 
-  uint64_t id, pos = 0;
+  uint64_t id = 0, pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
@@ -190,7 +190,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
     iter->SeekForPrev(start_key);
   }
 
-  uint64_t id;
+  uint64_t id = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();

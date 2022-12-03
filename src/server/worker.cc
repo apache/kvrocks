@@ -123,7 +123,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   event_base *base = evconnlistener_get_base(listener);
   auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
 
-  bufferevent *bev;
+  bufferevent *bev = nullptr;
 #ifdef ENABLE_OPENSSL
   SSL *ssl = nullptr;
   if (local_port == worker->svr_->GetConfig()->tls_port) {
@@ -167,7 +167,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
   std::string ip;
-  uint32_t port;
+  uint32_t port = 0;
   if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
     conn->SetAddr(ip, port);
   }
@@ -201,14 +201,14 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
 }
 
 Status Worker::listenTCP(const std::string &host, int port, int backlog) {
-  int af, rv, fd, sock_opt = 1;
+  int af = 0, rv = 0, fd = 0, sock_opt = 1;
 
   if (strchr(host.data(), ':')) {
     af = AF_INET6;
   } else {
     af = AF_INET;
   }
-  struct addrinfo hints, *srv_info, *p;
+  struct addrinfo hints, *srv_info = nullptr, *p = nullptr;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = af;
   hints.ai_socktype = SOCK_STREAM;

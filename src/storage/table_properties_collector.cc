@@ -30,10 +30,10 @@
 rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key, const rocksdb::Slice &value,
                                                       rocksdb::EntryType entry_type, rocksdb::SequenceNumber,
                                                       uint64_t) {
-  int now;
-  uint8_t type;
-  uint32_t expired, subkeys = 0;
-  uint64_t version;
+  int now = 0;
+  uint8_t type = 0;
+  uint32_t expired = 0, subkeys = 0;
+  uint64_t version = 0;
 
   if (start_key_.empty()) {
     start_key_ = key.ToString();

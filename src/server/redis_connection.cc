@@ -36,7 +36,7 @@ namespace Redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
     : bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
-  time_t now;
+  time_t now = 0;
   time(&now);
   create_time_ = now;
   last_interaction_ = now;
@@ -133,7 +133,7 @@ void Connection::SetAddr(std::string ip, int port) {
 }
 
 uint64_t Connection::GetAge() {
-  time_t now;
+  time_t now = 0;
   time(&now);
   return static_cast<uint64_t>(now - create_time_);
 }
@@ -141,7 +141,7 @@ uint64_t Connection::GetAge() {
 void Connection::SetLastInteraction() { time(&last_interaction_); }
 
 uint64_t Connection::GetIdleTime() {
-  time_t now;
+  time_t now = 0;
   time(&now);
   return static_cast<uint64_t>(now - last_interaction_);
 }

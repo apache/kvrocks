@@ -34,7 +34,7 @@ StatusOr<ConfigKV> ParseConfigLine(const std::string& line) {
     ERROR             // error state, e.g. encounter more than one value
   } state = PRE_KEY_SPACE;
 
-  char quote;  // single or double quote
+  char quote = 0;  // single or double quote
   std::string current_str;
   ConfigKV res;
 

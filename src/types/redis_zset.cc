@@ -152,7 +152,7 @@ rocksdb::Status ZSet::Count(const Slice &user_key, const ZRangeSpec &spec, int *
 }
 
 rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double increment, double *score) {
-  int ret;
+  int ret = 0;
   std::vector<MemberScore> mscores;
   mscores.emplace_back(MemberScore{member.ToString(), increment});
   rocksdb::Status s = Add(user_key, ZAddFlags::Incr(), &mscores, &ret);
@@ -382,7 +382,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
-    double score;
+    double score = NAN;
     GetDouble(&score_key, &score);
     if (spec.reversed) {
       if ((spec.minex && score == spec.min) || score < spec.min) break;
@@ -618,7 +618,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
-    double score;
+    double score = NAN;
     GetDouble(&score_key, &score);
     if (score == target_score && score_key == member) break;
     rank++;
@@ -660,7 +660,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
   std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
-  int target_size;
+  int target_size = 0;
   ZRangeSpec spec;
   auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
   if (!s.ok() || target_mscores.empty()) return s;
@@ -717,7 +717,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
 
   std::map<std::string, double> dst_zset;
   std::vector<MemberScore> target_mscores;
-  int target_size;
+  int target_size = 0;
   ZRangeSpec spec;
   for (const auto &key_weight : keys_weights) {
     // get all member

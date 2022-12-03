@@ -122,7 +122,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
-  uint32_t frag_index, valid_size;
+  uint32_t frag_index = 0, valid_size = 0;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
@@ -198,7 +198,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   uint32_t used_size = index + byte_index + 1;
   uint32_t bitmap_size = std::max(used_size, metadata.size);
   if (byte_index >= value.size()) {  // expand the bitmap
-    size_t expand_size;
+    size_t expand_size = 0;
     if (byte_index >= value.size() * 2) {
       expand_size = byte_index - value.size() + 1;
     } else if (value.size() * 2 > kBitmapSegmentBytes) {
@@ -388,11 +388,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
-    uint64_t i, frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
+    uint64_t i = 0, frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
     uint16_t frag_maxlen = 0, frag_minlen = 0;
     std::string sub_key, fragment;
-    unsigned char output, byte;
+    unsigned char output = 0, byte = 0;
     std::vector<std::string> fragments;
 
     LatestSnapShot ss(db_);

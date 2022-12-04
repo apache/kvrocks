@@ -130,7 +130,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout, int timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
     if (!s) return s;
@@ -175,9 +175,8 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
 
   if (timeout > 0) {
     struct timeval tv;
-    auto timeout_long = static_cast<long>(timeout);
-    tv.tv_sec = timeout_long / 1000;
-    tv.tv_usec = (timeout_long % 1000) * 1000;
+    tv.tv_sec = timeout / 1000;
+    tv.tv_usec = (timeout % 1000) * 1000;
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
       return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
     }
@@ -317,7 +316,7 @@ bool IsPortInUse(int port) {
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
-int aeWait(int fd, int mask, uint64_t timeout) {
+int aeWait(int fd, int mask, int timeout) {
   pollfd pfd;
   int retmask = 0, retval = 0;
 
@@ -326,7 +325,7 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   if (mask & AE_READABLE) pfd.events |= POLLIN;
   if (mask & AE_WRITABLE) pfd.events |= POLLOUT;
 
-  if ((retval = poll(&pfd, 1, static_cast<int>(timeout))) == 1) {
+  if ((retval = poll(&pfd, 1, timeout)) == 1) {
     if (pfd.revents & POLLIN) retmask |= AE_READABLE;
     if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
     if (pfd.revents & POLLERR) retmask |= AE_ERROR;

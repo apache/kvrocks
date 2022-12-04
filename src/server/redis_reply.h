@@ -33,6 +33,7 @@ void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 std::string Error(const std::string &err);
 std::string Integer(int data);
+std::string Integer(uint32_t data);
 std::string Integer(int64_t data);
 std::string Integer(uint64_t data);
 std::string BulkString(const std::string &data);

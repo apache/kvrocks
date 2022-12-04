@@ -1619,17 +1619,14 @@ class CommandHRange : public Commander {
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICase("REV")) {
-        reversed_ = true;
+        spec_.reversed = true;
       } else if (parser.EatEqICase("LIMIT")) {
-        offset_ = GET_OR_RET(parser.TakeInt());
-        count_ = GET_OR_RET(parser.TakeInt());
+        spec_.offset = GET_OR_RET(parser.TakeInt());
+        spec_.count = GET_OR_RET(parser.TakeInt());
       } else {
         return parser.InvalidSyntax();
       }
     }
-    spec_.reversed = reversed_;
-    spec_.count = count_;
-    spec_.offset = offset_;
     Status s;
     if (spec_.reversed) {
       s = Redis::Hash::ParseRangeLexSpec(args[3], args[2], &spec_);
@@ -1660,9 +1657,6 @@ class CommandHRange : public Commander {
   }
 
  private:
-  bool reversed_ = false;
-  int64_t offset_ = 0;
-  int64_t count_ = -1;
   HashRangeSpec spec_;
 };
 

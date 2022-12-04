@@ -784,7 +784,6 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "# Server\r\n";
   string_stream << "version:" << VERSION << "\r\n";
   string_stream << "redis_version:" << REDIS_VERSION << "\r\n";
-  string_stream << "kvrocks_version:" << VERSION << "\r\n";
   string_stream << "git_sha1:" << GIT_COMMIT << "\r\n";
   string_stream << "os:" << name.sysname << " " << name.release << " " << name.machine << "\r\n";
 #ifdef __GNUC__

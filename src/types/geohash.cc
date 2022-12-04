@@ -166,7 +166,7 @@ void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
 int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
                   uint8_t step, GeoHashBits *hash) {
   /* Check basic arguments sanity. */
-  if (hash == NULL || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
+  if (!hash || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
 
   /* Return an error when trying to index outside the supported
    * constraints. */
@@ -203,7 +203,7 @@ int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashB
 
 int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
                   GeoHashArea *area) {
-  if (HASHISZERO(hash) || NULL == area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
+  if (HASHISZERO(hash) || !area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
     return 0;
   }
 

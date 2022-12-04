@@ -338,7 +338,7 @@ Status Storage::CreateBackup() {
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
 
   // 1) Create checkpoint of rocksdb for backup
-  rocksdb::Checkpoint *checkpoint = NULL;
+  rocksdb::Checkpoint *checkpoint = nullptr;
   rocksdb::Status s = rocksdb::Checkpoint::Create(db_, &checkpoint);
   if (!s.ok()) {
     LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
@@ -731,7 +731,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
   // Create checkpoint if not exist
   if (!storage->env_->FileExists(data_files_dir).ok()) {
-    rocksdb::Checkpoint *checkpoint = NULL;
+    rocksdb::Checkpoint *checkpoint = nullptr;
     rocksdb::Status s = rocksdb::Checkpoint::Create(storage->db_, &checkpoint);
     if (!s.ok()) {
       LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();

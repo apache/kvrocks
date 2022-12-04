@@ -30,6 +30,8 @@ std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
 std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
+std::string Integer(int data) { return ":" + std::to_string(data) + CRLF; }
+
 std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
 std::string Integer(uint64_t data) { return ":" + std::to_string(data) + CRLF; }

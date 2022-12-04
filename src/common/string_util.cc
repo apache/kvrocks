@@ -121,7 +121,7 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
 }
 
 // Glob-style pattern matching.
-int StringMatchLen(const char *pattern, int patternLen, const char *string, int stringLen, int nocase) {
+int StringMatchLen(const char *pattern, size_t patternLen, const char *string, size_t stringLen, int nocase) {
   while (patternLen && stringLen) {
     switch (pattern[0]) {
       case '*':

@@ -701,9 +701,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   std::ostringstream string_stream;
   rocksdb::DB *db = storage_->GetDB();
 
-  uint64_t memtable_sizes, cur_memtable_sizes, num_snapshots, num_running_flushes;
-  uint64_t num_immutable_tables, memtable_flush_pending, compaction_pending;
-  uint64_t num_running_compaction, num_live_versions, num_superversion, num_backgroud_errors;
+  uint64_t memtable_sizes = 0, cur_memtable_sizes = 0, num_snapshots = 0, num_running_flushes = 0;
+  uint64_t num_immutable_tables = 0, memtable_flush_pending = 0, compaction_pending = 0;
+  uint64_t num_running_compaction = 0, num_live_versions = 0, num_superversion = 0, num_backgroud_errors = 0;
 
   db->GetAggregatedIntProperty("rocksdb.num-snapshots", &num_snapshots);
   db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
@@ -719,7 +719,7 @@ void Server::GetRocksDBInfo(std::string *info) {
 
   string_stream << "# RocksDB\r\n";
   for (const auto &cf_handle : *storage_->GetCFHandles()) {
-    uint64_t estimate_keys, block_cache_usage, block_cache_pinned_usage, index_and_filter_cache_usage;
+    uint64_t estimate_keys = 0, block_cache_usage = 0, block_cache_pinned_usage = 0, index_and_filter_cache_usage = 0;
     std::map<std::string, std::string> cf_stats_map;
     db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
@@ -771,7 +771,7 @@ void Server::GetRocksDBInfo(std::string *info) {
 }
 
 void Server::GetServerInfo(std::string *info) {
-  time_t now;
+  time_t now = 0;
   std::ostringstream string_stream;
   static int call_uname = 1;
   static utsname name;
@@ -825,7 +825,7 @@ void Server::GetMemoryInfo(std::string *info) {
 }
 
 void Server::GetReplicationInfo(std::string *info) {
-  time_t now;
+  time_t now = 0;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";

@@ -143,7 +143,7 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
         stringLen--;
         break;
       case '[': {
-        int not_symbol, match;
+        int not_symbol = 0, match = 0;
 
         pattern++;
         patternLen--;
@@ -268,7 +268,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   enum ParserState { stateArrayLen, stateBulkLen, stateBulkData };
   uint64_t array_len = 0, bulk_len = 0;
   int state = stateArrayLen;
-  const char *start = value.data(), *end = start + value.size(), *p;
+  const char *start = value.data(), *end = start + value.size(), *p = nullptr;
   while (start != end) {
     switch (state) {
       case stateArrayLen: {

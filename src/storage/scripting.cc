@@ -193,7 +193,7 @@ void loadFuncs(lua_State *lua, bool read_only) {
 }
 
 int redisLogCommand(lua_State *lua) {
-  int j, level, argc = lua_gettop(lua);
+  int j = 0, level = 0, argc = lua_gettop(lua);
 
   if (argc < 2) {
     lua_pushstring(lua, "redis.log() requires two arguments or more.");
@@ -214,8 +214,8 @@ int redisLogCommand(lua_State *lua) {
 
   std::string log_message;
   for (j = 1; j < argc; j++) {
-    size_t len;
-    const char *s;
+    size_t len = 0;
+    const char *s = nullptr;
     s = lua_tolstring(lua, (-argc) + j, &len);
     if (s) {
       if (j != 1) {
@@ -338,7 +338,7 @@ int redisCallCommand(lua_State *lua) { return redisGenericCommand(lua, 1); }
 
 int redisPCallCommand(lua_State *lua) { return redisGenericCommand(lua, 0); }
 int redisGenericCommand(lua_State *lua, int raise_error) {
-  int j, argc = lua_gettop(lua);
+  int j = 0, argc = lua_gettop(lua);
   std::vector<std::string> args;
   lua_getglobal(lua, "redis");
   lua_getfield(lua, -1, "read_only");
@@ -516,8 +516,8 @@ int redisStatusReplyCommand(lua_State *lua) { return redisReturnSingleFieldTable
 int redisSha1hexCommand(lua_State *lua) {
   int argc = lua_gettop(lua);
   char digest[41];
-  size_t len;
-  const char *s;
+  size_t len = 0;
+  const char *s = nullptr;
 
   if (argc != 1) {
     lua_pushstring(lua, "wrong number of arguments");
@@ -544,7 +544,7 @@ void SHA1Hex(char *digest, const char *script, size_t len) {
   SHA1_CTX ctx;
   unsigned char hash[20];
   const char *cset = "0123456789abcdef";
-  int j;
+  int j = 0;
 
   SHA1Init(&ctx);
   SHA1Update(&ctx, (const unsigned char *)script, len);
@@ -619,7 +619,7 @@ const char *redisProtocolToLuaType(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t value;
+  int64_t value = 0;
 
   Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &value);
   lua_pushnumber(lua, static_cast<lua_Number>(value));
@@ -628,7 +628,7 @@ const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t bulklen;
+  int64_t bulklen = 0;
 
   Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &bulklen);
   if (bulklen == -1) {
@@ -662,7 +662,7 @@ const char *redisProtocolToLuaType_Error(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, int atype) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t mbulklen;
+  int64_t mbulklen = 0;
   int j = 0;
 
   Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &mbulklen);
@@ -696,7 +696,7 @@ const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
   char buf[MAX_LONG_DOUBLE_CHARS + 1];
   size_t len = p - reply - 1;
-  double d;
+  double d = NAN;
 
   if (len <= MAX_LONG_DOUBLE_CHARS) {
     memcpy(buf, reply + 1, len);
@@ -728,7 +728,7 @@ void pushError(lua_State *lua, const char *err) {
 std::string replyToRedisReply(lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
-  size_t obj_len;
+  size_t obj_len = 0;
 
   int t = lua_type(lua, -1);
   switch (t) {

@@ -59,12 +59,7 @@
 
 #include <math.h>
 
-#define D_R (M_PI / 180.0)
-#define R_MAJOR 6378137.0
-#define R_MINOR 6356752.3142
-#define RATIO (R_MINOR / R_MAJOR)
-#define ECCENT (sqrt(1.0 - (RATIO * RATIO)))
-#define COM (0.5 * ECCENT)
+constexpr double D_R = M_PI / 180.0;
 
 // @brief The usual PI/180 constant
 // const double DEG_TO_RAD = 0.017453292519943295769236907684886;

@@ -44,10 +44,10 @@
 #define POLLNVAL 0x0020 /* Invalid request: fd not open */
 #endif
 
-#define AE_READABLE 1
-#define AE_WRITABLE 2
-#define AE_ERROR 4
-#define AE_HUP 8
+#define AE_READABLE 1  // NOLINT
+#define AE_WRITABLE 2  // NOLINT
+#define AE_ERROR 4     // NOLINT
+#define AE_HUP 8       // NOLINT
 
 namespace Util {
 Status SockConnect(const std::string &host, uint32_t port, int *fd) {

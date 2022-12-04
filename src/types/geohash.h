@@ -60,21 +60,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define HASHISZERO(r) (!(r).bits && !(r).step)
-#define RANGEISZERO(r) (!(r).max && !(r).min)
-#define RANGEPISZERO(r) (r == NULL || RANGEISZERO(*r))
-
-#define GEO_STEP_MAX 26 /* 26*2 = 52 bits. */
+constexpr uint8_t GEO_STEP_MAX = 26; /* 26*2 = 52 bits. */
 
 /* Limits from EPSG:900913 / EPSG:3785 / OSGEO:41001 */
-#define GEO_LAT_MIN -85.05112878
-#define GEO_LAT_MAX 85.05112878
-#define GEO_LONG_MIN -180
-#define GEO_LONG_MAX 180
-
-#define GZERO(s) s.bits = s.step = 0;
-#define GISZERO(s) (!s.bits && !s.step)
-#define GISNOTZERO(s) (s.bits || s.step)
+constexpr double GEO_LAT_MIN = -85.05112878;
+constexpr double GEO_LAT_MAX = 85.05112878;
+constexpr double GEO_LONG_MIN = -180;
+constexpr double GEO_LONG_MAX = 180;
 
 enum GeoDirection {
   GEOHASH_NORTH = 0,
@@ -121,6 +113,14 @@ struct GeoHashRadius {
   GeoHashArea area;
   GeoHashNeighbors neighbors;
 };
+
+inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits && !r.step; }
+inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !r.max && !r.min; }
+inline constexpr bool RANGEPISZERO(const GeoHashRange *r) { return !r || RANGEISZERO(*r); }
+
+inline constexpr void GZERO(GeoHashBits &s) { s.bits = s.step = 0; }
+inline constexpr bool GISZERO(const GeoHashBits &s) { return (!s.bits && !s.step); }
+inline constexpr bool GISNOTZERO(const GeoHashBits &s) { return (s.bits || s.step); }
 
 /*
  * 0:success

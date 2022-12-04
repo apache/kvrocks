@@ -32,11 +32,17 @@ std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
 std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
 
+std::string Integer(uint64_t data) { return ":" + std::to_string(data) + CRLF; }
+
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
 std::string NilString() { return "$-1" CRLF; }
 
+std::string MultiLen(int len) { return "*" + std::to_string(len) + CRLF; }
+
 std::string MultiLen(int64_t len) { return "*" + std::to_string(len) + CRLF; }
+
+std::string MultiLen(size_t len) { return "*" + std::to_string(len) + CRLF; }
 
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;

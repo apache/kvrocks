@@ -30,23 +30,15 @@ std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
 std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
-std::string Integer(int data) { return ":" + std::to_string(data) + CRLF; }
-
-std::string Integer(uint32_t data) { return ":" + std::to_string(data) + CRLF; }
-
-std::string Integer(int64_t data) { return ":" + std::to_string(data) + CRLF; }
-
-std::string Integer(uint64_t data) { return ":" + std::to_string(data) + CRLF; }
+template <typename Integer>
+std::string Integer(Integer data) { return ":" + std::to_string(data) + CRLF; }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
 std::string NilString() { return "$-1" CRLF; }
 
-std::string MultiLen(int len) { return "*" + std::to_string(len) + CRLF; }
-
-std::string MultiLen(int64_t len) { return "*" + std::to_string(len) + CRLF; }
-
-std::string MultiLen(size_t len) { return "*" + std::to_string(len) + CRLF; }
+template <typename Integer>
+std::string MultiLen(Integer len) { return "*" + std::to_string(len) + CRLF; }
 
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
@@ -82,5 +74,14 @@ std::string Array(const std::vector<std::string> &list) {
 }
 
 std::string Command2RESP(const std::vector<std::string> &cmd_args) { return MultiBulkString(cmd_args, false); }
+
+template std::string Integer(int data);
+template std::string Integer(uint32_t data);
+template std::string Integer(int64_t data);
+template std::string Integer(uint64_t data);
+
+template std::string MultiLen(int len);
+template std::string MultiLen(int64_t len);
+template std::string MultiLen(size_t len);
 
 }  // namespace Redis

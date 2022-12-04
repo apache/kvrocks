@@ -175,8 +175,9 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
 
   if (timeout > 0) {
     struct timeval tv;
-    tv.tv_sec = timeout / 1000;
-    tv.tv_usec = (timeout % 1000) * 1000;
+    auto timeout_long = static_cast<long>(timeout);
+    tv.tv_sec = timeout_long / 1000;
+    tv.tv_usec = (timeout_long % 1000) * 1000;
     if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
       return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
     }
@@ -325,7 +326,7 @@ int aeWait(int fd, int mask, uint64_t timeout) {
   if (mask & AE_READABLE) pfd.events |= POLLIN;
   if (mask & AE_WRITABLE) pfd.events |= POLLOUT;
 
-  if ((retval = poll(&pfd, 1, timeout)) == 1) {
+  if ((retval = poll(&pfd, 1, static_cast<int>(timeout))) == 1) {
     if (pfd.revents & POLLIN) retmask |= AE_READABLE;
     if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
     if (pfd.revents & POLLERR) retmask |= AE_ERROR;

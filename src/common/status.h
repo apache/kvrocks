@@ -121,7 +121,7 @@ template <typename T>
 struct IsStatusOr<StatusOr<T>> : std::integral_constant<bool, true> {};
 
 template <typename T>
-struct StatusOr {
+struct StatusOr {  // NOLINT
   static_assert(!std::is_same<T, Status>::value, "value_type cannot be Status");
   static_assert(!std::is_same<T, Status::Code>::value, "value_type cannot be Status::Code");
   static_assert(!IsStatusOr<T>::value, "value_type cannot be StatusOr");
@@ -150,14 +150,14 @@ struct StatusOr {
                                      !std::is_same<Code, remove_cvref_t<first_element<Ts...>>>::value &&
                                      !std::is_same<StatusOr, remove_cvref_t<first_element<Ts...>>>::value),
                                     int>::type = 0>  // NOLINT
-  StatusOr(Ts&&... args) : code_(Code::cOK) {
+  StatusOr(Ts&&... args) : code_(Code::cOK) {        // NOLINT
     new (&value_) value_type(std::forward<Ts>(args)...);
   }
 
   StatusOr(const StatusOr&) = delete;
 
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
-  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     if (code_ == Code::cOK) {
       new (&value_) value_type(std::move(other.value_));
     } else {
@@ -166,7 +166,7 @@ struct StatusOr {
   }
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
-  StatusOr(StatusOr<U>&& other) : code_(other.code_) {
+  StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     CHECK(code_ != Code::cOK);
     new (&error_) error_type(std::move(other.error_));
   }
@@ -191,9 +191,9 @@ struct StatusOr {
     return Status(code_, std::move(*error_));
   }
 
-  operator Status() const& { return ToStatus(); }
+  operator Status() const& { return ToStatus(); }  // NOLINT
 
-  operator Status() && { return std::move(*this).ToStatus(); }
+  operator Status() && { return std::move(*this).ToStatus(); }  // NOLINT
 
   Code GetCode() const { return code_; }
 
@@ -283,6 +283,7 @@ struct StatusOr {
   friend struct StatusOr;
 };
 
+// NOLINTNEXTLINE
 #define GET_OR_RET(...)                                         \
   ({                                                            \
     auto&& status = (__VA_ARGS__);                              \

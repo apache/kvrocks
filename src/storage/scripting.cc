@@ -66,7 +66,7 @@
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
  * This should be the size of the buffer given to doule to string */
-#define MAX_LONG_DOUBLE_CHARS 5 * 1024
+constexpr size_t MAX_LONG_DOUBLE_CHARS = 5 * 1024;
 
 enum {
   LL_DEBUG = 0,
@@ -315,13 +315,13 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
     lua_pop(lua, 1);
   }
 
-/* Call the Lua garbage collector from time to time to avoid a
- * full cycle performed by Lua, which adds too latency.
- *
- * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
- * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
- * for every command uses too much CPU. */
-#define LUA_GC_CYCLE_PERIOD 50
+  /* Call the Lua garbage collector from time to time to avoid a
+   * full cycle performed by Lua, which adds too latency.
+   *
+   * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
+   * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
+   * for every command uses too much CPU. */
+  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
   {
     static int64_t gc_count = 0;
 

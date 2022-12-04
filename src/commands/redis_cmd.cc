@@ -1627,14 +1627,18 @@ class CommandHRange : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    auto parse_start = ParseInt<int>(args[2], 10);
-    auto parse_stop = ParseInt<int>(args[3], 10);
-    if (!parse_start || !parse_stop) {
-      return Status(Status::RedisParseErr, errValueNotInteger);
+    spec_.reversed = reversed_;
+    spec_.count = count_;
+    spec_.offset = offset_;
+    Status s;
+    if (spec_.reversed) {
+      s = Redis::Hash::ParseRangeLexSpec(args[3], args[2], &spec_);
+    } else {
+      s = Redis::Hash::ParseRangeLexSpec(args[2], args[3], &spec_);
     }
-    start_ = *parse_start;
-    stop_ = *parse_stop;
-    if (reversed_) std::swap(start_, stop_);
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
+    }
     return Status::OK();
   }
 
@@ -1660,8 +1664,6 @@ class CommandHRange : public Commander {
   int64_t offset_ = 0;
   int64_t count_ = -1;
   HashRangeSpec spec_;
-  int64_t start_;
-  int64_t stop_;
 };
 
 class CommandPush : public Commander {

@@ -206,7 +206,7 @@ Status Storage::SetDBOption(const std::string &key, const std::string &value) {
 }
 
 Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
-  rocksdb::DB *tmp_db;
+  rocksdb::DB *tmp_db = nullptr;
   rocksdb::ColumnFamilyOptions cf_options(options);
   rocksdb::Status s = rocksdb::DB::Open(options, config_->db_dir, &tmp_db);
   if (s.ok()) {
@@ -338,7 +338,7 @@ Status Storage::CreateBackup() {
   rocksdb::DestroyDB(tmpdir, rocksdb::Options());
 
   // 1) Create checkpoint of rocksdb for backup
-  rocksdb::Checkpoint *checkpoint = NULL;
+  rocksdb::Checkpoint *checkpoint = nullptr;
   rocksdb::Status s = rocksdb::Checkpoint::Create(db_, &checkpoint);
   if (!s.ok()) {
     LOG(WARNING) << "Fail to create checkpoint for backup, error:" << s.ToString();
@@ -586,7 +586,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   ComposeNamespaceKey(ns, "", &prefix, false);
 
   Redis::Database db(this, ns);
-  uint64_t size, total_size = 0;
+  uint64_t size = 0, total_size = 0;
   rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
@@ -604,7 +604,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
 }
 
 Status Storage::CheckDBSizeLimit() {
-  bool reach_db_size_limit;
+  bool reach_db_size_limit = false;
   if (config_->max_db_size == 0) {
     reach_db_size_limit = false;
   } else {
@@ -731,7 +731,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
   // Create checkpoint if not exist
   if (!storage->env_->FileExists(data_files_dir).ok()) {
-    rocksdb::Checkpoint *checkpoint = NULL;
+    rocksdb::Checkpoint *checkpoint = nullptr;
     rocksdb::Status s = rocksdb::Checkpoint::Create(storage->db_, &checkpoint);
     if (!s.ok()) {
       LOG(WARNING) << "Fail to create checkpoint, error:" << s.ToString();
@@ -944,7 +944,7 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   s = storage->env_->NewSequentialFile(file_path, &src_file, soptions);
   if (!s.ok()) return false;
 
-  uint64_t size;
+  uint64_t size = 0;
   s = storage->env_->GetFileSize(file_path, &size);
   if (!s.ok()) return false;
   auto src_reader = std::make_unique<rocksdb::SequentialFileWrapper>(src_file.get());

@@ -166,7 +166,7 @@ void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
 int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
                   uint8_t step, GeoHashBits *hash) {
   /* Check basic arguments sanity. */
-  if (hash == NULL || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
+  if (!hash || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
 
   /* Return an error when trying to index outside the supported
    * constraints. */
@@ -203,7 +203,7 @@ int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashB
 
 int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
                   GeoHashArea *area) {
-  if (HASHISZERO(hash) || NULL == area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
+  if (HASHISZERO(hash) || !area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
     return 0;
   }
 
@@ -387,9 +387,9 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   GeoHashBits hash;
   GeoHashNeighbors neighbors;
   GeoHashArea area;
-  double min_lon, max_lon, min_lat, max_lat;
+  double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
   double bounds[4];
-  int steps;
+  int steps = 0;
 
   BoundingBox(longitude, latitude, radius_meters, bounds);
   min_lon = bounds[0];
@@ -472,7 +472,7 @@ GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits &hash) {
 
 /* Calculate distance using haversin great circle distance formula. */
 double GeoHashHelper::GetDistance(double lon1d, double lat1d, double lon2d, double lat2d) {
-  double lat1r, lon1r, lat2r, lon2r, u, v;
+  double lat1r = NAN, lon1r = NAN, lat2r = NAN, lon2r = NAN, u = NAN, v = NAN;
   lat1r = deg_rad(lat1d);
   lon1r = deg_rad(lon1d);
   lat2r = deg_rad(lat2d);

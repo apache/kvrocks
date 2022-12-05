@@ -203,7 +203,7 @@ int redisLogCommand(lua_State *lua) {
     lua_pushstring(lua, "First argument must be a number (log level).");
     return lua_error(lua);
   }
-  level = lua_tonumber(lua, -argc);
+  level = static_cast<int>(lua_tonumber(lua, -argc));
   if (level < LL_DEBUG || level > LL_WARNING) {
     lua_pushstring(lua, "Invalid debug level.");
     return lua_error(lua);
@@ -269,7 +269,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
   } else {
     for (int j = 0; j < 40; j++) {
       std::string sha = args[1];
-      funcname[j + 2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j] + ('a' - 'A') : sha[j];
+      funcname[j + 2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j] + static_cast<char>('a' - 'A') : sha[j];
     }
     funcname[42] = '\0';
   }
@@ -835,7 +835,7 @@ void sortArray(lua_State *lua) {
 
 void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems) {
   lua_newtable(lua);
-  for (size_t i = 0; i < elems.size(); i++) {
+  for (int i = 0; i < elems.size(); i++) {
     lua_pushlstring(lua, elems[i].c_str(), elems[i].size());
     lua_rawseti(lua, -2, i + 1);
   }

@@ -44,6 +44,7 @@
 #include "worker.h"
 
 std::atomic<int> Server::unix_time_ = {0};
+constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core

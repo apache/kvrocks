@@ -21,5 +21,4 @@
 #pragma once
 
 #define VERSION "@PROJECT_VERSION@"
-#define REDIS_VERSION "4.0.0"
 #define GIT_COMMIT "@GIT_SHA@"

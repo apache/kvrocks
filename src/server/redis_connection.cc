@@ -126,7 +126,7 @@ void Connection::SendFile(int fd) {
   evbuffer_add_file(output, fd, 0, -1);
 }
 
-void Connection::SetAddr(std::string ip, int port) {
+void Connection::SetAddr(std::string ip, uint32_t port) {
   ip_ = std::move(ip);
   port_ = port;
   addr_ = ip_ + ":" + std::to_string(port_);

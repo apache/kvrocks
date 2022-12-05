@@ -268,8 +268,8 @@ void Config::initFieldValidator() {
          s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
          if (!s.IsOK()) return s;
          if (start > stop) return Status(Status::NotOK, "invalid range format, start should be smaller than stop");
-         compaction_checker_range.Start = start;
-         compaction_checker_range.Stop = stop;
+         compaction_checker_range.Start = static_cast<int>(start);
+         compaction_checker_range.Stop = static_cast<int>(stop);
          return Status::OK();
        }},
       {"rename-command",

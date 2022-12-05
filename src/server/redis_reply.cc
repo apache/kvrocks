@@ -30,8 +30,8 @@ std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
 std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
-template <typename Integer>
-std::string Integer(Integer data) {
+template <typename IntegerType>
+std::string Integer(IntegerType data) {
   return ":" + std::to_string(data) + CRLF;
 }
 
@@ -39,8 +39,8 @@ std::string BulkString(const std::string &data) { return "$" + std::to_string(da
 
 std::string NilString() { return "$-1" CRLF; }
 
-template <typename Integer>
-std::string MultiLen(Integer len) {
+template <typename IntegerType>
+std::string MultiLen(IntegerType len) {
   return "*" + std::to_string(len) + CRLF;
 }
 

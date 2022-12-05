@@ -148,10 +148,10 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
 }
 
 rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, int ttl) {
-  uint32_t expire = 0;
+  int expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = uint32_t(now) + ttl;
+    expire = int(now) + ttl;
   }
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -219,10 +219,10 @@ rocksdb::Status String::SetNX(const std::string &user_key, const std::string &va
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, int ttl, int *ret) {
   *ret = 0;
   int exists = 0;
-  uint32_t expire = 0;
+  int expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = uint32_t(now) + ttl;
+    expire = int(now) + ttl;
   }
 
   std::string ns_key;
@@ -358,10 +358,10 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
 }
 
 rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
-  uint32_t expire = 0;
+  int expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = uint32_t(now) + ttl;
+    expire = int(now) + ttl;
   }
 
   // Data race, key string maybe overwrite by other key while didn't lock the key here,
@@ -388,10 +388,10 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
 rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret) {
   *ret = 0;
 
-  uint32_t expire = 0;
+  int expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = uint32_t(now) + ttl;
+    expire = int(now) + ttl;
   }
 
   int exists = 0;
@@ -453,11 +453,11 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
   if (old_value == current_value) {
     std::string raw_value;
-    uint32_t expire = 0;
+    int expire = 0;
     Metadata metadata(kRedisString, false);
     if (ttl > 0) {
       int64_t now = Util::GetTimeStamp();
-      expire = uint32_t(now) + ttl;
+      expire = int(now) + ttl;
     }
     metadata.expire = expire;
     metadata.Encode(&raw_value);

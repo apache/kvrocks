@@ -51,8 +51,8 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
   auto byteval = string_value[byte_index];
   *old_bit = (byteval & (1 << bit_offset)) != 0;
 
-  byteval &= static_cast<char>(~(1 << bit_offset));
-  byteval |= static_cast<char>((new_bit & 0x1) << bit_offset);
+  byteval = static_cast<char>(byteval & (~(1 << bit_offset)));
+  byteval = static_cast<char>(byteval | ((new_bit & 0x1) << bit_offset));
   string_value[byte_index] = byteval;
 
   *raw_value = raw_value->substr(0, STRING_HDR_SIZE);

@@ -156,7 +156,7 @@ Status Server::Start() {
 
   compaction_checker_thread_ = std::thread([this]() {
     uint64_t counter = 0;
-    int32_t last_compact_date = 0;
+    time_t last_compact_date = 0;
     Util::ThreadSetName("compact-check");
     CompactionChecker compaction_checker(this->storage_);
     while (!stop_) {
@@ -1035,7 +1035,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size:" << storage_->GetTotalSize(ns) << "\r\n";
     string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
-    double used_percent = config_->max_db_size ? storage_->GetTotalSize() * 100 / (config_->max_db_size * GiB) : 0;
+    double used_percent = config_->max_db_size ? static_cast<double>(storage_->GetTotalSize() * 100) /
+                                                     static_cast<double>(config_->max_db_size * GiB)
+                                               : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
     struct statvfs stat;
     if (statvfs(config_->db_dir.c_str(), &stat) == 0) {
@@ -1043,7 +1045,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
       auto used_disk_size = (stat.f_blocks - stat.f_bavail) * stat.f_frsize;
       string_stream << "disk_capacity:" << disk_capacity << "\r\n";
       string_stream << "used_disk_size:" << used_disk_size << "\r\n";
-      double used_disk_percent = used_disk_size * 100 / disk_capacity;
+      double used_disk_percent = static_cast<double>(used_disk_size * 100) / static_cast<double>(disk_capacity);
       string_stream << "used_disk_percent: " << used_disk_percent << "%\r\n";
     }
   }

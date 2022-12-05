@@ -127,7 +127,7 @@ struct Config {
   std::string master_host;
   std::string unixsocket;
   int unixsocketperm = 0777;
-  int master_port = 0;
+  uint32_t master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
@@ -197,7 +197,7 @@ struct Config {
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
-  void SetMaster(const std::string &host, int port);
+  void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
   Status GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);

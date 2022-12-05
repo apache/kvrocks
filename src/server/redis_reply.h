@@ -32,12 +32,20 @@ namespace Redis {
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 std::string Error(const std::string &err);
+
 template <typename IntegerType>
-std::string Integer(IntegerType data);
+std::string Integer(IntegerType data) {
+  return ":" + std::to_string(data) + CRLF;
+}
+
 std::string BulkString(const std::string &data);
 std::string NilString();
+
 template <typename IntegerType>
-std::string MultiLen(IntegerType len);
+std::string MultiLen(IntegerType len) {
+  return "*" + std::to_string(len) + CRLF;
+}
+
 std::string Array(const std::vector<std::string> &list);
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true);
 std::string MultiBulkString(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses);

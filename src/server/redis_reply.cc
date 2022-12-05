@@ -80,6 +80,7 @@ std::string Array(const std::vector<std::string> &list) {
 std::string Command2RESP(const std::vector<std::string> &cmd_args) { return MultiBulkString(cmd_args, false); }
 
 template std::string Integer(int data);
+template std::string Integer(uint16_t data);
 template std::string Integer(uint32_t data);
 template std::string Integer(int64_t data);
 template std::string Integer(uint64_t data);

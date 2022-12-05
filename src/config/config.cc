@@ -430,7 +430,7 @@ void Config::initFieldCallback() {
       {"max-io-mb",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->storage_->SetIORateLimit(static_cast<uint64_t>(max_io_mb));
+         srv->storage_->SetIORateLimit(max_io_mb);
          return Status::OK();
        }},
       {"profiling-sample-record-max-len",

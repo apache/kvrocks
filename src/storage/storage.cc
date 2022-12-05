@@ -64,7 +64,7 @@ const char *kLuaFunctionPrefix = "lua_f_";
 
 const char *kReplicationIdKey = "replication_id_";
 
-const uint64_t kIORateLimitMaxMb = 1024000;
+const int64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
@@ -169,8 +169,8 @@ rocksdb::Options Storage::InitOptions() {
   options.dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
   options.sst_file_manager = sst_file_manager_;
-  uint64_t max_io_mb = kIORateLimitMaxMb;
-  if (config_->max_io_mb > 0) max_io_mb = static_cast<uint64_t>(config_->max_io_mb);
+  int64_t max_io_mb = kIORateLimitMaxMb;
+  if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
   rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
@@ -623,7 +623,7 @@ Status Storage::CheckDBSizeLimit() {
   return Status::OK();
 }
 
-void Storage::SetIORateLimit(uint64_t max_io_mb) {
+void Storage::SetIORateLimit(int64_t max_io_mb) {
   if (max_io_mb == 0) {
     max_io_mb = kIORateLimitMaxMb;
   }
@@ -646,7 +646,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
 
 bool Storage::ShiftReplId() {
   const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const int charset_len = strlen(charset);
+  const int charset_len = static_cast<int>(strlen(charset));
 
   // Do nothing if don't enable rsid psync
   if (!config_->use_rsid_psync) return true;

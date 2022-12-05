@@ -81,7 +81,7 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   for (int i = 1; i < trace_size; ++i) {
     char func_info[1024] = {};
     if (google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
-      LOG(ERROR) << std::left << std::setw(max_msg_len) << messages[i] << "  " << func_info;
+      LOG(ERROR) << std::left << std::setw(static_cast<int>(max_msg_len)) << messages[i] << "  " << func_info;
     } else {
       LOG(ERROR) << messages[i];
     }

@@ -82,10 +82,9 @@ std::string Command2RESP(const std::vector<std::string> &cmd_args) { return Mult
 template std::string Integer(int data);
 template std::string Integer(uint16_t data);
 template std::string Integer(uint32_t data);
-template std::string Integer(long data);
-template std::string Integer(unsigned long data);
 template std::string Integer(int64_t data);
 template std::string Integer(uint64_t data);
+template std::string Integer(size_t data);
 
 template std::string MultiLen(int len);
 template std::string MultiLen(int64_t len);

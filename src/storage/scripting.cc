@@ -269,7 +269,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
   } else {
     for (int j = 0; j < 40; j++) {
       std::string sha = args[1];
-      funcname[j + 2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? sha[j] + static_cast<char>('a' - 'A') : sha[j];
+      funcname[j + 2] = (sha[j] >= 'A' && sha[j] <= 'Z') ? static_cast<char>(sha[j] + 'a' - 'A') : sha[j];
     }
     funcname[42] = '\0';
   }

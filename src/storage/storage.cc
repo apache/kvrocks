@@ -171,7 +171,8 @@ rocksdb::Options Storage::InitOptions() {
   options.sst_file_manager = sst_file_manager_;
   int64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
-  rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * MiB));
+  rate_limiter_ =
+      std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * static_cast<int64_t>(MiB)));
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
   options.compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
@@ -627,7 +628,7 @@ void Storage::SetIORateLimit(int64_t max_io_mb) {
   if (max_io_mb == 0) {
     max_io_mb = kIORateLimitMaxMb;
   }
-  rate_limiter_->SetBytesPerSecond(max_io_mb * MiB);
+  rate_limiter_->SetBytesPerSecond(max_io_mb * static_cast<int64_t>(MiB));
 }
 
 rocksdb::DB *Storage::GetDB() { return db_; }

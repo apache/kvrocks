@@ -104,7 +104,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   }
 
   if (!store_key.empty()) {
-    int64_t result_length = static_cast<int64_t>(geo_points->size());
+    auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
       ZSet::Del(user_key);

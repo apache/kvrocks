@@ -71,7 +71,7 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
   if (start < 0 && stop < 0 && start > stop) {
     return rocksdb::Status::OK();
   }
-  int64_t strlen = static_cast<int64_t>(string_value.size());
+  auto strlen = static_cast<int64_t>(string_value.size());
   if (start < 0) start = strlen + start;
   if (stop < 0) stop = strlen + stop;
   if (start < 0) start = 0;
@@ -90,7 +90,7 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
                                      bool stop_given, int64_t *pos) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
-  int64_t strlen = static_cast<int64_t>(string_value.size());
+  auto strlen = static_cast<int64_t>(string_value.size());
   /* Convert negative indexes */
   if (start < 0) start = strlen + start;
   if (stop < 0) stop = strlen + stop;

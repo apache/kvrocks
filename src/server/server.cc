@@ -44,6 +44,7 @@
 #include "worker.h"
 
 std::atomic<int> Server::unix_time_ = {0};
+constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
@@ -783,6 +784,7 @@ void Server::GetServerInfo(std::string *info) {
   time(&now);
   string_stream << "# Server\r\n";
   string_stream << "version:" << VERSION << "\r\n";
+  string_stream << "redis_version:" << REDIS_VERSION << "\r\n";
   string_stream << "git_sha1:" << GIT_COMMIT << "\r\n";
   string_stream << "os:" << name.sysname << " " << name.release << " " << name.machine << "\r\n";
 #ifdef __GNUC__

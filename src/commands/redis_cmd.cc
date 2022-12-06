@@ -80,6 +80,7 @@ const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used witho
 const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
 const char *errScoreIsNotValidFloat = "score is not a valid float";
 const char *errValueIsNotFloat = "value is not a valid float";
+const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
 
 enum class AuthResult {
   OK,
@@ -5312,14 +5313,11 @@ class CommandEval : public Commander {
 
 class CommandEvalSHA : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args[1].size() != 40) {
-      return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
-    }
-    return Status::OK();
-  }
-
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_[1].size() != 40) {
+      *output = Redis::Error(errNoMatchingScript);
+      return Status::OK();
+    }
     return Lua::evalGenericCommand(conn, args_, true, output);
   }
 };
@@ -5333,14 +5331,11 @@ class CommandEvalRO : public Commander {
 
 class CommandEvalSHARO : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args[1].size() != 40) {
-      return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
-    }
-    return Status::OK();
-  }
-
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (args_[1].size() != 40) {
+      *output = Redis::Error(errNoMatchingScript);
+      return Status::OK();
+    }
     return Lua::evalGenericCommand(conn, args_, true, output, true);
   }
 };

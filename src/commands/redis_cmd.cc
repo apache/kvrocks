@@ -1613,7 +1613,7 @@ class CommandHGetAll : public Commander {
   }
 };
 
-class CommandHRange : public Commander {
+class CommandHRangeByLex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 4);
@@ -6343,7 +6343,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandHRange>("hrangebylex", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
 
     MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1), MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),

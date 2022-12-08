@@ -178,6 +178,15 @@ static void initGoogleLog(const Config *config) {
     FLAGS_logtostdout = true;
   } else {
     FLAGS_log_dir = config->log_dir;
+    if (config->enablelogcleaner) {
+      google::EnableLogCleaner(config->logcleanerday);
+      google::SetLogFilenameExtension(".log");
+      for (int level = google::INFO; level <= google::FATAL; level++) {
+        std::string des = google::LogSeverityNames[level];
+        des = config->log_dir + "/kvrocks_" + des + "_";
+        google::SetLogDestination(level, des.c_str());
+      }
+    }
   }
 }
 

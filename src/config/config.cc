@@ -159,6 +159,8 @@ Config::Config() {
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
+      {"enablelogcleaner", false, new YesNoField(&enablelogcleaner, false)},
+      {"logcleanerday", false, new IntField(&logcleanerday, 365, 0, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},

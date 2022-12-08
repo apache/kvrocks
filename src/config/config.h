@@ -139,6 +139,8 @@ struct Config {
   int pipeline_size;
   int sequence_gap;
 
+  bool enablelogcleaner;
+  int logcleanerday;
   // profiling
   int profiling_sample_ratio = 0;
   int profiling_sample_record_threshold_ms = 0;

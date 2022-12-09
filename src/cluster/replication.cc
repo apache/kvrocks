@@ -236,18 +236,21 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
 
+  uint64_t connect_timestamp = 0, connect_timeout_ms = 3100;
+
   while (!repl_->stop_flag_ && bev == nullptr) {
-    Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd);
+    if (Util::GetTimeStampMS() - connect_timestamp < 1000) {
+      sleep(1);
+    }
+    Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd, connect_timeout_ms);
     if (!s.IsOK()) {
       LOG(ERROR) << "[replication] Failed to connect the master, err: " << s.Msg();
-      sleep(1);
       continue;
     }
     bev = bufferevent_socket_new(repl_->base_, cfd, BEV_OPT_CLOSE_ON_FREE);
     if (bev == nullptr) {
       close(cfd);
       LOG(ERROR) << "[replication] Failed to create the event socket";
-      sleep(1);
       continue;
     }
   }

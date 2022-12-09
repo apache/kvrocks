@@ -139,7 +139,7 @@ struct Config {
   int pipeline_size;
   int sequence_gap;
 
-  int logcleanerday;
+  int log_retention_days;
   // profiling
   int profiling_sample_ratio = 0;
   int profiling_sample_record_threshold_ms = 0;

@@ -42,6 +42,7 @@
 #include "status.h"
 #include "storage/batch_debugger.h"
 #include "thread_util.h"
+#include "time_util.h"
 
 Status FeedSlaveThread::Start() {
   try {

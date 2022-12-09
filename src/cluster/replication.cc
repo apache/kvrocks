@@ -243,6 +243,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     if (Util::GetTimeStampMS() - connect_timestamp < 1000) {
       sleep(1);
     }
+    connect_timestamp = Util::GetTimeStampMS();
     Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd, connect_timeout_ms);
     if (!s.IsOK()) {
       LOG(ERROR) << "[replication] Failed to connect the master, err: " << s.Msg();

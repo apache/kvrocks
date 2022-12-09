@@ -460,6 +460,11 @@ void Config::initFieldCallback() {
        }},
       {"log-retention-days",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         if (Util::ToLower(log_dir) == "stdout") {
+           return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
+         }
+
          if (log_retention_days != -1) {
            google::EnableLogCleaner(log_retention_days);
          } else {

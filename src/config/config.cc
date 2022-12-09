@@ -459,10 +459,10 @@ void Config::initFieldCallback() {
          return Status::OK();
        }},
       {"log-retention-days",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status{
-         if(log_retention_days!=-1){
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (log_retention_days != -1) {
            google::EnableLogCleaner(log_retention_days);
-         }else{
+         } else {
            google::DisableLogCleaner();
          }
          return Status::OK();

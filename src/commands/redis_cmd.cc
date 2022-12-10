@@ -1644,7 +1644,7 @@ class CommandHRangeByLex : public Commander {
     std::vector<FieldValue> field_values;
     rocksdb::Status s = hash_db.RangeByLex(args_[1], spec_, &field_values);
     if (!s.ok()) {
-      return Status(Status::RedisExecErr, s.ToString());
+      return {Status::RedisExecErr, s.ToString()};
     }
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {

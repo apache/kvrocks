@@ -36,6 +36,14 @@ class Server;
 using validate_fn = std::function<Status(const std::string &, const std::string &)>;
 using callback_fn = std::function<Status(Server *, const std::string &, const std::string &)>;
 
+// forward declaration
+template <typename>
+class IntegerField;
+
+using IntField = IntegerField<int>;
+using UInt32Field = IntegerField<uint32_t>;
+using Int64Field = IntegerField<int64_t>;
+
 struct configEnum {
   const char *name;
   const int val;
@@ -117,7 +125,7 @@ class IntegerField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    auto s = ParseInt(v, {min_, max_});
+    auto s = ParseInt<IntegerType>(v, {min_, max_});
     if (!s.IsOK()) return s;
     *receiver_ = s.GetValue();
     return Status::OK();

@@ -120,13 +120,13 @@ func TestScripting(t *testing.T) {
 
 	t.Run("EVALSHA - Do we get an error on invalid SHA1?", func(t *testing.T) {
 		r := rdb.EvalSha(ctx, "NotValidShaSUM", []string{})
-		util.ErrorRegexp(t, r.Err(), "ERR NOSCRIPT.*")
+		util.ErrorRegexp(t, r.Err(), "NOSCRIPT.*")
 		require.Nil(t, r.Val())
 	})
 
 	t.Run("EVALSHA - Do we get an error on non defined SHA1?", func(t *testing.T) {
 		r := rdb.EvalSha(ctx, "ffd632c7d33e571e9f24556ebed26c3479a87130", []string{})
-		util.ErrorRegexp(t, r.Err(), "ERR NOSCRIPT.*")
+		util.ErrorRegexp(t, r.Err(), "NOSCRIPT.*")
 		require.Nil(t, r.Val())
 	})
 
@@ -354,7 +354,7 @@ assert(bit.bor(1,2,4,8,16,32,64,128) == 255)
 		require.Equal(t, "myval", r.Val())
 		require.NoError(t, rdb.ScriptFlush(ctx).Err())
 		r = rdb.EvalSha(ctx, "fd758d1589d044dd850a6f05d52f2eefd27f033f", []string{"mykey"})
-		util.ErrorRegexp(t, r.Err(), "ERR NOSCRIPT.*")
+		util.ErrorRegexp(t, r.Err(), "NOSCRIPT.*")
 	})
 
 	t.Run("SCRIPT EXISTS - can detect already defined scripts?", func(t *testing.T) {

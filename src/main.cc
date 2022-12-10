@@ -27,7 +27,7 @@
 #include <iomanip>
 #include <ostream>
 #ifdef __linux__
-#define _XOPEN_SOURCE 700
+#define _XOPEN_SOURCE 700  // NOLINT
 #else
 #define _XOPEN_SOURCE
 #endif

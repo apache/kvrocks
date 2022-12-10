@@ -39,7 +39,7 @@ namespace Engine {
 class Storage;
 }
 
-constexpr const uint16_t PORT_LIMIT = 65535;
+constexpr const uint32_t PORT_LIMIT = 65535;
 
 enum SupervisedMode { kSupervisedNone = 0, kSupervisedAutoDetect, kSupervisedSystemd, kSupervisedUpStart };
 

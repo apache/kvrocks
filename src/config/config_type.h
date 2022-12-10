@@ -218,3 +218,28 @@ class EnumField : public ConfigField {
   int *receiver_;
   configEnum *enums_ = nullptr;
 };
+
+class Uint32Field : public ConfigField {
+ public:
+  Uint32Field(uint32_t *receiver, uint32_t n, uint32_t min, uint32_t max) : receiver_(receiver), min_(min), max_(max) {
+    *receiver_ = n;
+  }
+  ~Uint32Field() override = default;
+  std::string ToString() override { return std::to_string(*receiver_); }
+  Status ToNumber(int64_t *n) override {
+    *n = *receiver_;
+    return Status::OK();
+  }
+  Status Set(const std::string &v) override {
+    int64_t n;
+    auto s = Util::DecimalStringToNum(v, &n, min_, max_);
+    if (!s.IsOK()) return s;
+    *receiver_ = static_cast<uint32_t>(n);
+    return Status::OK();
+  }
+
+ private:
+  uint32_t *receiver_;
+  uint32_t min_ = INT_MIN;
+  uint32_t max_ = INT_MAX;
+};

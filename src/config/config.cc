@@ -97,9 +97,9 @@ Config::Config() {
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
-      {"port", true, new IntField(&port, kDefaultPort, 1, PORT_LIMIT)},
+      {"port", true, new Uint32Field(&port, kDefaultPort, 1, PORT_LIMIT)},
 #ifdef ENABLE_OPENSSL
-      {"tls-port", true, new IntField(&tls_port, 0, 0, PORT_LIMIT)},
+      {"tls-port", true, new Uint32Field(&tls_port, 0, 0, PORT_LIMIT)},
       {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
       {"tls-key-file", false, new StringField(&tls_key_file, "")},
       {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},

@@ -307,9 +307,9 @@ int GetLocalPort(int fd) {
   return 0;
 }
 
-bool IsPortInUse(int port) {
+bool IsPortInUse(uint32_t port) {
   int fd = NullFD;
-  Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
+  Status s = SockConnect("0.0.0.0", port, &fd);
   if (fd != NullFD) close(fd);
   return s.IsOK();
 }

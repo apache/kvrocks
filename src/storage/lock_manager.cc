@@ -37,9 +37,7 @@ LockManager::~LockManager() {
   }
 }
 
-unsigned LockManager::hash(const rocksdb::Slice &key) {
-  return static_cast<unsigned>(std::hash<std::string>{}(key.ToString()) & hash_mask_);
-}
+unsigned LockManager::hash(const rocksdb::Slice &key) { return std::hash<std::string>{}(key.ToString()) & hash_mask_; }
 
 unsigned LockManager::Size() { return (1U << hash_power_); }
 

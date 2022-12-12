@@ -171,7 +171,7 @@ struct StatusOr {  // NOLINT
     new (&error_) error_type(std::move(other.error_));
   }
 
-  Status& operator=(const Status&) = delete;
+  StatusOr& operator=(const StatusOr&) = delete;
 
   template <Code code>
   bool Is() const {

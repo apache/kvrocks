@@ -130,7 +130,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout) {
+Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout, int timeout) {
   if (conn_timeout == 0) {
     auto s = SockConnect(host, port, fd);
     if (!s) return s;
@@ -305,16 +305,16 @@ int GetLocalPort(int fd) {
   return 0;
 }
 
-bool IsPortInUse(int port) {
+bool IsPortInUse(uint32_t port) {
   int fd = NullFD;
-  Status s = SockConnect("0.0.0.0", static_cast<uint32_t>(port), &fd);
+  Status s = SockConnect("0.0.0.0", port, &fd);
   if (fd != NullFD) close(fd);
   return s.IsOK();
 }
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
-int aeWait(int fd, int mask, uint64_t timeout) {
+int aeWait(int fd, int mask, int timeout) {
   pollfd pfd;
   int retmask = 0, retval = 0;
 

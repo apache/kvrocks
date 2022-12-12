@@ -165,7 +165,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
         0x3F, 0xBF, 0x7F, 0xFF};
     for (uint32_t i = 0; i < valid_size; i++) {
       if (!fragment[i]) continue;
-      fragment[i] = swap_table[static_cast<uint8_t>(fragment[i])];
+      fragment[i] = static_cast<char>(swap_table[static_cast<uint8_t>(fragment[i])]);
       ;
     }
     value->replace(frag_index, valid_size, fragment.data(), valid_size);
@@ -211,9 +211,9 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   uint32_t bit_offset = offset % 8;
   *old_bit = (value[byte_index] & (1 << bit_offset)) != 0;
   if (new_bit) {
-    value[byte_index] |= 1 << bit_offset;
+    value[byte_index] = static_cast<char>(value[byte_index] | (1 << bit_offset));
   } else {
-    value[byte_index] &= ~(1 << bit_offset);
+    value[byte_index] = static_cast<char>(value[byte_index] & (~(1 << bit_offset)));
   }
   rocksdb::WriteBatch batch;
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(offset)});
@@ -536,7 +536,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   res_metadata.size = max_size;
   res_metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
-  *len = max_size;
+  *len = static_cast<int64_t>(max_size);
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 

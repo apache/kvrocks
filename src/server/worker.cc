@@ -59,10 +59,10 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
-  int ports[3] = {config->port, config->tls_port, 0};
+  uint32_t ports[3] = {config->port, config->tls_port, 0};
   auto binds = config->binds;
 
-  for (int *port = ports; *port; ++port) {
+  for (uint32_t *port = ports; *port; ++port) {
     for (const auto &bind : binds) {
       Status s = listenTCP(bind, *port, config->backlog);
       if (!s.IsOK()) {
@@ -200,7 +200,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   }
 }
 
-Status Worker::listenTCP(const std::string &host, int port, int backlog) {
+Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
   int af = 0, rv = 0, fd = 0, sock_opt = 1;
 
   if (strchr(host.data(), ':')) {

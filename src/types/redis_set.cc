@@ -129,7 +129,7 @@ rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = metadata.size;
+  *ret = static_cast<int>(metadata.size);
   return rocksdb::Status::OK();
 }
 

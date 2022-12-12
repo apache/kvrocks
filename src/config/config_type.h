@@ -22,9 +22,11 @@
 
 #include <fmt/format.h>
 
+#include <limits>
 #include <string>
 #include <utility>
 
+#include "parse_util.h"
 #include "status.h"
 #include "string_util.h"
 
@@ -33,6 +35,14 @@ class Server;
 
 using validate_fn = std::function<Status(const std::string &, const std::string &)>;
 using callback_fn = std::function<Status(Server *, const std::string &, const std::string &)>;
+
+// forward declaration
+template <typename>
+class IntegerField;
+
+using IntField = IntegerField<int>;
+using UInt32Field = IntegerField<uint32_t>;
+using Int64Field = IntegerField<int64_t>;
 
 struct configEnum {
   const char *name;
@@ -101,27 +111,30 @@ class MultiStringField : public ConfigField {
   std::vector<std::string> *receiver_;
 };
 
-class IntField : public ConfigField {
+template <typename IntegerType>
+class IntegerField : public ConfigField {
  public:
-  IntField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
-  ~IntField() override = default;
+  IntegerField(IntegerType *receiver, IntegerType n, IntegerType min, IntegerType max)
+      : receiver_(receiver), min_(min), max_(max) {
+    *receiver_ = n;
+  }
+  ~IntegerField() override = default;
   std::string ToString() override { return std::to_string(*receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int64_t n;
-    auto s = Util::DecimalStringToNum(v, &n, min_, max_);
+    auto s = ParseInt<IntegerType>(v, {min_, max_});
     if (!s.IsOK()) return s;
-    *receiver_ = static_cast<int>(n);
+    *receiver_ = s.GetValue();
     return Status::OK();
   }
 
  private:
-  int *receiver_;
-  int min_ = INT_MIN;
-  int max_ = INT_MAX;
+  IntegerType *receiver_;
+  IntegerType min_ = std::numeric_limits<IntegerType>::min();
+  IntegerType max_ = std::numeric_limits<IntegerType>::max();
 };
 
 class OctalField : public ConfigField {
@@ -145,31 +158,6 @@ class OctalField : public ConfigField {
   int *receiver_;
   int min_ = INT_MIN;
   int max_ = INT_MAX;
-};
-
-class Int64Field : public ConfigField {
- public:
-  Int64Field(int64_t *receiver, int64_t n, int64_t min, int64_t max) : receiver_(receiver), min_(min), max_(max) {
-    *receiver_ = n;
-  }
-  ~Int64Field() override = default;
-  std::string ToString() override { return std::to_string(*receiver_); }
-  Status ToNumber(int64_t *n) override {
-    *n = *receiver_;
-    return Status::OK();
-  }
-  Status Set(const std::string &v) override {
-    int64_t n;
-    auto s = Util::DecimalStringToNum(v, &n, min_, max_);
-    if (!s.IsOK()) return s;
-    *receiver_ = n;
-    return Status::OK();
-  }
-
- private:
-  int64_t *receiver_;
-  int64_t min_ = INT64_MIN;
-  int64_t max_ = INT64_MAX;
 };
 
 class YesNoField : public ConfigField {

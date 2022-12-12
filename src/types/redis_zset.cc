@@ -142,7 +142,7 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = metadata.size;
+  *ret = static_cast<int>(metadata.size);
   return rocksdb::Status::OK();
 }
 
@@ -172,7 +172,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   if (count <= 0) return rocksdb::Status::OK();
-  if (count > static_cast<int>(metadata.size)) count = metadata.size;
+  if (count > static_cast<int>(metadata.size)) count = static_cast<int>(metadata.size);
 
   std::string score_bytes;
   double score = min ? kMinScore : kMaxScore;
@@ -237,8 +237,8 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  if (start < 0) start += metadata.size;
-  if (stop < 0) stop += metadata.size;
+  if (start < 0) start += static_cast<int>(metadata.size);
+  if (stop < 0) stop += static_cast<int>(metadata.size);
   if (start < 0) start = 0;
   if (stop < 0 || start > stop) {
     return rocksdb::Status::OK();
@@ -704,7 +704,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
       if (member_counters[iter.first] != keys_weights.size()) continue;
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (size) *size = mscores.size();
+    if (size) *size = static_cast<int>(mscores.size());
     Overwrite(dst, mscores);
   }
 
@@ -754,7 +754,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
     for (const auto &iter : dst_zset) {
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (size) *size = mscores.size();
+    if (size) *size = static_cast<int>(mscores.size());
     Overwrite(dst, mscores);
   }
 

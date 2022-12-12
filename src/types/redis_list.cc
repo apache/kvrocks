@@ -84,7 +84,7 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   metadata.size += elems.size();
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
-  *ret = metadata.size;
+  *ret = static_cast<int>(metadata.size);
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
@@ -334,7 +334,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   metadata.Encode(&bytes);
   batch.Put(metadata_cf_handle_, ns_key, bytes);
 
-  *ret = metadata.size;
+  *ret = static_cast<int>(metadata.size);
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
@@ -347,7 +347,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  if (index < 0) index += metadata.size;
+  if (index < 0) index += static_cast<int>(metadata.size);
   if (index < 0 || index >= static_cast<int>(metadata.size)) return rocksdb::Status::NotFound();
 
   rocksdb::ReadOptions read_options;
@@ -414,7 +414,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
-  if (index < 0) index = metadata.size + index;
+  if (index < 0) index += static_cast<int>(metadata.size);
   if (index < 0 || index >= static_cast<int>(metadata.size)) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
@@ -597,8 +597,8 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  if (start < 0) start = metadata.size + start;
-  if (stop < 0) stop = static_cast<int>(metadata.size) >= -1 * stop ? metadata.size + stop : -1;
+  if (start < 0) start += static_cast<int>(metadata.size);
+  if (stop < 0) stop = static_cast<int>(metadata.size) >= -1 * stop ? static_cast<int>(metadata.size) + stop : -1;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
   if (start > stop) {

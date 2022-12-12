@@ -113,7 +113,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
 
 rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret) {
   bool exists = false;
-  float old_value = 0;
+  double old_value = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

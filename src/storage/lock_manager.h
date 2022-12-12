@@ -39,7 +39,7 @@ class LockManager {
 
  private:
   int hash_power_;
-  int hash_mask_;
+  unsigned hash_mask_;
   std::vector<std::mutex *> mutex_pool_;
   unsigned hash(const rocksdb::Slice &key);
 };

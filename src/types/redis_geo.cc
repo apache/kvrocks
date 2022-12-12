@@ -104,7 +104,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   }
 
   if (!store_key.empty()) {
-    int64_t result_length = geo_points->size();
+    auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
       ZSet::Del(user_key);
@@ -195,7 +195,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
        * zero. */
       idx = 0;
     } else {
-      idx = (hash.bits >> (52 - ((i + 1) * 5))) & 0x1f;
+      idx = static_cast<int>((hash.bits >> (52 - ((i + 1) * 5))) & 0x1f);
     }
     geoHash += geoalphabet[idx];
   }
@@ -211,7 +211,8 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
-  unsigned int i = 0, count = 0, last_processed = 0;
+  unsigned int i = 0, last_processed = 0;
+  int count = 0;
 
   neighbors[0] = n.hash;
   neighbors[1] = n.neighbors.north;
@@ -252,7 +253,7 @@ int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vecto
   GeoHashFix52Bits min = 0, max = 0;
 
   scoresOfGeoHashBox(hash, &min, &max);
-  return getPointsInRange(user_key, min, max, lon, lat, radius, geo_points);
+  return getPointsInRange(user_key, static_cast<double>(min), static_cast<double>(max), lon, lat, radius, geo_points);
 }
 
 /* Compute the sorted set scores min (inclusive), max (exclusive) we should

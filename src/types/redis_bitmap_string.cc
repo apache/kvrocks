@@ -51,8 +51,8 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
   auto byteval = string_value[byte_index];
   *old_bit = (byteval & (1 << bit_offset)) != 0;
 
-  byteval &= ~(1 << bit_offset);
-  byteval |= ((new_bit & 0x1) << bit_offset);
+  byteval = static_cast<char>(byteval & (~(1 << bit_offset)));
+  byteval = static_cast<char>(byteval | ((new_bit & 0x1) << bit_offset));
   string_value[byte_index] = byteval;
 
   *raw_value = raw_value->substr(0, STRING_HDR_SIZE);
@@ -71,12 +71,12 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
   if (start < 0 && stop < 0 && start > stop) {
     return rocksdb::Status::OK();
   }
-  auto strlen = string_value.size();
+  auto strlen = static_cast<int64_t>(string_value.size());
   if (start < 0) start = strlen + start;
   if (stop < 0) stop = strlen + stop;
   if (start < 0) start = 0;
   if (stop < 0) stop = 0;
-  if (stop >= static_cast<int64_t>(strlen)) stop = strlen - 1;
+  if (stop >= strlen) stop = strlen - 1;
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
    * zero can be returned is: start > stop. */
@@ -90,13 +90,13 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
                                      bool stop_given, int64_t *pos) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
-  auto strlen = string_value.size();
+  auto strlen = static_cast<int64_t>(string_value.size());
   /* Convert negative indexes */
   if (start < 0) start = strlen + start;
   if (stop < 0) stop = strlen + stop;
   if (start < 0) start = 0;
   if (stop < 0) stop = 0;
-  if (stop >= static_cast<int64_t>(strlen)) stop = strlen - 1;
+  if (stop >= strlen) stop = strlen - 1;
 
   if (start > stop) {
     *pos = -1;

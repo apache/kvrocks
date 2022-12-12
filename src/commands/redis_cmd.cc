@@ -670,7 +670,7 @@ class CommandPSetEX : public Commander {
     if (*ttl_ms < 1000) {
       ttl_ = 1;
     } else {
-      ttl_ = *ttl_ms / 1000;
+      ttl_ = static_cast<int>(*ttl_ms / 1000);
     }
 
     return Commander::Parse(args);
@@ -1270,7 +1270,7 @@ class CommandExpireAt : public Commander {
       return {Status::RedisParseErr, "the expire time was overflow"};
     }
 
-    timestamp_ = *parse_result;
+    timestamp_ = static_cast<int>(*parse_result);
 
     return Commander::Parse(args);
   }
@@ -3470,7 +3470,7 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
   std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
-    int result_length = geo_points.size();
+    int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
     for (int i = 0; i < returned_items_count; i++) {
@@ -4581,7 +4581,7 @@ class CommandCommand : public Commander {
         GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
         std::vector<int> keys_indexes;
-        auto s = GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
+        auto s = GetKeysFromCommand(args_[2], static_cast<int>(args_.size()) - 2, &keys_indexes);
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {
@@ -5043,7 +5043,8 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
+        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
+                                              static_cast<double>(max_replication_bytes) * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
                     << " ms since of sending files too quickly";

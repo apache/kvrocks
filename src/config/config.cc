@@ -97,9 +97,9 @@ Config::Config() {
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_, "")},
-      {"port", true, new IntField(&port, kDefaultPort, 1, PORT_LIMIT)},
+      {"port", true, new UInt32Field(&port, kDefaultPort, 1, PORT_LIMIT)},
 #ifdef ENABLE_OPENSSL
-      {"tls-port", true, new IntField(&tls_port, 0, 0, PORT_LIMIT)},
+      {"tls-port", true, new UInt32Field(&tls_port, 0, 0, PORT_LIMIT)},
       {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
       {"tls-key-file", false, new StringField(&tls_key_file, "")},
       {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},
@@ -268,8 +268,8 @@ void Config::initFieldValidator() {
          s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
          if (!s.IsOK()) return s;
          if (start > stop) return Status(Status::NotOK, "invalid range format, start should be smaller than stop");
-         compaction_checker_range.Start = start;
-         compaction_checker_range.Stop = stop;
+         compaction_checker_range.Start = static_cast<int>(start);
+         compaction_checker_range.Stop = static_cast<int>(stop);
          return Status::OK();
        }},
       {"rename-command",
@@ -430,7 +430,7 @@ void Config::initFieldCallback() {
       {"max-io-mb",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->storage_->SetIORateLimit(static_cast<uint64_t>(max_io_mb));
+         srv->storage_->SetIORateLimit(max_io_mb);
          return Status::OK();
        }},
       {"profiling-sample-record-max-len",
@@ -588,7 +588,7 @@ void Config::initFieldCallback() {
   }
 }
 
-void Config::SetMaster(const std::string &host, int port) {
+void Config::SetMaster(const std::string &host, uint32_t port) {
   master_host = host;
   master_port = port;
   auto iter = fields_.find("slaveof");

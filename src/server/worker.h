@@ -70,7 +70,7 @@ class Worker {
   Server *svr_;
 
  private:
-  Status listenTCP(const std::string &host, int port, int backlog);
+  Status listenTCP(const std::string &host, uint32_t port, int backlog);
   static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx);
   static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
                                       void *ctx);

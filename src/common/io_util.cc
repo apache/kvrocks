@@ -151,9 +151,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t con
     sin.sin_port = htons(port);
 
     fcntl(*fd, F_SETFL, O_NONBLOCK);
-    if (connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin))) {
-      return Status::FromErrno();
-    }
+    connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
 
     auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
     if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {

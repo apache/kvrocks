@@ -35,9 +35,9 @@ struct ScopeExit {
     if (enabled_) f_();
   }
 
-  void Enable() { enabled_ = false; }
+  void Enable() { enabled_ = true; }
 
-  void Disable() { enabled_ = true; }
+  void Disable() { enabled_ = false; }
 
   bool enabled_;
   F f_;

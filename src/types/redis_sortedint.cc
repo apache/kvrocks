@@ -107,7 +107,7 @@ rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
   SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = metadata.size;
+  *ret = static_cast<int>(metadata.size);
   return rocksdb::Status::OK();
 }
 

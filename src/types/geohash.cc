@@ -180,9 +180,9 @@ int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range,
   double long_offset = (longitude - long_range->min) / (long_range->max - long_range->min);
 
   /* convert to fixed point based on the step size */
-  lat_offset *= (1ULL << step);
-  long_offset *= (1ULL << step);
-  hash->bits = interleave64(lat_offset, long_offset);
+  lat_offset *= static_cast<double>(1ULL << step);
+  long_offset *= static_cast<double>(1ULL << step);
+  hash->bits = interleave64(static_cast<uint32_t>(lat_offset), static_cast<uint32_t>(long_offset));
   return 1;
 }
 
@@ -215,10 +215,10 @@ int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
   /* divide by 2**step.
    * Then, for 0-1 coordinate, multiply times scale and add
      to the min to get the absolute coordinate. */
-  area->latitude.min = lat_range.min + (ilato * 1.0 / (1ull << step)) * lat_scale;
-  area->latitude.max = lat_range.min + ((ilato + 1) * 1.0 / (1ull << step)) * lat_scale;
-  area->longitude.min = long_range.min + (ilono * 1.0 / (1ull << step)) * long_scale;
-  area->longitude.max = long_range.min + ((ilono + 1) * 1.0 / (1ull << step)) * long_scale;
+  area->latitude.min = lat_range.min + (ilato * 1.0 / static_cast<double>(1ull << step)) * lat_scale;
+  area->latitude.max = lat_range.min + ((ilato + 1) * 1.0 / static_cast<double>(1ull << step)) * lat_scale;
+  area->longitude.min = long_range.min + (ilono * 1.0 / static_cast<double>(1ull << step)) * long_scale;
+  area->longitude.max = long_range.min + ((ilono + 1) * 1.0 / static_cast<double>(1ull << step)) * long_scale;
 
   return 1;
 }

@@ -237,7 +237,8 @@ void ReplicationThread::CallbacksStateMachine::Start() {
     handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
 
-  int last_connect_timestamp = 0, connect_timeout_ms = 3100;
+  uint64_t last_connect_timestamp = 0;
+  int connect_timeout_ms = 3100;
 
   while (!repl_->stop_flag_ && bev == nullptr) {
     if (Util::GetTimeStampMS() - last_connect_timestamp < 1000) {

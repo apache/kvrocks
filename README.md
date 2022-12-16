@@ -188,7 +188,7 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-commands.png)
+![image](assets/chart-commands.png)
 
 ### 2.  QPS on different payloads
 
@@ -196,7 +196,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-values.png)
+![image](assets/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -204,7 +204,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-threads.png)
+![image](assets/chart-threads.png)
 
 ## License
 
@@ -212,4 +212,4 @@ Kvrocks is under the Apache License Version 2.0. See the [LICENSE](LICENSE) file
 
 ## WeChat Official Account (微信公众号)
 
-![WeChat official account](docs/images/wechat_account.jpg)
+![WeChat official account](assets/wechat_account.jpg)

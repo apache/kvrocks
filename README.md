@@ -17,7 +17,7 @@
  under the License.
 -->
 
-<img src="https://kvrocks.apache.org/img/kvrocks.png" alt="kvrocks_logo" width="100"/>
+<img src="https://kvrocks.apache.org/img/kvrocks-featured.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
 [![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE)

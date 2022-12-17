@@ -284,13 +284,13 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return Status(Status::NotOK, "NOSCRIPT No matching script. Please use EVAL");
+        return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
       }
     } else {
       body = args[1];
     }
     std::string sha;
-    s = createFunction(srv, body, &sha, lua);
+    auto s = createFunction(srv, body, &sha, lua);
     if (!s.IsOK()) {
       lua_pop(lua, 1); /* remove the error handler from the stack. */
       return s;
@@ -829,9 +829,9 @@ void sortArray(lua_State *lua) {
 
 void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems) {
   lua_newtable(lua);
-  for (int i = 0; i < elems.size(); i++) {
+  for (size_t i = 0; i < elems.size(); i++) {
     lua_pushlstring(lua, elems[i].c_str(), elems[i].size());
-    lua_rawseti(lua, -2, i + 1);
+    lua_rawseti(lua, -2, static_cast<int>(i) + 1);
   }
   lua_setglobal(lua, var.c_str());
 }

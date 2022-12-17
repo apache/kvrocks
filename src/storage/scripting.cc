@@ -58,6 +58,7 @@
 
 #include "commands/redis_cmd.h"
 #include "fmt/format.h"
+#include "parse_util.h"
 #include "rand.h"
 #include "server/redis_connection.h"
 #include "server/server.h"
@@ -250,14 +251,11 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
     lua = conn->Owner()->Lua();
   }
 
-  auto s = Util::DecimalStringToNum(args[2], &numkeys);
-  if (!s.IsOK()) {
-    return s;
-  }
+  numkeys = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
   if (numkeys > int64_t(args.size() - 3)) {
-    return Status(Status::NotOK, "Number of keys can't be greater than number of args");
+    return {Status::NotOK, "Number of keys can't be greater than number of args"};
   } else if (numkeys < -1) {
-    return Status(Status::NotOK, "Number of keys can't be negative");
+    return {Status::NotOK, "Number of keys can't be negative"};
   }
 
   /* We obtain the script SHA1, then check if this function is already
@@ -619,18 +617,15 @@ const char *redisProtocolToLuaType(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t value = 0;
-
-  Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &value);
+  auto value = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
   lua_pushnumber(lua, static_cast<lua_Number>(value));
   return p + 2;
 }
 
 const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t bulklen = 0;
+  auto bulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
 
-  Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &bulklen);
   if (bulklen == -1) {
     lua_pushboolean(lua, 0);
     return p + 2;
@@ -662,10 +657,9 @@ const char *redisProtocolToLuaType_Error(lua_State *lua, const char *reply) {
 
 const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, int atype) {
   const char *p = strchr(reply + 1, '\r');
-  int64_t mbulklen = 0;
+  int64_t mbulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
   int j = 0;
 
-  Util::DecimalStringToNum(std::string(reply + 1, p - reply - 1), &mbulklen);
   p += 2;
   if (mbulklen == -1) {
     lua_pushboolean(lua, 0);

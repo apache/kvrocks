@@ -38,7 +38,7 @@ Kvrocks has the following key features:
 * High Available, supports redis sentinel to failover when master or slave was failed
 * Cluster mode, centralized management but compatible with Redis cluster client access
 
-Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
+Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
 
 ## Who uses Kvrocks
 
@@ -210,6 +210,10 @@ latency: 99.9% < 10ms
 
 Kvrocks is under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
 
-## WeChat Official Account (微信公众号)
+## Social Media
+
+- [Medium](https://kvrocks.medium.com/)
+- [Zhihu](https://www.zhihu.com/people/kvrocks) (in Chinese)
+- WeChat Official Account (in Chinese, scan the QR code to follow)
 
 ![WeChat official account](assets/wechat_account.jpg)

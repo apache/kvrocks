@@ -159,7 +159,7 @@ Kvrocks implements a proxyless centralized cluster solution but its accessing me
 
 ## Documents
 
-Documents are hosted at the [official website](https://kvrocks.apache.org/docs/gettings-started/).
+Documents are hosted at the [official website](https://kvrocks.apache.org/docs/getting-started/).
 
 * [Supported Commands](https://kvrocks.apache.org/docs/supported-commands/)
 * [Design Complex Structure on RocksDB](https://kvrocks.apache.org/community/data-structure-on-rocksdb/)

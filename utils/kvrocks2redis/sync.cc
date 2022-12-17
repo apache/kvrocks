@@ -64,12 +64,13 @@ void Sync::Start() {
 
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    s = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port, &sock_fd_);
-    if (!s.IsOK()) {
+    auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
+    if (!sock_fd) {
       LOG(ERROR) << s.Msg();
       usleep(10000);
       continue;
     }
+    sock_fd_ = *sock_fd;
     s = auth();
     if (!s.IsOK()) {
       LOG(ERROR) << s.Msg();
@@ -106,11 +107,11 @@ Status Sync::auth() {
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
     if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
-    std::string line;
-    s = Util::SockReadLine(sock_fd_, &line);
-    if (!s.IsOK()) {
+    auto line_state = Util::SockReadLine(sock_fd_);
+    if (!line_state) {
       return Status(Status::NotOK, std::string("read auth response err: ") + s.Msg());
     }
+    std::string line = *line_state;
     if (line.compare(0, 3, "+OK") != 0) {
       return Status(Status::NotOK, "auth got invalid response");
     }
@@ -126,11 +127,11 @@ Status Sync::tryPSync() {
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
   if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
-  std::string line;
-  s = Util::SockReadLine(sock_fd_, &line);
-  if (!s.IsOK()) {
+  auto line_state = Util::SockReadLine(sock_fd_);
+  if (!line_state) {
     return Status(Status::NotOK, std::string("read psync response err: ") + s.Msg());
   }
+  std::string line = *line_state;
 
   if (line.compare(0, 3, "+OK") != 0) {
     if (next_seq_ > 0) {

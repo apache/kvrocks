@@ -223,7 +223,6 @@ LOOP_LABEL:
 }
 
 void ReplicationThread::CallbacksStateMachine::Start() {
-  int cfd = 0;
   struct bufferevent *bev = nullptr;
 
   if (handlers_.empty()) {
@@ -246,14 +245,14 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       sleep(1);
     }
     last_connect_timestamp = Util::GetTimeStampMS();
-    Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd, connect_timeout_ms);
-    if (!s.IsOK()) {
-      LOG(ERROR) << "[replication] Failed to connect the master, err: " << s.Msg();
+    auto cfd = Util::SockConnect(repl_->host_, repl_->port_, connect_timeout_ms);
+    if (!cfd) {
+      LOG(ERROR) << "[replication] Failed to connect the master, err: " << cfd.Msg();
       continue;
     }
-    bev = bufferevent_socket_new(repl_->base_, cfd, BEV_OPT_CLOSE_ON_FREE);
+    bev = bufferevent_socket_new(repl_->base_, *cfd, BEV_OPT_CLOSE_ON_FREE);
     if (bev == nullptr) {
-      close(cfd);
+      close(*cfd);
       LOG(ERROR) << "[replication] Failed to create the event socket";
       continue;
     }
@@ -706,23 +705,22 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
     results.push_back(
         std::async(std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
-            return Status(Status::NotOK, "replication thread was stopped");
+            return {Status::NotOK, "replication thread was stopped"};
           }
-          int sock_fd = 0;
-          Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
-          if (!s.IsOK()) {
-            return Status(Status::NotOK, "connect the server err: " + s.Msg());
+          auto sock_fd = Util::SockConnect(this->host_, this->port_);
+          if (!sock_fd) {
+            return {Status::NotOK, "connect the server err: " + sock_fd.Msg()};
           }
-          UniqueFD unique_fd{sock_fd};
-          s = this->sendAuth(sock_fd);
+          UniqueFD unique_fd{*sock_fd};
+          auto s = this->sendAuth(*sock_fd);
           if (!s.IsOK()) {
-            return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
+            return {Status::NotOK, "sned the auth command err: " + s.Msg()};
           }
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
             if (this->stop_flag_) {
-              return Status(Status::NotOK, "replication thread was stopped");
+              return {Status::NotOK, "replication thread was stopped"};
             }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
@@ -754,12 +752,12 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           // command, so we need to fetch all files by multiple command interactions.
           if (srv_->GetConfig()->master_use_repl_port) {
             for (unsigned i = 0; i < fetch_files.size(); i++) {
-              s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
+              s = this->fetchFiles(*sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
               if (!s.IsOK()) break;
             }
           } else {
             if (!fetch_files.empty()) {
-              s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn);
+              s = this->fetchFiles(*sock_fd, dir, fetch_files, crcs, fn);
             }
           }
           return s;

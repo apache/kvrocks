@@ -94,7 +94,6 @@ void RedisWriter::sync() {
     }
   }
 
-  std::string line;
   size_t chunk_size = 4 * 1024 * 1024;
   char *buffer = new char[chunk_size];
   while (!stop_flag_) {
@@ -123,11 +122,12 @@ void RedisWriter::sync() {
           LOG(ERROR) << "ERR send data to redis err: " + s.Msg();
           break;
         }
-        s = Util::SockReadLine(redis_fds_[iter.first], &line);
-        if (!s.IsOK()) {
+        auto line_state = Util::SockReadLine(redis_fds_[iter.first]);
+        if (!line_state) {
           LOG(ERROR) << "read redis response err: " + s.Msg();
           break;
         }
+        std::string line = *line_state;
         if (line.compare(0, 1, "-") == 0) {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
           // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
@@ -148,17 +148,18 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
                                  int db_index) {
   auto iter = redis_fds_.find(ns);
   if (iter == redis_fds_.end()) {
-    auto s = Util::SockConnect(host, port, &redis_fds_[ns]);
+    auto s = Util::SockConnect(host, port);
     if (!s.IsOK()) {
-      return Status(Status::NotOK, std::string("Failed to connect to redis :") + s.Msg());
+      return {Status::NotOK, std::string("Failed to connect to redis :") + s.Msg()};
     }
+    redis_fds_[ns] = *s;
 
     if (!auth.empty()) {
       auto s = authRedis(ns, auth);
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return Status(Status::NotOK, s.Msg());
+        return {Status::NotOK, s.Msg()};
       }
     }
     if (db_index != 0) {
@@ -166,7 +167,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return Status(Status::NotOK, s.Msg());
+        return {Status::NotOK, s.Msg()};
       }
     }
   }
@@ -177,11 +178,11 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
 Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   const auto auth_len_str = std::to_string(auth.length());
   Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
-  std::string line;
-  auto s = Util::SockReadLine(redis_fds_[ns], &line);
+  auto s = Util::SockReadLine(redis_fds_[ns]);
   if (!s.IsOK()) {
     return Status(Status::NotOK, std::string("read redis auth response err: ") + s.Msg());
   }
+  std::string line = *s;
   if (line.compare(0, 3, "+OK") != 0) {
     return Status(Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line);
   }
@@ -194,11 +195,11 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   Util::SockSend(redis_fds_[ns],
                  "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
-  std::string line;
-  auto s = Util::SockReadLine(redis_fds_[ns], &line);
+  auto s = Util::SockReadLine(redis_fds_[ns]);
   if (!s.IsOK()) {
     return Status(Status::NotOK, std::string("read select db response err: ") + s.Msg());
   }
+  std::string line = *s;
   if (line.compare(0, 3, "+OK") != 0) {
     return Status(Status::NotOK, "[kvrocks2redis] redis select db failed: " + line);
   }

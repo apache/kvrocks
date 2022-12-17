@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <fmt/format.h>
 #include <glog/logging.h>
 
 #include <algorithm>
@@ -91,7 +92,8 @@ class Status {
 
   static Status OK() { return {}; }
 
-  static Status FromErrno() { return Status(NotOK, strerror(errno)); }
+  static Status FromErrno() { return {NotOK, strerror(errno)}; }
+  static Status FromErrno(const std::string& prefix) { return {NotOK, fmt::format("{}: {}", prefix, strerror(errno))}; }
 
   void GetValue() {}
 

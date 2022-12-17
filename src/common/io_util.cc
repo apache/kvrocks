@@ -96,7 +96,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout, int timeout) {
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
   addrinfo hints, *servinfo = nullptr, *p = nullptr;
 
   memset(&hints, 0, sizeof(hints));
@@ -153,8 +153,7 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_tim
         return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
       }
     }
-    *fd = cfd.Release();
-    return Status::OK();
+    return cfd.Release();
   }
   return Status::FromErrno();
 }
@@ -227,17 +226,16 @@ Status SockSetBlocking(int fd, int blocking) {
   return Status::OK();
 }
 
-Status SockReadLine(int fd, std::string *data) {
+StatusOr<std::string> SockReadLine(int fd) {
   UniqueEvbuf evbuf;
   if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
-    return Status(Status::NotOK, std::string("read response err: ") + strerror(errno));
+    return Status::FromErrno("read response err");
   }
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
-    return Status(Status::NotOK, std::string("read response err(empty): ") + strerror(errno));
+    return Status::FromErrno("read response err(empty)");
   }
-  *data = std::string(line.get(), line.length);
-  return Status::OK();
+  return std::string(line.get(), line.length);
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
@@ -281,9 +279,8 @@ int GetLocalPort(int fd) {
 }
 
 bool IsPortInUse(uint32_t port) {
-  int fd = NullFD;
-  Status s = SockConnect("0.0.0.0", port, &fd);
-  if (fd != NullFD) close(fd);
+  auto s = SockConnect("0.0.0.0", port);
+  if (s) close(*s);
   return s.IsOK();
 }
 

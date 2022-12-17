@@ -106,10 +106,8 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_tim
   if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
     return {Status::NotOK, gai_strerror(rv)};
   }
-  if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
-    return {Status::NotOK, gai_strerror(rv)};
-  }
   auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
+
   for (p = servinfo; p != nullptr; p = p->ai_next) {
     auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
     if (!cfd) continue;
@@ -128,8 +126,9 @@ Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_tim
       if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
         return Status::FromErrno();
       }
+
+      // restore to the block mode
       int socket_arg = 0;
-      // Set to blocking mode again...
       if ((socket_arg = fcntl(*cfd, F_GETFL, NULL)) < 0) {
         return Status::FromErrno();
       }

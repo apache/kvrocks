@@ -106,7 +106,7 @@ Status Sync::auth() {
   if (!config_->kvrocks_auth.empty()) {
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
-    if (!s.IsOK()) s.Prefixed("send auth command err");
+    if (!s) return s.Prefixed("send auth command err");
     std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
     if (line.compare(0, 3, "+OK") != 0) {
       return {Status::NotOK, "auth got invalid response"};
@@ -122,7 +122,7 @@ Status Sync::tryPSync() {
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
-  if (!s.IsOK()) return s.Prefixed("send psync command err");
+  if (!s) return s.Prefixed("send psync command err");
   std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read psync response err"));
 
   if (line.compare(0, 3, "+OK") != 0) {

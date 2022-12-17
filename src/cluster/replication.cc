@@ -707,14 +707,11 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           if (this->stop_flag_) {
             return {Status::NotOK, "replication thread was stopped"};
           }
-          auto sock_fd = Util::SockConnect(this->host_, this->port_);
-          if (!sock_fd) {
-            return sock_fd.Prefixed("connect the server err");
-          }
-          UniqueFD unique_fd{*sock_fd};
-          auto s = this->sendAuth(*sock_fd);
+          int sock_fd = GET_OR_RET(Util::SockConnect(this->host_, this->port_).Prefixed("connect the server err"));
+          UniqueFD unique_fd{sock_fd};
+          auto s = this->sendAuth(sock_fd);
           if (!s.IsOK()) {
-            return s.Prefixed("send the auth command err")
+            return s.Prefixed("send the auth command err");
           }
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
@@ -752,12 +749,12 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           // command, so we need to fetch all files by multiple command interactions.
           if (srv_->GetConfig()->master_use_repl_port) {
             for (unsigned i = 0; i < fetch_files.size(); i++) {
-              s = this->fetchFiles(*sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
+              s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
               if (!s.IsOK()) break;
             }
           } else {
             if (!fetch_files.empty()) {
-              s = this->fetchFiles(*sock_fd, dir, fetch_files, crcs, fn);
+              s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn);
             }
           }
           return s;

@@ -148,18 +148,14 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
                                  int db_index) {
   auto iter = redis_fds_.find(ns);
   if (iter == redis_fds_.end()) {
-    auto s = Util::SockConnect(host, port);
-    if (!s.IsOK()) {
-      return {Status::NotOK, std::string("Failed to connect to redis :") + s.Msg()};
-    }
-    redis_fds_[ns] = *s;
+    redis_fds_[ns] = GET_OR_RET(Util::SockConnect(host, port).Prefixed("Failed to connect to redis"));
 
     if (!auth.empty()) {
       auto s = authRedis(ns, auth);
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return {Status::NotOK, s.Msg()};
+        return s;
       }
     }
     if (db_index != 0) {
@@ -167,7 +163,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
       if (!s.IsOK()) {
         close(redis_fds_[ns]);
         redis_fds_.erase(ns);
-        return {Status::NotOK, s.Msg()};
+        return s;
       }
     }
   }
@@ -178,13 +174,9 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
 Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   const auto auth_len_str = std::to_string(auth.length());
   Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
-  auto s = Util::SockReadLine(redis_fds_[ns]);
-  if (!s.IsOK()) {
-    return Status(Status::NotOK, std::string("read redis auth response err: ") + s.Msg());
-  }
-  std::string line = *s;
+  std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read redis auth response err"));
   if (line.compare(0, 3, "+OK") != 0) {
-    return Status(Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line);
+    return {Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line};
   }
   return Status::OK();
 }
@@ -195,13 +187,9 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   Util::SockSend(redis_fds_[ns],
                  "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
-  auto s = Util::SockReadLine(redis_fds_[ns]);
-  if (!s.IsOK()) {
-    return Status(Status::NotOK, std::string("read select db response err: ") + s.Msg());
-  }
-  std::string line = *s;
+  std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
-    return Status(Status::NotOK, "[kvrocks2redis] redis select db failed: " + line);
+    return {Status::NotOK, "[kvrocks2redis] redis select db failed: " + line};
   }
   return Status::OK();
 }

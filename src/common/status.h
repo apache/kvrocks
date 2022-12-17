@@ -93,7 +93,14 @@ class Status {
   static Status OK() { return {}; }
 
   static Status FromErrno() { return {NotOK, strerror(errno)}; }
-  static Status FromErrno(const std::string& prefix) { return {NotOK, fmt::format("{}: {}", prefix, strerror(errno))}; }
+  static Status FromErrno(std::string_view prefix) { return {NotOK, fmt::format("{}: {}", prefix, strerror(errno))}; }
+
+  Status Prefixed(std::string_view prefix) const {
+    if (*this) {
+      return *this;
+    }
+    return {code_, fmt::format("{}: {}", prefix, msg_)};
+  }
 
   void GetValue() {}
 
@@ -264,6 +271,20 @@ struct StatusOr {  // NOLINT
   std::string Msg() && {
     if (*this) return Status::ok_msg;
     return std::move(*error_);
+  }
+
+  StatusOr Prefixed(std::string_view prefix) const& {
+    if (*this) {
+      return *this;
+    }
+    return {code_, fmt::format("{}: {}", prefix, *error_)};
+  }
+
+  StatusOr Prefixed(std::string_view prefix) && {
+    if (*this) {
+      return std::move(*this);
+    }
+    return {code_, fmt::format("{}: {}", prefix, std::move(*error_))};
   }
 
   ~StatusOr() {

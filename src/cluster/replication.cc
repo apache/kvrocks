@@ -709,12 +709,12 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           }
           auto sock_fd = Util::SockConnect(this->host_, this->port_);
           if (!sock_fd) {
-            return {Status::NotOK, "connect the server err: " + sock_fd.Msg()};
+            return sock_fd.Prefixed("connect the server err");
           }
           UniqueFD unique_fd{*sock_fd};
           auto s = this->sendAuth(*sock_fd);
           if (!s.IsOK()) {
-            return {Status::NotOK, "sned the auth command err: " + s.Msg()};
+            return s.Prefixed("send the auth command err")
           }
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;

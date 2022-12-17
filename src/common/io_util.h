@@ -27,8 +27,7 @@
 namespace Util {
 
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(const std::string &host, uint32_t port, int *fd);
-Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout, int timeout = 0);
+Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout = 0, int timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);

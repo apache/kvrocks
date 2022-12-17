@@ -21,6 +21,7 @@ package replication
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,6 +31,31 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReplicationWithHostname(t *testing.T) {
+	srvA := util.StartServer(t, map[string]string{})
+	defer srvA.Close()
+	rdbA := srvA.NewClient()
+	defer func() { require.NoError(t, rdbA.Close()) }()
+	util.Populate(t, rdbA, "", 100, 10)
+
+	srvB := util.StartServer(t, map[string]string{})
+	defer srvB.Close()
+	rdbB := srvB.NewClient()
+	defer func() { require.NoError(t, rdbB.Close()) }()
+
+	t.Run("Set instance A as slave of B with localhost, for issue #1182", func(t *testing.T) {
+		require.NoError(t, rdbA.SlaveOf(context.Background(), "localhost", fmt.Sprintf("%d", srvB.Port())).Err())
+		util.SlaveOf(t, rdbA, srvB)
+		util.WaitForSync(t, rdbA)
+		ctx := context.Background()
+
+		require.NoError(t, rdbB.Set(ctx, "mykey", "foo", 0).Err())
+		require.Eventually(t, func() bool {
+			return rdbA.Get(ctx, "mykey").Val() == "foo"
+		}, 50*time.Second, 100*time.Millisecond)
+	})
+}
 
 func TestReplicationLoading(t *testing.T) {
 	srvA := util.StartServer(t, map[string]string{})

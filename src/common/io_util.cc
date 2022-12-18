@@ -71,7 +71,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   // Send first probe after interval.
   val = interval;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPIDLE: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPIDLE");
   }
 
   // Send next probes after the specified interval. Note that we set the
@@ -80,14 +80,14 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   val = interval / 3;
   if (val == 0) val = 1;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPINTVL: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPINTVL");
   }
 
   // Consider the socket in error state after three we send three ACK
   // probes without getting a reply.
   val = 3;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPCNT: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPCNT");
   }
 #else
   ((void)interval);  // Avoid unused var warning for non Linux systems.
@@ -150,7 +150,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
       tv.tv_sec = timeout / 1000;
       tv.tv_usec = (timeout % 1000) * 1000;
       if (setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
-        return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
+        return Status::FromErrno("setsockopt failed");
       }
     }
     return cfd.Release();
@@ -199,7 +199,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
       if (errno == EINTR)
         continue;
       else
-        return Status(Status::NotOK, strerror(errno));
+        return Status::FromErrno();
     }
     size -= nwritten;
     offset += nwritten;
@@ -211,7 +211,7 @@ Status SockSetBlocking(int fd, int blocking) {
   int flags = 0;
   // Old flags
   if ((flags = fcntl(fd, F_GETFL)) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
+    return Status::FromErrno("fcntl(F_GETFL)");
   }
 
   // New flags
@@ -221,7 +221,7 @@ Status SockSetBlocking(int fd, int blocking) {
     flags |= O_NONBLOCK;
 
   if (fcntl(fd, F_SETFL, flags) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
+    return Status::FromErrno("fcntl(F_SETFL,O_BLOCK)");
   }
   return Status::OK();
 }

@@ -776,15 +776,15 @@ Status ReplicationThread::sendAuth(int sock_fd) {
     UniqueEvbuf evbuf;
     const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
     auto s = Util::SockSend(sock_fd, auth_command);
-    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
+    if (!s.IsOK()) return s.Prefixed("send auth command err");
     while (true) {
       if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
+        return Status::FromErrno("read auth response err");
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line.get(), "+OK", 3) != 0) {
-        return Status(Status::NotOK, "auth got invalid response");
+        return {Status::NotOK, "auth got invalid response"};
       }
       break;
     }
@@ -862,7 +862,7 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 
   const auto fetch_command = Redis::MultiBulkString({"_fetch_file", files_str});
   auto s = Util::SockSend(sock_fd, fetch_command);
-  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: " + s.Msg());
+  if (!s.IsOK()) return s.Prefixed("send fetch file command");
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {

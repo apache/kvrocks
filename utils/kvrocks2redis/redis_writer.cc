@@ -119,12 +119,12 @@ void RedisWriter::sync() {
         std::string con = std::string(buffer, getted_line_leng);
         s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
         if (!s.IsOK()) {
-          LOG(ERROR) << "ERR send data to redis err: " + s.Msg();
+          LOG(ERROR) << "ERR send data to redis err: " << s.Msg();
           break;
         }
         auto line_state = Util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
-          LOG(ERROR) << "read redis response err: " + s.Msg();
+          LOG(ERROR) << "read redis response err: " << s.Msg();
           break;
         }
         std::string line = *line_state;
@@ -202,7 +202,7 @@ Status RedisWriter::updateNextOffset(const std::string &ns, std::istream::off_ty
 Status RedisWriter::readNextOffsetFromFile(const std::string &ns, std::istream::off_type *offset) {
   next_offset_fds_[ns] = open(getNextOffsetFilePath(ns).data(), O_RDWR | O_CREAT, 0666);
   if (next_offset_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open next offset file :") + strerror(errno));
+    return Status::FromErrno("Failed to open next offset file");
   }
 
   *offset = 0;

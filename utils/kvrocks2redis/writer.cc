@@ -34,22 +34,16 @@ Writer::~Writer() {
 }
 
 Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs) {
-  auto s = GetAofFd(ns);
-  if (!s.IsOK()) {
-    return Status(Status::NotOK, s.Msg());
-  }
+  GET_OR_RET(GetAofFd(ns));
   for (const auto &aof : aofs) {
-    Util::Write(aof_fds_[ns], aof);
+    GET_OR_RET(Util::Write(aof_fds_[ns], aof));
   }
 
   return Status::OK();
 }
 
 Status Writer::FlushDB(const std::string &ns) {
-  auto s = GetAofFd(ns, true);
-  if (!s.IsOK()) {
-    return Status(Status::NotOK, s.Msg());
-  }
+  GET_OR_RET(GetAofFd(ns, true));
 
   return Status::OK();
 }

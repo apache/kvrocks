@@ -177,6 +177,7 @@ add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
 
 target_include_directories(kvrocks_objs PUBLIC src src/common ${PROJECT_BINARY_DIR})
 target_compile_features(kvrocks_objs PUBLIC cxx_std_17)
+# TODO: Add -Werror=unused-result to compile options
 target_compile_options(kvrocks_objs PUBLIC -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(kvrocks_objs PUBLIC -Wno-pedantic)

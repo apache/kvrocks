@@ -66,7 +66,7 @@ void Sync::Start() {
   while (!IsStopped()) {
     auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
     if (!sock_fd) {
-      LOG(ERROR) << s.Msg();
+      LOG(ERROR) << sock_fd.Msg();
       usleep(10000);
       continue;
     }

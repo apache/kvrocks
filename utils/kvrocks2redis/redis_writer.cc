@@ -80,7 +80,7 @@ void RedisWriter::Stop() {
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
 
-  t_.join();
+  if (t_.joinable()) t_.join();
   // handled by sync func
   LOG(INFO) << "[kvrocks2redis] redis_writer Stopped";
 }

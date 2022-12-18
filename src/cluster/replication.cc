@@ -333,7 +333,7 @@ void ReplicationThread::Stop() {
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
                       // handled by timer
-  t_.join();
+  if (t_.joinable()) t_.join();
   LOG(INFO) << "[replication] Stopped";
 }
 

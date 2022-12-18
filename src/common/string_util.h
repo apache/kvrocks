@@ -24,8 +24,6 @@
 
 namespace Util {
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
 const std::string Float2String(double d);
 std::string ToLower(std::string in);
 bool EqualICase(std::string_view lhs, std::string_view rhs);

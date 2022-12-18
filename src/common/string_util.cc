@@ -26,24 +26,6 @@
 
 namespace Util {
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
 const std::string Float2String(double d) {
   if (std::isinf(d)) {
     return d > 0 ? "inf" : "-inf";

@@ -260,16 +260,13 @@ void Config::initFieldValidator() {
          }
          std::vector<std::string> args = Util::Split(v, "-");
          if (args.size() != 2) {
-           return Status(Status::NotOK, "invalid range format, the range should be between 0 and 24");
+           return {Status::NotOK, "invalid range format, the range should be between 0 and 24"};
          }
-         int64_t start = 0, stop = 0;
-         Status s = Util::DecimalStringToNum(args[0], &start, 0, 24);
-         if (!s.IsOK()) return s;
-         s = Util::DecimalStringToNum(args[1], &stop, 0, 24);
-         if (!s.IsOK()) return s;
-         if (start > stop) return Status(Status::NotOK, "invalid range format, start should be smaller than stop");
-         compaction_checker_range.Start = static_cast<int>(start);
-         compaction_checker_range.Stop = static_cast<int>(stop);
+         auto start = GET_OR_RET(ParseInt<int>(args[0], {0, 24}, 10)),
+              stop = GET_OR_RET(ParseInt<int>(args[1], {0, 24}, 10));
+         if (start > stop) return {Status::NotOK, "invalid range format, start should be smaller than stop"};
+         compaction_checker_range.Start = start;
+         compaction_checker_range.Stop = stop;
          return Status::OK();
        }},
       {"rename-command",

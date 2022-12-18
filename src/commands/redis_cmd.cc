@@ -4310,8 +4310,7 @@ class CommandPerfLog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -4348,8 +4347,7 @@ class CommandSlowlog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -5086,15 +5084,12 @@ class CommandCluster : public Commander {
 
     if (subcommand_ == "import") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
-      int64_t state = 0;
-      s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart),
-                                   static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return {Status::NotOK, "Invalid import state"};
+      auto state = ParseInt<unsigned>(args[3], {kImportStart, kImportNone}, 10);
+      if (!state) return {Status::NotOK, "Invalid import state"};
 
-      state_ = static_cast<ImportStatus>(state);
+      state_ = static_cast<ImportStatus>(*state);
       return Status::OK();
     }
 
@@ -5181,8 +5176,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "migrate") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
 
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
       dst_node_id_ = args[3];
       return Status::OK();

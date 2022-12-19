@@ -96,15 +96,10 @@ class Status {
   static Status FromErrno(std::string_view prefix) { return {NotOK, fmt::format("{}: {}", prefix, strerror(errno))}; }
 
   Status Prefixed(std::string_view prefix) const {
-    return MapMsg([prefix](auto&& msg) { return fmt::format("{}: {}", prefix, msg); });
-  }
-
-  template <typename F>
-  Status MapMsg(F&& f) const {
     if (*this) {
       return *this;
     }
-    return {code_, std::forward<F>(f)(msg_)};
+    return {code_, fmt::format("{}: {}", prefix, msg_)};
   }
 
   void GetValue() {}
@@ -278,28 +273,18 @@ struct StatusOr {  // NOLINT
     return std::move(*error_);
   }
 
-  template <typename F>
-  StatusOr MapMsg(F&& f) const& {
+  StatusOr Prefixed(std::string_view prefix) const& {
     if (*this) {
       return *this;
     }
-    return {code_, std::forward<F>(f)(*error_)};
-  }
-
-  template <typename F>
-  StatusOr MapMsg(F&& f) && {
-    if (*this) {
-      return std::move(*this);
-    }
-    return {code_, std::forward<F>(f)(std::move(*error_))};
-  }
-
-  StatusOr Prefixed(std::string_view prefix) const& {
-    return MapMsg([prefix](auto&& msg) { return fmt::format("{}: {}", prefix, msg); });
+    return {code_, fmt::format("{}: {}", prefix, *error_)};
   }
 
   StatusOr Prefixed(std::string_view prefix) && {
-    return std::move(*this).MapMsg([prefix](auto&& msg) { return fmt::format("{}: {}", prefix, msg); });
+    if (*this) {
+      return std::move(*this);
+    }
+    return {code_, fmt::format("{}: {}", prefix, std::move(*error_))};
   }
 
   ~StatusOr() {

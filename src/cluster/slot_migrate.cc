@@ -127,7 +127,7 @@ SlotMigrate::~SlotMigrate() {
     stop_migrate_ = true;
     thread_state_ = ThreadState::Terminated;
     job_cv_.notify_all();
-    t_.join();
+    if (t_.joinable()) t_.join();
   }
 }
 

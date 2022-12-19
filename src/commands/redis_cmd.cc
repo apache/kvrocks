@@ -6269,7 +6269,7 @@ class CommandXSetId : public Commander {
     }
 
     for (size_t i = 3; i < args.size(); /* manual increment */) {
-      if (Util::ToLower(args[i]) == "entriesadded" && i + 1 < args.size()) {
+      if (Util::EqualICase(args[i], "entriesadded") && i + 1 < args.size()) {
         auto parse_result = ParseInt<uint64_t>(args[i + 1]);
         if (!parse_result) {
           return {Status::RedisParseErr, errValueNotInteger};
@@ -6277,7 +6277,7 @@ class CommandXSetId : public Commander {
 
         entries_added_ = *parse_result;
         i += 2;
-      } else if (Util::ToLower(args[i]) == "maxdeletedid" && i + 1 < args.size()) {
+      } else if (Util::EqualICase(args[i], "maxdeletedid") && i + 1 < args.size()) {
         StreamEntryID id;
         s = Redis::ParseStreamEntryID(args[i + 1], &id);
         if (!s.IsOK()) {

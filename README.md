@@ -17,7 +17,7 @@
  under the License.
 -->
 
-<img src="docs/images/kvrocks_logo.png" alt="kvrocks_logo" width="350"/>
+<img src="https://kvrocks.apache.org/img/kvrocks-featured.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)
 [![GitHub license](https://img.shields.io/github/license/apache/incubator-kvrocks)](https://github.com/apache/incubator-kvrocks/blob/unstable/LICENSE)
@@ -38,31 +38,15 @@ Kvrocks has the following key features:
 * High Available, supports redis sentinel to failover when master or slave was failed
 * Cluster mode, centralized management but compatible with Redis cluster client access
 
-> Thanks for designers @[田凌宇](https://github.com/tianlingyu1997) and @范世丽 contribute the kvrocks logo for us.
+Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
 
-## Who uses kvrocks
+## Who uses Kvrocks
 
-<table>
-<tr>
-<td height = "128" width = "164"><img src="https://imgur.com/9X1kc2j.png" alt="Meitu"></td>
-<td height = "128" width = "164"><img src="https://imgur.com/vqgSmMz.jpeg" alt="Ctrip"></td>
-<td height = "128" width = "164"><img src="docs/images/jiatou_logo.png" alt="JiaTou"></td>
-</tr>
-<tr>
-<td height = "128" width = "164"><img src="docs/images/baidu_logo.png" alt="Baidu"></td>
-<td height = "128" width = "164"><img src="https://imgur.com/MJsoEN7.png" alt="BaishanCloud"></td>
-<td height = "128" width = "164"><img src="docs/images/rgyun_logo.png" alt="Rgyun"></td>
-</tr>
-<tr>
-<td height = "128" width = "164"><img src="docs/images/xueqiu_logo.png" alt="Xueqiu"></td>
-<td height = "128" width = "164"><img src="docs/images/U-NEXT_logo.png" alt="U-NEXT"></td>
-<td height = "128" width = "164"><img src="docs/images/circl-lu.png" alt="circl.lu"></td>
-</tr>
-</table>
+Find Kvrocks users at [the Users page](https://kvrocks.apache.org/users/).
 
-***Tickets a pull request to let us known that you're using kvrocks and add your logo to README***
+Users are encouraged to add themselves to the Users page. Send a pull request to add company or organization [information](https://github.com/apache/incubator-kvrocks-website/blob/main/src/components/UserLogos/index.tsx) and [logo](https://github.com/apache/incubator-kvrocks-website/tree/main/static/media/users).
 
-## Build and Run kvrocks
+## Build and run Kvrocks
 
 ### Prerequisite
 
@@ -105,13 +89,13 @@ To build with luaJIT instead of lua for better performance, run:
 $ ./x.py build -DUSE_LUAJIT=ON
 ```
 
-### Running kvrocks
+### Running Kvrocks
 
 ```shell
 $ ./build/kvrocks -c kvrocks.conf
 ```
 
-### Running kvrocks using Docker
+### Running Kvrocks using Docker
 
 ```shell
 $ docker run -it -p 6666:6666 apache/kvrocks
@@ -119,7 +103,7 @@ $ docker run -it -p 6666:6666 apache/kvrocks
 $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```
 
-### Connect kvrocks service
+### Connect Kvrocks service
 
 ```
 $ redis-cli -p 6666
@@ -143,7 +127,6 @@ $ ./x.py test go # run Golang (unit and integration) test cases
   * Ubuntu
   * and most other distros
 * macOS
-
 
 ##  Namespace
 
@@ -172,15 +155,15 @@ OK
 
 ## Cluster
 
-Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://kvrocks.apache.org/docs/Cluster/kvrocks-cluster-introduction)
+Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://kvrocks.apache.org/docs/cluster/)
 
 ## Documents
 
-Documents are hosted at the [official website](https://kvrocks.apache.org/docs/supported-commands).
+Documents are hosted at the [official website](https://kvrocks.apache.org/docs/getting-started/).
 
-* [Supported Commands](https://kvrocks.apache.org/docs/supported-commands)
-* [Design Complex Structure on RocksDB](https://kvrocks.apache.org/docs/Design/design-structure-on-rocksdb)
-* [Replication Design](https://kvrocks.apache.org/docs/Design/replication)
+* [Supported Commands](https://kvrocks.apache.org/docs/supported-commands/)
+* [Design Complex Structure on RocksDB](https://kvrocks.apache.org/community/data-structure-on-rocksdb/)
+* [Replication Design](https://kvrocks.apache.org/docs/replication)
 
 ## Tools
 
@@ -205,7 +188,7 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/s
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-commands.png)
+![image](assets/chart-commands.png)
 
 ### 2.  QPS on different payloads
 
@@ -213,7 +196,7 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-values.png)
+![image](assets/chart-values.png)
 
 #### 3. QPS on different workers
 
@@ -221,12 +204,16 @@ latency: 99.9% < 10ms
 
 latency: 99.9% < 10ms
 
-![image](docs/images/chart-threads.png)
+![image](assets/chart-threads.png)
 
 ## License
 
 Kvrocks is under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
 
-## WeChat Official Account (微信公众号)
+## Social Media
 
-![WeChat official account](docs/images/wechat_account.jpg)
+- [Medium](https://kvrocks.medium.com/)
+- [Zhihu](https://www.zhihu.com/people/kvrocks) (in Chinese)
+- WeChat Official Account (in Chinese, scan the QR code to follow)
+
+![WeChat official account](assets/wechat_account.jpg)

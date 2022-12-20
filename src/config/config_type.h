@@ -22,6 +22,8 @@
 
 #include <fmt/format.h>
 
+#include <climits>
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -147,10 +149,9 @@ class OctalField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int64_t n;
-    auto s = Util::OctalStringToNum(v, &n, min_, max_);
+    auto s = ParseInt<int>(v, {min_, max_}, 8);
     if (!s.IsOK()) return s;
-    *receiver_ = static_cast<int>(n);
+    *receiver_ = *s;
     return Status::OK();
   }
 

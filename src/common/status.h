@@ -29,7 +29,7 @@
 #include <type_traits>
 #include <utility>
 
-class Status {
+class [[nodiscard]] Status {
  public:
   enum Code : unsigned char {
     cOK = 0,
@@ -121,7 +121,7 @@ template <typename T>
 struct IsStatusOr<StatusOr<T>> : std::integral_constant<bool, true> {};
 
 template <typename T>
-struct StatusOr {  // NOLINT
+struct [[nodiscard]] StatusOr {  // NOLINT
   static_assert(!std::is_same<T, Status>::value, "value_type cannot be Status");
   static_assert(!std::is_same<T, Status::Code>::value, "value_type cannot be Status::Code");
   static_assert(!IsStatusOr<T>::value, "value_type cannot be StatusOr");

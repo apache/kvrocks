@@ -30,6 +30,19 @@
 
 namespace Redis {
 
+const char *errSetEntryIdSmallerThanLastGenerated =
+    "The ID specified in XSETID is smaller than the target stream top item";
+const char *errEntryIdOutOfRange = "The ID specified in XADD must be greater than 0-0";
+const char *errStreamExhaustedEntryId = "The stream has exhausted the last possible ID, unable to add more items";
+const char *errAddEntryIdSmallerThanLastGenerated =
+    "The ID specified in XADD is equal or smaller than the target stream top item";
+const char *errEntriesAddedSmallerThanStreamSize =
+    "The entries_added specified in XSETID is smaller than the target stream length";
+const char *errMaxDeletedIdGreaterThanLastGenerated =
+    "The ID specified in XSETID is smaller than the provided max_deleted_entry_id";
+const char *errEntriesAddedNotSpecifiedForEmptyStream = "an empty stream should have non-zero value of ENTRIESADDED";
+const char *errMaxDeletedIdNotSpecifiedForEmptyStream = "an empty stream should have MAXDELETEDID";
+
 rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
   return Database::GetMetadata(kRedisStream, stream_name, metadata);
 }
@@ -160,24 +173,21 @@ rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const Str
                                        bool first_entry, StreamEntryID *next_entry_id) const {
   if (options.with_entry_id) {
     if (options.entry_id.ms == 0 && !options.entry_id.any_seq_number && options.entry_id.seq == 0) {
-      return rocksdb::Status::InvalidArgument("The ID specified in XADD must be greater than 0-0");
+      return rocksdb::Status::InvalidArgument(errEntryIdOutOfRange);
     }
 
     if (metadata.last_generated_id.ms == UINT64_MAX && metadata.last_generated_id.seq == UINT64_MAX) {
-      return rocksdb::Status::InvalidArgument(
-          "The stream has exhausted the last possible ID, unable to add more items");
+      return rocksdb::Status::InvalidArgument(errStreamExhaustedEntryId);
     }
 
     if (!first_entry) {
       if (metadata.last_generated_id.ms > options.entry_id.ms) {
-        return rocksdb::Status::InvalidArgument(
-            "The ID specified in XADD is equal or smaller than the target stream top item");
+        return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
       }
 
       if (metadata.last_generated_id.ms == options.entry_id.ms) {
         if (!options.entry_id.any_seq_number && metadata.last_generated_id.seq >= options.entry_id.seq) {
-          return rocksdb::Status::InvalidArgument(
-              "The ID specified in XADD is equal or smaller than the target stream top item");
+          return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
         }
 
         if (options.entry_id.any_seq_number && metadata.last_generated_id.seq == UINT64_MAX) {
@@ -601,6 +611,63 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
   }
 
   return ret;
+}
+
+rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,
+                              std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id) {
+  if (max_deleted_id && last_generated_id < max_deleted_id) {
+    return rocksdb::Status::InvalidArgument(errMaxDeletedIdGreaterThanLastGenerated);
+  }
+
+  std::string ns_key;
+  AppendNamespacePrefix(stream_name, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound()) {
+    if (!entries_added || entries_added == 0) {
+      return rocksdb::Status::InvalidArgument(errEntriesAddedNotSpecifiedForEmptyStream);
+    }
+
+    if (!max_deleted_id || (max_deleted_id->ms == 0 && max_deleted_id->seq == 0)) {
+      return rocksdb::Status::InvalidArgument(errMaxDeletedIdNotSpecifiedForEmptyStream);
+    }
+
+    // create an empty stream
+    metadata = StreamMetadata();
+  }
+
+  if (metadata.size > 0 && last_generated_id < metadata.last_generated_id) {
+    return rocksdb::Status::InvalidArgument(errSetEntryIdSmallerThanLastGenerated);
+  }
+
+  if (metadata.size > 0 && entries_added && entries_added < metadata.size) {
+    return rocksdb::Status::InvalidArgument(errEntriesAddedSmallerThanStreamSize);
+  }
+
+  metadata.last_generated_id = last_generated_id;
+  if (entries_added) {
+    metadata.entries_added = *entries_added;
+  }
+  if (max_deleted_id && (max_deleted_id->ms != 0 || max_deleted_id->seq != 0)) {
+    metadata.max_deleted_entry_id = *max_deleted_id;
+  }
+
+  rocksdb::WriteBatch batch;
+  WriteBatchLogData log_data(kRedisStream);
+  batch.PutLogData(log_data.Encode());
+
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch.Put(metadata_cf_handle_, ns_key, bytes);
+
+  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
 }  // namespace Redis

@@ -34,12 +34,9 @@ class RedisStreamTest : public TestBase {
   }
 
  protected:
-  RedisStreamTest() : TestBase() {
-    stream = new Redis::Stream(storage_, "stream_ns");
-    name = "test_stream";
-  }
+  RedisStreamTest() : TestBase(), name("test_stream") { stream = new Redis::Stream(storage_, "stream_ns"); }
 
-  ~RedisStreamTest() { delete stream; }
+  ~RedisStreamTest() override { delete stream; }
 
   void SetUp() override { stream->Del(name); }
 
@@ -340,7 +337,7 @@ TEST_F(RedisStreamTest, RangeOnEmptyStream) {
   Redis::StreamEntryID id;
   auto s = stream->Add(name, add_options, values, &id);
   EXPECT_TRUE(s.ok());
-  uint64_t removed;
+  uint64_t removed = 0;
   s = stream->DeleteEntries(name, {id}, &removed);
   EXPECT_TRUE(s.ok());
 
@@ -1209,7 +1206,7 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStartAndExcludedEnd) {
 
 TEST_F(RedisStreamTest, DeleteFromNonExistingStream) {
   std::vector<Redis::StreamEntryID> ids = {Redis::StreamEntryID{12345, 6789}};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   auto s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 0);
@@ -1225,7 +1222,7 @@ TEST_F(RedisStreamTest, DeleteExistingEntry) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {id};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 1);
@@ -1241,7 +1238,7 @@ TEST_F(RedisStreamTest, DeleteNonExistingEntry) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {Redis::StreamEntryID{123, 456}};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 0);
@@ -1273,7 +1270,7 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
 
   std::vector<Redis::StreamEntryID> ids = {Redis::StreamEntryID{123456, 0}, Redis::StreamEntryID{1234567, 89},
                                            Redis::StreamEntryID{123458, 0}};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 2);
@@ -1292,7 +1289,7 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
 }
 
 TEST_F(RedisStreamTest, LenOnNonExistingStream) {
-  uint64_t length;
+  uint64_t length = 0;
   auto s = stream->Len(name, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
@@ -1308,11 +1305,11 @@ TEST_F(RedisStreamTest, LenOnEmptyStream) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {id};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
-  uint64_t length;
+  uint64_t length = 0;
   s = stream->Len(name, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
@@ -1332,7 +1329,7 @@ TEST_F(RedisStreamTest, Len) {
   s = stream->Add(name, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
-  uint64_t length;
+  uint64_t length = 0;
   s = stream->Len(name, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
@@ -1342,7 +1339,7 @@ TEST_F(RedisStreamTest, TrimNonExistingStream) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   auto s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1357,14 +1354,14 @@ TEST_F(RedisStreamTest, TrimEmptyStream) {
   auto s = stream->Add(name, add_options, values, &id);
   EXPECT_TRUE(s.ok());
   std::vector<Redis::StreamEntryID> ids = {id};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1381,7 +1378,7 @@ TEST_F(RedisStreamTest, TrimWithNoStrategySpecified) {
 
   Redis::StreamTrimOptions options;
   options.min_id = Redis::StreamEntryID{123456, 0};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1414,7 +1411,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenGreaterThanStreamSize) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1447,7 +1444,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenEqualToStreamSize) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 4;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1480,7 +1477,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSize) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 2;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 2);
@@ -1525,7 +1522,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenEqualTo1) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 1;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 3);
@@ -1568,11 +1565,11 @@ TEST_F(RedisStreamTest, TrimWithMaxLenZero) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 0;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 4);
-  uint64_t length;
+  uint64_t length = 0;
   s = stream->Len(name, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
@@ -1595,7 +1592,7 @@ TEST_F(RedisStreamTest, TrimWithMinIdLessThanFirstEntryID) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MinID;
   options.min_id = Redis::StreamEntryID{12345, 0};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1618,7 +1615,7 @@ TEST_F(RedisStreamTest, TrimWithMinIdEqualToFirstEntryID) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MinID;
   options.min_id = Redis::StreamEntryID{123456, 0};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
@@ -1651,7 +1648,7 @@ TEST_F(RedisStreamTest, TrimWithMinId) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MinID;
   options.min_id = Redis::StreamEntryID{123457, 10};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 2);
@@ -1696,12 +1693,12 @@ TEST_F(RedisStreamTest, TrimWithMinIdGreaterThanLastEntryID) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MinID;
   options.min_id = Redis::StreamEntryID{12345678, 0};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 4);
 
-  uint64_t length;
+  uint64_t length = 0;
   s = stream->Len(name, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
@@ -1723,7 +1720,7 @@ TEST_F(RedisStreamTest, StreamInfoOnEmptyStream) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {id};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
@@ -1858,7 +1855,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterLastEntryDeletion) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {id3};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
@@ -1899,7 +1896,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterFirstEntryDeletion) {
   EXPECT_TRUE(s.ok());
 
   std::vector<Redis::StreamEntryID> ids = {id1};
-  uint64_t deleted;
+  uint64_t deleted = 0;
   s = stream->DeleteEntries(name, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
@@ -1947,7 +1944,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMinId) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MinID;
   options.min_id = Redis::StreamEntryID{123458, 0};
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
@@ -1995,7 +1992,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMaxLen) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 2;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
@@ -2043,7 +2040,7 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimAllEntries) {
   Redis::StreamTrimOptions options;
   options.strategy = Redis::StreamTrimStrategy::MaxLen;
   options.max_len = 0;
-  uint64_t trimmed;
+  uint64_t trimmed = 0;
   s = stream->Trim(name, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
@@ -2058,4 +2055,162 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimAllEntries) {
   EXPECT_FALSE(info.first_entry);
   EXPECT_FALSE(info.last_entry);
   EXPECT_EQ(info.entries.size(), 0);
+}
+
+TEST_F(RedisStreamTest, StreamSetIdNonExistingStreamCreatesEmptyStream) {
+  Redis::StreamEntryID last_id(5, 0);
+  std::optional<Redis::StreamEntryID> max_del_id = Redis::StreamEntryID{2, 0};
+  uint64_t entries_added = 3;
+  auto s = stream->SetId("some-non-existing-stream1", last_id, entries_added, max_del_id);
+  EXPECT_TRUE(s.ok());
+
+  Redis::StreamInfo info;
+  s = stream->GetStreamInfo("some-non-existing-stream1", false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.last_generated_id.ToString(), last_id.ToString());
+  EXPECT_EQ(info.entries_added, entries_added);
+  EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
+
+  s = stream->SetId("some-non-existing-stream2", last_id, std::nullopt, max_del_id);
+  EXPECT_FALSE(s.ok());
+
+  s = stream->SetId("some-non-existing-stream3", last_id, entries_added, std::nullopt);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdLastIdLessThanExisting) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+
+  s = stream->SetId(name, {1, 0}, std::nullopt, std::nullopt);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdEntriesAddedLessThanStreamSize) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values2 = {"key2", "val2"};
+  Redis::StreamEntryID id2;
+  stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+
+  s = stream->SetId(name, {id2.ms + 1, 0}, 1, std::nullopt);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdLastIdEqualToExisting) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+
+  s = stream->SetId(name, {id1.ms, id1.seq}, std::nullopt, std::nullopt);
+  EXPECT_TRUE(s.ok());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdLessThanCurrent) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+  uint64_t deleted = 0;
+  s = stream->DeleteEntries(name, {id1}, &deleted);
+  EXPECT_TRUE(s.ok());
+
+  std::optional<Redis::StreamEntryID> max_del_id = Redis::StreamEntryID{1, 0};
+  s = stream->SetId(name, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  EXPECT_TRUE(s.ok());
+
+  Redis::StreamInfo info;
+  s = stream->GetStreamInfo(name, false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdIsZero) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+  uint64_t deleted = 0;
+  s = stream->DeleteEntries(name, {id1}, &deleted);
+  EXPECT_TRUE(s.ok());
+
+  std::optional<Redis::StreamEntryID> max_del_id = Redis::StreamEntryID{0, 0};
+  s = stream->SetId(name, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  EXPECT_TRUE(s.ok());
+
+  Redis::StreamInfo info;
+  s = stream->GetStreamInfo(name, false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.max_deleted_entry_id.ToString(), id1.ToString());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdGreaterThanLastGeneratedId) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+  uint64_t deleted = 0;
+  s = stream->DeleteEntries(name, {id1}, &deleted);
+  EXPECT_TRUE(s.ok());
+
+  std::optional<Redis::StreamEntryID> max_del_id = Redis::StreamEntryID{id1.ms + 1, 0};
+  s = stream->SetId(name, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST_F(RedisStreamTest, StreamSetIdLastIdGreaterThanExisting) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  std::vector<std::string> values1 = {"key1", "val1"};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, values1, &id1);
+  EXPECT_TRUE(s.ok());
+
+  s = stream->SetId(name, {id1.ms + 1, id1.seq}, std::nullopt, std::nullopt);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t added = 10;
+  s = stream->SetId(name, {id1.ms + 1, id1.seq}, added, std::nullopt);
+  EXPECT_TRUE(s.ok());
+
+  Redis::StreamInfo info;
+  s = stream->GetStreamInfo(name, false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.entries_added, added);
+
+  added = 5;
+  std::optional<Redis::StreamEntryID> max_del_id = Redis::StreamEntryID{5, 0};
+  s = stream->SetId(name, {id1.ms + 1, id1.seq}, added, max_del_id);
+  EXPECT_TRUE(s.ok());
+
+  s = stream->GetStreamInfo(name, false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.entries_added, added);
+  EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
 }

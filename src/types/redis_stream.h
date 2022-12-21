@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,8 @@ class Stream : public SubKeyScanner {
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret);
   rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
+  rocksdb::Status SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,
+                        std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id);
 
  private:
   rocksdb::ColumnFamilyHandle *stream_cf_handle_;

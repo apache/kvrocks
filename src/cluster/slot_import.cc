@@ -20,16 +20,17 @@
 
 #include "slot_import.h"
 
-SlotImport::SlotImport(Server *svr) : Database(svr->storage_, kDefaultNamespace), svr_(svr) {
+SlotImport::SlotImport(Server *svr)
+    : Database(svr->storage_, kDefaultNamespace),
+      svr_(svr),
+      import_slot_(-1),
+      import_status_(kImportNone),
+      import_fd_(-1) {
   std::lock_guard<std::mutex> guard(mutex_);
   // Let db_ and metadata_cf_handle_ be nullptr, then get them in real time while use them.
   // See comments in SlotMigrate::SlotMigrate for detailed reason.
   db_ = nullptr;
   metadata_cf_handle_ = nullptr;
-
-  import_fd_ = -1;
-  import_slot_ = -1;
-  import_status_ = kImportNone;
 }
 
 bool SlotImport::Start(int fd, int slot) {
@@ -51,6 +52,7 @@ bool SlotImport::Start(int fd, int slot) {
   import_status_ = kImportStart;
   import_slot_ = slot;
   import_fd_ = fd;
+
   return true;
 }
 
@@ -69,6 +71,7 @@ bool SlotImport::Success(int slot) {
 
   import_status_ = kImportSuccess;
   import_fd_ = -1;
+
   return true;
 }
 
@@ -88,6 +91,7 @@ bool SlotImport::Fail(int slot) {
 
   import_status_ = kImportFailed;
   import_fd_ = -1;
+
   return true;
 }
 

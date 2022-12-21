@@ -42,7 +42,7 @@ struct StreamEntryID {
   uint64_t ms = 0;
   uint64_t seq = 0;
 
-  StreamEntryID() {}
+  StreamEntryID() = default;
   StreamEntryID(uint64_t ms, uint64_t seq) : ms(ms), seq(seq) {}
 
   void Clear() {

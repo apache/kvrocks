@@ -151,8 +151,9 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         raise RuntimeError('cannot enable --ghproxy and --local-archive at the same time')
 
     local_archive_server = None
-    local_archive_port = find_free_port()
+    local_archive_port = 0
     if local_archive:
+        local_archive_port = find_free_port()
         for item in local_archive:
             url, local = item.rsplit(':', 1)
             LocalArchiveServer.local_archive_dict[url] = local

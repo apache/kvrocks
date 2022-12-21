@@ -251,11 +251,12 @@ Status SlotMigrate::Start() {
   last_send_time_ = 0;
 
   // Connect to dst node
-  auto s = Util::SockConnect(dst_ip_, dst_port_, &slot_job_->slot_fd_);
+  auto s = Util::SockConnect(dst_ip_, dst_port_);
   if (!s.IsOK()) {
     LOG(ERROR) << "[migrate] Failed to connect to destination server: " << s.Msg();
     return {Status::NotOK};
   }
+  slot_job_->slot_fd_ = *s;
 
   // Auth first
   std::string pass = svr_->GetConfig()->requirepass;

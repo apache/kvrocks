@@ -27,11 +27,11 @@
 namespace Util {
 
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout = 0, int timeout = 0);
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout = 0, int timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);
-Status SockReadLine(int fd, std::string *data);
+StatusOr<std::string> SockReadLine(int fd);
 Status SockSendFile(int out_fd, int in_fd, size_t size);
 Status SockSetBlocking(int fd, int blocking);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);

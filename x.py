@@ -18,15 +18,20 @@
 # under the License.
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
+from contextlib import closing
 from glob import glob
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import makedirs
 from pathlib import Path
 import re
+import socket
 from subprocess import Popen, PIPE
 import sys
+from threading import Thread
 from typing import List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 from warnings import warn
+from urllib import request
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
@@ -52,6 +57,34 @@ SEMVER_REGEX = re.compile(
     """,
     re.VERBOSE,
 )
+
+def find_free_port() -> int:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+class LocalArchiveServer(BaseHTTPRequestHandler):
+    local_archive_dict = dict()
+
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-type", "application/zip")
+        self.end_headers()
+
+        url = self.path.lstrip('/')
+        if url in LocalArchiveServer.local_archive_dict:
+            print(f'LocalArchiveServer: redirecting {url} to local archive {LocalArchiveServer.local_archive_dict[url]}')
+
+            archive = open(LocalArchiveServer.local_archive_dict[url], 'rb')
+            self.wfile.write(archive.read())
+            archive.close()
+        else:
+            print(f'LocalArchiveServer: not found the archive for {url}, downloading from internet')
+            
+            archive = request.urlopen(url)
+            self.wfile.write(archive.read())
+            archive.close()
 
 
 def run(*args: str, msg: Optional[str] = None, verbose: bool = False, **kwargs: Any) -> Popen:
@@ -93,7 +126,8 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
     return semver
 
 
-def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
+def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, 
+          compiler: str, cmake_path: str, D: List[str], local_archive: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
@@ -106,11 +140,25 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
+    if ghproxy and local_archive:
+        raise RuntimeError('cannot enable --ghproxy and --local-archive at the same time')
+
+    local_archive_server = None
+    local_archive_port = find_free_port()
+    if local_archive:
+        for item in local_archive:
+            url, local = item.rsplit(':', 1)
+            LocalArchiveServer.local_archive_dict[url] = local
+        local_archive_server = HTTPServer(('localhost', local_archive_port), LocalArchiveServer)
+        Thread(target=lambda: local_archive_server.serve_forever()).start()
+
     makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
         cmake_options.append("-DDEPS_FETCH_PROXY=https://ghproxy.com/")
+    if local_archive:
+        cmake_options.append(f"-DDEPS_FETCH_PROXY=http://localhost:{local_archive_port}/")
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':
@@ -134,6 +182,9 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     options += ["-t", *target]
 
     run(cmake, *options, verbose=True, cwd=dir)
+
+    if local_archive:
+        local_archive_server.server_close()
 
 
 def get_source_files() -> List[str]:
@@ -369,6 +420,10 @@ if __name__ == '__main__':
     parser_build.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
     parser_build.add_argument('--ghproxy', default=False, action='store_true',
                               help='use https://ghproxy.com to fetch dependencies')
+    parser_build.add_argument('--local-archive', metavar='LOCAL_ARCHIVE', action='append', default=[],
+        help='use local archives for dependencies instead of downloading from github.com'
+             ', e.g. https://github.com/fmtlib/fmt/archive/9.1.0.zip:/home/someone/fmt.zip'
+    )
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),

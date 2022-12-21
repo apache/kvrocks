@@ -58,33 +58,40 @@ SEMVER_REGEX = re.compile(
     re.VERBOSE,
 )
 
+
 def find_free_port() -> int:
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
         s.bind(('', 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
 
+
 class LocalArchiveServer(BaseHTTPRequestHandler):
     local_archive_dict = dict()
 
     def do_GET(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-type", "application/zip")
-        self.end_headers()
-
         url = self.path.lstrip('/')
-        if url in LocalArchiveServer.local_archive_dict:
-            print(f'LocalArchiveServer: redirecting {url} to local archive {LocalArchiveServer.local_archive_dict[url]}')
+        try:
+            archive = None
+            if url in LocalArchiveServer.local_archive_dict:
+                print(f'LocalArchiveServer: redirecting {url} to local archive {LocalArchiveServer.local_archive_dict[url]}')
 
-            archive = open(LocalArchiveServer.local_archive_dict[url], 'rb')
-            self.wfile.write(archive.read())
-            archive.close()
+                archive = open(LocalArchiveServer.local_archive_dict[url], 'rb')
+            else:
+                print(f'LocalArchiveServer: not found the archive for {url}, downloading from internet')
+
+                archive = request.urlopen(url)
+        except OSError as e:
+                print(f'LocalArchiveServer: encounter system error: {e}')
+
+                self.send_response(404)
         else:
-            print(f'LocalArchiveServer: not found the archive for {url}, downloading from internet')
-            
-            archive = request.urlopen(url)
-            self.wfile.write(archive.read())
-            archive.close()
+                self.send_response(200)
+                self.send_header("Content-type", "application/zip")
+                self.end_headers()
+
+                self.wfile.write(archive.read())
+                archive.close()
 
 
 def run(*args: str, msg: Optional[str] = None, verbose: bool = False, **kwargs: Any) -> Popen:
@@ -150,7 +157,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
             url, local = item.rsplit(':', 1)
             LocalArchiveServer.local_archive_dict[url] = local
         local_archive_server = HTTPServer(('localhost', local_archive_port), LocalArchiveServer)
-        Thread(target=lambda: local_archive_server.serve_forever()).start()
+        Thread(target=local_archive_server.serve_forever).start()
 
     makedirs(dir, exist_ok=True)
 
@@ -184,7 +191,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     run(cmake, *options, verbose=True, cwd=dir)
 
     if local_archive:
-        local_archive_server.server_close()
+        local_archive_server.shutdown()
 
 
 def get_source_files() -> List[str]:

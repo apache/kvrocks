@@ -159,6 +159,7 @@ Config::Config() {
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
+      {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
@@ -452,6 +453,20 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (cluster_enabled) srv->slot_migrate_->SetSequenceGapSize(sequence_gap);
+         return Status::OK();
+       }},
+      {"log-retention-days",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         if (Util::ToLower(log_dir) == "stdout") {
+           return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
+         }
+
+         if (log_retention_days != -1) {
+           google::EnableLogCleaner(log_retention_days);
+         } else {
+           google::DisableLogCleaner();
+         }
          return Status::OK();
        }},
       {"rocksdb.target_file_size_base",

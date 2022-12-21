@@ -26,24 +26,6 @@
 
 namespace Util {
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
 const std::string Float2String(double d) {
   if (std::isinf(d)) {
     return d > 0 ? "inf" : "-inf";
@@ -121,50 +103,50 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase) {
 }
 
 // Glob-style pattern matching.
-int StringMatchLen(const char *pattern, int patternLen, const char *string, int stringLen, int nocase) {
-  while (patternLen && stringLen) {
+int StringMatchLen(const char *pattern, size_t pattern_len, const char *string, size_t string_len, int nocase) {
+  while (pattern_len && string_len) {
     switch (pattern[0]) {
       case '*':
         while (pattern[1] == '*') {
           pattern++;
-          patternLen--;
+          pattern_len--;
         }
-        if (patternLen == 1) return 1; /* match */
-        while (stringLen) {
-          if (StringMatchLen(pattern + 1, patternLen - 1, string, stringLen, nocase)) return 1; /* match */
+        if (pattern_len == 1) return 1; /* match */
+        while (string_len) {
+          if (StringMatchLen(pattern + 1, pattern_len - 1, string, string_len, nocase)) return 1; /* match */
           string++;
-          stringLen--;
+          string_len--;
         }
         return 0; /* no match */
         break;
       case '?':
-        if (stringLen == 0) return 0; /* no match */
+        if (string_len == 0) return 0; /* no match */
         string++;
-        stringLen--;
+        string_len--;
         break;
       case '[': {
         int not_symbol = 0, match = 0;
 
         pattern++;
-        patternLen--;
+        pattern_len--;
         not_symbol = pattern[0] == '^';
         if (not_symbol) {
           pattern++;
-          patternLen--;
+          pattern_len--;
         }
         match = 0;
         while (true) {
-          if (pattern[0] == '\\' && patternLen >= 2) {
+          if (pattern[0] == '\\' && pattern_len >= 2) {
             pattern++;
-            patternLen--;
+            pattern_len--;
             if (pattern[0] == string[0]) match = 1;
           } else if (pattern[0] == ']') {
             break;
-          } else if (patternLen == 0) {
+          } else if (pattern_len == 0) {
             pattern--;
-            patternLen++;
+            pattern_len++;
             break;
-          } else if (pattern[1] == '-' && patternLen >= 3) {
+          } else if (pattern[1] == '-' && pattern_len >= 3) {
             int start = pattern[0];
             int end = pattern[2];
             int c = string[0];
@@ -179,7 +161,7 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
               c = tolower(c);
             }
             pattern += 2;
-            patternLen -= 2;
+            pattern_len -= 2;
             if (c >= start && c <= end) match = 1;
           } else {
             if (!nocase) {
@@ -189,18 +171,18 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
             }
           }
           pattern++;
-          patternLen--;
+          pattern_len--;
         }
         if (not_symbol) match = !match;
         if (!match) return 0; /* no match */
         string++;
-        stringLen--;
+        string_len--;
         break;
       }
       case '\\':
-        if (patternLen >= 2) {
+        if (pattern_len >= 2) {
           pattern++;
-          patternLen--;
+          pattern_len--;
         }
         /* fall through */
       default:
@@ -210,20 +192,20 @@ int StringMatchLen(const char *pattern, int patternLen, const char *string, int 
           if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0]))) return 0; /* no match */
         }
         string++;
-        stringLen--;
+        string_len--;
         break;
     }
     pattern++;
-    patternLen--;
-    if (stringLen == 0) {
+    pattern_len--;
+    if (string_len == 0) {
       while (*pattern == '*') {
         pattern++;
-        patternLen--;
+        pattern_len--;
       }
       break;
     }
   }
-  if (patternLen == 0 && stringLen == 0) return 1;
+  if (pattern_len == 0 && string_len == 0) return 1;
   return 0;
 }
 

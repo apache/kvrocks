@@ -110,7 +110,7 @@ Status Request::Tokenize(evbuffer *input) {
       }
       case BulkData:
         if (evbuffer_get_length(input) < bulk_len_ + 2) return Status::OK();
-        char *data = reinterpret_cast<char *>(evbuffer_pullup(input, bulk_len_ + 2));
+        char *data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(bulk_len_ + 2)));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
         svr_->stats_.IncrInbondBytes(bulk_len_ + 2);

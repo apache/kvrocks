@@ -24,8 +24,6 @@
 
 namespace Util {
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min = INT64_MIN, int64_t max = INT64_MAX);
 const std::string Float2String(double d);
 std::string ToLower(std::string in);
 bool EqualICase(std::string_view lhs, std::string_view rhs);
@@ -35,7 +33,7 @@ std::vector<std::string> Split(const std::string &in, const std::string &delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
-int StringMatchLen(const char *p, int plen, const char *s, int slen, int nocase);
+int StringMatchLen(const char *p, size_t plen, const char *s, size_t slen, int nocase);
 std::string StringToHex(const std::string &input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 

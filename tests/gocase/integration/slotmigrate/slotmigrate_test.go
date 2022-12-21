@@ -158,7 +158,7 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 		k2 := fmt.Sprintf("\x49\x1f\x7f{%s}\xaf", util.SlotTable[1])
 		require.NoError(t, rdb0.Set(ctx, k2, "\0000\0001", 0).Err())
 		time.Sleep(time.Second)
-		waitForImportSate(t, rdb1, "1", "success")
+		waitForImportState(t, rdb1, "1", "success")
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, k1).Val())
 		require.Equal(t, "\0000\0001", rdb1.LPop(ctx, k1).Val())
 		require.Equal(t, "\0000\0001", rdb1.Get(ctx, k2).Val())
@@ -397,7 +397,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 
 	t.Run("MIGRATE - Slot migrate all types of existing data", func(t *testing.T) {
 		keys := make(map[string]string, 0)
-		for _, typ := range []string{"string", "string2", "list", "hash", "set", "zset", "bitmap", "sortint"} {
+		for _, typ := range []string{"string", "string2", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {
 			keys[typ] = fmt.Sprintf("%s_{%s}", typ, util.SlotTable[1])
 			require.NoError(t, rdb0.Del(ctx, keys[typ]).Err())
 		}
@@ -442,8 +442,18 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.NoError(t, rdb0.Do(ctx, "SIADD", keys["sortint"], 2, 4, 1, 3).Err())
 		require.NoError(t, rdb0.Do(ctx, "SIREM", keys["sortint"], 1).Err())
 		require.NoError(t, rdb0.Expire(ctx, keys["sortint"], 10*time.Second).Err())
+		// type stream
+		for i := 1; i < 20; i++ {
+			idxStr := strconv.FormatInt(int64(i), 10)
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: keys["stream"],
+				ID:     idxStr + "-0",
+				Values: []string{"key" + idxStr, "value" + idxStr},
+			}).Err())
+		}
+		require.NoError(t, rdb0.Expire(ctx, keys["stream"], 10*time.Second).Err())
 		// check source data existence
-		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint"} {
+		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {
 			require.EqualValues(t, 1, rdb0.Exists(ctx, keys[typ]).Val())
 		}
 		// get source data
@@ -452,9 +462,17 @@ func TestSlotMigrateDataType(t *testing.T) {
 		sv := rdb0.SMembers(ctx, keys["set"]).Val()
 		zv := rdb0.ZRangeWithScores(ctx, keys["zset"], 0, -1).Val()
 		siv := rdb0.Do(ctx, "SIRANGE", keys["sortint"], 0, -1).Val()
+		stV := rdb0.XRange(ctx, keys["stream"], "-", "+").Val()
+		streamInfo := rdb0.XInfoStream(ctx, keys["stream"]).Val()
+		require.EqualValues(t, "19-0", streamInfo.LastGeneratedID)
+		require.EqualValues(t, 19, streamInfo.EntriesAdded)
+		require.EqualValues(t, "0-0", streamInfo.MaxDeletedEntryID)
+		require.EqualValues(t, 19, streamInfo.Length)
+
 		// migrate slot 1, all keys above are belong to slot 1
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "1", id1).Val())
 		waitForMigrateState(t, rdb0, "1", "success")
+
 		// check destination data
 		// type string
 		require.Equal(t, keys["string"], rdb1.Get(ctx, keys["string"]).Val())
@@ -486,10 +504,98 @@ func TestSlotMigrateDataType(t *testing.T) {
 		// type sortint
 		require.EqualValues(t, siv, rdb1.Do(ctx, "SIRANGE", keys["sortint"], 0, -1).Val())
 		util.BetweenValues(t, rdb1.TTL(ctx, keys["sortint"]).Val(), time.Second, 10*time.Second)
+		// type stream
+		require.EqualValues(t, stV, rdb1.XRange(ctx, keys["stream"], "-", "+").Val())
+		util.BetweenValues(t, rdb1.TTL(ctx, keys["stream"]).Val(), time.Second, 10*time.Second)
+		streamInfo = rdb1.XInfoStream(ctx, keys["stream"]).Val()
+		require.EqualValues(t, "19-0", streamInfo.LastGeneratedID)
+		require.EqualValues(t, 19, streamInfo.EntriesAdded)
+		require.EqualValues(t, "0-0", streamInfo.MaxDeletedEntryID)
+		require.EqualValues(t, 19, streamInfo.Length)
 		// topology is changed on source server
-		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint"} {
+		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {
 			require.ErrorContains(t, rdb0.Exists(ctx, keys[typ]).Err(), "MOVED")
 		}
+	})
+
+	t.Run("MIGRATE - Migrating empty stream", func(t *testing.T) {
+		slotID := 31
+		key := fmt.Sprintf("stream_{%s}", util.SlotTable[slotID])
+
+		require.NoError(t, rdb0.Del(ctx, key).Err())
+
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+			Stream: key,
+			ID:     "5-0",
+			Values: []string{"key5", "value5"},
+		}).Err())
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+			Stream: key,
+			ID:     "7-0",
+			Values: []string{"key7", "value7"},
+		}).Err())
+		require.NoError(t, rdb0.XDel(ctx, key, "7-0").Err())
+		require.NoError(t, rdb0.XDel(ctx, key, "5-0").Err())
+
+		originInfo := rdb0.XInfoStream(ctx, key)
+		originRes, err := originInfo.Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "7-0", originRes.LastGeneratedID)
+		require.EqualValues(t, 2, originRes.EntriesAdded)
+		require.EqualValues(t, "7-0", originRes.MaxDeletedEntryID)
+		require.EqualValues(t, 0, originRes.Length)
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotID, id1).Val())
+		waitForMigrateState(t, rdb0, strconv.FormatInt(int64(slotID), 10), "success")
+
+		require.ErrorContains(t, rdb0.Exists(ctx, key).Err(), "MOVED")
+
+		migratedInfo := rdb1.XInfoStream(ctx, key)
+		migratedRes, err := migratedInfo.Result()
+		require.NoError(t, err)
+		require.EqualValues(t, originRes.LastGeneratedID, migratedRes.LastGeneratedID)
+		require.EqualValues(t, originRes.EntriesAdded, migratedRes.EntriesAdded)
+		require.EqualValues(t, originRes.MaxDeletedEntryID, migratedRes.MaxDeletedEntryID)
+		require.EqualValues(t, originRes.Length, migratedRes.Length)
+	})
+
+	t.Run("MIGRATE - Migrating stream with deleted entries", func(t *testing.T) {
+		slotID := 32
+		key := fmt.Sprintf("stream_{%s}", util.SlotTable[slotID])
+
+		require.NoError(t, rdb0.Del(ctx, key).Err())
+
+		for i := 1; i < 6; i++ {
+			idxStr := strconv.FormatInt(int64(i), 10)
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: key,
+				ID:     idxStr + "-0",
+				Values: []string{"key" + idxStr, "value" + idxStr},
+			}).Err())
+		}
+		require.NoError(t, rdb0.XDel(ctx, key, "1-0").Err())
+		require.NoError(t, rdb0.XDel(ctx, key, "3-0").Err())
+
+		originInfo := rdb0.XInfoStream(ctx, key)
+		originRes, err := originInfo.Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "5-0", originRes.LastGeneratedID)
+		require.EqualValues(t, 5, originRes.EntriesAdded)
+		require.EqualValues(t, "3-0", originRes.MaxDeletedEntryID)
+		require.EqualValues(t, 3, originRes.Length)
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotID, id1).Val())
+		waitForMigrateState(t, rdb0, strconv.FormatInt(int64(slotID), 10), "success")
+
+		require.ErrorContains(t, rdb0.Exists(ctx, key).Err(), "MOVED")
+
+		migratedInfo := rdb1.XInfoStream(ctx, key)
+		migratedRes, err := migratedInfo.Result()
+		require.NoError(t, err)
+		require.EqualValues(t, originRes.LastGeneratedID, migratedRes.LastGeneratedID)
+		require.EqualValues(t, originRes.EntriesAdded, migratedRes.EntriesAdded)
+		require.EqualValues(t, originRes.MaxDeletedEntryID, migratedRes.MaxDeletedEntryID)
+		require.EqualValues(t, originRes.Length, migratedRes.Length)
 	})
 
 	t.Run("MIGRATE - Accessing slot is forbidden on source server but not on destination server", func(t *testing.T) {
@@ -623,7 +729,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		lv := rdb0.LRange(ctx, keys[7], 0, -1).Val()
 		siv := rdb0.Do(ctx, "SIRANGE", keys[9], 0, -1).Val()
 		waitForMigrateStateInDuration(t, rdb0, "15", "success", time.Minute)
-		waitForImportSate(t, rdb1, "15", "success")
+		waitForImportState(t, rdb1, "15", "success")
 		// check if the data is consistent
 		// 1. type string
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, keys[0]).Val())
@@ -713,7 +819,7 @@ func requireMigrateState(t testing.TB, client *redis.Client, n, state string) {
 	require.Contains(t, i, fmt.Sprintf("migrating_state: %s", state))
 }
 
-func waitForImportSate(t testing.TB, client *redis.Client, n, state string) {
+func waitForImportState(t testing.TB, client *redis.Client, n, state string) {
 	require.Eventually(t, func() bool {
 		i := client.ClusterInfo(context.Background()).Val()
 		return strings.Contains(i, fmt.Sprintf("importing_slot: %s", n)) &&

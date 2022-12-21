@@ -27,8 +27,7 @@
 namespace Util {
 
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
-Status SockConnect(const std::string &host, uint32_t port, int *fd);
-Status SockConnect(const std::string &host, uint32_t port, int *fd, uint64_t conn_timeout, uint64_t timeout = 0);
+Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout = 0, int timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);
@@ -37,9 +36,9 @@ Status SockSendFile(int out_fd, int in_fd, size_t size);
 Status SockSetBlocking(int fd, int blocking);
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 int GetLocalPort(int fd);
-bool IsPortInUse(int port);
+bool IsPortInUse(uint32_t port);
 
-int aeWait(int fd, int mask, uint64_t milliseconds);
+int aeWait(int fd, int mask, int milliseconds);
 
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);

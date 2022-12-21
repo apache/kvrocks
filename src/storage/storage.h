@@ -50,6 +50,7 @@ enum ColumnFamilyID {
 };
 
 namespace Engine {
+
 extern const char *kPubSubColumnFamilyName;
 extern const char *kZSetScoreColumnFamilyName;
 extern const char *kMetadataColumnFamilyName;
@@ -103,7 +104,7 @@ class Storage {
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
   Status CheckDBSizeLimit();
-  void SetIORateLimit(uint64_t max_io_mb);
+  void SetIORateLimit(int64_t max_io_mb);
 
   std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
   std::unique_ptr<RWLock::WriteLock> WriteLockGuard();

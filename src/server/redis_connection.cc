@@ -126,7 +126,7 @@ void Connection::SendFile(int fd) {
   evbuffer_add_file(output, fd, 0, -1);
 }
 
-void Connection::SetAddr(std::string ip, int port) {
+void Connection::SetAddr(std::string ip, uint32_t port) {
   ip_ = std::move(ip);
   port_ = port;
   addr_ = ip_ + ":" + std::to_string(port_);
@@ -196,7 +196,7 @@ void Connection::UnSubscribeChannel(const std::string &channel) {
 
 void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
   if (subscribe_channels_.empty()) {
-    if (reply != nullptr) reply("", subcribe_patterns_.size());
+    if (reply != nullptr) reply("", static_cast<int>(subcribe_patterns_.size()));
     return;
   }
   int removed = 0;
@@ -233,7 +233,7 @@ void Connection::PUnSubscribeChannel(const std::string &pattern) {
 
 void Connection::PUnSubscribeAll(const unsubscribe_callback &reply) {
   if (subcribe_patterns_.empty()) {
-    if (reply != nullptr) reply("", subscribe_channels_.size());
+    if (reply != nullptr) reply("", static_cast<int>(subscribe_channels_.size()));
     return;
   }
 

@@ -241,7 +241,7 @@ class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
@@ -267,7 +267,7 @@ class CommandFlushAll : public Commander {
     }
 
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
@@ -670,7 +670,7 @@ class CommandPSetEX : public Commander {
     if (*ttl_ms < 1000) {
       ttl_ = 1;
     } else {
-      ttl_ = *ttl_ms / 1000;
+      ttl_ = static_cast<int>(*ttl_ms / 1000);
     }
 
     return Commander::Parse(args);
@@ -1270,7 +1270,7 @@ class CommandExpireAt : public Commander {
       return {Status::RedisParseErr, "the expire time was overflow"};
     }
 
-    timestamp_ = *parse_result;
+    timestamp_ = static_cast<int>(*parse_result);
 
     return Commander::Parse(args);
   }
@@ -3470,7 +3470,7 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
   std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
-    int result_length = geo_points.size();
+    int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
     for (int i = 0; i < returned_items_count; i++) {
@@ -4310,8 +4310,7 @@ class CommandPerfLog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -4348,8 +4347,7 @@ class CommandSlowlog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -4581,7 +4579,7 @@ class CommandCommand : public Commander {
         GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
         std::vector<int> keys_indexes;
-        auto s = GetKeysFromCommand(args_[2], args_.size() - 2, &keys_indexes);
+        auto s = GetKeysFromCommand(args_[2], static_cast<int>(args_.size()) - 2, &keys_indexes);
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {
@@ -5043,7 +5041,8 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) / max_replication_bytes * (1000 * 1000));
+        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
+                                              static_cast<double>(max_replication_bytes) * (1000 * 1000));
         if (max_replication_bytes > 0 && duration < shortest) {
           LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
                     << " ms since of sending files too quickly";
@@ -5085,15 +5084,12 @@ class CommandCluster : public Commander {
 
     if (subcommand_ == "import") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
-      int64_t state = 0;
-      s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart),
-                                   static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return {Status::NotOK, "Invalid import state"};
+      auto state = ParseInt<unsigned>(args[3], {kImportStart, kImportNone}, 10);
+      if (!state) return {Status::NotOK, "Invalid import state"};
 
-      state_ = static_cast<ImportStatus>(state);
+      state_ = static_cast<ImportStatus>(*state);
       return Status::OK();
     }
 
@@ -5180,8 +5176,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "migrate") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
 
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
       dst_node_id_ = args[3];
       return Status::OK();
@@ -5233,7 +5228,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisParseErr, errValueNotInteger};
       }
 
-      if (set_version_ < 0) return {Status::RedisParseErr, "Invalid version"};
+      if (*parse_version < 0) return {Status::RedisParseErr, "Invalid version"};
 
       set_version_ = *parse_version;
 
@@ -5294,11 +5289,11 @@ class CommandClusterX : public Commander {
  private:
   std::string subcommand_;
   std::string nodes_str_;
+  std::string dst_node_id_;
   int64_t set_version_ = 0;
+  int64_t slot_ = -1;
   int slot_id_ = -1;
   bool force_ = false;
-  std::string dst_node_id_;
-  int64_t slot_ = -1;
 };
 
 class CommandEval : public Commander {
@@ -6259,6 +6254,66 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
+class CommandXSetId : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    stream_name_ = args[1];
+
+    auto s = Redis::ParseStreamEntryID(args[2], &last_id_);
+    if (!s.IsOK()) {
+      return {Status::RedisParseErr, s.Msg()};
+    }
+
+    if (args.size() == 3) {
+      return Status::OK();
+    }
+
+    for (size_t i = 3; i < args.size(); /* manual increment */) {
+      if (Util::EqualICase(args[i], "entriesadded") && i + 1 < args.size()) {
+        auto parse_result = ParseInt<uint64_t>(args[i + 1]);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+
+        entries_added_ = *parse_result;
+        i += 2;
+      } else if (Util::EqualICase(args[i], "maxdeletedid") && i + 1 < args.size()) {
+        StreamEntryID id;
+        s = Redis::ParseStreamEntryID(args[i + 1], &id);
+        if (!s.IsOK()) {
+          return {Status::RedisParseErr, s.Msg()};
+        }
+
+        max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms, id.seq);
+        i += 2;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
+
+    auto s = stream_db.SetId(stream_name_, last_id_, entries_added_, max_deleted_id_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = Redis::SimpleString("OK");
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  StreamEntryID last_id_;
+  std::optional<StreamEntryID> max_deleted_id_;
+  std::optional<uint64_t> entries_added_;
+};
+
 REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
@@ -6444,7 +6499,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1));
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
   for (const auto &attr : list) {

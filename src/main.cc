@@ -81,7 +81,7 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   for (int i = 1; i < trace_size; ++i) {
     char func_info[1024] = {};
     if (google::Symbolize(trace[i], func_info, sizeof(func_info) - 1)) {
-      LOG(ERROR) << std::left << std::setw(max_msg_len) << messages[i] << "  " << func_info;
+      LOG(ERROR) << std::left << std::setw(static_cast<int>(max_msg_len)) << messages[i] << "  " << func_info;
     } else {
       LOG(ERROR) << messages[i];
     }
@@ -312,8 +312,8 @@ int main(int argc, char *argv[]) {
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
   if (!config.binds.empty()) {
-    int ports[] = {config.port, config.tls_port, 0};
-    for (int *port = ports; *port; ++port) {
+    uint32_t ports[] = {config.port, config.tls_port, 0};
+    for (uint32_t *port = ports; *port; ++port) {
       if (Util::IsPortInUse(*port)) {
         LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use"
                    << std::endl;

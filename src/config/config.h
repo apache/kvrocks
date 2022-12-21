@@ -39,7 +39,7 @@ namespace Engine {
 class Storage;
 }
 
-constexpr const uint16_t PORT_LIMIT = 65535;
+constexpr const uint32_t PORT_LIMIT = 65535;
 
 enum SupervisedMode { kSupervisedNone = 0, kSupervisedAutoDetect, kSupervisedSystemd, kSupervisedUpStart };
 
@@ -49,7 +49,7 @@ constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";
 constexpr const size_t KiB = 1024L;
 constexpr const size_t MiB = 1024L * KiB;
 constexpr const size_t GiB = 1024L * MiB;
-constexpr const int kDefaultPort = 6666;
+constexpr const uint32_t kDefaultPort = 6666;
 
 extern const char *kDefaultNamespace;
 
@@ -73,8 +73,8 @@ struct Config {
  public:
   Config();
   ~Config() = default;
-  int port = 0;
-  int tls_port = 0;
+  uint32_t port = 0;
+  uint32_t tls_port = 0;
   std::string tls_cert_file;
   std::string tls_key_file;
   std::string tls_key_file_pass;
@@ -127,7 +127,7 @@ struct Config {
   std::string master_host;
   std::string unixsocket;
   int unixsocketperm = 0777;
-  int master_port = 0;
+  uint32_t master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
@@ -198,7 +198,7 @@ struct Config {
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values);
   Status Set(Server *svr, std::string key, const std::string &value);
-  void SetMaster(const std::string &host, int port);
+  void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
   Status GetNamespace(const std::string &ns, std::string *token);
   Status AddNamespace(const std::string &ns, const std::string &token);

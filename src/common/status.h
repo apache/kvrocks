@@ -68,6 +68,8 @@ class [[nodiscard]] Status {
   };
 
   Status() : Status(cOK) {}
+
+  // WARNING: it is NOT ALLOWED to construct Status with cOK code and a non-empty message string
   Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}  // NOLINT
 
   template <Code code>
@@ -97,7 +99,7 @@ class [[nodiscard]] Status {
 
   Status Prefixed(std::string_view prefix) const {
     if (*this) {
-      return *this;
+      return {};
     }
     return {code_, fmt::format("{}: {}", prefix, msg_)};
   }
@@ -322,13 +324,6 @@ struct [[nodiscard]] StatusOr {
   std::string Msg() && {
     if (*this) return Status::ok_msg;
     return std::move(*error_);
-  }
-
-  StatusOr Prefixed(std::string_view prefix) const& {
-    if (*this) {
-      return *this;
-    }
-    return {code_, fmt::format("{}: {}", prefix, *error_)};
   }
 
   StatusOr Prefixed(std::string_view prefix) && {

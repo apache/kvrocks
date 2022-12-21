@@ -707,9 +707,7 @@ Status Config::Load(const CLIOptions &opts) {
   }
 
   for (const auto &opt : opts.cli_options) {
-    if (Status s = parseConfigFromPair(opt, -1); !s) {
-      return {Status::NotOK, "CLI config option error: " + s.Msg()};
-    }
+    GET_OR_RET(parseConfigFromPair(opt, -1).Prefixed("CLI config option error"));
   }
 
   for (const auto &iter : fields_) {

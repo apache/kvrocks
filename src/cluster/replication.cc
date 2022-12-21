@@ -223,7 +223,6 @@ LOOP_LABEL:
 }
 
 void ReplicationThread::CallbacksStateMachine::Start() {
-  int cfd = 0;
   struct bufferevent *bev = nullptr;
 
   if (handlers_.empty()) {
@@ -246,14 +245,14 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       sleep(1);
     }
     last_connect_timestamp = Util::GetTimeStampMS();
-    Status s = Util::SockConnect(repl_->host_, repl_->port_, &cfd, connect_timeout_ms);
-    if (!s.IsOK()) {
-      LOG(ERROR) << "[replication] Failed to connect the master, err: " << s.Msg();
+    auto cfd = Util::SockConnect(repl_->host_, repl_->port_, connect_timeout_ms);
+    if (!cfd) {
+      LOG(ERROR) << "[replication] Failed to connect the master, err: " << cfd.Msg();
       continue;
     }
-    bev = bufferevent_socket_new(repl_->base_, cfd, BEV_OPT_CLOSE_ON_FREE);
+    bev = bufferevent_socket_new(repl_->base_, *cfd, BEV_OPT_CLOSE_ON_FREE);
     if (bev == nullptr) {
-      close(cfd);
+      close(*cfd);
       LOG(ERROR) << "[replication] Failed to create the event socket";
       continue;
     }
@@ -706,23 +705,19 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
     results.push_back(
         std::async(std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
           if (this->stop_flag_) {
-            return Status(Status::NotOK, "replication thread was stopped");
+            return {Status::NotOK, "replication thread was stopped"};
           }
-          int sock_fd = 0;
-          Status s = Util::SockConnect(this->host_, this->port_, &sock_fd);
-          if (!s.IsOK()) {
-            return Status(Status::NotOK, "connect the server err: " + s.Msg());
-          }
+          int sock_fd = GET_OR_RET(Util::SockConnect(this->host_, this->port_).Prefixed("connect the server err"));
           UniqueFD unique_fd{sock_fd};
-          s = this->sendAuth(sock_fd);
+          auto s = this->sendAuth(sock_fd);
           if (!s.IsOK()) {
-            return Status(Status::NotOK, "sned the auth command err: " + s.Msg());
+            return s.Prefixed("send the auth command err");
           }
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
             if (this->stop_flag_) {
-              return Status(Status::NotOK, "replication thread was stopped");
+              return {Status::NotOK, "replication thread was stopped"};
             }
             const auto &f_name = files[f_idx].first;
             const auto &f_crc = files[f_idx].second;
@@ -781,15 +776,15 @@ Status ReplicationThread::sendAuth(int sock_fd) {
     UniqueEvbuf evbuf;
     const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
     auto s = Util::SockSend(sock_fd, auth_command);
-    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
+    if (!s.IsOK()) return s.Prefixed("send auth command err");
     while (true) {
       if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
-        return Status(Status::NotOK, std::string("read auth response err: ") + strerror(errno));
+        return Status::FromErrno("read auth response err");
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
       if (strncmp(line.get(), "+OK", 3) != 0) {
-        return Status(Status::NotOK, "auth got invalid response");
+        return {Status::NotOK, "auth got invalid response"};
       }
       break;
     }
@@ -867,7 +862,7 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 
   const auto fetch_command = Redis::MultiBulkString({"_fetch_file", files_str});
   auto s = Util::SockSend(sock_fd, fetch_command);
-  if (!s.IsOK()) return Status(Status::NotOK, "send fetch file command: " + s.Msg());
+  if (!s.IsOK()) return s.Prefixed("send fetch file command");
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {

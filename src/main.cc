@@ -177,7 +177,10 @@ static void initGoogleLog(const Config *config) {
     FLAGS_stderrthreshold = google::ERROR;
     FLAGS_logtostdout = true;
   } else {
-    FLAGS_log_dir = config->log_dir;
+    FLAGS_log_dir = config->log_dir + "/";
+    if (config->log_retention_days != -1) {
+      google::EnableLogCleaner(config->log_retention_days);
+    }
   }
 }
 

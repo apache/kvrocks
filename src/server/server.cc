@@ -968,23 +968,28 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   info->clear();
   std::ostringstream string_stream;
   bool all = section == "all";
+  int section_cnt = 0;
 
   if (all || section == "server") {
     std::string server_info;
     GetServerInfo(&server_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << server_info;
   }
   if (all || section == "clients") {
     std::string clients_info;
     GetClientsInfo(&clients_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << clients_info;
   }
   if (all || section == "memory") {
     std::string memory_info;
     GetMemoryInfo(&memory_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << memory_info;
   }
   if (all || section == "persistence") {
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Persistence\r\n";
     string_stream << "loading:" << is_loading_ << "\r\n";
 
@@ -997,6 +1002,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "stats") {
     std::string stats_info;
     GetStatsInfo(&stats_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << stats_info;
   }
 
@@ -1004,11 +1010,13 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (!is_loading_ && (all || section == "replication")) {
     std::string replication_info;
     GetReplicationInfo(&replication_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << replication_info;
   }
   if (all || section == "cpu") {
     struct rusage self_ru;
     getrusage(RUSAGE_SELF, &self_ru);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# CPU\r\n";
     string_stream << "used_cpu_sys:"
                   << static_cast<float>(self_ru.ru_stime.tv_sec) +
@@ -1022,6 +1030,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "commandstats") {
     std::string commands_stats_info;
     GetCommandsStatsInfo(&commands_stats_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << commands_stats_info;
   }
 
@@ -1030,6 +1039,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
@@ -1056,6 +1066,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (!is_loading_ && (all || section == "rocksdb")) {
     std::string rocksdb_info;
     GetRocksDBInfo(&rocksdb_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << rocksdb_info;
   }
   *info = string_stream.str();

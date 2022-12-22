@@ -28,7 +28,7 @@ import socket
 from subprocess import Popen, PIPE
 import sys
 from threading import Thread
-from typing import List, Any, Optional, TextIO, Tuple
+from typing import Dict, List, Any, Optional, TextIO, Tuple
 from shutil import copyfile
 from warnings import warn
 from urllib import request
@@ -66,17 +66,15 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-class LocalArchiveServer(BaseHTTPRequestHandler):
-    local_archive_dict = dict()
-
+class LocalArchiveHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = self.path.lstrip('/')
         try:
             archive = None
-            if url in LocalArchiveServer.local_archive_dict:
-                print(f'LocalArchiveServer: redirecting {url} to local archive {LocalArchiveServer.local_archive_dict[url]}')
+            if url in self.server.local_archive_dict:
+                print(f'LocalArchiveServer: redirecting {url} to local archive {self.server.local_archive_dict[url]}')
 
-                archive = open(LocalArchiveServer.local_archive_dict[url], 'rb')
+                archive = open(self.server.local_archive_dict[url], 'rb')
             else:
                 print(f'LocalArchiveServer: not found the archive for {url}, downloading from internet')
 
@@ -93,6 +91,11 @@ class LocalArchiveServer(BaseHTTPRequestHandler):
                 self.wfile.write(archive.read())
                 archive.close()
 
+
+class LocalArchiveServer(HTTPServer):
+    def __init__(self, server_address: Tuple[str, int], local_archive_dict: Dict[str, str]) -> None:
+        self.local_archive_dict = local_archive_dict
+        super().__init__(server_address, LocalArchiveHandler)
 
 def run(*args: str, msg: Optional[str] = None, verbose: bool = False, **kwargs: Any) -> Popen:
     sys.stdout.flush()
@@ -135,7 +138,7 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, 
           compiler: str, cmake_path: str, D: List[str], local_archive: List[str],
-          skip_build: bool) -> None:
+          skip_build: bool, local_archive_port: int) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -151,13 +154,12 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         raise RuntimeError('cannot enable --ghproxy and --local-archive at the same time')
 
     local_archive_server = None
-    local_archive_port = 0
     if local_archive:
-        local_archive_port = find_free_port()
+        local_archive_dict = dict()
         for item in local_archive:
             url, local = item.rsplit(':', 1)
-            LocalArchiveServer.local_archive_dict[url] = local
-        local_archive_server = HTTPServer(('localhost', local_archive_port), LocalArchiveServer)
+            local_archive_dict[url] = local
+        local_archive_server = LocalArchiveServer(('localhost', local_archive_port), local_archive_dict)
         Thread(target=local_archive_server.serve_forever).start()
 
     makedirs(dir, exist_ok=True)
@@ -175,7 +177,17 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
     if D:
         cmake_options += [f"-D{o}" for o in D]
-    run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
+    
+    if local_archive:
+        try:
+            run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
+        except RuntimeError as e:
+            local_archive_server.shutdown()
+            raise e
+        
+        local_archive_server.shutdown()
+    else:
+        run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
 
     if skip_build:
         return
@@ -190,9 +202,6 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     options += ["-t", *target]
 
     run(cmake, *options, verbose=True, cwd=dir)
-
-    if local_archive:
-        local_archive_server.shutdown()
 
 
 def get_source_files() -> List[str]:
@@ -432,6 +441,7 @@ if __name__ == '__main__':
         help='use local archives for dependencies instead of downloading from github.com'
              ', e.g. https://github.com/fmtlib/fmt/archive/9.1.0.zip:/home/someone/fmt.zip'
     )
+    parser_build.add_argument('--local-archive-port', default=23333, help='port number for local archive proxy server')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),

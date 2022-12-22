@@ -59,13 +59,6 @@ SEMVER_REGEX = re.compile(
 )
 
 
-def find_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 class LocalArchiveHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = self.path.lstrip('/')

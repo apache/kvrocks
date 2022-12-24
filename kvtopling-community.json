@@ -1,0 +1,341 @@
+{
+    "http": {
+      "document_root": "/nvme-shared/kvrocks/kvrocks_data",
+      "hide_files_patterns": "*.sst|*.dbtmp",
+      "num_threads": "50",
+      "listening_ports": "2011"
+    },
+    "permissions": {
+      "web_compact": true,
+      "//end": "end"
+    },
+    "AnyPlugin": {
+      "sys_info": "SysInfoShower",
+      "module_git_info": "ModuleGitInfo",
+      "meta_key_decoder": "HtmlTextUserKeyCoder"
+    },
+    "Cache": {
+      "block_cache": {
+        "class": "LRUCache",
+        "params": {
+          "capacity": "1G",
+          "num_shard_bits": -1,
+          "strict_capacity_limit": false,
+          "high_pri_pool_ratio": 0.75,
+          "use_adaptive_mutex": false,
+          "metadata_charge_policy": "kFullChargeCacheMetadata"
+        }
+      },
+      "row_cache": {
+        "class": "LRUCache",
+        "params": {
+          "capacity": "1G",
+          "num_shard_bits": -1,
+          "strict_capacity_limit": false,
+          "high_pri_pool_ratio": 0.75,
+          "use_adaptive_mutex": false,
+          "metadata_charge_policy": "kFullChargeCacheMetadata"
+        }
+      }
+    },
+    "Statistics": {
+      "stat" : {
+        "class": "default",
+        "params": {
+          "discard_tickers": [
+            "# comment",
+            "// comment: 可以仅指定前缀，必须是以 . 为边界的前缀，例如下面两个必须分别指定",
+            "# kvrocks 未使用 txn",
+            "rocksdb.txn",
+            "rocksdb.row.cache",
+            "rocksdb.persistent",
+            "rocksdb.sim.block.cache"
+          ],
+          "discard_histograms": [
+            "# comment: ....",
+            "# comment end of array"
+          ],
+          "stats_level": "kAll"
+        }
+      }
+    },
+    "WriteBufferManager" : {
+      "wbm": {
+        "class": "WriteBufferManager",
+        "params": {
+          "buffer_size": "4G"
+        }
+      }
+    },
+    "FilterPolicy": {
+      "bloom_filter": {
+        "class": "BloomFilter",
+        "params": {
+          "bits_per_key": 10,
+          "use_block_based_builder": false
+        }
+      }
+    },
+    "TableFactory": {
+      "bb": {
+        "class": "BlockBasedTable",
+        "params": {
+          "format_version": 5,
+          "index_type": "kTwoLevelIndexSearch",
+          "block_size": "8K",
+          "block_cache": "${block_cache}",
+          "filter_policy": "${bloom_filter}",
+          "partition_filters": true,
+          "metadata_block_size": 4096,
+          "data_block_index_type": "kDataBlockBinaryAndHash",
+          "data_block_hash_table_util_ratio": 0.75,
+          "optimize_filters_for_memory": true,
+          "pin_l0_filter_and_index_blocks_in_cache": true,
+          "cache_index_and_filter_blocks": true,
+          "cache_index_and_filter_blocks_with_high_priority": true
+        }
+      },
+      "sng": {
+        "class": "SingleFastTable",
+        "params": {}
+      },
+      "dispatch": {
+        "comment": "used for per-level stat show in webview",
+        "class": "DispatcherTable",
+        "params": {
+          "default": "bb",
+          "readers": {
+            "BlockBasedTable": "bb",
+            "SingleFastTable": "sng"
+          },
+          "level_writers": ["sng", "sng", "bb", "bb", "bb"]
+        }
+      }
+    },
+    "MemTableRepFactory": {
+      "dyna": {
+        "class": "Dyna",
+        "params": { "real_fac": "${cspp}" }
+      },
+      "cspp": {
+        "class": "cspp",
+        "params": {
+          "mem_cap": "2G",
+          "use_vm": true,
+          "use_hugepage": true,
+          "read_by_writer_token": true,
+          "token_use_idle": true
+        }
+      },
+      "skiplist": {
+        "class": "SkipList",
+        "params": {}
+      }
+    },
+    "CompactionFilterFactory": {
+      "pubsub": {
+        "class": "PubSubFilterFactory",
+        "params": {}
+      },
+      "propagate": {
+        "class": "PropagateFilterFactory",
+        "params": {}
+      }
+    },
+    "SstFileManager": {
+      "sst_mgr" : {
+        "class": "Default",
+        "params": {
+          "trash_dir": "",
+          "delete_existing_trash": true
+        }
+      }
+    },
+    "RateLimiter": {
+      "rate_limiter": {
+        "class": "GenericRateLimiter",
+        "params": {
+          "rate_bytes_per_sec": "512M"
+        }
+      }
+    },
+    "CFOptions": {
+      "default": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "memtable_whole_key_filtering": true,
+        "memtable_prefix_bloom_size_ratio": 0.1,
+        "max_write_buffer_number": 4, "write_buffer_size": "256M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "32M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${subkey}",
+        "//html_user_key_coder": "$base_data_key_decoder"
+      },
+      "metadata": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "memtable_whole_key_filtering": true,
+        "memtable_prefix_bloom_size_ratio": 0.1,
+        "max_write_buffer_number": 4, "write_buffer_size": "256M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "32M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${metadata}",
+        "//html_user_key_coder": "$base_data_key_decoder"
+      },
+      "zset_score": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "max_write_buffer_number": 4, "write_buffer_size": "256M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "16M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${subkey}",
+        "//html_user_key_coder": "$base_data_key_decoder"
+      },
+      "pubsub": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "max_write_buffer_number": 4, "write_buffer_size": "32M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "16M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${pubsub}",
+        "//html_user_key_coder": "$base_data_key_decoder"
+      },
+      "propagate": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "max_write_buffer_number": 4, "write_buffer_size": "32M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "8M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${propagate}",
+        "//html_user_key_coder": "$meta_key_decoder"
+      },
+      "stream": {
+        "enable_blob_files": false,
+        "min_blob_size": "4K",
+        "blob_file_size": "256M",
+        "blob_compression_type": "kZSTD",
+        "enable_blob_garbage_collection": true,
+        "blob_garbage_collection_age_cutoff": 0.25,
+
+        "max_write_buffer_number": 4, "write_buffer_size": "32M",
+        "//min_write_buffer_number_to_merge": 2,
+        "max_bytes_for_level_base": "256M",
+        "max_bytes_for_level_multiplier": 1,
+        "target_file_size_base": "64M", "target_file_size_multiplier": 2,
+        "table_factory": "${dispatch}",
+        "compression_per_level": [
+          "kNoCompression", "kNoCompression", "kNoCompression",
+          "kZSTD", "kZSTD","kZSTD","kZSTD"
+        ],
+        "compaction_filter_factory": "${subkey}",
+        "//html_user_key_coder": "$meta_key_decoder"
+      }
+    },
+    "DBOptions": {
+      "dbopt": {
+        "advise_random_on_open": true,
+        "create_if_missing": true,
+        "create_missing_column_families": true,
+        "enable_pipelined_write": false,
+        "//row_cache": "${row_cache}",
+        "max_background_flushes": 2,
+        "max_background_compactions": 64,
+        "max_subcompactions": 1,
+        "max_level1_subcompactions": 7,
+        "write_buffer_manager": "${wbm}",
+        "inplace_update_support": false,
+        "max_manifest_file_size": "64M",
+        "max_log_file_size": "256M",
+        "keep_log_file_num": 12,
+        "WAL_size_limit_MB": 0,
+        "WAL_ttl_seconds": 10800,
+        "wal_dir": "/nvme-shared/kvrocks/kvrocks_wal",
+        "max_total_wal_size": "512M",
+        "listeners": "${listener}",
+        "dump_malloc_stats": true,
+        "sst_file_manager": "${sst_mgr}",
+        "rate_limiter": "${rate_limiter}",
+        "delayed_write_rate": "16M",
+        "statistics": "${stat}",
+        "allow_mmap_reads": false
+      }
+    },
+    "databases": {
+      "kvrocks_data": {
+        "method": "DB::Open",
+        "params": {
+          "db_options": "${dbopt}",
+          "column_families": {
+            "default": "${default}",
+            "metadata": "${metadata}",
+            "zset_score": "${zset_score}",
+            "pubsub": "${pubsub}",
+            "propagate": "${propagate}",
+            "stream": "${stream}"
+          },
+          "path": "/nvme-shared/kvrocks/kvrocks_data"
+        }
+      }
+    },
+    "open": "kvrocks_data"
+}

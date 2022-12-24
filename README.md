@@ -73,6 +73,16 @@ It is as simple as:
 ```shell
 $ git clone https://github.com/apache/incubator-kvrocks.git
 $ cd incubator-kvrocks
+
+# build with ToplingDB, you should build and install ToplingDB first
+env TOPLINGDB_HOME=../toplingdb TOPLINGDB_LIBDIR=/path/to/toplingdb/lib \
+    ./x.py build -j`nproc` -DCMAKE_BUILD_TYPE=Release
+
+# copy html files to kvrocks's ToplingDB document root, this makes webview pretty
+cp /path/to/toplingdb-repo/sideplugin/rockside/src/topling/web/{index.html,style.css} \
+   /path/to/kvrocks/toplingdb/document-root
+
+# default build with rocksdb
 $ ./x.py build # `./x.py build -h` to check more options;
                # especially, `./x.py build --ghproxy` will fetch dependencies via ghproxy.com.
 ```
@@ -92,7 +102,8 @@ $ ./x.py build -DUSE_LUAJIT=ON
 ### Running Kvrocks
 
 ```shell
-$ ./build/kvrocks -c kvrocks.conf
+# env TOPLING_CONF instructs kvrocks to run with ToplingDB
+$ env TOPLING_CONF=kvtopling-community.json ./build/kvrocks -c kvrocks.conf
 ```
 
 ### Running Kvrocks using Docker

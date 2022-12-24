@@ -38,6 +38,10 @@
 #include "rw_lock.h"
 #include "status.h"
 
+#ifdef KVROCKS_USE_TOPLINGDB
+#include <topling/side_plugin_repo.h>
+#endif
+
 const int kReplIdLength = 16;
 
 enum ColumnFamilyID {
@@ -69,6 +73,10 @@ class Storage {
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
   Status Open(bool read_only = false);
+private:
+  Status OpenRocks(bool read_only = false);
+  Status OpenTopling(const char* conf);
+public:
   void CloseDB();
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();
@@ -182,6 +190,10 @@ class Storage {
   std::atomic<bool> db_in_retryable_io_error_{false};
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+
+#ifdef KVROCKS_USE_TOPLINGDB
+  rocksdb::SidePluginRepo repo_;
+#endif
 };
 
 }  // namespace Engine

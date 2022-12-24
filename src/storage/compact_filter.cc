@@ -26,6 +26,9 @@
 #include <utility>
 
 #include "types/redis_bitmap.h"
+#ifdef KVROCKS_USE_TOPLINGDB
+#include <topling/side_plugin_factory.h>
+#endif
 
 namespace Engine {
 using rocksdb::Slice;
@@ -135,3 +138,13 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
 }
 
 }  // namespace Engine
+
+#ifdef KVROCKS_USE_TOPLINGDB
+namespace rocksdb {
+using namespace Engine;
+//ROCKSDB_REG_Plugin(MetadataFilterFactory , CompactionFilterFactory);
+//ROCKSDB_REG_Plugin(SubKeyFilterFactory   , CompactionFilterFactory);
+ROCKSDB_REG_Plugin(PropagateFilterFactory, CompactionFilterFactory);
+ROCKSDB_REG_Plugin(PubSubFilterFactory   , CompactionFilterFactory);
+}
+#endif

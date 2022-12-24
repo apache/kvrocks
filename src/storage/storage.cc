@@ -90,6 +90,9 @@ void Storage::CloseDB() {
   db_closing_ = true;
   db_->SyncWAL();
   rocksdb::CancelAllBackgroundWork(db_, true);
+#ifdef KVROCKS_USE_TOPLINGDB
+  repo_.CloseAllDB(false);
+#endif
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   delete db_;
   db_ = nullptr;
@@ -240,6 +243,14 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
 }
 
 Status Storage::Open(bool read_only) {
+  if (const char* TOPLING_CONF = getenv("TOPLING_CONF")) {
+    return OpenTopling(TOPLING_CONF);
+  } else {
+    return OpenRocks(read_only);
+  }
+}
+
+Status Storage::OpenRocks(bool read_only) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
 
@@ -327,6 +338,49 @@ Status Storage::Open(bool read_only) {
   }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
   return Status::OK();
+}
+
+Status Storage::OpenTopling(const char* conf) {
+#ifdef KVROCKS_USE_TOPLINGDB
+  using rocksdb::CompactionFilterFactory;
+  using std::shared_ptr;
+  using std::make_shared;
+  repo_.Put("metadata",
+    R"({"class": "MetadataFilterFactory", "params": {"storage": "this"}})",
+    shared_ptr<CompactionFilterFactory>(make_shared<MetadataFilterFactory>(this)));
+  repo_.Put("subkey",
+    R"({"class": "SubKeyFilterFactory", "params": {"storage": "this"}})",
+    shared_ptr<CompactionFilterFactory>(make_shared<SubKeyFilterFactory>(this)));
+  repo_.Put("listener",
+    R"({"class": "EventListener", "params": {"storage": "this"}})",
+    shared_ptr<rocksdb::EventListener>(make_shared<EventListener>(this)));
+  auto s = repo_.ImportAutoFile(conf);
+  if (!s.ok()) {
+    LOG(ERROR) << "[storage] FAIL repo_.ImportAutoFile(" << conf << ") = " << s.ToString();
+    return Status(Status::DBOpenErr, "repo_.ImportAutoFile");
+  }
+  auto start = std::chrono::high_resolution_clock::now();
+  rocksdb::DB_MultiCF* dbm = nullptr;
+  s = repo_.OpenDB(&dbm);
+  if (!s.ok()) {
+    LOG(ERROR) << "[storage] FAIL repo_.OpenDB() = " << s.ToString();
+    return Status(Status::DBOpenErr, "repo_.OpenDB");
+  }
+  db_ = dbm->db;
+  cf_handles_ = dbm->cf_handles;
+  auto end = std::chrono::high_resolution_clock::now();
+  int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
+  LOG(INFO) << "[storage] StartHttpServer ...";
+  s = repo_.StartHttpServer();
+  if (!s.ok()) {
+    LOG(INFO) << "[storage] StartHttpServer ... Failed";
+  }
+  return Status::OK();
+#else
+  return Status(Status::DBOpenErr,
+    "Not compiled with ToplingDB, DO NOT start with env TOPLING_CONF");
+#endif
 }
 
 Status Storage::CreateBackup() {

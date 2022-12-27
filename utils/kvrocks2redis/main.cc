@@ -56,7 +56,7 @@ static void usage(const char *program) {
 }
 
 static Options parseCommandLineOptions(int argc, char **argv) {
-  int ch;
+  int ch = 0;
   Options opts;
   while ((ch = ::getopt(argc, argv, "c:h")) != -1) {
     switch (ch) {
@@ -96,7 +96,7 @@ static Status createPidFile(const std::string &path) {
 static void removePidFile(const std::string &path) { std::remove(path.data()); }
 
 static void daemonize() {
-  pid_t pid;
+  pid_t pid = 0;
 
   pid = fork();
   if (pid < 0) {

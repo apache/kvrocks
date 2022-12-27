@@ -191,7 +191,7 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     if jobs is not None:
         options.append(f'-j{jobs}')
 
-    run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
+    run(run_command, *options, 'kvrocks/src/', 'kvrocks2redis/', verbose=True, cwd=basedir)
 
 
 def golangci_lint() -> None:

@@ -44,7 +44,7 @@ int Config::yesnotoi(std::string input) {
   return -1;
 }
 
-Status Config::parseConfigFromString(std::string input) {
+Status Config::parseConfigFromString(const std::string &input) {
   std::vector<std::string> args = Util::Split(input, " \t\r\n");
   // omit empty line and comment
   if (args.empty() || args[0].front() == '#') return Status::OK();
@@ -52,7 +52,7 @@ Status Config::parseConfigFromString(std::string input) {
   args[0] = Util::ToLower(args[0]);
   size_t size = args.size();
   if (size == 2 && args[0] == "daemonize") {
-    int i;
+    int i = 0;
     if ((i = yesnotoi(args[1])) == -1) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }
@@ -96,7 +96,7 @@ Status Config::parseConfigFromString(std::string input) {
       kvrocks_auth = args[3];
     }
   } else if (size == 2 && args[0] == "cluster-enable") {
-    int i;
+    int i = 0;
     if ((i = yesnotoi(args[1])) == -1) {
       return Status(Status::NotOK, "argument must be 'yes' or 'no'");
     }

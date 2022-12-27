@@ -61,7 +61,7 @@ struct Config {
  private:
   std::string path_;
   int yesnotoi(std::string input);
-  Status parseConfigFromString(std::string input);
+  Status parseConfigFromString(const std::string &input);
 };
 
 }  // namespace Kvrocks2redis

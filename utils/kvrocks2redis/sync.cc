@@ -31,6 +31,7 @@
 #include <fstream>
 #include <string>
 
+#include "event_util.h"
 #include "io_util.h"
 #include "server/redis_reply.h"
 
@@ -148,8 +149,6 @@ Status Sync::tryPSync() {
 
 Status Sync::incrementBatchLoop() {
   std::cout << "Start parse increment batch ..." << std::endl;
-  char *line = nullptr;
-  size_t line_len = 0;
   char *bulk_data = nullptr;
   evbuffer *evbuf = evbuffer_new();
   while (!IsStopped()) {
@@ -159,13 +158,12 @@ Status Sync::incrementBatchLoop() {
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length
-      line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) {
         usleep(10000);
         continue;
       }
-      incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-      free(line);
+      incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
       if (incr_bulk_len_ == 0) {
         return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
       }
@@ -175,12 +173,12 @@ Status Sync::incrementBatchLoop() {
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_data) {
       // Read bulk data (batch data)
       if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
-        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, incr_bulk_len_ + 2));
+        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, static_cast<ssize_t>(incr_bulk_len_) + 2));
         std::string bulk_data_str = std::string(bulk_data, incr_bulk_len_);
         // Skip the ping packet
         if (bulk_data_str != "ping") {
           auto bat = rocksdb::WriteBatch(bulk_data_str);
-          int count = bat.Count();
+          int count = static_cast<int>(bat.Count());
           parser_->ParseWriteBatch(bulk_data_str);
           updateNextSeq(next_seq_ + count);
         }
@@ -239,7 +237,7 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
 Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
   std::string seq_string = std::to_string(seq);
   // append to 21 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = 21 - seq_string.size();
+  int append_byte = 21 - static_cast<int>(seq_string.size());
   while (append_byte-- > 0) {
     seq_string += " ";
   }

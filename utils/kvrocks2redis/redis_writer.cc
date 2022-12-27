@@ -219,7 +219,7 @@ Status RedisWriter::readNextOffsetFromFile(const std::string &ns, std::istream::
 Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::off_type offset) {
   std::string offset_string = std::to_string(offset);
   // append to 256 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = 256 - offset_string.size();
+  int append_byte = 256 - static_cast<int>(offset_string.size());
   while (append_byte-- > 0) {
     offset_string += " ";
   }

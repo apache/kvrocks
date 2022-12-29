@@ -926,8 +926,7 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
     return Status(Status::NotOK, "Error running script (new function): " + errMsg + "\n");
   }
   // would store lua function into propagate column family and propagate those scripts to slaves
-  srv->ScriptSet(*sha, body);
-  return Status::OK();
+  return srv->ScriptSet(*sha, body);
 }
 
 }  // namespace Lua

@@ -67,7 +67,10 @@ Status RedisWriter::FlushDB(const std::string &ns) {
     return s;
   }
 
-  updateNextOffset(ns, 0);
+  s = updateNextOffset(ns, 0);
+  if (!s.IsOK()) {
+    return s;
+  }
 
   s = Write(ns, {Redis::Command2RESP({"FLUSHDB"})});
   if (!s.IsOK()) return s;
@@ -136,7 +139,11 @@ void RedisWriter::sync() {
           Stop();
           return;
         }
-        updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
+        s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
+        if (!s.IsOK()) {
+          LOG(ERROR) << "ERR updating next offset: " << s.Msg();
+          break;
+        }
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -173,7 +180,11 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
 
 Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   const auto auth_len_str = std::to_string(auth.length());
-  Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
+  auto s = Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
+  if (!s.IsOK()) {
+    return s.Prefixed("[kvrocks2redis] failed to send AUTH command");
+  }
+
   std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read redis auth response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line};
@@ -184,8 +195,11 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
 Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   const auto db_number_str = std::to_string(db_number);
   const auto db_number_str_len = std::to_string(db_number_str.length());
-  Util::SockSend(redis_fds_[ns],
-                 "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
+  auto s = Util::SockSend(redis_fds_[ns],
+                          "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to send SELECT command to socket");
+  }
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
   std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
@@ -224,8 +238,7 @@ Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::o
     offset_string += " ";
   }
   offset_string += '\0';
-  Util::Pwrite(next_offset_fds_[ns], offset_string, 0);
-  return Status::OK();
+  return Util::Pwrite(next_offset_fds_[ns], offset_string, 0);
 }
 
 std::string RedisWriter::getNextOffsetFilePath(const std::string &ns) {

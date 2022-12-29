@@ -55,12 +55,16 @@ Status FeedSlaveThread::Start() {
       sigaddset(&mask, SIGHUP);
       sigaddset(&mask, SIGPIPE);
       pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      Util::SockSend(conn_->GetFD(), "+OK\r\n");
+      auto s = Util::SockSend(conn_->GetFD(), "+OK\r\n");
+      if (!s.IsOK()) {
+        LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
+        return;
+      }
       this->loop();
     });
   } catch (const std::system_error &e) {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
-    return Status(Status::NotOK, e.what());
+    return {Status::NotOK, e.what()};
   }
   return Status::OK();
 }
@@ -544,7 +548,13 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                          << Util::StringToHex(bulk_string);
               return CBState::RESTART;
             }
-            self->ParseWriteBatch(bulk_string);
+
+            s = self->ParseWriteBatch(bulk_string);
+            if (!s.IsOK()) {
+              LOG(ERROR) << "[replication] CRITICAL - failed to parse write batch 0x" << Util::StringToHex(bulk_string)
+                         << ": " << s.Msg();
+              return CBState::RESTART;
+            }
           }
           evbuffer_drain(input, self->incr_bulk_len_ + 2);
           self->incr_state_ = Incr_batch_size;
@@ -612,7 +622,12 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
         if (evbuffer_get_length(input) < self->fullsync_filesize_) {
           return CBState::AGAIN;
         }
-        meta = Engine::Storage::ReplDataManager::ParseMetaAndSave(self->storage_, self->fullsync_meta_id_, input);
+        auto s =
+            Engine::Storage::ReplDataManager::ParseMetaAndSave(self->storage_, self->fullsync_meta_id_, input, &meta);
+        if (!s.IsOK()) {
+          LOG(ERROR) << "[replication] Failed to parse meta and save: " << s.Msg();
+          return CBState::AGAIN;
+        }
         target_dir = self->srv_->GetConfig()->backup_sync_dir;
       } else {
         // Master using new version
@@ -895,13 +910,13 @@ void ReplicationThread::EventTimerCB(int, int16_t, void *ctx) {
   }
 }
 
-rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_string) {
+Status ReplicationThread::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
   WriteBatchHandler write_batch_handler;
-  rocksdb::Status status;
 
-  status = write_batch.Iterate(&write_batch_handler);
-  if (!status.ok()) return status;
+  auto db_status = write_batch.Iterate(&write_batch_handler);
+  if (!db_status.ok()) return {Status::NotOK, "failed to iterate over write batch: " + db_status.ToString()};
+
   switch (write_batch_handler.Type()) {
     case kBatchTypePublish:
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
@@ -910,7 +925,10 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
       if (write_batch_handler.Key() == Engine::kPropagateScriptCommand) {
         std::vector<std::string> tokens = Util::TokenizeRedisProtocol(write_batch_handler.Value());
         if (!tokens.empty()) {
-          srv_->ExecPropagatedCommand(tokens);
+          auto s = srv_->ExecPropagatedCommand(tokens);
+          if (!s.IsOK()) {
+            return s.Prefixed("failed to execute propagate command");
+          }
         }
       }
       break;
@@ -927,7 +945,7 @@ rocksdb::Status ReplicationThread::ParseWriteBatch(const std::string &batch_stri
     case kBatchTypeNone:
       break;
   }
-  return rocksdb::Status::OK();
+  return Status::OK();
 }
 
 bool ReplicationThread::isRestoringError(const char *err) {

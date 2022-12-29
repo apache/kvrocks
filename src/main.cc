@@ -265,7 +265,10 @@ static Status createPidFile(const std::string &path) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  Util::Write(*fd, pid_str);
+  auto s = Util::Write(*fd, pid_str);
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to write to PID-file");
+  }
   return Status::OK();
 }
 

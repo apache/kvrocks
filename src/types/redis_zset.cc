@@ -194,6 +194,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
@@ -262,6 +263,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   rocksdb::WriteBatch batch;
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
@@ -364,6 +366,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
@@ -447,6 +450,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
@@ -608,6 +612,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);

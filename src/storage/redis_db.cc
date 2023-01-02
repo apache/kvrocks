@@ -182,6 +182,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   while (true) {
@@ -236,6 +237,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
@@ -360,6 +362,7 @@ rocksdb::Status Database::FlushAll() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
@@ -466,6 +469,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, cons
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = DBUtil::UniqueIterator(storage_->GetDB(), read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
@@ -521,6 +525,7 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slo
   rocksdb::ReadOptions read_options;
   read_options.snapshot = snapshot;
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
   bool end = false;
   for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
@@ -568,6 +573,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {

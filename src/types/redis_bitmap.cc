@@ -122,6 +122,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
+  read_options.async_io = true;
   uint32_t frag_index = 0, valid_size = 0;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);

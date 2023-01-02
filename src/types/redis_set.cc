@@ -153,6 +153,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
@@ -226,6 +227,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {

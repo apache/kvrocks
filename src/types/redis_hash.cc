@@ -297,6 +297,7 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   if (!spec.reversed) {
@@ -354,6 +355,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   read_options.fill_cache = false;
+  read_options.async_io = true;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {

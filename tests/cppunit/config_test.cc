@@ -18,8 +18,6 @@
  *
  */
 
-#include "config.h"
-
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -35,7 +33,8 @@ TEST(Config, GetAndSet) {
   const char *path = "test.conf";
   Config config;
 
-  config.Load(CLIOptions(path));
+  auto s = config.Load(CLIOptions(path));
+  EXPECT_FALSE(s.IsOK());
   std::map<std::string, std::string> mutable_cases = {
       {"timeout", "1000"},
       {"maxclients", "2000"},
@@ -82,7 +81,7 @@ TEST(Config, GetAndSet) {
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {
-    auto s = config.Set(nullptr, iter.first, iter.second);
+    s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_TRUE(s.IsOK());
     config.Get(iter.first, &values);
     ASSERT_TRUE(s.IsOK());
@@ -91,9 +90,10 @@ TEST(Config, GetAndSet) {
     EXPECT_EQ(values[1], iter.second);
   }
   ASSERT_TRUE(config.Rewrite().IsOK());
-  config.Load(CLIOptions(path));
+  s = config.Load(CLIOptions(path));
+  EXPECT_TRUE(s.IsOK());
   for (const auto &iter : mutable_cases) {
-    auto s = config.Set(nullptr, iter.first, iter.second);
+    s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_TRUE(s.IsOK());
     config.Get(iter.first, &values);
     ASSERT_EQ(values.size(), 2);
@@ -125,7 +125,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.row_cache_size", "100"},
   };
   for (const auto &iter : immutable_cases) {
-    auto s = config.Set(nullptr, iter.first, iter.second);
+    s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_FALSE(s.IsOK());
   }
 }
@@ -184,7 +184,8 @@ TEST(Namespace, Add) {
   unlink(path);
 
   Config config;
-  config.Load(CLIOptions(path));
+  auto s = config.Load(CLIOptions(path));
+  EXPECT_FALSE(s.IsOK());
   config.slot_id_encoded = false;
   EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
   config.requirepass = "foobared";
@@ -196,15 +197,16 @@ TEST(Namespace, Add) {
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
-    config.GetNamespace(namespaces[i], &token);
+    s = config.GetNamespace(namespaces[i], &token);
+    EXPECT_TRUE(s.IsOK());
     EXPECT_EQ(token, tokens[i]);
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
-    auto s = config.AddNamespace(namespaces[i], tokens[i]);
+    s = config.AddNamespace(namespaces[i], tokens[i]);
     EXPECT_FALSE(s.IsOK());
     EXPECT_EQ(s.Msg(), "the token has already exists");
   }
-  auto s = config.AddNamespace("n1", "t0");
+  s = config.AddNamespace("n1", "t0");
   EXPECT_FALSE(s.IsOK());
   EXPECT_EQ(s.Msg(), "the namespace has already exists");
 
@@ -219,14 +221,15 @@ TEST(Namespace, Set) {
   unlink(path);
 
   Config config;
-  config.Load(CLIOptions(path));
+  auto s = config.Load(CLIOptions(path));
+  EXPECT_FALSE(s.IsOK());
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   std::vector<std::string> new_tokens = {"nt1", "nt2'", "nt3", "nt4"};
   for (size_t i = 0; i < namespaces.size(); i++) {
-    auto s = config.SetNamespace(namespaces[i], tokens[i]);
+    s = config.SetNamespace(namespaces[i], tokens[i]);
     EXPECT_FALSE(s.IsOK());
     EXPECT_EQ(s.Msg(), "the namespace was not found");
   }
@@ -235,7 +238,8 @@ TEST(Namespace, Set) {
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
-    config.GetNamespace(namespaces[i], &token);
+    s = config.GetNamespace(namespaces[i], &token);
+    EXPECT_TRUE(s.IsOK());
     EXPECT_EQ(token, tokens[i]);
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
@@ -243,7 +247,8 @@ TEST(Namespace, Set) {
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
-    config.GetNamespace(namespaces[i], &token);
+    s = config.GetNamespace(namespaces[i], &token);
+    EXPECT_TRUE(s.IsOK());
     EXPECT_EQ(token, new_tokens[i]);
   }
   unlink(path);
@@ -254,7 +259,8 @@ TEST(Namespace, Delete) {
   unlink(path);
 
   Config config;
-  config.Load(CLIOptions(path));
+  auto s = config.Load(CLIOptions(path));
+  EXPECT_FALSE(s.IsOK());
   config.slot_id_encoded = false;
   config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
@@ -264,13 +270,16 @@ TEST(Namespace, Delete) {
   }
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
-    config.GetNamespace(namespaces[i], &token);
+    s = config.GetNamespace(namespaces[i], &token);
+    EXPECT_TRUE(s.IsOK());
     EXPECT_EQ(token, tokens[i]);
   }
   for (const auto &ns : namespaces) {
-    config.DelNamespace(ns);
+    s = config.DelNamespace(ns);
+    EXPECT_TRUE(s.IsOK());
     std::string token;
-    config.GetNamespace(ns, &token);
+    s = config.GetNamespace(ns, &token);
+    EXPECT_FALSE(s.IsOK());
     EXPECT_TRUE(token.empty());
   }
   unlink(path);
@@ -280,7 +289,8 @@ TEST(Namespace, RewriteNamespaces) {
   const char *path = "test.conf";
   unlink(path);
   Config config;
-  config.Load(CLIOptions(path));
+  auto s = config.Load(CLIOptions(path));
+  EXPECT_FALSE(s.IsOK());
   config.requirepass = "test";
   config.backup_dir = "test";
   config.slot_id_encoded = false;
@@ -293,10 +303,12 @@ TEST(Namespace, RewriteNamespaces) {
   EXPECT_TRUE(config.DelNamespace("to-be-deleted-ns").IsOK());
 
   Config new_config;
-  auto s = new_config.Load(CLIOptions(path));
+  s = new_config.Load(CLIOptions(path));
+  EXPECT_TRUE(s.IsOK());
   for (size_t i = 0; i < namespaces.size(); i++) {
     std::string token;
-    new_config.GetNamespace(namespaces[i], &token);
+    s = new_config.GetNamespace(namespaces[i], &token);
+    EXPECT_TRUE(s.IsOK());
     EXPECT_EQ(token, tokens[i]);
   }
 

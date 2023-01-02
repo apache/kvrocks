@@ -77,7 +77,7 @@ Storage::Storage(Config *config) : env_(rocksdb::Env::Default()), config_(config
 }
 
 Storage::~Storage() {
-  if (backup_ != nullptr) {
+  if (backup_) {
     DestroyBackup();
   }
   CloseDB();
@@ -248,7 +248,9 @@ Status Storage::Open(bool read_only) {
   size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size * MiB;
 
   rocksdb::Options options = InitOptions();
-  CreateColumnFamilies(options);
+  if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
+    return s.Prefixed("failed to create column families");
+  }
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
   if (config_->RocksDB.share_metadata_and_subkey_block_cache) {
@@ -372,10 +374,9 @@ Status Storage::CreateBackup() {
   return Status::OK();
 }
 
-Status Storage::DestroyBackup() {
+void Storage::DestroyBackup() {
   backup_->StopBackup();
   delete backup_;
-  return Status();
 }
 
 Status Storage::RestoreFromBackup() {
@@ -604,7 +605,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   return total_size;
 }
 
-Status Storage::CheckDBSizeLimit() {
+void Storage::CheckDBSizeLimit() {
   bool reach_db_size_limit = false;
   if (config_->max_db_size == 0) {
     reach_db_size_limit = false;
@@ -612,8 +613,9 @@ Status Storage::CheckDBSizeLimit() {
     reach_db_size_limit = GetTotalSize() >= config_->max_db_size * GiB;
   }
   if (reach_db_size_limit_ == reach_db_size_limit) {
-    return Status::OK();
+    return;
   }
+
   reach_db_size_limit_ = reach_db_size_limit;
   if (reach_db_size_limit_) {
     LOG(WARNING) << "[storage] ENABLE db_size limit " << config_->max_db_size << " GB"
@@ -621,7 +623,6 @@ Status Storage::CheckDBSizeLimit() {
   } else {
     LOG(WARNING) << "[storage] DISABLE db_size limit, set kvrocks to read-write mode ";
   }
-  return Status::OK();
 }
 
 void Storage::SetIORateLimit(int64_t max_io_mb) {
@@ -645,12 +646,12 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   return Status::OK();
 }
 
-bool Storage::ShiftReplId() {
+Status Storage::ShiftReplId() {
   const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const int charset_len = static_cast<int>(strlen(charset));
 
   // Do nothing if don't enable rsid psync
-  if (!config_->use_rsid_psync) return true;
+  if (!config_->use_rsid_psync) return Status::OK();
 
   std::random_device rd;
   std::mt19937 gen(rd() + getpid());
@@ -663,8 +664,7 @@ bool Storage::ShiftReplId() {
   LOG(INFO) << "[replication] New replication id: " << replid_;
 
   // Write new replication id into db engine
-  WriteToPropagateCF(kReplicationIdKey, replid_);
-  return true;
+  return WriteToPropagateCF(kReplicationIdKey, replid_);
 }
 
 std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
@@ -834,10 +834,8 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &
   return rv;
 }
 
-Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(Storage *storage,
-                                                                              rocksdb::BackupID meta_id,
-                                                                              evbuffer *evbuf) {
-  Storage::ReplDataManager::MetaInfo meta;
+Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf,
+                                                  Storage::ReplDataManager::MetaInfo *meta) {
   auto meta_file = "meta/" + std::to_string(meta_id);
   DLOG(INFO) << "[meta] id: " << meta_id;
 
@@ -850,16 +848,16 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(St
   // timestamp;
   UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] timestamp: " << line.get();
-  meta.timestamp = std::strtoll(line.get(), nullptr, 10);
+  meta->timestamp = std::strtoll(line.get(), nullptr, 10);
   // sequence
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   DLOG(INFO) << "[meta] seq:" << line.get();
-  meta.seq = std::strtoull(line.get(), nullptr, 10);
+  meta->seq = std::strtoull(line.get(), nullptr, 10);
   // optional metadata
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   if (strncmp(line.get(), "metadata", 8) == 0) {
     DLOG(INFO) << "[meta] meta: " << line.get();
-    meta.meta_data = std::string(line.get(), line.length);
+    meta->meta_data = std::string(line.get(), line.length);
     line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   }
   DLOG(INFO) << "[meta] file count: " << line.get();
@@ -877,10 +875,10 @@ Storage::ReplDataManager::MetaInfo Storage::ReplDataManager::ParseMetaAndSave(St
     while (*(cptr++) != ' ') {
     }
     auto crc32 = std::strtoul(cptr, nullptr, 10);
-    meta.files.emplace_back(filename, crc32);
+    meta->files.emplace_back(filename, crc32);
   }
-  SwapTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
-  return meta;
+
+  return SwapTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
 }
 
 Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {

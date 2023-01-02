@@ -90,7 +90,7 @@ Status Cluster::SetNodeId(const std::string &node_id) {
   }
 
   // Set replication relationship
-  if (myself_ != nullptr) SetMasterSlaveRepl();
+  if (myself_) return SetMasterSlaveRepl();
 
   return Status::OK();
 }
@@ -217,7 +217,12 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   }
 
   // Set replication relationship
-  if (myself_ != nullptr) SetMasterSlaveRepl();
+  if (myself_) {
+    s = SetMasterSlaveRepl();
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to set master-replica replication");
+    }
+  }
 
   // Clear data of migrated slots
   if (!migrated_slots_.empty()) {
@@ -235,26 +240,31 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 }
 
 // Set replication relationship by cluster topology setting
-void Cluster::SetMasterSlaveRepl() {
-  if (!svr_) return;
+Status Cluster::SetMasterSlaveRepl() {
+  if (!svr_) return Status::OK();
 
-  if (myself_ == nullptr) return;
+  if (!myself_) return Status::OK();
 
   if (myself_->role_ == kClusterMaster) {
     // Master mode
-    svr_->RemoveMaster();
+    auto s = svr_->RemoveMaster();
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to remove master");
+    }
     LOG(INFO) << "MASTER MODE enabled by cluster topology setting";
   } else if (nodes_.find(myself_->master_id_) != nodes_.end()) {
-    // Slave mode and master node is existing
+    // Replica mode and master node is existing
     std::shared_ptr<ClusterNode> master = nodes_[myself_->master_id_];
-    Status s = svr_->AddMaster(master->host_, master->port_, false);
-    if (s.IsOK()) {
-      LOG(INFO) << "SLAVE OF " << master->host_ << ":" << master->port_ << " enabled by cluster topology setting";
-    } else {
+    auto s = svr_->AddMaster(master->host_, master->port_, false);
+    if (!s.IsOK()) {
       LOG(WARNING) << "SLAVE OF " << master->host_ << ":" << master->port_
-                   << " enabled by cluster topology setting, encounter error: " << s.Msg();
+                   << " wasn't enabled by cluster topology setting, encounter error: " << s.Msg();
+      return s.Prefixed("failed to add master");
     }
+    LOG(INFO) << "SLAVE OF " << master->host_ << ":" << master->port_ << " enabled by cluster topology setting";
   }
+
+  return Status::OK();
 }
 
 bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role_ != kClusterMaster || svr_->IsSlave(); }

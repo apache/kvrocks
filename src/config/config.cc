@@ -605,7 +605,10 @@ void Config::SetMaster(const std::string &host, uint32_t port) {
   master_port = port;
   auto iter = fields_.find("slaveof");
   if (iter != fields_.end()) {
-    iter->second->Set(master_host + " " + std::to_string(master_port));
+    auto s = iter->second->Set(master_host + " " + std::to_string(master_port));
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to set the value of 'slaveof' setting: " << s.Msg();
+    }
   }
 }
 
@@ -614,7 +617,10 @@ void Config::ClearMaster() {
   master_port = 0;
   auto iter = fields_.find("slaveof");
   if (iter != fields_.end()) {
-    iter->second->Set("no one");
+    auto s = iter->second->Set("no one");
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to clear the value of 'slaveof' setting: " << s.Msg();
+    }
   }
 }
 

@@ -152,8 +152,8 @@ class Server {
   void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
                       Redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
-  Status WakeupBlockingConns(const std::string &key, size_t n_conns);
-  Status OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
+  void WakeupBlockingConns(const std::string &key, size_t n_conns);
+  void OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
@@ -194,7 +194,7 @@ class Server {
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
   Status ScriptGet(const std::string &sha, std::string *body);
-  void ScriptSet(const std::string &sha, const std::string &body);
+  Status ScriptSet(const std::string &sha, const std::string &body);
   void ScriptReset();
   void ScriptFlush();
 

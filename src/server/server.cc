@@ -129,7 +129,10 @@ Status Server::Start() {
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    storage_->ShiftReplId();
+    auto s = storage_->ShiftReplId();
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to shift replication id");
+    }
   }
 
   if (config_->cluster_enabled) {
@@ -255,9 +258,11 @@ Status Server::RemoveMaster() {
     master_host_.clear();
     master_port_ = 0;
     config_->ClearMaster();
-    if (replication_thread_) replication_thread_->Stop();
-    replication_thread_ = nullptr;
-    storage_->ShiftReplId();
+    if (replication_thread_) {
+      replication_thread_->Stop();
+      replication_thread_ = nullptr;
+    }
+    return storage_->ShiftReplId();
   }
   return Status::OK();
 }
@@ -524,40 +529,43 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
   }
 }
 
-Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
+void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocking_keys_.find(key);
   if (iter == blocking_keys_.end() || iter->second.empty()) {
-    return Status(Status::NotOK);
+    return;
   }
+
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    auto s = conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "failed to enable write event on blocked client " << conn_ctx->fd << ": " << s.Msg();
+    }
     delConnContext(conn_ctx);
     iter->second.pop_front();
   }
-  return Status::OK();
 }
 
-Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
-                                    const Redis::StreamEntryID &entry_id) {
+void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocked_stream_consumers_.find(key);
   if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
-    return Status(Status::NotOK);
+    return;
   }
 
   for (auto it = iter->second.begin(); it != iter->second.end();) {
     auto consumer = *it;
     if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
-      consumer->owner->EnableWriteEvent(consumer->fd);
+      auto s = consumer->owner->EnableWriteEvent(consumer->fd);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "failed to enable write event on blocked stream consumer " << consumer->fd << ": " << s.Msg();
+      }
       it = iter->second.erase(it);
     } else {
       ++it;
     }
   }
-
-  return Status::OK();
 }
 
 void Server::delConnContext(ConnContext *c) {
@@ -659,7 +667,7 @@ void Server::cron() {
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
       // checkpoints at the same time
       if (config_->purge_backup_on_fullsync && (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
-        AsyncPurgeOldBackups(0, 0);
+        s = AsyncPurgeOldBackups(0, 0);
       }
     }
 
@@ -1361,7 +1369,9 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   if (IsSlave() &&
       (type & kTypeMaster || (!addr.empty() && addr == master_host_ + ":" + std::to_string(master_port_)))) {
     // Stop replication thread and start a new one to replicate
-    AddMaster(master_host_, master_port_, true);
+    if (auto s = AddMaster(master_host_, master_port_, true); !s.IsOK()) {
+      LOG(ERROR) << "Failed to add master " << master_host_ << ":" << master_port_ << "with error: " << s.Msg();
+    }
     (*killed)++;
   }
 }
@@ -1402,9 +1412,9 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   return Status::OK();
 }
 
-void Server::ScriptSet(const std::string &sha, const std::string &body) {
+Status Server::ScriptSet(const std::string &sha, const std::string &body) {
   std::string funcname = Engine::kLuaFunctionPrefix + sha;
-  storage_->WriteToPropagateCF(funcname, body);
+  return storage_->WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {

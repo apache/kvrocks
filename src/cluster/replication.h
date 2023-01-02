@@ -196,7 +196,7 @@ class ReplicationThread {
 
   static void EventTimerCB(int, int16_t, void *ctx);
 
-  rocksdb::Status ParseWriteBatch(const std::string &batch_string);
+  Status ParseWriteBatch(const std::string &batch_string);
 };
 
 /*

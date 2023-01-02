@@ -180,7 +180,10 @@ Status Sync::incrementBatchLoop() {
           auto bat = rocksdb::WriteBatch(bulk_data_str);
           int count = static_cast<int>(bat.Count());
           parser_->ParseWriteBatch(bulk_data_str);
-          updateNextSeq(next_seq_ + count);
+          auto s = updateNextSeq(next_seq_ + count);
+          if (!s.IsOK()) {
+            return s.Prefixed("failed to update next sequence");
+          }
         }
         evbuffer_drain(evbuf, incr_bulk_len_ + 2);
         incr_state_ = Incr_batch_size;
@@ -209,7 +212,11 @@ void Sync::parseKVFromLocalStorage() {
     LOG(ERROR) << "[kvrocks2redis] Failed to parse full db, encounter error: " << s.Msg();
     return;
   }
-  updateNextSeq(storage_->LatestSeq() + 1);
+
+  s = updateNextSeq(storage_->LatestSeq() + 1);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[kvrocks2redis] Failed to update next sequence: " << s.Msg();
+  }
 }
 
 Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
@@ -242,6 +249,5 @@ Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
     seq_string += " ";
   }
   seq_string += '\0';
-  Util::Pwrite(next_seq_fd_, seq_string, 0);
-  return Status::OK();
+  return Util::Pwrite(next_seq_fd_, seq_string, 0);
 }

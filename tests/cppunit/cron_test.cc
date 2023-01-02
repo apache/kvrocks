@@ -29,9 +29,10 @@ class CronTest : public testing::Test {
   explicit CronTest() {
     cron = std::make_unique<Cron>();
     std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
-    cron->SetScheduleTime(schedule);
+    auto s = cron->SetScheduleTime(schedule);
+    EXPECT_TRUE(s.IsOK());
   }
-  ~CronTest() = default;
+  ~CronTest() override = default;
 
  protected:
   std::unique_ptr<Cron> cron;

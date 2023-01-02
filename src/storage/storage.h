@@ -79,7 +79,7 @@ class Storage {
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
   Status CreateBackup();
-  Status DestroyBackup();
+  void DestroyBackup();
   Status RestoreFromBackup();
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
@@ -103,7 +103,7 @@ class Storage {
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
-  Status CheckDBSizeLimit();
+  void CheckDBSizeLimit();
   void SetIORateLimit(int64_t max_io_mb);
 
   std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
@@ -139,7 +139,8 @@ class Storage {
       // [[filename, checksum]...]
       std::vector<std::pair<std::string, uint32_t>> files;
     };
-    static MetaInfo ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf);
+    static Status ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf,
+                                   Storage::ReplDataManager::MetaInfo *meta);
     static std::unique_ptr<rocksdb::WritableFile> NewTmpFile(Storage *storage, const std::string &dir,
                                                              const std::string &repl_file);
     static Status SwapTmpFile(Storage *storage, const std::string &dir, const std::string &repl_file);
@@ -155,7 +156,7 @@ class Storage {
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 
-  bool ShiftReplId();
+  Status ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 

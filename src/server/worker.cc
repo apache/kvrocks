@@ -159,10 +159,13 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
-  Status status = worker->AddConnection(conn);
-  if (!status.IsOK()) {
-    std::string err_msg = Redis::Error("ERR " + status.Msg());
-    Util::SockSend(fd, err_msg);
+  s = worker->AddConnection(conn);
+  if (!s.IsOK()) {
+    std::string err_msg = Redis::Error("ERR " + s.Msg());
+    s = Util::SockSend(fd, err_msg);
+    if (!s.IsOK()) {
+      LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
+    }
     conn->Close();
     return;
   }
@@ -187,10 +190,13 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
-  Status status = worker->AddConnection(conn);
-  if (!status.IsOK()) {
-    std::string err_msg = Redis::Error("ERR " + status.Msg());
-    Util::SockSend(fd, err_msg);
+  auto s = worker->AddConnection(conn);
+  if (!s.IsOK()) {
+    std::string err_msg = Redis::Error("ERR " + s.Msg());
+    s = Util::SockSend(fd, err_msg);
+    if (!s.IsOK()) {
+      LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
+    }
     conn->Close();
     return;
   }

@@ -4143,32 +4143,36 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    Status s;
     if (host_.empty()) {
-      s = svr->RemoveMaster();
-      if (s.IsOK()) {
-        *output = Redis::SimpleString("OK");
-        LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-        if (svr->GetConfig()->cluster_enabled) {
-          svr->slot_migrate_->SetMigrateStopFlag(false);
-          LOG(INFO) << "Change server role to master, restart migration task";
-        }
+      auto s = svr->RemoveMaster();
+      if (!s.IsOK()) {
+        return s.Prefixed("failed to remove master");
+      }
+
+      *output = Redis::SimpleString("OK");
+      LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrate_->SetMigrateStopFlag(false);
+        LOG(INFO) << "Change server role to master, restart migration task";
+      }
+
+      return Status::OK();
+    }
+
+    auto s = svr->AddMaster(host_, port_, false);
+    if (s.IsOK()) {
+      *output = Redis::SimpleString("OK");
+      LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
+                   << "')";
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrate_->SetMigrateStopFlag(true);
+        LOG(INFO) << "Change server role to slave, stop migration task";
       }
     } else {
-      s = svr->AddMaster(host_, port_, false);
-      if (s.IsOK()) {
-        *output = Redis::SimpleString("OK");
-        LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
-                     << "')";
-        if (svr->GetConfig()->cluster_enabled) {
-          svr->slot_migrate_->SetMigrateStopFlag(true);
-          LOG(INFO) << "Change server role to slave, stop migration task";
-        }
-      } else {
-        LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_ << " (user request from '" << conn->GetAddr()
-                   << "') encounter error: " << s.Msg();
-      }
+      LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_ << " (user request from '" << conn->GetAddr()
+                 << "') encounter error: " << s.Msg();
     }
+
     return s;
   }
 
@@ -4249,19 +4253,26 @@ class CommandPSync : public Commander {
     // be taken over, so should never trigger any event in worker thread.
     conn->Detach();
     conn->EnableFlag(Redis::Connection::kSlave);
-    Util::SockSetBlocking(conn->GetFD(), 1);
+    auto s = Util::SockSetBlocking(conn->GetFD(), 1);
+    if (!s.IsOK()) {
+      conn->EnableFlag(Redis::Connection::kCloseAsync);
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
 
     svr->stats_.IncrPSyncOKCounter();
-    Status s = svr->AddSlave(conn, next_repl_seq);
+    s = svr->AddSlave(conn, next_repl_seq);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      Util::SockSend(conn->GetFD(), err);
+      s = Util::SockSend(conn->GetFD(), err);
+      if (!s.IsOK()) {
+        LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
+      }
       conn->EnableFlag(Redis::Connection::kCloseAsync);
-      LOG(WARNING) << "Failed to add salve: " << conn->GetAddr() << " to start increment syncing";
+      LOG(WARNING) << "Failed to add replica: " << conn->GetAddr() << " to start incremental syncing";
     } else {
-      LOG(INFO) << "New slave: " << conn->GetAddr() << " was added, start increment syncing";
+      LOG(INFO) << "New replica: " << conn->GetAddr() << " was added, start incremental syncing";
     }
-    return Status::OK();
+    return s;
   }
 
  private:
@@ -4962,7 +4973,11 @@ class CommandFetchMeta : public Commander {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
 
-    Util::SockSetBlocking(repl_fd, 1);
+    auto s = Util::SockSetBlocking(repl_fd, 1);
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
+
     conn->NeedNotClose();
     conn->EnableFlag(Redis::Connection::kCloseAsync);
     svr->stats_.IncrFullSyncCounter();
@@ -4975,9 +4990,11 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
       if (!s.IsOK()) {
-        Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
-        LOG(WARNING) << "[replication] Failed to get full data file info,"
-                     << " error: " << s.Msg();
+        s = Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
+        if (!s.IsOK()) {
+          LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
+        }
+        LOG(WARNING) << "[replication] Failed to get full data file info: " << s.Msg();
         return;
       }
       // Send full data file info
@@ -5008,7 +5025,11 @@ class CommandFetchFile : public Commander {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
 
-    Util::SockSetBlocking(repl_fd, 1);
+    auto s = Util::SockSetBlocking(repl_fd, 1);
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
+
     conn->NeedNotClose();  // Feed-replica-file thread will close the replica fd
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
@@ -5351,7 +5372,11 @@ class CommandScript : public Commander {
 
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
-      svr->Propagate(Engine::kPropagateScriptCommand, args_);
+      auto s = svr->Propagate(Engine::kPropagateScriptCommand, args_);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
+        return s;
+      }
       *output = Redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size() - 2);

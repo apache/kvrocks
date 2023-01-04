@@ -600,6 +600,8 @@ void Config::initFieldCallback() {
   }
 }
 
+std::string Config::NodesFilePath() { return dir + "/nodes.conf"; }
+
 void Config::SetMaster(const std::string &host, uint32_t port) {
   master_host = host;
   master_port = port;

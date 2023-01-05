@@ -20,6 +20,7 @@
 
 #include "config.h"
 
+#include <fmt/format.h>
 #include <rocksdb/env.h>
 #include <strings.h>
 
@@ -34,7 +35,6 @@
 
 #include "config_type.h"
 #include "config_util.h"
-#include "fmt/format.h"
 #include "parse_util.h"
 #include "server/server.h"
 #include "status.h"

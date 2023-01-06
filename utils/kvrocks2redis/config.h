@@ -34,6 +34,7 @@ struct redis_server {
   std::string auth;
   int db_number;
 };
+
 struct Config {
  public:
   int loglevel = 0;

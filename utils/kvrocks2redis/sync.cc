@@ -22,7 +22,6 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#include <event2/event.h>
 #include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/write_batch.h>
@@ -67,10 +66,12 @@ void Sync::Start() {
   while (!IsStopped()) {
     auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
     if (!sock_fd) {
-      LOG(ERROR) << sock_fd.Msg();
+      LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host,
+                                config_->kvrocks_port, sock_fd.Msg());
       usleep(10000);
       continue;
     }
+
     sock_fd_ = *sock_fd;
     s = auth();
     if (!s.IsOK()) {
@@ -78,6 +79,7 @@ void Sync::Start() {
       usleep(10000);
       continue;
     }
+
     while (!IsStopped()) {
       s = tryPSync();
       if (!s.IsOK()) {
@@ -135,7 +137,7 @@ Status Sync::tryPSync() {
           " last_next_seq config file, and restart kvrocks2redis, redis reply: " +
           std::string(line);
       stop_flag_ = true;
-      return Status(Status::NotOK, error_msg);
+      return {Status::NotOK, error_msg};
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
@@ -149,12 +151,11 @@ Status Sync::tryPSync() {
 
 Status Sync::incrementBatchLoop() {
   std::cout << "Start parse increment batch ..." << std::endl;
-  char *bulk_data = nullptr;
   evbuffer *evbuf = evbuffer_new();
   while (!IsStopped()) {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
+      return {Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno)};
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length
@@ -165,7 +166,7 @@ Status Sync::incrementBatchLoop() {
       }
       incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
       if (incr_bulk_len_ == 0) {
-        return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
+        return {Status::NotOK, "[kvrocks2redis] Invalid increment data size"};
       }
       incr_state_ = Incr_batch_data;
     }
@@ -173,7 +174,7 @@ Status Sync::incrementBatchLoop() {
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_data) {
       // Read bulk data (batch data)
       if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
-        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, static_cast<ssize_t>(incr_bulk_len_) + 2));
+        char *bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, static_cast<ssize_t>(incr_bulk_len_) + 2));
         std::string bulk_data_str = std::string(bulk_data, incr_bulk_len_);
         // Skip the ping packet
         if (bulk_data_str != "ping") {
@@ -227,7 +228,7 @@ Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
 Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
   next_seq_fd_ = open(config_->next_seq_file_path.data(), O_RDWR | O_CREAT, 0666);
   if (next_seq_fd_ < 0) {
-    return Status(Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno));
+    return {Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno)};
   }
 
   *seq = 0;

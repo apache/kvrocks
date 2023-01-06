@@ -85,13 +85,15 @@ static void initGoogleLog(const Kvrocks2redis::Config *config) {
 static Status createPidFile(const std::string &path) {
   int fd = open(path.data(), O_RDWR | O_CREAT | O_EXCL, 0660);
   if (fd < 0) {
-    return Status(Status::NotOK, strerror(errno));
+    return {Status::NotOK, strerror(errno)};
   }
+
   std::string pid_str = std::to_string(getpid());
   auto s = Util::Write(fd, pid_str);
   if (!s.IsOK()) {
     return s.Prefixed("failed to write to PID-file");
   }
+
   close(fd);
   return Status::OK();
 }
@@ -99,20 +101,20 @@ static Status createPidFile(const std::string &path) {
 static void removePidFile(const std::string &path) { std::remove(path.data()); }
 
 static void daemonize() {
-  pid_t pid = 0;
-
-  pid = fork();
+  pid_t pid = fork();
   if (pid < 0) {
-    LOG(ERROR) << "Failed to fork the process, err: " << strerror(errno);
+    LOG(ERROR) << "Failed to fork the process. Error: " << strerror(errno);
     exit(1);
   }
+
   if (pid > 0) exit(EXIT_SUCCESS);  // parent process
   // change the file mode
   umask(0);
   if (setsid() < 0) {
-    LOG(ERROR) << "Failed to setsid, err: %s" << strerror(errno);
+    LOG(ERROR) << "Failed to setsid. Error: " << strerror(errno);
     exit(1);
   }
+
   close(STDIN_FILENO);
   close(STDOUT_FILENO);
   close(STDERR_FILENO);
@@ -136,15 +138,17 @@ int main(int argc, char *argv[]) {
   Kvrocks2redis::Config config;
   Status s = config.Load(config_file_path);
   if (!s.IsOK()) {
-    std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
+    std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
     exit(1);
   }
+
   initGoogleLog(&config);
 
   if (config.daemonize) daemonize();
+
   s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
+    LOG(ERROR) << "Failed to create pidfile '" << config.pidfile << "': " << s.Msg();
     exit(1);
   }
 
@@ -155,7 +159,7 @@ int main(int argc, char *argv[]) {
   Engine::Storage storage(&kvrocks_config);
   s = storage.Open(true);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to open: " << s.Msg();
+    LOG(ERROR) << "Failed to open Kvrocks storage: " << s.Msg();
     exit(1);
   }
 
@@ -170,6 +174,7 @@ int main(int argc, char *argv[]) {
     }
   };
   sync.Start();
+
   removePidFile(config.pidfile);
   return 0;
 }

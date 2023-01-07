@@ -54,3 +54,18 @@ TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(*ParseInt("123", {0, 123}), 123);
   ASSERT_EQ(ParseInt("124", {0, 123}).Msg(), "out of numeric range");
 }
+
+TEST(ParseUtil, ParseSizeAndUnit) {
+  ASSERT_EQ(*ParseSizeAndUnit("123"), 123);
+  ASSERT_EQ(*ParseSizeAndUnit("123K"), 123 * 1024);
+  ASSERT_EQ(*ParseSizeAndUnit("123m"), 123 * 1024 * 1024);
+  ASSERT_EQ(*ParseSizeAndUnit("123G"), 123ull << 30);
+  ASSERT_EQ(*ParseSizeAndUnit("123t"), 123ull << 40);
+  ASSERT_FALSE(ParseSizeAndUnit("123x"));
+  ASSERT_FALSE(ParseSizeAndUnit("123 t"));
+  ASSERT_FALSE(ParseSizeAndUnit("123 "));
+  ASSERT_FALSE(ParseSizeAndUnit("t"));
+  ASSERT_TRUE(ParseSizeAndUnit("16383p"));
+  ASSERT_FALSE(ParseSizeAndUnit("16384p"));
+  ASSERT_EQ(ParseSizeAndUnit("16388p").Msg(), "arithmetic overflow");
+}

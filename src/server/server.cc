@@ -37,6 +37,7 @@
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
+#include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
 #include "tls_util.h"
@@ -820,11 +821,10 @@ void Server::GetClientsInfo(std::string *info) {
 
 void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
-  char used_memory_rss_human[16], used_memory_lua_human[16];
   int64_t rss = Stats::GetMemoryRSS();
-  Util::BytesToHuman(used_memory_rss_human, 16, static_cast<uint64_t>(rss));
   int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0) * 1024;
-  Util::BytesToHuman(used_memory_lua_human, 16, static_cast<uint64_t>(memory_lua));
+  std::string used_memory_rss_human = Util::BytesToHuman(rss);
+  std::string used_memory_lua_human = Util::BytesToHuman(memory_lua);
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss << "\r\n";
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";

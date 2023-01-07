@@ -24,7 +24,7 @@
 
 // num << bit <= MAX  ->  num <= MAX >> bit
 template <typename T, typename U>
-StatusOr<T> CheckedShl(T num, U bit) {
+StatusOr<T> CheckedShiftLeft(T num, U bit) {
   if (num <= std::numeric_limits<T>::max() >> bit) {
     return num << bit;
   }
@@ -38,15 +38,15 @@ StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
   if (*rest == 0) {
     return num;
   } else if (Util::EqualICase(rest, "k")) {
-    return CheckedShl(num, 10);
+    return CheckedShiftLeft(num, 10);
   } else if (Util::EqualICase(rest, "m")) {
-    return CheckedShl(num, 20);
+    return CheckedShiftLeft(num, 20);
   } else if (Util::EqualICase(rest, "g")) {
-    return CheckedShl(num, 30);
+    return CheckedShiftLeft(num, 30);
   } else if (Util::EqualICase(rest, "t")) {
-    return CheckedShl(num, 40);
+    return CheckedShiftLeft(num, 40);
   } else if (Util::EqualICase(rest, "p")) {
-    return CheckedShl(num, 50);
+    return CheckedShiftLeft(num, 50);
   }
 
   return {Status::NotOK, "encounter unexpected unit"};

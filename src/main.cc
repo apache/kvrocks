@@ -306,9 +306,10 @@ int main(int argc, char *argv[]) {
   Config config;
   Status s = config.Load(opts);
   if (!s.IsOK()) {
-    std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
+    std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
     return 1;
   }
+
   initGoogleLog(&config);
   printVersion(LOG(INFO));
   // Tricky: We don't expect that different instances running on the same port,

@@ -191,7 +191,7 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     if jobs is not None:
         options.append(f'-j{jobs}')
 
-    run(run_command, *options, 'kvrocks/src/', verbose=True, cwd=basedir)
+    run(run_command, *options, 'kvrocks/src/', 'kvrocks2redis/', verbose=True, cwd=basedir)
 
 
 def golangci_lint() -> None:
@@ -242,46 +242,6 @@ def package_source(release_version: str) -> None:
     payload = output.read().strip()
     with open(f'{tarball}.sha512', 'w+') as f:
         f.write(payload)
-
-
-def package_fpm(package_type: str, release_version: str, dir: str, jobs: Optional[int]) -> None:
-    fpm = find_command('fpm', msg=f'fpm is required for {package_type} packaging')
-
-    version = write_version(release_version)
-
-    build(dir=dir, jobs=jobs, ghproxy=False, ninja=False, unittest=False, skip_build=False, compiler='auto',
-          cmake_path='cmake', D=[])
-
-    package_dir = Path(dir) / 'package-fpm'
-    makedirs(str(package_dir), exist_ok=False)
-    makedirs(str(package_dir / 'bin'))
-    makedirs(str(package_dir / 'conf'))
-
-    basedir = Path(__file__).parent.absolute()
-
-    copyfile(str(Path(dir) / 'kvrocks'), str(package_dir / 'bin' / 'kvrocks'))
-    copyfile(str(Path(dir) / 'kvrocks2redis'), str(package_dir / 'bin' / 'kvrocks2redis'))
-    copyfile(str(basedir / 'kvrocks.conf'), str(package_dir / 'conf' / 'kvrocks.conf'))
-
-    fpm_opts = [
-        '-t', package_type,
-        '-v', version,
-        '-C', str(package_dir),
-        '-s', 'dir',
-        '--prefix', '/www/kvrocks',
-        '-n', 'kvrocks',
-        '--epoch', '7',
-        '--config-files', '/www/kvrocks/conf/kvrocks.conf',
-        '--iteration', 'release',
-        '--verbose',
-        '--category', 'kvrocks/projects',
-        '--description', 'kvrocks',
-        '--url', 'https://github.com/apache/incubator-kvrocks',
-        '--license', 'Apache-2.0'
-    ]
-
-    run(fpm, *fpm_opts, verbose=True)
-
 
 def test_cpp(dir: str, rest: List[str]) -> None:
     basedir = Path(dir).absolute()
@@ -395,19 +355,6 @@ if __name__ == '__main__':
     parser_package_source.add_argument('-v', '--release-version', required=True, metavar='VERSION',
                                        help='current releasing version')
     parser_package_source.set_defaults(func=package_source)
-    parser_package_fpm = parser_package_subparsers.add_parser(
-        'fpm',
-        description="Package built binaries to an rpm/deb package",
-        help="Package built binaries to an rpm/deb package",
-    )
-    parser_package_fpm.add_argument('-v', '--release-version', required=True, metavar='VERSION',
-                                    help='current releasing version')
-    parser_package_fpm.add_argument('-t', '--package-type', required=True, choices=('rpm', 'deb'),
-                                    help='package type for fpm to build')
-    parser_package_fpm.add_argument('dir', metavar='BUILD_DIR',
-                                    help="directory to store cmake-generated and build files")
-    parser_package_fpm.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
-    parser_package_fpm.set_defaults(func=package_fpm)
 
     parser_test = subparsers.add_parser(
         'test',

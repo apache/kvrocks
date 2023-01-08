@@ -35,7 +35,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
     return Status::OK();
   }
   if (args.size() % 5 != 0) {
-    return Status(Status::NotOK, "time expression format error,should only contain 5x fields");
+    return {Status::NotOK, "time expression format error,should only contain 5x fields"};
   }
 
   std::vector<Scheduler> new_schedulers;
@@ -43,7 +43,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   for (size_t i = 0; i < args.size(); i += 5) {
     Status s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4], &st);
     if (!s.IsOK()) {
-      return Status(Status::NotOK, "time expression format error : " + s.Msg());
+      return s.Prefixed("time expression format error");
     }
     new_schedulers.push_back(st);
   }

@@ -37,6 +37,7 @@
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
+#include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
 #include "tls_util.h"
@@ -129,7 +130,10 @@ Status Server::Start() {
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    storage_->ShiftReplId();
+    auto s = storage_->ShiftReplId();
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to shift replication id");
+    }
   }
 
   if (config_->cluster_enabled) {
@@ -255,9 +259,11 @@ Status Server::RemoveMaster() {
     master_host_.clear();
     master_port_ = 0;
     config_->ClearMaster();
-    if (replication_thread_) replication_thread_->Stop();
-    replication_thread_ = nullptr;
-    storage_->ShiftReplId();
+    if (replication_thread_) {
+      replication_thread_->Stop();
+      replication_thread_ = nullptr;
+    }
+    return storage_->ShiftReplId();
   }
   return Status::OK();
 }
@@ -524,40 +530,43 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
   }
 }
 
-Status Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
+void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocking_keys_.find(key);
   if (iter == blocking_keys_.end() || iter->second.empty()) {
-    return Status(Status::NotOK);
+    return;
   }
+
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    auto s = conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "failed to enable write event on blocked client " << conn_ctx->fd << ": " << s.Msg();
+    }
     delConnContext(conn_ctx);
     iter->second.pop_front();
   }
-  return Status::OK();
 }
 
-Status Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
-                                    const Redis::StreamEntryID &entry_id) {
+void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
   auto iter = blocked_stream_consumers_.find(key);
   if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
-    return Status(Status::NotOK);
+    return;
   }
 
   for (auto it = iter->second.begin(); it != iter->second.end();) {
     auto consumer = *it;
     if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
-      consumer->owner->EnableWriteEvent(consumer->fd);
+      auto s = consumer->owner->EnableWriteEvent(consumer->fd);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "failed to enable write event on blocked stream consumer " << consumer->fd << ": " << s.Msg();
+      }
       it = iter->second.erase(it);
     } else {
       ++it;
     }
   }
-
-  return Status::OK();
 }
 
 void Server::delConnContext(ConnContext *c) {
@@ -659,7 +668,7 @@ void Server::cron() {
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
       // checkpoints at the same time
       if (config_->purge_backup_on_fullsync && (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
-        AsyncPurgeOldBackups(0, 0);
+        s = AsyncPurgeOldBackups(0, 0);
       }
     }
 
@@ -812,11 +821,10 @@ void Server::GetClientsInfo(std::string *info) {
 
 void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
-  char used_memory_rss_human[16], used_memory_lua_human[16];
   int64_t rss = Stats::GetMemoryRSS();
-  Util::BytesToHuman(used_memory_rss_human, 16, static_cast<uint64_t>(rss));
   int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0) * 1024;
-  Util::BytesToHuman(used_memory_lua_human, 16, static_cast<uint64_t>(memory_lua));
+  std::string used_memory_rss_human = Util::BytesToHuman(rss);
+  std::string used_memory_lua_human = Util::BytesToHuman(memory_lua);
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss << "\r\n";
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
@@ -968,23 +976,28 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   info->clear();
   std::ostringstream string_stream;
   bool all = section == "all";
+  int section_cnt = 0;
 
   if (all || section == "server") {
     std::string server_info;
     GetServerInfo(&server_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << server_info;
   }
   if (all || section == "clients") {
     std::string clients_info;
     GetClientsInfo(&clients_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << clients_info;
   }
   if (all || section == "memory") {
     std::string memory_info;
     GetMemoryInfo(&memory_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << memory_info;
   }
   if (all || section == "persistence") {
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Persistence\r\n";
     string_stream << "loading:" << is_loading_ << "\r\n";
 
@@ -997,6 +1010,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "stats") {
     std::string stats_info;
     GetStatsInfo(&stats_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << stats_info;
   }
 
@@ -1004,11 +1018,13 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (!is_loading_ && (all || section == "replication")) {
     std::string replication_info;
     GetReplicationInfo(&replication_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << replication_info;
   }
   if (all || section == "cpu") {
     struct rusage self_ru;
     getrusage(RUSAGE_SELF, &self_ru);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# CPU\r\n";
     string_stream << "used_cpu_sys:"
                   << static_cast<float>(self_ru.ru_stime.tv_sec) +
@@ -1022,6 +1038,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (all || section == "commandstats") {
     std::string commands_stats_info;
     GetCommandsStatsInfo(&commands_stats_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << commands_stats_info;
   }
 
@@ -1030,6 +1047,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
     string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
@@ -1056,6 +1074,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   if (!is_loading_ && (all || section == "rocksdb")) {
     std::string rocksdb_info;
     GetRocksDBInfo(&rocksdb_info);
+    if (section_cnt++) string_stream << "\r\n";
     string_stream << rocksdb_info;
   }
   *info = string_stream.str();
@@ -1350,7 +1369,9 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   if (IsSlave() &&
       (type & kTypeMaster || (!addr.empty() && addr == master_host_ + ":" + std::to_string(master_port_)))) {
     // Stop replication thread and start a new one to replicate
-    AddMaster(master_host_, master_port_, true);
+    if (auto s = AddMaster(master_host_, master_port_, true); !s.IsOK()) {
+      LOG(ERROR) << "Failed to add master " << master_host_ << ":" << master_port_ << "with error: " << s.Msg();
+    }
     (*killed)++;
   }
 }
@@ -1391,9 +1412,9 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   return Status::OK();
 }
 
-void Server::ScriptSet(const std::string &sha, const std::string &body) {
+Status Server::ScriptSet(const std::string &sha, const std::string &body) {
   std::string funcname = Engine::kLuaFunctionPrefix + sha;
-  storage_->WriteToPropagateCF(funcname, body);
+  return storage_->WriteToPropagateCF(funcname, body);
 }
 
 void Server::ScriptReset() {

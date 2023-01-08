@@ -31,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "config.h"
@@ -45,7 +46,7 @@
 
 constexpr const auto CLUSTER_SLOTS = HASH_SLOTS_SIZE;
 
-enum MigrateTaskState { kMigrateNone = 0, kMigrateStart, kMigrateSuccess, kMigrateFailed };
+enum MigrateTaskState { kMigrateNone = 0, kMigrateStarted, kMigrateSuccess, kMigrateFailed };
 
 enum MigrateStateMachine {
   kSlotMigrateNone,
@@ -57,15 +58,20 @@ enum MigrateStateMachine {
   kSlotMigrateClean
 };
 
+enum class KeyMigrationResult { kMigrated, kExpired, kUnderlyingStructEmpty };
+
 struct SlotMigrateJob {
   SlotMigrateJob(int slot, std::string dst_ip, int port, int speed, int pipeline_size, int seq_gap)
       : migrate_slot_(slot),
-        dst_ip_(dst_ip),
+        dst_ip_(std::move(dst_ip)),
         dst_port_(port),
         speed_limit_(speed),
         pipeline_size_(pipeline_size),
         seq_gap_(seq_gap) {}
+  SlotMigrateJob(const SlotMigrateJob &other) = delete;
+  SlotMigrateJob &operator=(const SlotMigrateJob &other) = delete;
   ~SlotMigrateJob() { close(slot_fd_); }
+
   int slot_fd_ = -1;  // fd to send data to dst during migrate job
   int migrate_slot_;
   std::string dst_ip_;
@@ -77,103 +83,103 @@ struct SlotMigrateJob {
 
 class SlotMigrate : public Redis::Database {
  public:
-  explicit SlotMigrate(Server *svr, int speed = kMigrateSpeed, int pipeline_size = kPipelineSize,
-                       int seq_gap = kSeqGapLimit);
+  explicit SlotMigrate(Server *svr, int migration_speed = kDefaultMigrationSpeed,
+                       int pipeline_size_limit = kDefaultPipelineSizeLimit, int seq_gap = kDefaultSeqGapLimit);
+  SlotMigrate(const SlotMigrate &other) = delete;
+  SlotMigrate &operator=(const SlotMigrate &other) = delete;
   ~SlotMigrate();
 
-  Status CreateMigrateHandleThread(void);
+  Status CreateMigrateHandleThread();
   void Loop();
   Status MigrateStart(Server *svr, const std::string &node_id, const std::string &dst_ip, int dst_port, int slot,
                       int speed, int pipeline_size, int seq_gap);
   void ReleaseForbiddenSlot();
   void SetMigrateSpeedLimit(int speed) {
-    if (speed >= 0) migrate_speed_ = speed;
+    if (speed >= 0) migration_speed_ = speed;
   }
-  void SetPipelineSize(uint32_t size) {
-    if (size > 0) pipeline_size_limit_ = size;
+  void SetPipelineSize(int value) {
+    if (value > 0) pipeline_size_limit_ = value;
   }
   void SetSequenceGapSize(int size) {
     if (size > 0) seq_gap_limit_ = size;
   }
   void SetMigrateStopFlag(bool state) { stop_migrate_ = state; }
-  int16_t GetMigrateState() { return migrate_state_; }
-  int16_t GetMigrateStateMachine() { return state_machine_; }
-  int16_t GetForbiddenSlot(void) { return forbidden_slot_; }
-  int16_t GetMigratingSlot(void) { return migrate_slot_; }
-  void GetMigrateInfo(std::string *info);
+  bool IsMigrationInProgress() const { return migrate_state_ == kMigrateStarted; }
+  int16_t GetMigrateStateMachine() const { return state_machine_; }
+  int16_t GetForbiddenSlot() const { return forbidden_slot_; }
+  int16_t GetMigratingSlot() const { return migrate_slot_; }
+  void GetMigrateInfo(std::string *info) const;
   bool IsTerminated() { return thread_state_ == ThreadState::Terminated; }
 
  private:
-  void StateMachine(void);
-  Status Start(void);
-  Status SendSnapshot(void);
-  Status SyncWal(void);
-  Status Success(void);
-  Status Fail(void);
-  Status Clean(void);
+  void RunStateMachine();
+  Status Start();
+  Status SendSnapshot();
+  Status SyncWal();
+  Status Success();
+  Status Fail();
+  void Clean();
 
-  bool AuthDstServer(int sock_fd, const std::string &password);
-  bool SetDstImportStatus(int sock_fd, int status);
-  bool CheckResponseOnce(int sock_fd);
-  bool CheckResponseWithCounts(int sock_fd, int total);
+  Status AuthDstServer(int sock_fd, const std::string &password);
+  Status SetDstImportStatus(int sock_fd, int status);
+  Status CheckResponseOnce(int sock_fd);
+  Status CheckResponseWithCounts(int sock_fd, int total);
 
-  Status MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &value, std::string *restore_cmds);
-  bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
-                        std::string *restore_cmds);
-  bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
-  bool MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
-                        std::vector<std::string> *user_cmd, std::string *restore_cmds);
-  bool SendCmdsPipelineIfNeed(std::string *commands, bool need);
-  void MigrateSpeedLimit(void);
+  StatusOr<KeyMigrationResult> MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &encoded_metadata,
+                                             std::string *restore_cmds);
+  Status MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
+                          std::string *restore_cmds);
+  Status MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
+  Status MigrateStream(const rocksdb::Slice &key, const StreamMetadata &metadata, std::string *restore_cmds);
+  Status MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
+                          std::vector<std::string> *user_cmd, std::string *restore_cmds);
+  Status SendCmdsPipelineIfNeed(std::string *commands, bool need);
+  void ApplyMigrationSpeedLimit();
   Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
-  Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t endseq);
-  Status SyncWalBeforeForbidSlot(void);
-  Status SyncWalAfterForbidSlot(void);
-  void MigrateWaitCmmdsFinish(void);
+  Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
+  Status SyncWalBeforeForbidSlot();
+  Status SyncWalAfterForbidSlot();
   void SetForbiddenSlot(int16_t slot);
 
  private:
-  Server *svr_;
-
-  MigrateStateMachine state_machine_;
-
-  enum ParserState { ArrayLen, BulkLen, BulkData, Error, OneRspEnd };
-  ParserState stat_ = ArrayLen;
-
+  enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };
-  ThreadState thread_state_ = ThreadState::Uninitialized;
 
   static const size_t kProtoInlineMaxSize = 16 * 1024L;
   static const size_t kProtoBulkMaxSize = 512 * 1024L * 1024L;
   static const int kMaxNotifyRetryTimes = 3;
-  static const int kPipelineSize = 16;
-  static const int kMigrateSpeed = 4096;
-  static const int kMaxItemsInCommand = 16;  // Iterms in every write commmand of complex keys
-  static const int kSeqGapLimit = 10000;
+  static const int kDefaultPipelineSizeLimit = 16;
+  static const int kDefaultMigrationSpeed = 4096;
+  static const int kMaxItemsInCommand = 16;  // number of items in every write command of complex keys
+  static const int kDefaultSeqGapLimit = 10000;
   static const int kMaxLoopTimes = 10;
 
-  int current_pipeline_size_;
-  int migrate_speed_ = kMigrateSpeed;
-  uint64_t last_send_time_;
+  Server *svr_;
+  MigrateStateMachine state_machine_ = kSlotMigrateNone;
+  ParserState parser_state_ = ParserState::ArrayLen;
+  ThreadState thread_state_ = ThreadState::Uninitialized;
+
+  int migration_speed_ = kDefaultMigrationSpeed;
+  int pipeline_size_limit_ = kDefaultPipelineSizeLimit;
+  int seq_gap_limit_ = kDefaultSeqGapLimit;
+  int current_pipeline_size_ = 0;
+  uint64_t last_send_time_ = 0;
 
   std::thread t_;
   std::mutex job_mutex_;
   std::condition_variable job_cv_;
-  std::unique_ptr<SlotMigrateJob> slot_job_ = nullptr;
+  std::unique_ptr<SlotMigrateJob> slot_job_;
   std::string dst_node_;
   std::string dst_ip_;
-  int dst_port_;
-  std::atomic<int16_t> forbidden_slot_;
-  std::atomic<int16_t> migrate_slot_;
-  int16_t migrate_failed_slot_;
-  std::atomic<MigrateTaskState> migrate_state_;
-  std::atomic<bool> stop_migrate_;  // stop_migrate_ is true will stop migrate but the migration thread won't destroy.
+  int dst_port_ = -1;
+  std::atomic<int16_t> forbidden_slot_ = -1;
+  std::atomic<int16_t> migrate_slot_ = -1;
+  int16_t migrate_failed_slot_ = -1;
+  std::atomic<MigrateTaskState> migrate_state_ = kMigrateNone;
+  std::atomic<bool> stop_migrate_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   std::string current_migrate_key_;
-  uint64_t slot_snapshot_time_;
-  const rocksdb::Snapshot *slot_snapshot_;
-  uint64_t wal_begin_seq_;
-  uint64_t wal_increment_seq_;
-
-  int pipeline_size_limit_ = kPipelineSize;
-  int seq_gap_limit_ = kSeqGapLimit;
+  uint64_t slot_snapshot_time_ = 0;
+  const rocksdb::Snapshot *slot_snapshot_ = nullptr;
+  uint64_t wal_begin_seq_ = 0;
+  uint64_t wal_increment_seq_ = 0;
 };

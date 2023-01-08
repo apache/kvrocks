@@ -177,7 +177,10 @@ static void initGoogleLog(const Config *config) {
     FLAGS_stderrthreshold = google::ERROR;
     FLAGS_logtostdout = true;
   } else {
-    FLAGS_log_dir = config->log_dir;
+    FLAGS_log_dir = config->log_dir + "/";
+    if (config->log_retention_days != -1) {
+      google::EnableLogCleaner(config->log_retention_days);
+    }
   }
 }
 
@@ -262,7 +265,10 @@ static Status createPidFile(const std::string &path) {
     return Status(Status::NotOK, strerror(errno));
   }
   std::string pid_str = std::to_string(getpid());
-  Util::Write(*fd, pid_str);
+  auto s = Util::Write(*fd, pid_str);
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to write to PID-file");
+  }
   return Status::OK();
 }
 
@@ -300,9 +306,10 @@ int main(int argc, char *argv[]) {
   Config config;
   Status s = config.Load(opts);
   if (!s.IsOK()) {
-    std::cout << "Failed to load config, err: " << s.Msg() << std::endl;
+    std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
     return 1;
   }
+
   initGoogleLog(&config);
   printVersion(LOG(INFO));
   // Tricky: We don't expect that different instances running on the same port,

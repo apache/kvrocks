@@ -22,7 +22,6 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#include <event2/event.h>
 #include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/write_batch.h>
@@ -31,6 +30,7 @@
 #include <fstream>
 #include <string>
 
+#include "event_util.h"
 #include "io_util.h"
 #include "server/redis_reply.h"
 
@@ -64,18 +64,22 @@ void Sync::Start() {
 
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    s = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port, &sock_fd_);
-    if (!s.IsOK()) {
-      LOG(ERROR) << s.Msg();
+    auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
+    if (!sock_fd) {
+      LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host,
+                                config_->kvrocks_port, sock_fd.Msg());
       usleep(10000);
       continue;
     }
+
+    sock_fd_ = *sock_fd;
     s = auth();
     if (!s.IsOK()) {
       LOG(ERROR) << s.Msg();
       usleep(10000);
       continue;
     }
+
     while (!IsStopped()) {
       s = tryPSync();
       if (!s.IsOK()) {
@@ -105,14 +109,10 @@ Status Sync::auth() {
   if (!config_->kvrocks_auth.empty()) {
     const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
     auto s = Util::SockSend(sock_fd_, auth_command);
-    if (!s.IsOK()) return Status(Status::NotOK, "send auth command err:" + s.Msg());
-    std::string line;
-    s = Util::SockReadLine(sock_fd_, &line);
-    if (!s.IsOK()) {
-      return Status(Status::NotOK, std::string("read auth response err: ") + s.Msg());
-    }
+    if (!s) return s.Prefixed("send auth command err");
+    std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
     if (line.compare(0, 3, "+OK") != 0) {
-      return Status(Status::NotOK, "auth got invalid response");
+      return {Status::NotOK, "auth got invalid response"};
     }
   }
   LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
@@ -125,12 +125,8 @@ Status Sync::tryPSync() {
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
   auto s = Util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
-  if (!s.IsOK()) return Status(Status::NotOK, "send psync command err:" + s.Msg());
-  std::string line;
-  s = Util::SockReadLine(sock_fd_, &line);
-  if (!s.IsOK()) {
-    return Status(Status::NotOK, std::string("read psync response err: ") + s.Msg());
-  }
+  if (!s) return s.Prefixed("send psync command err");
+  std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read psync response err"));
 
   if (line.compare(0, 3, "+OK") != 0) {
     if (next_seq_ > 0) {
@@ -141,7 +137,7 @@ Status Sync::tryPSync() {
           " last_next_seq config file, and restart kvrocks2redis, redis reply: " +
           std::string(line);
       stop_flag_ = true;
-      return Status(Status::NotOK, error_msg);
+      return {Status::NotOK, error_msg};
     }
     // PSYNC isn't OK, we should use parseAllLocalStorage
     // Switch to parseAllLocalStorage
@@ -155,26 +151,22 @@ Status Sync::tryPSync() {
 
 Status Sync::incrementBatchLoop() {
   std::cout << "Start parse increment batch ..." << std::endl;
-  char *line = nullptr;
-  size_t line_len = 0;
-  char *bulk_data = nullptr;
   evbuffer *evbuf = evbuffer_new();
   while (!IsStopped()) {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
-      return Status(Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno));
+      return {Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno)};
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length
-      line = evbuffer_readln(evbuf, &line_len, EVBUFFER_EOL_CRLF_STRICT);
+      UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
       if (!line) {
         usleep(10000);
         continue;
       }
-      incr_bulk_len_ = line_len > 0 ? std::strtoull(line + 1, nullptr, 10) : 0;
-      free(line);
+      incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
       if (incr_bulk_len_ == 0) {
-        return Status(Status::NotOK, "[kvrocks2redis] Invalid increment data size");
+        return {Status::NotOK, "[kvrocks2redis] Invalid increment data size"};
       }
       incr_state_ = Incr_batch_data;
     }
@@ -182,14 +174,17 @@ Status Sync::incrementBatchLoop() {
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_data) {
       // Read bulk data (batch data)
       if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
-        bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, incr_bulk_len_ + 2));
+        char *bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, static_cast<ssize_t>(incr_bulk_len_) + 2));
         std::string bulk_data_str = std::string(bulk_data, incr_bulk_len_);
         // Skip the ping packet
         if (bulk_data_str != "ping") {
           auto bat = rocksdb::WriteBatch(bulk_data_str);
-          int count = bat.Count();
+          int count = static_cast<int>(bat.Count());
           parser_->ParseWriteBatch(bulk_data_str);
-          updateNextSeq(next_seq_ + count);
+          auto s = updateNextSeq(next_seq_ + count);
+          if (!s.IsOK()) {
+            return s.Prefixed("failed to update next sequence");
+          }
         }
         evbuffer_drain(evbuf, incr_bulk_len_ + 2);
         incr_state_ = Incr_batch_size;
@@ -218,7 +213,11 @@ void Sync::parseKVFromLocalStorage() {
     LOG(ERROR) << "[kvrocks2redis] Failed to parse full db, encounter error: " << s.Msg();
     return;
   }
-  updateNextSeq(storage_->LatestSeq() + 1);
+
+  s = updateNextSeq(storage_->LatestSeq() + 1);
+  if (!s.IsOK()) {
+    LOG(ERROR) << "[kvrocks2redis] Failed to update next sequence: " << s.Msg();
+  }
 }
 
 Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
@@ -229,7 +228,7 @@ Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
 Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
   next_seq_fd_ = open(config_->next_seq_file_path.data(), O_RDWR | O_CREAT, 0666);
   if (next_seq_fd_ < 0) {
-    return Status(Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno));
+    return {Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno)};
   }
 
   *seq = 0;
@@ -246,11 +245,10 @@ Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
 Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) {
   std::string seq_string = std::to_string(seq);
   // append to 21 byte (overwrite entire first 21 byte, aka the largest SequenceNumber size )
-  int append_byte = 21 - seq_string.size();
+  int append_byte = 21 - static_cast<int>(seq_string.size());
   while (append_byte-- > 0) {
     seq_string += " ";
   }
   seq_string += '\0';
-  Util::Pwrite(next_seq_fd_, seq_string, 0);
-  return Status::OK();
+  return Util::Pwrite(next_seq_fd_, seq_string, 0);
 }

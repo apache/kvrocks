@@ -88,7 +88,7 @@ enum ServerLogType { kServerLogNone, kReplIdLog };
 
 class ServerLogData {
  public:
-  // Redis::WriteBatchLogData always starts with digist ascii, we use alphabetic to
+  // Redis::WriteBatchLogData always starts with digit ascii, we use alphabetic to
   // distinguish ServerLogData with Redis::WriteBatchLogData.
   static const char kReplIdTag = 'r';
   static bool IsServerLogData(const char *header) {
@@ -97,7 +97,7 @@ class ServerLogData {
   }
 
   ServerLogData() = default;
-  explicit ServerLogData(ServerLogType type, const std::string &content) : type_(type), content_(content) {}
+  explicit ServerLogData(ServerLogType type, std::string content) : type_(type), content_(std::move(content)) {}
 
   ServerLogType GetType() { return type_; }
   std::string GetContent() { return content_; }
@@ -108,6 +108,9 @@ class ServerLogData {
   ServerLogType type_ = kServerLogNone;
   std::string content_;
 };
+
+class SlotImport;
+class SlotMigrate;
 
 class Server {
  public:
@@ -149,8 +152,8 @@ class Server {
   void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
                       Redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
-  Status WakeupBlockingConns(const std::string &key, size_t n_conns);
-  Status OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
+  void WakeupBlockingConns(const std::string &key, size_t n_conns);
+  void OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
@@ -191,7 +194,7 @@ class Server {
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
   Status ScriptGet(const std::string &sha, std::string *body);
-  void ScriptSet(const std::string &sha, const std::string &body);
+  Status ScriptSet(const std::string &sha, const std::string &body);
   void ScriptReset();
   void ScriptFlush();
 
@@ -213,8 +216,8 @@ class Server {
   Engine::Storage *storage_;
   std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
-  std::unique_ptr<class SlotMigrate> slot_migrate_;
-  class SlotImport *slot_import_ = nullptr;
+  std::unique_ptr<SlotMigrate> slot_migrate_;
+  SlotImport *slot_import_ = nullptr;
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx_;

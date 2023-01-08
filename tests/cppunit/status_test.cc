@@ -163,3 +163,64 @@ TEST(StatusOr, ValueOr) {
   std::string s = "hi";
   ASSERT_EQ(StatusOr<std::string>(Status::NotOK, "").ValueOr(s), "hi");
 }
+
+TEST(StatusOr, Size) {
+  struct A {
+    std::string a, b;
+  };
+
+  static_assert(!StatusOr<char>::error_type::inplace);
+  static_assert(!StatusOr<int>::error_type::inplace);
+  static_assert(StatusOr<std::string>::error_type::inplace);
+  static_assert(StatusOr<A>::error_type::inplace);
+
+  struct B1 {
+    char a;
+    void *b;
+  };
+  struct B2 {
+    char a;
+    std::string b;
+  };
+  struct B3 {
+    char a;
+    A b;
+  };
+  static_assert(sizeof(StatusOr<char>) == sizeof(B1));
+  static_assert(sizeof(StatusOr<int>) == sizeof(B1));
+  static_assert(sizeof(StatusOr<void *>) == sizeof(B1));
+  static_assert(sizeof(StatusOr<std::string>) == sizeof(B2));
+  static_assert(sizeof(StatusOr<A>) == sizeof(B3));
+}
+
+TEST(StatusOr, Prefixed) {
+  auto f = [](int x) -> StatusOr<int> {
+    if (x < 0) {
+      return {Status::NotOK, "hi"};
+    }
+
+    if (x > 10) {
+      return {Status::NotOK, "hello"};
+    }
+
+    return x * x;
+  };
+
+  ASSERT_EQ(*f(5), 25);
+  ASSERT_EQ(f(11).Msg(), "hello");
+  ASSERT_EQ(f(12).Prefixed("hi").Msg(), "hi: hello");
+  ASSERT_EQ(f(-1).Msg(), "hi");
+
+  auto g = [f](int x) -> StatusOr<int> {
+    if (x > 20) {
+      return {Status::NotOK, "err"};
+    }
+
+    return GET_OR_RET(f(x + 1).Prefixed("oh"));
+  };
+
+  ASSERT_EQ(g(21).Msg(), "err");
+  ASSERT_EQ(g(15).Msg(), "oh: hello");
+  ASSERT_EQ(g(-2).Msg(), "oh: hi");
+  ASSERT_EQ(*g(5), 36);
+}

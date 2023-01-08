@@ -22,6 +22,8 @@
 
 #include <fmt/format.h>
 
+#include <climits>
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -60,8 +62,8 @@ class ConfigField {
   virtual ~ConfigField() = default;
   virtual std::string ToString() = 0;
   virtual Status Set(const std::string &v) = 0;
-  virtual Status ToNumber(int64_t *n) { return Status(Status::NotOK, "not supported"); }
-  virtual Status ToBool(bool *b) { return Status(Status::NotOK, "not supported"); }
+  virtual Status ToNumber(int64_t *n) { return {Status::NotOK, "not supported"}; }
+  virtual Status ToBool(bool *b) { return {Status::NotOK, "not supported"}; }
   virtual configType GetConfigType() { return config_type; }
   virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
   virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
@@ -147,10 +149,9 @@ class OctalField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int64_t n;
-    auto s = Util::OctalStringToNum(v, &n, min_, max_);
+    auto s = ParseInt<int>(v, {min_, max_}, 8);
     if (!s.IsOK()) return s;
-    *receiver_ = static_cast<int>(n);
+    *receiver_ = *s;
     return Status::OK();
   }
 
@@ -175,7 +176,7 @@ class YesNoField : public ConfigField {
     } else if (strcasecmp(v.data(), "no") == 0) {
       *receiver_ = false;
     } else {
-      return Status(Status::NotOK, "argument must be 'yes' or 'no'");
+      return {Status::NotOK, "argument must be 'yes' or 'no'"};
     }
     return Status::OK();
   }
@@ -196,7 +197,7 @@ class EnumField : public ConfigField {
   Status Set(const std::string &v) override {
     int e = configEnumGetValue(enums_, v.c_str());
     if (e == INT_MIN) {
-      return Status(Status::NotOK, "invalid enum option");
+      return {Status::NotOK, "invalid enum option"};
     }
     *receiver_ = e;
     return Status::OK();

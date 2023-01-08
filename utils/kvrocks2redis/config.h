@@ -34,6 +34,7 @@ struct redis_server {
   std::string auth;
   int db_number;
 };
+
 struct Config {
  public:
   int loglevel = 0;
@@ -61,7 +62,7 @@ struct Config {
  private:
   std::string path_;
   int yesnotoi(std::string input);
-  Status parseConfigFromString(std::string input);
+  Status parseConfigFromString(const std::string &input);
 };
 
 }  // namespace Kvrocks2redis

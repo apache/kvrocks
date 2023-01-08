@@ -26,25 +26,7 @@
 
 namespace Util {
 
-Status DecimalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 10);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-Status OctalStringToNum(const std::string &str, int64_t *n, int64_t min, int64_t max) {
-  auto parse_result = ParseInt<int64_t>(str, NumericRange<int64_t>{min, max}, 8);
-  if (!parse_result) {
-    return parse_result.ToStatus();
-  }
-  *n = *parse_result;
-  return Status::OK();
-}
-
-const std::string Float2String(double d) {
+std::string Float2String(double d) {
   if (std::isinf(d)) {
     return d > 0 ? "inf" : "-inf";
   }
@@ -240,22 +222,24 @@ std::string StringToHex(const std::string &input) {
 
 constexpr unsigned long long expTo1024(unsigned n) { return 1ULL << (n * 10); }
 
-void BytesToHuman(char *buf, size_t size, uint64_t n) {
+std::string BytesToHuman(uint64_t n) {
   if (n < expTo1024(1)) {
-    fmt::format_to_n(buf, size, "{}B", n);
+    return fmt::format("{}B", n);
   } else if (n < expTo1024(2)) {
-    fmt::format_to_n(buf, size, "{:.2f}K", static_cast<double>(n) / expTo1024(1));
+    return fmt::format("{:.2f}K", static_cast<double>(n) / expTo1024(1));
   } else if (n < expTo1024(3)) {
-    fmt::format_to_n(buf, size, "{:.2f}M", static_cast<double>(n) / expTo1024(2));
+    return fmt::format("{:.2f}M", static_cast<double>(n) / expTo1024(2));
   } else if (n < expTo1024(4)) {
-    fmt::format_to_n(buf, size, "{:.2f}G", static_cast<double>(n) / expTo1024(3));
+    return fmt::format("{:.2f}G", static_cast<double>(n) / expTo1024(3));
   } else if (n < expTo1024(5)) {
-    fmt::format_to_n(buf, size, "{:.2f}T", static_cast<double>(n) / expTo1024(4));
+    return fmt::format("{:.2f}T", static_cast<double>(n) / expTo1024(4));
   } else if (n < expTo1024(6)) {
-    fmt::format_to_n(buf, size, "{:.2f}P", static_cast<double>(n) / expTo1024(5));
+    return fmt::format("{:.2f}P", static_cast<double>(n) / expTo1024(5));
   } else {
-    fmt::format_to_n(buf, size, "{}B", n);
+    return fmt::format("{}B", n);
   }
+
+  return {};
 }
 
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {

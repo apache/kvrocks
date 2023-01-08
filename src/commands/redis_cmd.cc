@@ -241,7 +241,7 @@ class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
@@ -267,7 +267,7 @@ class CommandFlushAll : public Commander {
     }
 
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->GetMigrateState() == kMigrateStart) {
+      if (svr->slot_migrate_->IsMigrationInProgress()) {
         svr->slot_migrate_->SetMigrateStopFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
@@ -4148,32 +4148,36 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    Status s;
     if (host_.empty()) {
-      s = svr->RemoveMaster();
-      if (s.IsOK()) {
-        *output = Redis::SimpleString("OK");
-        LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-        if (svr->GetConfig()->cluster_enabled) {
-          svr->slot_migrate_->SetMigrateStopFlag(false);
-          LOG(INFO) << "Change server role to master, restart migration task";
-        }
+      auto s = svr->RemoveMaster();
+      if (!s.IsOK()) {
+        return s.Prefixed("failed to remove master");
+      }
+
+      *output = Redis::SimpleString("OK");
+      LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrate_->SetMigrateStopFlag(false);
+        LOG(INFO) << "Change server role to master, restart migration task";
+      }
+
+      return Status::OK();
+    }
+
+    auto s = svr->AddMaster(host_, port_, false);
+    if (s.IsOK()) {
+      *output = Redis::SimpleString("OK");
+      LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
+                   << "')";
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrate_->SetMigrateStopFlag(true);
+        LOG(INFO) << "Change server role to slave, stop migration task";
       }
     } else {
-      s = svr->AddMaster(host_, port_, false);
-      if (s.IsOK()) {
-        *output = Redis::SimpleString("OK");
-        LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
-                     << "')";
-        if (svr->GetConfig()->cluster_enabled) {
-          svr->slot_migrate_->SetMigrateStopFlag(true);
-          LOG(INFO) << "Change server role to slave, stop migration task";
-        }
-      } else {
-        LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_ << " (user request from '" << conn->GetAddr()
-                   << "') encounter error: " << s.Msg();
-      }
+      LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_ << " (user request from '" << conn->GetAddr()
+                 << "') encounter error: " << s.Msg();
     }
+
     return s;
   }
 
@@ -4254,19 +4258,26 @@ class CommandPSync : public Commander {
     // be taken over, so should never trigger any event in worker thread.
     conn->Detach();
     conn->EnableFlag(Redis::Connection::kSlave);
-    Util::SockSetBlocking(conn->GetFD(), 1);
+    auto s = Util::SockSetBlocking(conn->GetFD(), 1);
+    if (!s.IsOK()) {
+      conn->EnableFlag(Redis::Connection::kCloseAsync);
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
 
     svr->stats_.IncrPSyncOKCounter();
-    Status s = svr->AddSlave(conn, next_repl_seq);
+    s = svr->AddSlave(conn, next_repl_seq);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      Util::SockSend(conn->GetFD(), err);
+      s = Util::SockSend(conn->GetFD(), err);
+      if (!s.IsOK()) {
+        LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
+      }
       conn->EnableFlag(Redis::Connection::kCloseAsync);
-      LOG(WARNING) << "Failed to add salve: " << conn->GetAddr() << " to start increment syncing";
+      LOG(WARNING) << "Failed to add replica: " << conn->GetAddr() << " to start incremental syncing";
     } else {
-      LOG(INFO) << "New slave: " << conn->GetAddr() << " was added, start increment syncing";
+      LOG(INFO) << "New replica: " << conn->GetAddr() << " was added, start incremental syncing";
     }
-    return Status::OK();
+    return s;
   }
 
  private:
@@ -4315,8 +4326,7 @@ class CommandPerfLog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -4353,8 +4363,7 @@ class CommandSlowlog : public Commander {
       if (args[2] == "*") {
         cnt_ = 0;
       } else {
-        Status s = Util::DecimalStringToNum(args[2], &cnt_);
-        return s;
+        cnt_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
       }
     }
 
@@ -4969,7 +4978,11 @@ class CommandFetchMeta : public Commander {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
 
-    Util::SockSetBlocking(repl_fd, 1);
+    auto s = Util::SockSetBlocking(repl_fd, 1);
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
+
     conn->NeedNotClose();
     conn->EnableFlag(Redis::Connection::kCloseAsync);
     svr->stats_.IncrFullSyncCounter();
@@ -4982,9 +4995,11 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
       if (!s.IsOK()) {
-        Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
-        LOG(WARNING) << "[replication] Failed to get full data file info,"
-                     << " error: " << s.Msg();
+        s = Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
+        if (!s.IsOK()) {
+          LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
+        }
+        LOG(WARNING) << "[replication] Failed to get full data file info: " << s.Msg();
         return;
       }
       // Send full data file info
@@ -5015,7 +5030,11 @@ class CommandFetchFile : public Commander {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetIP();
 
-    Util::SockSetBlocking(repl_fd, 1);
+    auto s = Util::SockSetBlocking(repl_fd, 1);
+    if (!s.IsOK()) {
+      return s.Prefixed("failed to set blocking mode on socket");
+    }
+
     conn->NeedNotClose();  // Feed-replica-file thread will close the replica fd
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
@@ -5091,15 +5110,12 @@ class CommandCluster : public Commander {
 
     if (subcommand_ == "import") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
-      int64_t state = 0;
-      s = Util::DecimalStringToNum(args[3], &state, static_cast<int64_t>(kImportStart),
-                                   static_cast<int64_t>(kImportNone));
-      if (!s.IsOK()) return {Status::NotOK, "Invalid import state"};
+      auto state = ParseInt<unsigned>(args[3], {kImportStart, kImportNone}, 10);
+      if (!state) return {Status::NotOK, "Invalid import state"};
 
-      state_ = static_cast<ImportStatus>(state);
+      state_ = static_cast<ImportStatus>(*state);
       return Status::OK();
     }
 
@@ -5186,8 +5202,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "migrate") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
 
-      auto s = Util::DecimalStringToNum(args[2], &slot_);
-      if (!s.IsOK()) return s;
+      slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
       dst_node_id_ = args[3];
       return Status::OK();
@@ -5239,7 +5254,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisParseErr, errValueNotInteger};
       }
 
-      if (set_version_ < 0) return {Status::RedisParseErr, "Invalid version"};
+      if (*parse_version < 0) return {Status::RedisParseErr, "Invalid version"};
 
       set_version_ = *parse_version;
 
@@ -5300,11 +5315,11 @@ class CommandClusterX : public Commander {
  private:
   std::string subcommand_;
   std::string nodes_str_;
+  std::string dst_node_id_;
   int64_t set_version_ = 0;
+  int64_t slot_ = -1;
   int slot_id_ = -1;
   bool force_ = false;
-  std::string dst_node_id_;
-  int64_t slot_ = -1;
 };
 
 class CommandEval : public Commander {
@@ -5362,7 +5377,11 @@ class CommandScript : public Commander {
 
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
-      svr->Propagate(Engine::kPropagateScriptCommand, args_);
+      auto s = svr->Propagate(Engine::kPropagateScriptCommand, args_);
+      if (!s.IsOK()) {
+        LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
+        return s;
+      }
       *output = Redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
       *output = Redis::MultiLen(args_.size() - 2);
@@ -6265,6 +6284,66 @@ class CommandXTrim : public Commander {
   StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
+class CommandXSetId : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    stream_name_ = args[1];
+
+    auto s = Redis::ParseStreamEntryID(args[2], &last_id_);
+    if (!s.IsOK()) {
+      return {Status::RedisParseErr, s.Msg()};
+    }
+
+    if (args.size() == 3) {
+      return Status::OK();
+    }
+
+    for (size_t i = 3; i < args.size(); /* manual increment */) {
+      if (Util::EqualICase(args[i], "entriesadded") && i + 1 < args.size()) {
+        auto parse_result = ParseInt<uint64_t>(args[i + 1]);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+
+        entries_added_ = *parse_result;
+        i += 2;
+      } else if (Util::EqualICase(args[i], "maxdeletedid") && i + 1 < args.size()) {
+        StreamEntryID id;
+        s = Redis::ParseStreamEntryID(args[i + 1], &id);
+        if (!s.IsOK()) {
+          return {Status::RedisParseErr, s.Msg()};
+        }
+
+        max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms, id.seq);
+        i += 2;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
+
+    auto s = stream_db.SetId(stream_name_, last_id_, entries_added_, max_deleted_id_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = Redis::SimpleString("OK");
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  StreamEntryID last_id_;
+  std::optional<StreamEntryID> max_deleted_id_;
+  std::optional<uint64_t> entries_added_;
+};
+
 REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
@@ -6450,7 +6529,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),
     MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1));
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
   for (const auto &attr : list) {

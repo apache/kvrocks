@@ -26,6 +26,7 @@
 #include <tuple>
 
 #include "status.h"
+#include "string_util.h"
 
 namespace details {
 
@@ -85,7 +86,7 @@ using ParseResultAndPos = std::tuple<T, const char *>;
 // base can be in {0, 2, ..., 36}, refer to strto* in standard c for more details
 template <typename T = long long>  // NOLINT
 StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
-  char *end;
+  char *end = nullptr;
 
   errno = 0;
   auto res = details::ParseIntFunc<T>::value(v, &end, base);
@@ -140,3 +141,6 @@ StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) 
 
   return *res;
 }
+
+// available units: K, M, G, T, P
+StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v);

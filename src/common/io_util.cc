@@ -50,40 +50,6 @@
 #define AE_HUP 8       // NOLINT
 
 namespace Util {
-Status SockConnect(const std::string &host, uint32_t port, int *fd) {
-  addrinfo hints, *servinfo = nullptr, *p = nullptr;
-
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-
-  if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
-    return {Status::NotOK, gai_strerror(rv)};
-  }
-
-  auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
-
-  for (p = servinfo; p != nullptr; p = p->ai_next) {
-    auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
-    if (!cfd) continue;
-    if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
-      continue;
-    }
-    Status s = SockSetTcpKeepalive(*cfd, 120);
-    if (s.IsOK()) {
-      s = SockSetTcpNoDelay(*cfd, 1);
-    }
-    if (!s.IsOK()) {
-      continue;
-    }
-
-    *fd = cfd.Release();
-    return Status::OK();
-  }
-
-  return Status::FromErrno();
-}
-
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
     return Status::FromErrno();
@@ -105,7 +71,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   // Send first probe after interval.
   val = interval;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPIDLE: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPIDLE");
   }
 
   // Send next probes after the specified interval. Note that we set the
@@ -114,14 +80,14 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   val = interval / 3;
   if (val == 0) val = 1;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPINTVL: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPINTVL");
   }
 
   // Consider the socket in error state after three we send three ACK
   // probes without getting a reply.
   val = 3;
   if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-    return {Status::NotOK, fmt::format("setsockopt TCP_KEEPCNT: {}", strerror(errno))};
+    return Status::FromErrno("setsockopt TCP_KEEPCNT");
   }
 #else
   ((void)interval);  // Avoid unused var warning for non Linux systems.
@@ -130,58 +96,66 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
-Status SockConnect(const std::string &host, uint32_t port, int *fd, int conn_timeout, int timeout) {
-  if (conn_timeout == 0) {
-    auto s = SockConnect(host, port, fd);
-    if (!s) return s;
-  } else {
-    *fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (*fd == NullFD) return Status::FromErrno();
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
+  addrinfo hints, *servinfo = nullptr, *p = nullptr;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
+    return {Status::NotOK, gai_strerror(rv)};
   }
+  auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
 
-  auto exit = MakeScopeExit([fd] {
-    close(*fd);
-    *fd = NullFD;
-  });
+  for (p = servinfo; p != nullptr; p = p->ai_next) {
+    auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
+    if (!cfd) continue;
 
-  if (conn_timeout != 0) {
-    sockaddr_in sin{};
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = inet_addr(host.c_str());
-    sin.sin_port = htons(port);
+    if (conn_timeout == 0) {
+      if (connect(*cfd, p->ai_addr, p->ai_addrlen) == -1) {
+        continue;
+      }
+    } else {
+      fcntl(*cfd, F_SETFL, O_NONBLOCK);
+      int ret = connect(*cfd, p->ai_addr, p->ai_addrlen);
+      if (ret != 0 && errno != EINPROGRESS) {
+        continue;
+      }
+      auto retmask = Util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
+      if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
+        return Status::FromErrno();
+      }
 
-    fcntl(*fd, F_SETFL, O_NONBLOCK);
-    connect(*fd, reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
-
-    auto retmask = Util::aeWait(*fd, AE_WRITABLE, conn_timeout);
-    if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
-      return Status::FromErrno();
+      // restore to the block mode
+      int socket_arg = 0;
+      if ((socket_arg = fcntl(*cfd, F_GETFL, NULL)) < 0) {
+        return Status::FromErrno();
+      }
+      socket_arg &= (~O_NONBLOCK);
+      if (fcntl(*cfd, F_SETFL, socket_arg) < 0) {
+        return Status::FromErrno();
+      }
     }
 
-    int socket_arg = 0;
-    // Set to blocking mode again...
-    if ((socket_arg = fcntl(*fd, F_GETFL, NULL)) < 0) {
-      return Status::FromErrno();
+    Status s = SockSetTcpKeepalive(*cfd, 120);
+    if (s.IsOK()) {
+      s = SockSetTcpNoDelay(*cfd, 1);
     }
-    socket_arg &= (~O_NONBLOCK);
-    if (fcntl(*fd, F_SETFL, socket_arg) < 0) {
-      return Status::FromErrno();
+    if (!s.IsOK()) {
+      continue;
     }
-    auto s = SockSetTcpNoDelay(*fd, 1);
-    if (!s) return s;
+    if (timeout > 0) {
+      struct timeval tv;
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = (timeout % 1000) * 1000;
+      if (setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
+        return Status::FromErrno("setsockopt failed");
+      }
+    }
+    return cfd.Release();
   }
-
-  if (timeout > 0) {
-    struct timeval tv;
-    tv.tv_sec = timeout / 1000;
-    tv.tv_usec = (timeout % 1000) * 1000;
-    if (setsockopt(*fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
-      return Status(Status::NotOK, std::string("setsockopt failed: ") + strerror(errno));
-    }
-  }
-
-  exit.Disable();
-  return Status::OK();
+  return Status::FromErrno();
 }
 
 // NOTE: fd should be blocking here
@@ -225,7 +199,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
       if (errno == EINTR)
         continue;
       else
-        return Status(Status::NotOK, strerror(errno));
+        return Status::FromErrno();
     }
     size -= nwritten;
     offset += nwritten;
@@ -237,7 +211,7 @@ Status SockSetBlocking(int fd, int blocking) {
   int flags = 0;
   // Old flags
   if ((flags = fcntl(fd, F_GETFL)) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_GETFL): ") + strerror(errno));
+    return Status::FromErrno("fcntl(F_GETFL)");
   }
 
   // New flags
@@ -247,22 +221,21 @@ Status SockSetBlocking(int fd, int blocking) {
     flags |= O_NONBLOCK;
 
   if (fcntl(fd, F_SETFL, flags) == -1) {
-    return Status(Status::NotOK, std::string("fcntl(F_SETFL,O_BLOCK): ") + strerror(errno));
+    return Status::FromErrno("fcntl(F_SETFL,O_BLOCK)");
   }
   return Status::OK();
 }
 
-Status SockReadLine(int fd, std::string *data) {
+StatusOr<std::string> SockReadLine(int fd) {
   UniqueEvbuf evbuf;
   if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
-    return Status(Status::NotOK, std::string("read response err: ") + strerror(errno));
+    return Status::FromErrno("read response err");
   }
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
-    return Status(Status::NotOK, std::string("read response err(empty): ") + strerror(errno));
+    return Status::FromErrno("read response err(empty)");
   }
-  *data = std::string(line.get(), line.length);
-  return Status::OK();
+  return std::string(line.get(), line.length);
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
@@ -306,9 +279,8 @@ int GetLocalPort(int fd) {
 }
 
 bool IsPortInUse(uint32_t port) {
-  int fd = NullFD;
-  Status s = SockConnect("0.0.0.0", port, &fd);
-  if (fd != NullFD) close(fd);
+  auto s = SockConnect("0.0.0.0", port);
+  if (s) close(*s);
   return s.IsOK();
 }
 

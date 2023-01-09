@@ -20,6 +20,8 @@
 
 #include "cluster.h"
 
+#include <config/config_util.h>
+
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -42,8 +44,6 @@ const char *errNoMasterNode = "The node isn't a master";
 const char *errClusterNoInitialized = "CLUSTERDOWN The cluster is not initialized";
 const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
 const char *errInvalidImportState = "Invalid import state";
-
-enum class LoadState { Unknown, Version, ID, NodesInfo };
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
                          std::bitset<kClusterSlots> slots)
@@ -492,6 +492,7 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
 std::string Cluster::GenNodesDescription() {
   UpdateSlotsInfo();
 
+  auto now = Util::GetTimeStampMS();
   std::string nodes_desc;
   for (const auto &item : nodes_) {
     const std::shared_ptr<ClusterNode> n = item.second;
@@ -510,7 +511,6 @@ std::string Cluster::GenNodesDescription() {
     }
 
     // Ping sent, pong received, config epoch, link status
-    auto now = Util::GetTimeStampMS();
     node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
 
     if (n->role_ == kClusterMaster && n->slots_info_.size() > 0) {
@@ -526,7 +526,7 @@ void Cluster::UpdateSlotsInfo() {
   int start = -1;
   // reset the previous slots info
   for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> n = item.second;
+    const std::shared_ptr<ClusterNode> &n = item.second;
     n->slots_info_.clear();
   }
 
@@ -563,8 +563,9 @@ std::string Cluster::GenNodesInfo() {
 
   std::string nodes_info;
   for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> n = item.second;
+    const std::shared_ptr<ClusterNode> &n = item.second;
     std::string node_str;
+    node_str.append("node ");
     // ID
     node_str.append(n->id_ + " ");
     // Host + Port
@@ -591,29 +592,14 @@ Status Cluster::DumpClusterNodes(const std::string &file) {
   std::string tmp_path = file + ".tmp";
   remove(tmp_path.data());
   std::ofstream output_file(tmp_path, std::ios::out);
-  output_file << "# version\n";
-  output_file << fmt::format("{}\n", version_);
-  output_file << "# id\n";
-  output_file << fmt::format("{}\n", myid_);
-  output_file << "# nodes\n";
+  output_file << fmt::format("version {}\n", version_);
+  output_file << fmt::format("id {}\n", myid_);
   output_file << GenNodesInfo();
   output_file.close();
   if (rename(tmp_path.data(), file.data()) < 0) {
     return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
   }
   return Status::OK();
-}
-
-LoadState parseLoadState(const std::string &in) {
-  if (in == "version") {
-    return LoadState::Version;
-  } else if (in == "id") {
-    return LoadState::ID;
-  } else if (in == "nodes") {
-    return LoadState::NodesInfo;
-  } else {
-    return LoadState::Unknown;
-  }
 }
 
 Status Cluster::LoadClusterNodes(const std::string &file_path) {
@@ -631,40 +617,30 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
 
   int64_t version = -1;
   std::string id, nodesInfo;
-  LoadState state = LoadState::Unknown;
   std::string line;
   while (!file.eof()) {
     std::getline(file, line);
-    line = Util::Trim(line, " \t");
-    if (line.empty()) continue;  // skip empty line
 
-    if (line[0] == '#') {
-      std::string comment = Util::ToLower(Util::Trim(line, "# \t"));
-      state = parseLoadState(comment);
-      continue;
-    }
+    auto parsed = ParseConfigLine(line);
+    if (!parsed) return parsed.ToStatus().Prefixed("malformed line");
+    if (parsed->first.empty() || parsed->second.empty()) continue;
 
-    switch (state) {
-      case LoadState::Version: {
-        auto parse_result = ParseInt<int64_t>(line, 10);
-        if (!parse_result) {
-          return {Status::NotOK, errInvalidClusterVersion};
-        }
-        version = *parse_result;
-        break;
+    auto key = parsed->first;
+    if (key == "version") {
+      auto parse_result = ParseInt<int64_t>(parsed->second, 10);
+      if (!parse_result) {
+        return {Status::NotOK, errInvalidClusterVersion};
       }
-      case LoadState::ID:
-        id = line;
-        if (id.length() != kClusterNodeIdLen) {
-          return {Status::NotOK, errInvalidNodeID};
-        }
-        break;
-      case LoadState::NodesInfo:
-        // std::getline swallowed the newline in the node info, so need to add it back here
-        nodesInfo.append(line + "\n");
-        break;
-      default:
-        return {Status::NotOK, "got unknown parse state"};
+      version = *parse_result;
+    } else if (key == "id") {
+      id = parsed->second;
+      if (id.length() != kClusterNodeIdLen) {
+        return {Status::NotOK, errInvalidNodeID};
+      }
+    } else if (key == "node") {
+      nodesInfo.append(parsed->second + "\n");
+    } else {
+      return {Status::NotOK, fmt::format("unknown key: {}", key)};
     }
   }
   return SetClusterNodes(nodesInfo, version, false);

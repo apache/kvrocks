@@ -5270,11 +5270,11 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    bool needPersistNodesInfo = false;
+    bool need_persist_nodes_info = false;
     if (subcommand_ == "setnodes") {
       Status s = svr->cluster_->SetClusterNodes(nodes_str_, set_version_, force_);
       if (s.IsOK()) {
-        needPersistNodesInfo = true;
+        need_persist_nodes_info = true;
         *output = Redis::SimpleString("OK");
       } else {
         *output = Redis::Error(s.Msg());
@@ -5282,7 +5282,7 @@ class CommandClusterX : public Commander {
     } else if (subcommand_ == "setnodeid") {
       Status s = svr->cluster_->SetNodeId(args_[2]);
       if (s.IsOK()) {
-        needPersistNodesInfo = true;
+        need_persist_nodes_info = true;
         *output = Redis::SimpleString("OK");
       } else {
         *output = Redis::Error(s.Msg());
@@ -5290,7 +5290,7 @@ class CommandClusterX : public Commander {
     } else if (subcommand_ == "setslot") {
       Status s = svr->cluster_->SetSlot(slot_id_, args_[4], set_version_);
       if (s.IsOK()) {
-        needPersistNodesInfo = true;
+        need_persist_nodes_info = true;
         *output = Redis::SimpleString("OK");
       } else {
         *output = Redis::Error(s.Msg());
@@ -5308,7 +5308,7 @@ class CommandClusterX : public Commander {
     } else {
       *output = Redis::Error("Invalid cluster command options");
     }
-    if (needPersistNodesInfo) {
+    if (need_persist_nodes_info) {
       return svr->cluster_->DumpClusterNodes(svr->GetConfig()->NodesFilePath());
     }
     return Status::OK();

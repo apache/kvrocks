@@ -30,36 +30,35 @@
 #include <vector>
 
 #include "config/config.h"
+#include "config/config_util.h"
+#include "string_util.h"
 
 namespace Kvrocks2redis {
 
-static const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
-static const size_t kNumLogLevel = sizeof(kLogLevels) / sizeof(kLogLevels[0]);
+static constexpr const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
+static constexpr size_t kNumLogLevel = std::size(kLogLevels);
 
-int Config::yesnotoi(std::string input) {
-  if (strcasecmp(input.data(), "yes") == 0) {
-    return 1;
-  } else if (strcasecmp(input.data(), "no") == 0) {
-    return 0;
+StatusOr<bool> Config::yesnotoi(const std::string &input) {
+  if (Util::EqualICase(input, "yes")) {
+    return true;
+  } else if (Util::EqualICase(input, "no")) {
+    return false;
   }
-  return -1;
+  return {Status::NotOK, "value must be 'yes' or 'no'"};
 }
 
 Status Config::parseConfigFromString(const std::string &input) {
-  std::vector<std::string> args = Util::Split(input, " \t\r\n");
-  // omit empty line and comment
-  if (args.empty() || args[0].front() == '#') return Status::OK();
+  auto [original_key, value] = GET_OR_RET(ParseConfigLine(input));
+  if (original_key.empty()) return Status::OK();
 
-  args[0] = Util::ToLower(args[0]);
+  std::vector<std::string> args = Util::Split(value, " \t\r\n");
+  auto key = Util::ToLower(original_key);
   size_t size = args.size();
-  if (size == 2 && args[0] == "daemonize") {
-    if (int i = yesnotoi(args[1]); i == -1) {
-      return {Status::NotOK, "the value of 'daemonize' must be 'yes' or 'no'"};
-    } else {
-      daemonize = (i == 1);
-    }
-  } else if (size == 2 && args[0] == "data-dir") {
-    data_dir = args[1];
+
+  if (size == 1 && key == "daemonize") {
+    daemonize = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'daemonize'"));
+  } else if (size == 1 && key == "data-dir") {
+    data_dir = args[0];
     if (data_dir.empty()) {
       return {Status::NotOK, "'data-dir' was not specified"};
     }
@@ -68,8 +67,8 @@ Status Config::parseConfigFromString(const std::string &input) {
       data_dir += "/";
     }
     db_dir = data_dir + "db";
-  } else if (size == 2 && args[0] == "output-dir") {
-    output_dir = args[1];
+  } else if (size == 1 && key == "output-dir") {
+    output_dir = args[0];
     if (output_dir.empty()) {
       return {Status::NotOK, "'output-dir' was not specified"};
     }
@@ -79,48 +78,38 @@ Status Config::parseConfigFromString(const std::string &input) {
     }
     pidfile = output_dir + "kvrocks2redis.pid";
     next_seq_file_path = output_dir + "last_next_seq.txt";
-  } else if (size == 2 && args[0] == "loglevel") {
+  } else if (size == 1 && key == "loglevel") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
-      if (Util::ToLower(args[1]) == kLogLevels[i]) {
+      if (Util::ToLower(args[0]) == kLogLevels[i]) {
         loglevel = static_cast<int>(i);
         break;
       }
     }
-  } else if (size == 2 && args[0] == "pidfile") {
-    pidfile = args[1];
-  } else if (size >= 3 && args[0] == "kvrocks") {
-    kvrocks_host = args[1];
+  } else if (size == 1 && key == "pidfile") {
+    pidfile = args[0];
+  } else if (size >= 2 && key == "kvrocks") {
+    kvrocks_host = args[0];
     // In new versions, we don't use extra port to implement replication
-    kvrocks_port = std::stoi(args[2]);
-    if (kvrocks_port <= 0 || kvrocks_port > 65535) {
-      return {Status::NotOK, "Kvrocks port value should be between 0 and 65535"};
-    }
+    kvrocks_port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
 
-    if (size == 4) {
-      kvrocks_auth = args[3];
+    if (size == 3) {
+      kvrocks_auth = args[2];
     }
-  } else if (size == 2 && args[0] == "cluster-enable") {
-    if (int i = yesnotoi(args[1]); i == -1) {
-      return {Status::NotOK, "the value of 'cluster-enable' must be 'yes' or 'no'"};
-    } else {
-      cluster_enable = (i == 1);
-    }
-  } else if (size >= 3 && strncasecmp(args[0].data(), "namespace.", 10) == 0) {
-    std::string ns = args[0].substr(10, args.size() - 10);
+  } else if (size == 1 && key == "cluster-enable") {
+    cluster_enable = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));
+  } else if (size >= 2 && strncasecmp(key.data(), "namespace.", 10) == 0) {
+    std::string ns = original_key.substr(10);
     if (ns.size() > INT8_MAX) {
-      return {Status::NotOK, std::string("namespace size exceed limit ") + std::to_string(INT8_MAX)};
+      return {Status::NotOK, fmt::format("namespace size exceed limit {}", INT8_MAX)};
     }
 
-    tokens[ns].host = args[1];
-    tokens[ns].port = std::stoi(args[2]);
-    if (tokens[ns].port <= 0 || tokens[ns].port > 65535) {
-      return {Status::NotOK, "Redis port value should be between 0 and 65535"};
-    }
+    tokens[ns].host = args[0];
+    tokens[ns].port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
 
-    if (size >= 4) {
-      tokens[ns].auth = args[3];
+    if (size >= 3) {
+      tokens[ns].auth = args[2];
     }
-    tokens[ns].db_number = size == 5 ? std::atoi(args[4].c_str()) : 0;
+    tokens[ns].db_number = size == 4 ? std::atoi(args[3].c_str()) : 0;
   } else {
     return {Status::NotOK, "unknown configuration directive or wrong number of arguments"};
   }

@@ -184,7 +184,6 @@ class Storage {
   std::atomic<bool> db_in_retryable_io_error_{false};
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
-  rocksdb::ReadOptions seek_read_opts_ = rocksdb::ReadOptions();
 };
 
 }  // namespace Engine

@@ -155,6 +155,7 @@ int main(int argc, char *argv[]) {
   Config kvrocks_config;
   kvrocks_config.db_dir = config.db_dir;
   kvrocks_config.cluster_enabled = config.cluster_enable;
+  kvrocks_config.slot_id_encoded = config.cluster_enable;
 
   Engine::Storage storage(&kvrocks_config);
   s = storage.Open(true);

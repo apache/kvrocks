@@ -94,8 +94,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   read_options.snapshot = latest_snapshot_->GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
-  read_options.fill_cache = false;
-  read_options.async_io = true;
+  storage_->FillSeekReadOptions(read_options);
 
   std::string output;
   auto iter = DBUtil::UniqueIterator(db_, read_options);

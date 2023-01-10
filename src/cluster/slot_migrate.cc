@@ -290,8 +290,7 @@ Status SlotMigrate::SendSnapshot() {
 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
-  read_options.fill_cache = false;
-  read_options.async_io = true;
+  storage_->FillSeekReadOptions(read_options);
   rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
   std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
@@ -644,8 +643,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
   std::vector<std::string> user_cmd = {cmd, key.ToString()};
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
-  read_options.fill_cache = false;
-  read_options.async_io = true;
+  storage_->FillSeekReadOptions(read_options);
   std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options));
 
   // Construct key prefix to iterate values of the complex type user key
@@ -746,8 +744,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
 Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
-  read_options.fill_cache = false;
-  read_options.async_io = true;
+  storage_->FillSeekReadOptions(read_options);
   std::unique_ptr<rocksdb::Iterator> iter(
       storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(Engine::kStreamColumnFamilyName)));
 

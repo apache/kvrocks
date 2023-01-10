@@ -68,6 +68,7 @@ class Storage {
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
+  void FillSeekReadOptions(rocksdb::ReadOptions &read_options);
   Status Open(bool read_only = false);
   void CloseDB();
   void EmptyDB();
@@ -183,6 +184,7 @@ class Storage {
   std::atomic<bool> db_in_retryable_io_error_{false};
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+  rocksdb::ReadOptions seek_read_opts_ = rocksdb::ReadOptions();
 };
 
 }  // namespace Engine

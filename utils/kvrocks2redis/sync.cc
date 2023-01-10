@@ -155,7 +155,7 @@ Status Sync::incrementBatchLoop() {
   while (!IsStopped()) {
     if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
       evbuffer_free(evbuf);
-      return {Status::NotOK, std::string("[kvrocks2redis] read increament batch err: ") + strerror(errno)};
+      return {Status::NotOK, std::string("[kvrocks2redis] read increment batch err: ") + strerror(errno)};
     }
     if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
       // Read bulk length
@@ -180,8 +180,12 @@ Status Sync::incrementBatchLoop() {
         if (bulk_data_str != "ping") {
           auto bat = rocksdb::WriteBatch(bulk_data_str);
           int count = static_cast<int>(bat.Count());
-          parser_->ParseWriteBatch(bulk_data_str);
-          auto s = updateNextSeq(next_seq_ + count);
+          auto s = parser_->ParseWriteBatch(bulk_data_str);
+          if (!s.IsOK()) {
+            return s.Prefixed(fmt::format("failed to parse write batch '{}'", Util::StringToHex(bulk_data_str)));
+          }
+
+          s = updateNextSeq(next_seq_ + count);
           if (!s.IsOK()) {
             return s.Prefixed("failed to update next sequence");
           }

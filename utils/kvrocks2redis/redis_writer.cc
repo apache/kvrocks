@@ -106,11 +106,13 @@ void RedisWriter::sync() {
         LOG(ERROR) << s.Msg();
         continue;
       }
+
       s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
         continue;
       }
+
       while (true) {
         auto getted_line_leng = pread(aof_fds_[iter.first], buffer, chunk_size, next_offsets_[iter.first]);
         if (getted_line_leng <= 0) {
@@ -119,17 +121,20 @@ void RedisWriter::sync() {
           }
           break;
         }
+
         std::string con = std::string(buffer, getted_line_leng);
         s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
         if (!s.IsOK()) {
           LOG(ERROR) << "ERR send data to redis err: " << s.Msg();
           break;
         }
+
         auto line_state = Util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
           LOG(ERROR) << "read redis response err: " << s.Msg();
           break;
         }
+
         std::string line = *line_state;
         if (line.compare(0, 1, "-") == 0) {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
@@ -139,6 +144,7 @@ void RedisWriter::sync() {
           Stop();
           return;
         }
+
         s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
         if (!s.IsOK()) {
           LOG(ERROR) << "ERR updating next offset: " << s.Msg();
@@ -148,6 +154,7 @@ void RedisWriter::sync() {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
+
   delete[] buffer;
 }
 
@@ -165,6 +172,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
         return s;
       }
     }
+
     if (db_index != 0) {
       auto s = selectDB(ns, db_index);
       if (!s.IsOK()) {
@@ -189,6 +197,7 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line};
   }
+
   return Status::OK();
 }
 
@@ -200,11 +209,13 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   if (!s.IsOK()) {
     return s.Prefixed("failed to send SELECT command to socket");
   }
+
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
   std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis select db failed: " + line};
   }
+
   return Status::OK();
 }
 

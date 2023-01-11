@@ -181,7 +181,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
     s = hash->MSet(key_, fvs, false, &ret);
     EXPECT_EQ(ret, 0);
     std::vector<FieldValue> result;
-    HashRangeSpec spec;
+    CommonRangeLexSpec spec;
     spec.offset = 0;
     spec.count = INT_MAX;
     spec.min = "key0";
@@ -200,7 +200,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
   EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
   // use offset and count
   std::vector<FieldValue> result;
-  HashRangeSpec spec;
+  CommonRangeLexSpec spec;
   spec.offset = 0;
   spec.count = INT_MAX;
   spec.min = "key0";
@@ -282,7 +282,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
 
 TEST_F(RedisHashTest, HRangeByLexNonExistingKey) {
   std::vector<FieldValue> result;
-  HashRangeSpec spec;
+  CommonRangeLexSpec spec;
   spec.offset = 0;
   spec.count = INT_MAX;
   spec.min = "any-start-key";

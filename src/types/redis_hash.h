@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "common/range_spec.h"
 #include "encoding.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -35,16 +36,6 @@ struct FieldValue {
 };
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
-
-struct HashRangeSpec {
-  std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int64_t offset, count;
-  bool removed, reversed;
-  HashRangeSpec()
-      : minex(false), maxex(false), max_infinite(false), offset(-1), count(-1), removed(false), reversed(false) {}
-};
 
 namespace Redis {
 class Hash : public SubKeyScanner {
@@ -58,8 +49,9 @@ class Hash : public SubKeyScanner {
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *ret);
   rocksdb::Status IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret);
   rocksdb::Status MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret);
-  static Status ParseRangeLexSpec(const std::string &min, const std::string &max, HashRangeSpec *spec);
-  rocksdb::Status RangeByLex(const Slice &user_key, const HashRangeSpec &spec, std::vector<FieldValue> *field_values);
+  static Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
+  rocksdb::Status RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,
+                             std::vector<FieldValue> *field_values);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values,
                        std::vector<rocksdb::Status> *statuses);
   rocksdb::Status GetAll(const Slice &user_key, std::vector<FieldValue> *field_values,

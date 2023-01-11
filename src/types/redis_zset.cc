@@ -414,8 +414,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<std::string> *members,
-                                 int *size) {
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,
+                                 std::vector<std::string> *members, int *size) {
   if (size) *size = 0;
   if (members) members->clear();
   if (spec.offset > -1 && spec.count == 0) {
@@ -564,7 +564,7 @@ rocksdb::Status ZSet::RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec,
   return RangeByScore(user_key, spec, nullptr, ret);
 }
 
-rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, ZRangeLexSpec spec, int *ret) {
+rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, CommonRangeLexSpec spec, int *ret) {
   spec.removed = true;
   return RangeByLex(user_key, spec, nullptr, ret);
 }
@@ -799,7 +799,7 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
   return Status::OK();
 }
 
-Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, ZRangeLexSpec *spec) {
+Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
   if (min == "+" || max == "-") {
     return Status(Status::NotOK, "min > max");
   }

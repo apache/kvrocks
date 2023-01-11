@@ -276,7 +276,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Hash::RangeByLex(const Slice &user_key, const HashRangeSpec &spec,
+rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,
                                  std::vector<FieldValue> *field_values) {
   field_values->clear();
   if (spec.count == 0) {
@@ -383,7 +383,7 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-Status Hash::ParseRangeLexSpec(const std::string &min, const std::string &max, HashRangeSpec *spec) {
+Status Hash::ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
   if (min == "+" || max == "-") {
     return Status(Status::NotOK, "min > max");
   }

@@ -1658,7 +1658,7 @@ class CommandHRangeByLex : public Commander {
   }
 
  private:
-  HashRangeSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandPush : public Commander {
@@ -2700,7 +2700,7 @@ class CommandZLexCount : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZPop : public Commander {
@@ -2849,7 +2849,7 @@ class CommandZRangeByLex : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZRangeByScore : public Commander {
@@ -3056,7 +3056,7 @@ class CommandZRemRangeByLex : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZScore : public Commander {

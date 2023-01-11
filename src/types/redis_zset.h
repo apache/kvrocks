@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "common/range_spec.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -41,15 +42,6 @@ struct ZRangeSpec {
   int offset = -1, count = -1;
   bool removed = false, reversed = false;
   ZRangeSpec() = default;
-};
-
-struct ZRangeLexSpec {
-  std::string min, max;
-  bool minex = false, maxex = false; /* are min or max exclusive */
-  bool max_infinite = false;         /* are max infinite */
-  int offset = -1, count = -1;
-  bool removed = false, reversed = false;
-  ZRangeLexSpec() = default;
 };
 
 struct KeyWeight {
@@ -107,17 +99,17 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
   rocksdb::Status Range(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
   rocksdb::Status RangeByScore(const Slice &user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
-  rocksdb::Status RangeByLex(const Slice &user_key, const ZRangeLexSpec &spec, std::vector<std::string> *members,
+  rocksdb::Status RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec, std::vector<std::string> *members,
                              int *size);
   rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *ret);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec, int *ret);
-  rocksdb::Status RemoveRangeByLex(const Slice &user_key, ZRangeLexSpec spec, int *ret);
+  rocksdb::Status RemoveRangeByLex(const Slice &user_key, CommonRangeLexSpec spec, int *ret);
   rocksdb::Status RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret);
   rocksdb::Status Pop(const Slice &user_key, int count, bool min, std::vector<MemberScore> *mscores);
   rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
-  static Status ParseRangeLexSpec(const std::string &min, const std::string &max, ZRangeLexSpec *spec);
+  static Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &member_prefix, std::vector<std::string> *members,
                        std::vector<double> *scores = nullptr);

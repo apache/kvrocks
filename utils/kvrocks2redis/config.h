@@ -61,7 +61,7 @@ struct Config {
 
  private:
   std::string path_;
-  int yesnotoi(std::string input);
+  StatusOr<bool> yesnotoi(const std::string &input);
   Status parseConfigFromString(const std::string &input);
 };
 

@@ -137,12 +137,17 @@ Status Server::Start() {
   }
 
   if (config_->cluster_enabled) {
+    auto s = cluster_->LoadClusterNodes(config_->NodesFilePath());
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to load cluster nodes info: " << s.Msg();
+      return Status(Status::NotOK, s.Msg());
+    }
     // Create objects used for slot migration
     slot_migrate_ =
         std::make_unique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
     slot_import_ = new SlotImport(this);
     // Create migrating thread
-    auto s = slot_migrate_->CreateMigrateHandleThread();
+    s = slot_migrate_->CreateMigrateHandleThread();
     if (!s.IsOK()) {
       LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
       return Status(Status::NotOK);

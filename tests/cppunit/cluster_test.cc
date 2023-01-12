@@ -156,3 +156,42 @@ TEST(Cluster, CluseterGetSlotInfo) {
   ASSERT_TRUE(info.nodes[0].port == 30002);
   ASSERT_TRUE(info.nodes[1].id == "07c37dfeb235213a872192d90877d0cd55635b91");
 }
+
+TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
+  int64_t version = 2;
+  const std::string nodes =
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-10922\n"
+      "17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30003 master - 10923-16383";
+  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
+  Status s = cluster.SetClusterNodes(nodes, version, false);
+  ASSERT_TRUE(s.IsOK());
+
+  std::string nodes_filename = "nodes.conf";
+  s = cluster.DumpClusterNodes(nodes_filename);
+  ASSERT_TRUE(s.IsOK());
+  Cluster new_cluster(nullptr, {"127.0.0.1"}, 30002);
+  s = new_cluster.LoadClusterNodes(nodes_filename);
+  ASSERT_TRUE(s.IsOK());
+  ASSERT_EQ(version, new_cluster.GetVersion());
+  std::vector<SlotInfo> slots_infos;
+  s = new_cluster.GetSlotsInfo(&slots_infos);
+  ASSERT_TRUE(s.IsOK());
+  ASSERT_EQ(2, slots_infos.size());
+  SlotInfo slot0_info = slots_infos[0];
+  ASSERT_EQ(5461, slot0_info.start);
+  ASSERT_EQ(10922, slot0_info.end);
+  ASSERT_EQ(2, slot0_info.nodes.size());
+  ASSERT_EQ(30002, slot0_info.nodes[0].port);
+  ASSERT_EQ("07c37dfeb235213a872192d90877d0cd55635b91", slot0_info.nodes[1].id);
+  SlotInfo slot1_info = slots_infos[1];
+  ASSERT_EQ(10923, slot1_info.start);
+  ASSERT_EQ(16383, slot1_info.end);
+  ASSERT_EQ(1, slot1_info.nodes.size());
+  ASSERT_EQ(30003, slot1_info.nodes[0].port);
+  ASSERT_EQ("17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1", slot1_info.nodes[0].id);
+
+  unlink(nodes_filename.c_str());
+}

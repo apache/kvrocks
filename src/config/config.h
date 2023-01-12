@@ -194,6 +194,7 @@ struct Config {
   mutable std::mutex backup_mu_;
 
  public:
+  std::string NodesFilePath();
   Status Rewrite();
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values);

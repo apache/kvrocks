@@ -103,7 +103,7 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
 }
 
-void Storage::FillSeekReadOptions(rocksdb::ReadOptions &read_options) {
+void Storage::SetReadOptions(rocksdb::ReadOptions &read_options) {
   read_options.fill_cache = false;
   read_options.async_io = config_->RocksDB.read_options.async_io;
 }

@@ -193,7 +193,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->FillSeekReadOptions(read_options);
+  storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);
@@ -261,7 +261,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->FillSeekReadOptions(read_options);
+  storage_->SetReadOptions(read_options);
 
   rocksdb::WriteBatch batch;
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
@@ -363,7 +363,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->FillSeekReadOptions(read_options);
+  storage_->SetReadOptions(read_options);
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
@@ -446,7 +446,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->FillSeekReadOptions(read_options);
+  storage_->SetReadOptions(read_options);
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
@@ -607,7 +607,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->FillSeekReadOptions(read_options);
+  storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
   iter->Seek(start_key);

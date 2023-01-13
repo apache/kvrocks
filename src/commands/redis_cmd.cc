@@ -1630,9 +1630,9 @@ class CommandHRangeByLex : public Commander {
     }
     Status s;
     if (spec_.reversed) {
-      s = Redis::Hash::ParseRangeLexSpec(args[3], args[2], &spec_);
+      s = ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
-      s = Redis::Hash::ParseRangeLexSpec(args[2], args[3], &spec_);
+      s = ParseRangeLexSpec(args[2], args[3], &spec_);
     }
     if (!s.IsOK()) {
       return Status(Status::RedisParseErr, s.Msg());
@@ -2679,7 +2679,7 @@ class CommandZIncrBy : public Commander {
 class CommandZLexCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
       return {Status::RedisParseErr, s.Msg()};
     }
@@ -2813,9 +2813,9 @@ class CommandZRangeByLex : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
     if (spec_.reversed) {
-      s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_);
+      s = ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
-      s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+      s = ParseRangeLexSpec(args[2], args[3], &spec_);
     }
 
     if (!s.IsOK()) {
@@ -3036,7 +3036,7 @@ class CommandZRemRangeByScore : public Commander {
 class CommandZRemRangeByLex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
       return {Status::RedisParseErr, s.Msg()};
     }

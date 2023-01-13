@@ -799,39 +799,6 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
   return Status::OK();
 }
 
-Status ZSet::ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
-  if (min == "+" || max == "-") {
-    return Status(Status::NotOK, "min > max");
-  }
-
-  if (min == "-") {
-    spec->min = "";
-  } else {
-    if (min[0] == '(') {
-      spec->minex = true;
-    } else if (min[0] == '[') {
-      spec->minex = false;
-    } else {
-      return Status(Status::NotOK, "the min is illegal");
-    }
-    spec->min = min.substr(1);
-  }
-
-  if (max == "+") {
-    spec->max_infinite = true;
-  } else {
-    if (max[0] == '(') {
-      spec->maxex = true;
-    } else if (max[0] == '[') {
-      spec->maxex = false;
-    } else {
-      return Status(Status::NotOK, "the max is illegal");
-    }
-    spec->max = max.substr(1);
-  }
-  return Status::OK();
-}
-
 rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                            const std::string &member_prefix, std::vector<std::string> *members,
                            std::vector<double> *scores) {

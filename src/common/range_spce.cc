@@ -17,20 +17,37 @@
  * under the License.
  *
  */
+#include "range_spec.h"
 
-#pragma once
+Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
+  if (min == "+" || max == "-") {
+    return Status(Status::NotOK, "min > max");
+  }
 
-#include <string>
+  if (min == "-") {
+    spec->min = "";
+  } else {
+    if (min[0] == '(') {
+      spec->minex = true;
+    } else if (min[0] == '[') {
+      spec->minex = false;
+    } else {
+      return Status(Status::NotOK, "the min is illegal");
+    }
+    spec->min = min.substr(1);
+  }
 
-#include "status.h"
-struct CommonRangeLexSpec {
-  std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int64_t offset, count;
-  bool removed, reversed;
-  CommonRangeLexSpec()
-      : minex(false), maxex(false), max_infinite(false), offset(-1), count(-1), removed(false), reversed(false) {}
-};
-
-Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
+  if (max == "+") {
+    spec->max_infinite = true;
+  } else {
+    if (max[0] == '(') {
+      spec->maxex = true;
+    } else if (max[0] == '[') {
+      spec->maxex = false;
+    } else {
+      return Status(Status::NotOK, "the max is illegal");
+    }
+    spec->max = max.substr(1);
+  }
+  return Status::OK();
+}

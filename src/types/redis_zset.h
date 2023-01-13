@@ -109,7 +109,6 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Pop(const Slice &user_key, int count, bool min, std::vector<MemberScore> *mscores);
   rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec);
-  static Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &member_prefix, std::vector<std::string> *members,
                        std::vector<double> *scores = nullptr);

@@ -383,36 +383,4 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-Status Hash::ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
-  if (min == "+" || max == "-") {
-    return Status(Status::NotOK, "min > max");
-  }
-
-  if (min == "-") {
-    spec->min = "";
-  } else {
-    if (min[0] == '(') {
-      spec->minex = true;
-    } else if (min[0] == '[') {
-      spec->minex = false;
-    } else {
-      return Status(Status::NotOK, "the min is illegal");
-    }
-    spec->min = min.substr(1);
-  }
-
-  if (max == "+") {
-    spec->max_infinite = true;
-  } else {
-    if (max[0] == '(') {
-      spec->maxex = true;
-    } else if (max[0] == '[') {
-      spec->maxex = false;
-    } else {
-      return Status(Status::NotOK, "the max is illegal");
-    }
-    spec->max = max.substr(1);
-  }
-  return Status::OK();
-}
 }  // namespace Redis

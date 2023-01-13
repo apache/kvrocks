@@ -94,11 +94,15 @@ class Cluster {
   Status MigrateSlot(int slot, const std::string &dst_node_id);
   Status ImportSlot(Redis::Connection *conn, int slot, int state);
   std::string GetMyId() const { return myid_; }
+  Status DumpClusterNodes(const std::string &file);
+  Status LoadClusterNodes(const std::string &file_path);
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
  private:
   std::string GenNodesDescription();
+  std::string GenNodesInfo();
+  void UpdateSlotsInfo();
   SlotInfo GenSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                            std::unordered_map<int, std::string> *slots_nodes);

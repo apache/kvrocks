@@ -116,6 +116,58 @@ func TestClusterNodes(t *testing.T) {
 	})
 }
 
+func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv1.Close()
+	ctx := context.Background()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	nodeID1 := "07c37dfeb235213a872192d90877d0cd55635b91"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", nodeID1).Err())
+
+	srv2 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv2.Close()
+	rdb2 := srv2.NewClient()
+	defer func() { require.NoError(t, rdb2.Close()) }()
+	nodeID2 := "07c37dfeb235213a872192d90877d0cd55635b92"
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODEID", nodeID2).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - ", nodeID1, srv1.Host(), srv1.Port())
+	clusterNodes += "0-1 2 4-8191 8192 8193 10000 10002-11002 16381 16382-16383\n"
+	clusterNodes += fmt.Sprintf("%s %s %d master -", nodeID2, srv2.Host(), srv2.Port())
+
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	srv1.Restart()
+	slots := rdb1.ClusterSlots(ctx).Val()
+	require.Len(t, slots, 5)
+	require.EqualValues(t, 10000, slots[2].Start)
+	require.EqualValues(t, 10000, slots[2].End)
+	require.EqualValues(t, []redis.ClusterNode{{ID: nodeID1, Addr: srv1.HostPort()}}, slots[2].Nodes)
+	nodes := rdb1.ClusterNodes(ctx).Val()
+	require.Contains(t, nodes, "0-2 4-8193 10000 10002-11002 16381-16383")
+
+	newNodeID := "0123456789012345678901234567890123456789"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", newNodeID).Err())
+	srv1.Restart()
+	slots = rdb1.ClusterSlots(ctx).Val()
+	require.EqualValues(t, 10000, slots[2].Start)
+	require.EqualValues(t, 10000, slots[2].End)
+	nodes = rdb1.ClusterNodes(ctx).Val()
+	require.Contains(t, nodes, "0-2 4-8193 10000 10002-11002 16381-16383")
+
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "2").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "2").Err())
+
+	srv1.Restart()
+	srv2.Restart()
+	nodes = rdb1.ClusterNodes(ctx).Val()
+	require.Contains(t, nodes, "1-2 4-8193 10000 10002-11002 16381-16383")
+	nodes = rdb2.ClusterNodes(ctx).Val()
+	require.Contains(t, nodes, "1-2 4-8193 10000 10002-11002 16381-16383")
+}
+
 func TestClusterComplexTopology(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
 	defer srv.Close()

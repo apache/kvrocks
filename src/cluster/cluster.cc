@@ -20,8 +20,11 @@
 
 #include "cluster.h"
 
+#include <config/config_util.h>
+
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 #include <memory>
 
 #include "commands/redis_cmd.h"
@@ -487,8 +490,46 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
 }
 
 std::string Cluster::GenNodesDescription() {
-  // Generate slots info firstly
+  UpdateSlotsInfo();
+
+  auto now = Util::GetTimeStampMS();
+  std::string nodes_desc;
+  for (const auto &item : nodes_) {
+    const std::shared_ptr<ClusterNode> n = item.second;
+
+    std::string node_str;
+    // ID, host, port
+    node_str.append(n->id_ + " ");
+    node_str.append(fmt::format("{}:{}@{} ", n->host_, n->port_, n->port_ + kClusterPortIncr));
+
+    // Flags
+    if (n->id_ == myid_) node_str.append("myself,");
+    if (n->role_ == kClusterMaster) {
+      node_str.append("master - ");
+    } else {
+      node_str.append("slave " + n->master_id_ + " ");
+    }
+
+    // Ping sent, pong received, config epoch, link status
+    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
+
+    if (n->role_ == kClusterMaster && n->slots_info_.size() > 0) {
+      node_str.append(" " + n->slots_info_);
+    }
+
+    nodes_desc.append(node_str + "\n");
+  }
+  return nodes_desc;
+}
+
+void Cluster::UpdateSlotsInfo() {
   int start = -1;
+  // reset the previous slots info
+  for (const auto &item : nodes_) {
+    const std::shared_ptr<ClusterNode> &n = item.second;
+    n->slots_info_.clear();
+  }
+
   std::shared_ptr<ClusterNode> n = nullptr;
   for (int i = 0; i <= kClusterSlots; i++) {
     // Find start node and slot id
@@ -511,37 +552,98 @@ std::string Cluster::GenNodesDescription() {
     }
   }
 
-  std::string nodes_desc;
   for (const auto &item : nodes_) {
     const std::shared_ptr<ClusterNode> n = item.second;
+    if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Remove last space
+  }
+}
 
+std::string Cluster::GenNodesInfo() {
+  UpdateSlotsInfo();
+
+  std::string nodes_info;
+  for (const auto &item : nodes_) {
+    const std::shared_ptr<ClusterNode> &n = item.second;
     std::string node_str;
-    // ID, host, port
+    node_str.append("node ");
+    // ID
     node_str.append(n->id_ + " ");
-    node_str.append(fmt::format("{}:{}@{} ", n->host_, n->port_, n->port_ + kClusterPortIncr));
+    // Host + Port
+    node_str.append(fmt::format("{} {} ", n->host_, n->port_));
 
-    // Flags
-    if (n->id_ == myid_) node_str.append("myself,");
+    // Role
     if (n->role_ == kClusterMaster) {
       node_str.append("master - ");
     } else {
       node_str.append("slave " + n->master_id_ + " ");
     }
 
-    // Ping sent, pong received, config epoch, link status
-    auto now = Util::GetTimeStampMS();
-    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
-
     // Slots
-    if (n->slots_info_.size() > 0) n->slots_info_.pop_back();  // Trim space
     if (n->role_ == kClusterMaster && n->slots_info_.size() > 0) {
       node_str.append(" " + n->slots_info_);
     }
-    n->slots_info_.clear();  // Reset
-
-    nodes_desc.append(node_str + "\n");
+    nodes_info.append(node_str + "\n");
   }
-  return nodes_desc;
+  return nodes_info;
+}
+
+Status Cluster::DumpClusterNodes(const std::string &file) {
+  // Parse and validate the cluster nodes string before dumping into file
+  std::string tmp_path = file + ".tmp";
+  remove(tmp_path.data());
+  std::ofstream output_file(tmp_path, std::ios::out);
+  output_file << fmt::format("version {}\n", version_);
+  output_file << fmt::format("id {}\n", myid_);
+  output_file << GenNodesInfo();
+  output_file.close();
+  if (rename(tmp_path.data(), file.data()) < 0) {
+    return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
+  }
+  return Status::OK();
+}
+
+Status Cluster::LoadClusterNodes(const std::string &file_path) {
+  if (rocksdb::Env::Default()->FileExists(file_path).IsNotFound()) {
+    LOG(INFO) << fmt::format("The cluster nodes file {} is not found. Use CLUSTERX subcommands to specify it.",
+                             file_path);
+    return Status::OK();
+  }
+
+  std::ifstream file;
+  file.open(file_path);
+  if (!file.is_open()) {
+    return {Status::NotOK, fmt::format("error opening the file '{}': {}", file_path, strerror(errno))};
+  }
+
+  int64_t version = -1;
+  std::string id, nodesInfo;
+  std::string line;
+  while (!file.eof()) {
+    std::getline(file, line);
+
+    auto parsed = ParseConfigLine(line);
+    if (!parsed) return parsed.ToStatus().Prefixed("malformed line");
+    if (parsed->first.empty() || parsed->second.empty()) continue;
+
+    auto key = parsed->first;
+    if (key == "version") {
+      auto parse_result = ParseInt<int64_t>(parsed->second, 10);
+      if (!parse_result) {
+        return {Status::NotOK, errInvalidClusterVersion};
+      }
+      version = *parse_result;
+    } else if (key == "id") {
+      id = parsed->second;
+      if (id.length() != kClusterNodeIdLen) {
+        return {Status::NotOK, errInvalidNodeID};
+      }
+    } else if (key == "node") {
+      nodesInfo.append(parsed->second + "\n");
+    } else {
+      return {Status::NotOK, fmt::format("unknown key: {}", key)};
+    }
+  }
+  return SetClusterNodes(nodesInfo, version, false);
 }
 
 Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,

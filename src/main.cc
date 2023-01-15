@@ -319,8 +319,7 @@ int main(int argc, char *argv[]) {
     uint32_t ports[] = {config.port, config.tls_port, 0};
     for (uint32_t *port = ports; *port; ++port) {
       if (Util::IsPortInUse(*port)) {
-        LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use"
-                   << std::endl;
+        LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use";
         return 1;
       }
     }
@@ -351,6 +350,7 @@ int main(int argc, char *argv[]) {
   srv = &server;
   s = srv->Start();
   if (!s.IsOK()) {
+    LOG(ERROR) << "Failed to start server: " << s.Msg();
     return 1;
   }
   srv->Join();

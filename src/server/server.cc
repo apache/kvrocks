@@ -139,8 +139,7 @@ Status Server::Start() {
   if (config_->cluster_enabled) {
     auto s = cluster_->LoadClusterNodes(config_->NodesFilePath());
     if (!s.IsOK()) {
-      LOG(ERROR) << "Failed to load cluster nodes info: " << s.Msg();
-      return Status(Status::NotOK, s.Msg());
+      return s.Prefixed("failed to load cluster nodes info");
     }
     // Create objects used for slot migration
     slot_migrate_ =
@@ -149,8 +148,7 @@ Status Server::Start() {
     // Create migrating thread
     s = slot_migrate_->CreateMigrateHandleThread();
     if (!s.IsOK()) {
-      LOG(ERROR) << "Failed to create migration thread, Err: " << s.Msg();
-      return Status(Status::NotOK);
+      return s.Prefixed("failed to create migration thread");
     }
   }
 

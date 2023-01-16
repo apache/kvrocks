@@ -20,9 +20,11 @@
 
 #pragma once
 
+#include <charconv>
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <system_error>
 #include <tuple>
 
 #include "status.h"
@@ -144,3 +146,30 @@ StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) 
 
 // available units: K, M, G, T, P
 StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v);
+
+// TryParseFloat parses a string to a floating-point number,
+// it returns the first unmatched character position instead of an error status
+template <typename T = double>  // float or double
+StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view str, std::chars_format fmt = std::chars_format::general) {
+  T result = 0;
+
+  auto stat = std::from_chars(str.begin(), str.end(), result, fmt);
+
+  if (stat.ec != std::errc{}) {
+    return {Status::NotOK, std::make_error_code(stat.ec).message()};
+  }
+
+  return {result, stat.ptr};
+}
+
+// ParseFloat parses a string to a floating-point number
+template <typename T = double>  // float or double
+StatusOr<T> ParseFloat(std::string_view str, std::chars_format fmt = std::chars_format::general) {
+  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(str, fmt));
+
+  if (pos != str.end()) {
+    return {Status::NotOK, "encounter non-number characters"};
+  }
+
+  return result;
+}

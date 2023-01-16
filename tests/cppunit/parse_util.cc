@@ -69,3 +69,21 @@ TEST(ParseUtil, ParseSizeAndUnit) {
   ASSERT_FALSE(ParseSizeAndUnit("16384p"));
   ASSERT_EQ(ParseSizeAndUnit("16388p").Msg(), "arithmetic overflow");
 }
+
+TEST(ParseUtil, ParseFloat) {
+  std::string_view v = "1.23";
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1.23, v.end()));
+
+  v = "25345.346e65hello";
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(25345.346e65, v.end() - 5));
+
+  ASSERT_EQ(TryParseFloat("eeeeeeee").Msg(), "Invalid argument");
+
+  v = "   1e8   ";
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1e8, v.end() - 3));
+
+  ASSERT_EQ(*ParseFloat("1.23"), 1.23);
+  ASSERT_EQ(*ParseFloat("1.23e2"), 1.23e2);
+  ASSERT_FALSE(ParseFloat("1.2 "));
+  ASSERT_FALSE(ParseFloat("1.2hello"));
+}

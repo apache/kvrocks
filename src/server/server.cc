@@ -529,6 +529,7 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
         }
         break;
       }
+      ++it;
     }
   }
 }

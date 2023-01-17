@@ -334,16 +334,12 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   }
   value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   double n = 0;
-  std::size_t idx = 0;
   if (!value.empty()) {
-    try {
-      n = std::stod(value, &idx);
-    } catch (std::exception &e) {
-      return rocksdb::Status::InvalidArgument("value is not an float");
+    auto n_stat = ParseFloat(value);
+    if (!n_stat || isspace(value[0])) {
+      return rocksdb::Status::InvalidArgument("value is not a number");
     }
-    if (isspace(value[0]) || idx != value.size()) {
-      return rocksdb::Status::InvalidArgument("value is not an float");
-    }
+    n = *n_stat;
   }
 
   n += increment;

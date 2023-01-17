@@ -127,18 +127,14 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
   InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
-    std::size_t idx = 0;
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      try {
-        old_value = std::stod(value_bytes, &idx);
-      } catch (std::exception &e) {
-        return rocksdb::Status::InvalidArgument(e.what());
+      auto value_stat = ParseFloat(value_bytes);
+      if (!value_stat || isspace(value_bytes[0])) {
+        return rocksdb::Status::InvalidArgument("value is not a number");
       }
-      if (isspace(value_bytes[0]) || idx != value_bytes.size()) {
-        return rocksdb::Status::InvalidArgument("value is not an float");
-      }
+      old_value = *value_stat;
       exists = true;
     }
   }

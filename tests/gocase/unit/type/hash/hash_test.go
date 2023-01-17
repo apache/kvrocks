@@ -479,7 +479,7 @@ func TestHash(t *testing.T) {
 	t.Run("HINCRBYFLOAT fails against hash value with spaces (left)", func(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", " 11")
 		rdb.HSet(ctx, "bighash", "str", " 11")
-		pattern := "ERR.*not.*float.*"
+		pattern := "ERR.*not.*number.*"
 		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err(), pattern)
 		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err(), pattern)
 	})
@@ -487,7 +487,7 @@ func TestHash(t *testing.T) {
 	t.Run("HINCRBYFLOAT fails against hash value with spaces (right)", func(t *testing.T) {
 		rdb.HSet(ctx, "samllhash", "str", "11 ")
 		rdb.HSet(ctx, "bighash", "str", "11 ")
-		pattern := "ERR.*not.*float.*"
+		pattern := "ERR.*not.*number.*"
 		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "samllhash", "str", 1).Err(), pattern)
 		util.ErrorRegexp(t, rdb.HIncrByFloat(ctx, "bighash", "str", 1).Err(), pattern)
 	})

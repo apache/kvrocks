@@ -1614,34 +1614,39 @@ class CommandHGetAll : public Commander {
   }
 };
 
-class CommandHRange : public Commander {
+class CommandHRangeByLex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 6 && args.size() != 4) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICase("REV")) {
+        spec_.reversed = true;
+      } else if (parser.EatEqICase("LIMIT")) {
+        spec_.offset = GET_OR_RET(parser.TakeInt());
+        spec_.count = GET_OR_RET(parser.TakeInt());
+      } else {
+        return parser.InvalidSyntax();
+      }
     }
-
-    if (args.size() == 6 && Util::ToLower(args[4]) != "limit") {
-      return {Status::RedisInvalidCmd, errInvalidSyntax};
+    Status s;
+    if (spec_.reversed) {
+      s = ParseRangeLexSpec(args[3], args[2], &spec_);
+    } else {
+      s = ParseRangeLexSpec(args[2], args[3], &spec_);
     }
-
-    if (args.size() == 6) {
-      auto parse_result = ParseInt<int64_t>(args_[5], 10);
-      if (!parse_result) return {Status::RedisParseErr, errValueNotInteger};
-
-      limit_ = *parse_result;
+    if (!s.IsOK()) {
+      return Status(Status::RedisParseErr, s.Msg());
     }
-    return Commander::Parse(args);
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<FieldValue> field_values;
-    auto s = hash_db.Range(args_[1], args_[2], args_[3], limit_, &field_values);
+    rocksdb::Status s = hash_db.RangeByLex(args_[1], spec_, &field_values);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
       kv_pairs.emplace_back(p.field);
@@ -1653,7 +1658,7 @@ class CommandHRange : public Commander {
   }
 
  private:
-  int64_t limit_ = LONG_MAX;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandPush : public Commander {
@@ -2674,7 +2679,7 @@ class CommandZIncrBy : public Commander {
 class CommandZLexCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
       return {Status::RedisParseErr, s.Msg()};
     }
@@ -2695,7 +2700,7 @@ class CommandZLexCount : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZPop : public Commander {
@@ -2808,9 +2813,9 @@ class CommandZRangeByLex : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
     if (spec_.reversed) {
-      s = Redis::ZSet::ParseRangeLexSpec(args[3], args[2], &spec_);
+      s = ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
-      s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+      s = ParseRangeLexSpec(args[2], args[3], &spec_);
     }
 
     if (!s.IsOK()) {
@@ -2844,7 +2849,7 @@ class CommandZRangeByLex : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZRangeByScore : public Commander {
@@ -3031,7 +3036,7 @@ class CommandZRemRangeByScore : public Commander {
 class CommandZRemRangeByLex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = Redis::ZSet::ParseRangeLexSpec(args[2], args[3], &spec_);
+    Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
     if (!s.IsOK()) {
       return {Status::RedisParseErr, s.Msg()};
     }
@@ -3051,7 +3056,7 @@ class CommandZRemRangeByLex : public Commander {
   }
 
  private:
-  ZRangeLexSpec spec_;
+  CommonRangeLexSpec spec_;
 };
 
 class CommandZScore : public Commander {
@@ -6420,7 +6425,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandHRange>("hrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
 
     MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1), MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),

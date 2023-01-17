@@ -174,7 +174,7 @@ TEST_F(RedisZSetTest, RangeByLex) {
   zset->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
-  ZRangeLexSpec spec;
+  CommonRangeLexSpec spec;
   spec.min = fields_[0].ToString();
   spec.max = fields_[fields_.size() - 1].ToString();
   std::vector<std::string> members;

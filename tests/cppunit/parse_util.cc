@@ -71,16 +71,19 @@ TEST(ParseUtil, ParseSizeAndUnit) {
 }
 
 TEST(ParseUtil, ParseFloat) {
-  std::string_view v = "1.23";
-  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1.23, v.end()));
+  std::string v = "1.23";
+  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(1.23, v.c_str() + v.size()));
 
   v = "25345.346e65hello";
-  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(25345.346e65, v.end() - 5));
+  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(25345.346e65, v.c_str() + v.size() - 5));
 
-  ASSERT_EQ(TryParseFloat("eeeeeeee").Msg(), "Invalid argument");
+  ASSERT_FALSE(TryParseFloat("eeeeeeee"));
+  ASSERT_FALSE(TryParseFloat("    "));
+  ASSERT_FALSE(TryParseFloat(""));
+  ASSERT_FALSE(TryParseFloat("    abcd"));
 
   v = "   1e8   ";
-  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1e8, v.end() - 3));
+  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(1e8, v.c_str() + v.size() - 3));
 
   ASSERT_EQ(*ParseFloat("1.23"), 1.23);
   ASSERT_EQ(*ParseFloat("1.23e2"), 1.23e2);

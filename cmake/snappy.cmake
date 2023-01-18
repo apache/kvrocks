@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(snappy
-  google/snappy 1.1.7
-  MD5=40a371a653b7bb5a47df59b937b78557
+  google/snappy 1.1.9
+  MD5=1ecaa4c5c662c2d9cb669669d22c28aa
 )
 
 FetchContent_MakeAvailableWithArgs(snappy

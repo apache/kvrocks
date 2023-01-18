@@ -209,7 +209,7 @@ int redisLogCommand(lua_State *lua) {
     lua_pushstring(lua, "Invalid debug level.");
     return lua_error(lua);
   }
-  if (level < GetServer()->GetConfig()->loglevel) {
+  if (level < GetServer()->GetConfig()->log_level) {
     return 0;
   }
 

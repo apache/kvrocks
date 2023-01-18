@@ -46,16 +46,22 @@ const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes fir
 const char *errLevelCompactionDynamicLevelBytesNotSet =
     "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
-configEnum compression_type_enum[] = {
+configEnum compression_types[] = {
     {"no", rocksdb::CompressionType::kNoCompression},     {"snappy", rocksdb::CompressionType::kSnappyCompression},
     {"lz4", rocksdb::CompressionType::kLZ4Compression},   {"zstd", rocksdb::CompressionType::kZSTD},
     {"zlib", rocksdb::CompressionType::kZlibCompression}, {nullptr, 0}};
 
-configEnum supervised_mode_enum[] = {{"no", kSupervisedNone},
-                                     {"auto", kSupervisedAutoDetect},
-                                     {"upstart", kSupervisedUpStart},
-                                     {"systemd", kSupervisedSystemd},
-                                     {nullptr, 0}};
+configEnum supervised_modes[] = {{"no", kSupervisedNone},
+                                 {"auto", kSupervisedAutoDetect},
+                                 {"upstart", kSupervisedUpStart},
+                                 {"systemd", kSupervisedSystemd},
+                                 {nullptr, 0}};
+
+configEnum log_levels[] = {{"info", google::INFO},
+                           {"warning", google::WARNING},
+                           {"error", google::ERROR},
+                           {"fatal", google::FATAL},
+                           {nullptr, 0}};
 
 std::string trimRocksDBPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
@@ -124,12 +130,13 @@ Config::Config() {
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
+      {"log-level", true, new EnumField(&log_level, log_levels, google::INFO)},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
-      {"supervised", true, new EnumField(&supervised_mode, supervised_mode_enum, kSupervisedNone)},
+      {"supervised", true, new EnumField(&supervised_mode, supervised_modes, kSupervisedNone)},
       {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
       {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
@@ -155,7 +162,8 @@ Config::Config() {
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
 
       /* rocksdb options */
-      {"rocksdb.compression", false, new EnumField(&RocksDB.compression, compression_type_enum, 0)},
+      {"rocksdb.compression", false,
+       new EnumField(&RocksDB.compression, compression_types, rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.block_size", true, new IntField(&RocksDB.block_size, 4096, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&RocksDB.max_open_files, 4096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&RocksDB.write_buffer_size, 64, 0, 4096)},

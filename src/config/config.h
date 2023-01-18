@@ -90,7 +90,7 @@ struct Config {
   int tls_session_cache_timeout = 300;
   int workers = 0;
   int timeout = 0;
-  int loglevel = 0;
+  int log_level = 0;
   int backlog = 511;
   int maxclients = 10000;
   int max_backup_to_keep = 1;

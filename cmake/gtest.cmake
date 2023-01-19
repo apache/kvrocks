@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(gtest
-  google/googletest release-1.12.1
-  MD5=2648d4138129812611cf6b6b4b497a3b
+  google/googletest v1.13.0
+  MD5=a1279c6fb5bf7d4a5e0d0b2a4adb39ac
 )
 
 FetchContent_MakeAvailableWithArgs(gtest

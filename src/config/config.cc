@@ -214,7 +214,7 @@ Config::Config() {
        new YesNoField(&RocksDB.write_options.memtable_insert_hint_per_batch, false)},
 
       /* rocksdb read options */
-      {"rocksdb.read_options.async_io", false, new YesNoField(&RocksDB.read_options.async_io, true)},
+      {"rocksdb.read_options.async_io", false, new YesNoField(&RocksDB.read_options.async_io, false)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;

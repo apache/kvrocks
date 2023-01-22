@@ -122,15 +122,12 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 
 ### Supported platforms
 
-* Linux distributions
-  * CentOS
-  * Ubuntu
-  * and most other distros
+* Linux
 * macOS
 
 ##  Namespace
 
-Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc..
+Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc. See the [Namespace](https://kvrocks.apache.org/docs/namespace) page for more details.
 
 ```
 # add token
@@ -168,8 +165,12 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 ## Tools
 
 * Export the Kvrocks monitor metrics, please use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
-* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by @vipshop
-* Migrate from kvrocks to redis. use `kvrocks2redis` in build dir
+* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by [vipshop](https://github.com/vipshop)
+* Migrate from kvrocks to redis, use `kvrocks2redis` in the build directory
+
+## Contributing
+
+Kvrocks community welcomes all forms of contribution and you can find out how to get involved on the [Community](https://kvrocks.apache.org/community/) and [How to Contribute](https://kvrocks.apache.org/community/contributing) pages.
 
 ## Performance
 

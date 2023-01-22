@@ -166,7 +166,7 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
 }
 
 static void initGoogleLog(const Config *config) {
-  FLAGS_minloglevel = config->loglevel;
+  FLAGS_minloglevel = config->log_level;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
 

@@ -64,23 +64,23 @@
 
 namespace Redis {
 
-const char *kCursorPrefix = "_";
+constexpr const char *kCursorPrefix = "_";
 
-const char *errInvalidSyntax = "syntax error";
-const char *errInvalidExpireTime = "invalid expire time";
-const char *errWrongNumOfArguments = "wrong number of arguments";
-const char *errValueNotInteger = "value is not an integer or out of range";
-const char *errAdministorPermissionRequired = "administor permission required to perform the command";
-const char *errValueMustBePositive = "value is out of range, must be positive";
-const char *errNoSuchKey = "no such key";
-const char *errUnbalancedStreamList =
+constexpr const char *errInvalidSyntax = "syntax error";
+constexpr const char *errInvalidExpireTime = "invalid expire time";
+constexpr const char *errWrongNumOfArguments = "wrong number of arguments";
+constexpr const char *errValueNotInteger = "value is not an integer or out of range";
+constexpr const char *errAdministorPermissionRequired = "administor permission required to perform the command";
+constexpr const char *errValueMustBePositive = "value is out of range, must be positive";
+constexpr const char *errNoSuchKey = "no such key";
+constexpr const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
-const char *errTimeoutIsNegative = "timeout is negative";
-const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
-const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
-const char *errScoreIsNotValidFloat = "score is not a valid float";
-const char *errValueIsNotFloat = "value is not a valid float";
-const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
+constexpr const char *errTimeoutIsNegative = "timeout is negative";
+constexpr const char *errLimitOptionNotAllowed = "syntax error, LIMIT cannot be used without the special ~ option";
+constexpr const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
+constexpr const char *errScoreIsNotValidFloat = "score is not a valid float";
+constexpr const char *errValueIsNotFloat = "value is not a valid float";
+constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
 
 enum class AuthResult {
   OK,
@@ -812,11 +812,11 @@ class CommandIncrBy : public Commander {
 class CommandIncrByFloat : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      increment_ = std::stod(args[2]);
-    } catch (std::exception &e) {
-      return {Status::RedisParseErr, errValueNotInteger};
+    auto increment = ParseFloat(args[2]);
+    if (!increment) {
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    increment_ = *increment;
 
     return Commander::Parse(args);
   }
@@ -1469,11 +1469,11 @@ class CommandHIncrBy : public Commander {
 class CommandHIncrByFloat : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      increment_ = std::stod(args[3]);
-    } catch (std::exception &e) {
-      return {Status::RedisParseErr, errValueNotInteger};
+    auto increment = ParseFloat(args[3]);
+    if (!increment) {
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    increment_ = *increment;
     return Commander::Parse(args);
   }
 
@@ -2530,17 +2530,16 @@ class CommandZAdd : public Commander {
       }
     }
 
-    try {
-      for (size_t i = index; i < args.size(); i += 2) {
-        double score = std::stod(args[i]);
-        if (std::isnan(score)) {
-          return {Status::RedisParseErr, errScoreIsNotValidFloat};
-        }
-
-        member_scores_.emplace_back(MemberScore{args[i + 1], score});
+    for (size_t i = index; i < args.size(); i += 2) {
+      auto score = ParseFloat(args[i]);
+      if (!score) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
       }
-    } catch (const std::exception &e) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
+      if (std::isnan(*score)) {
+        return {Status::RedisParseErr, errScoreIsNotValidFloat};
+      }
+
+      member_scores_.emplace_back(MemberScore{args[i + 1], *score});
     }
 
     return Commander::Parse(args);
@@ -2652,11 +2651,11 @@ class CommandZCard : public Commander {
 class CommandZIncrBy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      incr_ = std::stod(args[2]);
-    } catch (const std::exception &e) {
-      return {Status::RedisParseErr, "value is not an double or out of range"};
+    auto increment = ParseFloat(args[2]);
+    if (!increment) {
+      return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    incr_ = *increment;
     return Commander::Parse(args);
   }
 
@@ -3145,14 +3144,12 @@ class CommandZUnionStore : public Commander {
       } else if (Util::ToLower(args[i]) == "weights" && i + numkeys_ < args.size()) {
         size_t k = 0;
         while (k < numkeys_) {
-          try {
-            keys_weights_[k].weight = std::stod(args[i + k + 1]);
-          } catch (const std::exception &e) {
-            return {Status::RedisParseErr, "weight is not an double or out of range"};
+          auto weight = ParseFloat(args[i + k + 1]);
+          if (!weight || std::isnan(*weight)) {
+            return {Status::RedisParseErr, "weight is not a double or out of range"};
           }
-          if (std::isnan(keys_weights_[k].weight)) {
-            return {Status::RedisParseErr, "weight is not an double or out of range"};
-          }
+          keys_weights_[k].weight = *weight;
+
           k++;
         }
         i += numkeys_ + 1;
@@ -3217,12 +3214,13 @@ class CommandGeoBase : public Commander {
 
   Status ParseLongLat(const std::string &longitude_para, const std::string &latitude_para, double *longitude,
                       double *latitude) {
-    try {
-      *longitude = std::stod(longitude_para);
-      *latitude = std::stod(latitude_para);
-    } catch (const std::exception &e) {
+    auto long_stat = ParseFloat(longitude_para);
+    auto lat_stat = ParseFloat(latitude_para);
+    if (!long_stat || !lat_stat) {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    *longitude = *long_stat;
+    *latitude = *lat_stat;
 
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
       return {Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para};
@@ -3390,11 +3388,11 @@ class CommandGeoRadius : public CommandGeoBase {
     auto s = ParseLongLat(args[2], args[3], &longitude_, &latitude_);
     if (!s.IsOK()) return s;
 
-    try {
-      radius_ = std::stod(args[4]);
-    } catch (const std::exception &e) {
+    auto radius = ParseFloat(args[4]);
+    if (!radius) {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    radius_ = *radius;
 
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
@@ -3521,11 +3519,11 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
   CommandGeoRadiusByMember() : CommandGeoRadius() {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    try {
-      radius_ = std::stod(args[3]);
-    } catch (const std::exception &e) {
+    auto radius = ParseFloat(args[3]);
+    if (!radius) {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
+    radius_ = *radius;
 
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;
@@ -4550,14 +4548,12 @@ class CommandDebug : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     if ((subcommand_ == "sleep") && args.size() == 3) {
-      double second = 0.0;
-      try {
-        second = std::stod(args[2]);
-      } catch (const std::exception &e) {
+      auto second = ParseFloat(args[2]);
+      if (!second) {
         return {Status::RedisParseErr, "invalid debug sleep time"};
       }
 
-      microsecond_ = static_cast<uint64_t>(second * 1000 * 1000);
+      microsecond_ = static_cast<uint64_t>(*second * 1000 * 1000);
       return Status::OK();
     }
     return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>"};

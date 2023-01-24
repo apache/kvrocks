@@ -308,6 +308,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         Reply(Redis::Error("NOAUTH Authentication required."));
         continue;
       }
+
       if (password.empty()) {
         BecomeAdmin();
         SetNamespace(kDefaultNamespace);
@@ -319,11 +320,10 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     std::unique_ptr<RWLock::ReadLock> concurrency;   // Allow concurrency
     std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
-    // If the command need to process exclusively, we need to get 'ExclusivityGuard'
+    // If the command needs to process exclusively, we need to get 'ExclusivityGuard'
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
-    // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute
-    // commands at the same time.
+    // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
@@ -332,26 +332,24 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
                 cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
 
-      // When executing lua script commands that have "exclusive" attribute,
-      // we need to know current connection, but we should set current
-      // connection after acquiring the WorkExclusivityGuard to make it
-      // thread-safe
+      // When executing lua script commands that have "exclusive" attribute, we need to know current connection,
+      // but we should set current connection after acquiring the WorkExclusivityGuard to make it thread-safe
       svr_->SetCurrentConnection(this);
     } else {
       concurrency = svr_->WorkConcurrencyGuard();
     }
 
     if (cmd_name == "eval_ro" || cmd_name == "evalsha_ro") {
-      // if executing read only lua script commands, set current
-      // connection.
+      // if executing read only lua script commands, set current connection.
       svr_->SetCurrentConnection(this);
     }
 
-    if (svr_->IsLoading() && attributes->is_ok_loading() == false) {
+    if (svr_->IsLoading() && !attributes->is_ok_loading()) {
       Reply(Redis::Error("LOADING kvrocks is restoring the db from backup"));
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       continue;
     }
+
     int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
@@ -359,6 +357,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       Reply(Redis::Error("ERR wrong number of arguments"));
       continue;
     }
+
     current_cmd_->SetArgs(cmd_tokens);
     s = current_cmd_->Parse();
     if (!s.IsOK()) {
@@ -394,6 +393,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
+
     if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         svr_->GetReplicationState() != kReplConnected) {
       Reply(
@@ -419,11 +419,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (s.Is<Status::BlockingCmd>()) {
       break;
     }
+
     // Reply for MULTI
     if (!s.IsOK()) {
       Reply(Redis::Error("ERR " + s.Msg()));
       continue;
     }
+
     if (!reply.empty()) Reply(reply);
     reply.clear();
   }

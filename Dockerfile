@@ -26,7 +26,7 @@ RUN apt install -y git gcc g++ make cmake autoconf automake libtool python3 libs
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build -DENABLE_OPENSSL=ON
+RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON
 
 FROM ubuntu:focal
 

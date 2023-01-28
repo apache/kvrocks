@@ -17,16 +17,17 @@
 
 FROM ubuntu:focal as build
 
+ARG MORE_BUILD_ARGS
+
 # workaround tzdata install hanging
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt update
-RUN apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
+RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON
+RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
 
 FROM ubuntu:focal
 

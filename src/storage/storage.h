@@ -68,6 +68,7 @@ class Storage {
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
+  void SetReadOptions(rocksdb::ReadOptions &read_options);
   Status Open(bool read_only = false);
   void CloseDB();
   void EmptyDB();

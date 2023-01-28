@@ -189,6 +189,10 @@ struct Config {
       bool low_pri;
       bool memtable_insert_hint_per_batch;
     } write_options;
+
+    struct ReadOptions {
+      bool async_io;
+    } read_options;
   } RocksDB;
 
   mutable std::mutex backup_mu_;

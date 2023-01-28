@@ -139,7 +139,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
-  read_options.fill_cache = false;
+  storage_->SetReadOptions(read_options);
 
   uint64_t id = 0, pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);
@@ -180,7 +180,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  read_options.fill_cache = false;
+  storage_->SetReadOptions(read_options);
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(db_, read_options);

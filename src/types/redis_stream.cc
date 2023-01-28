@@ -249,7 +249,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  read_options.fill_cache = false;
+  storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
 
@@ -364,7 +364,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  read_options.fill_cache = false;
+  storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
   iter->Seek(start_key);
@@ -567,7 +567,7 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  read_options.fill_cache = false;
+  storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
   std::string start_key = internalKeyFromEntryID(ns_key, *metadata, metadata->first_entry_id);

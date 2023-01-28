@@ -29,6 +29,7 @@ option(USE_LUAJIT "use luaJIT instead of lua" OFF)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
+option(PORTABLE "build a portable binary (disable arch-specific optimizations)" OFF)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)

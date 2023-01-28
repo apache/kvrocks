@@ -48,6 +48,7 @@ FetchContent_MakeAvailableWithArgs(rocksdb
   USE_RTTI=ON
   ROCKSDB_BUILD_SHARED=OFF
   WITH_JEMALLOC=${COMPILE_WITH_JEMALLOC}
+  PORTABLE=${PORTABLE}
 )
 
 add_library(rocksdb_with_headers INTERFACE)

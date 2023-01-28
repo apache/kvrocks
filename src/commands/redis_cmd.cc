@@ -6079,7 +6079,7 @@ class CommandXRead : public Commander {
       evtimer_add(timer_, &tm);
     }
 
-    return Status::OK();
+    return {Status::BlockingCmd};
   }
 
   static void WriteCB(bufferevent *bev, void *ctx) {

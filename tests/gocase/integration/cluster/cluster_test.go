@@ -116,6 +116,43 @@ func TestClusterNodes(t *testing.T) {
 	})
 }
 
+func TestClusterPersistNodesConfig(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	nodeID := "07c37dfeb235213a872192d90877d0cd55635b91"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-100", nodeID, srv.Host(), srv.Port())
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+	require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
+
+	srv1 := util.StartServer(t, map[string]string{})
+	defer srv1.Close()
+
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+
+	t.Run("enable/disable the persist cluster nodes", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "yes").Err())
+		srv.Restart()
+		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
+
+		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "no").Err())
+		srv.Restart()
+		require.EqualValues(t, "-1", rdb.Do(ctx, "clusterx", "version").Val())
+	})
+
+	t.Run("cannot enable it in standalone mode", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb1.ConfigSet(ctx, "persist-cluster-nodes-enabled", "yes").Err(),
+			".*it only allows to be enabled in cluster mode.*")
+	})
+
+}
+
 func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
 	defer srv1.Close()

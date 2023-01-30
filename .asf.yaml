@@ -32,7 +32,7 @@ github:
   enabled_merge_buttons:
     squash:  true
     merge:   false
-    rebase:  true
+    rebase:  false
   protected_branches:
     unstable:
       required_pull_request_reviews:

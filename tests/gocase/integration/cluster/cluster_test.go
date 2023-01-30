@@ -67,13 +67,13 @@ func TestClusterNodes(t *testing.T) {
 
 	nodeID := "07c37dfeb235213a872192d90877d0cd55635b91"
 	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-100", nodeID, srv.Host(), srv.Port())
 
 	t.Run("basic function of cluster", func(t *testing.T) {
 		// cluster is not initialized
 		util.ErrorRegexp(t, rdb.ClusterNodes(ctx).Err(), ".*CLUSTERDOWN.*not initialized.*")
 
 		// set cluster nodes info
-		clusterNodes := fmt.Sprintf("%s %s %d master - 0-100", nodeID, srv.Host(), srv.Port())
 		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
 		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
 
@@ -91,6 +91,20 @@ func TestClusterNodes(t *testing.T) {
 		require.EqualValues(t, 0, slots[0].Start)
 		require.EqualValues(t, 100, slots[0].End)
 		require.EqualValues(t, []redis.ClusterNode{{ID: nodeID, Addr: srv.HostPort()}}, slots[0].Nodes)
+	})
+
+	t.Run("enable/disable the persist cluster nodes", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "yes").Err())
+		srv.Restart()
+		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
+
+		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "no").Err())
+		srv.Restart()
+		require.EqualValues(t, "-1", rdb.Do(ctx, "clusterx", "version").Val())
+
+		// reset the cluster topology to avoid breaking other test cases
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
 	})
 
 	t.Run("cluster topology is reset by old version", func(t *testing.T) {

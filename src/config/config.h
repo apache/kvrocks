@@ -133,6 +133,7 @@ struct Config {
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
 
+  bool persist_cluster_nodes_enabled = true;
   bool slot_id_encoded = false;
   bool cluster_enabled = false;
   int migrate_speed;

@@ -798,7 +798,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
     if (attributes->is_write() && IsWriteForbiddenSlot(slot)) {
-      return {Status::RedisExecErr, "Can't write to slot being migrated which is in write forbidden phase"};
+      return {Status::RedisExecErr, "TRYAGAIN Can't write to slot being migrated which is in write forbidden phase"};
     }
 
     return Status::OK();  // I'm serving this slot

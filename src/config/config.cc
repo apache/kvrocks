@@ -160,6 +160,7 @@ Config::Config() {
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
+      {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -470,6 +471,17 @@ void Config::initFieldCallback() {
          } else {
            google::DisableLogCleaner();
          }
+         return Status::OK();
+       }},
+      {"persist-cluster-nodes-enabled",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv || !cluster_enabled) return Status::OK();
+         auto nodes_file_path = NodesFilePath();
+         if (v == "yes") {
+           return srv->cluster_->DumpClusterNodes(nodes_file_path);
+         }
+         // Remove the cluster nodes file to avoid stale cluster nodes info
+         remove(nodes_file_path.data());
          return Status::OK();
        }},
       {"rocksdb.target_file_size_base",

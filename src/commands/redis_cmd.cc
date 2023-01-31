@@ -5309,7 +5309,7 @@ class CommandClusterX : public Commander {
     } else {
       *output = Redis::Error("Invalid cluster command options");
     }
-    if (need_persist_nodes_info) {
+    if (need_persist_nodes_info && svr->GetConfig()->persist_cluster_nodes_enabled) {
       return svr->cluster_->DumpClusterNodes(svr->GetConfig()->NodesFilePath());
     }
     return Status::OK();

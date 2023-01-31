@@ -136,7 +136,7 @@ Status Server::Start() {
     }
   }
 
-  if (config_->cluster_enabled) {
+  if (config_->cluster_enabled && config_->persist_cluster_nodes_enabled) {
     auto s = cluster_->LoadClusterNodes(config_->NodesFilePath());
     if (!s.IsOK()) {
       return s.Prefixed("failed to load cluster nodes info");

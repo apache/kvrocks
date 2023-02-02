@@ -83,7 +83,7 @@ To build with TLS support, you'll need OpenSSL development libraries (e.g. libss
 $ ./x.py build -DENABLE_OPENSSL=ON
 ```
 
-To build with lua instead of luaJIT for better performance, run:
+To build with lua instead of luaJIT, run:
 
 ```shell
 $ ./x.py build -DUSE_LUAJIT=OFF

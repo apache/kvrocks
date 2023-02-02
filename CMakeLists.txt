@@ -25,7 +25,7 @@ option(ENABLE_ASAN "enable address santinizer" OFF)
 option(ENABLE_TSAN "enable thread santinizer" OFF)
 option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
-option(USE_LUAJIT "use luaJIT instead of lua" OFF)
+option(USE_LUAJIT "use luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
@@ -48,7 +48,7 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
         message(FATAL_ERROR "It is expected to build kvrocks with Xcode toolchains 10 or above")
     endif()
 else()
-    message(WARNING "The compiler you are currently using is not officially supported, 
+    message(WARNING "The compiler you are currently using is not officially supported,
         so you can try switching to GCC>=7 or Clang>=5 if you encounter problems")
 endif()
 

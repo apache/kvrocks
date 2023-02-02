@@ -131,22 +131,22 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC with luaJIT
+          - name: Ubuntu GCC without luaJIT
             os: ubuntu-20.04
             with_openssl: -DENABLE_OPENSSL=ON
-            with_luajit: -DUSE_LUAJIT=ON
+            without_luajit: -DUSE_LUAJIT=OFF
             compiler: gcc
-          - name: Ubuntu GCC ASan with luaJIT
+          - name: Ubuntu GCC ASan without luaJIT
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
+            without_luajit: -DUSE_LUAJIT=OFF
             with_sanitizer: -DENABLE_ASAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC TSan with luaJIT
+          - name: Ubuntu GCC TSan without luaJIT
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_luajit: -DUSE_LUAJIT=ON
+            without_luajit: -DUSE_LUAJIT=OFF
             with_sanitizer: -DENABLE_TSAN=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
@@ -194,9 +194,9 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.with_luajit }} \
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
             ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
-      
+
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
@@ -225,7 +225,7 @@ jobs:
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS
-          
+
       - name: Find reports and crashes
         if: always()
         run: |

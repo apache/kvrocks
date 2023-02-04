@@ -23,6 +23,7 @@
 #include <string>
 
 #include "status.h"
+
 struct CommonRangeLexSpec {
   std::string min, max;
   bool minex, maxex; /* are min or max exclusive */

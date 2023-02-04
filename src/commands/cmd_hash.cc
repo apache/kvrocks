@@ -18,8 +18,8 @@
  *
  */
 
-#include "commands/command_parser.h"
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "scan_base.h"
 #include "server/server.h"

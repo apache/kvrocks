@@ -18,9 +18,9 @@
  *
  */
 
+#include "commander.h"
 #include "commands/scan_base.h"
 #include "config/config.h"
-#include "commander.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
 #include "server/server.h"

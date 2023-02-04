@@ -20,9 +20,9 @@
 
 #pragma once
 
-#include "parse_util.h"
 #include "commander.h"
 #include "error_constants.h"
+#include "parse_util.h"
 
 namespace Redis {
 

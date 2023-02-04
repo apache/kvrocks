@@ -20,8 +20,8 @@
 
 #include <optional>
 
-#include "commands/command_parser.h"
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
 #include "time_util.h"

@@ -21,8 +21,8 @@
 #include <optional>
 
 #include "commands/command_parser.h"
-#include "redis_cmd.h"
-#include "redis_cmd_error.h"
+#include "commander.h"
+#include "error_constants.h"
 #include "server/server.h"
 #include "time_util.h"
 #include "ttl_util.h"

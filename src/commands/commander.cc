@@ -18,7 +18,7 @@
  *
  */
 
-#include "redis_cmd.h"
+#include "commander.h"
 
 namespace Redis {
 

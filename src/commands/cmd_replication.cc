@@ -20,8 +20,8 @@
 
 #include "fd_util.h"
 #include "io_util.h"
-#include "redis_cmd.h"
-#include "redis_cmd_error.h"
+#include "commander.h"
+#include "error_constants.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"

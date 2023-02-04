@@ -19,9 +19,9 @@
  */
 
 #include "commands/command_parser.h"
-#include "redis_cmd.h"
-#include "redis_cmd_error.h"
-#include "scan_util.h"
+#include "commander.h"
+#include "error_constants.h"
+#include "scan_base.h"
 #include "server/server.h"
 #include "types/redis_hash.h"
 

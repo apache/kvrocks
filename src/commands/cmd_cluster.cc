@@ -19,8 +19,8 @@
  */
 
 #include "cluster/slot_import.h"
-#include "redis_cmd.h"
-#include "redis_cmd_error.h"
+#include "commander.h"
+#include "error_constants.h"
 
 namespace Redis {
 

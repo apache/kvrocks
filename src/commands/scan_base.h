@@ -21,8 +21,8 @@
 #pragma once
 
 #include "parse_util.h"
-#include "redis_cmd.h"
-#include "redis_cmd_error.h"
+#include "commander.h"
+#include "error_constants.h"
 
 namespace Redis {
 

@@ -102,7 +102,7 @@ void InternalKey::Encode(std::string *out) {
   EncodeFixed64(buf + pos, version_);
   pos += 8;
   memcpy(buf + pos, sub_key_.data(), sub_key_.size());
-  pos += sub_key_.size();
+  // pos += sub_key_.size();
 }
 
 bool InternalKey::operator==(const InternalKey &that) const {

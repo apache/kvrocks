@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-#include "commands/redis_cmd.h"
+#include "commands/commander.h"
 #include "redis_request.h"
 
 class Worker;

@@ -27,7 +27,7 @@
 #include <fstream>
 #include <memory>
 
-#include "commands/redis_cmd.h"
+#include "commands/commander.h"
 #include "fmt/format.h"
 #include "parse_util.h"
 #include "replication.h"

@@ -29,7 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "commands/redis_cmd.h"
+#include "commands/commander.h"
 #include "redis_slot.h"
 #include "rw_lock.h"
 #include "server/redis_connection.h"

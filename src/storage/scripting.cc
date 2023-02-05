@@ -56,7 +56,7 @@
 
 #include <string>
 
-#include "commands/redis_cmd.h"
+#include "commands/commander.h"
 #include "fmt/format.h"
 #include "parse_util.h"
 #include "rand.h"

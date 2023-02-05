@@ -17,11 +17,12 @@
  * under the License.
  *
  */
+
 #include "range_spec.h"
 
 Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
   if (min == "+" || max == "-") {
-    return Status(Status::NotOK, "min > max");
+    return {Status::NotOK, "min > max"};
   }
 
   if (min == "-") {
@@ -32,7 +33,7 @@ Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonR
     } else if (min[0] == '[') {
       spec->minex = false;
     } else {
-      return Status(Status::NotOK, "the min is illegal");
+      return {Status::NotOK, "the min is illegal"};
     }
     spec->min = min.substr(1);
   }
@@ -45,7 +46,7 @@ Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonR
     } else if (max[0] == '[') {
       spec->maxex = false;
     } else {
-      return Status(Status::NotOK, "the max is illegal");
+      return {Status::NotOK, "the max is illegal"};
     }
     spec->max = max.substr(1);
   }

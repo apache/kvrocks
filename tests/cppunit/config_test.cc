@@ -25,7 +25,7 @@
 #include <map>
 #include <vector>
 
-#include "commands/redis_cmd.h"
+#include "commands/commander.h"
 #include "config/config_util.h"
 #include "server/server.h"
 

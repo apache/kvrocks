@@ -79,7 +79,7 @@ class InternalKey {
  public:
   explicit InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded);
   explicit InternalKey(Slice input, bool slot_id_encoded);
-  ~InternalKey();
+  ~InternalKey() = default;
 
   Slice GetNamespace() const;
   Slice GetKey() const;
@@ -93,8 +93,6 @@ class InternalKey {
   Slice key_;
   Slice sub_key_;
   uint64_t version_;
-  char *buf_;
-  char prealloc_[256];
   uint16_t slotid_;
   bool slot_id_encoded_;
 };

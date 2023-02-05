@@ -40,8 +40,7 @@ const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wr
 const char *kErrMsgKeyExpired = "the key was expired";
 const char *kErrMetadataTooShort = "metadata is too short";
 
-InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
-  slot_id_encoded_ = slot_id_encoded;
+InternalKey::InternalKey(Slice input, bool slot_id_encoded) : slot_id_encoded_(slot_id_encoded) {
   uint32_t key_size = 0;
   uint8_t namespace_size = 0;
   GetFixed8(&input, &namespace_size);
@@ -55,12 +54,10 @@ InternalKey::InternalKey(Slice input, bool slot_id_encoded) {
   input.remove_prefix(key_size);
   GetFixed64(&input, &version_);
   sub_key_ = Slice(input.data(), input.size());
-  buf_ = nullptr;
-  memset(prealloc_, '\0', sizeof(prealloc_));
 }
 
-InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded) {
-  slot_id_encoded_ = slot_id_encoded;
+InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded)
+    : slot_id_encoded_(slot_id_encoded) {
   uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
   namespace_ = Slice(ns_key.data(), namespace_size);
@@ -71,12 +68,6 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slo
   key_ = ns_key;
   sub_key_ = sub_key;
   version_ = version;
-  buf_ = nullptr;
-  memset(prealloc_, '\0', sizeof(prealloc_));
-}
-
-InternalKey::~InternalKey() {
-  if (buf_ != nullptr && buf_ != prealloc_) delete[] buf_;
 }
 
 Slice InternalKey::GetNamespace() const { return namespace_; }
@@ -94,28 +85,24 @@ void InternalKey::Encode(std::string *out) {
   if (slot_id_encoded_) {
     total += 2;
   }
-  if (total < sizeof(prealloc_)) {
-    buf_ = prealloc_;
-  } else {
-    buf_ = new char[total];
-  }
-  EncodeFixed8(buf_ + pos, static_cast<uint8_t>(namespace_.size()));
+  out->resize(total);
+  auto buf = out->data();
+  EncodeFixed8(buf + pos, static_cast<uint8_t>(namespace_.size()));
   pos += 1;
-  memcpy(buf_ + pos, namespace_.data(), namespace_.size());
+  memcpy(buf + pos, namespace_.data(), namespace_.size());
   pos += namespace_.size();
   if (slot_id_encoded_) {
-    EncodeFixed16(buf_ + pos, slotid_);
+    EncodeFixed16(buf + pos, slotid_);
     pos += 2;
   }
-  EncodeFixed32(buf_ + pos, static_cast<uint32_t>(key_.size()));
+  EncodeFixed32(buf + pos, static_cast<uint32_t>(key_.size()));
   pos += 4;
-  memcpy(buf_ + pos, key_.data(), key_.size());
+  memcpy(buf + pos, key_.data(), key_.size());
   pos += key_.size();
-  EncodeFixed64(buf_ + pos, version_);
+  EncodeFixed64(buf + pos, version_);
   pos += 8;
-  memcpy(buf_ + pos, sub_key_.data(), sub_key_.size());
+  memcpy(buf + pos, sub_key_.data(), sub_key_.size());
   pos += sub_key_.size();
-  out->assign(buf_, pos);
 }
 
 bool InternalKey::operator==(const InternalKey &that) const {
@@ -161,11 +148,8 @@ void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output) {
   PutFixed16(output, static_cast<uint16_t>(slotid));
 }
 
-Metadata::Metadata(RedisType type, bool generate_version) {
-  flags = (uint8_t)0x0f & type;
-  expire = 0;
-  version = 0;
-  size = 0;
+Metadata::Metadata(RedisType type, bool generate_version)
+    : flags((uint8_t)0x0f & type), expire(0), version(0), size(0) {
   if (generate_version) version = generateVersion();
 }
 
@@ -251,10 +235,8 @@ bool Metadata::Expired() const {
   return expire < now;
 }
 
-ListMetadata::ListMetadata(bool generate_version) : Metadata(kRedisList, generate_version) {
-  head = UINT64_MAX / 2;
-  tail = head;
-}
+ListMetadata::ListMetadata(bool generate_version)
+    : Metadata(kRedisList, generate_version), head(UINT64_MAX / 2), tail(head) {}
 
 void ListMetadata::Encode(std::string *dst) {
   Metadata::Encode(dst);

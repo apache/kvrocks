@@ -1,0 +1,58 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: release docker image
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  release-docker-image:
+    name: Release Docker Image
+    runs-on: ubuntu-18.04
+    steps:
+
+      - name: Checkout Code Base
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 64
+
+      - name: Set ENV
+        run: |
+          echo "RELEASE_TAG=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
+      - name: Build And Push Docker Image
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 --tag apache/kvrocks:$RELEASE_TAG --tag apache/kvrocks:latest .

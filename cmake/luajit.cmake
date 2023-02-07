@@ -20,16 +20,16 @@ include_guard()
 include(cmake/utils.cmake)
 
 if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
-  set(sw_cmd "sw_vers")
-  set(sw_arg "-productVersion")
-  execute_process(COMMAND ${sw_cmd} ${sw_arg}
+  set(SW_CMD "sw_vers")
+  set(SW_CMD_ARG "-productVersion")
+  execute_process(COMMAND ${SW_CMD} ${SW_CMD_ARG}
           WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-          OUTPUT_VARIABLE OUTPUT
-          RESULT_VARIABLE STATUS
+          OUTPUT_VARIABLE SW_CMD_OUTPUT
+          RESULT_VARIABLE SW_CMD_STATUS
           OUTPUT_STRIP_TRAILING_WHITESPACE)
-  if (STATUS EQUAL 0)
+  if (SW_CMD_STATUS EQUAL 0)
     string(REGEX MATCH "[0-9]+.[0-9]+"
-            DEPLOYMENT_TARGET ${OUTPUT})
+            DEPLOYMENT_TARGET ${SW_CMD_OUTPUT})
     set(CMAKE_OSX_DEPLOYMENT_TARGET "${DEPLOYMENT_TARGET}")
     message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET was set to: ${DEPLOYMENT_TARGET}")
   endif ()

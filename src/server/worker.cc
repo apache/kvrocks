@@ -23,6 +23,7 @@
 #include <event2/util.h>
 #include <glog/logging.h>
 
+#include <stdexcept>
 #include <string>
 
 #include "io_util.h"
@@ -51,9 +52,8 @@
 #include "server.h"
 #include "storage/scripting.h"
 
-Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
-  base_ = event_base_new();
-  if (!base_) throw std::exception();
+Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), base_(event_base_new()) {
+  if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_ = event_new(base_, -1, EV_PERSIST, TimerCB, this);
   timeval tm = {10, 0};

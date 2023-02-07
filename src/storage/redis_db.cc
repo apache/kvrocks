@@ -22,6 +22,7 @@
 
 #include <ctime>
 #include <map>
+#include <utility>
 
 #include "cluster/redis_slot.h"
 #include "db_util.h"
@@ -31,11 +32,9 @@
 
 namespace Redis {
 
-Database::Database(Engine::Storage *storage, const std::string &ns) {
-  storage_ = storage;
+Database::Database(Engine::Storage *storage, std::string ns)
+    : storage_(storage), db_(storage->GetDB()), namespace_(std::move(ns)) {
   metadata_cf_handle_ = storage->GetCFHandle("metadata");
-  db_ = storage->GetDB();
-  namespace_ = ns;
 }
 
 rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {

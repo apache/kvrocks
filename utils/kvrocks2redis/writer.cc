@@ -57,7 +57,7 @@ Status Writer::GetAofFd(const std::string &ns, bool truncate) {
     return OpenAofFile(ns, truncate);
   }
   if (aof_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open aof file :") + strerror(errno));
+    return Status::FromErrno("Failed to open aof file:");
   }
   return Status::OK();
 }
@@ -69,7 +69,7 @@ Status Writer::OpenAofFile(const std::string &ns, bool truncate) {
   }
   aof_fds_[ns] = open(GetAofFilePath(ns).data(), openmode, 0666);
   if (aof_fds_[ns] < 0) {
-    return Status(Status::NotOK, std::string("Failed to open aof file :") + strerror(errno));
+    return Status::FromErrno("Failed to open aof file:");
   }
 
   return Status::OK();

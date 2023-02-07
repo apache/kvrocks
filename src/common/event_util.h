@@ -30,7 +30,7 @@ template <typename F, F *f>
 struct StaticFunction {
   template <typename... Ts>
   auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
-    return f(std::forward<Ts>(args)...);
+    return f(std::forward<Ts>(args)...);                                           // NOLINT
   }
 };
 

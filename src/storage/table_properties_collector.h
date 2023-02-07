@@ -28,8 +28,8 @@
 
 class CompactOnExpiredCollector : public rocksdb::TablePropertiesCollector {
  public:
-  explicit CompactOnExpiredCollector(const std::string &cf_name, float trigger_threshold)
-      : cf_name_(cf_name), trigger_threshold_(trigger_threshold) {}
+  explicit CompactOnExpiredCollector(std::string cf_name, float trigger_threshold)
+      : cf_name_(std::move(cf_name)), trigger_threshold_(trigger_threshold) {}
   const char *Name() const override { return "compact_on_expired_collector"; }
   bool NeedCompact() const override;
   rocksdb::Status AddUserKey(const rocksdb::Slice &key, const rocksdb::Slice &value, rocksdb::EntryType,
@@ -48,9 +48,9 @@ class CompactOnExpiredCollector : public rocksdb::TablePropertiesCollector {
 
 class CompactOnExpiredTableCollectorFactory : public rocksdb::TablePropertiesCollectorFactory {
  public:
-  explicit CompactOnExpiredTableCollectorFactory(const std::string &cf_name, float trigger_threshold)
+  explicit CompactOnExpiredTableCollectorFactory(std::string cf_name, float trigger_threshold)
       : cf_name_(std::move(cf_name)), trigger_threshold_(trigger_threshold) {}
-  virtual ~CompactOnExpiredTableCollectorFactory() {}
+  ~CompactOnExpiredTableCollectorFactory() override = default;
   rocksdb::TablePropertiesCollector *CreateTablePropertiesCollector(
       rocksdb::TablePropertiesCollectorFactory::Context context) override;
   const char *Name() const override { return "CompactOnExpiredCollector"; }

@@ -31,7 +31,7 @@
 namespace Redis {
 class Database {
  public:
-  explicit Database(Engine::Storage *storage, const std::string &ns = "");
+  explicit Database(Engine::Storage *storage, std::string ns = "");
   rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
   rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
   rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes);
@@ -63,9 +63,12 @@ class Database {
 
   class LatestSnapShot {
    public:
-    explicit LatestSnapShot(rocksdb::DB *db) : db_(db) { snapshot_ = db_->GetSnapshot(); }
+    explicit LatestSnapShot(rocksdb::DB *db) : db_(db), snapshot_(db_->GetSnapshot()) {}
     ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
     const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
+
+    LatestSnapShot(const LatestSnapShot &) = delete;
+    LatestSnapShot &operator=(const LatestSnapShot &) = delete;
 
    private:
     rocksdb::DB *db_ = nullptr;

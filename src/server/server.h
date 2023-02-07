@@ -92,7 +92,7 @@ class ServerLogData {
   // distinguish ServerLogData with Redis::WriteBatchLogData.
   static const char kReplIdTag = 'r';
   static bool IsServerLogData(const char *header) {
-    if (header != NULL) return *header == kReplIdTag;
+    if (header != nullptr) return *header == kReplIdTag;
     return false;
   }
 
@@ -116,6 +116,9 @@ class Server {
  public:
   explicit Server(Engine::Storage *storage, Config *config);
   ~Server();
+
+  Server(const Server &) = delete;
+  Server &operator=(const Server &) = delete;
 
   Status Start();
   void Stop();
@@ -145,7 +148,7 @@ class Server {
                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
   void PSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
   void PUnSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
-  int GetPubSubPatternSize() { return pubsub_patterns_.size(); }
+  int GetPubSubPatternSize() { return static_cast<int>(pubsub_patterns_.size()); }
 
   void AddBlockingKey(const std::string &key, Redis::Connection *conn);
   void UnBlockingKey(const std::string &key, Redis::Connection *conn);

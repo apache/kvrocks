@@ -136,14 +136,14 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     run(cmake, *options, verbose=True, cwd=dir)
 
 
-def get_source_files() -> List[str]:
+def get_source_files(dir: Path) -> List[str]:
     return [
-        *glob("src/**/*.h", recursive=True),
-        *glob("src/**/*.cc", recursive=True),
-        *glob("tests/cppunit/**/*.h", recursive=True),
-        *glob("tests/cppunit/**/*.cc", recursive=True),
-        *glob("utils/kvrocks2redis/**/*.h", recursive=True),
-        *glob("utils/kvrocks2redis/**/*.cc", recursive=True),
+        *glob(str(dir / "src/**/*.h"), recursive=True),
+        *glob(str(dir / "src/**/*.cc"), recursive=True),
+        *glob(str(dir / "tests/cppunit/**/*.h"), recursive=True),
+        *glob(str(dir / "tests/cppunit/**/*.cc"), recursive=True),
+        *glob(str(dir / "utils/kvrocks2redis/**/*.h"), recursive=True),
+        *glob(str(dir / "utils/kvrocks2redis/**/*.cc"), recursive=True),
     ]
 
 
@@ -162,7 +162,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
              "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     basedir = Path(__file__).parent.absolute()
-    sources = get_source_files()
+    sources = get_source_files(basedir)
 
     if fix:
         options = ['-i']
@@ -191,7 +191,11 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     if jobs is not None:
         options.append(f'-j{jobs}')
 
-    run(run_command, *options, 'kvrocks/src/', 'kvrocks2redis/', verbose=True, cwd=basedir)
+    regexes = ['kvrocks/src/', 'kvrocks2redis/']
+
+    options.append(f'-header-filter={"|".join(regexes)}')
+
+    run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
 def golangci_lint() -> None:

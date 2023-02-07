@@ -35,12 +35,11 @@
 namespace Redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
-    : bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
+    : need_close_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
   time_t now = 0;
   time(&now);
   create_time_ = now;
   last_interaction_ = now;
-  need_close_ = true;
 }
 
 Connection::~Connection() {

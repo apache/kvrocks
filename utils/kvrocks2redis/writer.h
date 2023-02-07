@@ -31,6 +31,10 @@
 class Writer {
  public:
   explicit Writer(Kvrocks2redis::Config *config) : config_(config) {}
+
+  Writer(const Writer &) = delete;
+  Writer &operator=(const Writer &) = delete;
+
   ~Writer();
   virtual Status Write(const std::string &ns, const std::vector<std::string> &aofs);
   virtual Status FlushDB(const std::string &ns);

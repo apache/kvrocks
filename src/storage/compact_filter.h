@@ -43,7 +43,7 @@ class MetadataFilter : public rocksdb::CompactionFilter {
 
 class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit MetadataFilterFactory(Engine::Storage *storage) { stor_ = storage; }
+  explicit MetadataFilterFactory(Engine::Storage *storage) : stor_(storage) {}
   const char *Name() const override { return "MetadataFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context &context) override {
@@ -73,7 +73,7 @@ class SubKeyFilter : public rocksdb::CompactionFilter {
 
 class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit SubKeyFilterFactory(Engine::Storage *storage) { stor_ = storage; }
+  explicit SubKeyFilterFactory(Engine::Storage *storage) : stor_(storage) {}
 
   const char *Name() const override { return "SubKeyFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(

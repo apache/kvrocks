@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-#define CRLF "\r\n"
+#define CRLF "\r\n"  // NOLINT
 
 namespace Redis {
 void Reply(evbuffer *output, const std::string &data);

@@ -136,14 +136,14 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     run(cmake, *options, verbose=True, cwd=dir)
 
 
-def get_source_files(dir: str) -> List[str]:
+def get_source_files(dir: Path) -> List[str]:
     return [
-        *glob("src/**/*.h", recursive=True, root_dir=dir),
-        *glob("src/**/*.cc", recursive=True, root_dir=dir),
-        *glob("tests/cppunit/**/*.h", recursive=True, root_dir=dir),
-        *glob("tests/cppunit/**/*.cc", recursive=True, root_dir=dir),
-        *glob("utils/kvrocks2redis/**/*.h", recursive=True, root_dir=dir),
-        *glob("utils/kvrocks2redis/**/*.cc", recursive=True, root_dir=dir),
+        *glob(str(dir / "src/**/*.h"), recursive=True),
+        *glob(str(dir / "src/**/*.cc"), recursive=True),
+        *glob(str(dir / "tests/cppunit/**/*.h"), recursive=True),
+        *glob(str(dir / "tests/cppunit/**/*.cc"), recursive=True),
+        *glob(str(dir / "utils/kvrocks2redis/**/*.h"), recursive=True),
+        *glob(str(dir / "utils/kvrocks2redis/**/*.cc"), recursive=True),
     ]
 
 
@@ -162,7 +162,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
              "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
 
     basedir = Path(__file__).parent.absolute()
-    sources = get_source_files(str(basedir))
+    sources = get_source_files(basedir)
 
     if fix:
         options = ['-i']

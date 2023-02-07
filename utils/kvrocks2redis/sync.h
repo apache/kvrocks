@@ -37,6 +37,10 @@ class Sync {
  public:
   explicit Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
   ~Sync();
+
+  Sync(const Sync &) = delete;
+  Sync &operator=(const Sync &) = delete;
+
   void Start();
   void Stop();
   bool IsStopped() { return stop_flag_; }

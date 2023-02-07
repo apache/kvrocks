@@ -47,6 +47,9 @@ class Connection {
   explicit Connection(bufferevent *bev, Worker *owner);
   ~Connection();
 
+  Connection(const Connection &) = delete;
+  Connection &operator=(const Connection &) = delete;
+
   void Close();
   void Detach();
   static void OnRead(struct bufferevent *bev, void *ctx);
@@ -82,7 +85,7 @@ class Connection {
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() { return ip_; }
-  int GetPort() { return port_; }
+  int GetPort() { return static_cast<int>(port_); }
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() { return listening_port_; }
   uint64_t GetClientType();

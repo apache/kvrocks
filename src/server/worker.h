@@ -47,6 +47,8 @@ class Worker {
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
+  Worker &operator=(const Worker &) = delete;
+
   void Stop();
   void Run(std::thread::id tid);
 
@@ -97,6 +99,8 @@ class WorkerThread {
   ~WorkerThread() = default;
   WorkerThread(const WorkerThread &) = delete;
   WorkerThread(WorkerThread &&) = delete;
+  WorkerThread &operator=(const WorkerThread &) = delete;
+
   Worker *GetWorker() { return worker_.get(); }
   void Start();
   void Stop();

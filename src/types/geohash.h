@@ -115,7 +115,7 @@ struct GeoHashRadius {
 };
 
 inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits && !r.step; }
-inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !r.max && !r.min; }
+inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !bool(r.max) && !bool(r.min); }
 inline constexpr bool RANGEPISZERO(const GeoHashRange *r) { return !r || RANGEISZERO(*r); }
 
 inline constexpr void GZERO(GeoHashBits &s) { s.bits = s.step = 0; }

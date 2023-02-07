@@ -37,6 +37,10 @@ class LatestSnapShot {
  public:
   explicit LatestSnapShot(rocksdb::DB *db) : db_(db), snapshot_(db_->GetSnapshot()) {}
   ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
+
+  LatestSnapShot(const LatestSnapShot &) = delete;
+  LatestSnapShot &operator=(const LatestSnapShot &) = delete;
+
   const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
 
  private:

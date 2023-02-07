@@ -79,6 +79,9 @@ class WriteLock {
 
   virtual ~WriteLock() { wlock_.UnLockWrite(); }
 
+  WriteLock(const WriteLock&) = delete;
+  WriteLock& operator=(const WriteLock&) = delete;
+
  private:
   ReadWriteLock& wlock_;
 };
@@ -88,6 +91,9 @@ class ReadLock {
   explicit ReadLock(ReadWriteLock& rlock) : rlock_(rlock) { rlock_.LockRead(); }
 
   virtual ~ReadLock() { rlock_.UnLockRead(); }
+
+  ReadLock(const ReadLock&) = delete;
+  ReadLock& operator=(const ReadLock&) = delete;
 
  private:
   ReadWriteLock& rlock_;

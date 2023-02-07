@@ -39,6 +39,8 @@ class Connection;
 class Request {
  public:
   explicit Request(Server *svr) : svr_(svr) {}
+  ~Request() = default;
+
   // Not copyable
   Request(const Request &) = delete;
   Request &operator=(const Request &) = delete;

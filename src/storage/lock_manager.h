@@ -32,6 +32,9 @@ class LockManager {
   explicit LockManager(int hash_power);
   ~LockManager();
 
+  LockManager(const LockManager &) = delete;
+  LockManager &operator=(const LockManager &) = delete;
+
   unsigned Size();
   void Lock(const rocksdb::Slice &key);
   void UnLock(const rocksdb::Slice &key);
@@ -50,6 +53,9 @@ class LockGuard {
     lock_mgr->Lock(key_);
   }
   ~LockGuard() { lock_mgr_->UnLock(key_); }
+
+  LockGuard(const LockGuard &) = delete;
+  LockGuard &operator=(const LockGuard &) = delete;
 
  private:
   LockManager *lock_mgr_ = nullptr;
@@ -71,6 +77,9 @@ class MultiLockGuard {
       (*iter)->unlock();
     }
   }
+
+  MultiLockGuard(const MultiLockGuard &) = delete;
+  MultiLockGuard &operator=(const MultiLockGuard &) = delete;
 
  private:
   LockManager *lock_mgr_ = nullptr;

@@ -31,6 +31,8 @@ struct ScopeExit {
   ScopeExit(const ScopeExit&) = delete;
   ScopeExit(ScopeExit&& se) : enabled_(se.enabled_), f_(std::move(se.f_)) {}
 
+  ScopeExit& operator=(const ScopeExit&) = delete;
+
   ~ScopeExit() {
     if (enabled_) f_();
   }

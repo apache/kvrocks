@@ -113,6 +113,12 @@ struct StreamRangeOptions {
   bool exclude_end = false;
 };
 
+struct StreamLenOptions {
+  StreamEntryID entry_id;
+  bool with_entry_id = false;
+  bool to_first = false;
+};
+
 struct StreamInfo {
   uint64_t size;
   uint64_t entries_added;

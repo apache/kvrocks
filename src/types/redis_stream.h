@@ -40,7 +40,7 @@ class Stream : public SubKeyScanner {
   rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
                       StreamEntryID *id);
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *ret);
-  rocksdb::Status Len(const Slice &stream_name, uint64_t *ret);
+  rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *ret);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
   rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options, std::vector<StreamEntry> *entries);
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret);

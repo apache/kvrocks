@@ -212,10 +212,31 @@ class CommandXDel : public Commander {
 
 class CommandXLen : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 2) {
+      Redis::StreamEntryID id;
+      auto s = Redis::ParseStreamEntryID(args[2], &id);
+      if (!s.IsOK()) return s;
+
+      options_.with_entry_id = true;
+      options_.entry_id = id;
+
+      if (args.size() > 3) {
+        if (args[3] == "-") {
+          options_.to_first = true;
+        } else if (args[3] != "+") {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
     uint64_t len = 0;
-    auto s = stream_db.Len(args_[1], &len);
+    auto s = stream_db.Len(args_[1], options_, &len);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -224,6 +245,9 @@ class CommandXLen : public Commander {
 
     return Status::OK();
   }
+
+ private:
+  Redis::StreamLenOptions options_;
 };
 
 class CommandXInfo : public Commander {
@@ -961,7 +985,7 @@ class CommandXSetId : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXLen>("xlen", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 0, 0, 0),

@@ -19,27 +19,42 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-if((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
+if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
+  set(SW_CMD "sw_vers")
+  set(SW_CMD_ARG "-productVersion")
+  execute_process(COMMAND ${SW_CMD} ${SW_CMD_ARG}
+          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+          OUTPUT_VARIABLE SW_CMD_OUTPUT
+          RESULT_VARIABLE SW_CMD_STATUS
+          OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if (SW_CMD_STATUS EQUAL 0)
+    string(REGEX MATCH "[0-9]+.[0-9]+"
+            DEPLOYMENT_TARGET ${SW_CMD_OUTPUT})
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "${DEPLOYMENT_TARGET}")
+    message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET was set to: ${DEPLOYMENT_TARGET}")
+  endif ()
+endif ()
+
+if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
   message(FATAL_ERROR "The CMake option `CMAKE_OSX_DEPLOYMENT_TARGET` need to be specified, e.g. `-DCMAKE_OSX_DEPLOYMENT_TARGET=10.3`")
-endif()
+endif ()
 
 FetchContent_DeclareGitHubWithMirror(luajit
-  KvrocksLabs/LuaJIT b80ea0e44bd259646d988324619612f645e4b637
-  MD5=f9566c424fb57b226066e3a39a10ec8d
-)
+        KvrocksLabs/LuaJIT b80ea0e44bd259646d988324619612f645e4b637
+        MD5=f9566c424fb57b226066e3a39a10ec8d)
 
 FetchContent_GetProperties(luajit)
-if(NOT lua_POPULATED)
+if (NOT lua_POPULATED)
   FetchContent_Populate(luajit)
 
   set(LUA_CFLAGS "-DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
-  endif()
+  endif ()
 
   if (CMAKE_HOST_APPLE)
     set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-  endif()
+  endif ()
 
   add_custom_target(make_luajit COMMAND make libluajit.a
     "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}

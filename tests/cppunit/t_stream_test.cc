@@ -1290,7 +1290,7 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
 
 TEST_F(RedisStreamTest, LenOnNonExistingStream) {
   uint64_t length = 0;
-  auto s = stream->Len(name, &length);
+  auto s = stream->Len(name, Redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1310,7 +1310,7 @@ TEST_F(RedisStreamTest, LenOnEmptyStream) {
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
-  s = stream->Len(name, &length);
+  s = stream->Len(name, Redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1330,9 +1330,187 @@ TEST_F(RedisStreamTest, Len) {
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
-  s = stream->Len(name, &length);
+  s = stream->Len(name, Redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionGreaterThanLastEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = Redis::StreamEntryID{id2.ms + 10, 0};
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 0);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 2);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionEqualToLastEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = Redis::StreamEntryID{id2.ms, id2.seq};
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 0);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 1);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionLessThanFirstEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = Redis::StreamEntryID{123, 0};
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 2);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 0);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionEqualToFirstEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = id1;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 1);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 0);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionEqualToExistingEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123458, 0};
+  Redis::StreamEntryID id3;
+  s = stream->Add(name, add_options, {"key3", "val3"}, &id3);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123459, 0};
+  Redis::StreamEntryID id4;
+  s = stream->Add(name, add_options, {"key4", "val4"}, &id4);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = id2;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 2);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 1);
+}
+
+TEST_F(RedisStreamTest, LenWithStartOptionNotEqualToExistingEntryID) {
+  Redis::StreamAddOptions add_options;
+  add_options.with_entry_id = true;
+
+  add_options.entry_id = Redis::NewStreamEntryID{123456, 0};
+  Redis::StreamEntryID id1;
+  auto s = stream->Add(name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123457, 0};
+  Redis::StreamEntryID id2;
+  s = stream->Add(name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123458, 0};
+  Redis::StreamEntryID id3;
+  s = stream->Add(name, add_options, {"key3", "val3"}, &id3);
+  EXPECT_TRUE(s.ok());
+  add_options.entry_id = Redis::NewStreamEntryID{123459, 0};
+  Redis::StreamEntryID id4;
+  s = stream->Add(name, add_options, {"key4", "val4"}, &id4);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  Redis::StreamLenOptions len_options;
+  len_options.with_entry_id = true;
+  len_options.entry_id = Redis::StreamEntryID{id1.ms, id1.seq + 10};
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 3);
+
+  len_options.to_first = true;
+  s = stream->Len(name, len_options, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 1);
 }
 
 TEST_F(RedisStreamTest, TrimNonExistingStream) {
@@ -1570,7 +1748,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenZero) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 4);
   uint64_t length = 0;
-  s = stream->Len(name, &length);
+  s = stream->Len(name, Redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1699,7 +1877,7 @@ TEST_F(RedisStreamTest, TrimWithMinIdGreaterThanLastEntryID) {
   EXPECT_EQ(trimmed, 4);
 
   uint64_t length = 0;
-  s = stream->Len(name, &length);
+  s = stream->Len(name, Redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }

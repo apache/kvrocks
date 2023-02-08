@@ -62,7 +62,7 @@ extern "C" void signalHandler(int sig) {
   }
 }
 
-std::ostream& printVersion(std::ostream& os) {
+std::ostream &printVersion(std::ostream &os) {
   os << "kvrocks ";
 
   if (VERSION != "unstable") {
@@ -81,8 +81,7 @@ std::ostream& printVersion(std::ostream& os) {
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
 
-  LOG(ERROR) << "======= Ooops! " << printVersion << " got signal: " << strsignal(sig) << " ("
-             << sig << ") =======";
+  LOG(ERROR) << "======= Ooops! " << printVersion << " got signal: " << strsignal(sig) << " (" << sig << ") =======";
   int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   char **messages = backtrace_symbols(trace, trace_size);
 

@@ -61,7 +61,6 @@ func TestStream(t *testing.T) {
 	t.Run("XADD stores entry value with respect to case sensitivity", func(t *testing.T) {
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"iTeM", "1", "vAluE", "a"}}).Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"ItEm", "2", "VaLUe", "B"}}).Err())
-
 		require.EqualValues(t, 2, rdb.XLen(ctx, "myStream").Val())
 
 		items := rdb.XRange(ctx, "myStream", "-", "+").Val()
@@ -571,6 +570,113 @@ func TestStream(t *testing.T) {
 		require.EqualValues(t, 55, rdb.XLen(ctx, "mystream").Val())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", MaxLen: 55, Values: map[string]interface{}{"xitem": "v"}}).Err())
 		require.EqualValues(t, 55, rdb.XLen(ctx, "mystream").Val())
+	})
+
+	t.Run("XLEN with optional parameters specifying the entry ID to start counting from and direction", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+
+		for i := 5; i <= 15; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: "x",
+				ID:     fmt.Sprintf("%d-0", i),
+				Values: []string{"data", fmt.Sprintf("value-%d", i)},
+			}).Err())
+		}
+
+		r := rdb.Do(ctx, "XLEN", "x", "non-id")
+		require.ErrorContains(t, r.Err(), "Invalid stream ID")
+
+		r = rdb.Do(ctx, "XLEN", "x", "15-0")
+		val, err := r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "15-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "15-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 10, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "50-0")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "50-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "50-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 11, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "5-0")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 10, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "5-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 10, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "5-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "3-0")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 11, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "3-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 11, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "3-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 0, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 7, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 7, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 3, val)
+
+		require.NoError(t, rdb.XDel(ctx, "x", "8-0").Err())
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 7, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0", "+")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 7, val)
+
+		r = rdb.Do(ctx, "XLEN", "x", "8-0", "-")
+		val, err = r.Int()
+		require.NoError(t, err)
+		require.Equal(t, 3, val)
 	})
 }
 

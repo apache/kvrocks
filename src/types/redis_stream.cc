@@ -307,7 +307,14 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
   return storage_->Write(storage_->DefaultWriteOptions(), &batch);
 }
 
-rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, uint64_t *ret) {
+// If `options` is StreamLenOptions{} the function just returns the number of entries in the stream.
+// Additionally, if a specific entry ID is provided via `StreamLenOptions::entry_id`,
+// the function starts counting entries from that ID. With only entry ID specified, the function counts elements
+// between that ID and the last element in the stream.
+// If `StreamLenOptions::to_first` is set to true, the function will count elements
+// between specified ID and the first element in the stream.
+// The entry with the ID `StreamLenOptions::entry_id` has not taken into account (it serves as exclusive boundary).
+rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOptions &options, uint64_t *ret) {
   *ret = 0;
   std::string ns_key;
   AppendNamespacePrefix(stream_name, &ns_key);
@@ -318,7 +325,59 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, uint64_t *ret) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  *ret = metadata.size;
+  if (!options.with_entry_id) {
+    *ret = metadata.size;
+    return rocksdb::Status::OK();
+  }
+
+  if (options.entry_id > metadata.last_entry_id) {
+    *ret = options.to_first ? metadata.size : 0;
+    return rocksdb::Status::OK();
+  }
+
+  if (options.entry_id < metadata.first_entry_id) {
+    *ret = options.to_first ? 0 : metadata.size;
+    return rocksdb::Status::OK();
+  }
+
+  if ((!options.to_first && options.entry_id == metadata.first_entry_id) ||
+      (options.to_first && options.entry_id == metadata.last_entry_id)) {
+    *ret = metadata.size - 1;
+    return rocksdb::Status::OK();
+  }
+
+  std::string prefix_key;
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  std::string next_version_prefix_key;
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(db_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  storage_->SetReadOptions(read_options);
+
+  auto iter = DBUtil::UniqueIterator(db_, read_options, stream_cf_handle_);
+  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.entry_id);
+
+  iter->Seek(start_key);
+  if (!iter->Valid()) {
+    return rocksdb::Status::OK();
+  }
+
+  if (options.to_first) {
+    iter->Prev();
+  } else if (iter->key().ToString() == start_key) {
+    iter->Next();
+  }
+
+  for (; iter->Valid(); options.to_first ? iter->Prev() : iter->Next()) {
+    *ret += 1;
+  }
+
   return rocksdb::Status::OK();
 }
 

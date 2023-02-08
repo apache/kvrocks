@@ -213,8 +213,6 @@ class CommandXDel : public Commander {
 class CommandXLen : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    stream_name_ = args[1];
-
     if (args.size() > 2) {
       Redis::StreamEntryID id;
       auto s = Redis::ParseStreamEntryID(args[2], &id);
@@ -249,7 +247,6 @@ class CommandXLen : public Commander {
   }
 
  private:
-  std::string stream_name_;
   Redis::StreamLenOptions options_;
 };
 

@@ -20,5 +20,7 @@
 
 #pragma once
 
-#define VERSION "@PROJECT_VERSION@"
-#define GIT_COMMIT "@GIT_SHA@"
+#include <string_view>
+
+inline constexpr std::string_view VERSION = "@PROJECT_VERSION@";
+inline constexpr std::string_view GIT_COMMIT = "@GIT_SHA@";

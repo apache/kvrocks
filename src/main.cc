@@ -62,10 +62,26 @@ extern "C" void signalHandler(int sig) {
   }
 }
 
+std::ostream& printVersion(std::ostream& os) {
+  os << "kvrocks ";
+
+  if (VERSION != "unstable") {
+    os << "version ";
+  }
+
+  os << VERSION;
+
+  if (!GIT_COMMIT.empty()) {
+    os << " (commit " << GIT_COMMIT << ")";
+  }
+
+  return os;
+}
+
 extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
 
-  LOG(ERROR) << "======= Ooops! kvrocks " << VERSION << " @" << GIT_COMMIT << " got signal: " << strsignal(sig) << " ("
+  LOG(ERROR) << "======= Ooops! " << printVersion << " got signal: " << strsignal(sig) << " ("
              << sig << ") =======";
   int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   char **messages = backtrace_symbols(trace, trace_size);
@@ -138,8 +154,6 @@ static void printUsage(const char *program) {
             << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 
-static void printVersion(std::ostream &os) { os << "kvrocks version " << VERSION << " @" << GIT_COMMIT << std::endl; }
-
 static CLIOptions parseCommandLineOptions(int argc, char **argv) {
   using namespace std::string_view_literals;
   CLIOptions opts;
@@ -148,7 +162,7 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
     if ((argv[i] == "-c"sv || argv[i] == "--config"sv) && i + 1 < argc) {
       opts.conf_file = argv[++i];
     } else if (argv[i] == "-v"sv || argv[i] == "--version"sv) {
-      printVersion(std::cout);
+      std::cout << printVersion << std::endl;
       std::exit(0);
     } else if (argv[i] == "-h"sv || argv[i] == "--help"sv) {
       printUsage(*argv);
@@ -311,7 +325,7 @@ int main(int argc, char *argv[]) {
   }
 
   initGoogleLog(&config);
-  printVersion(LOG(INFO));
+  LOG(INFO) << printVersion;
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.

@@ -153,6 +153,9 @@ execute_process(COMMAND sh -c "cat src/VERSION.txt"
 execute_process(COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_VARIABLE GIT_SHA)
 string(STRIP "${GIT_SHA}" GIT_SHA)
+if ((PROJECT_VERSION STREQUAL "unstable") AND (GIT_SHA STREQUAL ""))
+	message(WARNING "It is highly recommended to build the unstable branch in a Git repo")
+endif ()
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/version.h)
 
 if ((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))

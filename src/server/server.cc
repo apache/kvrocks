@@ -797,13 +797,17 @@ void Server::GetServerInfo(std::string *info) {
   time(&now);
   string_stream << "# Server\r\n";
   string_stream << "version:" << VERSION << "\r\n";
+  string_stream << "kvrocks_version:" << VERSION << "\r\n";
   string_stream << "redis_version:" << REDIS_VERSION << "\r\n";
   string_stream << "git_sha1:" << GIT_COMMIT << "\r\n";
+  string_stream << "kvrocks_git_sha1:" << GIT_COMMIT << "\r\n";
   string_stream << "os:" << name.sysname << " " << name.release << " " << name.machine << "\r\n";
 #ifdef __GNUC__
   string_stream << "gcc_version:" << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << "\r\n";
-#else
-  string_stream << "gcc_version:0,0,0\r\n";
+#endif
+#ifdef __clang__
+  string_stream << "clang_version:" << __clang_major__ << "." << __clang_minor__ << "." << __clang_patchlevel__
+                << "\r\n";
 #endif
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";

@@ -78,8 +78,10 @@ TEST_F(RedisDiskTest, HashDisk) {
   uint64_t approximate_size = 0;
   int ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(fields_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values_[i] = values[i];
     approximate_size += key_.size() + 8 + fields_[i].size() + values_[i].size();
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
@@ -99,8 +101,10 @@ TEST_F(RedisDiskTest, SetDisk) {
   uint64_t approximate_size = 0;
   int ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(values_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>(i + 'a'));
+    values[i] = std::string(value_size[i], static_cast<char>(i + 'a'));
+    values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8;
   }
   rocksdb::Status s = set->Add(key_, values_, &ret);
@@ -120,9 +124,11 @@ TEST_F(RedisDiskTest, ListDisk) {
   key_ = "listdisk_key";
   values_.resize(5);
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   uint64_t approximate_size = 0;
   for (int i = 0; i < int(values_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8 + 8;
   }
   int ret = 0;

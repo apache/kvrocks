@@ -21,7 +21,7 @@ include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(zstd
   facebook/zstd v1.5.4
-  MD5=2352b1f9ccc7446641046bb3d440c3ed
+  MD5=1a8186bc33d1c41760d9ad3e121fa7e5
 )
 
 FetchContent_GetProperties(zstd)

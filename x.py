@@ -338,7 +338,7 @@ if __name__ == '__main__':
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),
                               help="compiler used to build kvrocks")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
-    parser_build.add_argument('-D', nargs='*', metavar='key=value', help='extra CMake definitions')
+    parser_build.add_argument('-D', action='append', metavar='key=value', help='extra CMake definitions')
     parser_build.add_argument('--skip-build', default=False, action='store_true',
                               help='runs only the configure stage, skip the build stage')
     parser_build.set_defaults(func=build)

@@ -110,6 +110,7 @@ Server::~Server() {
     }
   }
   Lua::DestroyState(lua_);
+  delete slot_import_;
 }
 
 // Kvrocks threads list:

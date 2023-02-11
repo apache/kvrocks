@@ -110,6 +110,7 @@ Server::~Server() {
     }
   }
   Lua::DestroyState(lua_);
+  libevent_global_shutdown();
 }
 
 // Kvrocks threads list:

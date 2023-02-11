@@ -367,6 +367,5 @@ int main(int argc, char *argv[]) {
   srv->Join();
 
   google::ShutdownGoogleLogging();
-  libevent_global_shutdown();
   return 0;
 }

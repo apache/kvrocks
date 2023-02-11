@@ -20,3 +20,4 @@
 
 # suppress data race in google::LogMessageTime::CalcGmtOffset()
 race:google::LogMessageTime::CalcGmtOffset
+signal:*

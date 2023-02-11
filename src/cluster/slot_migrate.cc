@@ -242,6 +242,11 @@ void SlotMigrate::RunStateMachine() {
 }
 
 Status SlotMigrate::Start() {
+  // Release the previous snapshot first if exists
+  if (slot_snapshot_) {
+    storage_->GetDB()->ReleaseSnapshot(slot_snapshot_);
+    slot_snapshot_ = nullptr;
+  }
   // Get snapshot and sequence
   slot_snapshot_ = storage_->GetDB()->GetSnapshot();
   if (!slot_snapshot_) {

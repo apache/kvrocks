@@ -286,8 +286,7 @@ void Worker::Run(std::thread::id tid) {
 void Worker::Stop() {
   event_base_loopbreak(base_);
   for (const auto &lev : listen_events_) {
-    evutil_socket_t fd = evconnlistener_get_fd(lev);
-    if (fd > 0) close(fd);
+    // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
   }
 }

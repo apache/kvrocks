@@ -60,9 +60,6 @@ extern "C" void signalHandler(int sig) {
     LOG(INFO) << "Bye Bye";
     srv->Stop();
   }
-
-  google::ShutdownGoogleLogging();
-  libevent_global_shutdown();
 }
 
 std::ostream &printVersion(std::ostream &os) {
@@ -313,8 +310,6 @@ int main(int argc, char *argv[]) {
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGINT, signalHandler);
-  signal(SIGTERM, signalHandler);
   setupSigSegvAction();
 
   auto opts = parseCommandLineOptions(argc, argv);

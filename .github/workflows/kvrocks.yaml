@@ -112,14 +112,12 @@ jobs:
             with_openssl: -DENABLE_OPENSSL=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
-            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
-            runtime_env_vars: TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
@@ -206,13 +204,13 @@ jobs:
       - name: Run Unit Test
         run: |
           ulimit -c unlimited
-          export ${{ matrix.runtime_env_vars }}
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |
           ulimit -c unlimited
-          export ${{ matrix.runtime_env_vars }}
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then

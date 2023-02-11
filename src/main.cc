@@ -60,6 +60,9 @@ extern "C" void signalHandler(int sig) {
     LOG(INFO) << "Bye Bye";
     srv->Stop();
   }
+
+  google::ShutdownGoogleLogging();
+  libevent_global_shutdown();
 }
 
 std::ostream &printVersion(std::ostream &os) {

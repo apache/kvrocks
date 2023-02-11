@@ -220,7 +220,7 @@ class Server {
   std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
   std::unique_ptr<SlotMigrate> slot_migrate_;
-  SlotImport *slot_import_ = nullptr;
+  std::unique_ptr<SlotImport> slot_import_;
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx_;

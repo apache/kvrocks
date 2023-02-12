@@ -290,7 +290,7 @@ class Server {
   std::unique_ptr<ReplicationThread> replication_thread_;
 
   // memory
-  int64_t memory_startup_use_ = 0;
+  std::atomic<int64_t> memory_startup_use_ = 0;
 };
 
 Server *GetServer();

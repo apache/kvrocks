@@ -168,11 +168,11 @@ std::string Connection::GetFlags() {
   return flags;
 }
 
-void Connection::EnableFlag(Flag flag) { flags_.store(flags_.load() | flag); }
+void Connection::EnableFlag(Flag flag) { flags_ |= flag; }
 
-void Connection::DisableFlag(Flag flag) { flags_.store(flags_.load() & (~flag)); }
+void Connection::DisableFlag(Flag flag) { flags_ &= (~flag); }
 
-bool Connection::IsFlagEnabled(Flag flag) { return (flags_.load() & flag) > 0; }
+bool Connection::IsFlagEnabled(Flag flag) { return (flags_ & flag) > 0; }
 
 void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {

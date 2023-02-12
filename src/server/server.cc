@@ -196,7 +196,7 @@ Status Server::Start() {
       }
     }
   });
-  memory_startup_use_.store(Stats::GetMemoryRSS());
+  memory_startup_use_.store(Stats::GetMemoryRSS(), std::memory_order_relaxed);
   LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();

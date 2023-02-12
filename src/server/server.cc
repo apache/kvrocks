@@ -204,7 +204,9 @@ Status Server::Start() {
 
 void Server::Stop() {
   stop_ = true;
+  slaveof_mu_.lock();
   if (replication_thread_) replication_thread_->Stop();
+  slaveof_mu_.unlock();
   for (const auto &worker : worker_threads_) {
     worker->Stop();
   }
@@ -1383,6 +1385,7 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
 }
 
 ReplState Server::GetReplicationState() {
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   if (IsSlave() && replication_thread_) {
     return replication_thread_->State();
   }

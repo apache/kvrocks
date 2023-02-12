@@ -124,7 +124,7 @@ class Connection {
 
  private:
   uint64_t id_ = 0;
-  int flags_ = 0;
+  std::atomic<int> flags_ = 0;
   std::string ns_;
   std::string name_;
   std::string ip_;

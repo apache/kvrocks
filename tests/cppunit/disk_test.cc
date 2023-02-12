@@ -38,10 +38,9 @@
 
 class RedisDiskTest : public TestBase {
  protected:
-  explicit RedisDiskTest() : TestBase() {}
-  ~RedisDiskTest() = default;
+  explicit RedisDiskTest() = default;
+  ~RedisDiskTest() override = default;
 
- protected:
   double estimation_factor_ = 0.1;
 };
 

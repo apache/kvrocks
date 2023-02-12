@@ -22,6 +22,7 @@
 
 #include <event2/bufferevent.h>
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <string>
@@ -90,8 +91,8 @@ class ReplicationThread {
   explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
   Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
-  ReplState State() { return repl_state_; }
-  time_t LastIOTime() { return last_io_time_; }
+  ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
+  time_t LastIOTime() { return last_io_time_.load(std::memory_order_relaxed); }
 
  protected:
   event_base *base_ = nullptr;
@@ -142,8 +143,8 @@ class ReplicationThread {
   uint32_t port_;
   Server *srv_ = nullptr;
   Engine::Storage *storage_ = nullptr;
-  ReplState repl_state_;
-  time_t last_io_time_ = 0;
+  std::atomic<ReplState> repl_state_;
+  std::atomic<time_t> last_io_time_ = 0;
   bool next_try_old_psync_ = false;
 
   std::function<void()> pre_fullsync_cb_;

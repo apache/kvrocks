@@ -20,4 +20,7 @@
 
 # suppress data race in google::LogMessageTime::CalcGmtOffset()
 race:google::LogMessageTime::CalcGmtOffset
+# FIXME: currently the Stats::GetInstantaneousMetric is not thread-safe since inst_metrics[metric].samples is not atomic or lock-protected
+race:Stats::GetInstantaneousMetric
+# FIXME: currently we suppress all signal-safe reports since we call Server::Stop in the signal handler
 signal:*

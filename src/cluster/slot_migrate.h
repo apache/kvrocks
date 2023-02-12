@@ -157,7 +157,7 @@ class SlotMigrate : public Redis::Database {
   Server *svr_;
   MigrateStateMachine state_machine_ = kSlotMigrateNone;
   ParserState parser_state_ = ParserState::ArrayLen;
-  ThreadState thread_state_ = ThreadState::Uninitialized;
+  std::atomic<ThreadState> thread_state_ = ThreadState::Uninitialized;
 
   int migration_speed_ = kDefaultMigrationSpeed;
   int pipeline_size_limit_ = kDefaultPipelineSizeLimit;

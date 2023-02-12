@@ -141,7 +141,7 @@ class ReplicationThread {
 
  private:
   std::thread t_;
-  bool stop_flag_ = false;
+  std::atomic<bool> stop_flag_ = false;
   std::string host_;
   uint32_t port_;
   Server *srv_ = nullptr;

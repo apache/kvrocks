@@ -218,7 +218,7 @@ LOOP_LABEL:
       break;
     case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
-      if (self->repl_->stop_flag_) {
+      if (self->repl_->stop_flag_.load()) {
         LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
         break;
       }
@@ -246,7 +246,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   uint64_t last_connect_timestamp = 0;
   int connect_timeout_ms = 3100;
 
-  while (!repl_->stop_flag_ && bev == nullptr) {
+  while (!repl_->stop_flag_.load() && bev == nullptr) {
     if (Util::GetTimeStampMS() - last_connect_timestamp < 1000) {
       // prevent frequent re-connect when the master is down with the connection refused error
       sleep(1);
@@ -326,7 +326,7 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
     t_ = std::thread([this]() {
       Util::ThreadSetName("master-repl");
       this->run();
-      assert(stop_flag_);
+      assert(stop_flag_.load());
     });
   } catch (const std::system_error &e) {
     return Status(Status::NotOK, e.what());
@@ -335,10 +335,10 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
 }
 
 void ReplicationThread::Stop() {
-  if (stop_flag_) return;
+  if (stop_flag_.load()) return;
 
-  stop_flag_ = true;  // Stopping procedure is asynchronous,
-                      // handled by timer
+  stop_flag_.store(true);  // Stopping procedure is asynchronous,
+                           // handled by timer
   if (t_.joinable()) t_.join();
   LOG(INFO) << "[replication] Stopped";
 }
@@ -722,7 +722,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(
         std::async(std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
-          if (this->stop_flag_) {
+          if (this->stop_flag_.load()) {
             return {Status::NotOK, "replication thread was stopped"};
           }
           int sock_fd = GET_OR_RET(Util::SockConnect(this->host_, this->port_).Prefixed("connect the server err"));
@@ -734,7 +734,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           std::vector<std::string> fetch_files;
           std::vector<uint32_t> crcs;
           for (auto f_idx = tid; f_idx < files.size(); f_idx += concurrency) {
-            if (this->stop_flag_) {
+            if (this->stop_flag_.load()) {
               return {Status::NotOK, "replication thread was stopped"};
             }
             const auto &f_name = files[f_idx].first;
@@ -905,7 +905,7 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 void ReplicationThread::EventTimerCB(int, int16_t, void *ctx) {
   // DLOG(INFO) << "[replication] timer";
   auto self = static_cast<ReplicationThread *>(ctx);
-  if (self->stop_flag_) {
+  if (self->stop_flag_.load()) {
     LOG(INFO) << "[replication] Stop ev loop";
     event_base_loopbreak(self->base_);
     self->psync_steps_.Stop();

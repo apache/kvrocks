@@ -1168,14 +1168,12 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   db_compacting_ = true;
 
   Task task = [begin_key, end_key, this] {
-    Slice *begin = nullptr, *end = nullptr;
-    if (!begin_key.empty()) begin = new Slice(begin_key);
-    if (!end_key.empty()) end = new Slice(end_key);
-    storage_->Compact(begin, end);
+    std::unique_ptr<Slice> begin = nullptr, end = nullptr;
+    if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
+    if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
+    storage_->Compact(begin.get(), end.get());
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
-    delete begin;
-    delete end;
   };
   return task_runner_.Publish(task);
 }

@@ -98,10 +98,11 @@ void FeedSlaveThread::loop() {
   std::string batches_bulk;
   size_t updates_in_batches = 0;
   while (!IsStopped()) {
+    auto curr_seq = next_repl_seq_.load();
+
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->WALHasNewData(next_repl_seq_) ||
-          !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+      if (!srv_->storage_->WALHasNewData(curr_seq) || !srv_->storage_->GetWALIter(curr_seq, &iter_).IsOK()) {
         iter_ = nullptr;
         usleep(yield_microseconds);
         checkLivenessIfNeed();
@@ -110,9 +111,9 @@ void FeedSlaveThread::loop() {
     }
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
-    if (batch.sequence != next_repl_seq_) {
+    if (batch.sequence != curr_seq) {
       LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost"
-                 << ", sequence " << next_repl_seq_ << " expectd, but got " << batch.sequence;
+                 << ", sequence " << curr_seq << " expectd, but got " << batch.sequence;
       Stop();
       return;
     }
@@ -142,8 +143,9 @@ void FeedSlaveThread::loop() {
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
-    next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-    while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
+    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
+    next_repl_seq_.store(curr_seq);
+    while (!IsStopped() && !srv_->storage_->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);
       checkLivenessIfNeed();
     }

@@ -69,14 +69,17 @@ class FeedSlaveThread {
   void Join();
   bool IsStopped() { return stop_; }
   Redis::Connection *GetConn() { return conn_.get(); }
-  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_ - 1; }
+  rocksdb::SequenceNumber GetCurrentReplSeq() {
+    auto seq = next_repl_seq_.load();
+    return seq == 0 ? 0 : seq - 1;
+  }
 
  private:
   uint64_t interval = 0;
-  bool stop_ = false;
+  std::atomic<bool> stop_ = false;
   Server *srv_ = nullptr;
   std::unique_ptr<Redis::Connection> conn_ = nullptr;
-  rocksdb::SequenceNumber next_repl_seq_ = 0;
+  std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
   const size_t kMaxDelayUpdates = 16;

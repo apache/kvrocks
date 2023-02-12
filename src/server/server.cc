@@ -285,7 +285,6 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
 }
 
 void Server::DisconnectSlaves() {
-  std::lock_guard<std::mutex> guard(slaveof_mu_);
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
@@ -300,7 +299,6 @@ void Server::DisconnectSlaves() {
 
 void Server::cleanupExitedSlaves() {
   std::list<FeedSlaveThread *> exited_slave_threads;
-  std::lock_guard<std::mutex> guard(slaveof_mu_);
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (slave_thread->IsStopped()) exited_slave_threads.emplace_back(slave_thread);

@@ -43,8 +43,13 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 }
 
 Connection::~Connection() {
-  if (bev_ && need_free_bev_) {
-    bufferevent_free(bev_);
+  if (bev_) {
+    if (need_free_bev_) {
+      bufferevent_free(bev_);
+    } else {
+      // cleanup event callbacks here to prevent using Connection's resource
+      bufferevent_setcb(bev_, nullptr, nullptr, nullptr, nullptr);
+    }
   }
   // unsubscribe all channels and patterns if exists
   UnSubscribeAll();

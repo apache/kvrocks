@@ -219,7 +219,11 @@ class CommandFetchMeta : public Commander {
     // Feed-replica-meta thread
     std::thread t = std::thread([svr, repl_fd, ip, bev = conn->GetBufferEvent()]() {
       Util::ThreadSetName("feed-repl-info");
-      auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
+      svr->IncrFetchFileThread();
+      auto exit = MakeScopeExit([svr, bev] {
+        bufferevent_free(bev);
+        svr->DecrFetchFileThread();
+      });
 
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);

@@ -107,10 +107,10 @@ Server::~Server() {
     }
   }
   // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
-  for (auto &worker_thread: worker_threads_) {
+  for (auto &worker_thread : worker_threads_) {
     worker_thread.reset();
   }
-  for (const auto &iter: conn_ctxs_) {
+  for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
   Lua::DestroyState(lua_);

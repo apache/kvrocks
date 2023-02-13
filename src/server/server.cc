@@ -96,10 +96,10 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
 
 Server::~Server() {
   // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
-  for (size_t i = 0; i < worker_threads_.size(); i++) {
-    worker_threads_[i].reset();
+  for (auto &worker_thread : worker_threads_) {
+    worker_thread.reset();
   }
-  for (const auto &iter: conn_ctxs_) {
+  for (const auto &iter : conn_ctxs_) {
     delete iter.first;
   }
 

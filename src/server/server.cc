@@ -95,14 +95,6 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
 }
 
 Server::~Server() {
-  // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
-  for (auto &worker_thread : worker_threads_) {
-    worker_thread.reset();
-  }
-  for (const auto &iter : conn_ctxs_) {
-    delete iter.first;
-  }
-
   // Wait for all fetch file threads stop and exit and force destroy
   // the server after 60s.
   int counter = 0;
@@ -113,6 +105,13 @@ Server::~Server() {
                    << " fetch file threads are still running";
       break;
     }
+  }
+  // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
+  for (auto &worker_thread: worker_threads_) {
+    worker_thread.reset();
+  }
+  for (const auto &iter: conn_ctxs_) {
+    delete iter.first;
   }
   Lua::DestroyState(lua_);
 }

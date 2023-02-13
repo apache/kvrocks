@@ -347,11 +347,6 @@ void Worker::FreeConnection(Redis::Connection *conn) {
   if (rate_limit_group_ != nullptr) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
-#ifdef ENABLE_OPENSSL
-  if (SSL *ssl = bufferevent_openssl_get_ssl(conn->GetBufferEvent())) {
-    SSL_free(ssl);
-  }
-#endif
   delete conn;
 }
 

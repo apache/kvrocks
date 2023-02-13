@@ -28,3 +28,5 @@ race:Stats::GetInstantaneousMetric
 signal:*
 # suppress SSL context pointer re-assignment and read in different threads
 race:UniqueSSLContext::operator=
+# FIXME: currently, the config set (Config::Set), read (config_->some_option_) and set callbacks are not thread safe
+race:Config::Set

@@ -261,7 +261,7 @@ class Server {
 
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;
-  std::atomic<bool> db_compacting_ = false;
+  bool db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
   int last_bgsave_time_ = -1;
   std::string last_bgsave_status_ = "ok";

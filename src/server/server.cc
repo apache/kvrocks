@@ -27,6 +27,7 @@
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 
+#include <atomic>
 #include <memory>
 #include <utility>
 
@@ -782,7 +783,10 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
   string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
+  db_job_mu_.lock();
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
+  db_job_mu_.unlock();
+
   *info = string_stream.str();
 }
 
@@ -840,7 +844,7 @@ void Server::GetMemoryInfo(std::string *info) {
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
-  string_stream << "used_memory_startup:" << memory_startup_use_ << "\r\n";
+  string_stream << "used_memory_startup:" << memory_startup_use_.load(std::memory_order_relaxed) << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1306,6 +1310,7 @@ Status Server::autoResizeBlockAndSST() {
 void Server::GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
+    std::lock_guard<std::mutex> lg(db_job_mu_);
     *stats = iter->second.key_num_stats;
   }
 }

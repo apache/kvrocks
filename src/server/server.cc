@@ -115,6 +115,7 @@ Server::~Server() {
     delete iter.first;
   }
   Lua::DestroyState(lua_);
+  libevent_global_shutdown();
 }
 
 // Kvrocks threads list:

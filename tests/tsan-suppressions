@@ -26,3 +26,5 @@ race:google::ShutdownGoogleLogging
 race:Stats::GetInstantaneousMetric
 # FIXME: currently we suppress all signal-safe reports since we call Server::Stop in the signal handler
 signal:*
+# suppress SSL context pointer re-assignment and read in different threads
+race:UniqueSSLContext::operator=

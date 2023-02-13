@@ -243,7 +243,7 @@ class Server {
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
 
-  lua_State *lua_;
+  std::atomic<lua_State *> lua_;
 
   Redis::Connection *curr_connection_ = nullptr;
 
@@ -261,7 +261,7 @@ class Server {
 
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;
-  bool db_compacting_ = false;
+  std::atomic<bool> db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
   int last_bgsave_time_ = -1;
   std::string last_bgsave_status_ = "ok";

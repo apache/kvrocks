@@ -1427,8 +1427,8 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) {
 }
 
 void Server::ScriptReset() {
-  Lua::DestroyState(lua_);
-  lua_ = Lua::CreateState();
+  auto lua = lua_.exchange(Lua::CreateState());
+  Lua::DestroyState(lua);
 }
 
 void Server::ScriptFlush() {

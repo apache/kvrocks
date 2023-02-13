@@ -95,6 +95,7 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
 }
 
 Server::~Server() {
+  DisconnectSlaves();
   // Wait for all fetch file threads stop and exit and force destroy
   // the server after 60s.
   int counter = 0;
@@ -214,7 +215,6 @@ void Server::Stop() {
   for (const auto &worker : worker_threads_) {
     worker->Stop();
   }
-  DisconnectSlaves();
   rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
   task_runner_.Stop();
 }

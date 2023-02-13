@@ -97,9 +97,9 @@ class Connection {
   std::string GetNamespace() { return ns_; }
   void SetNamespace(std::string ns) { ns_ = std::move(ns); }
 
-  void NeedClose() { need_close_ = true; }
-  void NeedNotClose() { need_close_ = false; }
-  bool IsNeedClose() { return need_close_; }
+  void NeedFreeBufferEvent(bool need_free = true) { need_free_bev_ = need_free; }
+  void NeedNotFreeBufferEvent() { NeedFreeBufferEvent(false); }
+  bool IsNeedFreeBufferEvent() { return need_free_bev_; }
 
   Worker *Owner() { return owner_; }
   int GetFD() { return bufferevent_getfd(bev_); }
@@ -132,7 +132,7 @@ class Connection {
   std::string addr_;
   int listening_port_ = 0;
   bool is_admin_ = false;
-  bool need_close_ = true;
+  bool need_free_bev_ = true;
   std::string last_cmd_;
   time_t create_time_;
   time_t last_interaction_;

@@ -22,6 +22,7 @@
 #include "error_constants.h"
 #include "fd_util.h"
 #include "io_util.h"
+#include "scope_exit.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -211,14 +212,14 @@ class CommandFetchMeta : public Commander {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
-    conn->NeedNotClose();
+    conn->NeedNotFreeBufferEvent();
     conn->EnableFlag(Redis::Connection::kCloseAsync);
     svr->stats_.IncrFullSyncCounter();
 
     // Feed-replica-meta thread
-    std::thread t = std::thread([svr, repl_fd, ip]() {
+    std::thread t = std::thread([svr, repl_fd, ip, bev = conn->GetBufferEvent()]() {
       Util::ThreadSetName("feed-repl-info");
-      UniqueFD unique_fd{repl_fd};
+      auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
 
       std::string files;
       auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
@@ -263,12 +264,12 @@ class CommandFetchFile : public Commander {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
-    conn->NeedNotClose();  // Feed-replica-file thread will close the replica fd
+    conn->NeedNotFreeBufferEvent();  // Feed-replica-file thread will close the replica bufferevent
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
-    std::thread t = std::thread([svr, repl_fd, ip, files]() {
+    std::thread t = std::thread([svr, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
       Util::ThreadSetName("feed-repl-file");
-      UniqueFD unique_fd{repl_fd};
+      auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
       svr->IncrFetchFileThread();
 
       for (const auto &file : files) {

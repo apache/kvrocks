@@ -27,7 +27,7 @@ RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtoo
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
+RUN ./x.py build --ghproxy  -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
 
 FROM ubuntu:focal
 

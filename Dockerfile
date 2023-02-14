@@ -35,7 +35,6 @@ RUN apt update && apt install -y libssl-dev
 
 WORKDIR /kvrocks
 
-
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 VOLUME /var/lib/kvrocks

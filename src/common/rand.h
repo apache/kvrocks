@@ -19,6 +19,11 @@
  */
 
 /*
+ * Modified by @PragmaTwice to leverage constexprs over defines in
+ * https://github.com/apache/incubator-kvrocks/commit/1dcf225acad001175df0ea142b5e498f29d1b18b
+ */
+
+/*
  * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
  * All rights reserved.
  *

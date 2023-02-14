@@ -1065,9 +1065,12 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
+    char last_scan_time_str[1024];
+    std::strftime(last_scan_time_str, sizeof last_scan_time_str, "%a %b %e %H:%M:%S %Y",
+                  std::localtime(&last_scan_time));
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
+    string_stream << "# Last scan db time: " << last_scan_time_str << "\r\n";
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";

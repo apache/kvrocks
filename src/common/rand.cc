@@ -18,6 +18,11 @@
  *
  */
 
+/*
+ * Rewritten in C++ with constexprs and templates by @tanruixiang in
+ * https://github.com/apache/incubator-kvrocks/commit/900e0f44781d9459649e9864ba09abe6000ce987
+ */
+
 /* Pseudo random number generation functions derived from the drand48()
  * function obtained from pysam source code.
  *

@@ -42,7 +42,6 @@ VOLUME /var/lib/kvrocks
 COPY ./LICENSE ./NOTICE ./DISCLAIMER ./
 COPY ./licenses ./licenses
 COPY ./kvrocks.conf  /var/lib/kvrocks/conf/
-RUN sed -i -e 's%dir /tmp/kvrocks%dir /var/lib/kvrocks%g' /var/lib/kvrocks/conf/kvrocks.conf
 
 EXPOSE 6666:6666
-ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/conf/kvrocks.conf"]
+ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/conf/kvrocks.conf", "--dir", "/var/lib/kvrocks"]

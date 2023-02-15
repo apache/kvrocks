@@ -50,6 +50,7 @@
 #define AE_HUP 8       // NOLINT
 
 namespace Util {
+
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
     return Status::FromErrno();
@@ -97,7 +98,7 @@ Status SockSetTcpKeepalive(int fd, int interval) {
 }
 
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
-  addrinfo hints, *servinfo = nullptr, *p = nullptr;
+  addrinfo hints, *servinfo = nullptr;
 
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
@@ -106,9 +107,10 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
   if (int rv = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &servinfo); rv != 0) {
     return {Status::NotOK, gai_strerror(rv)};
   }
+
   auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
 
-  for (p = servinfo; p != nullptr; p = p->ai_next) {
+  for (auto p = servinfo; p != nullptr; p = p->ai_next) {
     auto cfd = UniqueFD(socket(p->ai_family, p->ai_socktype, p->ai_protocol));
     if (!cfd) continue;
 
@@ -122,6 +124,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
       if (ret != 0 && errno != EINPROGRESS) {
         continue;
       }
+
       auto retmask = Util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
       if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
         return Status::FromErrno();
@@ -129,9 +132,10 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
 
       // restore to the block mode
       int socket_arg = 0;
-      if ((socket_arg = fcntl(*cfd, F_GETFL, NULL)) < 0) {
+      if (socket_arg = fcntl(*cfd, F_GETFL, NULL); socket_arg < 0) {
         return Status::FromErrno();
       }
+
       socket_arg &= (~O_NONBLOCK);
       if (fcntl(*cfd, F_SETFL, socket_arg) < 0) {
         return Status::FromErrno();
@@ -145,6 +149,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
     if (!s.IsOK()) {
       continue;
     }
+
     if (timeout > 0) {
       struct timeval tv;
       tv.tv_sec = timeout / 1000;
@@ -190,11 +195,10 @@ ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
 // Send file by sendfile actually according to different operation systems,
 // please note that, the out socket fd should be in blocking mode.
 Status SockSendFile(int out_fd, int in_fd, size_t size) {
-  ssize_t nwritten = 0;
   off_t offset = 0;
   while (size != 0) {
     size_t n = size <= 16 * 1024 ? size : 16 * 1024;
-    nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
+    ssize_t nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
     if (nwritten == -1) {
       if (errno == EINTR)
         continue;
@@ -210,7 +214,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
 Status SockSetBlocking(int fd, int blocking) {
   int flags = 0;
   // Old flags
-  if ((flags = fcntl(fd, F_GETFL)) == -1) {
+  if (flags = fcntl(fd, F_GETFL); flags == -1) {
     return Status::FromErrno("fcntl(F_GETFL)");
   }
 
@@ -231,10 +235,12 @@ StatusOr<std::string> SockReadLine(int fd) {
   if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
     return Status::FromErrno("read response err");
   }
+
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
   if (!line) {
     return Status::FromErrno("read response err(empty)");
   }
+
   return std::string(line.get(), line.length);
 }
 
@@ -246,6 +252,7 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
     return -1;
   }
+
   if (sa.ss_family == AF_INET6) {
     char buf[INET6_ADDRSTRLEN];
     auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
@@ -288,14 +295,14 @@ bool IsPortInUse(uint32_t port) {
  * writable/readable/exception */
 int aeWait(int fd, int mask, int timeout) {
   pollfd pfd;
-  int retmask = 0, retval = 0;
+  int retmask = 0;
 
   memset(&pfd, 0, sizeof(pfd));
   pfd.fd = fd;
   if (mask & AE_READABLE) pfd.events |= POLLIN;
   if (mask & AE_WRITABLE) pfd.events |= POLLOUT;
 
-  if ((retval = poll(&pfd, 1, timeout)) == 1) {
+  if (int retval = poll(&pfd, 1, timeout); retval == 1) {
     if (pfd.revents & POLLIN) retmask |= AE_READABLE;
     if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
     if (pfd.revents & POLLERR) retmask |= AE_ERROR;

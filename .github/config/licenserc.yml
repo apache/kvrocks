@@ -31,3 +31,8 @@ header:
     - '**/*.tcl'
     - '**/*.yml'
     - '**/*.yaml'
+  paths-ignore:
+    - 'src/common/sha1.h'
+    - 'src/common/sha1.cc'
+    - 'src/types/geohash.h'
+    - 'src/types/geohash.cc'

@@ -113,11 +113,13 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
+            ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+            ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
@@ -211,7 +213,7 @@ jobs:
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build $GOCASE_RUN_ARGS
+          ./x.py test go build $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
 
       - name: Find reports and crashes
         if: always()

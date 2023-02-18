@@ -1066,7 +1066,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
-    tm last_scan_tm;
+    tm last_scan_tm{};
     localtime_r(&last_scan_time, &last_scan_tm);
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";

@@ -80,77 +80,64 @@ jobs:
           - name: Darwin Clang
             os: macos-11
             compiler: auto
-            with_openssl: -DENABLE_OPENSSL=ON
           - name: Darwin Clang without Jemalloc
             os: macos-11
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Darwin Clang with OpenSSL
+            os: macos-11
+            compiler: auto
             with_openssl: -DENABLE_OPENSSL=ON
+          - name: Darwin Clang without luaJIT
+            os: macos-11
+            compiler: auto
+            without_luajit: -DUSE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
-            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
-            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC ASan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
           - name: Ubuntu Clang ASan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
           - name: Ubuntu GCC TSan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
             compiler: clang
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
-            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
-          - name: Ubuntu GCC Ninja without Jemalloc
+          - name: Ubuntu GCC with OpenSSL
             os: ubuntu-20.04
-            with_ninja: --ninja
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_openssl: -DENABLE_OPENSSL=ON
             compiler: gcc
+            with_openssl: -DENABLE_OPENSSL=ON
+          - name: Ubuntu Clang with OpenSSL
+            os: ubuntu-20.04
+            compiler: clang
+            with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
             os: ubuntu-20.04
-            with_openssl: -DENABLE_OPENSSL=ON
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: gcc
-          - name: Ubuntu GCC ASan without luaJIT
+          - name: Ubuntu Clang without luaJIT
             os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
             without_luajit: -DUSE_LUAJIT=OFF
-            with_sanitizer: -DENABLE_ASAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-          - name: Ubuntu GCC TSan without luaJIT
-            os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            without_luajit: -DUSE_LUAJIT=OFF
-            with_sanitizer: -DENABLE_TSAN=ON
-            with_openssl: -DENABLE_OPENSSL=ON
-            compiler: gcc
-          - name: Ubuntu GCC without OpenSSL
-            os: ubuntu-20.04
-            compiler: gcc
+            compiler: clang
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -204,12 +191,14 @@ jobs:
       - name: Run Unit Test
         run: |
           ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |
           ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""

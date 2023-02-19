@@ -27,6 +27,7 @@
 #include <glog/logging.h>
 
 #include <algorithm>
+#include <atomic>
 #include <csignal>
 #include <future>
 #include <string>
@@ -97,10 +98,11 @@ void FeedSlaveThread::loop() {
   std::string batches_bulk;
   size_t updates_in_batches = 0;
   while (!IsStopped()) {
+    auto curr_seq = next_repl_seq_.load();
+
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->WALHasNewData(next_repl_seq_) ||
-          !srv_->storage_->GetWALIter(next_repl_seq_, &iter_).IsOK()) {
+      if (!srv_->storage_->WALHasNewData(curr_seq) || !srv_->storage_->GetWALIter(curr_seq, &iter_).IsOK()) {
         iter_ = nullptr;
         usleep(yield_microseconds);
         checkLivenessIfNeed();
@@ -109,9 +111,9 @@ void FeedSlaveThread::loop() {
     }
     // iter_ would be always valid here
     auto batch = iter_->GetBatch();
-    if (batch.sequence != next_repl_seq_) {
+    if (batch.sequence != curr_seq) {
       LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost"
-                 << ", sequence " << next_repl_seq_ << " expectd, but got " << batch.sequence;
+                 << ", sequence " << curr_seq << " expectd, but got " << batch.sequence;
       Stop();
       return;
     }
@@ -141,8 +143,9 @@ void FeedSlaveThread::loop() {
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
-    next_repl_seq_ = batch.sequence + batch.writeBatchPtr->Count();
-    while (!IsStopped() && !srv_->storage_->WALHasNewData(next_repl_seq_)) {
+    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
+    next_repl_seq_.store(curr_seq);
+    while (!IsStopped() && !srv_->storage_->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);
       checkLivenessIfNeed();
     }
@@ -167,7 +170,7 @@ void ReplicationThread::CallbacksStateMachine::ConnEventCB(bufferevent *bev, int
     LOG(ERROR) << "[replication] connection error/eof, reconnect the master";
     // Wait a bit and reconnect
     auto state_m = static_cast<CallbacksStateMachine *>(state_machine_ptr);
-    state_m->repl_->repl_state_ = kReplConnecting;
+    state_m->repl_->repl_state_.store(kReplConnecting, std::memory_order_relaxed);
     std::this_thread::sleep_for(std::chrono::seconds(1));
     state_m->Stop();
     state_m->Start();
@@ -192,7 +195,7 @@ LOOP_LABEL:
   assert(self->handler_idx_ <= self->handlers_.size());
   DLOG(INFO) << "[replication] Execute handler[" << self->getHandlerName(self->handler_idx_) << "]";
   auto st = self->getHandlerFunc(self->handler_idx_)(bev, self->repl_);
-  time(&self->repl_->last_io_time_);
+  self->repl_->last_io_time_.store(time(nullptr), std::memory_order_relaxed);
   switch (st) {
     case CBState::NEXT:
       ++self->handler_idx_;
@@ -211,7 +214,7 @@ LOOP_LABEL:
     case CBState::QUIT:  // state that can not be retry, or all steps are executed.
       bufferevent_free(bev);
       self->bev_ = nullptr;
-      self->repl_->repl_state_ = kReplError;
+      self->repl_->repl_state_.store(kReplError, std::memory_order_relaxed);
       break;
     case CBState::RESTART:  // state that can be retried some time later
       self->Stop();
@@ -219,7 +222,7 @@ LOOP_LABEL:
         LOG(INFO) << "[replication] Wouldn't restart while the replication thread was stopped";
         break;
       }
-      self->repl_->repl_state_ = kReplConnecting;
+      self->repl_->repl_state_.store(kReplConnecting, std::memory_order_relaxed);
       LOG(INFO) << "[replication] Retry in 10 seconds";
       std::this_thread::sleep_for(std::chrono::seconds(10));
       self->Start();
@@ -369,7 +372,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev, void
   auto self = static_cast<ReplicationThread *>(ctx);
   send_string(bev, Redis::MultiBulkString({"AUTH", self->srv_->GetConfig()->masterauth}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
-  self->repl_state_ = kReplSendAuth;
+  self->repl_state_.store(kReplSendAuth, std::memory_order_relaxed);
   return CBState::NEXT;
 }
 
@@ -389,7 +392,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev, void 
 ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(bufferevent *bev, void *ctx) {
   send_string(bev, Redis::MultiBulkString({"_db_name"}));
   auto self = static_cast<ReplicationThread *>(ctx);
-  self->repl_state_ = kReplCheckDBName;
+  self->repl_state_.store(kReplCheckDBName, std::memory_order_relaxed);
   LOG(INFO) << "[replication] Check db name request was sent, waiting for response";
   return CBState::NEXT;
 }
@@ -422,7 +425,7 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev, 
   auto self = static_cast<ReplicationThread *>(ctx);
   send_string(bev,
               Redis::MultiBulkString({"replconf", "listening-port", std::to_string(self->srv_->GetConfig()->port)}));
-  self->repl_state_ = kReplReplConf;
+  self->repl_state_.store(kReplReplConf, std::memory_order_relaxed);
   LOG(INFO) << "[replication] replconf request was sent, waiting for response";
   return CBState::NEXT;
 }
@@ -479,7 +482,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev, 
     LOG(INFO) << "[replication] Try to use new psync, current unique replication sequence id: " << replid << ":"
               << cur_seq;
   }
-  self->repl_state_ = kReplSendPSync;
+  self->repl_state_.store(kReplSendPSync, std::memory_order_relaxed);
   return CBState::NEXT;
 }
 
@@ -518,7 +521,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev, v
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev, void *ctx) {
   char *bulk_data = nullptr;
   auto self = static_cast<ReplicationThread *>(ctx);
-  self->repl_state_ = kReplConnected;
+  self->repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
   while (true) {
     switch (self->incr_state_) {
@@ -569,7 +572,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(bufferevent *bev, void *ctx) {
   send_string(bev, Redis::MultiBulkString({"_fetch_meta"}));
   auto self = static_cast<ReplicationThread *>(ctx);
-  self->repl_state_ = kReplFetchMeta;
+  self->repl_state_.store(kReplFetchMeta, std::memory_order_relaxed);
   LOG(INFO) << "[replication] Start syncing data with fullsync";
   return CBState::NEXT;
 }
@@ -671,7 +674,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
         self->storage_->EmptyDB();
       }
 
-      self->repl_state_ = kReplFetchSST;
+      self->repl_state_.store(kReplFetchSST, std::memory_order_relaxed);
       auto s = self->parallelFetchFile(target_dir, meta.files);
       if (!s.IsOK()) {
         LOG(ERROR) << "[replication] Failed to parallel fetch files while " + s.Msg();

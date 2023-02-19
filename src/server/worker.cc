@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "event2/bufferevent.h"
 #include "io_util.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -121,7 +122,8 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
   event_base *base = evconnlistener_get_base(listener);
-  auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
+  auto evThreadSafeFlags =
+      BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
 
   bufferevent *bev = nullptr;
 #ifdef ENABLE_OPENSSL
@@ -185,7 +187,8 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket
              << " thread #" << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
-  auto evThreadSafeFlags = BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS;
+  auto evThreadSafeFlags =
+      BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
   bufferevent *bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
@@ -286,8 +289,7 @@ void Worker::Run(std::thread::id tid) {
 void Worker::Stop() {
   event_base_loopbreak(base_);
   for (const auto &lev : listen_events_) {
-    evutil_socket_t fd = evconnlistener_get_fd(lev);
-    if (fd > 0) close(fd);
+    // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
   }
 }
@@ -345,11 +347,6 @@ void Worker::FreeConnection(Redis::Connection *conn) {
   if (rate_limit_group_ != nullptr) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
-#ifdef ENABLE_OPENSSL
-  if (SSL *ssl = bufferevent_openssl_get_ssl(conn->GetBufferEvent())) {
-    SSL_free(ssl);
-  }
-#endif
   delete conn;
 }
 

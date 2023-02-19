@@ -38,21 +38,9 @@
 
 class RedisDiskTest : public TestBase {
  protected:
-  explicit RedisDiskTest() : TestBase() {
-    delete storage_;
-    config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
-    config_->RocksDB.write_buffer_size = 1;
-    config_->RocksDB.block_size = 100;
-    storage_ = new Engine::Storage(config_);
-    Status s = storage_->Open();
-    if (!s.IsOK()) {
-      std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
-      assert(s.IsOK());
-    }
-  }
-  ~RedisDiskTest() = default;
+  explicit RedisDiskTest() = default;
+  ~RedisDiskTest() override = default;
 
- protected:
   double estimation_factor_ = 0.1;
 };
 
@@ -78,8 +66,10 @@ TEST_F(RedisDiskTest, HashDisk) {
   uint64_t approximate_size = 0;
   int ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(fields_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values_[i] = values[i];
     approximate_size += key_.size() + 8 + fields_[i].size() + values_[i].size();
     rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
@@ -99,8 +89,10 @@ TEST_F(RedisDiskTest, SetDisk) {
   uint64_t approximate_size = 0;
   int ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(values_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>(i + 'a'));
+    values[i] = std::string(value_size[i], static_cast<char>(i + 'a'));
+    values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8;
   }
   rocksdb::Status s = set->Add(key_, values_, &ret);
@@ -120,9 +112,11 @@ TEST_F(RedisDiskTest, ListDisk) {
   key_ = "listdisk_key";
   values_.resize(5);
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
+  std::vector<std::string> values(value_size.size());
   uint64_t approximate_size = 0;
   for (int i = 0; i < int(values_.size()); i++) {
-    values_[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values[i] = std::string(value_size[i], static_cast<char>('a' + i));
+    values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8 + 8;
   }
   int ret = 0;
@@ -145,7 +139,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
   for (int i = 0; i < int(value_size.size()); i++) {
     mscores[i].member = std::string(value_size[i], static_cast<char>('a' + i));
-    mscores[i].score = 1.0 * value_size[int(values_.size()) - i - 1];
+    mscores[i].score = 1.0;
     approximate_size += (key_.size() + 8 + mscores[i].member.size() + 8) * 2;
   }
   rocksdb::Status s = zset->Add(key_, ZAddFlags::Default(), &mscores, &ret);

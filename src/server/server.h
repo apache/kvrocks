@@ -220,7 +220,7 @@ class Server {
   std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
   std::unique_ptr<SlotMigrate> slot_migrate_;
-  SlotImport *slot_import_ = nullptr;
+  std::unique_ptr<SlotImport> slot_import_;
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx_;
@@ -243,7 +243,7 @@ class Server {
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
 
-  lua_State *lua_;
+  std::atomic<lua_State *> lua_;
 
   Redis::Connection *curr_connection_ = nullptr;
 
@@ -290,7 +290,7 @@ class Server {
   std::unique_ptr<ReplicationThread> replication_thread_;
 
   // memory
-  int64_t memory_startup_use_ = 0;
+  std::atomic<int64_t> memory_startup_use_ = 0;
 };
 
 Server *GetServer();

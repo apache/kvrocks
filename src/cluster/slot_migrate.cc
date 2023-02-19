@@ -146,6 +146,7 @@ void SlotMigrate::Loop() {
     ul.unlock();
 
     if (IsTerminated()) {
+      Clean();
       return;
     }
 
@@ -169,6 +170,7 @@ void SlotMigrate::RunStateMachine() {
   while (true) {
     if (IsTerminated()) {
       LOG(WARNING) << "[migrate] Will stop state machine, because the thread was terminated";
+      Clean();
       return;
     }
 

@@ -77,7 +77,8 @@ rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t
 }
 
 rocksdb::Status Disk::GetStringSize(const Slice &ns_key, uint64_t *key_size) {
-  auto key_range = rocksdb::Range(Slice(ns_key), Slice(ns_key.ToString() + static_cast<char>(0)));
+  auto limit = ns_key.ToString() + static_cast<char>(0);
+  auto key_range = rocksdb::Range(Slice(ns_key), Slice(limit));
   return db_->GetApproximateSizes(option_, metadata_cf_handle_, &key_range, 1, key_size);
 }
 

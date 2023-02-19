@@ -93,13 +93,14 @@ void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
 }
 
 void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
-  uint64_t t = Util::GetTimeStampMS() - inst_metrics[metric].last_sample_time;
+  uint64_t curr_time = Util::GetTimeStampMS();
+  uint64_t t = curr_time - inst_metrics[metric].last_sample_time;
   uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
   uint64_t ops_sec = t > 0 ? (ops * 1000 / t) : 0;
   inst_metrics[metric].samples[inst_metrics[metric].idx] = ops_sec;
   inst_metrics[metric].idx++;
   inst_metrics[metric].idx %= STATS_METRIC_SAMPLES;
-  inst_metrics[metric].last_sample_time = Util::GetTimeStampMS();
+  inst_metrics[metric].last_sample_time = curr_time;
   inst_metrics[metric].last_sample_count = current_reading;
 }
 

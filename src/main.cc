@@ -310,8 +310,6 @@ int main(int argc, char *argv[]) {
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGINT, signalHandler);
-  signal(SIGTERM, signalHandler);
   setupSigSegvAction();
 
   auto opts = parseCommandLineOptions(argc, argv);
@@ -369,6 +367,5 @@ int main(int argc, char *argv[]) {
   srv->Join();
 
   google::ShutdownGoogleLogging();
-  libevent_global_shutdown();
   return 0;
 }

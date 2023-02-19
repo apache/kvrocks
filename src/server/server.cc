@@ -27,6 +27,8 @@
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 
+#include <atomic>
+#include <iomanip>
 #include <memory>
 #include <utility>
 
@@ -94,10 +96,7 @@ Server::Server(Engine::Storage *storage, Config *config) : storage_(storage), co
 }
 
 Server::~Server() {
-  for (const auto &iter : conn_ctxs_) {
-    delete iter.first;
-  }
-
+  DisconnectSlaves();
   // Wait for all fetch file threads stop and exit and force destroy
   // the server after 60s.
   int counter = 0;
@@ -109,7 +108,15 @@ Server::~Server() {
       break;
     }
   }
+  // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
+  for (auto &worker_thread : worker_threads_) {
+    worker_thread.reset();
+  }
+  for (const auto &iter : conn_ctxs_) {
+    delete iter.first;
+  }
   Lua::DestroyState(lua_);
+  libevent_global_shutdown();
 }
 
 // Kvrocks threads list:
@@ -144,7 +151,7 @@ Status Server::Start() {
     // Create objects used for slot migration
     slot_migrate_ =
         std::make_unique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
-    slot_import_ = new SlotImport(this);
+    slot_import_ = std::make_unique<SlotImport>(this);
     // Create migrating thread
     s = slot_migrate_->CreateMigrateHandleThread();
     if (!s.IsOK()) {
@@ -196,7 +203,7 @@ Status Server::Start() {
       }
     }
   });
-  memory_startup_use_ = Stats::GetMemoryRSS();
+  memory_startup_use_.store(Stats::GetMemoryRSS(), std::memory_order_relaxed);
   LOG(INFO) << "Ready to accept connections";
 
   return Status::OK();
@@ -204,11 +211,12 @@ Status Server::Start() {
 
 void Server::Stop() {
   stop_ = true;
+  slaveof_mu_.lock();
   if (replication_thread_) replication_thread_->Stop();
+  slaveof_mu_.unlock();
   for (const auto &worker : worker_threads_) {
     worker->Stop();
   }
-  DisconnectSlaves();
   rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
   task_runner_.Stop();
 }
@@ -285,7 +293,7 @@ Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_re
 }
 
 void Server::DisconnectSlaves() {
-  std::lock_guard<std::mutex> guard(slaveof_mu_);
+  std::lock_guard<std::mutex> lg(slave_threads_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
   }
@@ -299,7 +307,7 @@ void Server::DisconnectSlaves() {
 
 void Server::cleanupExitedSlaves() {
   std::list<FeedSlaveThread *> exited_slave_threads;
-  std::lock_guard<std::mutex> guard(slaveof_mu_);
+  std::lock_guard<std::mutex> lg(slave_threads_mu_);
   for (const auto &slave_thread : slave_threads_) {
     if (slave_thread->IsStopped()) exited_slave_threads.emplace_back(slave_thread);
   }
@@ -780,7 +788,10 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "next_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT) << "\r\n";
   string_stream << "prev_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV) << "\r\n";
   string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
+  db_job_mu_.lock();
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
+  db_job_mu_.unlock();
+
   *info = string_stream.str();
 }
 
@@ -838,7 +849,7 @@ void Server::GetMemoryInfo(std::string *info) {
   string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
-  string_stream << "used_memory_startup:" << memory_startup_use_ << "\r\n";
+  string_stream << "used_memory_startup:" << memory_startup_use_.load(std::memory_order_relaxed) << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1055,9 +1066,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLastestKeyNumStats(ns, &stats);
     time_t last_scan_time = GetLastScanTime(ns);
+    tm last_scan_tm{};
+    localtime_r(&last_scan_time, &last_scan_tm);
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::asctime(std::localtime(&last_scan_time));
+    string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
@@ -1168,14 +1181,12 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   db_compacting_ = true;
 
   Task task = [begin_key, end_key, this] {
-    Slice *begin = nullptr, *end = nullptr;
-    if (!begin_key.empty()) begin = new Slice(begin_key);
-    if (!end_key.empty()) end = new Slice(end_key);
-    storage_->Compact(begin, end);
+    std::unique_ptr<Slice> begin = nullptr, end = nullptr;
+    if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
+    if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
+    storage_->Compact(begin.get(), end.get());
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
-    delete begin;
-    delete end;
   };
   return task_runner_.Publish(task);
 }
@@ -1306,6 +1317,7 @@ Status Server::autoResizeBlockAndSST() {
 void Server::GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
+    std::lock_guard<std::mutex> lg(db_job_mu_);
     *stats = iter->second.key_num_stats;
   }
 }
@@ -1385,6 +1397,7 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
 }
 
 ReplState Server::GetReplicationState() {
+  std::lock_guard<std::mutex> guard(slaveof_mu_);
   if (IsSlave() && replication_thread_) {
     return replication_thread_->State();
   }
@@ -1426,8 +1439,8 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) {
 }
 
 void Server::ScriptReset() {
-  Lua::DestroyState(lua_);
-  lua_ = Lua::CreateState();
+  auto lua = lua_.exchange(Lua::CreateState());
+  Lua::DestroyState(lua);
 }
 
 void Server::ScriptFlush() {

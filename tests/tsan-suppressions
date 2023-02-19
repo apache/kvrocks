@@ -20,3 +20,13 @@
 
 # suppress data race in google::LogMessageTime::CalcGmtOffset()
 race:google::LogMessageTime::CalcGmtOffset
+# suppress data race between google::ShutdownGoogleLogging() and google::IsGoogleLoggingInitialized()
+race:google::ShutdownGoogleLogging
+# FIXME: currently the Stats::GetInstantaneousMetric is not thread-safe since inst_metrics[metric].samples is not atomic or lock-protected
+race:Stats::GetInstantaneousMetric
+# FIXME: currently we suppress all signal-safe reports since we call Server::Stop in the signal handler
+signal:*
+# suppress SSL context pointer re-assignment and read in different threads
+race:UniqueSSLContext::operator=
+# FIXME: currently, the config set (Config::Set), read (config_->some_option_) and set callbacks are not thread safe
+race:Config::Set

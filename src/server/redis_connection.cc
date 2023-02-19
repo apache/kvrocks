@@ -35,7 +35,7 @@
 namespace Redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
-    : need_close_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
+    : need_free_bev_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
   time_t now = 0;
   time(&now);
   create_time_ = now;
@@ -44,9 +44,12 @@ Connection::Connection(bufferevent *bev, Worker *owner)
 
 Connection::~Connection() {
   if (bev_) {
-    int fd = bufferevent_getfd(bev_);
-    bufferevent_free(bev_);
-    if (need_close_) close(fd);
+    if (need_free_bev_) {
+      bufferevent_free(bev_);
+    } else {
+      // cleanup event callbacks here to prevent using Connection's resource
+      bufferevent_setcb(bev_, nullptr, nullptr, nullptr, nullptr);
+    }
   }
   // unsubscribe all channels and patterns if exists
   UnSubscribeAll();

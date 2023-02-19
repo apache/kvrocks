@@ -31,6 +31,9 @@ class TestBase : public testing::Test {
     config_ = new Config();
     config_->db_dir = "testsdb";
     config_->backup_dir = "testsdb/backup";
+    config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
+    config_->RocksDB.write_buffer_size = 1;
+    config_->RocksDB.block_size = 100;
     storage_ = new Engine::Storage(config_);
     Status s = storage_->Open();
     if (!s.IsOK()) {

@@ -22,6 +22,7 @@
 
 #include <event2/bufferevent.h>
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <string>
@@ -68,14 +69,17 @@ class FeedSlaveThread {
   void Join();
   bool IsStopped() { return stop_; }
   Redis::Connection *GetConn() { return conn_.get(); }
-  rocksdb::SequenceNumber GetCurrentReplSeq() { return next_repl_seq_ == 0 ? 0 : next_repl_seq_ - 1; }
+  rocksdb::SequenceNumber GetCurrentReplSeq() {
+    auto seq = next_repl_seq_.load();
+    return seq == 0 ? 0 : seq - 1;
+  }
 
  private:
   uint64_t interval = 0;
-  bool stop_ = false;
+  std::atomic<bool> stop_ = false;
   Server *srv_ = nullptr;
   std::unique_ptr<Redis::Connection> conn_ = nullptr;
-  rocksdb::SequenceNumber next_repl_seq_ = 0;
+  std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
   const size_t kMaxDelayUpdates = 16;
@@ -90,8 +94,8 @@ class ReplicationThread {
   explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
   Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
-  ReplState State() { return repl_state_; }
-  time_t LastIOTime() { return last_io_time_; }
+  ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
+  time_t LastIOTime() { return last_io_time_.load(std::memory_order_relaxed); }
 
  protected:
   event_base *base_ = nullptr;
@@ -137,13 +141,13 @@ class ReplicationThread {
 
  private:
   std::thread t_;
-  bool stop_flag_ = false;
+  std::atomic<bool> stop_flag_ = false;
   std::string host_;
   uint32_t port_;
   Server *srv_ = nullptr;
   Engine::Storage *storage_ = nullptr;
-  ReplState repl_state_;
-  time_t last_io_time_ = 0;
+  std::atomic<ReplState> repl_state_;
+  std::atomic<time_t> last_io_time_ = 0;
   bool next_try_old_psync_ = false;
 
   std::function<void()> pre_fullsync_cb_;

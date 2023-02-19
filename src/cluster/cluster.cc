@@ -347,7 +347,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
       conn->SetImporting();
       myself_->importing_slot_ = slot;
       // Set link error callback
-      conn->close_cb_ = [object_ptr = svr_->slot_import_, capture_fd = conn->GetFD()](int fd) {
+      conn->close_cb_ = [object_ptr = svr_->slot_import_.get(), capture_fd = conn->GetFD()](int fd) {
         object_ptr->StopForLinkError(capture_fd);
       };
       // Stop forbidding writing slot to accept write commands

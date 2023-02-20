@@ -737,7 +737,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(Redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys));
+    list.emplace_back(Redis::MultiBulkString(keys, false));
 
     return Redis::Array(list);
   }

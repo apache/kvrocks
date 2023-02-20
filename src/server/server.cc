@@ -280,43 +280,39 @@ Status Server::RemoveMaster() {
 }
 
 Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
-  auto t = new FeedSlaveThread(this, conn, next_repl_seq);
+  auto t = std::make_unique<FeedSlaveThread>(this, conn, next_repl_seq);
   auto s = t->Start();
   if (!s.IsOK()) {
-    delete t;
     return s;
   }
 
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
-  slave_threads_.emplace_back(t);
+  slave_threads_.emplace_back(std::move(t));
   return Status::OK();
 }
 
 void Server::DisconnectSlaves() {
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
-  for (const auto &slave_thread : slave_threads_) {
+  for (auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
   }
   while (!slave_threads_.empty()) {
-    auto slave_thread = slave_threads_.front();
+    auto slave_thread = std::move(slave_threads_.front());
     slave_threads_.pop_front();
     slave_thread->Join();
-    delete slave_thread;
   }
 }
 
 void Server::cleanupExitedSlaves() {
-  std::list<FeedSlaveThread *> exited_slave_threads;
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
-  for (const auto &slave_thread : slave_threads_) {
-    if (slave_thread->IsStopped()) exited_slave_threads.emplace_back(slave_thread);
-  }
-  while (!exited_slave_threads.empty()) {
-    auto t = exited_slave_threads.front();
-    exited_slave_threads.pop_front();
-    slave_threads_.remove(t);
-    t->Join();
-    delete t;
+  for (auto it = slave_threads_.begin(); it != slave_threads_.end();) {
+    if ((*it)->IsStopped()) {
+      auto thread = std::move(*it);
+      it = slave_threads_.erase(it);
+      thread->Join();
+    } else {
+      ++it;
+    }
   }
 }
 
@@ -1333,7 +1329,7 @@ time_t Server::GetLastScanTime(const std::string &ns) {
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration) {
   int64_t threshold = config_->slowlog_log_slower_than;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
-  auto entry = new SlowEntry();
+  auto entry = std::make_unique<SlowEntry>();
   size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
   for (size_t i = 0; i < argc; i++) {
     if (argc != args->size() && i == argc - 1) {
@@ -1348,7 +1344,7 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
     }
   }
   entry->duration = duration;
-  slow_log_.PushEntry(entry);
+  slow_log_.PushEntry(std::move(entry));
 }
 
 std::string Server::GetClientsStr() {

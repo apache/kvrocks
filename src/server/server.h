@@ -256,7 +256,7 @@ class Server {
 
   // slave
   std::mutex slave_threads_mu_;
-  std::list<FeedSlaveThread *> slave_threads_;
+  std::list<std::unique_ptr<FeedSlaveThread>> slave_threads_;
   std::atomic<int> fetch_file_threads_num_;
 
   // Some jobs to operate DB should be unique

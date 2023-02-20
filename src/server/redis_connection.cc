@@ -279,12 +279,12 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
   if (perf_context.empty()) return;  // request without db operation
-  auto entry = new PerfEntry();
+  auto entry = std::unique_ptr<PerfEntry>();
   entry->cmd_name = cmd;
   entry->duration = duration;
   entry->iostats_context = std::move(iostats_context);
   entry->perf_context = std::move(perf_context);
-  svr_->GetPerfLog()->PushEntry(entry);
+  svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {

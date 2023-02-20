@@ -23,8 +23,9 @@
 #include <time.h>
 
 #include <cstdint>
+#include <deque>
 #include <functional>
-#include <list>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -63,12 +64,12 @@ class LogCollector {
   ssize_t Size();
   void Reset();
   void SetMaxEntries(int64_t max_entries);
-  void PushEntry(T *entry);
+  void PushEntry(std::unique_ptr<T> &&entry);
   std::string GetLatestEntries(int64_t cnt);
 
  private:
   std::mutex mu_;
   uint64_t id_ = 0;
   int64_t max_entries_ = 128;
-  std::list<T *> entries_;
+  std::deque<std::unique_ptr<T>> entries_;
 };

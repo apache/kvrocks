@@ -53,9 +53,8 @@ LogCollector<T>::~LogCollector() {
 
 template <class T>
 ssize_t LogCollector<T>::Size() {
-  ssize_t n = 0;
   std::lock_guard<std::mutex> guard(mu_);
-  n = entries_.size();
+  ssize_t n = entries_.size();
   return n;
 }
 
@@ -63,7 +62,6 @@ template <class T>
 void LogCollector<T>::Reset() {
   std::lock_guard<std::mutex> guard(mu_);
   while (!entries_.empty()) {
-    delete entries_.front();
     entries_.pop_front();
   }
 }
@@ -72,22 +70,20 @@ template <class T>
 void LogCollector<T>::SetMaxEntries(int64_t max_entries) {
   std::lock_guard<std::mutex> guard(mu_);
   while (max_entries > 0 && static_cast<int64_t>(entries_.size()) > max_entries) {
-    delete entries_.back();
     entries_.pop_back();
   }
   max_entries_ = max_entries;
 }
 
 template <class T>
-void LogCollector<T>::PushEntry(T *entry) {
+void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   std::lock_guard<std::mutex> guard(mu_);
   entry->id = ++id_;
   entry->time = time(nullptr);
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
-    delete entries_.back();
     entries_.pop_back();
   }
-  entries_.push_front(entry);
+  entries_.push_front(std::move(entry));
 }
 
 template <class T>

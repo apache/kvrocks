@@ -30,7 +30,7 @@
 class LockManager {
  public:
   explicit LockManager(int hash_power);
-  ~LockManager();
+  ~LockManager() = default;
 
   LockManager(const LockManager &) = delete;
   LockManager &operator=(const LockManager &) = delete;
@@ -43,7 +43,7 @@ class LockManager {
  private:
   int hash_power_;
   unsigned hash_mask_;
-  std::vector<std::mutex *> mutex_pool_;
+  std::vector<std::unique_ptr<std::mutex>> mutex_pool_;
   unsigned hash(const rocksdb::Slice &key);
 };
 

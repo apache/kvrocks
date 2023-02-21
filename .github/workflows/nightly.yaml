@@ -46,6 +46,9 @@ jobs:
 
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
+      
+      - name: Get core numbers
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Docker meta
         id: meta
@@ -65,4 +68,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            MORE_BUILD_ARGS=-j$(nproc)
+            MORE_BUILD_ARGS=-j${{ env.NPROC }}

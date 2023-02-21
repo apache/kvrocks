@@ -252,6 +252,8 @@ jobs:
       - uses: docker/build-push-action@v3
         with:
           context: .
+          build-args: |
+            MORE_BUILD_ARGS=-j$(nproc)
 
   required:
     if: always()

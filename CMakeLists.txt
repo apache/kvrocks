@@ -96,6 +96,7 @@ endif()
 
 if (CMAKE_HOST_APPLE)
     set(DISABLE_JEMALLOC ON)
+    set(ENABLE_IPO OFF)
 endif ()
 
 if(NOT DISABLE_JEMALLOC)

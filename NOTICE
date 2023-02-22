@@ -223,7 +223,7 @@ It is under the MIT license with an optional exception:
     without including the above copyright and permission notices.
 
 For src/types/geohash.*, src/common/rand.*, src/common/sha1.*, src/storage/scripting.* and
-some functions in src/common/*_util.* are modified from Redis.
+some utility functions in src/common are modified from Redis.
 
 We have added the Redis license notice in each file header, can also see bundled license file
 https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.redis for details.

@@ -230,8 +230,8 @@ https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.redis
 
 For src/common/rocksdb_crc32c.* and src/storage/batch_debugger.* are modified from RocksDB.
 
-We have added the RocksDB license notice in each file header, can also see bundled license file
-https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.rocksdb for details.
+We choose the Apache License 2.0 from the dual-licensed RocksDB code, 
+and have added the RocksDB license notice in each file header.
 
 For the library LuaJIT(https://github.com/KvrocksLabs/LuaJIT) -- a Just-In-Time Compiler for Lua. https://luajit.org/
 

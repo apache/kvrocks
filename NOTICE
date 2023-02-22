@@ -228,7 +228,7 @@ some utility functions in src/common are modified from Redis.
 We have added the Redis license notice in each file header, can also see bundled license file
 https://github.com/apache/incubator-kvrocks/blob/unstable/licenses/LICENSE.redis for details.
 
-For src/common/rocksdb_crc32c.* and src/storage/batch_debugger.* are modified from RocksDB.
+For src/common/rocksdb_crc32c.h and src/storage/batch_debugger.h are modified from RocksDB.
 
 We choose the Apache License 2.0 from the dual-licensed RocksDB code, 
 and have added the RocksDB license notice in each file header.

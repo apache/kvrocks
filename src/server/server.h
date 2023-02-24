@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "commands/commander.h"
+#include "server/redis_connection.h"
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
@@ -222,6 +224,12 @@ class Server {
   std::unique_ptr<SlotMigrate> slot_migrate_;
   std::unique_ptr<SlotImport> slot_import_;
 
+  void UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
+  void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
+  void UnwatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
+  bool IsWatchedKeysModified(Redis::Connection *conn);
+  void ResetWatchedKeys(Redis::Connection *conn);
+
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx_;
 #endif
@@ -291,6 +299,11 @@ class Server {
 
   // memory
   std::atomic<int64_t> memory_startup_use_ = 0;
+
+  // transaction
+  std::atomic<size_t> watched_key_size_ = 0;
+  std::map<std::string, std::map<Redis::Connection *, bool>> watched_key_map_;
+  std::mutex watched_key_mutex_;
 };
 
 Server *GetServer();

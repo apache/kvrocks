@@ -20,7 +20,10 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "scope_exit.h"
 #include "server/redis_connection.h"
+#include "server/redis_reply.h"
+#include "server/server.h"
 
 namespace Redis {
 
@@ -57,14 +60,22 @@ class CommandDiscard : public Commander {
 class CommandExec : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
+
     if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       *output = Redis::Error("ERR EXEC without MULTI");
       return Status::OK();
     }
 
+    auto reset_multiexec = MakeScopeExit([conn] { conn->ResetMultiExec(); });
+
     if (conn->IsMultiError()) {
-      conn->ResetMultiExec();
       *output = Redis::Error("EXECABORT Transaction discarded");
+      return Status::OK();
+    }
+
+    if (svr->IsWatchedKeysModified(conn)) {
+      *output = Redis::NilString();
       return Status::OK();
     }
 
@@ -73,13 +84,32 @@ class CommandExec : public Commander {
     // Execute multi-exec commands
     conn->SetInExec();
     conn->ExecuteCommands(conn->GetMultiExecCommands());
-    conn->ResetMultiExec();
+    return Status::OK();
+  }
+};
+
+class CommandWatch : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr->WatchKey(conn, std::vector(args_.begin() + 1, args_.end()));
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandUnwatch : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr->UnwatchKey(conn, std::vector(args_.begin() + 1, args_.end()));
+    *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandMulti>("multi", 1, "multi", 0, 0, 0),
                         MakeCmdAttr<CommandDiscard>("discard", 1, "multi", 0, 0, 0),
-                        MakeCmdAttr<CommandExec>("exec", 1, "exclusive multi", 0, 0, 0), )
+                        MakeCmdAttr<CommandExec>("exec", 1, "exclusive multi", 0, 0, 0),
+                        MakeCmdAttr<CommandWatch>("watch", -2, "multi", 1, -1, 1),
+                        MakeCmdAttr<CommandUnwatch>("unwatch", -2, "multi", 1, -1, 1), )
 
 }  // namespace Redis

@@ -28,6 +28,7 @@
 
 #include <deque>
 #include <initializer_list>
+#include <iostream>
 #include <list>
 #include <map>
 #include <memory>
@@ -58,6 +59,8 @@ enum CommandFlags {
   kCmdExclusive = (1ULL << 7),    // "exclusive" flag
   kCmdNoMulti = (1ULL << 8),      // "no-multi" flag
   kCmdNoScript = (1ULL << 9),     // "noscript" flag
+  kCmdROScript = (1ULL << 10),    // flag for read-only script commands
+  kCmdCluster = (1ULL << 11),     // "cluster" flag
 };
 
 class Commander {
@@ -115,15 +118,34 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
       key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   for (const auto &flag : Util::Split(attr.description, " ")) {
-    if (flag == "write") attr.flags |= kCmdWrite;
-    if (flag == "read-only") attr.flags |= kCmdReadOnly;
-    if (flag == "replication") attr.flags |= kCmdReplication;
-    if (flag == "pub-sub") attr.flags |= kCmdPubSub;
-    if (flag == "ok-loading") attr.flags |= kCmdLoading;
-    if (flag == "exclusive") attr.flags |= kCmdExclusive;
-    if (flag == "multi") attr.flags |= kCmdMulti;
-    if (flag == "no-multi") attr.flags |= kCmdNoMulti;
-    if (flag == "no-script") attr.flags |= kCmdNoScript;
+    if (flag == "write")
+      attr.flags |= kCmdWrite;
+    else if (flag == "read-only")
+      attr.flags |= kCmdReadOnly;
+    else if (flag == "replication")
+      attr.flags |= kCmdReplication;
+    else if (flag == "pub-sub")
+      attr.flags |= kCmdPubSub;
+    else if (flag == "ok-loading")
+      attr.flags |= kCmdLoading;
+    else if (flag == "exclusive")
+      attr.flags |= kCmdExclusive;
+    else if (flag == "multi")
+      attr.flags |= kCmdMulti;
+    else if (flag == "no-multi")
+      attr.flags |= kCmdNoMulti;
+    else if (flag == "no-script")
+      attr.flags |= kCmdNoScript;
+    else if (flag == "ro-script")
+      attr.flags |= kCmdROScript;
+    else if (flag == "cluster")
+      attr.flags |= kCmdCluster;
+    else {
+      std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
+                               name)
+                << std::endl;
+      std::abort();
+    }
   }
 
   return attr;

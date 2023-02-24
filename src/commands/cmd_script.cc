@@ -115,8 +115,8 @@ class CommandScript : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", 0, 0, 0),
                         MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script", 0, 0, 0),
+                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script", 0, 0, 0),
                         MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
 
 }  // namespace Redis

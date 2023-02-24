@@ -24,6 +24,7 @@
 
 #include <deque>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -121,6 +122,7 @@ class Connection {
 
   std::unique_ptr<Commander> current_cmd_;
   std::function<void(int)> close_cb_ = nullptr;
+  std::set<std::string> watched_keys_;
 
  private:
   uint64_t id_ = 0;

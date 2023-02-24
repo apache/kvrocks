@@ -30,6 +30,7 @@
 #include <atomic>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include "config.h"
@@ -1550,4 +1551,86 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
     return Status::OK();
   }
   return Status(Status::NotOK);
+}
+
+void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
+  if (attr.is_write() && attr.first_key != 0 && watched_key_size_ > 0) {
+    std::unique_lock lock(watched_key_mutex_);
+
+    for (size_t i = attr.first_key; attr.last_key != -1 ? i <= size_t(attr.last_key) : i < args.size();
+         i += attr.key_step) {
+      if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
+        for (auto &[_, state] : iter->second) {
+          state = true;
+        }
+      }
+    }
+  }
+}
+
+void Server::WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys) {
+  std::unique_lock lock(watched_key_mutex_);
+
+  for (const auto &key : keys) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      iter->second.emplace(conn, false);
+    } else {
+      watched_key_map_.emplace(key, std::map<Redis::Connection *, bool>{{conn, false}});
+    }
+
+    conn->watched_keys_.insert(key);
+  }
+
+  watched_key_size_ = watched_key_map_.size();
+}
+
+void Server::UnwatchKey(Redis::Connection *conn, const std::vector<std::string> &keys) {
+  std::unique_lock lock(watched_key_mutex_);
+
+  for (const auto &key : keys) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      iter->second.erase(conn);
+
+      if (iter->second.empty()) {
+        watched_key_map_.erase(iter);
+      }
+    }
+
+    conn->watched_keys_.erase(key);
+  }
+
+  watched_key_size_ = watched_key_map_.size();
+}
+
+bool Server::IsWatchedKeysModified(Redis::Connection *conn) {
+  std::unique_lock lock(watched_key_mutex_);
+
+  for (const auto &key : conn->watched_keys_) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      if (auto jter = iter->second.find(conn); jter != iter->second.end()) {
+        if (jter->second) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+void Server::ResetWatchedKeys(Redis::Connection *conn) {
+  if (watched_key_size_ != 0) {
+    watched_key_size_ = 0;
+    std::unique_lock lock(watched_key_mutex_);
+
+    for (const auto &key : conn->watched_keys_) {
+      if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+        iter->second.erase(conn);
+
+        if (iter->second.empty()) {
+          watched_key_map_.erase(iter);
+        }
+      }
+    }
+
+    conn->watched_keys_.clear();
+  }
 }

@@ -344,6 +344,7 @@ void Worker::DetachConnection(Redis::Connection *conn) {
 void Worker::FreeConnection(Redis::Connection *conn) {
   if (!conn) return;
   removeConnection(conn->GetFD());
+  svr_->ResetWatchedKeys(conn);
   if (rate_limit_group_ != nullptr) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }

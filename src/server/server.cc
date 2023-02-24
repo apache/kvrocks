@@ -1618,7 +1618,6 @@ bool Server::IsWatchedKeysModified(Redis::Connection *conn) {
 
 void Server::ResetWatchedKeys(Redis::Connection *conn) {
   if (watched_key_size_ != 0) {
-    watched_key_size_ = 0;
     std::unique_lock lock(watched_key_mutex_);
 
     for (const auto &key : conn->watched_keys_) {
@@ -1632,5 +1631,6 @@ void Server::ResetWatchedKeys(Redis::Connection *conn) {
     }
 
     conn->watched_keys_.clear();
+    watched_key_size_ = watched_key_map_.size();
   }
 }

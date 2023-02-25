@@ -49,18 +49,18 @@ class Connection;
 struct CommandAttributes;
 
 enum CommandFlags {
-  kCmdWrite = (1ULL << 0),        // "write" flag
-  kCmdReadOnly = (1ULL << 1),     // "read-only" flag
-  kCmdReplication = (1ULL << 2),  // "replication" flag
-  kCmdPubSub = (1ULL << 3),       // "pub-sub" flag
-  kCmdScript = (1ULL << 4),       // "script" flag
-  kCmdLoading = (1ULL << 5),      // "ok-loading" flag
-  kCmdMulti = (1ULL << 6),        // "multi" flag
-  kCmdExclusive = (1ULL << 7),    // "exclusive" flag
-  kCmdNoMulti = (1ULL << 8),      // "no-multi" flag
-  kCmdNoScript = (1ULL << 9),     // "noscript" flag
-  kCmdROScript = (1ULL << 10),    // flag for read-only script commands
-  kCmdCluster = (1ULL << 11),     // "cluster" flag
+  kCmdWrite = 1ULL << 0,        // "write" flag
+  kCmdReadOnly = 1ULL << 1,     // "read-only" flag
+  kCmdReplication = 1ULL << 2,  // "replication" flag
+  kCmdPubSub = 1ULL << 3,       // "pub-sub" flag
+  kCmdScript = 1ULL << 4,       // "script" flag
+  kCmdLoading = 1ULL << 5,      // "ok-loading" flag
+  kCmdMulti = 1ULL << 6,        // "multi" flag
+  kCmdExclusive = 1ULL << 7,    // "exclusive" flag
+  kCmdNoMulti = 1ULL << 8,      // "no-multi" flag
+  kCmdNoScript = 1ULL << 9,     // "no-script" flag
+  kCmdROScript = 1ULL << 10,    // "ro-script" flag for read-only script commands
+  kCmdCluster = 1ULL << 11,     // "cluster" flag
 };
 
 class Commander {
@@ -89,14 +89,39 @@ class CommanderWithParseMove : Commander {
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 
+struct CommandKeyRange {
+  // index of the first key in command tokens
+  // 0 stands for no key, since the first index of command arguments is command name
+  int first_key;
+
+  // index of the last key in command tokens
+  // in normal one-key commands, first key and last key index are both 1
+  // -1 stands for last index of the sequence, i.e. args.size() - 1
+  int last_key;
+
+  // step length of key position
+  // e.g. key step 2 means "key other key other ..." sequence
+  int key_step;
+};
+
+using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
+
 struct CommandAttributes {
   std::string name;
+
+  // number of command arguments
+  // positive number n means number of arguments is equal to n
+  // negative number -n means number of arguments is equal to or large than n
   int arity;
+
   std::string description;
   uint64_t flags;
-  int first_key;
-  int last_key;
-  int key_step;
+
+  CommandKeyRange key_range;
+
+  // if key_range.first_key == -1, key_range_gen is used instead
+  CommandKeyRangeGen key_range_gen;
+
   CommanderFactory factory;
 
   bool is_write() const { return (flags & kCmdWrite) != 0; }
@@ -108,45 +133,71 @@ struct CommandAttributes {
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
 
-template <typename T>
-auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step) {
-  CommandAttributes attr{
-      name,        arity,
-      description, 0,
-      first_key,   last_key,
-      key_step,    []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+inline uint64_t ParseCommandFlags(const std::string &description, const std::string &cmd_name) {
+  uint64_t flags = 0;
 
-  for (const auto &flag : Util::Split(attr.description, " ")) {
+  for (const auto &flag : Util::Split(description, " ")) {
     if (flag == "write")
-      attr.flags |= kCmdWrite;
+      flags |= kCmdWrite;
     else if (flag == "read-only")
-      attr.flags |= kCmdReadOnly;
+      flags |= kCmdReadOnly;
     else if (flag == "replication")
-      attr.flags |= kCmdReplication;
+      flags |= kCmdReplication;
     else if (flag == "pub-sub")
-      attr.flags |= kCmdPubSub;
+      flags |= kCmdPubSub;
     else if (flag == "ok-loading")
-      attr.flags |= kCmdLoading;
+      flags |= kCmdLoading;
     else if (flag == "exclusive")
-      attr.flags |= kCmdExclusive;
+      flags |= kCmdExclusive;
     else if (flag == "multi")
-      attr.flags |= kCmdMulti;
+      flags |= kCmdMulti;
     else if (flag == "no-multi")
-      attr.flags |= kCmdNoMulti;
+      flags |= kCmdNoMulti;
     else if (flag == "no-script")
-      attr.flags |= kCmdNoScript;
+      flags |= kCmdNoScript;
     else if (flag == "ro-script")
-      attr.flags |= kCmdROScript;
+      flags |= kCmdROScript;
     else if (flag == "cluster")
-      attr.flags |= kCmdCluster;
+      flags |= kCmdCluster;
     else {
       std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
-                               name)
+                               cmd_name)
                 << std::endl;
       std::abort();
     }
   }
+
+  return flags;
+}
+
+template <typename T>
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
+                 int key_step) {
+  CommandAttributes attr{name,
+                         arity,
+                         description,
+                         ParseCommandFlags(description, name),
+                         {first_key, last_key, key_step},
+                         {},
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+
+  if ((first_key > 0 && key_step <= 0) || (first_key > 0 && last_key >= 0 && last_key < first_key)) {
+    std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
+    std::abort();
+  }
+
+  return attr;
+}
+
+template <typename T>
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, const CommandKeyRangeGen &gen) {
+  CommandAttributes attr{name,
+                         arity,
+                         description,
+                         ParseCommandFlags(description, name),
+                         {-1, 0, 0},
+                         gen,
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   return attr;
 }

@@ -46,9 +46,9 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   command_flags.append(Redis::MultiLen(1));
   command_flags.append(Redis::BulkString(command_attributes->is_write() ? "write" : "readonly"));
   command.append(command_flags);
-  command.append(Redis::Integer(command_attributes->first_key));
-  command.append(Redis::Integer(command_attributes->last_key));
-  command.append(Redis::Integer(command_attributes->key_step));
+  command.append(Redis::Integer(command_attributes->key_range.first_key));
+  command.append(Redis::Integer(command_attributes->key_range.last_key));
+  command.append(Redis::Integer(command_attributes->key_range.key_step));
   return command;
 }
 
@@ -82,18 +82,22 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
   }
 
   auto command_attribute = cmd_iter->second;
-  if (command_attribute->first_key == 0) {
+  if (command_attribute->key_range.first_key == 0) {
     return {Status::NotOK, "The command has no key arguments"};
+  }
+
+  if (command_attribute->key_range.first_key < 0) {
+    return {Status::NotOK, "The command has dynamic positions of key arguments"};
   }
 
   if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
     return {Status::NotOK, "Invalid number of arguments specified for command"};
   }
 
-  auto last = command_attribute->last_key;
+  auto last = command_attribute->key_range.last_key;
   if (last < 0) last = argc + last;
 
-  for (int j = command_attribute->first_key; j <= last; j += command_attribute->key_step) {
+  for (int j = command_attribute->key_range.first_key; j <= last; j += command_attribute->key_range.key_step) {
     keys_indexes->emplace_back(j);
   }
 

@@ -128,7 +128,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   bufferevent *bev = nullptr;
 #ifdef ENABLE_OPENSSL
   SSL *ssl = nullptr;
-  if (local_port == worker->svr_->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port) {
     ssl = SSL_new(worker->svr_->ssl_ctx_.get());
     if (!ssl) {
       LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
@@ -154,7 +154,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
 #ifdef ENABLE_OPENSSL
-  if (local_port == worker->svr_->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port) {
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif

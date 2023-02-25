@@ -347,8 +347,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       svr_->SetCurrentConnection(this);
     }
 
-    svr_->UpdateWatchedKeys(cmd_tokens, *attributes);
-
     if (svr_->IsLoading() && !attributes->is_ok_loading()) {
       Reply(Redis::Error("LOADING kvrocks is restoring the db from backup"));
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
@@ -408,6 +406,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
+    svr_->UpdateWatchedKeys(cmd_tokens, *attributes);
     svr_->stats_.IncrCalls(cmd_name);
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = isProfilingEnabled(cmd_name);

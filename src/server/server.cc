@@ -33,6 +33,7 @@
 #include <mutex>
 #include <utility>
 
+#include "commands/commander.h"
 #include "config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
@@ -1540,7 +1541,7 @@ std::string ServerLogData::Encode() {
 
 Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   if (blob.size() == 0) {
-    return Status(Status::NotOK);
+    return {Status::NotOK};
   }
 
   const char *header = blob.data();
@@ -1550,15 +1551,17 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
     content_ = std::string(blob.data() + 2, blob.size() - 2);
     return Status::OK();
   }
-  return Status(Status::NotOK);
+  return {Status::NotOK};
 }
 
 void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
-  if (attr.is_write() && attr.first_key != 0 && watched_key_size_ > 0) {
+  if (attr.is_write() && attr.key_range.first_key != 0 && watched_key_size_ > 0) {
+    Redis::CommandKeyRange range = attr.key_range.first_key > 0 ? attr.key_range : attr.key_range_gen(args);
+
     std::unique_lock lock(watched_key_mutex_);
 
-    for (size_t i = attr.first_key; attr.last_key != -1 ? i <= size_t(attr.last_key) : i < args.size();
-         i += attr.key_step) {
+    for (size_t i = range.first_key; range.last_key != -1 ? i <= size_t(range.last_key) : i < args.size();
+         i += range.key_step) {
       if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
         for (auto &[_, state] : iter->second) {
           state = true;

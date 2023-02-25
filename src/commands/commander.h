@@ -96,7 +96,7 @@ struct CommandKeyRange {
 
   // index of the last key in command tokens
   // in normal one-key commands, first key and last key index are both 1
-  // -1 stands for last index of the sequence, i.e. args.size() - 1
+  // -n stands for the n-th last index of the sequence, i.e. args.size() - n
   int last_key;
 
   // step length of key position

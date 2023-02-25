@@ -1558,13 +1558,15 @@ void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis
   if (attr.is_write() && attr.key_range.first_key != 0 && watched_key_size_ > 0) {
     Redis::CommandKeyRange range = attr.key_range.first_key > 0 ? attr.key_range : attr.key_range_gen(args);
 
-    std::unique_lock lock(watched_key_mutex_);
+    if (range.first_key > 0) {
+      std::unique_lock lock(watched_key_mutex_);
 
-    for (size_t i = range.first_key; range.last_key != -1 ? i <= size_t(range.last_key) : i < args.size();
-         i += range.key_step) {
-      if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
-        for (auto &[_, state] : iter->second) {
-          state = true;
+      for (size_t i = range.first_key;
+           range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key; i += range.key_step) {
+        if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
+          for (auto &[_, state] : iter->second) {
+            state = true;
+          }
         }
       }
     }

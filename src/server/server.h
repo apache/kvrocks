@@ -240,6 +240,8 @@ class Server {
   void delConnContext(ConnContext *c);
   void updateCachedTime();
   Status autoResizeBlockAndSST();
+  void updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range);
+  void updateAllWatchedKeys();
 
   std::atomic<bool> stop_;
   std::atomic<bool> is_loading_;

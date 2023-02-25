@@ -1554,21 +1554,44 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   return {Status::NotOK};
 }
 
-void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
-  if (attr.is_write() && attr.key_range.first_key != 0 && watched_key_size_ > 0) {
-    Redis::CommandKeyRange range = attr.key_range.first_key > 0 ? attr.key_range : attr.key_range_gen(args);
+void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range) {
+  for (size_t i = range.first_key; range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key;
+       i += range.key_step) {
+    if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
+      for (auto &[_, state] : iter->second) {
+        state = true;
+      }
+    }
+  }
+}
 
-    if (range.first_key > 0) {
+void Server::updateAllWatchedKeys() {
+  for (auto &[_, conn_map] : watched_key_map_) {
+    for (auto &[_, state] : conn_map) {
+      state = true;
+    }
+  }
+}
+
+void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
+  if (attr.is_write() && watched_key_size_ > 0) {
+    if (attr.key_range.first_key > 0) {
       std::unique_lock lock(watched_key_mutex_);
 
-      for (size_t i = range.first_key;
-           range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key; i += range.key_step) {
-        if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
-          for (auto &[_, state] : iter->second) {
-            state = true;
-          }
-        }
+      updateWatchedKeysFromRange(args, attr.key_range);
+    } else if (attr.key_range.first_key < 0) {
+      Redis::CommandKeyRange range = attr.key_range_gen(args);
+
+      if (range.first_key > 0) {
+        std::unique_lock lock(watched_key_mutex_);
+
+        updateWatchedKeysFromRange(args, range);
       }
+    } else {
+      // support commands like flushdb (write flag && key range {0,0,0})
+      std::unique_lock lock(watched_key_mutex_);
+
+      updateAllWatchedKeys();
     }
   }
 }

@@ -117,11 +117,7 @@ class CommandScript : public Commander {
 CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
 
-  if (numkeys <= 0) {
-    return {0, 0, 0};
-  } else {
-    return {3, 2 + numkeys, 1};
-  }
+  return {3, 2 + numkeys, 1};
 }
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),

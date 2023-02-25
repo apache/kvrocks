@@ -29,6 +29,7 @@
 #define CRLF "\r\n"  // NOLINT
 
 namespace Redis {
+
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 std::string Error(const std::string &err);
@@ -50,4 +51,5 @@ std::string Array(const std::vector<std::string> &list);
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true);
 std::string MultiBulkString(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses);
 std::string Command2RESP(const std::vector<std::string> &cmd_args);
+
 }  // namespace Redis

@@ -27,11 +27,13 @@
 Status TaskRunner::Publish(const Task &task) {
   std::lock_guard<std::mutex> guard(mu_);
   if (stop_) {
-    return Status(Status::NotOK, "the runner was stopped");
+    return {Status::NotOK, "the runner was stopped"};
   }
+
   if (task_queue_.size() >= max_queue_size_) {
-    return Status(Status::NotOK, "the task queue was reached max length");
+    return {Status::NotOK, "the task queue was reached max length"};
   }
+
   task_queue_.emplace_back(task);
   cond_.notify_all();
   return Status::OK();
@@ -40,10 +42,10 @@ Status TaskRunner::Publish(const Task &task) {
 void TaskRunner::Start() {
   stop_ = false;
   for (int i = 0; i < n_thread_; i++) {
-    threads_.emplace_back(std::thread([this]() {
+    threads_.emplace_back([this]() {
       Util::ThreadSetName("task-runner");
       this->run();
-    }));
+    });
   }
 }
 
@@ -70,6 +72,7 @@ void TaskRunner::run() {
   std::unique_lock<std::mutex> lock(mu_);
   while (!stop_) {
     cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty(); });
+
     while (!stop_ && !task_queue_.empty()) {
       task = task_queue_.front();
       task_queue_.pop_front();
@@ -78,6 +81,7 @@ void TaskRunner::run() {
       lock.lock();
     }
   }
+
   task_queue_.clear();
   lock.unlock();
   // CAUTION: drop the rest of tasks, don't use task runner if the task can't be drop

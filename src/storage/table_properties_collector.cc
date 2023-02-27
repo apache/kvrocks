@@ -62,7 +62,7 @@ rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key,
     GetFixed32(&cv, &subkeys);
   }
   total_keys_ += subkeys;
-  now = Server::GetUnixTime();
+  now = Server::GetCachedUnixTime();
   if ((expired > 0 && expired < static_cast<uint32_t>(now)) || (type != kRedisString && subkeys == 0)) {
     deleted_keys_ += subkeys + 1;
   }

@@ -122,7 +122,7 @@ using first_element_t = typename std::tuple_element_t<0, std::tuple<Ts...>>;
 
 template <typename T>
 using remove_cvref_t = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
-};  // namespace type_details
+}  // namespace type_details
 
 template <typename, typename = void>
 struct StringInStatusOr : private std::string {

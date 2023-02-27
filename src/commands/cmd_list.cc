@@ -198,7 +198,7 @@ class CommandBPop : public Commander {
     }
 
     for (const auto &key : keys_) {
-      svr_->AddBlockingKey(key, conn_);
+      svr_->BlockOnKey(key, conn_);
     }
 
     bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
@@ -301,7 +301,7 @@ class CommandBPop : public Commander {
 
   void unBlockingAll() {
     for (const auto &key : keys_) {
-      svr_->UnBlockingKey(key, conn_);
+      svr_->UnblockOnKey(key, conn_);
     }
   }
 };

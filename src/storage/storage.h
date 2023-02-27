@@ -116,6 +116,10 @@ class Storage {
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
 
+  void BeginTxn();
+  Status CommitTxn();
+  std::shared_ptr<rocksdb::WriteBatch> GetWriteBatch();
+
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
 
@@ -182,6 +186,8 @@ class Storage {
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
+  std::atomic<bool> is_txn_mode_ = false;
+  std::shared_ptr<rocksdb::WriteBatch> txn_write_batch_;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };

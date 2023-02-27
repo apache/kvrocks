@@ -21,6 +21,7 @@
 #include "commander.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
+#include "server/server.h"
 
 namespace Redis {
 
@@ -68,13 +69,16 @@ class CommandExec : public Commander {
       return Status::OK();
     }
 
+    auto storage = svr->storage_;
     // Reply multi length first
     conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
+    storage->BeginTxn();
     conn->ExecuteCommands(conn->GetMultiExecCommands());
+    auto s = storage->CommitTxn();
     conn->ResetMultiExec();
-    return Status::OK();
+    return s;
   }
 };
 

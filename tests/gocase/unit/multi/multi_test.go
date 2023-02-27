@@ -81,6 +81,13 @@ func TestMulti(t *testing.T) {
 		require.Zero(t, rdb.Exists(ctx, "myset").Val())
 	})
 
+	t.Run("TRANSACTION cannot read your own writes now", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Set(ctx, "my_txn_key", "v1", 0).Err())
+		require.NoError(t, rdb.Get(ctx, "my_txn_key").Err())
+		require.Equal(t, []interface{}{"OK", nil}, rdb.Do(ctx, "EXEC").Val())
+	})
+
 	t.Run("EXEC fails if there are errors while queueing commands #1", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo1", "foo2").Err())
 		require.NoError(t, rdb.Do(ctx, "MULTI").Err())

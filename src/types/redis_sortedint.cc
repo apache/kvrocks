@@ -45,9 +45,9 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisSortedint);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto id : ids) {
     std::string id_buf;
@@ -55,16 +55,16 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
-    batch.Put(sub_key, Slice());
+    batch->Put(sub_key, Slice());
     *ret += 1;
   }
   if (*ret > 0) {
     metadata.size += *ret;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
@@ -79,24 +79,24 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value, sub_key;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisSortedint);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
-    batch.Delete(sub_key);
+    batch->Delete(sub_key);
     *ret += 1;
   }
   if (*ret == 0) return rocksdb::Status::OK();
   metadata.size -= *ret;
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {

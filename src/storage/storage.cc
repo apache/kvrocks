@@ -504,6 +504,10 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   if (reach_db_size_limit_) {
     return rocksdb::Status::SpaceLimit();
   }
+  if (is_txn_mode_) {
+    // The batch won't be flushed until the transaction was committed or rollback
+    return rocksdb::Status::OK();
+  }
 
   // Put replication id logdata at the end of write batch
   if (replid_.length() == kReplIdLength) {
@@ -515,23 +519,23 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
-  rocksdb::WriteBatch batch;
-  batch.Delete(cf_handle, key);
-  return Write(options, &batch);
+  auto batch = GetWriteBatch();
+  batch->Delete(cf_handle, key);
+  return Write(options, batch.get());
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
-  rocksdb::WriteBatch batch;
+  auto batch = GetWriteBatch();
   rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle("metadata");
-  auto s = batch.DeleteRange(cf_handle, first_key, last_key);
+  auto s = batch->DeleteRange(cf_handle, first_key, last_key);
   if (!s.ok()) {
     return s;
   }
-  s = batch.Delete(cf_handle, last_key);
+  s = batch->Delete(cf_handle, last_key);
   if (!s.ok()) {
     return s;
   }
-  return Write(write_opts_, &batch);
+  return Write(write_opts_, batch.get());
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -540,12 +544,12 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   // didn't contain the end key.
   end_key[end_key.size() - 1] += 1;
 
-  rocksdb::WriteBatch batch;
-  auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
+  auto batch = GetWriteBatch();
+  auto s = batch->DeleteRange(cf_handle, begin_key, end_key);
   if (!s.ok()) {
     return s;
   }
-  return Write(options, &batch);
+  return Write(options, batch.get());
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -639,12 +643,33 @@ void Storage::SetIORateLimit(int64_t max_io_mb) {
 
 rocksdb::DB *Storage::GetDB() { return db_; }
 
-Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
-  rocksdb::WriteBatch batch;
+void Storage::BeginTxn() {
+  is_txn_mode_ = true;
+  txn_write_batch_ = std::make_unique<rocksdb::WriteBatch>();
+}
 
+Status Storage::CommitTxn() {
+  is_txn_mode_ = false;
+  auto s = Write(write_opts_, txn_write_batch_.get());
+  txn_write_batch_.reset();
+  if (s.ok()) {
+    return {Status::cOK};
+  }
+  return {Status::NotOK, s.ToString()};
+}
+
+std::shared_ptr<rocksdb::WriteBatch> Storage::GetWriteBatch() {
+  if (!is_txn_mode_) {
+    return std::make_unique<rocksdb::WriteBatch>();
+  }
+  return txn_write_batch_;
+}
+
+Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  auto batch = GetWriteBatch();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
-  batch.Put(cf, key, value);
-  auto s = Write(write_opts_, &batch);
+  batch->Put(cf, key, value);
+  auto s = Write(write_opts_, batch.get());
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }

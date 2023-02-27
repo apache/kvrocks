@@ -215,17 +215,17 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   } else {
     value[byte_index] = static_cast<char>(value[byte_index] & (~(1 << bit_offset)));
   }
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(offset)});
-  batch.PutLogData(log_data.Encode());
-  batch.Put(sub_key, value);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(sub_key, value);
   if (metadata.size != bitmap_size) {
     metadata.size = bitmap_size;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt) {
@@ -374,17 +374,17 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     meta_pairs.emplace_back(ns_op_key, metadata);
   }
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   if (max_size == 0) {
-    batch.Delete(metadata_cf_handle_, ns_key);
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->Delete(metadata_cf_handle_, ns_key);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
   }
   std::vector<std::string> log_args = {std::to_string(kRedisCmdBitOp), op_name};
   for (const auto &op_key : op_keys) {
     log_args.emplace_back(op_key.ToString());
   }
   WriteBatchLogData log_data(kRedisBitmap, std::move(log_args));
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
@@ -522,7 +522,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes), res_metadata.version,
                     storage_->IsSlotIdEncoded())
             .Encode(&sub_key);
-        batch.Put(sub_key, Slice(reinterpret_cast<char *>(frag_res.get()), frag_maxlen));
+        batch->Put(sub_key, Slice(reinterpret_cast<char *>(frag_res.get()), frag_maxlen));
       }
 
       frag_maxlen = 0;
@@ -535,9 +535,9 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   std::string bytes;
   res_metadata.size = max_size;
   res_metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
   *len = static_cast<int64_t>(max_size);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {

@@ -98,17 +98,17 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   }
 
   *ret = old_value + increment;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisHash);
-  batch.PutLogData(log_data.Encode());
-  batch.Put(sub_key, std::to_string(*ret));
+  batch->PutLogData(log_data.Encode());
+  batch->Put(sub_key, std::to_string(*ret));
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret) {
@@ -144,17 +144,17 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
   }
 
   *ret = n;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisHash);
-  batch.PutLogData(log_data.Encode());
-  batch.Put(sub_key, std::to_string(*ret));
+  batch->PutLogData(log_data.Encode());
+  batch->Put(sub_key, std::to_string(*ret));
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values,
@@ -205,9 +205,9 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   AppendNamespacePrefix(user_key, &ns_key);
 
   HashMetadata metadata(false);
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisHash);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -218,7 +218,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
     s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
       *ret += 1;
-      batch.Delete(sub_key);
+      batch->Delete(sub_key);
     }
   }
   if (*ret == 0) {
@@ -227,8 +227,8 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   metadata.size -= *ret;
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
@@ -243,9 +243,9 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 
   int added = 0;
   bool exists = false;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisHash);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   for (const auto &fv : field_values) {
     exists = false;
     std::string sub_key;
@@ -260,16 +260,16 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
       }
     }
     if (!exists) added++;
-    batch.Put(sub_key, fv.value);
+    batch->Put(sub_key, fv.value);
   }
   if (added > 0) {
     *ret = added;
     metadata.size += added;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,

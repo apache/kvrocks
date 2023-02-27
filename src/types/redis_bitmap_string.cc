@@ -57,11 +57,11 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
 
   *raw_value = raw_value->substr(0, STRING_HDR_SIZE);
   raw_value->append(string_value);
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisString);
-  batch.PutLogData(log_data.Encode());
-  batch.Put(metadata_cf_handle_, ns_key, *raw_value);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(metadata_cf_handle_, ns_key, *raw_value);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {

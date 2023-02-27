@@ -114,9 +114,9 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   s = getNextEntryID(metadata, options, first_entry, &next_entry_id);
   if (!s.ok()) return s;
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisStream);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   bool should_add = true;
 
@@ -128,7 +128,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
       trim_options.max_len = options.trim_options.max_len > 0 ? options.trim_options.max_len - 1 : 0;
     }
 
-    trim(ns_key, trim_options, &metadata, &batch);
+    trim(ns_key, trim_options, &metadata, batch.get());
 
     if (trim_options.strategy == StreamTrimStrategy::MinID && next_entry_id < trim_options.min_id) {
       // there is no sense to add this element because it would be removed, so just modify metadata and return it's ID
@@ -143,7 +143,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   if (should_add) {
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, next_entry_id);
-    batch.Put(stream_cf_handle_, entry_key, entry_value);
+    batch->Put(stream_cf_handle_, entry_key, entry_value);
 
     metadata.last_generated_id = next_entry_id;
     metadata.last_entry_id = next_entry_id;
@@ -162,11 +162,11 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   std::string metadataBytes;
   metadata.Encode(&metadataBytes);
-  batch.Put(metadata_cf_handle_, ns_key, metadataBytes);
+  batch->Put(metadata_cf_handle_, ns_key, metadataBytes);
 
   *id = next_entry_id;
 
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
@@ -233,9 +233,9 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisStream);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   std::string next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
@@ -259,7 +259,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
     s = db_->Get(read_options, stream_cf_handle_, entry_key, &value);
     if (s.ok()) {
       *ret += 1;
-      batch.Delete(stream_cf_handle_, entry_key);
+      batch->Delete(stream_cf_handle_, entry_key);
 
       if (metadata.max_deleted_entry_id < id) {
         metadata.max_deleted_entry_id = id;
@@ -301,10 +301,10 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
 
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 // If `options` is StreamLenOptions{} the function just returns the number of entries in the stream.
@@ -581,18 +581,18 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisStream);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
-  *ret = trim(ns_key, options, &metadata, &batch);
+  *ret = trim(ns_key, options, &metadata, batch.get());
 
   if (*ret > 0) {
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
   }
 
   return rocksdb::Status::OK();
@@ -718,15 +718,15 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
     metadata.max_deleted_entry_id = *max_deleted_id;
   }
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisStream);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
 }
 
 }  // namespace Redis

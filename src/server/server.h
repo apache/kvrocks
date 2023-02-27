@@ -20,9 +20,6 @@
 
 #pragma once
 
-#include "commands/commander.h"
-#include "server/redis_connection.h"
-#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
 #include <list>
@@ -38,8 +35,10 @@
 #include "cluster/replication.h"
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
+#include "commands/commander.h"
 #include "lua.hpp"
 #include "rw_lock.h"
+#include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
 #include "storage/redis_metadata.h"

@@ -407,7 +407,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
-    svr_->UpdateWatchedKeys(cmd_tokens, *attributes);
     svr_->stats_.IncrCalls(cmd_name);
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -432,6 +431,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       Reply(Redis::Error("ERR " + s.Msg()));
       continue;
     }
+
+    svr_->UpdateWatchedKeys(cmd_tokens, *attributes);
 
     if (!reply.empty()) Reply(reply);
     reply.clear();

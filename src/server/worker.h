@@ -43,7 +43,7 @@ class Server;
 
 class Worker {
  public:
-  Worker(Server *svr, Config *config, bool repl = false);
+  Worker(Server *svr, Config *config);
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;

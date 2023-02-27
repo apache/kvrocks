@@ -35,6 +35,7 @@
 class Worker;
 
 namespace Redis {
+
 class Connection {
  public:
   enum Flag {
@@ -62,12 +63,12 @@ class Connection {
 
   using unsubscribe_callback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
-  void UnSubscribeChannel(const std::string &channel);
-  void UnSubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void UnsubscribeChannel(const std::string &channel);
+  void UnsubscribeAll(const unsubscribe_callback &reply = nullptr);
   int SubscriptionsCount();
   void PSubscribeChannel(const std::string &pattern);
-  void PUnSubscribeChannel(const std::string &pattern);
-  void PUnSubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void PUnsubscribeChannel(const std::string &pattern);
+  void PUnsubscribeAll(const unsubscribe_callback &reply = nullptr);
   int PSubscriptionsCount();
 
   uint64_t GetAge();
@@ -86,7 +87,7 @@ class Connection {
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() { return ip_; }
-  int GetPort() { return static_cast<int>(port_); }
+  uint32_t GetPort() { return port_; }
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() { return listening_port_; }
   uint64_t GetClientType();
@@ -136,14 +137,14 @@ class Connection {
   bool is_admin_ = false;
   bool need_free_bev_ = true;
   std::string last_cmd_;
-  time_t create_time_;
-  time_t last_interaction_;
+  int64_t create_time_;
+  int64_t last_interaction_;
 
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
   std::vector<std::string> subscribe_channels_;
-  std::vector<std::string> subcribe_patterns_;
+  std::vector<std::string> subscribe_patterns_;
 
   Server *svr_;
   bool in_exec_ = false;
@@ -152,4 +153,5 @@ class Connection {
 
   bool importing_ = false;
 };
+
 }  // namespace Redis

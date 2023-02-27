@@ -67,12 +67,12 @@ class CommandUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnSubscribeAll([output](const std::string &sub_name, int num) {
+      conn->UnsubscribeAll([output](const std::string &sub_name, int num) {
         SubscribeCommandReply(output, "unsubscribe", sub_name, num);
       });
     } else {
       for (size_t i = 1; i < args_.size(); i++) {
-        conn->UnSubscribeChannel(args_[i]);
+        conn->UnsubscribeChannel(args_[i]);
         SubscribeCommandReply(output, "unsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
@@ -96,12 +96,12 @@ class CommandPUnSubscribe : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnSubscribeAll([output](const std::string &sub_name, int num) {
+      conn->PUnsubscribeAll([output](const std::string &sub_name, int num) {
         SubscribeCommandReply(output, "punsubscribe", sub_name, num);
       });
     } else {
       for (size_t i = 1; i < args_.size(); i++) {
-        conn->PUnSubscribeChannel(args_[i]);
+        conn->PUnsubscribeChannel(args_[i]);
         SubscribeCommandReply(output, "punsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }

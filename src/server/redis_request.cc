@@ -35,12 +35,14 @@
 #include "server.h"
 
 namespace Redis {
+
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
 const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
 const size_t PROTO_MULTI_MAX_SIZE = 1024 * 1024L;
 
 Status Request::Tokenize(evbuffer *input) {
   size_t pipeline_size = 0;
+
   while (true) {
     switch (state_) {
       case ArrayLen: {
@@ -69,21 +71,25 @@ Status Request::Tokenize(evbuffer *input) {
         if (line[0] == '*') {
           auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
           if (!parse_result) {
-            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+            return {Status::NotOK, "Protocol error: invalid multibulk length"};
           }
+
           multi_bulk_len_ = *parse_result;
           if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
-            return Status(Status::NotOK, "Protocol error: invalid multibulk length");
+            return {Status::NotOK, "Protocol error: invalid multibulk length"};
           }
+
           if (multi_bulk_len_ <= 0) {
             multi_bulk_len_ = 0;
             continue;
           }
+
           state_ = BulkLen;
         } else {
           if (line.length > PROTO_INLINE_MAX_SIZE) {
-            return Status(Status::NotOK, "Protocol error: invalid bulk length");
+            return {Status::NotOK, "Protocol error: invalid bulk length"};
           }
+
           tokens_ = Util::Split(std::string(line.get(), line.length), " \t");
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
@@ -93,23 +99,28 @@ Status Request::Tokenize(evbuffer *input) {
       case BulkLen: {
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line || line.length <= 0) return Status::OK();
+
         svr_->stats_.IncrInbondBytes(line.length);
         if (line[0] != '$') {
-          return Status(Status::NotOK, "Protocol error: expected '$'");
+          return {Status::NotOK, "Protocol error: expected '$'"};
         }
+
         auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
         if (!parse_result) {
-          return Status(Status::NotOK, "Protocol error: invalid bulk length");
+          return {Status::NotOK, "Protocol error: invalid bulk length"};
         }
+
         bulk_len_ = *parse_result;
         if (bulk_len_ > PROTO_BULK_MAX_SIZE) {
-          return Status(Status::NotOK, "Protocol error: invalid bulk length");
+          return {Status::NotOK, "Protocol error: invalid bulk length"};
         }
+
         state_ = BulkData;
         break;
       }
       case BulkData:
         if (evbuffer_get_length(input) < bulk_len_ + 2) return Status::OK();
+
         char *data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(bulk_len_ + 2)));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);

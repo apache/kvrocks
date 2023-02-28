@@ -443,7 +443,6 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
   if (metadata.Expired()) {
-    value.clear();
     *type = kRedisNone;
   } else {
     *type = metadata.Type();

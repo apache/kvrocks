@@ -85,7 +85,7 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
   *ret = static_cast<int>(metadata.size);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status List::Pop(const Slice &user_key, bool left, std::string *elem) {
@@ -144,7 +144,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 /*
@@ -257,7 +257,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   }
 
   *ret = static_cast<int>(to_delete_indexes.size());
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *ret) {
@@ -335,7 +335,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
   *ret = static_cast<int>(metadata.size);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem) {
@@ -432,7 +432,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLSet), std::to_string(index)});
   batch->PutLogData(log_data.Encode());
   batch->Put(sub_key, elem);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
@@ -519,7 +519,7 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::Slice &dst, bool src_left,
@@ -583,7 +583,7 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   dst_metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, dst_ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 // Caution: trim the big list may block the server
@@ -639,6 +639,6 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 }  // namespace Redis

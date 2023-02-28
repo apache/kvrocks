@@ -104,7 +104,7 @@ rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::str
   WriteBatchLogData log_data(kRedisString);
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, raw_value);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status String::Append(const std::string &user_key, const std::string &value, int *ret) {
@@ -169,7 +169,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, i
   WriteBatchLogData log_data(kRedisString);
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, raw_data);
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
   return rocksdb::Status::OK();
 }
@@ -371,7 +371,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     AppendNamespacePrefix(pair.key, &ns_key);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
@@ -412,7 +412,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     WriteBatchLogData log_data(kRedisString);
     batch->PutLogData(log_data.Encode());
     batch->Put(metadata_cf_handle_, ns_key, bytes);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
   *ret = 1;

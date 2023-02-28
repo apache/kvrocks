@@ -64,7 +64,7 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
@@ -96,7 +96,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {

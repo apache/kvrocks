@@ -521,7 +521,7 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::C
                                 const rocksdb::Slice &key) {
   auto batch = GetWriteBatch();
   batch->Delete(cf_handle, key);
-  return Write(options, batch.get());
+  return Write(options, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
@@ -535,7 +535,7 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
   if (!s.ok()) {
     return s;
   }
-  return Write(write_opts_, batch.get());
+  return Write(write_opts_, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -549,7 +549,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   if (!s.ok()) {
     return s;
   }
-  return Write(options, batch.get());
+  return Write(options, batch->GetWriteBatch());
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -645,12 +645,12 @@ rocksdb::DB *Storage::GetDB() { return db_; }
 
 void Storage::BeginTxn() {
   is_txn_mode_ = true;
-  txn_write_batch_ = std::make_unique<rocksdb::WriteBatch>();
+  txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
 }
 
 Status Storage::CommitTxn() {
   is_txn_mode_ = false;
-  auto s = Write(write_opts_, txn_write_batch_.get());
+  auto s = Write(write_opts_, txn_write_batch_->GetWriteBatch());
   txn_write_batch_.reset();
   if (s.ok()) {
     return {Status::cOK};
@@ -658,7 +658,7 @@ Status Storage::CommitTxn() {
   return {Status::NotOK, s.ToString()};
 }
 
-std::shared_ptr<rocksdb::WriteBatch> Storage::GetWriteBatch() {
+std::shared_ptr<rocksdb::WriteBatchBase> Storage::GetWriteBatch() {
   if (!is_txn_mode_) {
     return std::make_unique<rocksdb::WriteBatch>();
   }
@@ -669,7 +669,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   auto batch = GetWriteBatch();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);
-  auto s = Write(write_opts_, batch.get());
+  auto s = Write(write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }

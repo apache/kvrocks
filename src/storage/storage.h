@@ -25,6 +25,7 @@
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>
 #include <rocksdb/utilities/backup_engine.h>
+#include <rocksdb/utilities/write_batch_with_index.h>
 
 #include <atomic>
 #include <cinttypes>
@@ -118,7 +119,7 @@ class Storage {
 
   void BeginTxn();
   Status CommitTxn();
-  std::shared_ptr<rocksdb::WriteBatch> GetWriteBatch();
+  std::shared_ptr<rocksdb::WriteBatchBase> GetWriteBatch();
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -187,7 +188,7 @@ class Storage {
 
   std::atomic<bool> db_in_retryable_io_error_{false};
   std::atomic<bool> is_txn_mode_ = false;
-  std::shared_ptr<rocksdb::WriteBatch> txn_write_batch_;
+  std::shared_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };

@@ -101,7 +101,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch.get());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   delete[] buf;
   return s;
 }

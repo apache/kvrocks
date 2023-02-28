@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -225,7 +226,6 @@ class Server {
 
   void UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
   void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
-  void UnwatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
   bool IsWatchedKeysModified(Redis::Connection *conn);
   void ResetWatchedKeys(Redis::Connection *conn);
 
@@ -302,8 +302,8 @@ class Server {
 
   // transaction
   std::atomic<size_t> watched_key_size_ = 0;
-  std::map<std::string, std::map<Redis::Connection *, bool>> watched_key_map_;
-  std::mutex watched_key_mutex_;
+  std::map<std::string, std::set<Redis::Connection *>> watched_key_map_;
+  std::shared_mutex watched_key_mutex_;
 };
 
 Server *GetServer();

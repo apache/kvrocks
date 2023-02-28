@@ -91,7 +91,7 @@ class CommandExec : public Commander {
 class CommandWatch : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    svr->WatchKey(conn, std::vector(args_.begin() + 1, args_.end()));
+    svr->WatchKey(conn, std::vector<std::string>(args_.begin() + 1, args_.end()));
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -100,7 +100,7 @@ class CommandWatch : public Commander {
 class CommandUnwatch : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    svr->UnwatchKey(conn, std::vector(args_.begin() + 1, args_.end()));
+    svr->ResetWatchedKeys(conn);
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
@@ -110,6 +110,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandMulti>("multi", 1, "multi", 0, 0, 0),
                         MakeCmdAttr<CommandDiscard>("discard", 1, "multi", 0, 0, 0),
                         MakeCmdAttr<CommandExec>("exec", 1, "exclusive multi", 0, 0, 0),
                         MakeCmdAttr<CommandWatch>("watch", -2, "multi", 1, -1, 1),
-                        MakeCmdAttr<CommandUnwatch>("unwatch", -2, "multi", 1, -1, 1), )
+                        MakeCmdAttr<CommandUnwatch>("unwatch", 1, "multi", 0, 0, 0), )
 
 }  // namespace Redis

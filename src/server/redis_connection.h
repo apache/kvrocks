@@ -123,7 +123,9 @@ class Connection {
 
   std::unique_ptr<Commander> current_cmd_;
   std::function<void(int)> close_cb_ = nullptr;
+
   std::set<std::string> watched_keys_;
+  std::atomic<bool> watched_keys_modified_ = false;
 
  private:
   uint64_t id_ = 0;

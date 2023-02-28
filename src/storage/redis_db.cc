@@ -29,6 +29,7 @@
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "server/server.h"
+#include "storage/redis_metadata.h"
 
 namespace Redis {
 
@@ -441,7 +442,11 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
 
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
-  *type = metadata.Type();
+  if (metadata.Expired()) {
+    *type = kRedisNone;
+  } else {
+    *type = metadata.Type();
+  }
   return rocksdb::Status::OK();
 }
 

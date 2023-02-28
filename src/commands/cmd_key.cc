@@ -21,6 +21,7 @@
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
 #include "time_util.h"

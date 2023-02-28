@@ -195,4 +195,14 @@ func TestKeyspace(t *testing.T) {
 			require.Equal(t, prefixKeys, gotKeys)
 		}
 	})
+
+	t.Run("Type a expired key", func(t *testing.T) {
+		expireTime := time.Second
+		key := "foo"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, "OK", rdb.SetEx(ctx, key, "bar", expireTime).Val())
+		require.Equal(t, "string", rdb.Type(ctx, key).Val())
+		time.Sleep(2 * expireTime)
+		require.Equal(t, "none", rdb.Type(ctx, key).Val())
+	})
 }

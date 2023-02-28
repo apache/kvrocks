@@ -123,7 +123,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
     std::string sub_key;
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     std::string elem;
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &elem);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &elem);
     if (!s.ok()) {
       // FIXME: should be always exists??
       return s;
@@ -195,7 +195,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
     if (iter->value() == elem) {
@@ -284,7 +284,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     if (iter->value() == pivot) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -357,7 +357,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
   PutFixed64(&buf, metadata.head + index);
   std::string sub_key;
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-  return db_->Get(read_options, sub_key, elem);
+  return storage_->Get(read_options, sub_key, elem);
 }
 
 // The offset can also be negative, -1 is the last element, -2 the penultimate
@@ -393,7 +393,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
@@ -422,7 +422,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   std::string buf, value, sub_key;
   PutFixed64(&buf, metadata.head + index);
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-  s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+  s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (!s.ok()) {
     return s;
   }
@@ -479,7 +479,7 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   PutFixed64(&curr_index_buf, curr_index);
   std::string curr_sub_key;
   InternalKey(ns_key, curr_index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&curr_sub_key);
-  s = db_->Get(rocksdb::ReadOptions(), curr_sub_key, elem);
+  s = storage_->Get(rocksdb::ReadOptions(), curr_sub_key, elem);
   if (!s.ok()) {
     return s;
   }
@@ -554,7 +554,7 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   PutFixed64(&src_buf, src_index);
   std::string src_sub_key;
   InternalKey(src_ns_key, src_buf, src_metadata.version, storage_->IsSlotIdEncoded()).Encode(&src_sub_key);
-  s = db_->Get(rocksdb::ReadOptions(), src_sub_key, elem);
+  s = storage_->Get(rocksdb::ReadOptions(), src_sub_key, elem);
   if (!s.ok()) {
     return s;
   }

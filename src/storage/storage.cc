@@ -500,6 +500,40 @@ Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb:
 
 rocksdb::SequenceNumber Storage::LatestSeq() { return db_->GetLatestSequenceNumber(); }
 
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value) {
+  return Get(options, db_->DefaultColumnFamily(), key, value);
+}
+
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                             const rocksdb::Slice &key, std::string *value) {
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    return txn_write_batch_->GetFromBatchAndDB(db_, options, column_family, key, value);
+  }
+  return db_->Get(options, column_family, key, value);
+}
+
+rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
+  return NewIterator(options, db_->DefaultColumnFamily());
+}
+rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options,
+                                        rocksdb::ColumnFamilyHandle *column_family) {
+  auto iter = db_->NewIterator(options, column_family);
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    return txn_write_batch_->NewIteratorWithBase(column_family, iter, &options);
+  }
+  return iter;
+}
+
+void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                       const size_t num_keys, const rocksdb::Slice *keys, rocksdb::PinnableSlice *values,
+                       rocksdb::Status *statuses) {
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    txn_write_batch_->MultiGetFromBatchAndDB(db_, options, column_family, num_keys, keys, values, statuses, false);
+  } else {
+    db_->MultiGet(options, column_family, num_keys, keys, values, statuses, false);
+  }
+}
+
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   if (reach_db_size_limit_) {
     return rocksdb::Status::SpaceLimit();
@@ -659,10 +693,10 @@ Status Storage::CommitTxn() {
 }
 
 std::shared_ptr<rocksdb::WriteBatchBase> Storage::GetWriteBatch() {
-  if (!is_txn_mode_) {
-    return std::make_unique<rocksdb::WriteBatch>();
+  if (is_txn_mode_) {
+    return txn_write_batch_;
   }
-  return txn_write_batch_;
+  return std::make_unique<rocksdb::WriteBatch>();
 }
 
 Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {

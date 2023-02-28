@@ -294,7 +294,7 @@ Status SlotMigrate::SendSnapshot() {
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
   rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
-  std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options, cf_handle));
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, cf_handle);
 
   // Construct key prefix to iterate the keys belong to the target slot
   std::string prefix;
@@ -646,7 +646,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
-  std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options));
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
 
   // Construct key prefix to iterate values of the complex type user key
   std::string slot_key, prefix_subkey;
@@ -747,8 +747,7 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
-  std::unique_ptr<rocksdb::Iterator> iter(
-      storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(Engine::kStreamColumnFamilyName)));
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, storage_->GetCFHandle(Engine::kStreamColumnFamilyName));
 
   std::string ns_key;
   AppendNamespacePrefix(key, &ns_key);

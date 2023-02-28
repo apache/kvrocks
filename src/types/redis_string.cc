@@ -39,7 +39,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
   raw_values->resize(keys.size());
   std::vector<rocksdb::Status> statuses(keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(keys.size());
-  db_->MultiGet(read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(), statuses.data(), false);
+  storage_->MultiGet(read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(), statuses.data());
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses[i].ok()) continue;
     (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
@@ -65,7 +65,7 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(db_);
   read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);

@@ -53,7 +53,7 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *ret += 1;
@@ -86,7 +86,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *ret += 1;
@@ -142,7 +142,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   storage_->SetReadOptions(read_options);
 
   uint64_t id = 0, pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -183,7 +183,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -226,7 +226,7 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);

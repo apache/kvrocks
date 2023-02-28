@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,11 +82,20 @@ func TestMulti(t *testing.T) {
 		require.Zero(t, rdb.Exists(ctx, "myset").Val())
 	})
 
-	t.Run("TRANSACTION cannot read your own writes now", func(t *testing.T) {
-		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
-		require.NoError(t, rdb.Set(ctx, "my_txn_key", "v1", 0).Err())
-		require.NoError(t, rdb.Get(ctx, "my_txn_key").Err())
-		require.Equal(t, []interface{}{"OK", nil}, rdb.Do(ctx, "EXEC").Val())
+	t.Run("TRANSACTION can read its own writes", func(t *testing.T) {
+		var get *redis.StringCmd
+		var hgetall *redis.MapStringStringCmd
+		require.NoError(t, rdb.HSet(ctx, "my_hash_key", "f0", "v0").Err())
+		_, err := rdb.TxPipelined(ctx, func(pipeline redis.Pipeliner) error {
+			pipeline.Set(ctx, "my_string_key", "visible", 0)
+			get = pipeline.Get(ctx, "my_string_key")
+			pipeline.HSet(ctx, "my_hash_key", "f1", "v1", "f2", "v2")
+			hgetall = pipeline.HGetAll(ctx, "my_hash_key")
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, "visible", get.Val())
+		require.Equal(t, map[string]string{"f0": "v0", "f1": "v1", "f2": "v2"}, hgetall.Val())
 	})
 
 	t.Run("EXEC fails if there are errors while queueing commands #1", func(t *testing.T) {

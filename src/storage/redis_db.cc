@@ -66,7 +66,7 @@ rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
-  return db_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+  return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
 }
 
 rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
@@ -82,7 +82,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   std::string value;
   Metadata metadata(kRedisNone, false);
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
+  rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
   metadata.Decode(value);
   if (metadata.Expired()) {
@@ -112,7 +112,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
 
   std::string value;
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
+  rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
@@ -132,7 +132,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   std::string ns_key, value;
   for (const auto &key : keys) {
     AppendNamespacePrefix(key, &ns_key);
-    s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+    s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
     if (s.ok()) {
       Metadata metadata(kRedisNone, false);
       metadata.Decode(value);
@@ -151,7 +151,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
@@ -182,7 +182,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -236,7 +236,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -360,7 +360,7 @@ rocksdb::Status Database::FlushAll() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
@@ -388,7 +388,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
@@ -437,7 +437,7 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
@@ -470,7 +470,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, cons
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_->GetDB(), read_options, cf_handle);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     return rocksdb::Status::NotFound();
@@ -525,7 +525,7 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slo
   rocksdb::ReadOptions read_options;
   read_options.snapshot = snapshot;
   storage_->SetReadOptions(read_options);
-  auto iter = db_->NewIterator(read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   bool end = false;
   for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
     std::string prefix;
@@ -572,7 +572,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
     InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);

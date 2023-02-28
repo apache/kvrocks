@@ -31,9 +31,11 @@ struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
   using base_type = std::unique_ptr<rocksdb::Iterator>;
 
   explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
-  UniqueIterator(rocksdb::DB* db, const rocksdb::ReadOptions& options, rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(db->NewIterator(options, column_family)) {}
-  UniqueIterator(rocksdb::DB* db, const rocksdb::ReadOptions& options) : base_type(db->NewIterator(options)) {}
+  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
+                 rocksdb::ColumnFamilyHandle* column_family)
+      : base_type(storage->NewIterator(options, column_family)) {}
+  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
+      : base_type(storage->NewIterator(options)) {}
 };
 
 }  // namespace DBUtil

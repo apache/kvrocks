@@ -73,7 +73,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
 
     if (metadata.size > 0) {
       std::string old_score_bytes;
-      s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
+      s = storage_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
         if (!s.IsNotFound() && flags.HasNX()) {
@@ -195,7 +195,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -264,7 +264,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   storage_->SetReadOptions(read_options);
 
   auto batch = storage_->GetWriteBatch();
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -366,7 +366,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -449,7 +449,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   auto batch = storage_->GetWriteBatch();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -516,7 +516,7 @@ rocksdb::Status ZSet::Score(const Slice &user_key, const Slice &member, double *
 
   std::string member_key, score_bytes;
   InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-  s = db_->Get(read_options, member_key, &score_bytes);
+  s = storage_->Get(read_options, member_key, &score_bytes);
   if (!s.ok()) return s;
   *score = DecodeDouble(score_bytes.data());
   return rocksdb::Status::OK();
@@ -540,7 +540,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   for (const auto &member : members) {
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     std::string score_bytes;
-    s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
+    s = storage_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
     if (s.ok()) {
       score_bytes.append(member.data(), member.size());
       InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
@@ -591,7 +591,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.snapshot = ss.GetSnapShot();
   std::string score_bytes, member_key;
   InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-  s = db_->Get(read_options, member_key, &score_bytes);
+  s = storage_->Get(read_options, member_key, &score_bytes);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   double target_score = DecodeDouble(score_bytes.data());
@@ -609,7 +609,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -833,7 +833,7 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
   for (const auto &member : members) {
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     score_bytes.clear();
-    s = db_->Get(read_options, member_key, &score_bytes);
+    s = storage_->Get(read_options, member_key, &score_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       continue;

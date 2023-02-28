@@ -117,4 +117,13 @@ func TestProtocolNetwork(t *testing.T) {
 		require.NoError(t, c.Write("*3\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\nval\r\n"))
 		c.MustMatch(t, "invalid multibulk length")
 	})
+
+	t.Run("command type should return the simple string", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.Write("set foo bar\n"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.Write("type foo\n"))
+		c.MustRead(t, "+string")
+	})
 }

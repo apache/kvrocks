@@ -43,8 +43,6 @@
 #include <sys/un.h>
 
 #include <algorithm>
-#include <cctype>
-#include <cstring>
 #include <list>
 #include <utility>
 
@@ -53,7 +51,7 @@
 #include "server.h"
 #include "storage/scripting.h"
 
-Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), base_(event_base_new()) {
+Worker::Worker(Server *svr, Config *config) : svr_(svr), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_ = event_new(base_, -1, EV_PERSIST, TimerCB, this);
@@ -67,7 +65,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr), base_(event_
     for (const auto &bind : binds) {
       Status s = listenTCP(bind, *port, config->backlog);
       if (!s.IsOK()) {
-        LOG(ERROR) << "[worker] Failed to listen on: " << bind << ":" << *port << ", encounter error: " << s.Msg();
+        LOG(ERROR) << "[worker] Failed to listen on: " << bind << ":" << *port << ". Error: " << s.Msg();
         exit(1);
       }
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
@@ -88,10 +86,10 @@ Worker::~Worker() {
     iter->Close();
   }
   event_free(timer_);
-  if (rate_limit_group_ != nullptr) {
+  if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
   }
-  if (rate_limit_group_cfg_ != nullptr) {
+  if (rate_limit_group_cfg_) {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
@@ -109,18 +107,21 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   auto worker = static_cast<Worker *>(ctx);
   int local_port = Util::GetLocalPort(fd);  // NOLINT
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
+
   auto s = Util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
-    LOG(ERROR) << "[worker] Failed to set tcp-keepalive, err:" << s.Msg();
+    LOG(ERROR) << "[worker] Failed to set tcp-keepalive on socket. Error: " << s.Msg();
     evutil_closesocket(fd);
     return;
   }
+
   s = Util::SockSetTcpNoDelay(fd, 1);
   if (!s.IsOK()) {
-    LOG(ERROR) << "[worker] Failed to set tcp-nodelay, err:" << s.Msg();
+    LOG(ERROR) << "[worker] Failed to set tcp-nodelay on socket. Error: " << s.Msg();
     evutil_closesocket(fd);
     return;
   }
+
   event_base *base = evconnlistener_get_base(listener);
   auto evThreadSafeFlags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
@@ -161,6 +162,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
+
   s = worker->AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + s.Msg());
@@ -171,12 +173,14 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     conn->Close();
     return;
   }
+
   std::string ip;
   uint32_t port = 0;
   if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
     conn->SetAddr(ip, port);
   }
-  if (worker->rate_limit_group_ != nullptr) {
+
+  if (worker->rate_limit_group_) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
@@ -190,9 +194,11 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   auto evThreadSafeFlags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
   bufferevent *bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
+
   auto s = worker->AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = Redis::Error("ERR " + s.Msg());
@@ -203,45 +209,49 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
     conn->Close();
     return;
   }
+
   conn->SetAddr(worker->svr_->GetConfig()->unixsocket, 0);
-  if (worker->rate_limit_group_ != nullptr) {
+  if (worker->rate_limit_group_) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
 }
 
 Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
-  int af = 0, rv = 0, fd = 0, sock_opt = 1;
+  bool ipv6_used = strchr(host.data(), ':');
 
-  if (strchr(host.data(), ':')) {
-    af = AF_INET6;
-  } else {
-    af = AF_INET;
-  }
-  struct addrinfo hints, *srv_info = nullptr, *p = nullptr;
+  struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
-  hints.ai_family = af;
+  hints.ai_family = ipv6_used ? AF_INET6 : AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if ((rv = getaddrinfo(host.data(), std::to_string(port).c_str(), &hints, &srv_info)) != 0) {
-    return Status(Status::NotOK, gai_strerror(rv));
+  struct addrinfo *srv_info = nullptr;
+  if (int rv = getaddrinfo(host.data(), std::to_string(port).c_str(), &hints, &srv_info); rv != 0) {
+    return {Status::NotOK, gai_strerror(rv)};
   }
 
-  for (p = srv_info; p != nullptr; p = p->ai_next) {
-    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) continue;
-    if (af == AF_INET6 && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
+  for (auto p = srv_info; p != nullptr; p = p->ai_next) {
+    int fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (fd == -1) continue;
+
+    int sock_opt = 1;
+    if (ipv6_used && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
       goto error;
     }
+
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
       goto error;
     }
+
     // to support multi-thread binding on macOS
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
       goto error;
     }
+
     if (bind(fd, p->ai_addr, p->ai_addrlen)) {
       goto error;
     }
+
     evutil_make_socket_nonblocking(fd);
     auto lev = evconnlistener_new(base_, newTCPConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
@@ -252,30 +262,35 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
 
 error:
   freeaddrinfo(srv_info);
-  return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+
+  return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
 }
 
 Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) {
   unlink(path.c_str());
   sockaddr_un sa{};
   if (path.size() > sizeof(sa.sun_path) - 1) {
-    return Status(Status::NotOK, "unix socket path too long");
+    return {Status::NotOK, "unix socket path too long"};
   }
+
   sa.sun_family = AF_LOCAL;
   strncpy(sa.sun_path, path.c_str(), sizeof(sa.sun_path) - 1);
   int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
   if (fd == -1) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
   }
+
   if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-    return Status(Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+    return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
   }
+
   evutil_make_socket_nonblocking(fd);
   auto lev = evconnlistener_new(base_, newUnixSocketConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
   if (perm != 0) {
     chmod(sa.sun_path, (mode_t)perm);
   }
+
   return Status::OK();
 }
 
@@ -298,21 +313,25 @@ Status Worker::AddConnection(Redis::Connection *c) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(c->GetFD());
   if (iter != conns_.end()) {
-    return Status(Status::NotOK, "connection was exists");
+    return {Status::NotOK, "connection was exists"};
   }
+
   int max_clients = svr_->GetConfig()->maxclients;
   if (svr_->IncrClientNum() >= max_clients) {
     svr_->DecrClientNum();
-    return Status(Status::NotOK, "max number of clients reached");
+    return {Status::NotOK, "max number of clients reached"};
   }
+
   conns_.insert(std::pair<int, Redis::Connection *>(c->GetFD(), c));
-  uint64_t id = svr_->GetClientID()->fetch_add(1, std::memory_order_relaxed);
+  uint64_t id = svr_->GetClientID();
   c->SetID(id);
+
   return Status::OK();
 }
 
 Redis::Connection *Worker::removeConnection(int fd) {
   Redis::Connection *conn = nullptr;
+
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
@@ -320,6 +339,7 @@ Redis::Connection *Worker::removeConnection(int fd) {
     conns_.erase(iter);
     svr_->DecrClientNum();
   }
+
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end()) {
     conn = iter->second;
@@ -327,15 +347,19 @@ Redis::Connection *Worker::removeConnection(int fd) {
     svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }
+
   return conn;
 }
 
 void Worker::DetachConnection(Redis::Connection *conn) {
   if (!conn) return;
+
   removeConnection(conn->GetFD());
-  if (rate_limit_group_ != nullptr) {
+
+  if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
+
   auto bev = conn->GetBufferEvent();
   bufferevent_disable(bev, EV_READ | EV_WRITE);
   bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);
@@ -343,8 +367,10 @@ void Worker::DetachConnection(Redis::Connection *conn) {
 
 void Worker::FreeConnection(Redis::Connection *conn) {
   if (!conn) return;
+
   removeConnection(conn->GetFD());
-  if (rate_limit_group_ != nullptr) {
+
+  if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
   delete conn;
@@ -352,19 +378,20 @@ void Worker::FreeConnection(Redis::Connection *conn) {
 
 void Worker::FreeConnectionByID(int fd, uint64_t id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
-  auto conn_iter = conns_.find(fd);
-  if (conn_iter != conns_.end() && conn_iter->second->GetID() == id) {
+  auto iter = conns_.find(fd);
+  if (iter != conns_.end() && iter->second->GetID() == id) {
     if (rate_limit_group_ != nullptr) {
-      bufferevent_remove_from_rate_limit_group(conn_iter->second->GetBufferEvent());
+      bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
     }
-    delete conn_iter->second;
-    conns_.erase(conn_iter);
+    delete iter->second;
+    conns_.erase(iter);
     svr_->DecrClientNum();
   }
-  auto monitor_conn_iter = monitor_conns_.find(fd);
-  if (monitor_conn_iter != monitor_conns_.end() && monitor_conn_iter->second->GetID() == id) {
-    delete monitor_conn_iter->second;
-    monitor_conns_.erase(monitor_conn_iter);
+
+  iter = monitor_conns_.find(fd);
+  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
+    delete iter->second;
+    monitor_conns_.erase(iter);
     svr_->DecrClientNum();
     svr_->DecrMonitorClientNum();
   }
@@ -378,7 +405,8 @@ Status Worker::EnableWriteEvent(int fd) {
     bufferevent_enable(bev, EV_WRITE);
     return Status::OK();
   }
-  return Status(Status::NotOK);
+
+  return {Status::NotOK, "connection doesn't exist"};
 }
 
 Status Worker::Reply(int fd, const std::string &reply) {
@@ -389,7 +417,8 @@ Status Worker::Reply(int fd, const std::string &reply) {
     Redis::Reply(iter->second->Output(), reply);
     return Status::OK();
   }
-  return Status(Status::NotOK, "connection doesn't exist");
+
+  return {Status::NotOK, "connection doesn't exist"};
 }
 
 void Worker::BecomeMonitorConn(Redis::Connection *conn) {
@@ -404,15 +433,19 @@ void Worker::BecomeMonitorConn(Redis::Connection *conn) {
 
 void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
   auto now = Util::GetTimeStampUS();
+
   std::string output;
   output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
   output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
   for (const auto &token : tokens) {
     output += " \"" + token + "\"";
   }
+
   std::unique_lock<std::mutex> lock(conns_mu_);
+
   for (const auto &iter : monitor_conns_) {
     if (conn == iter.second) continue;  // skip the monitor command
+
     if (conn->GetNamespace() == iter.second->GetNamespace() || iter.second->GetNamespace() == kDefaultNamespace) {
       iter.second->Reply(Redis::SimpleString(output));
     }
@@ -421,24 +454,29 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
 
 std::string Worker::GetClientsStr() {
   std::unique_lock<std::mutex> lock(conns_mu_);
+
   std::string output;
   for (const auto &iter : conns_) {
     Redis::Connection *conn = iter.second;
     output.append(conn->ToString());
   }
+
   return output;
 }
 
 void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
                         int64_t *killed) {
   std::lock_guard<std::mutex> guard(conns_mu_);
+
   for (const auto &iter : conns_) {
     Redis::Connection *conn = iter.second;
     if (skipme && self == conn) continue;
-    // no need to kill the client again if flags as kCloseAfterReply
+
+    // no need to kill the client again if the kCloseAfterReply flag is set
     if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) {
       continue;
     }
+
     if ((type & conn->GetClientType()) || (!addr.empty() && conn->GetAddr() == addr) ||
         (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
@@ -454,11 +492,13 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string 
 
 void Worker::KickoutIdleClients(int timeout) {
   std::list<std::pair<int, uint64_t>> to_be_killed_conns;
+
   {
     std::lock_guard<std::mutex> guard(conns_mu_);
     if (conns_.empty()) {
       return;
     }
+
     int iterations = std::min(static_cast<int>(conns_.size()), 50);
     auto iter = conns_.upper_bound(last_iter_conn_fd);
     while (iterations--) {
@@ -471,6 +511,7 @@ void Worker::KickoutIdleClients(int timeout) {
     iter--;
     last_iter_conn_fd = iter->first;
   }
+
   for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
   }

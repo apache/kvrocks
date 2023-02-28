@@ -29,6 +29,7 @@
 
 #include "redis_connection.h"
 #include "server.h"
+#include "time_util.h"
 #include "tls_util.h"
 #include "worker.h"
 
@@ -36,8 +37,7 @@ namespace Redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
     : need_free_bev_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
-  time_t now = 0;
-  time(&now);
+  int64_t now = Util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
 }
@@ -52,8 +52,8 @@ Connection::~Connection() {
     }
   }
   // unsubscribe all channels and patterns if exists
-  UnSubscribeAll();
-  PUnSubscribeAll();
+  UnsubscribeAll();
+  PUnsubscribeAll();
 }
 
 std::string Connection::ToString() {
@@ -78,9 +78,10 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   if (!s.IsOK()) {
     conn->EnableFlag(Redis::Connection::kCloseAfterReply);
     conn->Reply(Redis::Error(s.Msg()));
-    LOG(INFO) << "Failed to tokenize the request, encounter error: " << s.Msg();
+    LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
+
   conn->ExecuteCommands(conn->req_.GetCommands());
   if (conn->IsFlagEnabled(kCloseAsync)) {
     conn->Close();
@@ -106,11 +107,13 @@ void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
     conn->Close();
     return;
   }
+
   if (events & BEV_EVENT_EOF) {
     DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr() << ", while closed by client";
     conn->Close();
     return;
   }
+
   if (events & BEV_EVENT_TIMEOUT) {
     DLOG(INFO) << "[connection] The client: " << conn->GetAddr() << "] reached timeout";
     bufferevent_enable(bev, EV_READ | EV_WRITE);
@@ -134,19 +137,11 @@ void Connection::SetAddr(std::string ip, uint32_t port) {
   addr_ = ip_ + ":" + std::to_string(port_);
 }
 
-uint64_t Connection::GetAge() {
-  time_t now = 0;
-  time(&now);
-  return static_cast<uint64_t>(now - create_time_);
-}
+uint64_t Connection::GetAge() { return static_cast<uint64_t>(Util::GetTimeStamp() - create_time_); }
 
-void Connection::SetLastInteraction() { time(&last_interaction_); }
+void Connection::SetLastInteraction() { last_interaction_ = Util::GetTimeStamp(); }
 
-uint64_t Connection::GetIdleTime() {
-  time_t now = 0;
-  time(&now);
-  return static_cast<uint64_t>(now - last_interaction_);
-}
+uint64_t Connection::GetIdleTime() { return static_cast<uint64_t>(Util::GetTimeStamp() - last_interaction_); }
 
 // Currently, master connection is not handled in connection
 // but in replication thread.
@@ -157,7 +152,9 @@ uint64_t Connection::GetIdleTime() {
 //  kTypePubsub -> Client subscribed to Pub/Sub channels
 uint64_t Connection::GetClientType() {
   if (IsFlagEnabled(kSlave)) return kTypeSlave;
-  if (!subscribe_channels_.empty() || !subcribe_patterns_.empty()) return kTypePubsub;
+
+  if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) return kTypePubsub;
+
   return kTypeNormal;
 }
 
@@ -166,7 +163,7 @@ std::string Connection::GetFlags() {
   if (IsFlagEnabled(kSlave)) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
   if (IsFlagEnabled(kMonitor)) flags.append("M");
-  if (!subscribe_channels_.empty() || !subcribe_patterns_.empty()) flags.append("P");
+  if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) flags.append("P");
   if (flags.empty()) flags = "N";
   return flags;
 }
@@ -181,32 +178,33 @@ void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {
     if (channel == chan) return;
   }
+
   subscribe_channels_.emplace_back(channel);
   owner_->svr_->SubscribeChannel(channel, this);
 }
 
-void Connection::UnSubscribeChannel(const std::string &channel) {
-  auto iter = subscribe_channels_.begin();
-  for (; iter != subscribe_channels_.end(); iter++) {
+void Connection::UnsubscribeChannel(const std::string &channel) {
+  for (auto iter = subscribe_channels_.begin(); iter != subscribe_channels_.end(); iter++) {
     if (*iter == channel) {
       subscribe_channels_.erase(iter);
-      owner_->svr_->UnSubscribeChannel(channel, this);
+      owner_->svr_->UnsubscribeChannel(channel, this);
       return;
     }
   }
 }
 
-void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
+void Connection::UnsubscribeAll(const unsubscribe_callback &reply) {
   if (subscribe_channels_.empty()) {
-    if (reply != nullptr) reply("", static_cast<int>(subcribe_patterns_.size()));
+    if (reply) reply("", static_cast<int>(subscribe_patterns_.size()));
     return;
   }
+
   int removed = 0;
   for (const auto &chan : subscribe_channels_) {
-    owner_->svr_->UnSubscribeChannel(chan, this);
+    owner_->svr_->UnsubscribeChannel(chan, this);
     removed++;
-    if (reply != nullptr) {
-      reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subcribe_patterns_.size()));
+    if (reply) {
+      reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subscribe_patterns_.size()));
     }
   }
   subscribe_channels_.clear();
@@ -215,56 +213,58 @@ void Connection::UnSubscribeAll(const unsubscribe_callback &reply) {
 int Connection::SubscriptionsCount() { return static_cast<int>(subscribe_channels_.size()); }
 
 void Connection::PSubscribeChannel(const std::string &pattern) {
-  for (const auto &p : subcribe_patterns_) {
+  for (const auto &p : subscribe_patterns_) {
     if (pattern == p) return;
   }
-  subcribe_patterns_.emplace_back(pattern);
+  subscribe_patterns_.emplace_back(pattern);
   owner_->svr_->PSubscribeChannel(pattern, this);
 }
 
-void Connection::PUnSubscribeChannel(const std::string &pattern) {
-  auto iter = subcribe_patterns_.begin();
-  for (; iter != subcribe_patterns_.end(); iter++) {
+void Connection::PUnsubscribeChannel(const std::string &pattern) {
+  for (auto iter = subscribe_patterns_.begin(); iter != subscribe_patterns_.end(); iter++) {
     if (*iter == pattern) {
-      subcribe_patterns_.erase(iter);
-      owner_->svr_->PUnSubscribeChannel(pattern, this);
+      subscribe_patterns_.erase(iter);
+      owner_->svr_->PUnsubscribeChannel(pattern, this);
       return;
     }
   }
 }
 
-void Connection::PUnSubscribeAll(const unsubscribe_callback &reply) {
-  if (subcribe_patterns_.empty()) {
-    if (reply != nullptr) reply("", static_cast<int>(subscribe_channels_.size()));
+void Connection::PUnsubscribeAll(const unsubscribe_callback &reply) {
+  if (subscribe_patterns_.empty()) {
+    if (reply) reply("", static_cast<int>(subscribe_channels_.size()));
     return;
   }
 
   int removed = 0;
-  for (const auto &pattern : subcribe_patterns_) {
-    owner_->svr_->PUnSubscribeChannel(pattern, this);
+  for (const auto &pattern : subscribe_patterns_) {
+    owner_->svr_->PUnsubscribeChannel(pattern, this);
     removed++;
-    if (reply != nullptr) {
-      reply(pattern, static_cast<int>(subcribe_patterns_.size() - removed + subscribe_channels_.size()));
+    if (reply) {
+      reply(pattern, static_cast<int>(subscribe_patterns_.size() - removed + subscribe_channels_.size()));
     }
   }
-  subcribe_patterns_.clear();
+  subscribe_patterns_.clear();
 }
 
-int Connection::PSubscriptionsCount() { return static_cast<int>(subcribe_patterns_.size()); }
+int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patterns_.size()); }
 
 bool Connection::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;
+
   if (!config->profiling_sample_all_commands &&
       config->profiling_sample_commands.find(cmd) == config->profiling_sample_commands.end()) {
     return false;
   }
+
   if (config->profiling_sample_ratio == 100 || std::rand() % 100 <= config->profiling_sample_ratio) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
     rocksdb::get_perf_context()->Reset();
     rocksdb::get_iostats_context()->Reset();
     return true;
   }
+
   return false;
 }
 
@@ -279,12 +279,13 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
   if (perf_context.empty()) return;  // request without db operation
-  auto entry = new PerfEntry();
+
+  auto entry = std::unique_ptr<PerfEntry>();
   entry->cmd_name = cmd;
   entry->duration = duration;
   entry->iostats_context = std::move(iostats_context);
   entry->perf_context = std::move(perf_context);
-  svr_->GetPerfLog()->PushEntry(entry);
+  svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
@@ -406,12 +407,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     SetLastCmd(cmd_name);
     svr_->stats_.IncrCalls(cmd_name);
+
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = isProfilingEnabled(cmd_name);
     s = current_cmd_->Execute(svr_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
+
     svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration);
     svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);

@@ -32,6 +32,26 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func TestScanEmptyKey(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.NoError(t, rdb.Set(ctx, "", "empty", 0).Err())
+	require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+	require.Equal(t, []string{"", "foo"}, scanAll(t, rdb))
+
+	require.NoError(t, rdb.SAdd(ctx, "sadd_key", "", "fab", "fiz", "foobar").Err())
+	keys, _, err := rdb.SScan(ctx, "sadd_key", 0, "*", 10000).Result()
+	require.NoError(t, err)
+	slices.Sort(keys)
+	slices.Compact(keys)
+	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
+}
+
 func TestScan(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()

@@ -310,7 +310,7 @@ class CommandDBSize : public Commander {
     std::string ns = conn->GetNamespace();
     if (args_.size() == 1) {
       KeyNumStats stats;
-      svr->GetLastestKeyNumStats(ns, &stats);
+      svr->GetLatestKeyNumStats(ns, &stats);
       *output = Redis::Integer(stats.n_key);
     } else if (args_.size() == 2 && args_[1] == "scan") {
       Status s = svr->AsyncScanDBSize(ns);
@@ -737,7 +737,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(Redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys));
+    list.emplace_back(Redis::MultiBulkString(keys, false));
 
     return Redis::Array(list);
   }
@@ -808,7 +808,7 @@ class CommandBGSave : public Commander {
       return Status::OK();
     }
 
-    Status s = svr->AsyncBgsaveDB();
+    Status s = svr->AsyncBgSaveDB();
     if (!s.IsOK()) return s;
 
     *output = Redis::SimpleString("OK");

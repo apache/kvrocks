@@ -92,7 +92,7 @@ class ServerLogData {
   // distinguish ServerLogData with Redis::WriteBatchLogData.
   static const char kReplIdTag = 'r';
   static bool IsServerLogData(const char *header) {
-    if (header != nullptr) return *header == kReplIdTag;
+    if (header) return *header == kReplIdTag;
     return false;
   }
 
@@ -142,16 +142,16 @@ class Server {
 
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
-  void UnSubscribeChannel(const std::string &channel, Redis::Connection *conn);
+  void UnsubscribeChannel(const std::string &channel, Redis::Connection *conn);
   void GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
   void ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
   void PSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
-  void PUnSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
+  void PUnsubscribeChannel(const std::string &pattern, Redis::Connection *conn);
   int GetPubSubPatternSize() { return static_cast<int>(pubsub_patterns_.size()); }
 
-  void AddBlockingKey(const std::string &key, Redis::Connection *conn);
-  void UnBlockingKey(const std::string &key, Redis::Connection *conn);
+  void BlockOnKey(const std::string &key, Redis::Connection *conn);
+  void UnblockOnKey(const std::string &key, Redis::Connection *conn);
   void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
                       Redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
@@ -161,7 +161,7 @@ class Server {
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
 
-  static int GetUnixTime();
+  static int GetCachedUnixTime();
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
   void GetMemoryInfo(std::string *info);
@@ -177,10 +177,10 @@ class Server {
   void PrepareRestoreDB();
   void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
-  Status AsyncBgsaveDB();
+  Status AsyncBgSaveDB();
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   Status AsyncScanDBSize(const std::string &ns);
-  void GetLastestKeyNumStats(const std::string &ns, KeyNumStats *stats);
+  void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
   int DecrClientNum();
@@ -190,7 +190,7 @@ class Server {
   int IncrBlockedClientNum();
   int DecrBlockedClientNum();
   std::string GetClientsStr();
-  std::atomic<uint64_t> *GetClientID();
+  uint64_t GetClientID();
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                   Redis::Connection *conn);
 
@@ -233,9 +233,9 @@ class Server {
   void updateCachedTime();
   Status autoResizeBlockAndSST();
 
-  std::atomic<bool> stop_;
-  std::atomic<bool> is_loading_;
-  time_t start_time_ = 0;
+  std::atomic<bool> stop_ = false;
+  std::atomic<bool> is_loading_ = false;
+  int64_t start_time_;
   std::mutex slaveof_mu_;
   std::string master_host_;
   uint32_t master_port_ = 0;
@@ -252,12 +252,11 @@ class Server {
   std::atomic<int> connected_clients_{0};
   std::atomic<int> monitor_clients_{0};
   std::atomic<uint64_t> total_clients_{0};
-  std::atomic<int> excuting_command_num_{0};
 
   // slave
   std::mutex slave_threads_mu_;
-  std::list<FeedSlaveThread *> slave_threads_;
-  std::atomic<int> fetch_file_threads_num_;
+  std::list<std::unique_ptr<FeedSlaveThread>> slave_threads_;
+  std::atomic<int> fetch_file_threads_num_ = 0;
 
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;

@@ -1125,7 +1125,7 @@ class CommandType : public Commander {
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
-      *output = Redis::BulkString(RedisTypeNames[type]);
+      *output = Redis::SimpleString(RedisTypeNames[type]);
       return Status::OK();
     }
 

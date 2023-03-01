@@ -26,7 +26,7 @@ on:
 jobs:
   publish-nightly-docker-image:
     name: Publish nightly Docker image
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-20.04-16-cores
     steps:
 
       - uses: actions/checkout@v3

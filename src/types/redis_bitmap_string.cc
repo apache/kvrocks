@@ -57,7 +57,7 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
 
   *raw_value = raw_value->substr(0, STRING_HDR_SIZE);
   raw_value->append(string_value);
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, *raw_value);

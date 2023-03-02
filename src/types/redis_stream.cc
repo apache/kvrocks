@@ -114,7 +114,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   s = getNextEntryID(metadata, options, first_entry, &next_entry_id);
   if (!s.ok()) return s;
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
@@ -233,7 +233,7 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
@@ -581,7 +581,7 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
@@ -718,7 +718,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
     metadata.max_deleted_entry_id = *max_deleted_id;
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 

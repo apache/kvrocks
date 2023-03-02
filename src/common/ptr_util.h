@@ -18,12 +18,38 @@
  *
  */
 
-#include "redis_pubsub.h"
+#include <memory>
 
-namespace Redis {
-rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
-  auto batch = storage_->GetWriteBatchBase();
-  batch->Put(pubsub_cf_handle_, channel, value);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-}
-}  // namespace Redis
+#pragma once
+
+enum class ObserverOrUnique : char { Observer, Unique };
+
+template <typename T, typename D = std::default_delete<T>>
+struct ObserverOrUniquePtr : private D {
+  template <typename U>
+  ObserverOrUniquePtr(U* ptr, ObserverOrUnique own) : ptr(static_cast<T*>(ptr)), own(own) {}
+
+  ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
+
+  template <typename U>
+  ObserverOrUniquePtr(ObserverOrUniquePtr<U>&& p) : ptr(static_cast<T*>(p.ptr)), own(p.own) {
+    p.ptr = nullptr;
+  }
+
+  ~ObserverOrUniquePtr() {
+    if (own == ObserverOrUnique::Unique) {
+      (*this)(ptr);
+    }
+  }
+
+  T* operator->() const { return ptr; }
+  T* Get() const { return ptr; }
+  T* Release() {
+    own = ObserverOrUnique::Observer;
+    return ptr;
+  }
+
+ private:
+  T* ptr;
+  ObserverOrUnique own;
+};

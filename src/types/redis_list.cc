@@ -58,7 +58,7 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   AppendNamespacePrefix(user_key, &ns_key);
 
   ListMetadata metadata;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   RedisCommand cmd = left ? kRedisCmdLPush : kRedisCmdRPush;
   WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
   batch->PutLogData(log_data.Encode());
@@ -111,7 +111,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   RedisCommand cmd = left ? kRedisCmdLPop : kRedisCmdRPop;
   WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
   batch->PutLogData(log_data.Encode());
@@ -210,7 +210,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     return rocksdb::Status::NotFound();
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLRem), std::to_string(count), elem.ToString()});
   batch->PutLogData(log_data.Encode());
 
@@ -298,7 +298,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
     return rocksdb::Status::NotFound();
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList,
                              {std::to_string(kRedisCmdLInsert), before ? "1" : "0", pivot.ToString(), elem.ToString()});
   batch->PutLogData(log_data.Encode());
@@ -428,7 +428,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   }
   if (value == elem) return rocksdb::Status::OK();
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLSet), std::to_string(index)});
   batch->PutLogData(log_data.Encode());
   batch->Put(sub_key, elem);
@@ -494,7 +494,7 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
     return rocksdb::Status::OK();
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove)});
   batch->PutLogData(log_data.Encode());
 
@@ -545,7 +545,7 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
 
   elem->clear();
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove)});
   batch->PutLogData(log_data.Encode());
 
@@ -606,7 +606,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   }
   if (start < 0) start = 0;
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),
                                                                   std::to_string(stop)});
   batch->PutLogData(log_data.Encode());

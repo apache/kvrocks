@@ -49,7 +49,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
 
   int added = 0;
   int changed = 0;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   std::string member_key;
@@ -182,7 +182,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
 
@@ -263,7 +263,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
@@ -367,7 +367,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   if (!spec.reversed) {
@@ -450,7 +450,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
 
@@ -532,7 +532,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   int removed = 0;
@@ -634,7 +634,7 @@ rocksdb::Status ZSet::Overwrite(const Slice &user_key, const std::vector<MemberS
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   for (const auto &ms : mscores) {

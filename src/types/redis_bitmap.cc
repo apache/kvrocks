@@ -215,7 +215,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   } else {
     value[byte_index] = static_cast<char>(value[byte_index] & (~(1 << bit_offset)));
   }
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(offset)});
   batch->PutLogData(log_data.Encode());
   batch->Put(sub_key, value);
@@ -374,7 +374,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     meta_pairs.emplace_back(ns_op_key, metadata);
   }
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   if (max_size == 0) {
     batch->Delete(metadata_cf_handle_, ns_key);
     return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());

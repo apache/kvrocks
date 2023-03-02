@@ -18,12 +18,28 @@
  *
  */
 
-#include "redis_pubsub.h"
+#include "common/ptr_util.h"
 
-namespace Redis {
-rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
-  auto batch = storage_->GetWriteBatchBase();
-  batch->Put(pubsub_cf_handle_, channel, value);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+#include <gtest/gtest.h>
+struct Counter {
+  Counter(int* i) : i_(i) { ++*i_; }
+  ~Counter() { --*i_; }
+
+  int* i_;
+};
+TEST(ObserverOrUniquePtr, Unique) {
+  int v = 0;
+  {
+    ObserverOrUniquePtr<Counter> unique(new Counter{&v}, ObserverOrUnique::Unique);
+    ASSERT_EQ(v, 1);
+  }
+  ASSERT_EQ(v, 0);
 }
-}  // namespace Redis
+
+TEST(CompositePtr, Observer) {
+  int v = 0;
+  ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
+  ASSERT_EQ(v, 1);
+  delete observer.Release();
+  ASSERT_EQ(v, 0);
+}

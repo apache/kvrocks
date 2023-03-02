@@ -36,6 +36,7 @@
 
 #include "config/config.h"
 #include "lock_manager.h"
+#include "ptr_util.h"
 #include "rw_lock.h"
 #include "status.h"
 
@@ -128,7 +129,7 @@ class Storage {
 
   void BeginTxn();
   Status CommitTxn();
-  std::shared_ptr<rocksdb::WriteBatchBase> GetWriteBatch();
+  ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -197,7 +198,7 @@ class Storage {
 
   std::atomic<bool> db_in_retryable_io_error_{false};
   std::atomic<bool> is_txn_mode_ = false;
-  std::shared_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
+  std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_ = nullptr;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };

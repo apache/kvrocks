@@ -100,7 +100,7 @@ std::vector<rocksdb::Status> String::getValues(const std::vector<Slice> &ns_keys
 }
 
 rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::string &raw_value) {
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, raw_value);
@@ -165,7 +165,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, i
   metadata.expire = expire;
   metadata.Encode(&raw_data);
   raw_data.append(value->data(), value->size());
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, raw_data);
@@ -365,7 +365,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    auto batch = storage_->GetWriteBatch();
+    auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisString);
     batch->PutLogData(log_data.Encode());
     AppendNamespacePrefix(pair.key, &ns_key);
@@ -408,7 +408,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    auto batch = storage_->GetWriteBatch();
+    auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisString);
     batch->PutLogData(log_data.Encode());
     batch->Put(metadata_cf_handle_, ns_key, bytes);

@@ -39,7 +39,7 @@ rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &m
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   std::string sub_key;
@@ -66,7 +66,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   std::string sub_key;
@@ -98,7 +98,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value, sub_key;
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   for (const auto &member : members) {
@@ -212,7 +212,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
 

@@ -553,13 +553,13 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
-  auto batch = GetWriteBatch();
+  auto batch = GetWriteBatchBase();
   batch->Delete(cf_handle, key);
   return Write(options, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
-  auto batch = GetWriteBatch();
+  auto batch = GetWriteBatchBase();
   rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle("metadata");
   auto s = batch->DeleteRange(cf_handle, first_key, last_key);
   if (!s.ok()) {
@@ -578,7 +578,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   // didn't contain the end key.
   end_key[end_key.size() - 1] += 1;
 
-  auto batch = GetWriteBatch();
+  auto batch = GetWriteBatchBase();
   auto s = batch->DeleteRange(cf_handle, begin_key, end_key);
   if (!s.ok()) {
     return s;
@@ -685,22 +685,21 @@ void Storage::BeginTxn() {
 Status Storage::CommitTxn() {
   is_txn_mode_ = false;
   auto s = Write(write_opts_, txn_write_batch_->GetWriteBatch());
-  txn_write_batch_.reset();
   if (s.ok()) {
     return {Status::cOK};
   }
   return {Status::NotOK, s.ToString()};
 }
 
-std::shared_ptr<rocksdb::WriteBatchBase> Storage::GetWriteBatch() {
+ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
   if (is_txn_mode_) {
-    return txn_write_batch_;
+    return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(ktxn_write_batch_.get(), ObserverOrUnique::Observer);
   }
-  return std::make_unique<rocksdb::WriteBatch>();
+  return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(new rocksdb::WriteBatch(), ObserverOrUnique::Unique);
 }
 
 Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
-  auto batch = GetWriteBatch();
+  auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);
   auto s = Write(write_opts_, batch->GetWriteBatch());

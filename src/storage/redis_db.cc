@@ -97,7 +97,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   memcpy(buf, value.data(), value.size());
   // +1 to skip the flags
   EncodeFixed32(buf + 1, (uint32_t)timestamp);
-  auto batch = storage_->GetWriteBatch();
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch->PutLogData(log_data.Encode());
   batch->Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));

@@ -27,14 +27,10 @@ enum class ObserverOrUnique : char { Observer, Unique };
 template <typename T, typename D = std::default_delete<T>>
 struct ObserverOrUniquePtr : private D {
   template <typename U>
-  ObserverOrUniquePtr(U* ptr, ObserverOrUnique own) : ptr(static_cast<T*>(ptr)), own(own) {}
+  explicit ObserverOrUniquePtr(U* ptr, ObserverOrUnique own) : ptr(static_cast<T*>(ptr)), own(own) {}
 
   ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
-
-  template <typename U>
-  ObserverOrUniquePtr(ObserverOrUniquePtr<U>&& p) : ptr(static_cast<T*>(p.ptr)), own(p.own) {
-    p.ptr = nullptr;
-  }
+  ObserverOrUniquePtr& operator=(const ObserverOrUniquePtr&) = delete;
 
   ~ObserverOrUniquePtr() {
     if (own == ObserverOrUnique::Unique) {

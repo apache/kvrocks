@@ -33,8 +33,7 @@
 
 namespace Redis {
 
-Database::Database(Engine::Storage *storage, std::string ns)
-    : storage_(storage), db_(storage->GetDB()), namespace_(std::move(ns)) {
+Database::Database(Engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
   metadata_cf_handle_ = storage->GetCFHandle("metadata");
 }
 
@@ -63,7 +62,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
@@ -124,7 +123,7 @@ rocksdb::Status Database::Del(const Slice &user_key) {
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
 
@@ -147,7 +146,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   *ttl = -2;  // ttl is -2 when the key does not exist or expired
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
@@ -178,7 +177,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   }
 
   uint64_t ttl_sum = 0;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
@@ -232,7 +231,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   uint16_t slot_id = 0, slot_start = 0;
   std::string ns_prefix, ns_cursor, ns, user_key, value, index_key;
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
@@ -356,7 +355,7 @@ rocksdb::Status Database::FlushDB() {
 }
 
 rocksdb::Status Database::FlushAll() {
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
@@ -384,7 +383,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
@@ -433,7 +432,7 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
   AppendNamespacePrefix(user_key, &ns_key);
 
   *type = kRedisNone;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
@@ -466,7 +465,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, cons
   begin->clear();
   end->clear();
 
-  LatestSnapShot ss(storage_->GetDB());
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
@@ -568,7 +567,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   rocksdb::Status s = GetMetadata(type, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);

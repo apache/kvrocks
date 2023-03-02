@@ -677,12 +677,21 @@ void Storage::SetIORateLimit(int64_t max_io_mb) {
 
 rocksdb::DB *Storage::GetDB() { return db_; }
 
-void Storage::BeginTxn() {
+Status Storage::BeginTxn() {
+  if (is_txn_mode_) {
+    return Status{Status::NotOK, "cannot begin a new transaction while already in transaction mode"};
+  }
+  // The EXEC command is exclusive and shouldn't have multi transaction at the same time,
+  // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
   txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  return Status::OK();
 }
 
 Status Storage::CommitTxn() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot commit while not in transaction mode"};
+  }
   is_txn_mode_ = false;
   auto s = Write(write_opts_, txn_write_batch_->GetWriteBatch());
   if (s.ok()) {
@@ -693,7 +702,7 @@ Status Storage::CommitTxn() {
 
 ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
   if (is_txn_mode_) {
-    return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(ktxn_write_batch_.get(), ObserverOrUnique::Observer);
+    return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(txn_write_batch_.get(), ObserverOrUnique::Observer);
   }
   return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(new rocksdb::WriteBatch(), ObserverOrUnique::Unique);
 }

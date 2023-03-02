@@ -34,7 +34,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
   raw_values->clear();
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   raw_values->resize(keys.size());
   std::vector<rocksdb::Status> statuses(keys.size());
@@ -63,7 +63,7 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   raw_value->clear();
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
   if (!s.ok()) return s;

@@ -74,9 +74,11 @@ class CommandExec : public Commander {
     conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
-    storage->BeginTxn();
-    conn->ExecuteCommands(conn->GetMultiExecCommands());
-    auto s = storage->CommitTxn();
+    auto s = storage->BeginTxn();
+    if (s.IsOK()) {
+      conn->ExecuteCommands(conn->GetMultiExecCommands());
+      s = storage->CommitTxn();
+    }
     conn->ResetMultiExec();
     return s;
   }

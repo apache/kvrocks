@@ -127,7 +127,7 @@ class Storage {
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
 
-  void BeginTxn();
+  Status BeginTxn();
   Status CommitTxn();
   ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
 
@@ -197,8 +197,15 @@ class Storage {
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
+
   std::atomic<bool> is_txn_mode_ = false;
-  std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_ = nullptr;
+  // txn_write_batch_ is used as the global write batch for the transaction mode,
+  // all writes will be grouped in this write batch when entering the transaction mode,
+  // then write it at once when committing.
+  //
+  // Notice: the reason why we can use the global transaction? because the EXEC is an exclusive
+  // command, so it won't have multi transactions to be executed at the same time.
+  std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 };

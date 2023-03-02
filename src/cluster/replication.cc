@@ -199,6 +199,7 @@ LOOP_LABEL:
   switch (st) {
     case CBState::NEXT:
       ++self->handler_idx_;
+      [[fallthrough]];
     case CBState::PREV:
       if (st == CBState::PREV) --self->handler_idx_;
       if (self->getHandlerEventType(self->handler_idx_) == WRITE) {

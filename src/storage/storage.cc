@@ -536,12 +536,16 @@ void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamil
 }
 
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
-  if (reach_db_size_limit_) {
-    return rocksdb::Status::SpaceLimit();
-  }
   if (is_txn_mode_) {
     // The batch won't be flushed until the transaction was committed or rollback
     return rocksdb::Status::OK();
+  }
+  return writeToDB(options, updates);
+}
+
+rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+  if (reach_db_size_limit_) {
+    return rocksdb::Status::SpaceLimit();
   }
 
   // Put replication id logdata at the end of write batch
@@ -693,12 +697,13 @@ Status Storage::CommitTxn() {
   if (!is_txn_mode_) {
     return Status{Status::NotOK, "cannot commit while not in transaction mode"};
   }
+  auto s = writeToDB(write_opts_, txn_write_batch_->GetWriteBatch());
+
   is_txn_mode_ = false;
-  auto s = Write(write_opts_, txn_write_batch_->GetWriteBatch());
+  txn_write_batch_ = nullptr;
   if (s.ok()) {
     return {Status::cOK};
   }
-  txn_write_batch_ = nullptr;
   return {Status::NotOK, s.ToString()};
 }
 

@@ -208,6 +208,8 @@ class Storage {
   std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+
+  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
 };
 
 }  // namespace Engine

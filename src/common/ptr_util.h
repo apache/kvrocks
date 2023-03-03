@@ -28,7 +28,7 @@ template <typename T, typename D = std::default_delete<T>>
 struct ObserverOrUniquePtr : private D {
   explicit ObserverOrUniquePtr(T* ptr, ObserverOrUnique own) : ptr_(ptr), own_(own) {}
 
-  ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr_(p.ptr_), own_(p.own_) { p.ptr_ = nullptr; }
+  ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr_(p.ptr_), own_(p.own_) { p.Release(); }
   ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
   ObserverOrUniquePtr& operator=(const ObserverOrUniquePtr&) = delete;
 

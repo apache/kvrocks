@@ -515,6 +515,7 @@ rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::Colum
 rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
   return NewIterator(options, db_->DefaultColumnFamily());
 }
+
 rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   auto iter = db_->NewIterator(options, column_family);
@@ -685,7 +686,7 @@ Status Storage::BeginTxn() {
   // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
   txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
-  return Status::OK();
+  return {Status::cOK};
 }
 
 Status Storage::CommitTxn() {
@@ -697,6 +698,7 @@ Status Storage::CommitTxn() {
   if (s.ok()) {
     return {Status::cOK};
   }
+  txn_write_batch_ = nullptr;
   return {Status::NotOK, s.ToString()};
 }
 

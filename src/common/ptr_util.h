@@ -29,9 +29,7 @@ struct ObserverOrUniquePtr : private D {
   template <typename U>
   explicit ObserverOrUniquePtr(U* ptr, ObserverOrUnique own) : ptr(static_cast<T*>(ptr)), own(own) {}
 
-  ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr(static_cast<T*>(p.ptr)), own(p.own) {
-    p.ptr = nullptr;
-  }
+  ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr(static_cast<T*>(p.ptr)), own(p.own) { p.ptr = nullptr; }
   ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
   ObserverOrUniquePtr& operator=(const ObserverOrUniquePtr&) = delete;
 

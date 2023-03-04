@@ -18,24 +18,34 @@
  *
  */
 
-#pragma once
-
 #include <memory>
 
-#include "rocksdb/db.h"
-#include "rocksdb/iterator.h"
+#pragma once
 
-namespace DBUtil {
+enum class ObserverOrUnique : char { Observer, Unique };
 
-struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
-  using base_type = std::unique_ptr<rocksdb::Iterator>;
+template <typename T, typename D = std::default_delete<T>>
+struct ObserverOrUniquePtr : private D {
+  explicit ObserverOrUniquePtr(T* ptr, ObserverOrUnique own) : ptr_(ptr), own_(own) {}
 
-  explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
-                 rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(storage->NewIterator(options, column_family)) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : base_type(storage->NewIterator(options)) {}
+  ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr_(p.ptr_), own_(p.own_) { p.Release(); }
+  ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
+  ObserverOrUniquePtr& operator=(const ObserverOrUniquePtr&) = delete;
+
+  ~ObserverOrUniquePtr() {
+    if (own_ == ObserverOrUnique::Unique) {
+      (*this)(ptr_);
+    }
+  }
+
+  T* operator->() const { return ptr_; }
+  T* Get() const { return ptr_; }
+  T* Release() {
+    own_ = ObserverOrUnique::Observer;
+    return ptr_;
+  }
+
+ private:
+  T* ptr_;
+  ObserverOrUnique own_;
 };
-
-}  // namespace DBUtil

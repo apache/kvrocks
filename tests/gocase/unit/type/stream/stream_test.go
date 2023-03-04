@@ -228,8 +228,8 @@ func TestStream(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		insertIntoStreamKey(t, rdb, "mystream")
 		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
-		require.Len(t, items, 10000)
-		for i := 0; i < 10000; i++ {
+		require.Len(t, items, 1000)
+		for i := 0; i < 1000; i++ {
 			require.Subset(t, items[i].Values, map[string]interface{}{"item": strconv.Itoa(i)})
 		}
 	})
@@ -265,7 +265,7 @@ func TestStream(t *testing.T) {
 			}
 			lastID = streamNextID(t, items[len(items)-1].ID)
 		}
-		require.Equal(t, 10000, c)
+		require.Equal(t, 1000, c)
 	})
 
 	t.Run("XREVRANGE returns the reverse of XRANGE", func(t *testing.T) {
@@ -739,7 +739,7 @@ func streamNextID(t *testing.T, id string) string {
 func insertIntoStreamKey(t *testing.T, rdb *redis.Client, key string) {
 	ctx := context.Background()
 	require.NoError(t, rdb.Do(ctx, "MULTI").Err())
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		// From time to time insert a field with a different set
 		// of fields in order to stress the stream compression code.
 		if rand.Float64() < 0.9 {

@@ -45,26 +45,26 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSortedint);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
-    batch.Put(sub_key, Slice());
+    batch->Put(sub_key, Slice());
     *ret += 1;
   }
   if (*ret > 0) {
     metadata.size += *ret;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
@@ -79,24 +79,24 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value, sub_key;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSortedint);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
-    batch.Delete(sub_key);
+    batch->Delete(sub_key);
     *ret += 1;
   }
   if (*ret == 0) return rocksdb::Status::OK();
   metadata.size -= *ret;
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
@@ -133,7 +133,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
@@ -142,7 +142,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   storage_->SetReadOptions(read_options);
 
   uint64_t id = 0, pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -174,7 +174,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -183,7 +183,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -218,7 +218,7 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key, value;
@@ -226,7 +226,7 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
     std::string id_buf;
     PutFixed64(&id_buf, id);
     InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    s = db_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);

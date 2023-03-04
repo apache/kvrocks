@@ -34,12 +34,12 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
   raw_values->clear();
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   raw_values->resize(keys.size());
   std::vector<rocksdb::Status> statuses(keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(keys.size());
-  db_->MultiGet(read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(), statuses.data(), false);
+  storage_->MultiGet(read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(), statuses.data());
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses[i].ok()) continue;
     (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
@@ -63,9 +63,9 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   raw_value->clear();
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Status s = db_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);
@@ -100,11 +100,11 @@ std::vector<rocksdb::Status> String::getValues(const std::vector<Slice> &ns_keys
 }
 
 rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::string &raw_value) {
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  batch.PutLogData(log_data.Encode());
-  batch.Put(metadata_cf_handle_, ns_key, raw_value);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(metadata_cf_handle_, ns_key, raw_value);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status String::Append(const std::string &user_key, const std::string &value, int *ret) {
@@ -165,11 +165,11 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, i
   metadata.expire = expire;
   metadata.Encode(&raw_data);
   raw_data.append(value->data(), value->size());
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  batch.PutLogData(log_data.Encode());
-  batch.Put(metadata_cf_handle_, ns_key, raw_data);
-  s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(metadata_cf_handle_, ns_key, raw_data);
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
   return rocksdb::Status::OK();
 }
@@ -226,10 +226,6 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   }
 
   std::string ns_key;
-  rocksdb::WriteBatch batch;
-  WriteBatchLogData log_data(kRedisString);
-  batch.PutLogData(log_data.Encode());
-
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   Exists({user_key}, &exists);
@@ -369,13 +365,13 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    rocksdb::WriteBatch batch;
+    auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisString);
-    batch.PutLogData(log_data.Encode());
+    batch->PutLogData(log_data.Encode());
     AppendNamespacePrefix(pair.key, &ns_key);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
@@ -412,11 +408,11 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    rocksdb::WriteBatch batch;
+    auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisString);
-    batch.PutLogData(log_data.Encode());
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->PutLogData(log_data.Encode());
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
+    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
   *ret = 1;

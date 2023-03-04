@@ -89,7 +89,6 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   std::string next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
 
-  rocksdb::DB *db_ = storage_->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = latest_snapshot_->GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
@@ -97,7 +96,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   storage_->SetReadOptions(read_options);
 
   std::string output;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {
       break;

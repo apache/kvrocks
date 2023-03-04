@@ -18,24 +18,28 @@
  *
  */
 
-#pragma once
+#include "common/ptr_util.h"
 
-#include <memory>
+#include <gtest/gtest.h>
+struct Counter {
+  Counter(int* i) : i_(i) { ++*i_; }
+  ~Counter() { --*i_; }
 
-#include "rocksdb/db.h"
-#include "rocksdb/iterator.h"
-
-namespace DBUtil {
-
-struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
-  using base_type = std::unique_ptr<rocksdb::Iterator>;
-
-  explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
-                 rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(storage->NewIterator(options, column_family)) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : base_type(storage->NewIterator(options)) {}
+  int* i_;
 };
+TEST(ObserverOrUniquePtr, Unique) {
+  int v = 0;
+  {
+    ObserverOrUniquePtr<Counter> unique(new Counter{&v}, ObserverOrUnique::Unique);
+    ASSERT_EQ(v, 1);
+  }
+  ASSERT_EQ(v, 0);
+}
 
-}  // namespace DBUtil
+TEST(CompositePtr, Observer) {
+  int v = 0;
+  ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
+  ASSERT_EQ(v, 1);
+  delete observer.Release();
+  ASSERT_EQ(v, 0);
+}

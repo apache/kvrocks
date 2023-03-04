@@ -44,7 +44,7 @@ static std::map<RedisType, std::string> type_to_cmd = {
 
 SlotMigrate::SlotMigrate(Server *svr, int migration_speed, int pipeline_size_limit, int seq_gap)
     : Database(svr->storage_, kDefaultNamespace), svr_(svr) {
-  // Let db_ and metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
+  // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
   // 1. Start an empty slave server.
@@ -59,7 +59,6 @@ SlotMigrate::SlotMigrate(Server *svr, int migration_speed, int pipeline_size_lim
   // in all functions used in migration process.
   // [Note]:
   // This problem may exist in all functions of Database called in slot migration process.
-  db_ = nullptr;
   metadata_cf_handle_ = nullptr;
 
   if (migration_speed >= 0) {
@@ -294,7 +293,7 @@ Status SlotMigrate::SendSnapshot() {
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
   rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
-  std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options, cf_handle));
+  auto iter = DBUtil::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Construct key prefix to iterate the keys belong to the target slot
   std::string prefix;
@@ -646,7 +645,8 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
-  std::unique_ptr<rocksdb::Iterator> iter(storage_->GetDB()->NewIterator(read_options));
+  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  auto iter = DBUtil::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
 
   // Construct key prefix to iterate values of the complex type user key
   std::string slot_key, prefix_subkey;
@@ -747,7 +747,8 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
-  std::unique_ptr<rocksdb::Iterator> iter(
+  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  auto iter = DBUtil::UniqueIterator(
       storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(Engine::kStreamColumnFamilyName)));
 
   std::string ns_key;

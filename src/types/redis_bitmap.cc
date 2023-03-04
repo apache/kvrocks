@@ -84,13 +84,13 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
     return bitmap_string_db.GetBit(raw_value, offset, bit);
   }
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
   std::string sub_key, value;
   InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-  s = db_->Get(read_options, sub_key, &value);
+  s = storage_->Get(read_options, sub_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
   if ((byte_index < value.size() && (value[byte_index] & (1 << (offset % 8))))) {
@@ -119,12 +119,12 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
   uint32_t frag_index = 0, valid_size = 0;
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     auto parse_result = ParseInt<uint32_t>(ikey.GetSubKey().ToString(), 10);
@@ -191,7 +191,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
   InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
-    s = db_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
@@ -215,17 +215,17 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   } else {
     value[byte_index] = static_cast<char>(value[byte_index] & (~(1 << bit_offset)));
   }
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(offset)});
-  batch.PutLogData(log_data.Encode());
-  batch.Put(sub_key, value);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(sub_key, value);
   if (metadata.size != bitmap_size) {
     metadata.size = bitmap_size;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt) {
@@ -250,7 +250,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   uint32_t start_index = u_start / kBitmapSegmentBytes;
@@ -260,7 +260,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   for (uint32_t i = start_index; i <= stop_index; i++) {
     InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
         .Encode(&sub_key);
-    s = db_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
     size_t j = 0;
@@ -308,7 +308,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return -1;
   };
 
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   uint32_t start_index = u_start / kBitmapSegmentBytes;
@@ -318,7 +318,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   for (uint32_t i = start_index; i <= stop_index; i++) {
     InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
         .Encode(&sub_key);
-    s = db_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       if (!bit) {
@@ -374,17 +374,17 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     meta_pairs.emplace_back(ns_op_key, metadata);
   }
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   if (max_size == 0) {
-    batch.Delete(metadata_cf_handle_, ns_key);
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->Delete(metadata_cf_handle_, ns_key);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
   std::vector<std::string> log_args = {std::to_string(kRedisCmdBitOp), op_name};
   for (const auto &op_key : op_keys) {
     log_args.emplace_back(op_key.ToString());
   }
   WriteBatchLogData log_data(kRedisBitmap, std::move(log_args));
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
@@ -395,7 +395,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     unsigned char output = 0, byte = 0;
     std::vector<std::string> fragments;
 
-    LatestSnapShot ss(db_);
+    LatestSnapShot ss(storage_);
     rocksdb::ReadOptions read_options;
     read_options.snapshot = ss.GetSnapShot();
     for (uint64_t frag_index = 0; frag_index <= stop_index; frag_index++) {
@@ -403,7 +403,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         InternalKey(meta_pair.first, std::to_string(frag_index * kBitmapSegmentBytes), meta_pair.second.version,
                     storage_->IsSlotIdEncoded())
             .Encode(&sub_key);
-        auto s = db_->Get(read_options, sub_key, &fragment);
+        auto s = storage_->Get(read_options, sub_key, &fragment);
         if (!s.ok() && !s.IsNotFound()) {
           return s;
         }
@@ -522,7 +522,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes), res_metadata.version,
                     storage_->IsSlotIdEncoded())
             .Encode(&sub_key);
-        batch.Put(sub_key, Slice(reinterpret_cast<char *>(frag_res.get()), frag_maxlen));
+        batch->Put(sub_key, Slice(reinterpret_cast<char *>(frag_res.get()), frag_maxlen));
       }
 
       frag_maxlen = 0;
@@ -535,9 +535,9 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   std::string bytes;
   res_metadata.size = max_size;
   res_metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
   *len = static_cast<int64_t>(max_size);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {

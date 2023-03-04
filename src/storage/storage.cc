@@ -500,7 +500,50 @@ Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb:
 
 rocksdb::SequenceNumber Storage::LatestSeq() { return db_->GetLatestSequenceNumber(); }
 
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value) {
+  return Get(options, db_->DefaultColumnFamily(), key, value);
+}
+
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                             const rocksdb::Slice &key, std::string *value) {
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    return txn_write_batch_->GetFromBatchAndDB(db_, options, column_family, key, value);
+  }
+  return db_->Get(options, column_family, key, value);
+}
+
+rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
+  return NewIterator(options, db_->DefaultColumnFamily());
+}
+
+rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options,
+                                        rocksdb::ColumnFamilyHandle *column_family) {
+  auto iter = db_->NewIterator(options, column_family);
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    return txn_write_batch_->NewIteratorWithBase(column_family, iter, &options);
+  }
+  return iter;
+}
+
+void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                       const size_t num_keys, const rocksdb::Slice *keys, rocksdb::PinnableSlice *values,
+                       rocksdb::Status *statuses) {
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    txn_write_batch_->MultiGetFromBatchAndDB(db_, options, column_family, num_keys, keys, values, statuses, false);
+  } else {
+    db_->MultiGet(options, column_family, num_keys, keys, values, statuses, false);
+  }
+}
+
 rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+  if (is_txn_mode_) {
+    // The batch won't be flushed until the transaction was committed or rollback
+    return rocksdb::Status::OK();
+  }
+  return writeToDB(options, updates);
+}
+
+rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   if (reach_db_size_limit_) {
     return rocksdb::Status::SpaceLimit();
   }
@@ -515,23 +558,23 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
-  rocksdb::WriteBatch batch;
-  batch.Delete(cf_handle, key);
-  return Write(options, &batch);
+  auto batch = GetWriteBatchBase();
+  batch->Delete(cf_handle, key);
+  return Write(options, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
-  rocksdb::WriteBatch batch;
+  auto batch = GetWriteBatchBase();
   rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle("metadata");
-  auto s = batch.DeleteRange(cf_handle, first_key, last_key);
+  auto s = batch->DeleteRange(cf_handle, first_key, last_key);
   if (!s.ok()) {
     return s;
   }
-  s = batch.Delete(cf_handle, last_key);
+  s = batch->Delete(cf_handle, last_key);
   if (!s.ok()) {
     return s;
   }
-  return Write(write_opts_, &batch);
+  return Write(write_opts_, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -540,12 +583,12 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
   // didn't contain the end key.
   end_key[end_key.size() - 1] += 1;
 
-  rocksdb::WriteBatch batch;
-  auto s = batch.DeleteRange(cf_handle, begin_key, end_key);
+  auto batch = GetWriteBatchBase();
+  auto s = batch->DeleteRange(cf_handle, begin_key, end_key);
   if (!s.ok()) {
     return s;
   }
-  return Write(options, &batch);
+  return Write(options, batch->GetWriteBatch());
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -639,12 +682,43 @@ void Storage::SetIORateLimit(int64_t max_io_mb) {
 
 rocksdb::DB *Storage::GetDB() { return db_; }
 
-Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
-  rocksdb::WriteBatch batch;
+Status Storage::BeginTxn() {
+  if (is_txn_mode_) {
+    return Status{Status::NotOK, "cannot begin a new transaction while already in transaction mode"};
+  }
+  // The EXEC command is exclusive and shouldn't have multi transaction at the same time,
+  // so it's fine to reset the global write batch without any lock.
+  is_txn_mode_ = true;
+  txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  return {Status::cOK};
+}
 
+Status Storage::CommitTxn() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot commit while not in transaction mode"};
+  }
+  auto s = writeToDB(write_opts_, txn_write_batch_->GetWriteBatch());
+
+  is_txn_mode_ = false;
+  txn_write_batch_ = nullptr;
+  if (s.ok()) {
+    return {Status::cOK};
+  }
+  return {Status::NotOK, s.ToString()};
+}
+
+ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
+  if (is_txn_mode_) {
+    return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(txn_write_batch_.get(), ObserverOrUnique::Observer);
+  }
+  return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(new rocksdb::WriteBatch(), ObserverOrUnique::Unique);
+}
+
+Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
-  batch.Put(cf, key, value);
-  auto s = Write(write_opts_, &batch);
+  batch->Put(cf, key, value);
+  auto s = Write(write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return Status(Status::NotOK, s.ToString());
   }

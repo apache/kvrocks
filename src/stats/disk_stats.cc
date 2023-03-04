@@ -44,7 +44,7 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
   InternalKey(ns_key, subkeyright, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
   auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
   uint64_t tmp_size = 0;
-  rocksdb::Status s = db_->GetApproximateSizes(option_, column_family, &key_range, 1, &tmp_size);
+  rocksdb::Status s = storage_->GetDB()->GetApproximateSizes(option_, column_family, &key_range, 1, &tmp_size);
   if (!s.ok()) return s;
   *key_size += tmp_size;
   return rocksdb::Status::OK();
@@ -79,7 +79,7 @@ rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t
 rocksdb::Status Disk::GetStringSize(const Slice &ns_key, uint64_t *key_size) {
   auto limit = ns_key.ToString() + static_cast<char>(0);
   auto key_range = rocksdb::Range(Slice(ns_key), Slice(limit));
-  return db_->GetApproximateSizes(option_, metadata_cf_handle_, &key_range, 1, key_size);
+  return storage_->GetDB()->GetApproximateSizes(option_, metadata_cf_handle_, &key_range, 1, key_size);
 }
 
 rocksdb::Status Disk::GetHashSize(const Slice &ns_key, uint64_t *key_size) {

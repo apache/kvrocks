@@ -27,9 +27,8 @@ SlotImport::SlotImport(Server *svr)
       import_status_(kImportNone),
       import_fd_(-1) {
   std::lock_guard<std::mutex> guard(mutex_);
-  // Let db_ and metadata_cf_handle_ be nullptr, then get them in real time while use them.
+  // Let metadata_cf_handle_ be nullptr, then get them in real time while use them.
   // See comments in SlotMigrate::SlotMigrate for detailed reason.
-  db_ = nullptr;
   metadata_cf_handle_ = nullptr;
 }
 

@@ -25,6 +25,7 @@
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>
 #include <rocksdb/utilities/backup_engine.h>
+#include <rocksdb/utilities/write_batch_with_index.h>
 
 #include <atomic>
 #include <cinttypes>
@@ -35,6 +36,7 @@
 
 #include "config/config.h"
 #include "lock_manager.h"
+#include "ptr_util.h"
 #include "rw_lock.h"
 #include "status.h"
 
@@ -86,6 +88,15 @@ class Storage {
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeq();
+
+  rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
+  rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                      const rocksdb::Slice &key, std::string *value);
+  void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys,
+                const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
+  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
+  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
+
   rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
   rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
@@ -115,6 +126,10 @@ class Storage {
   uint64_t GetCompactionCount() { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
+
+  Status BeginTxn();
+  Status CommitTxn();
+  ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
@@ -183,7 +198,18 @@ class Storage {
 
   std::atomic<bool> db_in_retryable_io_error_{false};
 
+  std::atomic<bool> is_txn_mode_ = false;
+  // txn_write_batch_ is used as the global write batch for the transaction mode,
+  // all writes will be grouped in this write batch when entering the transaction mode,
+  // then write it at once when committing.
+  //
+  // Notice: the reason why we can use the global transaction? because the EXEC is an exclusive
+  // command, so it won't have multi transactions to be executed at the same time.
+  std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
+
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+
+  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
 };
 
 }  // namespace Engine

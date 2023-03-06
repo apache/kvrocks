@@ -389,8 +389,8 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   srv->stats_.IncrCalls(cmd_name);
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = conn->isProfilingEnabled(cmd_name);
-  auto end = std::chrono::high_resolution_clock::now();
   s = cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
+  auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) conn->recordProfilingSampleIfNeed(cmd_name, duration);
   srv->SlowlogPushEntryIfNeeded(&args, duration);

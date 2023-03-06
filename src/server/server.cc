@@ -1504,7 +1504,7 @@ Status Server::ScriptExists(const std::string &sha) {
 Status Server::ScriptGet(const std::string &sha, std::string *body) {
   std::string func_name = Engine::kLuaFunctionPrefix + sha;
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
-  auto s = storage_->GetDB()->Get(rocksdb::ReadOptions(), cf, func_name, body);
+  auto s = storage_->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     if (s.IsNotFound()) return {Status::NotFound};
 

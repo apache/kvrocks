@@ -49,9 +49,9 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
 
   int added = 0;
   int changed = 0;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   std::string member_key;
   std::set<std::string> added_member_keys;
   for (int i = static_cast<int>(mscores->size() - 1); i >= 0; i--) {
@@ -73,7 +73,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
 
     if (metadata.size > 0) {
       std::string old_score_bytes;
-      s = db_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
+      s = storage_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
         if (!s.IsNotFound() && flags.HasNX()) {
@@ -97,13 +97,13 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
           old_score_bytes.append((*mscores)[i].member);
           std::string old_score_key;
           InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&old_score_key);
-          batch.Delete(score_cf_handle_, old_score_key);
+          batch->Delete(score_cf_handle_, old_score_key);
           std::string new_score_bytes, new_score_key;
           PutDouble(&new_score_bytes, (*mscores)[i].score);
-          batch.Put(member_key, new_score_bytes);
+          batch->Put(member_key, new_score_bytes);
           new_score_bytes.append((*mscores)[i].member);
           InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&new_score_key);
-          batch.Put(score_cf_handle_, new_score_key, Slice());
+          batch->Put(score_cf_handle_, new_score_key, Slice());
           changed++;
         }
         continue;
@@ -114,10 +114,10 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
     }
     std::string score_bytes, score_key;
     PutDouble(&score_bytes, (*mscores)[i].score);
-    batch.Put(member_key, score_bytes);
+    batch->Put(member_key, score_bytes);
     score_bytes.append((*mscores)[i].member);
     InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
-    batch.Put(score_cf_handle_, score_key, Slice());
+    batch->Put(score_cf_handle_, score_key, Slice());
     added++;
   }
   if (added > 0) {
@@ -125,12 +125,12 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, std::vector<Me
     metadata.size += added;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
   if (flags.HasCH()) {
     *ret += changed;
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
@@ -182,12 +182,12 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_verison_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -195,7 +195,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -208,8 +208,8 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
     mscores->emplace_back(MemberScore{score_key.ToString(), score});
     std::string default_cf_key;
     InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&default_cf_key);
-    batch.Delete(default_cf_key);
-    batch.Delete(score_cf_handle_, iter->key());
+    batch->Delete(default_cf_key);
+    batch->Delete(score_cf_handle_, iter->key());
     if (mscores->size() >= static_cast<unsigned>(count)) break;
   }
 
@@ -217,9 +217,9 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
     metadata.size -= mscores->size();
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t flags,
@@ -255,7 +255,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   int count = 0;
   int removed_subkey = 0;
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_verison_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -263,8 +263,8 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  rocksdb::WriteBatch batch;
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto batch = storage_->GetWriteBatchBase();
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -279,8 +279,8 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
       if (removed) {
         std::string sub_key;
         InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-        batch.Delete(sub_key);
-        batch.Delete(score_cf_handle_, iter->key());
+        batch->Delete(sub_key);
+        batch->Delete(score_cf_handle_, iter->key());
         removed_subkey++;
       }
       mscores->emplace_back(MemberScore{score_key.ToString(), score});
@@ -292,8 +292,8 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
     metadata.size -= removed_subkey;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
   return rocksdb::Status::OK();
 }
@@ -357,7 +357,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_verison_prefix_key);
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_verison_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -366,10 +366,10 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
-  rocksdb::WriteBatch batch;
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -395,8 +395,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
     if (spec.removed) {
       std::string sub_key;
       InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-      batch.Delete(sub_key);
-      batch.Delete(score_cf_handle_, iter->key());
+      batch->Delete(sub_key);
+      batch->Delete(score_cf_handle_, iter->key());
     } else {
       if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
     }
@@ -408,8 +408,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
     metadata.size -= *size;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
   return rocksdb::Status::OK();
 }
@@ -440,7 +440,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -449,10 +449,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(db_, read_options);
-  rocksdb::WriteBatch batch;
+  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
 
   if (!spec.reversed) {
     iter->Seek(start_key);
@@ -484,8 +484,8 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
       score_bytes.append(member.data(), member.size());
       std::string score_key;
       InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
-      batch.Delete(score_cf_handle_, score_key);
-      batch.Delete(iter->key());
+      batch->Delete(score_cf_handle_, score_key);
+      batch->Delete(iter->key());
     } else {
       if (members) members->emplace_back(member.ToString());
     }
@@ -497,8 +497,8 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
     metadata.size -= *size;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
-    return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
+    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
   return rocksdb::Status::OK();
 }
@@ -511,12 +511,12 @@ rocksdb::Status ZSet::Score(const Slice &user_key, const Slice &member, double *
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
 
   std::string member_key, score_bytes;
   InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-  s = db_->Get(read_options, member_key, &score_bytes);
+  s = storage_->Get(read_options, member_key, &score_bytes);
   if (!s.ok()) return s;
   *score = DecodeDouble(score_bytes.data());
   return rocksdb::Status::OK();
@@ -532,20 +532,20 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   int removed = 0;
   std::string member_key, score_key;
   for (const auto &member : members) {
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     std::string score_bytes;
-    s = db_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
+    s = storage_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);
     if (s.ok()) {
       score_bytes.append(member.data(), member.size());
       InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
-      batch.Delete(member_key);
-      batch.Delete(score_cf_handle_, score_key);
+      batch->Delete(member_key);
+      batch->Delete(score_cf_handle_, score_key);
       removed++;
     }
   }
@@ -554,9 +554,9 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
     metadata.size -= removed;
     std::string bytes;
     metadata.Encode(&bytes);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status ZSet::RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec, int *ret) {
@@ -587,11 +587,11 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   std::string score_bytes, member_key;
   InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-  s = db_->Get(read_options, member_key, &score_bytes);
+  s = storage_->Get(read_options, member_key, &score_bytes);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   double target_score = DecodeDouble(score_bytes.data());
@@ -609,7 +609,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options, score_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -634,23 +634,23 @@ rocksdb::Status ZSet::Overwrite(const Slice &user_key, const std::vector<MemberS
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata;
-  rocksdb::WriteBatch batch;
+  auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
-  batch.PutLogData(log_data.Encode());
+  batch->PutLogData(log_data.Encode());
   for (const auto &ms : mscores) {
     std::string member_key, score_bytes, score_key;
     InternalKey(ns_key, ms.member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     PutDouble(&score_bytes, ms.score);
-    batch.Put(member_key, score_bytes);
+    batch->Put(member_key, score_bytes);
     score_bytes.append(ms.member);
     InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
-    batch.Put(score_cf_handle_, score_key, Slice());
+    batch->Put(score_cf_handle_, score_key, Slice());
   }
   metadata.size = static_cast<uint32_t>(mscores.size());
   std::string bytes;
   metadata.Encode(&bytes);
-  batch.Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), &batch);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
@@ -827,13 +827,13 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(db_);
+  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   std::string score_bytes, member_key;
   for (const auto &member : members) {
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     score_bytes.clear();
-    s = db_->Get(read_options, member_key, &score_bytes);
+    s = storage_->Get(read_options, member_key, &score_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       continue;

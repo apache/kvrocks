@@ -79,12 +79,17 @@ class CommandExec : public Commander {
       return Status::OK();
     }
 
+    auto storage = svr->storage_;
     // Reply multi length first
     conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
-    conn->ExecuteCommands(conn->GetMultiExecCommands());
-    return Status::OK();
+    auto s = storage->BeginTxn();
+    if (s.IsOK()) {
+      conn->ExecuteCommands(conn->GetMultiExecCommands());
+      s = storage->CommitTxn();
+    }
+    return s;
   }
 };
 

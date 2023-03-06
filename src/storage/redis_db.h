@@ -57,21 +57,22 @@ class Database {
 
  protected:
   Engine::Storage *storage_;
-  rocksdb::DB *db_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;
 
+  friend class LatestSnapShot;
   class LatestSnapShot {
    public:
-    explicit LatestSnapShot(rocksdb::DB *db) : db_(db), snapshot_(db_->GetSnapshot()) {}
-    ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
+    explicit LatestSnapShot(Engine::Storage *storage)
+        : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
+    ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
     const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
 
     LatestSnapShot(const LatestSnapShot &) = delete;
     LatestSnapShot &operator=(const LatestSnapShot &) = delete;
 
    private:
-    rocksdb::DB *db_ = nullptr;
+    Engine::Storage *storage_ = nullptr;
     const rocksdb::Snapshot *snapshot_ = nullptr;
   };
 };

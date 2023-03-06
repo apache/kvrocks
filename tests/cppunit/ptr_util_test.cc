@@ -21,7 +21,7 @@
 #include "common/ptr_util.h"
 
 #include <gtest/gtest.h>
-struct Counter { // NOLINT
+struct Counter {  // NOLINT
   explicit Counter(int* i) : i_(i) { ++*i_; }
   ~Counter() { --*i_; }
 
@@ -39,7 +39,7 @@ TEST(ObserverOrUniquePtr, Unique) {
 
 TEST(CompositePtr, Observer) {
   int v = 0;
-  Counter *c = nullptr;
+  Counter* c = nullptr;
   {
     ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
     ASSERT_EQ(v, 1);

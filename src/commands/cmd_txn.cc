@@ -45,6 +45,8 @@ class CommandMulti : public Commander {
 class CommandDiscard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
+
     if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       *output = Redis::Error("ERR DISCARD without MULTI");
       return Status::OK();
@@ -96,6 +98,11 @@ class CommandExec : public Commander {
 class CommandWatch : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (conn->IsFlagEnabled(Connection::kMultiExec)) {
+      *output = Redis::Error("ERR WATCH inside MULTI is not allowed");
+      return Status::OK();
+    }
+
     svr->WatchKey(conn, std::vector<std::string>(args_.begin() + 1, args_.end()));
     *output = Redis::SimpleString("OK");
     return Status::OK();

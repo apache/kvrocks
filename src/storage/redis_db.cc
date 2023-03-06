@@ -92,16 +92,15 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   }
   if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
-  char *buf = new char[value.size()];
-  memcpy(buf, value.data(), value.size());
+  auto buf = std::make_unique<char[]>(value.size());
+  memcpy(buf.get(), value.data(), value.size());
   // +1 to skip the flags
-  EncodeFixed32(buf + 1, (uint32_t)timestamp);
+  EncodeFixed32(buf.get() + 1, (uint32_t)timestamp);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch->PutLogData(log_data.Encode());
-  batch->Put(metadata_cf_handle_, ns_key, Slice(buf, value.size()));
+  batch->Put(metadata_cf_handle_, ns_key, Slice(buf.get(), value.size()));
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-  delete[] buf;
   return s;
 }
 

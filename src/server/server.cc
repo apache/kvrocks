@@ -30,8 +30,10 @@
 #include <atomic>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <utility>
 
+#include "commands/commander.h"
 #include "config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
@@ -1637,6 +1639,95 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
     content_ = std::string(blob.data() + 2, blob.size() - 2);
     return Status::OK();
   }
-
   return {Status::NotOK};
+}
+
+void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range) {
+  std::shared_lock lock(watched_key_mutex_);
+
+  for (size_t i = range.first_key; range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key;
+       i += range.key_step) {
+    if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
+      for (auto *conn : iter->second) {
+        conn->watched_keys_modified_ = true;
+      }
+    }
+  }
+}
+
+void Server::updateAllWatchedKeys() {
+  std::shared_lock lock(watched_key_mutex_);
+
+  for (auto &[_, conn_map] : watched_key_map_) {
+    for (auto *conn : conn_map) {
+      conn->watched_keys_modified_ = true;
+    }
+  }
+}
+
+void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
+  if (attr.is_write() && watched_key_size_ > 0) {
+    if (attr.key_range.first_key > 0) {
+      updateWatchedKeysFromRange(args, attr.key_range);
+    } else if (attr.key_range.first_key < 0) {
+      Redis::CommandKeyRange range = attr.key_range_gen(args);
+
+      if (range.first_key > 0) {
+        updateWatchedKeysFromRange(args, range);
+      }
+    } else {
+      // support commands like flushdb (write flag && key range {0,0,0})
+      updateAllWatchedKeys();
+    }
+  }
+}
+
+void Server::UpdateWatchedKeysManually(const std::vector<std::string> &keys) {
+  std::shared_lock lock(watched_key_mutex_);
+
+  for (const auto &key : keys) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      for (auto *conn : iter->second) {
+        conn->watched_keys_modified_ = true;
+      }
+    }
+  }
+}
+
+void Server::WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys) {
+  std::unique_lock lock(watched_key_mutex_);
+
+  for (const auto &key : keys) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      iter->second.emplace(conn);
+    } else {
+      watched_key_map_.emplace(key, std::set<Redis::Connection *>{conn});
+    }
+
+    conn->watched_keys_.insert(key);
+  }
+
+  watched_key_size_ = watched_key_map_.size();
+}
+
+bool Server::IsWatchedKeysModified(Redis::Connection *conn) { return conn->watched_keys_modified_; }
+
+void Server::ResetWatchedKeys(Redis::Connection *conn) {
+  if (watched_key_size_ != 0) {
+    std::unique_lock lock(watched_key_mutex_);
+
+    for (const auto &key : conn->watched_keys_) {
+      if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+        iter->second.erase(conn);
+
+        if (iter->second.empty()) {
+          watched_key_map_.erase(iter);
+        }
+      }
+    }
+
+    conn->watched_keys_.clear();
+    conn->watched_keys_modified_ = false;
+    watched_key_size_ = watched_key_map_.size();
+  }
 }

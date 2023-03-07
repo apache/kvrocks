@@ -20,13 +20,13 @@
 
 #pragma once
 
-#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
 #include <list>
 #include <map>
 #include <memory>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -36,8 +36,10 @@
 #include "cluster/replication.h"
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
+#include "commands/commander.h"
 #include "lua.hpp"
 #include "rw_lock.h"
+#include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
 #include "storage/redis_metadata.h"
@@ -222,6 +224,12 @@ class Server {
   std::unique_ptr<SlotMigrate> slot_migrate_;
   std::unique_ptr<SlotImport> slot_import_;
 
+  void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
+  void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
+  void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
+  bool IsWatchedKeysModified(Redis::Connection *conn);
+  void ResetWatchedKeys(Redis::Connection *conn);
+
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx_;
 #endif
@@ -232,6 +240,8 @@ class Server {
   void delConnContext(ConnContext *c);
   void updateCachedTime();
   Status autoResizeBlockAndSST();
+  void updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range);
+  void updateAllWatchedKeys();
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;
@@ -290,6 +300,11 @@ class Server {
 
   // memory
   std::atomic<int64_t> memory_startup_use_ = 0;
+
+  // transaction
+  std::atomic<size_t> watched_key_size_ = 0;
+  std::map<std::string, std::set<Redis::Connection *>> watched_key_map_;
+  std::shared_mutex watched_key_mutex_;
 };
 
 Server *GetServer();

@@ -170,4 +170,124 @@ func TestMulti(t *testing.T) {
 			}
 		})
 	}()
+
+	t.Run("WATCH inside MULTI is not allowed", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.EqualError(t, rdb.Do(ctx, "WATCH", "x").Err(), "ERR WATCH inside MULTI is not allowed")
+		require.NoError(t, rdb.Do(ctx, "EXEC").Err())
+	})
+
+	t.Run("EXEC works on WATCHed key not modified", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x", "y", "z").Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "k").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+	})
+
+	t.Run("EXEC works on non-WATCHed key modified", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x", "y").Err())
+		require.NoError(t, rdb.Set(ctx, "z", 0, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+	})
+
+	t.Run("EXEC fail on WATCHed key modified (1 key of 1 watched)", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
+
+	t.Run("EXEC fail on WATCHed key modified (1 key of 5 watched)", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "a", "b", "x", "k", "z").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
+
+	t.Run("After successful EXEC key is no longer watched", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+	})
+
+	t.Run("After failed EXEC key is no longer watched", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+	})
+
+	t.Run("It is possible to UNWATCH", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "UNWATCH").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{"PONG"})
+	})
+
+	t.Run("UNWATCH when there is nothing watched works as expected", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "UNWATCH").Err())
+	})
+
+	t.Run("FLUSHALL is able to touch the watched keys", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Do(ctx, "FLUSHALL").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
+
+	t.Run("FLUSHDB is able to touch the watched keys", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Do(ctx, "FLUSHDB").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
+
+	t.Run("DISCARD should clear the WATCH dirty flag on the client", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "DISCARD").Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "INCR", "x").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{int64(41)})
+	})
+
+	t.Run("DISCARD should UNWATCH all the keys", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 40, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "DISCARD").Err())
+		require.NoError(t, rdb.Set(ctx, "x", 50, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "INCR", "x").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), []interface{}{int64(51)})
+	})
 }

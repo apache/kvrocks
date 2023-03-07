@@ -29,6 +29,14 @@ struct ObserverOrUniquePtr : private D {
   explicit ObserverOrUniquePtr(T* ptr, ObserverOrUnique own) : ptr_(ptr), own_(own) {}
 
   ObserverOrUniquePtr(ObserverOrUniquePtr&& p) : ptr_(p.ptr_), own_(p.own_) { p.Release(); }
+  ObserverOrUniquePtr& operator=(ObserverOrUniquePtr&& p) {
+    Reset(p.ptr_);
+    own_ = p.own_;
+    p.Release();
+
+    return *this;
+  }
+
   ObserverOrUniquePtr(const ObserverOrUniquePtr&) = delete;
   ObserverOrUniquePtr& operator=(const ObserverOrUniquePtr&) = delete;
 
@@ -43,6 +51,14 @@ struct ObserverOrUniquePtr : private D {
   T* Release() {
     own_ = ObserverOrUnique::Observer;
     return ptr_;
+  }
+
+  void Reset(T* ptr = nullptr) {
+    if (own_ == ObserverOrUnique::Unique) {
+      (*this)(ptr_);
+    }
+
+    ptr_ = ptr;
   }
 
  private:

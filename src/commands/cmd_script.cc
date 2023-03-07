@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "parse_util.h"
 #include "server/server.h"
 #include "storage/scripting.h"
 
@@ -113,10 +114,18 @@ class CommandScript : public Commander {
   std::string subcommand_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script", 0, 0, 0),
+CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args) {
+  auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
+
+  return {3, 2 + numkeys, 1};
+}
+
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+                        MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script",
+                                                   GetScriptEvalKeyRange),
+                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script",
+                                                      GetScriptEvalKeyRange),
                         MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
 
 }  // namespace Redis

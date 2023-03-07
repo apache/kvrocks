@@ -22,6 +22,7 @@
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
 
+#include "commands/commander.h"
 #include "fmt/format.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
@@ -342,7 +343,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       concurrency = svr_->WorkConcurrencyGuard();
     }
 
-    if (cmd_name == "eval_ro" || cmd_name == "evalsha_ro") {
+    if (attributes->flags & kCmdROScript) {
       // if executing read only lua script commands, set current connection.
       svr_->SetCurrentConnection(this);
     }
@@ -430,6 +431,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       Reply(Redis::Error("ERR " + s.Msg()));
       continue;
     }
+
+    svr_->UpdateWatchedKeysFromArgs(cmd_tokens, *attributes);
 
     if (!reply.empty()) Reply(reply);
     reply.clear();

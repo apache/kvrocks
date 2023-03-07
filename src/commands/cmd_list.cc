@@ -226,10 +226,10 @@ class CommandBPop : public Commander {
     }
 
     if (s.ok()) {
-      conn_->GetServer()->UpdateWatchedKeysManually(keys_);
       if (!last_key_ptr) {
-        conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
+        conn_->Reply(Redis::MultiBulkString({"", ""}));
       } else {
+        conn_->GetServer()->UpdateWatchedKeysManually({*last_key_ptr});
         conn_->Reply(Redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
       }
     } else if (!s.IsNotFound()) {

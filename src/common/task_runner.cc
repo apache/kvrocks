@@ -42,7 +42,7 @@ Status TaskRunner::Publish(const Task &task) {
 void TaskRunner::Start() {
   stop_ = false;
   for (int i = 0; i < n_thread_; i++) {
-    threads_.emplace_back([this]() {
+    threads_.emplace_back([this] {
       Util::ThreadSetName("task-runner");
       this->run();
     });

@@ -123,15 +123,10 @@ SlotMigrate::~SlotMigrate() {
 }
 
 Status SlotMigrate::CreateMigrateHandleThread() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("slot-migrate");
-      thread_state_ = ThreadState::Running;
-      this->Loop();
-    });
-  } catch (const std::exception &e) {
-    return {Status::NotOK, std::string(e.what())};
-  }
+  t_ = GET_OR_RET(Util::CreateThread("slot-migrate", [this] {
+    thread_state_ = ThreadState::Running;
+    this->Loop();
+  }));
 
   return Status::OK();
 }

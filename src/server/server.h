@@ -224,7 +224,8 @@ class Server {
   std::unique_ptr<SlotMigrate> slot_migrate_;
   std::unique_ptr<SlotImport> slot_import_;
 
-  void UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
+  void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
+  void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
   void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
   bool IsWatchedKeysModified(Redis::Connection *conn);
   void ResetWatchedKeys(Redis::Connection *conn);

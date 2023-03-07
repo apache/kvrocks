@@ -226,6 +226,7 @@ class CommandBPop : public Commander {
     }
 
     if (s.ok()) {
+      conn_->GetServer()->UpdateWatchedKeysManually(keys_);
       if (!last_key_ptr) {
         conn_->Reply(Redis::MultiBulkString({"", std::move(elem)}));
       } else {

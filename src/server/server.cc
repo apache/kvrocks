@@ -1665,7 +1665,7 @@ void Server::updateAllWatchedKeys() {
   }
 }
 
-void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
+void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
   if (attr.is_write() && watched_key_size_ > 0) {
     if (attr.key_range.first_key > 0) {
       updateWatchedKeysFromRange(args, attr.key_range);
@@ -1678,6 +1678,18 @@ void Server::UpdateWatchedKeys(const std::vector<std::string> &args, const Redis
     } else {
       // support commands like flushdb (write flag && key range {0,0,0})
       updateAllWatchedKeys();
+    }
+  }
+}
+
+void Server::UpdateWatchedKeysManually(const std::vector<std::string> &keys) {
+  std::shared_lock lock(watched_key_mutex_);
+
+  for (const auto &key : keys) {
+    if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
+      for (auto *conn : iter->second) {
+        conn->watched_keys_modified_ = true;
+      }
     }
   }
 }

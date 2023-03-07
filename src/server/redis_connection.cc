@@ -432,7 +432,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    svr_->UpdateWatchedKeys(cmd_tokens, *attributes);
+    svr_->UpdateWatchedKeysFromArgs(cmd_tokens, *attributes);
 
     if (!reply.empty()) Reply(reply);
     reply.clear();

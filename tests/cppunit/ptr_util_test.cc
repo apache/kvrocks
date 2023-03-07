@@ -21,12 +21,13 @@
 #include "common/ptr_util.h"
 
 #include <gtest/gtest.h>
-struct Counter {
-  Counter(int* i) : i_(i) { ++*i_; }
+struct Counter {  // NOLINT
+  explicit Counter(int* i) : i_(i) { ++*i_; }
   ~Counter() { --*i_; }
 
   int* i_;
 };
+
 TEST(ObserverOrUniquePtr, Unique) {
   int v = 0;
   {
@@ -38,8 +39,14 @@ TEST(ObserverOrUniquePtr, Unique) {
 
 TEST(CompositePtr, Observer) {
   int v = 0;
-  ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
+  Counter* c = nullptr;
+  {
+    ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
+    ASSERT_EQ(v, 1);
+
+    c = observer.Get();
+  }
   ASSERT_EQ(v, 1);
-  delete observer.Release();
+  delete c;
   ASSERT_EQ(v, 0);
 }

@@ -425,18 +425,34 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(bufferevent *bev
 
 ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  send_string(bev,
-              Redis::MultiBulkString({"replconf", "listening-port", std::to_string(self->srv_->GetConfig()->port)}));
+  auto config = self->srv_->GetConfig();
+
+  auto port = config->replica_announce_port > 0 ? config->replica_announce_port : config->port;
+  std::vector<std::string> data_to_send{"replconf", "listening-port", std::to_string(port)};
+  if (!self->next_try_without_announce_ip_address_ && !config->replica_announce_ip.empty()) {
+    data_to_send.emplace_back("ip-address");
+    data_to_send.emplace_back(config->replica_announce_ip);
+  }
+  send_string(bev, Redis::MultiBulkString(data_to_send));
   self->repl_state_.store(kReplReplConf, std::memory_order_relaxed);
   LOG(INFO) << "[replication] replconf request was sent, waiting for response";
   return CBState::NEXT;
 }
 
 ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev, void *ctx) {
+  auto self = static_cast<ReplicationThread *>(ctx);
   auto input = bufferevent_get_input(bev);
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  // on unknown option: first try without announce ip, if it fails again - do nothing (to prevent infinite loop)
+  if (line[0] == '-' && isUnknownOption(line.get()) && !self->next_try_without_announce_ip_address_) {
+    self->next_try_without_announce_ip_address_ = true;
+    LOG(WARNING) << "The old version master, can't handle ip-address, "
+                 << "try without it again";
+    // Retry previous state, i.e. send replconf again
+    return CBState::PREV;
+  }
   if (line[0] == '-' && isRestoringError(line.get())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
@@ -960,6 +976,8 @@ bool ReplicationThread::isRestoringError(const char *err) {
 bool ReplicationThread::isWrongPsyncNum(const char *err) {
   return std::string(err) == "-ERR wrong number of arguments";
 }
+
+bool ReplicationThread::isUnknownOption(const char *err) { return std::string(err) == "-ERR unknown option"; }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {

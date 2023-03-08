@@ -910,7 +910,7 @@ void Server::GetReplicationInfo(std::string *info) {
     if (slave->IsStopped()) continue;
 
     string_stream << "slave" << std::to_string(idx) << ":";
-    string_stream << "ip=" << slave->GetConn()->GetIP() << ",port=" << slave->GetConn()->GetListeningPort()
+    string_stream << "ip=" << slave->GetConn()->GetAnnounceIPOrIP() << ",port=" << slave->GetConn()->GetListeningPort()
                   << ",offset=" << slave->GetCurrentReplSeq() << ",lag=" << latest_seq - slave->GetCurrentReplSeq()
                   << "\r\n";
     ++idx;
@@ -947,7 +947,7 @@ void Server::GetRoleInfo(std::string *info) {
       if (slave->IsStopped()) continue;
 
       list.emplace_back(Redis::MultiBulkString({
-          slave->GetConn()->GetIP(),
+          slave->GetConn()->GetAnnounceIPOrIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),
       }));

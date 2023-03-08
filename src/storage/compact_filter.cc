@@ -86,8 +86,10 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
 }
 
 bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const {
+  // lazy delete to avoid race condition between command Expire and subkey Compaction
+  // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
-      || metadata.Expired() || ikey.GetVersion() != metadata.version) {
+      || metadata.LazyExpired() || ikey.GetVersion() != metadata.version) {        
     return true;
   }
   return false;

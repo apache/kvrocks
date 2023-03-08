@@ -112,6 +112,7 @@ class Metadata {
   virtual int32_t TTL() const;
   virtual timeval Time() const;
   virtual bool Expired() const;
+  virtual bool LazyExpired() const;
   virtual void Encode(std::string *dst);
   virtual rocksdb::Status Decode(const std::string &bytes);
   bool operator==(const Metadata &that) const;

@@ -222,6 +222,18 @@ timeval Metadata::Time() const {
   return created_at;
 }
 
+bool Metadata::LazyExpired() const{
+  if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
+    return true;
+  }
+
+  if (expire <= 0) {
+    return false;
+  }
+  int lazy_expire = expire + 1000;
+  int64_t now = Util::GetTimeStamp();
+  return lazy_expire < now;
+}
 bool Metadata::Expired() const {
   if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;

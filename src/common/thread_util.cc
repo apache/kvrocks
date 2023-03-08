@@ -20,6 +20,7 @@
 
 #include "thread_util.h"
 
+#include <fmt/std.h>
 #include <pthread.h>
 
 namespace Util {
@@ -37,7 +38,7 @@ Status ThreadOperationImpl(std::thread &t, const char *op, Args &&...args) {
   try {
     (t.*F)(std::forward<Args>(args)...);
   } catch (const std::system_error &e) {
-    return {Status::NotOK, fmt::format("thread #{} cannot be `{}`ed: {}", op, t.get_id(), e.what())};
+    return {Status::NotOK, fmt::format("thread #{} cannot be `{}`ed: {}", t.get_id(), op, e.what())};
   }
 
   return Status::OK();

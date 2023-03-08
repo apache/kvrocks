@@ -118,7 +118,9 @@ SlotMigrate::~SlotMigrate() {
     stop_migrate_ = true;
     thread_state_ = ThreadState::Terminated;
     job_cv_.notify_all();
-    if (t_.joinable()) t_.join();
+    if (auto s = Util::ThreadJoin(t_); !s) {
+      LOG(WARNING) << "Slot migrating thread operation failed: " << s.Msg();
+    }
   }
 }
 

@@ -57,7 +57,9 @@ void TaskRunner::Stop() {
 
 void TaskRunner::Join() {
   for (auto &thread : threads_) {
-    if (thread.joinable()) thread.join();
+    if (auto s = Util::ThreadJoin(thread); !s) {
+      LOG(WARNING) << "Task thread operation failed: " << s.Msg();
+    }
   }
 }
 

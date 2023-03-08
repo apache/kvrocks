@@ -32,4 +32,19 @@ void ThreadSetName(const char *name) {
 #endif
 }
 
+template <void (std::thread::*F)(), typename... Args>
+Status ThreadOperationImpl(std::thread &t, const char *op, Args &&...args) {
+  try {
+    (t.*F)(std::forward<Args>(args)...);
+  } catch (const std::system_error &e) {
+    return {Status::NotOK, fmt::format("thread #{} cannot be `{}`ed: {}", op, t.get_id(), e.what())};
+  }
+
+  return Status::OK();
+}
+
+Status ThreadJoin(std::thread &t) { return ThreadOperationImpl<&std::thread::join>(t, "join"); }
+
+Status ThreadDetach(std::thread &t) { return ThreadOperationImpl<&std::thread::detach>(t, "detach"); }
+
 }  // namespace Util

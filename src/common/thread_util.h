@@ -42,4 +42,7 @@ StatusOr<std::thread> CreateThread(const char *name, F f) {
   }
 }
 
+Status ThreadJoin(std::thread &t);
+Status ThreadDetach(std::thread &t);
+
 }  // namespace Util

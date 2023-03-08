@@ -77,7 +77,9 @@ void FeedSlaveThread::Stop() {
 }
 
 void FeedSlaveThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Slave thread operation failed: " << s.Msg();
+  }
 }
 
 void FeedSlaveThread::checkLivenessIfNeed() {
@@ -337,7 +339,9 @@ void ReplicationThread::Stop() {
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
                       // handled by timer
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Replication thread operation failed: " << s.Msg();
+  }
   LOG(INFO) << "[replication] Stopped";
 }
 

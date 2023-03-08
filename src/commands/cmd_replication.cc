@@ -243,7 +243,10 @@ class CommandFetchMeta : public Commander {
       auto now = static_cast<time_t>(Util::GetTimeStamp());
       svr->storage_->SetCheckpointAccessTime(now);
     }));
-    t.detach();
+
+    if (auto s = Util::ThreadDetach(t); !s) {
+      return s;
+    }
 
     return Status::OK();
   }
@@ -312,7 +315,10 @@ class CommandFetchFile : public Commander {
           svr->storage_->SetCheckpointAccessTime(now);
           svr->DecrFetchFileThread();
         }));
-    t.detach();
+
+    if (auto s = Util::ThreadDetach(t); !s) {
+      return s;
+    }
 
     return Status::OK();
   }

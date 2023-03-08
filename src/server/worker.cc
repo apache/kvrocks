@@ -533,5 +533,7 @@ void WorkerThread::Start() {
 void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "[worker] " << s.Msg();
+  }
 }

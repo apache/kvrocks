@@ -229,8 +229,12 @@ void Server::Join() {
   }
 
   task_runner_.Join();
-  if (cron_thread_.joinable()) cron_thread_.join();
-  if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
+  if (auto s = Util::ThreadJoin(cron_thread_); !s) {
+    LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
+  }
+  if (auto s = Util::ThreadJoin(compaction_checker_thread_); !s) {
+    LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
 }
 
 Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {

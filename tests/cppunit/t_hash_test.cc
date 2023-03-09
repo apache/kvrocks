@@ -29,10 +29,12 @@
 #include "parse_util.h"
 #include "test_base.h"
 #include "types/redis_hash.h"
+
 class RedisHashTest : public TestBase {
  protected:
   explicit RedisHashTest() : TestBase() { hash = std::make_unique<Redis::Hash>(storage_, "hash_ns"); }
-  ~RedisHashTest() = default;
+  ~RedisHashTest() override = default;
+
   void SetUp() override {
     key_ = "test_hash->key";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
@@ -45,63 +47,100 @@ class RedisHashTest : public TestBase {
 };
 
 TEST_F(RedisHashTest, GetAndSet) {
-  int ret;
+  int ret = 0;
   for (size_t i = 0; i < fields_.size(); i++) {
-    rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
+    auto s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string got;
-    rocksdb::Status s = hash->Get(key_, fields_[i], &got);
+    auto s = hash->Get(key_, fields_[i], &got);
     EXPECT_EQ(values_[i], got);
   }
-  rocksdb::Status s = hash->Delete(key_, fields_, &ret);
+  auto s = hash->Delete(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   hash->Del(key_);
 }
 
 TEST_F(RedisHashTest, MGetAndMSet) {
-  int ret;
+  int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
   }
-  rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
+  auto s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   s = hash->MSet(key_, fvs, false, &ret);
+  EXPECT_TRUE(s.ok());
   EXPECT_EQ(ret, 0);
   std::vector<std::string> values;
   std::vector<rocksdb::Status> statuses;
   s = hash->MGet(key_, fields_, &values, &statuses);
+  EXPECT_TRUE(s.ok());
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(values[i], values_[i].ToString());
   }
   s = hash->Delete(key_, fields_, &ret);
+  EXPECT_TRUE(s.ok());
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   hash->Del(key_);
 }
 
-TEST_F(RedisHashTest, SetNX) {
-  int ret;
-  Slice field("foo");
-  rocksdb::Status s = hash->Set(key_, field, "bar", &ret);
+TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
+  int ret = 0;
+  std::vector<FieldValue> values = {{"field-one", "value-one"}};
+  auto s = hash->MSet(key_, values, true, &ret);
   EXPECT_TRUE(s.ok() && ret == 1);
-  s = hash->Set(key_, field, "bar", &ret);
+
+  std::string field2 = "field-two";
+  std::string initial_value = "value-two";
+  s = hash->Set(key_, field2, initial_value, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+
+  values = {{field2, "value-two-changed"}};
+  s = hash->MSet(key_, values, true, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  std::vector<Slice> fields = {field};
-  s = hash->Delete(key_, fields, &ret);
-  EXPECT_EQ(fields.size(), ret);
+
+  std::string final_value;
+  s = hash->Get(key_, field2, &final_value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(initial_value, final_value);
+
+  hash->Del(key_);
+}
+
+TEST_F(RedisHashTest, MSetMultipleFieldsAndNX) {
+  int ret = 0;
+  std::vector<FieldValue> values = {{"field-one", "value-one"}, {"field-two", "value-two"}};
+  auto s = hash->MSet(key_, values, true, &ret);
+  EXPECT_TRUE(s.ok() && ret == 2);
+
+  values = {{"field-one", "value-one"}, {"field-two", "value-two-changed"}, {"field-three", "value-three"}};
+  s = hash->MSet(key_, values, true, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(ret, 1);
+
+  std::string value;
+  s = hash->Get(key_, "field-one", &value);
+  EXPECT_TRUE(s.ok() && value == "value-one");
+
+  s = hash->Get(key_, "field-two", &value);
+  EXPECT_TRUE(s.ok() && value == "value-two");
+
+  s = hash->Get(key_, "field-three", &value);
+  EXPECT_TRUE(s.ok() && value == "value-three");
+
   hash->Del(key_);
 }
 
 TEST_F(RedisHashTest, HGetAll) {
-  int ret;
+  int ret = 0;
   for (size_t i = 0; i < fields_.size(); i++) {
-    rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
+    auto s = hash->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
   std::vector<FieldValue> fvs;
-  rocksdb::Status s = hash->GetAll(key_, &fvs);
+  auto s = hash->GetAll(key_, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
   s = hash->Delete(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
@@ -109,10 +148,10 @@ TEST_F(RedisHashTest, HGetAll) {
 }
 
 TEST_F(RedisHashTest, HIncr) {
-  int64_t value;
+  int64_t value = 0;
   Slice field("hash-incrby-invalid-field");
   for (int i = 0; i < 32; i++) {
-    rocksdb::Status s = hash->IncrBy(key_, field, 1, &value);
+    auto s = hash->IncrBy(key_, field, 1, &value);
     EXPECT_TRUE(s.ok());
   }
   std::string bytes;
@@ -126,10 +165,10 @@ TEST_F(RedisHashTest, HIncr) {
 }
 
 TEST_F(RedisHashTest, HIncrInvalid) {
-  int ret;
-  int64_t value;
+  int ret = 0;
+  int64_t value = 0;
   Slice field("hash-incrby-invalid-field");
-  rocksdb::Status s = hash->IncrBy(key_, field, 1, &value);
+  auto s = hash->IncrBy(key_, field, 1, &value);
   EXPECT_TRUE(s.ok() && value == 1);
 
   s = hash->IncrBy(key_, field, LLONG_MAX, &value);
@@ -148,10 +187,10 @@ TEST_F(RedisHashTest, HIncrInvalid) {
 }
 
 TEST_F(RedisHashTest, HIncrByFloat) {
-  double value;
+  double value = 0.0;
   Slice field("hash-incrbyfloat-invalid-field");
   for (int i = 0; i < 32; i++) {
-    rocksdb::Status s = hash->IncrByFloat(key_, field, 1.2, &value);
+    auto s = hash->IncrByFloat(key_, field, 1.2, &value);
     EXPECT_TRUE(s.ok());
   }
   std::string bytes;
@@ -176,9 +215,10 @@ TEST_F(RedisHashTest, HRangeByLex) {
   std::vector<FieldValue> tmp(fvs);
   for (size_t i = 0; i < 100; i++) {
     std::shuffle(tmp.begin(), tmp.end(), g);
-    rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+    auto s = hash->MSet(key_, tmp, false, &ret);
     EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
     s = hash->MSet(key_, fvs, false, &ret);
+    EXPECT_TRUE(s.ok());
     EXPECT_EQ(ret, 0);
     std::vector<FieldValue> result;
     CommonRangeLexSpec spec;
@@ -196,7 +236,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
     hash->Del(key_);
   }
 
-  rocksdb::Status s = hash->MSet(key_, tmp, false, &ret);
+  auto s = hash->MSet(key_, tmp, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
   // use offset and count
   std::vector<FieldValue> result;

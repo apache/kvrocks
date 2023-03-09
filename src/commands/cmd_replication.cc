@@ -57,7 +57,7 @@ class CommandPSync : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     LOG(INFO) << "Slave " << conn->GetAddr() << ", listening port: " << conn->GetListeningPort()
-              << " asks for synchronization"
+              << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
               << " replication id: " << (replica_replid.length() ? replica_replid : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeq();
@@ -155,15 +155,8 @@ class CommandReplConf : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    if (args.size() >= 3) {
-      Status s = ParseParam(Util::ToLower(args[1]), args_[2]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-
-    if (args.size() >= 5) {
-      Status s = ParseParam(Util::ToLower(args[3]), args_[4]);
+    for (size_t i = 1; i < args.size(); i += 2) {
+      Status s = ParseParam(Util::ToLower(args[i]), args[i + 1]);
       if (!s.IsOK()) {
         return s;
       }
@@ -180,8 +173,13 @@ class CommandReplConf : public Commander {
       }
 
       port_ = *parse_result;
+    } else if (option == "ip-address") {
+      if (value == "") {
+        return {Status::RedisParseErr, "ip-address should not be empty"};
+      }
+      ip_address_ = value;
     } else {
-      return {Status::RedisParseErr, "unknown option"};
+      return {Status::RedisParseErr, errUnknownOption};
     }
 
     return Status::OK();
@@ -191,12 +189,16 @@ class CommandReplConf : public Commander {
     if (port_ != 0) {
       conn->SetListeningPort(port_);
     }
+    if (!ip_address_.empty()) {
+      conn->SetAnnounceIP(ip_address_);
+    }
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
   int port_ = 0;
+  std::string ip_address_;
 };
 
 class CommandFetchMeta : public Commander {
@@ -205,7 +207,7 @@ class CommandFetchMeta : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetIP();
+    std::string ip = conn->GetAnnounceIP();
 
     auto s = Util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
@@ -263,7 +265,7 @@ class CommandFetchFile : public Commander {
     std::vector<std::string> files = Util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetIP();
+    std::string ip = conn->GetAnnounceIP();
 
     auto s = Util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {

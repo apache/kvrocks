@@ -38,5 +38,6 @@ inline constexpr const char *errZSetLTGTNX = "GT, LT, and/or NX options at the s
 inline constexpr const char *errScoreIsNotValidFloat = "score is not a valid float";
 inline constexpr const char *errValueIsNotFloat = "value is not a valid float";
 inline constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
+inline constexpr const char *errUnknownOption = "unknown option";
 
 }  // namespace Redis

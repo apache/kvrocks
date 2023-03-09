@@ -149,6 +149,7 @@ class ReplicationThread {
   std::atomic<ReplState> repl_state_;
   std::atomic<time_t> last_io_time_ = 0;
   bool next_try_old_psync_ = false;
+  bool next_try_without_announce_ip_address_ = false;
 
   std::function<void()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;
@@ -197,6 +198,7 @@ class ReplicationThread {
   Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
   static bool isWrongPsyncNum(const char *err);
+  static bool isUnknownOption(const char *err);
 
   static void EventTimerCB(int, int16_t, void *ctx);
 

@@ -48,18 +48,16 @@ class CommandHSetNX : public Commander {
     if (args.size() % 2 != 0) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+    for (size_t i = 2; i < args_.size(); i += 2) {
+      field_values_.emplace_back(args_[i], args_[i + 1]);
+    }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<FieldValue> field_values;
-    for (size_t i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(args_[i], args_[i + 1]);
-    }
-
     int ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    auto s = hash_db.MSet(args_[1], field_values, true, &ret);
+    auto s = hash_db.MSet(args_[1], field_values_, true, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -67,6 +65,9 @@ class CommandHSetNX : public Commander {
     *output = Redis::Integer(ret);
     return Status::OK();
   }
+
+ private:
+  std::vector<FieldValue> field_values_;
 };
 
 class CommandHStrlen : public Commander {
@@ -221,18 +222,16 @@ class CommandHMSet : public Commander {
     if (args.size() % 2 != 0) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+    for (size_t i = 2; i < args_.size(); i += 2) {
+      field_values_.emplace_back(args_[i], args_[i + 1]);
+    }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<FieldValue> field_values;
-    for (size_t i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(args_[i], args_[i + 1]);
-    }
-
     int ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    auto s = hash_db.MSet(args_[1], field_values, false, &ret);
+    auto s = hash_db.MSet(args_[1], field_values_, false, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -244,6 +243,9 @@ class CommandHMSet : public Commander {
     }
     return Status::OK();
   }
+
+ private:
+  std::vector<FieldValue> field_values_;
 };
 
 class CommandHKeys : public Commander {

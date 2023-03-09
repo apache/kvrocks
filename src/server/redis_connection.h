@@ -91,7 +91,8 @@ class Connection {
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() { return listening_port_; }
   void SetAnnounceIP(std::string ip) { announce_ip_ = std::move(ip); }
-  std::string GetAnnounceIPOrIP() { return !announce_ip_.empty() ? announce_ip_ : ip_; }
+  std::string GetAnnounceIP() { return !announce_ip_.empty() ? announce_ip_ : ip_; }
+  std::string GetAnnounceAddr() { return GetAnnounceIP() + ":" + std::to_string(listening_port_); }
   uint64_t GetClientType();
   Server *GetServer() { return svr_; }
 

@@ -910,7 +910,7 @@ void Server::GetReplicationInfo(std::string *info) {
     if (slave->IsStopped()) continue;
 
     string_stream << "slave" << std::to_string(idx) << ":";
-    string_stream << "ip=" << slave->GetConn()->GetAnnounceIPOrIP() << ",port=" << slave->GetConn()->GetListeningPort()
+    string_stream << "ip=" << slave->GetConn()->GetAnnounceIP() << ",port=" << slave->GetConn()->GetListeningPort()
                   << ",offset=" << slave->GetCurrentReplSeq() << ",lag=" << latest_seq - slave->GetCurrentReplSeq()
                   << "\r\n";
     ++idx;
@@ -947,7 +947,7 @@ void Server::GetRoleInfo(std::string *info) {
       if (slave->IsStopped()) continue;
 
       list.emplace_back(Redis::MultiBulkString({
-          slave->GetConn()->GetAnnounceIPOrIP(),
+          slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),
       }));
@@ -1452,7 +1452,8 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   // Slave clients
   slave_threads_mu_.lock();
   for (const auto &st : slave_threads_) {
-    if ((type & kTypeSlave) || (!addr.empty() && st->GetConn()->GetAddr() == addr) ||
+    if ((type & kTypeSlave) ||
+        (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetAnnounceAddr() == addr)) ||
         (id != 0 && st->GetConn()->GetID() == id)) {
       st->Stop();
       (*killed)++;

@@ -446,7 +446,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev, v
   if (!line) return CBState::AGAIN;
 
   // on unknown option: first try without announce ip, if it fails again - do nothing (to prevent infinite loop)
-  if (line[0] == '-' && isUnknownOption(line.get()) && !self->next_try_without_announce_ip_address_) {
+  if (isUnknownOption(line.get()) && !self->next_try_without_announce_ip_address_) {
     self->next_try_without_announce_ip_address_ = true;
     LOG(WARNING) << "The old version master, can't handle ip-address, "
                  << "try without it again";

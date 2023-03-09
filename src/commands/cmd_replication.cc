@@ -57,7 +57,7 @@ class CommandPSync : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     LOG(INFO) << "Slave " << conn->GetAddr() << ", listening port: " << conn->GetListeningPort()
-              << ", announce ip: " << conn->GetAnnounceIPOrIP() << " asks for synchronization"
+              << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
               << " replication id: " << (replica_replid.length() ? replica_replid : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeq();
@@ -207,7 +207,7 @@ class CommandFetchMeta : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetAnnounceIPOrIP();
+    std::string ip = conn->GetAnnounceIP();
 
     auto s = Util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
@@ -265,7 +265,7 @@ class CommandFetchFile : public Commander {
     std::vector<std::string> files = Util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetAnnounceIPOrIP();
+    std::string ip = conn->GetAnnounceIP();
 
     auto s = Util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {

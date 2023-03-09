@@ -54,7 +54,7 @@ class CommandHSetNX : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<FieldValue> field_values;
     for (size_t i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(FieldValue{args_[i], args_[i + 1]});
+      field_values.emplace_back(args_[i], args_[i + 1]);
     }
 
     int ret = 0;
@@ -227,7 +227,7 @@ class CommandHMSet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<FieldValue> field_values;
     for (size_t i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(FieldValue{args_[i], args_[i + 1]});
+      field_values.emplace_back(args_[i], args_[i + 1]);
     }
 
     int ret = 0;

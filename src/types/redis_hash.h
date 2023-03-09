@@ -33,6 +33,8 @@
 struct FieldValue {
   std::string field;
   std::string value;
+
+  FieldValue(std::string f, std::string v) : field(std::move(f)), value(std::move(v)) {}
 };
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };

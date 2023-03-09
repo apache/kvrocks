@@ -315,7 +315,6 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   }
   int64_t pos = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
-    FieldValue tmp_field_value;
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     if (spec.reversed) {
       if (ikey.GetSubKey().ToString() < spec.min || (spec.minex && ikey.GetSubKey().ToString() == spec.min)) {
@@ -332,9 +331,8 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
         break;
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    tmp_field_value.field = ikey.GetSubKey().ToString();
-    tmp_field_value.value = iter->value().ToString();
-    field_values->emplace_back(tmp_field_value);
+
+    field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
     if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }
   return rocksdb::Status::OK();
@@ -362,18 +360,15 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
-    FieldValue fv;
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      fv.field = ikey.GetSubKey().ToString();
+      field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
-      fv.value = iter->value().ToString();
+      field_values->emplace_back("", iter->value().ToString());
     } else {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      fv.field = ikey.GetSubKey().ToString();
-      fv.value = iter->value().ToString();
+      field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
     }
-    field_values->emplace_back(fv);
   }
   return rocksdb::Status::OK();
 }

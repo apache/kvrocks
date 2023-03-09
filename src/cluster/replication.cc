@@ -46,28 +46,29 @@
 #include "time_util.h"
 
 Status FeedSlaveThread::Start() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("feed-replica");
-      sigset_t mask, omask;
-      sigemptyset(&mask);
-      sigemptyset(&omask);
-      sigaddset(&mask, SIGCHLD);
-      sigaddset(&mask, SIGHUP);
-      sigaddset(&mask, SIGPIPE);
-      pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      auto s = Util::SockSend(conn_->GetFD(), "+OK\r\n");
-      if (!s.IsOK()) {
-        LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
-        return;
-      }
-      this->loop();
-    });
-  } catch (const std::system_error &e) {
+  auto s = Util::CreateThread("feed-replica", [this] {
+    sigset_t mask, omask;
+    sigemptyset(&mask);
+    sigemptyset(&omask);
+    sigaddset(&mask, SIGCHLD);
+    sigaddset(&mask, SIGHUP);
+    sigaddset(&mask, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &mask, &omask);
+    auto s = Util::SockSend(conn_->GetFD(), "+OK\r\n");
+    if (!s.IsOK()) {
+      LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
+      return;
+    }
+    this->loop();
+  });
+
+  if (s) {
+    t_ = std::move(*s);
+  } else {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
-    return {Status::NotOK, e.what()};
   }
-  return Status::OK();
+
+  return s;
 }
 
 void FeedSlaveThread::Stop() {
@@ -76,7 +77,9 @@ void FeedSlaveThread::Stop() {
 }
 
 void FeedSlaveThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Slave thread operation failed: " << s.Msg();
+  }
 }
 
 void FeedSlaveThread::checkLivenessIfNeed() {
@@ -323,15 +326,11 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
   // cleanup the old backups, so we can start replication in a clean state
   storage_->PurgeOldBackups(0, 0);
 
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("master-repl");
-      this->run();
-      assert(stop_flag_);
-    });
-  } catch (const std::system_error &e) {
-    return Status(Status::NotOK, e.what());
-  }
+  t_ = GET_OR_RET(Util::CreateThread("master-repl", [this] {
+    this->run();
+    assert(stop_flag_);
+  }));
+
   return Status::OK();
 }
 
@@ -340,7 +339,9 @@ void ReplicationThread::Stop() {
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
                       // handled by timer
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Replication thread operation failed: " << s.Msg();
+  }
   LOG(INFO) << "[replication] Stopped";
 }
 

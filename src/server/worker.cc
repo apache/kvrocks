@@ -518,20 +518,22 @@ void Worker::KickoutIdleClients(int timeout) {
 }
 
 void WorkerThread::Start() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("worker");
-      this->worker_->Run(std::this_thread::get_id());
-    });
-  } catch (const std::system_error &e) {
-    LOG(ERROR) << "[worker] Failed to start worker thread, err: " << e.what();
+  auto s = Util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
+
+  if (s) {
+    t_ = std::move(*s);
+  } else {
+    LOG(ERROR) << "[worker] Failed to start worker thread, err: " << s.Msg();
     return;
   }
+
   LOG(INFO) << "[worker] Thread #" << t_.get_id() << " started";
 }
 
 void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "[worker] " << s.Msg();
+  }
 }

@@ -165,15 +165,11 @@ Status Server::Start() {
 
   task_runner_.Start();
   // setup server cron thread
-  cron_thread_ = std::thread([this]() {
-    Util::ThreadSetName("server-cron");
-    this->cron();
-  });
+  cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
 
-  compaction_checker_thread_ = std::thread([this]() {
+  compaction_checker_thread_ = GET_OR_RET(Util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
     time_t last_compact_date = 0;
-    Util::ThreadSetName("compact-check");
     CompactionChecker compaction_checker(this->storage_);
 
     while (!stop_) {
@@ -204,7 +200,7 @@ Status Server::Start() {
         }
       }
     }
-  });
+  }));
 
   memory_startup_use_.store(Stats::GetMemoryRSS(), std::memory_order_relaxed);
   LOG(INFO) << "[server] Ready to accept connections";
@@ -233,8 +229,12 @@ void Server::Join() {
   }
 
   task_runner_.Join();
-  if (cron_thread_.joinable()) cron_thread_.join();
-  if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
+  if (auto s = Util::ThreadJoin(cron_thread_); !s) {
+    LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
+  }
+  if (auto s = Util::ThreadJoin(compaction_checker_thread_); !s) {
+    LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
 }
 
 Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {

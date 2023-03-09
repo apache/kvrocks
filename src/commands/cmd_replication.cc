@@ -217,8 +217,7 @@ class CommandFetchMeta : public Commander {
     svr->stats_.IncrFullSyncCounter();
 
     // Feed-replica-meta thread
-    std::thread t = std::thread([svr, repl_fd, ip, bev = conn->GetBufferEvent()]() {
-      Util::ThreadSetName("feed-repl-info");
+    auto t = GET_OR_RET(Util::CreateThread("feed-repl-info", [svr, repl_fd, ip, bev = conn->GetBufferEvent()] {
       svr->IncrFetchFileThread();
       auto exit = MakeScopeExit([svr, bev] {
         bufferevent_free(bev);
@@ -243,8 +242,11 @@ class CommandFetchMeta : public Commander {
       }
       auto now = static_cast<time_t>(Util::GetTimeStamp());
       svr->storage_->SetCheckpointAccessTime(now);
-    });
-    t.detach();
+    }));
+
+    if (auto s = Util::ThreadDetach(t); !s) {
+      return s;
+    }
 
     return Status::OK();
   }
@@ -271,8 +273,7 @@ class CommandFetchFile : public Commander {
     conn->NeedNotFreeBufferEvent();  // Feed-replica-file thread will close the replica bufferevent
     conn->EnableFlag(Redis::Connection::kCloseAsync);
 
-    std::thread t = std::thread([svr, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
-      Util::ThreadSetName("feed-repl-file");
+    auto t = GET_OR_RET(Util::CreateThread("feed-repl-file", [svr, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
       auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
       svr->IncrFetchFileThread();
 
@@ -311,8 +312,11 @@ class CommandFetchFile : public Commander {
       auto now = static_cast<time_t>(Util::GetTimeStamp());
       svr->storage_->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
-    });
-    t.detach();
+    }));
+
+    if (auto s = Util::ThreadDetach(t); !s) {
+      return s;
+    }
 
     return Status::OK();
   }

@@ -477,7 +477,8 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string 
       continue;
     }
 
-    if ((type & conn->GetClientType()) || (!addr.empty() && conn->GetAddr() == addr) ||
+    if ((type & conn->GetClientType()) ||
+        (!addr.empty() && (conn->GetAddr() == addr || conn->GetAnnounceAddr() == addr)) ||
         (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection

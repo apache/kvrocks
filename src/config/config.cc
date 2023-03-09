@@ -125,6 +125,8 @@ Config::Config() {
       {"slaveof", true, new StringField(&slaveof_, "")},
       {"compact-cron", false, new StringField(&compact_cron_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_, "")},
+      {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
+      {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},

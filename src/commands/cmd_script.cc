@@ -98,7 +98,7 @@ class CommandScript : public Commander {
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = Lua::createFunction(svr, args_[2], &sha, svr->Lua());
+      auto s = Lua::createFunction(svr, args_[2], &sha, svr->Lua(), true);
       if (!s.IsOK()) {
         return s;
       }

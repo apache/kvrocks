@@ -370,7 +370,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     pushError(lua, "READONLY You can't write against a read only slave.");
     return raise_error ? raiseError(lua) : 1;
   }
-  
+
   if (!config->slave_serve_stale_data && srv->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
       srv->GetReplicationState() != kReplConnected) {
     pushError(lua,
@@ -400,7 +400,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     pushError(lua, s.Msg().data());
     return raise_error ? raiseError(lua) : 1;
   }
-  
+
   redisProtocolToLuaType(lua, output.data());
   return 1;
 }

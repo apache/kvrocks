@@ -36,6 +36,7 @@
 #include "commands/commander.h"
 #include "config.h"
 #include "fmt/format.h"
+#include "lua.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "storage/compaction_checker.h"
@@ -1498,6 +1499,12 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
 }
 
 Status Server::ScriptExists(const std::string &sha) {
+  lua_getglobal(lua_, (REDIS_LUA_FUNC_SHA_PREFIX + sha).c_str());
+  if (!lua_isnil(lua_, -1)) {
+    return Status::OK();
+  }
+  lua_pop(lua_, 1);
+
   std::string body;
   return ScriptGet(sha, &body);
 }

@@ -220,7 +220,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
 
   /* We obtain the script SHA1, then check if this function is already
    * defined into the Lua state */
-  char funcname[2 + 40 + 1] = "f_";
+  char funcname[2 + 40 + 1] = REDIS_LUA_FUNC_SHA_PREFIX;
 
   if (!evalsha) {
     SHA1Hex(funcname + 2, args[1].c_str(), args[1].size());
@@ -873,7 +873,7 @@ int redisMathRandomSeed(lua_State *L) {
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
 Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store) {
-  char funcname[2 + 40 + 1] = "f_";
+  char funcname[2 + 40 + 1] = REDIS_LUA_FUNC_SHA_PREFIX;
 
   SHA1Hex(funcname + 2, body.c_str(), body.size());
   *sha = funcname + 2;

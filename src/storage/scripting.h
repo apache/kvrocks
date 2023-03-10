@@ -27,6 +27,8 @@
 #include "server/redis_connection.h"
 #include "status.h"
 
+#define REDIS_LUA_FUNC_SHA_PREFIX "f_"  // NOLINT
+
 namespace Lua {
 
 lua_State *CreateState(bool read_only = false);

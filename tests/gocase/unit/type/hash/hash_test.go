@@ -167,6 +167,68 @@ func TestHash(t *testing.T) {
 		require.Equal(t, "foo", res)
 	})
 
+	t.Run("HSETNX multiple values, wrong number of arguments", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1", "field2")
+		require.ErrorContains(t, r.Err(), "wrong number of arguments")
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, target keys missing", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1", "field2", "value2")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), val)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, target keys exist", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		rdb.HSet(ctx, hashSetName, "field1", "value1")
+		rdb.HSet(ctx, hashSetName, "field2", "value2")
+
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1-changed", "field2", "value2-changed")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), val)
+
+		value1 := rdb.HGet(ctx, hashSetName, "field1").Val()
+		require.Equal(t, "value1", value1)
+
+		value2 := rdb.HGet(ctx, hashSetName, "field2").Val()
+		require.Equal(t, "value2", value2)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, some of the target keys exist", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		rdb.HSet(ctx, hashSetName, "field1", "value1")
+		rdb.HSet(ctx, hashSetName, "field2", "value2")
+
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1-changed", "field2", "value2-changed",
+			"field3", "value3", "field4", "value4")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), val)
+
+		value1 := rdb.HGet(ctx, hashSetName, "field1").Val()
+		require.Equal(t, "value1", value1)
+
+		value2 := rdb.HGet(ctx, hashSetName, "field2").Val()
+		require.Equal(t, "value2", value2)
+
+		value3 := rdb.HGet(ctx, hashSetName, "field3").Val()
+		require.Equal(t, "value3", value3)
+
+		value4 := rdb.HGet(ctx, hashSetName, "field4").Val()
+		require.Equal(t, "value4", value4)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
 	t.Run("HMSET wrong number of args", func(t *testing.T) {
 		pattern := ".*wrong number.*"
 		util.ErrorRegexp(t, rdb.HMSet(ctx, "smallhash", "key1", "val1", "key2").Err(), pattern)

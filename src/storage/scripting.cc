@@ -333,7 +333,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   auto redisCmd = cmd_iter->second;
-  if (read_only && ~(redisCmd->flags & Redis::kCmdReadOnly)) {
+  if (read_only && !(redisCmd->flags & Redis::kCmdReadOnly)) {
     pushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? raiseError(lua) : 1;
   }

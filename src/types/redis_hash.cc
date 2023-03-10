@@ -25,13 +25,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <limits>
 #include <utility>
 
 #include "db_util.h"
 #include "parse_util.h"
 
 namespace Redis {
+
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
   return Database::GetMetadata(kRedisHash, ns_key, metadata);
 }
@@ -173,12 +173,15 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
+  storage_->SetReadOptions(read_options);
+
   std::string sub_key, value;
   for (const auto &field : fields) {
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     value.clear();
-    auto s = storage_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
+
     values->emplace_back(value);
     statuses->emplace_back(s);
   }
@@ -190,13 +193,6 @@ rocksdb::Status Hash::Set(const Slice &user_key, const Slice &field, const Slice
   std::vector<FieldValue> fvs;
   fvs.emplace_back(std::move(fv));
   return MSet(user_key, fvs, false, ret);
-}
-
-rocksdb::Status Hash::SetNX(const Slice &user_key, const Slice &field, Slice value, int *ret) {
-  FieldValue fv = {field.ToString(), value.ToString()};
-  std::vector<FieldValue> fvs;
-  fvs.emplace_back(std::move(fv));
-  return MSet(user_key, fvs, true, ret);
 }
 
 rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, int *ret) {
@@ -246,22 +242,30 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
+
   for (const auto &fv : field_values) {
     exists = false;
+
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+
     if (metadata.size > 0) {
       std::string fieldValue;
       s = storage_->Get(rocksdb::ReadOptions(), sub_key, &fieldValue);
       if (!s.ok() && !s.IsNotFound()) return s;
+
       if (s.ok()) {
-        if (((fieldValue == fv.value) || nx)) continue;
+        if (nx || fieldValue == fv.value) continue;
+
         exists = true;
       }
     }
+
     if (!exists) added++;
+
     batch->Put(sub_key, fv.value);
   }
+
   if (added > 0) {
     *ret = added;
     metadata.size += added;
@@ -269,6 +273,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
+
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
@@ -310,7 +315,6 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   }
   int64_t pos = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
-    FieldValue tmp_field_value;
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     if (spec.reversed) {
       if (ikey.GetSubKey().ToString() < spec.min || (spec.minex && ikey.GetSubKey().ToString() == spec.min)) {
@@ -327,10 +331,9 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
         break;
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    tmp_field_value.field = ikey.GetSubKey().ToString();
-    tmp_field_value.value = iter->value().ToString();
-    field_values->emplace_back(tmp_field_value);
-    if (spec.count > 0 && field_values && field_values->size() >= static_cast<unsigned>(spec.count)) break;
+
+    field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
+    if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }
   return rocksdb::Status::OK();
 }
@@ -357,18 +360,15 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
-    FieldValue fv;
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      fv.field = ikey.GetSubKey().ToString();
+      field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
-      fv.value = iter->value().ToString();
+      field_values->emplace_back("", iter->value().ToString());
     } else {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      fv.field = ikey.GetSubKey().ToString();
-      fv.value = iter->value().ToString();
+      field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
     }
-    field_values->emplace_back(fv);
   }
   return rocksdb::Status::OK();
 }

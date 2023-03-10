@@ -249,7 +249,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
     }
 
     std::string sha;
-    auto s = createFunction(srv, body, &sha, lua);
+    auto s = createFunction(srv, body, &sha, lua, false);
     if (!s.IsOK()) {
       lua_pop(lua, 1); /* remove the error handler from the stack. */
       return s;
@@ -872,7 +872,7 @@ int redisMathRandomSeed(lua_State *L) {
  *
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
-Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua) {
+Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store) {
   char funcname[2 + 40 + 1] = "f_";
 
   SHA1Hex(funcname + 2, body.c_str(), body.size());
@@ -891,7 +891,7 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
     return {Status::NotOK, "Error running script (new function): " + errMsg + "\n"};
   }
   // would store lua function into propagate column family and propagate those scripts to slaves
-  return srv->ScriptSet(*sha, body);
+  return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();
 }
 
 }  // namespace Lua

@@ -45,7 +45,7 @@ int redisStatusReplyCommand(lua_State *lua);
 int redisErrorReplyCommand(lua_State *lua);
 int redisLogCommand(lua_State *lua);
 
-Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua);
+Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
 Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string> &args, bool evalsha,
                           std::string *output, bool read_only = false);

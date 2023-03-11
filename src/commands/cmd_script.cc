@@ -26,43 +26,35 @@
 
 namespace Redis {
 
-class CommandEval : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
-
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    return Lua::evalGenericCommand(conn, args_, false, output);
-  }
-};
-
-class CommandEvalSHA : public Commander {
+template <bool evalsha, bool read_only>
+class CommandEvalImpl : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (args_[1].size() != 40) {
+    if (evalsha && args_[1].size() != 40) {
       *output = Redis::Error(errNoMatchingScript);
       return Status::OK();
     }
-    return Lua::evalGenericCommand(conn, args_, true, output);
-  }
-};
 
-class CommandEvalRO : public Commander {
- public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    return Lua::evalGenericCommand(conn, args_, false, output, true);
-  }
-};
-
-class CommandEvalSHARO : public Commander {
- public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (args_[1].size() != 40) {
-      *output = Redis::Error(errNoMatchingScript);
-      return Status::OK();
+    int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
+    if (numkeys > int64_t(args_.size() - 3)) {
+      return {Status::NotOK, "Number of keys can't be greater than number of args"};
+    } else if (numkeys < -1) {
+      return {Status::NotOK, "Number of keys can't be negative"};
     }
-    return Lua::evalGenericCommand(conn, args_, true, output, true);
+
+    return Lua::evalGenericCommand(
+        conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
+        std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), evalsha, output, read_only);
   }
 };
+
+class CommandEval : public CommandEvalImpl<false, false> {};
+
+class CommandEvalSHA : public CommandEvalImpl<true, false> {};
+
+class CommandEvalRO : public CommandEvalImpl<false, true> {};
+
+class CommandEvalSHARO : public CommandEvalImpl<true, true> {};
 
 class CommandScript : public Commander {
  public:

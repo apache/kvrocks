@@ -55,8 +55,11 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   if (props.size() / 360 > maxFilesToCompact) {
     maxFilesToCompact = props.size() / 360;
   }
-  int64_t forceCompactSeconds = 2 * 24 * 3600;
   int64_t now = Util::GetTimeStamp();
+
+  auto force_compact_file_age = config_->force_compact_file_age;
+  auto force_compact_min_ratio = static_cast<double>(config_->force_compact_file_min_deleted_percentage / 100);
+
   std::string best_filename;
   double best_delete_ratio = 0;
   int64_t total_keys = 0, deleted_keys = 0;
@@ -104,16 +107,19 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     }
 
     if (start_key.empty() || stop_key.empty()) continue;
-    // pick the file which was created more than 2 days
-    if (file_creation_time < static_cast<uint64_t>(now - forceCompactSeconds)) {
-      LOG(INFO) << "[compaction checker] Going to compact the key in file(created more than 2 days): " << iter.first;
-      s = storage_->Compact(&start_key, &stop_key);
-      LOG(INFO) << "[compaction checker] Compact the key in file(created more than 2 days): " << iter.first
+    double delete_ratio = static_cast<double>(deleted_keys) / static_cast<double>(total_keys);
+
+    // pick the file according to force compact policy
+    if (file_creation_time < static_cast<uint64_t>(now - force_compact_file_age) &&
+        delete_ratio >= force_compact_min_ratio) {
+      LOG(INFO) << "[compaction checker] Going to compact the key in file (force compact policy): " << iter.first;
+      auto s = storage_->Compact(&start_key, &stop_key);
+      LOG(INFO) << "[compaction checker] Compact the key in file (force compact policy): " << iter.first
                 << " finished, result: " << s.ToString();
       maxFilesToCompact--;
+      continue;
     }
     // pick the file which has highest delete ratio
-    double delete_ratio = static_cast<double>(deleted_keys) / static_cast<double>(total_keys);
     if (total_keys != 0 && delete_ratio > best_delete_ratio) {
       best_delete_ratio = delete_ratio;
       best_filename = iter.first;

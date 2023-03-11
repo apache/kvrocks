@@ -22,6 +22,9 @@
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
 
+#include <mutex>
+#include <shared_mutex>
+
 #include "commands/commander.h"
 #include "fmt/format.h"
 #ifdef ENABLE_OPENSSL
@@ -322,8 +325,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     const auto attributes = current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
 
-    std::unique_ptr<RWLock::ReadLock> concurrency;   // Allow concurrency
-    std::unique_ptr<RWLock::WriteLock> exclusivity;  // Need exclusivity
+    std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
+    std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
     // If the command needs to process exclusively, we need to get 'ExclusivityGuard'
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).

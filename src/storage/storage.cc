@@ -796,11 +796,9 @@ std::string Storage::GetReplIdFromDbEngine() {
   return replid_in_db;
 }
 
-std::unique_ptr<RWLock::ReadLock> Storage::ReadLockGuard() { return std::make_unique<RWLock::ReadLock>(db_rw_lock_); }
+std::shared_lock<std::shared_mutex> Storage::ReadLockGuard() { return std::shared_lock(db_rw_lock_); }
 
-std::unique_ptr<RWLock::WriteLock> Storage::WriteLockGuard() {
-  return std::make_unique<RWLock::WriteLock>(db_rw_lock_);
-}
+std::unique_lock<std::shared_mutex> Storage::WriteLockGuard() { return std::unique_lock(db_rw_lock_); }
 
 Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::string *files) {
   auto guard = storage->ReadLockGuard();

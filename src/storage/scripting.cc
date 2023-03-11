@@ -134,33 +134,30 @@ void loadFuncs(lua_State *lua, bool read_only) {
    * Note that when the error is in the C function we want to report the
    * information about the caller, that's what makes sense from the point
    * of view of the user debugging a script. */
-  {
-    const char *err_func =
-        "local dbg = debug\n"
-        "function __redis__err__handler(err)\n"
-        "  local i = dbg.getinfo(2,'nSl')\n"
-        "  if i and i.what == 'C' then\n"
-        "    i = dbg.getinfo(3,'nSl')\n"
-        "  end\n"
-        "  if i then\n"
-        "    return i.source .. ':' .. i.currentline .. ': ' .. err\n"
-        "  else\n"
-        "    return err\n"
-        "  end\n"
-        "end\n";
-    luaL_loadbuffer(lua, err_func, strlen(err_func), "@err_handler_def");
-    lua_pcall(lua, 0, 0, 0);
-  }
-  {
-    const char *compare_func =
-        "function __redis__compare_helper(a,b)\n"
-        "  if a == false then a = '' end\n"
-        "  if b == false then b = '' end\n"
-        "  return a<b\n"
-        "end\n";
-    luaL_loadbuffer(lua, compare_func, strlen(compare_func), "@cmp_func_def");
-    lua_pcall(lua, 0, 0, 0);
-  }
+  const char *err_func =
+      "local dbg = debug\n"
+      "function __redis__err__handler(err)\n"
+      "  local i = dbg.getinfo(2,'nSl')\n"
+      "  if i and i.what == 'C' then\n"
+      "    i = dbg.getinfo(3,'nSl')\n"
+      "  end\n"
+      "  if i then\n"
+      "    return i.source .. ':' .. i.currentline .. ': ' .. err\n"
+      "  else\n"
+      "    return err\n"
+      "  end\n"
+      "end\n";
+  luaL_loadbuffer(lua, err_func, strlen(err_func), "@err_handler_def");
+  lua_pcall(lua, 0, 0, 0);
+
+  const char *compare_func =
+      "function __redis__compare_helper(a,b)\n"
+      "  if a == false then a = '' end\n"
+      "  if b == false then b = '' end\n"
+      "  return a<b\n"
+      "end\n";
+  luaL_loadbuffer(lua, compare_func, strlen(compare_func), "@cmp_func_def");
+  lua_pcall(lua, 0, 0, 0);
 }
 
 int redisLogCommand(lua_State *lua) {
@@ -204,29 +201,22 @@ int redisLogCommand(lua_State *lua) {
   return 0;
 }
 
-Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string> &args, bool evalsha,
-                          std::string *output, bool read_only) {
+Status evalGenericCommand(Redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
+                          const std::vector<std::string> &argv, bool evalsha, std::string *output, bool read_only) {
   Server *srv = conn->GetServer();
 
   // Use the worker's private Lua VM when entering the read-only mode
   lua_State *lua = read_only ? conn->Owner()->Lua() : srv->Lua();
-
-  int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
-  if (numkeys > int64_t(args.size() - 3)) {
-    return {Status::NotOK, "Number of keys can't be greater than number of args"};
-  } else if (numkeys < -1) {
-    return {Status::NotOK, "Number of keys can't be negative"};
-  }
 
   /* We obtain the script SHA1, then check if this function is already
    * defined into the Lua state */
   char funcname[2 + 40 + 1] = REDIS_LUA_FUNC_SHA_PREFIX;
 
   if (!evalsha) {
-    SHA1Hex(funcname + 2, args[1].c_str(), args[1].size());
+    SHA1Hex(funcname + 2, body_or_sha.c_str(), body_or_sha.size());
   } else {
     for (int j = 0; j < 40; j++) {
-      funcname[j + 2] = static_cast<char>(tolower(args[1][j]));
+      funcname[j + 2] = static_cast<char>(tolower(body_or_sha[j]));
     }
   }
 
@@ -245,10 +235,10 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
         return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
       }
     } else {
-      body = args[1];
+      body = body_or_sha;
     }
 
-    std::string sha;
+    std::string sha = funcname + 2;
     auto s = createFunction(srv, body, &sha, lua, false);
     if (!s.IsOK()) {
       lua_pop(lua, 1); /* remove the error handler from the stack. */
@@ -260,8 +250,8 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
 
   /* Populate the argv and keys table accordingly to the arguments that
    * EVAL received. */
-  setGlobalArray(lua, "KEYS", std::vector<std::string>(args.begin() + 3, args.begin() + 3 + numkeys));
-  setGlobalArray(lua, "ARGV", std::vector<std::string>(args.begin() + 3 + numkeys, args.end()));
+  setGlobalArray(lua, "KEYS", keys);
+  setGlobalArray(lua, "ARGV", argv);
 
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("ERR running script (call to {}): {}", funcname, lua_tostring(lua, -1));
@@ -272,6 +262,12 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
     lua_pop(lua, 1);
   }
 
+  // clean global variables to prevent information leak in function commands
+  lua_pushnil(lua);
+  lua_setglobal(lua, "KEYS");
+  lua_pushnil(lua);
+  lua_setglobal(lua, "ARGV");
+
   /* Call the Lua garbage collector from time to time to avoid a
    * full cycle performed by Lua, which adds too latency.
    *
@@ -279,15 +275,14 @@ Status evalGenericCommand(Redis::Connection *conn, const std::vector<std::string
    * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
    * for every command uses too much CPU. */
   constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
-  {
-    static int64_t gc_count = 0;
+  static int64_t gc_count = 0;
 
-    gc_count++;
-    if (gc_count == LUA_GC_CYCLE_PERIOD) {
-      lua_gc(lua, LUA_GCSTEP, LUA_GC_CYCLE_PERIOD);
-      gc_count = 0;
-    }
+  gc_count++;
+  if (gc_count == LUA_GC_CYCLE_PERIOD) {
+    lua_gc(lua, LUA_GCSTEP, LUA_GC_CYCLE_PERIOD);
+    gc_count = 0;
   }
+
   return Status::OK();
 }
 
@@ -875,8 +870,12 @@ int redisMathRandomSeed(lua_State *L) {
 Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store) {
   char funcname[2 + 40 + 1] = REDIS_LUA_FUNC_SHA_PREFIX;
 
-  SHA1Hex(funcname + 2, body.c_str(), body.size());
-  *sha = funcname + 2;
+  if (sha->empty()) {
+    SHA1Hex(funcname + 2, body.c_str(), body.size());
+    *sha = funcname + 2;
+  } else {
+    std::copy(sha->begin(), sha->end(), funcname + 2);
+  }
 
   auto funcdef = fmt::format("function {}() {}\nend", funcname, body);
 

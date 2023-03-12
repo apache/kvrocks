@@ -205,7 +205,7 @@ Config::Config() {
        new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes", false,
        new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
-      {"rocksdb.max_background_jobs", true, new IntField(&RocksDB.max_background_jobs, 2, 0, 32)},
+      {"rocksdb.max_background_jobs", false, new IntField(&RocksDB.max_background_jobs, 2, 0, 32)},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&RocksDB.write_options.sync, false)},
@@ -585,12 +585,12 @@ void Config::initFieldCallback() {
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},
       {"rocksdb.delayed_write_rate", set_db_option_cb},
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
+      {"rocksdb.max_background_jobs", set_db_option_cb},
 
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
-      {"rocksdb.max_background_jobs", set_db_option_cb},
 #ifdef ENABLE_OPENSSL
       {"tls-cert-file", set_tls_option},
       {"tls-key-file", set_tls_option},

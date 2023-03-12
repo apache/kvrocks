@@ -144,8 +144,6 @@ rocksdb::Options Storage::InitOptions() {
   options.max_open_files = config_->RocksDB.max_open_files;
   options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
   options.max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
-  options.max_background_flushes = config_->RocksDB.max_background_flushes;
-  options.max_background_compactions = config_->RocksDB.max_background_compactions;
   options.max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
   options.min_write_buffer_number_to_merge = 2;
   options.write_buffer_size = config_->RocksDB.write_buffer_size * MiB;

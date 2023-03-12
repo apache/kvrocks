@@ -284,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = MultiBulkString(values);
+    *output = MultiBulkString(values, false);
 
     return Status::OK();
   }
@@ -306,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs);
+    *output = MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }
@@ -350,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs);
+    *output = MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }

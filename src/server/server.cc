@@ -31,6 +31,7 @@
 #include <iomanip>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <utility>
 
 #include "commands/commander.h"
@@ -638,12 +639,12 @@ int Server::IncrBlockedClientNum() { return blocked_clients_.fetch_add(1, std::m
 
 int Server::DecrBlockedClientNum() { return blocked_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
-std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
-  return std::make_unique<RWLock::ReadLock>(works_concurrency_rw_lock_);
+std::shared_lock<std::shared_mutex> Server::WorkConcurrencyGuard() {
+  return std::shared_lock(works_concurrency_rw_lock_);
 }
 
-std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
-  return std::make_unique<RWLock::WriteLock>(works_concurrency_rw_lock_);
+std::unique_lock<std::shared_mutex> Server::WorkExclusivityGuard() {
+  return std::unique_lock(works_concurrency_rw_lock_);
 }
 
 uint64_t Server::GetClientID() { return client_id_.fetch_add(1, std::memory_order_relaxed); }

@@ -24,13 +24,13 @@
 #include <limits.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
-/* Byte ordering detection */
-
 #include <sys/types.h> /* This will likely define BYTE_ORDER */
+#include <unistd.h>
 
 #include <string>
 #include <utility>
+
+/* Byte ordering detection */
 
 #ifndef BYTE_ORDER
 #if (BSD >= 199103)

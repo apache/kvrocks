@@ -30,6 +30,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,7 +38,6 @@
 #include "config/config.h"
 #include "lock_manager.h"
 #include "ptr_util.h"
-#include "rw_lock.h"
 #include "status.h"
 
 const int kReplIdLength = 16;
@@ -118,8 +118,8 @@ class Storage {
   void CheckDBSizeLimit();
   void SetIORateLimit(int64_t max_io_mb);
 
-  std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
-  std::unique_ptr<RWLock::WriteLock> WriteLockGuard();
+  std::shared_lock<std::shared_mutex> ReadLockGuard();
+  std::unique_lock<std::shared_mutex> WriteLockGuard();
 
   uint64_t GetFlushCount() { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
@@ -193,7 +193,7 @@ class Storage {
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
 
-  RWLock::ReadWriteLock db_rw_lock_;
+  std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};

@@ -31,7 +31,6 @@
 
 #include "commands/commander.h"
 #include "redis_slot.h"
-#include "rw_lock.h"
 #include "server/redis_connection.h"
 #include "status.h"
 

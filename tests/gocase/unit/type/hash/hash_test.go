@@ -339,6 +339,15 @@ func TestHash(t *testing.T) {
 		require.Equal(t, expect, actual)
 	})
 
+	t.Run("HVALS - field with empty string as a value", func(t *testing.T) {
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+		require.Equal(t, []string{"some-value", ""}, rdb.HVals(ctx, "test-hash-1").Val())
+
+		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
+	})
+
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
 		res := rdb.Do(ctx, "hgetall", "smallhash").Val().([]interface{})
 		mid := make(map[string]string)
@@ -363,6 +372,15 @@ func TestHash(t *testing.T) {
 			}
 		}
 		require.Equal(t, bighash, mid)
+	})
+
+	t.Run("HGETALL - field with empty string as a value", func(t *testing.T) {
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+		require.Equal(t, map[string]string{"field1": "some-value", "field2": ""}, rdb.HGetAll(ctx, "test-hash-1").Val())
+
+		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
 	})
 
 	t.Run("HDEL and return value", func(t *testing.T) {
@@ -741,6 +759,15 @@ func TestHash(t *testing.T) {
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a").Err(), "wrong number of arguments")
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey").Err(), "wrong number of arguments")
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex").Err(), "wrong number of arguments")
+		})
+
+		t.Run("HrangeByLex - field with empty string as a value", func(t *testing.T) {
+			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+			require.Equal(t, []interface{}{"field1", "some-value", "field2", ""}, rdb.Do(ctx, "HrangeByLex", "test-hash-1", "[a", "[z").Val())
+
+			require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
 		})
 	}
 }

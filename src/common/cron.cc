@@ -102,12 +102,12 @@ Status Cron::convertParam(const std::string &param, int lower_bound, int upper_b
   try {
     *value = std::stoi(param);
   } catch (const std::invalid_argument &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not an integer or *");
+    return {Status::NotOK, "malformed token(`" + param + "`) not an integer or *"};
   } catch (const std::out_of_range &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not convertable to int");
+    return {Status::NotOK, "malformed token(`" + param + "`) not convertable to int"};
   }
   if (*value < lower_bound || *value > upper_bound) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) out of bound");
+    return {Status::NotOK, "malformed token(`" + param + "`) out of bound"};
   }
   return Status::OK();
 }

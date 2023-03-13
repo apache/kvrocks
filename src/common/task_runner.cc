@@ -35,18 +35,21 @@ Status TaskRunner::Publish(const Task &task) {
   }
 
   task_queue_.emplace_back(task);
-  cond_.notify_all();
+  cond_.notify_one();
   return Status::OK();
 }
 
-void TaskRunner::Start() {
+Status TaskRunner::Start() {
+  if (!threads_.empty()) {
+    return {Status::NotOK, "Task runner is expected to stop before starting"};
+  }
+
   stop_ = false;
   for (int i = 0; i < n_thread_; i++) {
-    threads_.emplace_back([this] {
-      Util::ThreadSetName("task-runner");
-      this->run();
-    });
+    threads_.emplace_back(GET_OR_RET(Util::CreateThread("task-runner", [this] { this->run(); })));
   }
+
+  return Status::OK();
 }
 
 void TaskRunner::Stop() {
@@ -55,22 +58,22 @@ void TaskRunner::Stop() {
   cond_.notify_all();
 }
 
-void TaskRunner::Join() {
+Status TaskRunner::Join() {
   for (auto &thread : threads_) {
     if (auto s = Util::ThreadJoin(thread); !s) {
-      LOG(WARNING) << "Task thread operation failed: " << s.Msg();
+      return s.Prefixed("Task thread operation failed");
     }
   }
-}
 
-void TaskRunner::Purge() {
   std::lock_guard<std::mutex> guard(mu_);
   threads_.clear();
-  task_queue_.clear();
+
+  return Status::OK();
 }
 
 void TaskRunner::run() {
   std::unique_lock<std::mutex> lock(mu_);
+
   while (!stop_) {
     cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty(); });
 
@@ -84,6 +87,5 @@ void TaskRunner::run() {
   }
 
   task_queue_.clear();
-  lock.unlock();
   // CAUTION: drop the rest of tasks, don't use task runner if the task can't be drop
 }

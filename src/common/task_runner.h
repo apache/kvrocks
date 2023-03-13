@@ -47,7 +47,7 @@ class TaskRunner {
  private:
   void run();
 
-  bool stop_ = false;
+  bool stop_ = true;
   uint32_t max_queue_size_;
   std::deque<Task> task_queue_;
   std::mutex mu_;

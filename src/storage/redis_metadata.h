@@ -59,8 +59,8 @@ enum RedisCommand {
 const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",  "set",
                                                  "zset", "bitmap", "sortedint", "stream"};
 
-extern const char *kErrMsgWrongType;
-extern const char *kErrMsgKeyExpired;
+constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
+constexpr const char *kErrMsgKeyExpired = "the key was expired";
 
 using rocksdb::Slice;
 

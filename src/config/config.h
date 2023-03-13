@@ -51,7 +51,7 @@ constexpr const size_t MiB = 1024L * KiB;
 constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
-extern const char *kDefaultNamespace;
+constexpr const char *kDefaultNamespace = "__namespace";
 
 struct CompactionCheckerRange {
  public:

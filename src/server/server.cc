@@ -165,7 +165,9 @@ Status Server::Start() {
     worker->Start();
   }
 
-  task_runner_.Start();
+  if (auto s = task_runner_.Start(); !s) {
+    return s.Prefixed("Failed to start task runner");
+  }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
 
@@ -230,7 +232,9 @@ void Server::Join() {
     worker->Join();
   }
 
-  task_runner_.Join();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
+  }
   if (auto s = Util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
@@ -262,7 +266,9 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
-                                        task_runner_.Start();
+                                        if (auto s = task_runner_.Start(); !s) {
+                                          LOG(WARNING) << "Failed to start task runner: " << s.Msg();
+                                        }
                                       });
   if (s.IsOK()) {
     master_host_ = host;
@@ -1189,8 +1195,9 @@ void Server::PrepareRestoreDB() {
   // Stop task runner
   LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
   task_runner_.Stop();
-  task_runner_.Join();
-  task_runner_.Purge();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << "[server] " << s.Msg();
+  }
 
   // If the DB is restored, the object 'db_' will be destroyed, but
   // 'db_' will be accessed in data migration task. To avoid wrong

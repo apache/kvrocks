@@ -22,8 +22,8 @@
 
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <functional>
-#include <list>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -40,17 +40,16 @@ class TaskRunner {
 
   Status Publish(const Task &task);
   size_t QueueSize() { return task_queue_.size(); }
-  void Start();
+  Status Start();
   void Stop();
-  void Join();
-  void Purge();
+  Status Join();
 
  private:
   void run();
 
   bool stop_ = false;
   uint32_t max_queue_size_;
-  std::list<Task> task_queue_;
+  std::deque<Task> task_queue_;
   std::mutex mu_;
   std::condition_variable cond_;
   int n_thread_;

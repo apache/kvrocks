@@ -221,31 +221,18 @@ timeval Metadata::Time() const {
   };
   return created_at;
 }
-
-bool Metadata::LazyExpired() const{
+bool Metadata::ExpireAt(int64_t expire_second) const {
   if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;
   }
 
-  if (expire <= 0) {
+  if (expire_second <= 0) {
     return false;
   }
-  int lazy_expire = expire + 1000;
   int64_t now = Util::GetTimeStamp();
-  return lazy_expire < now;
+  return expire_second < now;
 }
-bool Metadata::Expired() const {
-  if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
-    return true;
-  }
-
-  if (expire <= 0) {
-    return false;
-  }
-
-  int64_t now = Util::GetTimeStamp();
-  return expire < now;
-}
+bool Metadata::Expired() const { return ExpireAt(expire); }
 
 ListMetadata::ListMetadata(bool generate_version)
     : Metadata(kRedisList, generate_version), head(UINT64_MAX / 2), tail(head) {}

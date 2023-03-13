@@ -39,11 +39,10 @@
 #include "server/server.h"
 #include "status.h"
 
-const char *kDefaultNamespace = "__namespace";
-const char *kDefaultBindAddress = "127.0.0.1";
+constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
-const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
-const char *errLevelCompactionDynamicLevelBytesNotSet =
+constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
+constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =
     "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
 configEnum compression_types[] = {

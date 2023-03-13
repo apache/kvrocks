@@ -79,8 +79,6 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       }
     }
 
-    // don't compact the SST created in 1 hour
-    if (file_creation_time > static_cast<uint64_t>(now - 3600)) continue;
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
         auto parse_result = ParseInt<int>(property_iter.second, 10);
@@ -119,6 +117,10 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       maxFilesToCompact--;
       continue;
     }
+
+    // don't compact the SST created in 1 hour
+    if (file_creation_time > static_cast<uint64_t>(now - 3600)) continue;
+
     // pick the file which has highest delete ratio
     if (total_keys != 0 && delete_ratio > best_delete_ratio) {
       best_delete_ratio = delete_ratio;

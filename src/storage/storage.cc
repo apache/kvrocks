@@ -51,18 +51,7 @@
 
 namespace Engine {
 
-const char *kPubSubColumnFamilyName = "pubsub";
-const char *kZSetScoreColumnFamilyName = "zset_score";
-const char *kMetadataColumnFamilyName = "metadata";
-const char *kSubkeyColumnFamilyName = "default";
-const char *kPropagateColumnFamilyName = "propagate";
-const char *kStreamColumnFamilyName = "stream";
-
-const char *kPropagateScriptCommand = "script";
-
-const char *kLuaFunctionPrefix = "lua_f_";
-
-const char *kReplicationIdKey = "replication_id_";
+constexpr const char *kReplicationIdKey = "replication_id_";
 
 const int64_t kIORateLimitMaxMb = 1024000;
 

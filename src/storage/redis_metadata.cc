@@ -36,9 +36,7 @@ const int VersionCounterBits = 11;
 
 static std::atomic<uint64_t> version_counter_ = {0};
 
-const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
-const char *kErrMsgKeyExpired = "the key was expired";
-const char *kErrMetadataTooShort = "metadata is too short";
+constexpr const char *kErrMetadataTooShort = "metadata is too short";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) : slot_id_encoded_(slot_id_encoded) {
   uint32_t key_size = 0;

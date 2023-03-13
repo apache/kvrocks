@@ -53,16 +53,16 @@ enum ColumnFamilyID {
 
 namespace Engine {
 
-extern const char *kPubSubColumnFamilyName;
-extern const char *kZSetScoreColumnFamilyName;
-extern const char *kMetadataColumnFamilyName;
-extern const char *kSubkeyColumnFamilyName;
-extern const char *kPropagateColumnFamilyName;
-extern const char *kStreamColumnFamilyName;
+constexpr const char *kPubSubColumnFamilyName = "pubsub";
+constexpr const char *kZSetScoreColumnFamilyName = "zset_score";
+constexpr const char *kMetadataColumnFamilyName = "metadata";
+constexpr const char *kSubkeyColumnFamilyName = "default";
+constexpr const char *kPropagateColumnFamilyName = "propagate";
+constexpr const char *kStreamColumnFamilyName = "stream";
 
-extern const char *kPropagateScriptCommand;
+constexpr const char *kPropagateScriptCommand = "script";
 
-extern const char *kLuaFunctionPrefix;
+constexpr const char *kLuaFunctionPrefix = "lua_f_";
 
 class Storage {
  public:

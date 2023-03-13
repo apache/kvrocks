@@ -62,5 +62,5 @@ class CompactOnExpiredTableCollectorFactory : public rocksdb::TablePropertiesCol
   float trigger_threshold_ = 0.3;
 };
 
-extern std::shared_ptr<CompactOnExpiredTableCollectorFactory> NewCompactOnExpiredTableCollectorFactory(
+std::shared_ptr<CompactOnExpiredTableCollectorFactory> NewCompactOnExpiredTableCollectorFactory(
     const std::string &cf_name, float trigger_threshold);

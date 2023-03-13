@@ -53,17 +53,15 @@ TEST(TaskRunner, PublishToStopQueue) {
 TEST(TaskRunner, Run) {
   std::atomic<int> counter = {0};
   TaskRunner tr(3, 1024);
-  tr.Start();
+  auto _ = tr.Start();
 
-  Status s;
-  Task t;
   for (int i = 0; i < 100; i++) {
-    t = [&counter] { counter.fetch_add(1); };
-    s = tr.Publish(t);
+    Task t = [&counter] { counter.fetch_add(1); };
+    auto s = tr.Publish(t);
     ASSERT_TRUE(s.IsOK());
   }
   sleep(1);
   ASSERT_EQ(100, counter);
   tr.Stop();
-  tr.Join();
+  _ = tr.Join();
 }

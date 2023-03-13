@@ -40,7 +40,7 @@ Status TaskRunner::Publish(const Task &task) {
 }
 
 Status TaskRunner::Start() {
-  if (!stop_) {
+  if (!threads_.empty()) {
     return {Status::NotOK, "Task runner is expected to stop before starting"};
   }
 

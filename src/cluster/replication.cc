@@ -132,7 +132,7 @@ void FeedSlaveThread::loop() {
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
     if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
-        srv_->storage_->LatestSeq() - batch.sequence <= kMaxDelayUpdates) {
+        srv_->storage_->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
       // Send entire bulk which contain multiple batches
       auto s = Util::SockSend(conn_->GetFD(), batches_bulk);
       if (!s.IsOK()) {
@@ -469,7 +469,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev, v
 
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  auto cur_seq = self->storage_->LatestSeq();
+  auto cur_seq = self->storage_->LatestSeqNumber();
   auto next_seq = cur_seq + 1;
   std::string replid;
 

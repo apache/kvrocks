@@ -24,6 +24,7 @@
 
 #include <atomic>
 #include <thread>
+
 #include "time_util.h"
 
 TEST(TaskRunner, PublishOverflow) {

@@ -20,14 +20,10 @@
 
 #pragma once
 
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <functional>
-#include <mutex>
 #include <thread>
-#include <vector>
 
 #include "oneapi/tbb/concurrent_queue.h"
 #include "status.h"
@@ -44,7 +40,12 @@ class TaskRunner {
     task_queue_.set_capacity(max_queue_size);
   }
 
-  ~TaskRunner() = default;
+  TaskRunner(const TaskRunner&) = delete;
+  TaskRunner& operator=(const TaskRunner&) = delete;
+
+  ~TaskRunner() {
+    if (state_ != Stopped) auto _ = Join();
+  }
 
   template <typename T>
   void Publish(T&& task) {
@@ -61,7 +62,10 @@ class TaskRunner {
   }
 
   size_t Size() { return task_queue_.size(); }
-  void Cancel() { task_queue_.abort(); }
+  void Cancel() {
+    state_ = Stopping;
+    task_queue_.abort();
+  }
 
   Status Start();
   Status Join();
@@ -69,7 +73,9 @@ class TaskRunner {
  private:
   void run();
 
-  std::atomic<bool> stop_ = true;
+  enum State { Running, Stopping, Stopped };
+
+  std::atomic<State> state_ = Stopped;
   tbb::concurrent_bounded_queue<Task> task_queue_;
   std::vector<std::thread> threads_;
 };

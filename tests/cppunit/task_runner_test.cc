@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <thread>
 
 TEST(TaskRunner, PublishOverflow) {
   TaskRunner tr(2, 3);
@@ -37,18 +38,41 @@ TEST(TaskRunner, PublishOverflow) {
   }
 }
 
-TEST(TaskRunner, Run) {
+using namespace std::chrono_literals;
+
+TEST(TaskRunner, Counter) {
   std::atomic<int> counter = {0};
   TaskRunner tr(3, 1024);
-  auto _ = tr.Start();
 
   for (int i = 0; i < 100; i++) {
     Task t = [&counter] { counter.fetch_add(1); };
     auto s = tr.TryPublish(t);
     ASSERT_TRUE(s.IsOK());
   }
-  sleep(1);
+
+  auto _ = tr.Start();
+  std::this_thread::sleep_for(1s);
   ASSERT_EQ(100, counter);
+
+  tr.Cancel();
+  _ = tr.Join();
+}
+
+TEST(TaskRunner, Sleep) {
+  TaskRunner tr(3, 1024);
+
+  for (int i = 0; i < 100; i++) {
+    Task t = [i] { std::this_thread::sleep_for(i * 100ms); };
+    tr.Publish(t);
+  }
+
+  ASSERT_EQ(tr.Size(), 100);
+
+  auto _ = tr.Start();
+
+  std::this_thread::sleep_for(1s);
+  ASSERT_EQ(tr.Size(), 90);
+
   tr.Cancel();
   _ = tr.Join();
 }

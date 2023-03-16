@@ -26,11 +26,11 @@
 #include "thread_util.h"
 
 Status TaskRunner::Start() {
-  if (!stop_) {
+  if (state_ != Stopped) {
     return {Status::NotOK, "Task runner is expected to stop before starting"};
   }
 
-  stop_ = false;
+  state_ = Running;
   for (auto &thread : threads_) {
     thread = GET_OR_RET(Util::CreateThread("task-runner", [this] { run(); }));
   }
@@ -39,7 +39,7 @@ Status TaskRunner::Start() {
 }
 
 Status TaskRunner::Join() {
-  if (stop_) {
+  if (state_ == Stopped) {
     return {Status::NotOK, "Task runner is expected to start before joining"};
   }
 
@@ -49,20 +49,23 @@ Status TaskRunner::Join() {
     }
   }
 
-  stop_ = true;
+  task_queue_.clear();
+  state_ = Stopped;
+
   return Status::OK();
 }
 
 void TaskRunner::run() {
-  while (true) {
+  while (state_ == Running) {
     Task task;
 
     try {
       task_queue_.pop(task);
     } catch (tbb::user_abort &e) {
-      task_queue_.clear();
       break;
     }
+
+    if (state_ != Running) break;
 
     if (task) task();
   }

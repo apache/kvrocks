@@ -76,8 +76,8 @@ class Storage {
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
-  rocksdb::Options InitOptions();
-  Status SetColumnFamilyOption(const std::string &key, const std::string &value);
+  rocksdb::Options InitRocksDBOptions();
+  Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
@@ -87,7 +87,7 @@ class Storage {
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
-  rocksdb::SequenceNumber LatestSeq();
+  rocksdb::SequenceNumber LatestSeqNumber();
 
   rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
   rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
@@ -103,7 +103,7 @@ class Storage {
                          const rocksdb::Slice &key);
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
-  bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
+  bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
@@ -189,7 +189,7 @@ class Storage {
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
-  bool reach_db_size_limit_ = false;
+  bool db_size_limit_reached_ = false;
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
 

@@ -899,12 +899,12 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
-    string_stream << "slave_repl_offset:" << storage_->LatestSeq() << "\r\n";
+    string_stream << "slave_repl_offset:" << storage_->LatestSeqNumber() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   }
 
   int idx = 0;
-  rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
+  rocksdb::SequenceNumber latest_seq = storage_->LatestSeqNumber();
 
   slave_threads_mu_.lock();
   string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
@@ -939,7 +939,7 @@ void Server::GetRoleInfo(std::string *info) {
     } else {
       roles.emplace_back("connecting");
     }
-    roles.emplace_back(std::to_string(storage_->LatestSeq()));
+    roles.emplace_back(std::to_string(storage_->LatestSeqNumber()));
     *info = Redis::MultiBulkString(roles);
   } else {
     std::vector<std::string> list;
@@ -962,7 +962,7 @@ void Server::GetRoleInfo(std::string *info) {
     }
     info->append(Redis::MultiLen(multi_len));
     info->append(Redis::BulkString("master"));
-    info->append(Redis::BulkString(std::to_string(storage_->LatestSeq())));
+    info->append(Redis::BulkString(std::to_string(storage_->LatestSeqNumber())));
     if (list.size() > 0) {
       info->append(Redis::Array(list));
     }
@@ -1369,7 +1369,7 @@ Status Server::autoResizeBlockAndSST() {
   }
 
   if (block_size != config_->RocksDB.block_size) {
-    auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
+    auto s = storage_->SetOptionForAllColumnFamilies("table_factory.block_size", std::to_string(block_size));
     LOG(INFO) << "[server] Resize rocksdb.block_size from " << config_->RocksDB.block_size << " to " << block_size
               << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
               << ", total_keys: " << total_keys << ", result: " << s.Msg();

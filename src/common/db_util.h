@@ -24,6 +24,7 @@
 
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
+#include "storage/storage.h"
 
 namespace DBUtil {
 

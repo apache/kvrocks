@@ -60,7 +60,7 @@ class CommandPSync : public Commander {
               << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
               << " with next sequence: " << next_repl_seq
               << " replication id: " << (replica_replid.length() ? replica_replid : "not supported")
-              << ", and local sequence: " << svr->storage_->LatestSeq();
+              << ", and local sequence: " << svr->storage_->LatestSeqNumber();
 
     bool need_full_sync = false;
 
@@ -121,12 +121,12 @@ class CommandPSync : public Commander {
 
   // Return OK if the seq is in the range of the current WAL
   Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
-    if (seq == storage->LatestSeq() + 1) {
+    if (seq == storage->LatestSeqNumber() + 1) {
       return Status::OK();
     }
 
     // Upper bound
-    if (seq > storage->LatestSeq() + 1) {
+    if (seq > storage->LatestSeqNumber() + 1) {
       return {Status::NotOK};
     }
 

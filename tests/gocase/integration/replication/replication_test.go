@@ -299,7 +299,7 @@ func TestReplicationShareCheckpoint(t *testing.T) {
 		util.SlaveOf(t, slave2Client, master)
 
 		require.Eventually(t, func() bool {
-			return master.LogFileMatches(t, ".*Use current existing checkpoint.*")
+			return master.LogFileMatches(t, ".*Using current existing checkpoint.*")
 		}, 50*time.Second, 100*time.Millisecond)
 		util.WaitForSync(t, slave1Client)
 		util.WaitForSync(t, slave2Client)

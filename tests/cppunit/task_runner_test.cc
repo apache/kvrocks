@@ -49,6 +49,6 @@ TEST(TaskRunner, Run) {
   }
   sleep(1);
   ASSERT_EQ(100, counter);
-  tr.Stop();
+  tr.Cancel();
   _ = tr.Join();
 }

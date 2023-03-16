@@ -60,6 +60,7 @@ void TaskRunner::run() {
     try {
       task_queue_.pop(task);
     } catch (tbb::user_abort &e) {
+      task_queue_.clear();
       break;
     }
 

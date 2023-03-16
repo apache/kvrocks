@@ -61,13 +61,7 @@ class TaskRunner {
   }
 
   size_t Size() { return task_queue_.size(); }
-
-  void Clear() { task_queue_.clear(); }
-  void Stop() { task_queue_.abort(); }
-  void Cancel() {
-    Stop();
-    Clear();
-  }
+  void Cancel() { task_queue_.abort(); }
 
   Status Start();
   Status Join();

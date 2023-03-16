@@ -44,7 +44,10 @@ class TaskRunner {
   TaskRunner& operator=(const TaskRunner&) = delete;
 
   ~TaskRunner() {
-    if (state_ != Stopped) auto _ = Join();
+    if (state_ != Stopped) {
+      Cancel();
+      auto _ = Join();
+    }
   }
 
   template <typename T>

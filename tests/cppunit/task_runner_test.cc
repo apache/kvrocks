@@ -24,6 +24,7 @@
 
 #include <atomic>
 #include <thread>
+#include "time_util.h"
 
 TEST(TaskRunner, PublishOverflow) {
   TaskRunner tr(2, 3);
@@ -41,7 +42,7 @@ TEST(TaskRunner, PublishOverflow) {
 using namespace std::chrono_literals;
 
 TEST(TaskRunner, Counter) {
-  std::atomic<int> counter = {0};
+  std::atomic<int> counter = 0;
   TaskRunner tr(3, 1024);
 
   for (int i = 0; i < 100; i++) {
@@ -73,6 +74,32 @@ TEST(TaskRunner, Sleep) {
   std::this_thread::sleep_for(1s);
   ASSERT_EQ(tr.Size(), 90);
 
+  auto begin = Util::GetTimeStampMS();
   tr.Cancel();
   _ = tr.Join();
+  ASSERT_LE(Util::GetTimeStampMS() - begin, 1000);
+}
+
+TEST(TaskRunner, PublishAfterStart) {
+  std::atomic<int> counter = 0;
+  TaskRunner tr(3, 1024);
+  auto _ = tr.Start();
+
+  std::this_thread::sleep_for(0.1s);
+
+  for (int i = 0; i < 10; i++) {
+    tr.Publish([&counter] { counter.fetch_add(1); });
+  }
+
+  std::this_thread::sleep_for(0.1s);
+
+  ASSERT_EQ(counter, 10);
+
+  for (int i = 0; i < 10; i++) {
+    tr.Publish([&counter] { counter.fetch_add(1); });
+  }
+
+  std::this_thread::sleep_for(0.1s);
+
+  ASSERT_EQ(counter, 20);
 }

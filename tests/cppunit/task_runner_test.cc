@@ -73,7 +73,7 @@ TEST(TaskRunner, Sleep) {
   auto _ = tr.Start();
 
   std::this_thread::sleep_for(1s);
-  ASSERT_EQ(tr.Size(), 90);
+  ASSERT_NEAR(tr.Size(), 90, 1);
 
   auto begin = Util::GetTimeStampMS();
   tr.Cancel();

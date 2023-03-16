@@ -21,6 +21,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -28,30 +29,53 @@
 #include <thread>
 #include <vector>
 
+#include "oneapi/tbb/concurrent_queue.h"
 #include "status.h"
 
 using Task = std::function<void()>;
 
 class TaskRunner {
  public:
-  explicit TaskRunner(int n_thread = 1, uint32_t max_queue_size = 10240)
-      : max_queue_size_(max_queue_size), n_thread_(n_thread) {}
+  static constexpr uint32_t default_n_threads = 1;
+  static constexpr uint32_t default_max_queue_size = 10240;
+
+  explicit TaskRunner(size_t n_threads = default_n_threads, ptrdiff_t max_queue_size = default_max_queue_size)
+      : threads_(n_threads) {
+    task_queue_.set_capacity(max_queue_size);
+  }
+
   ~TaskRunner() = default;
 
-  Status Publish(const Task &task);
-  size_t QueueSize() { return task_queue_.size(); }
+  template <typename T>
+  void Publish(T&& task) {
+    task_queue_.push(std::forward<T>(task));
+  }
+
+  template <typename T>
+  Status TryPublish(T&& task) {
+    if (!task_queue_.try_push(std::forward<T>(task))) {
+      return {Status::NotOK, "Task number limit is exceeded"};
+    }
+
+    return Status::OK();
+  }
+
+  size_t Size() { return task_queue_.size(); }
+
+  void Clear() { task_queue_.clear(); }
+  void Stop() { task_queue_.abort(); }
+  void Cancel() {
+    Stop();
+    Clear();
+  }
+
   Status Start();
-  void Stop();
   Status Join();
 
  private:
   void run();
 
-  bool stop_ = false;
-  uint32_t max_queue_size_;
-  std::deque<Task> task_queue_;
-  std::mutex mu_;
-  std::condition_variable cond_;
-  int n_thread_;
+  std::atomic<bool> stop_ = true;
+  tbb::concurrent_bounded_queue<Task> task_queue_;
   std::vector<std::thread> threads_;
 };

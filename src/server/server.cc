@@ -224,7 +224,7 @@ void Server::Stop() {
   }
 
   rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
-  task_runner_.Stop();
+  task_runner_.Cancel();
 }
 
 void Server::Join() {
@@ -1194,7 +1194,7 @@ void Server::PrepareRestoreDB() {
 
   // Stop task runner
   LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
-  task_runner_.Stop();
+  task_runner_.Cancel();
   if (auto s = task_runner_.Join(); !s) {
     LOG(WARNING) << "[server] " << s.Msg();
   }
@@ -1241,7 +1241,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
   db_compacting_ = true;
 
-  Task task = [begin_key, end_key, this] {
+  return task_runner_.TryPublish([begin_key, end_key, this] {
     std::unique_ptr<Slice> begin = nullptr, end = nullptr;
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
@@ -1249,9 +1249,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncBgSaveDB() {
@@ -1262,7 +1260,7 @@ Status Server::AsyncBgSaveDB() {
 
   is_bgsave_in_progress_ = true;
 
-  Task task = [this] {
+  return task_runner_.TryPublish([this] {
     auto start_bgsave_time = Util::GetTimeStamp();
     Status s = storage_->CreateBackup();
     auto stop_bgsave_time = Util::GetTimeStamp();
@@ -1272,16 +1270,13 @@ Status Server::AsyncBgSaveDB() {
     last_bgsave_time_ = static_cast<int>(start_bgsave_time);
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
     last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time - start_bgsave_time);
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  Task task = [num_backups_to_keep, backup_max_keep_hours, this] {
+  return task_runner_.TryPublish([num_backups_to_keep, backup_max_keep_hours, this] {
     storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
-  };
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
@@ -1297,7 +1292,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
   db_scan_infos_[ns].is_scanning = true;
 
-  Task task = [ns, this] {
+  return task_runner_.TryPublish([ns, this] {
     Redis::Database db(storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
@@ -1307,9 +1302,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns].key_num_stats = stats;
     time(&db_scan_infos_[ns].last_scan_time);
     db_scan_infos_[ns].is_scanning = false;
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::autoResizeBlockAndSST() {

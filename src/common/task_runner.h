@@ -20,23 +20,38 @@
 
 #pragma once
 
-#include <memory>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <vector>
 
-#include "rocksdb/db.h"
-#include "rocksdb/iterator.h"
-#include "storage/storage.h"
+#include "status.h"
 
-namespace DBUtil {
+using Task = std::function<void()>;
 
-struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
-  using base_type = std::unique_ptr<rocksdb::Iterator>;
+class TaskRunner {
+ public:
+  explicit TaskRunner(int n_thread = 1, uint32_t max_queue_size = 10240)
+      : max_queue_size_(max_queue_size), n_thread_(n_thread) {}
+  ~TaskRunner() = default;
 
-  explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
-                 rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(storage->NewIterator(options, column_family)) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : base_type(storage->NewIterator(options)) {}
+  Status Publish(const Task &task);
+  size_t QueueSize() { return task_queue_.size(); }
+  Status Start();
+  void Stop();
+  Status Join();
+
+ private:
+  void run();
+
+  bool stop_ = false;
+  uint32_t max_queue_size_;
+  std::deque<Task> task_queue_;
+  std::mutex mu_;
+  std::condition_variable cond_;
+  int n_thread_;
+  std::vector<std::thread> threads_;
 };
-
-}  // namespace DBUtil

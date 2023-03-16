@@ -38,8 +38,6 @@
 #include "config.h"
 #include "fmt/format.h"
 #include "lua.h"
-#include "oneapi/tbb/global_control.h"
-#include "oneapi/tbb/task_group.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "storage/compaction_checker.h"
@@ -56,10 +54,7 @@ std::atomic<int> Server::unix_time_ = {0};
 constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(Engine::Storage *storage, Config *config)
-    : storage_(storage),
-      start_time_(Util::GetTimeStamp()),
-      config_(config),
-      task_control_(tbb::global_control::max_allowed_parallelism, config->workers) {
+    : storage_(storage), start_time_(Util::GetTimeStamp()), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = Redis::GetOriginalCommands();
   for (const auto &iter : *commands) {
@@ -170,6 +165,9 @@ Status Server::Start() {
     worker->Start();
   }
 
+  if (auto s = task_runner_.Start(); !s) {
+    return s.Prefixed("Failed to start task runner");
+  }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
 
@@ -226,7 +224,7 @@ void Server::Stop() {
   }
 
   rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
-  task_runner_.cancel();
+  task_runner_.Stop();
 }
 
 void Server::Join() {
@@ -234,8 +232,8 @@ void Server::Join() {
     worker->Join();
   }
 
-  if (auto s = task_runner_.wait(); s != tbb::task_group_status::complete) {
-    LOG(WARNING) << "Some tasks in the task runner are cancelled or not complete";
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
   }
   if (auto s = Util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
@@ -265,7 +263,13 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
-  auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); }, [this]() { is_loading_ = false; });
+  auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
+                                      [this]() {
+                                        this->is_loading_ = false;
+                                        if (auto s = task_runner_.Start(); !s) {
+                                          LOG(WARNING) << "Failed to start task runner: " << s.Msg();
+                                        }
+                                      });
   if (s.IsOK()) {
     master_host_ = host;
     master_port_ = port;
@@ -1190,8 +1194,10 @@ void Server::PrepareRestoreDB() {
 
   // Stop task runner
   LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
-  task_runner_.cancel();
-  task_runner_.wait();
+  task_runner_.Stop();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << "[server] " << s.Msg();
+  }
 
   // If the DB is restored, the object 'db_' will be destroyed, but
   // 'db_' will be accessed in data migration task. To avoid wrong
@@ -1228,16 +1234,14 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     return {Status::NotOK, "loading in-progress"};
   }
 
-  {
-    std::lock_guard<std::mutex> lg(db_job_mu_);
-    if (db_compacting_) {
-      return {Status::NotOK, "compact in-progress"};
-    }
-
-    db_compacting_ = true;
+  std::lock_guard<std::mutex> lg(db_job_mu_);
+  if (db_compacting_) {
+    return {Status::NotOK, "compact in-progress"};
   }
 
-  task_runner_.run([begin_key, end_key, this] {
+  db_compacting_ = true;
+
+  Task task = [begin_key, end_key, this] {
     std::unique_ptr<Slice> begin = nullptr, end = nullptr;
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
@@ -1245,9 +1249,9 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
-  });
+  };
 
-  return Status::OK();
+  return task_runner_.Publish(task);
 }
 
 Status Server::AsyncBgSaveDB() {
@@ -1258,7 +1262,7 @@ Status Server::AsyncBgSaveDB() {
 
   is_bgsave_in_progress_ = true;
 
-  task_runner_.run([this] {
+  Task task = [this] {
     auto start_bgsave_time = Util::GetTimeStamp();
     Status s = storage_->CreateBackup();
     auto stop_bgsave_time = Util::GetTimeStamp();
@@ -1266,18 +1270,18 @@ Status Server::AsyncBgSaveDB() {
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
     last_bgsave_time_ = static_cast<int>(start_bgsave_time);
-    last_bgsave_status_ = s.Msg();
+    last_bgsave_status_ = s.IsOK() ? "ok" : "err";
     last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time - start_bgsave_time);
-  });
+  };
 
-  return Status::OK();
+  return task_runner_.Publish(task);
 }
 
 Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  task_runner_.run([num_backups_to_keep, backup_max_keep_hours, this] {
+  Task task = [num_backups_to_keep, backup_max_keep_hours, this] {
     storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
-  });
-  return Status::OK();
+  };
+  return task_runner_.Publish(task);
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
@@ -1293,7 +1297,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
   db_scan_infos_[ns].is_scanning = true;
 
-  task_runner_.run([ns, this] {
+  Task task = [ns, this] {
     Redis::Database db(storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
@@ -1303,9 +1307,9 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns].key_num_stats = stats;
     time(&db_scan_infos_[ns].last_scan_time);
     db_scan_infos_[ns].is_scanning = false;
-  });
+  };
 
-  return Status::OK();
+  return task_runner_.Publish(task);
 }
 
 Status Server::autoResizeBlockAndSST() {

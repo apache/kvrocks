@@ -100,7 +100,7 @@ StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int 
 
   auto s = ParseInt<int>(param, {lower_bound, upper_bound}, 10);
   if (!s) {
-    return std::move(s).Prefixed(fmt::format("malformed cron token {}", param));
+    return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
   }
 
   return *s;

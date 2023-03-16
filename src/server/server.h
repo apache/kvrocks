@@ -21,7 +21,6 @@
 #pragma once
 
 #include <inttypes.h>
-#include <tbb/task_group.h>
 
 #include <list>
 #include <map>
@@ -39,12 +38,12 @@
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
 #include "lua.hpp"
-#include "oneapi/tbb/global_control.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
+#include "task_runner.h"
 #include "tls_util.h"
 #include "worker.h"
 
@@ -273,7 +272,7 @@ class Server {
   bool db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
   int last_bgsave_time_ = -1;
-  std::string last_bgsave_status_ = Status::ok_msg;
+  std::string last_bgsave_status_ = "ok";
   int last_bgsave_time_sec_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
@@ -294,8 +293,7 @@ class Server {
   std::shared_mutex works_concurrency_rw_lock_;
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
-  tbb::global_control task_control_;
-  tbb::task_group task_runner_;
+  TaskRunner task_runner_;
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
 

@@ -75,7 +75,9 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr), base_(event_base_new())
 }
 
 Worker::~Worker() {
-  std::list<Redis::Connection *> conns;
+  std::vector<Redis::Connection *> conns;
+  conns.reserve(conns_.size() + monitor_conns_.size());
+
   for (const auto &iter : conns_) {
     conns.emplace_back(iter.second);
   }
@@ -85,6 +87,7 @@ Worker::~Worker() {
   for (const auto &iter : conns) {
     iter->Close();
   }
+
   event_free(timer_);
   if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
@@ -492,7 +495,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string 
 }
 
 void Worker::KickoutIdleClients(int timeout) {
-  std::list<std::pair<int, uint64_t>> to_be_killed_conns;
+  std::vector<std::pair<int, uint64_t>> to_be_killed_conns;
 
   {
     std::lock_guard<std::mutex> guard(conns_mu_);

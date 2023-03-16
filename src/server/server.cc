@@ -407,9 +407,7 @@ void Server::SubscribeChannel(const std::string &channel, Redis::Connection *con
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_channels_.find(channel); iter == pubsub_channels_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    pubsub_channels_.insert(std::pair<std::string, std::list<ConnContext *>>(channel, conn_ctxs));
+    pubsub_channels_.emplace(channel, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -465,9 +463,7 @@ void Server::PSubscribeChannel(const std::string &pattern, Redis::Connection *co
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_patterns_.find(pattern); iter == pubsub_patterns_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    pubsub_patterns_.insert(std::pair<std::string, std::list<ConnContext *>>(pattern, conn_ctxs));
+    pubsub_patterns_.emplace(pattern, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -500,9 +496,7 @@ void Server::BlockOnKey(const std::string &key, Redis::Connection *conn) {
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    blocking_keys_.insert(std::pair<std::string, std::list<ConnContext *>>(key, conn_ctxs));
+    blocking_keys_.emplace(key, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -543,7 +537,7 @@ void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vec
     if (auto iter = blocked_stream_consumers_.find(keys[i]); iter == blocked_stream_consumers_.end()) {
       std::set<std::shared_ptr<StreamConsumer>> consumers;
       consumers.insert(consumer);
-      blocked_stream_consumers_.insert(std::make_pair(keys[i], consumers));
+      blocked_stream_consumers_.emplace(keys[i], consumers);
     } else {
       iter->second.insert(consumer);
     }

@@ -221,16 +221,15 @@ timeval Metadata::Time() const {
   };
   return created_at;
 }
-bool Metadata::ExpireAt(int64_t expire_second) const {
+bool Metadata::ExpireAt(int64_t expire_ts) const {
   if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;
   }
-
-  if (expire_second <= 0) {
+  if (expire_ts <= 0) {
     return false;
   }
   int64_t now = Util::GetTimeStamp();
-  return expire_second < now;
+  return expire_ts < now;
 }
 bool Metadata::Expired() const { return ExpireAt(expire); }
 

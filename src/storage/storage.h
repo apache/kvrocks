@@ -104,6 +104,7 @@ class Storage {
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
+  Status InWALBoundary(rocksdb::SequenceNumber seq);
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
@@ -142,9 +143,9 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<bool> is_creating;
-      std::atomic<time_t> create_time;
-      std::atomic<time_t> access_time;
+      std::atomic<time_t> create_time = 0;
+      std::atomic<time_t> access_time = 0;
+      uint64_t latest_seq = 0;
     };
 
     // Slave side
@@ -165,7 +166,6 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  void SetCheckpointCreateTime(time_t t) { checkpoint_info_.create_time = t; }
   time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
   time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }

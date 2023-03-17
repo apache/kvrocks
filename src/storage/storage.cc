@@ -58,8 +58,6 @@ using rocksdb::Slice;
 Storage::Storage(Config *config)
     : backup_creating_time_(Util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
   Metadata::InitVersionCounter();
-  SetCheckpointCreateTime(0);
-  SetCheckpointAccessTime(0);
   SetWriteOptions(config->RocksDB.write_options);
 }
 
@@ -840,10 +838,13 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
 
     // Create checkpoint of rocksdb
-    s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB);
+    uint64_t checkpoint_latest_seq = 0;
+    s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB,
+                                     &checkpoint_latest_seq);
     auto now = static_cast<time_t>(Util::GetTimeStamp());
-    storage->SetCheckpointCreateTime(now);
-    storage->SetCheckpointAccessTime(now);
+    storage->checkpoint_info_.create_time = now;
+    storage->checkpoint_info_.access_time = now;
+    storage->checkpoint_info_.latest_seq = checkpoint_latest_seq;
     if (!s.ok()) {
       LOG(WARNING) << "[storage] Failed to create checkpoint (snapshot). Error: " << s.ToString();
       return {Status::NotOK, s.ToString()};
@@ -862,6 +863,13 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
       return {Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint"};
     }
 
+    // Should not use current checkpoint if its latest sequence was out of the WAL boundary,
+    // or the slave will fall into the full sync loop since it won't create new checkpoint.
+    auto s = storage->InWALBoundary(storage->checkpoint_info_.latest_seq);
+    if (!s.IsOK()) {
+      LOG(WARNING) << "[storage] Can't use current checkpoint, error: " << s.Msg();
+      return {Status::NotOK, fmt::format("Can't use current checkpoint, error: {}", s.Msg())};
+    }
     LOG(INFO) << "[storage] Using current existing checkpoint";
   }
 
@@ -887,6 +895,17 @@ bool Storage::ExistCheckpoint() {
 }
 
 bool Storage::ExistSyncCheckpoint() { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
+
+Status Storage::InWALBoundary(rocksdb::SequenceNumber seq) {
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  auto s = GetWALIter(seq, &iter);
+  if (!s.IsOK()) return s;
+  auto wal_seq = iter->GetBatch().sequence;
+  if (seq < wal_seq) {
+    return {Status::NotOK, fmt::format("checkpoint seq: {} is smaller than the WAL seq: {}", seq, wal_seq)};
+  }
+  return Status::OK();
+}
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::string &dir,
                                                    std::vector<std::string> valid_files) {

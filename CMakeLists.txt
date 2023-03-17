@@ -116,6 +116,7 @@ include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)
 include(cmake/zlib.cmake)
 include(cmake/zstd.cmake)
+include(cmake/tbb.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
@@ -144,7 +145,7 @@ endif()
 if (ENABLE_OPENSSL)
 list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
-
+list(APPEND EXTERNAL_LIBS tbb)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h

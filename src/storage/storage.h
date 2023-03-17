@@ -37,7 +37,7 @@
 
 #include "config/config.h"
 #include "lock_manager.h"
-#include "ptr_util.h"
+#include "observer_or_unique.h"
 #include "status.h"
 
 const int kReplIdLength = 16;

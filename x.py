@@ -153,13 +153,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     version_res = run_pipe(command, '--version').read().strip()
     version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
 
-    version = check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
-
-    if version[0] > 12:
-        warn("We use clang-format 12 in CI, "
-             "so we recommend that you also use this version locally to avoid inconsistencies. "
-             "You can install it from your package manager (usually in clang-12 package) "
-             "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
+    check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
 
     basedir = Path(__file__).parent.absolute()
     sources = get_source_files(basedir)

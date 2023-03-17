@@ -106,11 +106,11 @@ class [[nodiscard]] Status {
 
   void GetValue() {}
 
+  static constexpr const char* ok_msg = "ok";
+
  private:
   Code code_;
   std::string msg_;
-
-  static constexpr const char* ok_msg = "ok";
 
   template <typename>
   friend struct StatusOr;

@@ -18,7 +18,7 @@
  *
  */
 
-#include "common/ptr_util.h"
+#include "observer_or_unique.h"
 
 #include <gtest/gtest.h>
 struct Counter {  // NOLINT

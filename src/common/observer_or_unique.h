@@ -18,9 +18,9 @@
  *
  */
 
-#include <memory>
-
 #pragma once
+
+#include <memory>
 
 enum class ObserverOrUnique : char { Observer, Unique };
 

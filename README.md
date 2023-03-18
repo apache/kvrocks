@@ -28,7 +28,7 @@
 * [Slack Channel](https://join.slack.com/t/kvrockscommunity/shared_invite/zt-p5928e3r-OUAK8SUgC8GOceGM6dAz6w)
 * [Mailing List](https://lists.apache.org/list.html?dev@kvrocks.apache.org) ([how to subscribe](https://www.apache.org/foundation/mailinglists.html#subscribing))
 
-**Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by `rocksplicator` and `blackwidow`.
+**Apache Kvrocks(Incubating)** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by [rocksplicator](https://github.com/pinterest/rocksplicator) and [blackwidow](https://github.com/Qihoo360/blackwidow).
 
 Kvrocks has the following key features:
 
@@ -42,9 +42,9 @@ Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili F
 
 ## Who uses Kvrocks
 
-Find Kvrocks users at [the Users page](https://kvrocks.apache.org/users/).
+You can find Kvrocks users at [the Users page](https://kvrocks.apache.org/users/).
 
-Users are encouraged to add themselves to the Users page. Send a pull request to add company or organization [information](https://github.com/apache/incubator-kvrocks-website/blob/main/src/components/UserLogos/index.tsx) and [logo](https://github.com/apache/incubator-kvrocks-website/tree/main/static/media/users).
+Users are encouraged to add themselves to the Users page. Either leave a comment on the ["Who is using Kvrocks"](https://github.com/apache/incubator-kvrocks/issues/414) issue, or directly send a pull request to add company or organization [information](https://github.com/apache/incubator-kvrocks-website/blob/main/src/components/UserLogos/index.tsx) and [logo](https://github.com/apache/incubator-kvrocks-website/tree/main/static/media/users).
 
 ## Build and run Kvrocks
 

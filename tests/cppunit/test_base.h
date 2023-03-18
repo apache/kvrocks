@@ -22,15 +22,16 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
 
 class TestBase : public testing::Test {
  protected:
-  explicit TestBase() {
-    config_ = new Config();
-    config_->db_dir = "testsdb";
-    config_->backup_dir = "testsdb/backup";
+  explicit TestBase() : config_(new Config()) {
+    config_->db_dir = "testdb";
+    config_->backup_dir = "testdb/backup";
     config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
     config_->RocksDB.write_buffer_size = 1;
     config_->RocksDB.block_size = 100;
@@ -42,7 +43,11 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
-    rmdir("testsdb");
+    std::error_code ec;
+    std::filesystem::remove_all(config_->db_dir, ec);
+    if (ec) {
+      std::cout << "Encounter filesystem error: " << ec << std::endl;
+    }
     delete storage_;
     delete config_;
   }

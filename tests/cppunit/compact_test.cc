@@ -95,5 +95,9 @@ TEST(Compact, Filter) {
   }
 
   db->ReleaseSnapshot(read_options.snapshot);
-  std::filesystem::remove_all(config.db_dir);
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
 }

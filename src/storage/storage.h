@@ -30,14 +30,14 @@
 #include <atomic>
 #include <cinttypes>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "config/config.h"
 #include "lock_manager.h"
-#include "ptr_util.h"
-#include "rw_lock.h"
+#include "observer_or_unique.h"
 #include "status.h"
 
 const int kReplIdLength = 16;
@@ -53,16 +53,16 @@ enum ColumnFamilyID {
 
 namespace Engine {
 
-extern const char *kPubSubColumnFamilyName;
-extern const char *kZSetScoreColumnFamilyName;
-extern const char *kMetadataColumnFamilyName;
-extern const char *kSubkeyColumnFamilyName;
-extern const char *kPropagateColumnFamilyName;
-extern const char *kStreamColumnFamilyName;
+constexpr const char *kPubSubColumnFamilyName = "pubsub";
+constexpr const char *kZSetScoreColumnFamilyName = "zset_score";
+constexpr const char *kMetadataColumnFamilyName = "metadata";
+constexpr const char *kSubkeyColumnFamilyName = "default";
+constexpr const char *kPropagateColumnFamilyName = "propagate";
+constexpr const char *kStreamColumnFamilyName = "stream";
 
-extern const char *kPropagateScriptCommand;
+constexpr const char *kPropagateScriptCommand = "script";
 
-extern const char *kLuaFunctionPrefix;
+constexpr const char *kLuaFunctionPrefix = "lua_f_";
 
 class Storage {
  public:
@@ -76,8 +76,8 @@ class Storage {
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
-  rocksdb::Options InitOptions();
-  Status SetColumnFamilyOption(const std::string &key, const std::string &value);
+  rocksdb::Options InitRocksDBOptions();
+  Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
@@ -87,7 +87,7 @@ class Storage {
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
-  rocksdb::SequenceNumber LatestSeq();
+  rocksdb::SequenceNumber LatestSeqNumber();
 
   rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
   rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
@@ -103,7 +103,8 @@ class Storage {
                          const rocksdb::Slice &key);
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
   rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
-  bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeq(); }
+  bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
+  Status InWALBoundary(rocksdb::SequenceNumber seq);
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
@@ -118,8 +119,8 @@ class Storage {
   void CheckDBSizeLimit();
   void SetIORateLimit(int64_t max_io_mb);
 
-  std::unique_ptr<RWLock::ReadLock> ReadLockGuard();
-  std::unique_ptr<RWLock::WriteLock> WriteLockGuard();
+  std::shared_lock<std::shared_mutex> ReadLockGuard();
+  std::unique_lock<std::shared_mutex> WriteLockGuard();
 
   uint64_t GetFlushCount() { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
@@ -142,9 +143,9 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<bool> is_creating;
-      std::atomic<time_t> create_time;
-      std::atomic<time_t> access_time;
+      std::atomic<time_t> create_time = 0;
+      std::atomic<time_t> access_time = 0;
+      uint64_t latest_seq = 0;
     };
 
     // Slave side
@@ -165,7 +166,6 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  void SetCheckpointCreateTime(time_t t) { checkpoint_info_.create_time = t; }
   time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
   time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }
@@ -189,11 +189,11 @@ class Storage {
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
-  bool reach_db_size_limit_ = false;
+  bool db_size_limit_reached_ = false;
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
 
-  RWLock::ReadWriteLock db_rw_lock_;
+  std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;
 
   std::atomic<bool> db_in_retryable_io_error_{false};

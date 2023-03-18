@@ -38,7 +38,6 @@
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
 #include "lua.hpp"
-#include "rw_lock.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
@@ -214,8 +213,8 @@ class Server {
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
   void SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration);
 
-  std::unique_ptr<RWLock::ReadLock> WorkConcurrencyGuard();
-  std::unique_ptr<RWLock::WriteLock> WorkExclusivityGuard();
+  std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
+  std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
 
   Stats stats_;
   Engine::Storage *storage_;
@@ -291,7 +290,7 @@ class Server {
   std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
 
   // threads
-  RWLock::ReadWriteLock works_concurrency_rw_lock_;
+  std::shared_mutex works_concurrency_rw_lock_;
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;

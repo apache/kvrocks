@@ -22,69 +22,51 @@
 
 #include <thread>
 
+#include "oneapi/tbb/concurrent_queue.h"
 #include "thread_util.h"
 
-Status TaskRunner::Publish(const Task &task) {
-  std::lock_guard<std::mutex> guard(mu_);
-  if (stop_) {
-    return {Status::NotOK, "the runner was stopped"};
+Status TaskRunner::Start() {
+  if (state_ != Stopped) {
+    return {Status::NotOK, "Task runner is expected to stop before starting"};
   }
 
-  if (task_queue_.size() >= max_queue_size_) {
-    return {Status::NotOK, "the task queue was reached max length"};
+  state_ = Running;
+  for (auto &thread : threads_) {
+    thread = GET_OR_RET(Util::CreateThread("task-runner", [this] { run(); }));
   }
 
-  task_queue_.emplace_back(task);
-  cond_.notify_all();
   return Status::OK();
 }
 
-void TaskRunner::Start() {
-  stop_ = false;
-  for (int i = 0; i < n_thread_; i++) {
-    threads_.emplace_back([this] {
-      Util::ThreadSetName("task-runner");
-      this->run();
-    });
+Status TaskRunner::Join() {
+  if (state_ == Stopped) {
+    return {Status::NotOK, "Task runner is expected to start before joining"};
   }
-}
 
-void TaskRunner::Stop() {
-  std::lock_guard<std::mutex> guard(mu_);
-  stop_ = true;
-  cond_.notify_all();
-}
-
-void TaskRunner::Join() {
   for (auto &thread : threads_) {
     if (auto s = Util::ThreadJoin(thread); !s) {
-      LOG(WARNING) << "Task thread operation failed: " << s.Msg();
+      return s.Prefixed("Task thread operation failed");
     }
   }
-}
 
-void TaskRunner::Purge() {
-  std::lock_guard<std::mutex> guard(mu_);
-  threads_.clear();
   task_queue_.clear();
+  state_ = Stopped;
+
+  return Status::OK();
 }
 
 void TaskRunner::run() {
-  Task task;
-  std::unique_lock<std::mutex> lock(mu_);
-  while (!stop_) {
-    cond_.wait(lock, [this]() -> bool { return stop_ || !task_queue_.empty(); });
+  while (state_ == Running) {
+    Task task;
 
-    while (!stop_ && !task_queue_.empty()) {
-      task = task_queue_.front();
-      task_queue_.pop_front();
-      lock.unlock();
-      if (task) task();
-      lock.lock();
+    try {
+      task_queue_.pop(task);
+    } catch (tbb::user_abort &e) {
+      break;
     }
-  }
 
-  task_queue_.clear();
-  lock.unlock();
-  // CAUTION: drop the rest of tasks, don't use task runner if the task can't be drop
+    if (state_ != Running) break;
+
+    if (task) task();
+  }
 }

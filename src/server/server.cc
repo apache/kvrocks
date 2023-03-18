@@ -166,7 +166,7 @@ Status Server::Start() {
   }
 
   if (auto s = task_runner_.Start(); !s) {
-    return s.Prefixed("Failed to start task runner");
+    LOG(WARNING) << "Failed to start task runner: " << s.Msg();
   }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));

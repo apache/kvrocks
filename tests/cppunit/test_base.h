@@ -20,8 +20,9 @@
 #ifndef KVROCKS_TEST_BASE_H
 #define KVROCKS_TEST_BASE_H
 
-#include <filesystem>
 #include <gtest/gtest.h>
+
+#include <filesystem>
 
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"

@@ -18,8 +18,9 @@
  *
  */
 
-#include <filesystem>
 #include <gtest/gtest.h>
+
+#include <filesystem>
 
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"

@@ -20,6 +20,7 @@
 #ifndef KVROCKS_TEST_BASE_H
 #define KVROCKS_TEST_BASE_H
 
+#include <filesystem>
 #include <gtest/gtest.h>
 
 #include "storage/redis_db.h"
@@ -27,8 +28,7 @@
 
 class TestBase : public testing::Test {
  protected:
-  explicit TestBase() {
-    config_ = new Config();
+  explicit TestBase() : config_(new Config()) {
     config_->db_dir = "testdb";
     config_->backup_dir = "testdb/backup";
     config_->RocksDB.compression = rocksdb::CompressionType::kNoCompression;
@@ -42,7 +42,7 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
-    rmdir("testdb");
+    std::filesystem::remove_all("testdb");
     delete storage_;
     delete config_;
   }

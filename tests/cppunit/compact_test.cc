@@ -18,9 +18,9 @@
  *
  */
 
+#include <filesystem>
 #include <gtest/gtest.h>
 
-#include "config.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
@@ -36,7 +36,7 @@ TEST(Compact, Filter) {
   Status s = storage_->Open();
   assert(s.IsOK());
 
-  int ret;
+  int ret = 0;
   std::string ns = "test_compact";
   auto hash = std::make_unique<Redis::Hash>(storage_.get(), ns);
   std::string expired_hash_key = "expire_hash_key";
@@ -94,4 +94,5 @@ TEST(Compact, Filter) {
   }
 
   db->ReleaseSnapshot(read_options.snapshot);
+  std::filesystem::remove_all(config.db_dir);
 }

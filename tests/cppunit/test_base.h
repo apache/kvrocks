@@ -42,7 +42,7 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
-    std::filesystem::remove_all("testdb");
+    std::filesystem::remove_all(config_->db_dir);
     delete storage_;
     delete config_;
   }

@@ -31,19 +31,18 @@
 *.out
 *.app
 
-*.o
 *.pyc
 *.swp
 *.swo
 .DS_Store
 version.h
 
-.idea/
+.idea
 .vscode
 .cache
 
 compactdb
-testsdb
+testdb
 
 build
 cmake-build-*

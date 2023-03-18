@@ -371,9 +371,9 @@ struct [[nodiscard]] StatusOr {
 };
 
 // NOLINTNEXTLINE
-#define GET_OR_RET(...)                                                              \
-  ({                                                                                 \
-    auto&& status = (__VA_ARGS__);                                                   \
-    if (__builtin_expect(!status, 0)) return std::forward<decltype(status)>(status); \
-    std::forward<decltype(status)>(status);                                          \
+#define GET_OR_RET(...)                                         \
+  ({                                                            \
+    auto&& status = (__VA_ARGS__);                              \
+    if (!status) return std::forward<decltype(status)>(status); \
+    std::forward<decltype(status)>(status);                     \
   }).GetValue()

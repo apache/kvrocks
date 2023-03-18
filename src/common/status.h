@@ -119,12 +119,12 @@ class [[nodiscard]] Status {
 
   static constexpr const char* ok_msg = "ok";
 
- private:
   struct Impl {
     Code code_;
     std::string msg_;
   };
 
+ private:
   std::unique_ptr<Impl> impl_;
 
   // we do not allow users to access `cOK` directly

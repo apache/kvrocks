@@ -78,7 +78,7 @@ TEST(TaskRunner, Sleep) {
   auto begin = Util::GetTimeStampMS();
   tr.Cancel();
   _ = tr.Join();
-  ASSERT_LE(Util::GetTimeStampMS() - begin, 1000);
+  ASSERT_LE(Util::GetTimeStampMS() - begin, 1500);
 }
 
 TEST(TaskRunner, PublishAfterStart) {

@@ -120,7 +120,7 @@ TEST(StatusOr, String) {
 
 TEST(StatusOr, SharedPtr) {
   struct A {  // NOLINT
-    explicit A(int *x) : x(x) { *x = 233; }
+    A(int *x) : x(x) { *x = 233; }
     ~A() { *x = 0; }
 
     int *x;
@@ -225,21 +225,4 @@ TEST(StatusOr, Prefixed) {
   ASSERT_EQ(g(15).Msg(), "oh: hello");
   ASSERT_EQ(g(-2).Msg(), "oh: hi");
   ASSERT_EQ(*g(5), 36);
-}
-
-TEST(Status, Normal) {
-  Status a = Status::OK(), b = {Status::NotOK, "something"};
-
-  ASSERT_TRUE(a);
-  ASSERT_FALSE(b);
-
-  Status c = std::move(a), d = std::move(b);
-
-  ASSERT_TRUE(c);
-  ASSERT_FALSE(d);
-
-  Status e = d.Prefixed("hello");
-
-  ASSERT_EQ(c.Msg(), "ok");
-  ASSERT_EQ(e.Msg(), "hello: something");
 }

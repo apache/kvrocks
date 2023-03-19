@@ -362,7 +362,8 @@ TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsLeftRight) {
   auto s = list->LMove(key_, key_, true, false, &elem);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(elem, fields_[0].ToString());
-  listElementsAreEqualTo(key_, 0, static_cast<int>(fields_.size() + 1), {fields_[1], fields_[2], fields_[3], fields_[0]});
+  listElementsAreEqualTo(key_, 0, static_cast<int>(fields_.size() + 1),
+                         {fields_[1], fields_[2], fields_[3], fields_[0]});
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsRightLeft) {
@@ -373,7 +374,8 @@ TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsRightLeft) {
   auto s = list->LMove(key_, key_, false, true, &elem);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(elem, fields_[fields_.size() - 1].ToString());
-  listElementsAreEqualTo(key_, 0, static_cast<int>(fields_.size() + 1), {fields_[3], fields_[0], fields_[1], fields_[2]});
+  listElementsAreEqualTo(key_, 0, static_cast<int>(fields_.size() + 1),
+                         {fields_[3], fields_[0], fields_[1], fields_[2]});
 }
 
 TEST_F(RedisListLMoveTest, LMoveDstNotExist) {

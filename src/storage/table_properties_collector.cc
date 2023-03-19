@@ -30,7 +30,6 @@
 rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key, const rocksdb::Slice &value,
                                                       rocksdb::EntryType entry_type, rocksdb::SequenceNumber,
                                                       uint64_t) {
-  int now = 0;
   uint8_t type = 0;
   uint32_t expired = 0, subkeys = 0;
   uint64_t version = 0;
@@ -62,7 +61,7 @@ rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key,
     GetFixed32(&cv, &subkeys);
   }
   total_keys_ += subkeys;
-  now = Server::GetCachedUnixTime();
+  int now = Server::GetCachedUnixTime();
   if ((expired > 0 && expired < static_cast<uint32_t>(now)) || (type != kRedisString && subkeys == 0)) {
     deleted_keys_ += subkeys + 1;
   }

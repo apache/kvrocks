@@ -66,7 +66,7 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
-    fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
+    fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   auto s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
@@ -204,10 +204,10 @@ TEST_F(RedisHashTest, HRangeByLex) {
   int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < 4; i++) {
-    fvs.emplace_back(FieldValue{"key" + std::to_string(i), "value" + std::to_string(i)});
+    fvs.emplace_back("key" + std::to_string(i), "value" + std::to_string(i));
   }
   for (size_t i = 0; i < 26; i++) {
-    fvs.emplace_back(FieldValue{std::to_string(char(i + 'a')), std::to_string(char(i + 'a'))});
+    fvs.emplace_back(std::to_string(char(i + 'a')), std::to_string(char(i + 'a')));
   }
 
   std::random_device rd;

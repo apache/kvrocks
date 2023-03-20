@@ -39,14 +39,13 @@ TEST(ObserverOrUniquePtr, Unique) {
 
 TEST(CompositePtr, Observer) {
   int v = 0;
-  Counter* c = nullptr;
+  std::unique_ptr<Counter> c = nullptr;
   {
     ObserverOrUniquePtr<Counter> observer(new Counter{&v}, ObserverOrUnique::Observer);
     ASSERT_EQ(v, 1);
 
-    c = observer.Get();
+    c.reset(observer.Get());
   }
   ASSERT_EQ(v, 1);
-  delete c;
   ASSERT_EQ(v, 0);
 }

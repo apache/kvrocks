@@ -49,6 +49,7 @@ enum {
 };
 
 namespace Lua {
+
 lua_State *CreateState(bool read_only) {
   lua_State *lua = lua_open();
   loadLibraries(lua);

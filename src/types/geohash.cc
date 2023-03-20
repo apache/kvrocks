@@ -364,7 +364,6 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   GeoHashArea area;
   double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
   double bounds[4];
-  int steps = 0;
 
   BoundingBox(longitude, latitude, radius_meters, bounds);
   min_lon = bounds[0];
@@ -372,7 +371,7 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   max_lon = bounds[2];
   max_lat = bounds[3];
 
-  steps = EstimateStepsByRadius(radius_meters, latitude);
+  int steps = EstimateStepsByRadius(radius_meters, latitude);
 
   geohashGetCoordRange(&long_range, &lat_range);
   geohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);

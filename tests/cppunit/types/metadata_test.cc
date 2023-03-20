@@ -75,7 +75,7 @@ class RedisTypeTest : public TestBase {
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_ = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
   }
-  ~RedisTypeTest() = default;
+  ~RedisTypeTest() override = default;
 
  protected:
   std::unique_ptr<Redis::Database> redis;
@@ -83,10 +83,10 @@ class RedisTypeTest : public TestBase {
 };
 
 TEST_F(RedisTypeTest, GetMetadata) {
-  int ret;
+  int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
-    fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
+    fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
@@ -100,17 +100,17 @@ TEST_F(RedisTypeTest, GetMetadata) {
 }
 
 TEST_F(RedisTypeTest, Expire) {
-  int ret;
+  int ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
-    fvs.emplace_back(FieldValue{fields_[i].ToString(), values_[i].ToString()});
+    fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   rocksdb::Status s = hash->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
-  int64_t now;
+  int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   redis->Expire(key_, int(now + 2));
-  int ttl;
+  int ttl = 0;
   redis->TTL(key_, &ttl);
   ASSERT_TRUE(ttl >= 1 && ttl <= 2);
   sleep(2);

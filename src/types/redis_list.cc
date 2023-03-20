@@ -226,16 +226,16 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, i
     buf.clear();
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
     InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-    size_t count = 0;
+    size_t processed = 0;
     for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
-      if (iter->value() != elem || count >= to_delete_indexes.size()) {
+      if (iter->value() != elem || processed >= to_delete_indexes.size()) {
         buf.clear();
         PutFixed64(&buf, reversed ? max_to_delete_index-- : min_to_delete_index++);
         InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
         batch->Put(to_update_key, iter->value());
       } else {
-        count++;
+        processed++;
       }
     }
 
@@ -271,7 +271,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   if (!s.ok()) return s;
 
   std::string buf, start_key, prefix, next_version_prefix;
-  uint64_t pivot_index = metadata.head - 1, new_elem_index = 0;
+  uint64_t pivot_index = metadata.head - 1;
   PutFixed64(&buf, metadata.head);
   InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
@@ -307,6 +307,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   uint64_t left_part_len = pivot_index - metadata.head + (before ? 0 : 1);
   uint64_t right_part_len = metadata.tail - 1 - pivot_index + (before ? 1 : 0);
   bool reversed = left_part_len <= right_part_len;
+  uint64_t new_elem_index = 0;
   if ((reversed && !before) || (!reversed && before)) {
     new_elem_index = pivot_index;
   } else {

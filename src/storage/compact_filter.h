@@ -31,6 +31,7 @@
 #include "storage.h"
 
 namespace Engine {
+
 class MetadataFilter : public rocksdb::CompactionFilter {
  public:
   explicit MetadataFilter(Storage *storage) : stor_(storage) {}
@@ -122,4 +123,5 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
     return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
   }
 };
+
 }  // namespace Engine

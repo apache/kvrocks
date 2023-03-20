@@ -241,7 +241,6 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
 }
 
 rocksdb::Status String::SetRange(const std::string &user_key, int offset, const std::string &value, int *ret) {
-  int size = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -251,16 +250,17 @@ rocksdb::Status String::SetRange(const std::string &user_key, int offset, const 
   if (!s.ok() && !s.IsNotFound()) return s;
 
   if (s.IsNotFound()) {
-    // Return 0 directly instead of storing an empty key
-    // when set nothing on a non-existing string.
+    // Return 0 directly instead of storing an empty key when set nothing on a non-existing string.
     if (value.empty()) {
       *ret = 0;
       return rocksdb::Status::OK();
     }
+
     Metadata metadata(kRedisString, false);
     metadata.Encode(&raw_value);
   }
-  size = static_cast<int>(raw_value.size());
+
+  int size = static_cast<int>(raw_value.size());
   offset += STRING_HDR_SIZE;
   if (offset > size) {
     // padding the value with zero byte while offset is longer than value size

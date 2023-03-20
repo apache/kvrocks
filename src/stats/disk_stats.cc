@@ -20,18 +20,12 @@
 
 #include "disk_stats.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "db_util.h"
 #include "rocksdb/status.h"
-#include "status.h"
 #include "storage/redis_metadata.h"
-#include "types/redis_bitmap.h"
-#include "types/redis_sortedint.h"
 #include "types/redis_zset.h"
 
 namespace Redis {

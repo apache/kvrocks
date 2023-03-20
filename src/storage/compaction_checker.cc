@@ -68,7 +68,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     if (file_creation_time == 0) {
       // Fallback to the file Modification time to prevent repeatedly compacting the same file,
       // file_creation_time is 0 which means the unknown condition in rocksdb
-      auto s = rocksdb::Env::Default()->GetFileModificationTime(iter.first, &file_creation_time);
+      s = rocksdb::Env::Default()->GetFileModificationTime(iter.first, &file_creation_time);
       if (!s.ok()) {
         LOG(INFO) << "[compaction checker] Failed to get the file creation time: " << iter.first
                   << ", err: " << s.ToString();
@@ -107,7 +107,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     // pick the file which was created more than 2 days
     if (file_creation_time < static_cast<uint64_t>(now - forceCompactSeconds)) {
       LOG(INFO) << "[compaction checker] Going to compact the key in file(created more than 2 days): " << iter.first;
-      auto s = storage_->Compact(&start_key, &stop_key);
+      s = storage_->Compact(&start_key, &stop_key);
       LOG(INFO) << "[compaction checker] Compact the key in file(created more than 2 days): " << iter.first
                 << " finished, result: " << s.ToString();
       maxFilesToCompact--;

@@ -26,7 +26,6 @@
 #include <atomic>
 #include <cstdlib>
 #include <ctime>
-#include <vector>
 
 #include "cluster/redis_slot.h"
 #include "time_util.h"
@@ -184,9 +183,9 @@ void Metadata::InitVersionCounter() {
 }
 
 uint64_t Metadata::generateVersion() {
-  uint64_t version = Util::GetTimeStampUS();
+  uint64_t timestamp = Util::GetTimeStampUS();
   uint64_t counter = version_counter_.fetch_add(1);
-  return (version << VersionCounterBits) + (counter % (1 << VersionCounterBits));
+  return (timestamp << VersionCounterBits) + (counter % (1 << VersionCounterBits));
 }
 
 bool Metadata::operator==(const Metadata &that) const {

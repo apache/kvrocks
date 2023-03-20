@@ -238,13 +238,12 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   if (!s.ok() && !s.IsNotFound()) return s;
 
   int added = 0;
-  bool exists = false;
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
 
   for (const auto &fv : field_values) {
-    exists = false;
+    bool exists = false;
 
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);

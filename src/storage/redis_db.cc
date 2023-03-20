@@ -227,7 +227,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
                                std::vector<std::string> *keys, std::string *end_cursor) {
   end_cursor->clear();
   uint64_t cnt = 0;
-  uint16_t slot_id = 0, slot_start = 0;
+  uint16_t slot_start = 0;
   std::string ns_prefix, ns_cursor, ns, user_key, value, index_key;
 
   LatestSnapShot ss(storage_);
@@ -259,7 +259,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
     iter->Seek(ns_prefix);
   }
 
-  slot_id = slot_start;
+  uint16_t slot_id = slot_start;
   while (true) {
     for (; iter->Valid() && cnt < limit; iter->Next()) {
       if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
@@ -325,8 +325,8 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
     return s;
   }
   if (keys.empty() && !cursor.empty()) {
-    // if reach the end, restart from begining
-    auto s = Scan("", 60, "", &keys, &end_cursor);
+    // if reach the end, restart from beginning
+    s = Scan("", 60, "", &keys, &end_cursor);
     if (!s.ok()) {
       return s;
     }
@@ -414,13 +414,13 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back(created_at_str + "." + std::to_string(created_at.tv_usec));
 
   if (metadata.Type() == kRedisList) {
-    ListMetadata metadata(false);
-    GetMetadata(kRedisList, ns_key, &metadata);
+    ListMetadata list_metadata(false);
+    GetMetadata(kRedisList, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
-    infos->emplace_back(std::to_string(metadata.head));
+    infos->emplace_back(std::to_string(list_metadata.head));
     infos->emplace_back("tail");
-    infos->emplace_back(std::to_string(metadata.tail));
+    infos->emplace_back(std::to_string(list_metadata.tail));
   }
 
   return rocksdb::Status::OK();
@@ -518,11 +518,11 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
 
 rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
                                           int count) {
-  const rocksdb::Snapshot *snapshot = nullptr;
-  snapshot = storage_->GetDB()->GetSnapshot();
+  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = snapshot;
+  read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
+
   auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   bool end = false;
   for (int i = 0; i < HASH_SLOTS_SIZE; i++) {

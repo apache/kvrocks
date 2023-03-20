@@ -31,12 +31,12 @@ extern const uint8_t kNum2Bits[256];
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
   auto string_value = raw_value.substr(STRING_HDR_SIZE, raw_value.size() - STRING_HDR_SIZE);
   uint32_t byte_index = offset >> 3;
-  uint32_t bitval = 0;
+  uint32_t bit_val = 0;
   uint32_t bit_offset = 7 - (offset & 0x7);
   if (byte_index < string_value.size()) {
-    bitval = string_value[byte_index] & (1 << bit_offset);
+    bit_val = string_value[byte_index] & (1 << bit_offset);
   }
-  *bit = bitval == 0 ? false : true;
+  *bit = bit_val != 0;
   return rocksdb::Status::OK();
 }
 
@@ -130,7 +130,6 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
  * */
 size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   size_t bits = 0;
-  uint32_t *p4 = nullptr;
 
   /* Count initial bytes not aligned to 32 bit. */
   while (reinterpret_cast<uint64_t>(p) & 3 && count) {
@@ -139,17 +138,15 @@ size_t BitmapString::redisPopcount(unsigned char *p, int64_t count) {
   }
 
   /* Count bits 28 bytes at a time */
-  p4 = reinterpret_cast<uint32_t *>(p);
+  auto p4 = reinterpret_cast<uint32_t *>(p);
   while (count >= 28) {
-    uint32_t aux1 = 0, aux2 = 0, aux3 = 0, aux4 = 0, aux5 = 0, aux6 = 0, aux7 = 0;
-
-    aux1 = *p4++;
-    aux2 = *p4++;
-    aux3 = *p4++;
-    aux4 = *p4++;
-    aux5 = *p4++;
-    aux6 = *p4++;
-    aux7 = *p4++;
+    uint32_t aux1 = *p4++;
+    uint32_t aux2 = *p4++;
+    uint32_t aux3 = *p4++;
+    uint32_t aux4 = *p4++;
+    uint32_t aux5 = *p4++;
+    uint32_t aux6 = *p4++;
+    uint32_t aux7 = *p4++;
     count -= 28;
 
     aux1 = aux1 - ((aux1 >> 1) & 0x55555555);

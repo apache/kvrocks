@@ -27,7 +27,7 @@
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
 
-class TestBase : public testing::Test {
+class TestBase : public testing::Test {  // NOLINT
  protected:
   explicit TestBase() : config_(new Config()) {
     config_->db_dir = "testdb";

@@ -39,7 +39,7 @@ class CronTest : public testing::Test {
 };
 
 TEST_F(CronTest, IsTimeMatch) {
-  std::time_t t = std::time(0);
+  std::time_t t = std::time(nullptr);
   std::tm *now = std::localtime(&t);
   now->tm_hour = 3;
   ASSERT_TRUE(cron->IsTimeMatch(now));

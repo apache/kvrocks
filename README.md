@@ -32,11 +32,11 @@
 
 Kvrocks has the following key features:
 
-* Redis protocol, user can use redis client to visit the kvrocks
-* Namespace, similar to redis db but use token per namespace
-* Replication, async replication using binlog like MySQL
-* High Available, supports redis sentinel to failover when master or slave was failed
-* Cluster mode, centralized management but compatible with Redis cluster client access
+* Redis Compatible: Users can access Apache Kvrocks via any Redis client.
+* Namespace: Similar to Redis SELECT but equipped with token per namespace.
+* Replication: Async replication using binlog like MySQL.
+* High Available: Support Redis sentinel to failover when master or slave was failed.
+* Cluster: Centralized management but accessible via any Redis cluster client.
 
 Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
 
@@ -125,13 +125,13 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 * Linux
 * macOS
 
-##  Namespace
+## Namespace
 
 Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc. See the [Namespace](https://kvrocks.apache.org/docs/namespace) page for more details.
 
 ```
 # add token
-127.0.0.1:6666>  namespace add ns1 my_token
+127.0.0.1:6666> namespace add ns1 my_token
 OK
 
 # update token
@@ -181,7 +181,7 @@ Kvrocks community welcomes all forms of contribution and you can find out how to
 * NET:  Intel Corporation I350 Gigabit Network Connection
 * DISK: 2TB NVMe Intel SSD DC P4600
 
->  Benchmark Client:  multi-thread redis-benchmark(unstable branch)
+> Benchmark Client: multi-thread redis-benchmark(unstable branch)
 
 ### 1. Commands QPS
 
@@ -191,7 +191,7 @@ latency: 99.9% < 10ms
 
 ![image](assets/chart-commands.png)
 
-### 2.  QPS on different payloads
+### 2. QPS on different payloads
 
 > kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
 
@@ -199,7 +199,7 @@ latency: 99.9% < 10ms
 
 ![image](assets/chart-values.png)
 
-#### 3. QPS on different workers
+### 3. QPS on different workers
 
 > kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
 

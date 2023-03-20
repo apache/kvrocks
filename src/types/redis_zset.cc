@@ -20,8 +20,6 @@
 
 #include "redis_zset.h"
 
-#include <math.h>
-
 #include <cmath>
 #include <limits>
 #include <map>
@@ -664,15 +662,18 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
   ZRangeSpec spec;
   auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
   if (!s.ok() || target_mscores.empty()) return s;
+
   for (const auto &ms : target_mscores) {
     double score = ms.score * keys_weights[0].weight;
     if (std::isnan(score)) score = 0;
     dst_zset[ms.member] = score;
     member_counters[ms.member] = 1;
   }
+
   for (size_t i = 1; i < keys_weights.size(); i++) {
-    auto s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
+    s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
     if (!s.ok() || target_mscores.empty()) return s;
+
     for (const auto &ms : target_mscores) {
       if (dst_zset.find(ms.member) == dst_zset.end()) continue;
       member_counters[ms.member]++;
@@ -762,38 +763,37 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
 }
 
 Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec) {
-  const char *sptr = nullptr;
   char *eptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {
-    return Status(Status::NotOK, "min > max");
+    return {Status::NotOK, "min > max"};
   }
 
   if (min == "-inf") {
     spec->min = kMinScore;
   } else {
-    sptr = min.data();
+    const char *sptr = min.data();
     if (!min.empty() && min[0] == '(') {
       spec->minex = true;
       sptr++;
     }
     spec->min = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || isnan(spec->min)) {
-      return Status(Status::NotOK, "the min isn't double");
+    if ((eptr && eptr[0] != '\0') || std::isnan(spec->min)) {
+      return {Status::NotOK, "the min isn't double"};
     }
   }
 
   if (max == "+inf") {
     spec->max = kMaxScore;
   } else {
-    sptr = max.data();
+    const char *sptr = max.data();
     if (!max.empty() && max[0] == '(') {
       spec->maxex = true;
       sptr++;
     }
     spec->max = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || isnan(spec->max)) {
-      return Status(Status::NotOK, "the max isn't double");
+    if ((eptr && eptr[0] != '\0') || std::isnan(spec->max)) {
+      return {Status::NotOK, "the max isn't double"};
     }
   }
   return Status::OK();

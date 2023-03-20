@@ -24,7 +24,7 @@
 #include "time_util.h"
 #include "types/redis_stream.h"
 
-class RedisStreamTest : public TestBase {
+class RedisStreamTest : public TestBase {  // NOLINT
  public:
   void checkStreamEntryValues(const std::vector<std::string> &got, const std::vector<std::string> &expected) {
     EXPECT_EQ(got.size(), expected.size());

@@ -22,8 +22,8 @@
 #include <parse_util.h>
 
 TEST(ParseUtil, TryParseInt) {
-  long long v;
-  const char *str = "12345hellooo", *end;
+  long long v = 0;
+  const char *str = "12345hellooo", *end = nullptr;
 
   std::tie(v, end) = *TryParseInt(str);
   ASSERT_EQ(v, 12345);

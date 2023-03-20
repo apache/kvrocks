@@ -161,7 +161,7 @@ TEST_F(RedisDiskTest, BitmapDisk) {
     EXPECT_TRUE(bitmap->SetBit(key_, i, true, &bit).ok());
     approximate_size += key_.size() + 8 + std::to_string(i / 1024 / 8).size();
   }
-  uint64_t key_size;
+  uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisBitmap, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
@@ -172,13 +172,13 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<Redis::Sortedint> sortedint = std::make_unique<Redis::Sortedint>(storage_, "disk_ns_sortedint");
   std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
-  int ret;
+  int ret = 0;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
     EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok() && ret == 1);
     approximate_size += key_.size() + 8 + 8;
   }
-  uint64_t key_size;
+  uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisSortedint, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
@@ -199,7 +199,7 @@ TEST_F(RedisDiskTest, StreamDisk) {
     EXPECT_TRUE(s.ok());
     approximate_size += key_.size() + 8 + 8 + values[0].size() + values[1].size();
   }
-  uint64_t key_size;
+  uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisStream, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);

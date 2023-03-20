@@ -31,9 +31,9 @@ class StringReplyTest : public testing::Test {
   }
   static void TearDownTestCase() { values.clear(); }
   static std::vector<std::string> values;
-  virtual void SetUp() {}
 
-  virtual void TearDown() {}
+  void SetUp() override {}
+  void TearDown() override {}
 };
 
 std::vector<std::string> StringReplyTest::values;

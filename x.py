@@ -183,7 +183,7 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     if jobs is not None:
         options.append(f'-j{jobs}')
 
-    regexes = ['kvrocks/src/', 'kvrocks2redis/']
+    regexes = ['kvrocks/src/', 'utils/kvrocks2redis/', 'tests/cppunit/']
 
     options.append(f'-header-filter={"|".join(regexes)}')
 

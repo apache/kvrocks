@@ -77,7 +77,7 @@ TEST(StatusOr, Scalar) {
 }
 
 TEST(StatusOr, String) {
-  auto f = [](std::string x) -> StatusOr<std::string> {
+  auto f = [](std::string x) -> StatusOr<std::string> {  // NOLINT
     if (x.size() > 10) {
       return {Status::NotOK, "string too long"};
     }
@@ -85,7 +85,7 @@ TEST(StatusOr, String) {
     return x + " hello";
   };
 
-  auto g = [f](std::string x) -> StatusOr<std::string> {
+  auto g = [f](std::string x) -> StatusOr<std::string> {  // NOLINT
     if (x.size() < 5) {
       return {Status::NotOK, "string too short"};
     }
@@ -117,8 +117,8 @@ TEST(StatusOr, String) {
 }
 
 TEST(StatusOr, SharedPtr) {
-  struct A {
-    A(int *x) : x(x) { *x = 233; }
+  struct A {  // NOLINT
+    explicit A(int *x) : x(x) { *x = 233; }
     ~A() { *x = 0; }
 
     int *x;

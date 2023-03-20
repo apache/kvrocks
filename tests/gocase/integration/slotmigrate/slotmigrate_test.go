@@ -377,10 +377,9 @@ func TestSlotMigrateThreeNodes(t *testing.T) {
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
 		require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
 		require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
-		time.Sleep(time.Second)
 
 		// check destination importing status
-		requireImportState(t, rdb2, slot, SlotImportStateFailed)
+		waitForImportState(t, rdb2, slot, SlotImportStateFailed)
 	})
 }
 
@@ -858,11 +857,5 @@ func waitForImportState(t testing.TB, client *redis.Client, n int, state SlotImp
 		i := client.ClusterInfo(context.Background()).Val()
 		return strings.Contains(i, fmt.Sprintf("importing_slot: %d", n)) &&
 			strings.Contains(i, fmt.Sprintf("import_state: %s", state))
-	}, 5*time.Second, 100*time.Millisecond)
-}
-
-func requireImportState(t testing.TB, client *redis.Client, n int, state SlotImportState) {
-	i := client.ClusterInfo(context.Background()).Val()
-	require.Contains(t, i, fmt.Sprintf("importing_slot: %d", n))
-	require.Contains(t, i, fmt.Sprintf("import_state: %s", state))
+	}, 10*time.Second, 100*time.Millisecond)
 }

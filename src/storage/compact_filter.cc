@@ -28,6 +28,7 @@
 #include "types/redis_bitmap.h"
 
 namespace Engine {
+
 using rocksdb::Slice;
 
 bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
@@ -66,21 +67,20 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata
       cached_metadata_.clear();
-      return Status(Status::NotFound, "metadata is not found");
+      return {Status::NotFound, "metadata is not found"};
     } else {
       cached_key_.clear();
       cached_metadata_.clear();
-      return Status(Status::NotOK, "fetch error: " + s.ToString());
+      return {Status::NotOK, "fetch error: " + s.ToString()};
     }
   }
   // the metadata was not found
-  if (cached_metadata_.empty()) return Status(Status::NotFound, "metadata is not found");
+  if (cached_metadata_.empty()) return {Status::NotFound, "metadata is not found"};
   // the metadata is cached
   rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    return Status(Status::NotOK, "decode error: " + s.ToString());
-    ;
+    return {Status::NotOK, "decode error: " + s.ToString()};
   }
   return Status::OK();
 }

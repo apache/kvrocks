@@ -211,7 +211,7 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
-  unsigned int i = 0, last_processed = 0;
+  unsigned int last_processed = 0;
   int count = 0;
 
   neighbors[0] = n.hash;
@@ -226,7 +226,7 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lo
 
   /* For each neighbor (*and* our own hashbox), get all the matching
    * members and add them to the potential result list. */
-  for (i = 0; i < sizeof(neighbors) / sizeof(*neighbors); i++) {
+  for (unsigned int i = 0; i < sizeof(neighbors) / sizeof(*neighbors); i++) {
     if (HASHISZERO(neighbors[i])) {
       continue;
     }

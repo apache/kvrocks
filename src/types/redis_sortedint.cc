@@ -22,7 +22,6 @@
 
 #include <iostream>
 #include <limits>
-#include <map>
 
 #include "db_util.h"
 #include "parse_util.h"
@@ -238,23 +237,21 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
 }
 
 Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec) {
-  const char *sptr = nullptr;
-
   if (min == "+inf" || max == "-inf") {
-    return Status(Status::NotOK, "min > max");
+    return {Status::NotOK, "min > max"};
   }
 
   if (min == "-inf") {
     spec->min = std::numeric_limits<uint64_t>::lowest();
   } else {
-    sptr = min.data();
+    const char *sptr = min.data();
     if (!min.empty() && min[0] == '(') {
       spec->minex = true;
       sptr++;
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
-      return Status(Status::NotOK, "the min isn't integer");
+      return {Status::NotOK, "the min isn't integer"};
     }
     spec->min = *parse_result;
   }
@@ -262,17 +259,18 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
   if (max == "+inf") {
     spec->max = std::numeric_limits<uint64_t>::max();
   } else {
-    sptr = max.data();
+    const char *sptr = max.data();
     if (!max.empty() && max[0] == '(') {
       spec->maxex = true;
       sptr++;
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
-      return Status(Status::NotOK, "the max isn't integer");
+      return {Status::NotOK, "the max isn't integer"};
     }
     spec->max = *parse_result;
   }
   return Status::OK();
 }
+
 }  // namespace Redis

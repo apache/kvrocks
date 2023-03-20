@@ -118,20 +118,17 @@ SlotMigrate::~SlotMigrate() {
     stop_migrate_ = true;
     thread_state_ = ThreadState::Terminated;
     job_cv_.notify_all();
-    if (t_.joinable()) t_.join();
+    if (auto s = Util::ThreadJoin(t_); !s) {
+      LOG(WARNING) << "Slot migrating thread operation failed: " << s.Msg();
+    }
   }
 }
 
 Status SlotMigrate::CreateMigrateHandleThread() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("slot-migrate");
-      thread_state_ = ThreadState::Running;
-      this->Loop();
-    });
-  } catch (const std::exception &e) {
-    return {Status::NotOK, std::string(e.what())};
-  }
+  t_ = GET_OR_RET(Util::CreateThread("slot-migrate", [this] {
+    thread_state_ = ThreadState::Running;
+    this->Loop();
+  }));
 
   return Status::OK();
 }

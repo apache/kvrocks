@@ -46,28 +46,29 @@
 #include "time_util.h"
 
 Status FeedSlaveThread::Start() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("feed-replica");
-      sigset_t mask, omask;
-      sigemptyset(&mask);
-      sigemptyset(&omask);
-      sigaddset(&mask, SIGCHLD);
-      sigaddset(&mask, SIGHUP);
-      sigaddset(&mask, SIGPIPE);
-      pthread_sigmask(SIG_BLOCK, &mask, &omask);
-      auto s = Util::SockSend(conn_->GetFD(), "+OK\r\n");
-      if (!s.IsOK()) {
-        LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
-        return;
-      }
-      this->loop();
-    });
-  } catch (const std::system_error &e) {
+  auto s = Util::CreateThread("feed-replica", [this] {
+    sigset_t mask, omask;
+    sigemptyset(&mask);
+    sigemptyset(&omask);
+    sigaddset(&mask, SIGCHLD);
+    sigaddset(&mask, SIGHUP);
+    sigaddset(&mask, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &mask, &omask);
+    auto s = Util::SockSend(conn_->GetFD(), "+OK\r\n");
+    if (!s.IsOK()) {
+      LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
+      return;
+    }
+    this->loop();
+  });
+
+  if (s) {
+    t_ = std::move(*s);
+  } else {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
-    return {Status::NotOK, e.what()};
   }
-  return Status::OK();
+
+  return s;
 }
 
 void FeedSlaveThread::Stop() {
@@ -76,7 +77,9 @@ void FeedSlaveThread::Stop() {
 }
 
 void FeedSlaveThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Slave thread operation failed: " << s.Msg();
+  }
 }
 
 void FeedSlaveThread::checkLivenessIfNeed() {
@@ -129,7 +132,7 @@ void FeedSlaveThread::loop() {
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
     if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
-        srv_->storage_->LatestSeq() - batch.sequence <= kMaxDelayUpdates) {
+        srv_->storage_->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
       // Send entire bulk which contain multiple batches
       auto s = Util::SockSend(conn_->GetFD(), batches_bulk);
       if (!s.IsOK()) {
@@ -323,15 +326,11 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
   // cleanup the old backups, so we can start replication in a clean state
   storage_->PurgeOldBackups(0, 0);
 
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("master-repl");
-      this->run();
-      assert(stop_flag_);
-    });
-  } catch (const std::system_error &e) {
-    return Status(Status::NotOK, e.what());
-  }
+  t_ = GET_OR_RET(Util::CreateThread("master-repl", [this] {
+    this->run();
+    assert(stop_flag_);
+  }));
+
   return Status::OK();
 }
 
@@ -340,7 +339,9 @@ void ReplicationThread::Stop() {
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
                       // handled by timer
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "Replication thread operation failed: " << s.Msg();
+  }
   LOG(INFO) << "[replication] Stopped";
 }
 
@@ -424,18 +425,34 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(bufferevent *bev
 
 ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  send_string(bev,
-              Redis::MultiBulkString({"replconf", "listening-port", std::to_string(self->srv_->GetConfig()->port)}));
+  auto config = self->srv_->GetConfig();
+
+  auto port = config->replica_announce_port > 0 ? config->replica_announce_port : config->port;
+  std::vector<std::string> data_to_send{"replconf", "listening-port", std::to_string(port)};
+  if (!self->next_try_without_announce_ip_address_ && !config->replica_announce_ip.empty()) {
+    data_to_send.emplace_back("ip-address");
+    data_to_send.emplace_back(config->replica_announce_ip);
+  }
+  send_string(bev, Redis::MultiBulkString(data_to_send));
   self->repl_state_.store(kReplReplConf, std::memory_order_relaxed);
   LOG(INFO) << "[replication] replconf request was sent, waiting for response";
   return CBState::NEXT;
 }
 
 ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev, void *ctx) {
+  auto self = static_cast<ReplicationThread *>(ctx);
   auto input = bufferevent_get_input(bev);
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  // on unknown option: first try without announce ip, if it fails again - do nothing (to prevent infinite loop)
+  if (isUnknownOption(line.get()) && !self->next_try_without_announce_ip_address_) {
+    self->next_try_without_announce_ip_address_ = true;
+    LOG(WARNING) << "The old version master, can't handle ip-address, "
+                 << "try without it again";
+    // Retry previous state, i.e. send replconf again
+    return CBState::PREV;
+  }
   if (line[0] == '-' && isRestoringError(line.get())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
@@ -452,7 +469,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev, v
 
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  auto cur_seq = self->storage_->LatestSeq();
+  auto cur_seq = self->storage_->LatestSeqNumber();
   auto next_seq = cur_seq + 1;
   std::string replid;
 
@@ -959,6 +976,8 @@ bool ReplicationThread::isRestoringError(const char *err) {
 bool ReplicationThread::isWrongPsyncNum(const char *err) {
   return std::string(err) == "-ERR wrong number of arguments";
 }
+
+bool ReplicationThread::isUnknownOption(const char *err) { return std::string(err) == "-ERR unknown option"; }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {

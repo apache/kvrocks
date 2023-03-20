@@ -290,3 +290,8 @@ Doug Lea and released to the public domain, as explained at
 https://creativecommons.org/licenses/publicdomain
 
 ===============================================================================
+
+For the library oneTBB (https://github.com/oneapi-src/oneTBB):
+
+oneAPI Threading Building Blocks (oneTBB) is a flexible C++ library that simplifies the work of adding parallelism to complex applications. 
+It is licensed under Apache-2.0 License, refer to LICENSE in the root directory.

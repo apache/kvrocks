@@ -218,7 +218,7 @@ void Sync::parseKVFromLocalStorage() {
     return;
   }
 
-  s = updateNextSeq(storage_->LatestSeq() + 1);
+  s = updateNextSeq(storage_->LatestSeqNumber() + 1);
   if (!s.IsOK()) {
     LOG(ERROR) << "[kvrocks2redis] Failed to update next sequence: " << s.Msg();
   }

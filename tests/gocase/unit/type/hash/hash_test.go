@@ -167,6 +167,68 @@ func TestHash(t *testing.T) {
 		require.Equal(t, "foo", res)
 	})
 
+	t.Run("HSETNX multiple values, wrong number of arguments", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1", "field2")
+		require.ErrorContains(t, r.Err(), "wrong number of arguments")
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, target keys missing", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1", "field2", "value2")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), val)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, target keys exist", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		rdb.HSet(ctx, hashSetName, "field1", "value1")
+		rdb.HSet(ctx, hashSetName, "field2", "value2")
+
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1-changed", "field2", "value2-changed")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), val)
+
+		value1 := rdb.HGet(ctx, hashSetName, "field1").Val()
+		require.Equal(t, "value1", value1)
+
+		value2 := rdb.HGet(ctx, hashSetName, "field2").Val()
+		require.Equal(t, "value2", value2)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
+	t.Run("HSETNX multiple values, some of the target keys exist", func(t *testing.T) {
+		hashSetName := "test-hash-set"
+		rdb.HSet(ctx, hashSetName, "field1", "value1")
+		rdb.HSet(ctx, hashSetName, "field2", "value2")
+
+		r := rdb.Do(ctx, "HSETNX", hashSetName, "field1", "value1-changed", "field2", "value2-changed",
+			"field3", "value3", "field4", "value4")
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), val)
+
+		value1 := rdb.HGet(ctx, hashSetName, "field1").Val()
+		require.Equal(t, "value1", value1)
+
+		value2 := rdb.HGet(ctx, hashSetName, "field2").Val()
+		require.Equal(t, "value2", value2)
+
+		value3 := rdb.HGet(ctx, hashSetName, "field3").Val()
+		require.Equal(t, "value3", value3)
+
+		value4 := rdb.HGet(ctx, hashSetName, "field4").Val()
+		require.Equal(t, "value4", value4)
+
+		rdb.Del(ctx, hashSetName)
+	})
+
 	t.Run("HMSET wrong number of args", func(t *testing.T) {
 		pattern := ".*wrong number.*"
 		util.ErrorRegexp(t, rdb.HMSet(ctx, "smallhash", "key1", "val1", "key2").Err(), pattern)
@@ -277,6 +339,15 @@ func TestHash(t *testing.T) {
 		require.Equal(t, expect, actual)
 	})
 
+	t.Run("HVALS - field with empty string as a value", func(t *testing.T) {
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+		require.Equal(t, []string{"some-value", ""}, rdb.HVals(ctx, "test-hash-1").Val())
+
+		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
+	})
+
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
 		res := rdb.Do(ctx, "hgetall", "smallhash").Val().([]interface{})
 		mid := make(map[string]string)
@@ -301,6 +372,15 @@ func TestHash(t *testing.T) {
 			}
 		}
 		require.Equal(t, bighash, mid)
+	})
+
+	t.Run("HGETALL - field with empty string as a value", func(t *testing.T) {
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+		require.Equal(t, map[string]string{"field1": "some-value", "field2": ""}, rdb.HGetAll(ctx, "test-hash-1").Val())
+
+		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
 	})
 
 	t.Run("HDEL and return value", func(t *testing.T) {
@@ -679,6 +759,15 @@ func TestHash(t *testing.T) {
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey", "[a").Err(), "wrong number of arguments")
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex", "hashkey").Err(), "wrong number of arguments")
 			require.ErrorContains(t, rdb.Do(ctx, "HrangeByLex").Err(), "wrong number of arguments")
+		})
+
+		t.Run("HrangeByLex - field with empty string as a value", func(t *testing.T) {
+			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
+			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+
+			require.Equal(t, []interface{}{"field1", "some-value", "field2", ""}, rdb.Do(ctx, "HrangeByLex", "test-hash-1", "[a", "[z").Val())
+
+			require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
 		})
 	}
 }

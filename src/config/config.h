@@ -51,7 +51,7 @@ constexpr const size_t MiB = 1024L * KiB;
 constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
-extern const char *kDefaultNamespace;
+constexpr const char *kDefaultNamespace = "__namespace";
 
 struct CompactionCheckerRange {
  public:
@@ -132,6 +132,8 @@ struct Config {
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   std::map<std::string, std::string> tokens;
+  std::string replica_announce_ip;
+  uint32_t replica_announce_port = 0;
 
   bool persist_cluster_nodes_enabled = true;
   bool slot_id_encoded = false;

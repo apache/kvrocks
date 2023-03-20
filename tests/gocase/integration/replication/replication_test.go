@@ -299,7 +299,7 @@ func TestReplicationShareCheckpoint(t *testing.T) {
 		util.SlaveOf(t, slave2Client, master)
 
 		require.Eventually(t, func() bool {
-			return master.LogFileMatches(t, ".*Use current existing checkpoint.*")
+			return master.LogFileMatches(t, ".*Using current existing checkpoint.*")
 		}, 50*time.Second, 100*time.Millisecond)
 		util.WaitForSync(t, slave1Client)
 		util.WaitForSync(t, slave2Client)
@@ -375,5 +375,50 @@ func TestReplicationChangePassword(t *testing.T) {
 		require.Contains(t, masterReplicationInfo, "role:master")
 		require.Contains(t, masterReplicationInfo, slave.Host())
 		require.Contains(t, masterReplicationInfo, strconv.Itoa(int(slave.Port())))
+	})
+}
+
+func TestReplicationAnnounceIP(t *testing.T) {
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	ctx := context.Background()
+
+	slave := util.StartServer(t, map[string]string{"replica-announce-ip": "slave-ip.local", "replica-announce-port": "1234"})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	t.Run("Setup second server as replica", func(t *testing.T) {
+		util.SlaveOf(t, slaveClient, master)
+		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
+	})
+
+	util.WaitForSync(t, slaveClient)
+	t.Run("INFO master for slave0 should contain replica-announce-ip and replica-announce-port", func(t *testing.T) {
+		value := util.FindInfoEntry(masterClient, "slave0")
+		require.Contains(t, value, "ip=slave-ip.local,port=1234")
+	})
+
+	t.Run("ROLE in master reports slaves replica-announce-ip and replica-announce-port", func(t *testing.T) {
+		vals, err := masterClient.Do(ctx, "role").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 3, len(vals))
+		slaves, ok := vals[2].([]interface{})
+		require.True(t, ok)
+		slave0, ok := slaves[0].([]interface{})
+		require.True(t, ok)
+		require.EqualValues(t, 3, len(slave0))
+
+		slave0ip, ok := slave0[0].(string)
+		require.True(t, ok)
+
+		slave0port, ok := slave0[1].(string)
+		require.True(t, ok)
+
+		require.Equal(t, "slave-ip.local", slave0ip)
+		require.Equal(t, "1234", slave0port)
 	})
 }

@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
+#include <rocksdb/statistics.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
@@ -31,11 +32,13 @@
 #include <iomanip>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <utility>
 
 #include "commands/commander.h"
 #include "config.h"
 #include "fmt/format.h"
+#include "lua.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "storage/compaction_checker.h"
@@ -163,17 +166,15 @@ Status Server::Start() {
     worker->Start();
   }
 
-  task_runner_.Start();
+  if (auto s = task_runner_.Start(); !s) {
+    LOG(WARNING) << "Failed to start task runner: " << s.Msg();
+  }
   // setup server cron thread
-  cron_thread_ = std::thread([this]() {
-    Util::ThreadSetName("server-cron");
-    this->cron();
-  });
+  cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
 
-  compaction_checker_thread_ = std::thread([this]() {
+  compaction_checker_thread_ = GET_OR_RET(Util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
     time_t last_compact_date = 0;
-    Util::ThreadSetName("compact-check");
     CompactionChecker compaction_checker(this->storage_);
 
     while (!stop_) {
@@ -204,7 +205,7 @@ Status Server::Start() {
         }
       }
     }
-  });
+  }));
 
   memory_startup_use_.store(Stats::GetMemoryRSS(), std::memory_order_relaxed);
   LOG(INFO) << "[server] Ready to accept connections";
@@ -224,7 +225,7 @@ void Server::Stop() {
   }
 
   rocksdb::CancelAllBackgroundWork(storage_->GetDB(), true);
-  task_runner_.Stop();
+  task_runner_.Cancel();
 }
 
 void Server::Join() {
@@ -232,9 +233,15 @@ void Server::Join() {
     worker->Join();
   }
 
-  task_runner_.Join();
-  if (cron_thread_.joinable()) cron_thread_.join();
-  if (compaction_checker_thread_.joinable()) compaction_checker_thread_.join();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
+  }
+  if (auto s = Util::ThreadJoin(cron_thread_); !s) {
+    LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
+  }
+  if (auto s = Util::ThreadJoin(compaction_checker_thread_); !s) {
+    LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
 }
 
 Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {
@@ -260,7 +267,9 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
-                                        task_runner_.Start();
+                                        if (auto s = task_runner_.Start(); !s) {
+                                          LOG(WARNING) << "Failed to start task runner: " << s.Msg();
+                                        }
                                       });
   if (s.IsOK()) {
     master_host_ = host;
@@ -399,9 +408,7 @@ void Server::SubscribeChannel(const std::string &channel, Redis::Connection *con
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_channels_.find(channel); iter == pubsub_channels_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    pubsub_channels_.insert(std::pair<std::string, std::list<ConnContext *>>(channel, conn_ctxs));
+    pubsub_channels_.emplace(channel, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -457,9 +464,7 @@ void Server::PSubscribeChannel(const std::string &pattern, Redis::Connection *co
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_patterns_.find(pattern); iter == pubsub_patterns_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    pubsub_patterns_.insert(std::pair<std::string, std::list<ConnContext *>>(pattern, conn_ctxs));
+    pubsub_patterns_.emplace(pattern, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -492,9 +497,7 @@ void Server::BlockOnKey(const std::string &key, Redis::Connection *conn) {
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
-    std::list<ConnContext *> conn_ctxs;
-    conn_ctxs.emplace_back(conn_ctx);
-    blocking_keys_.insert(std::pair<std::string, std::list<ConnContext *>>(key, conn_ctxs));
+    blocking_keys_.emplace(key, std::list<ConnContext *>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -535,7 +538,7 @@ void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vec
     if (auto iter = blocked_stream_consumers_.find(keys[i]); iter == blocked_stream_consumers_.end()) {
       std::set<std::shared_ptr<StreamConsumer>> consumers;
       consumers.insert(consumer);
-      blocked_stream_consumers_.insert(std::make_pair(keys[i], consumers));
+      blocked_stream_consumers_.emplace(keys[i], consumers);
     } else {
       iter->second.insert(consumer);
     }
@@ -637,12 +640,12 @@ int Server::IncrBlockedClientNum() { return blocked_clients_.fetch_add(1, std::m
 
 int Server::DecrBlockedClientNum() { return blocked_clients_.fetch_sub(1, std::memory_order_relaxed); }
 
-std::unique_ptr<RWLock::ReadLock> Server::WorkConcurrencyGuard() {
-  return std::make_unique<RWLock::ReadLock>(works_concurrency_rw_lock_);
+std::shared_lock<std::shared_mutex> Server::WorkConcurrencyGuard() {
+  return std::shared_lock(works_concurrency_rw_lock_);
 }
 
-std::unique_ptr<RWLock::WriteLock> Server::WorkExclusivityGuard() {
-  return std::make_unique<RWLock::WriteLock>(works_concurrency_rw_lock_);
+std::unique_lock<std::shared_mutex> Server::WorkExclusivityGuard() {
+  return std::unique_lock(works_concurrency_rw_lock_);
 }
 
 uint64_t Server::GetClientID() { return client_id_.fetch_add(1, std::memory_order_relaxed); }
@@ -897,12 +900,12 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
-    string_stream << "slave_repl_offset:" << storage_->LatestSeq() << "\r\n";
+    string_stream << "slave_repl_offset:" << storage_->LatestSeqNumber() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   }
 
   int idx = 0;
-  rocksdb::SequenceNumber latest_seq = storage_->LatestSeq();
+  rocksdb::SequenceNumber latest_seq = storage_->LatestSeqNumber();
 
   slave_threads_mu_.lock();
   string_stream << "connected_slaves:" << slave_threads_.size() << "\r\n";
@@ -910,7 +913,7 @@ void Server::GetReplicationInfo(std::string *info) {
     if (slave->IsStopped()) continue;
 
     string_stream << "slave" << std::to_string(idx) << ":";
-    string_stream << "ip=" << slave->GetConn()->GetIP() << ",port=" << slave->GetConn()->GetListeningPort()
+    string_stream << "ip=" << slave->GetConn()->GetAnnounceIP() << ",port=" << slave->GetConn()->GetListeningPort()
                   << ",offset=" << slave->GetCurrentReplSeq() << ",lag=" << latest_seq - slave->GetCurrentReplSeq()
                   << "\r\n";
     ++idx;
@@ -937,7 +940,7 @@ void Server::GetRoleInfo(std::string *info) {
     } else {
       roles.emplace_back("connecting");
     }
-    roles.emplace_back(std::to_string(storage_->LatestSeq()));
+    roles.emplace_back(std::to_string(storage_->LatestSeqNumber()));
     *info = Redis::MultiBulkString(roles);
   } else {
     std::vector<std::string> list;
@@ -947,7 +950,7 @@ void Server::GetRoleInfo(std::string *info) {
       if (slave->IsStopped()) continue;
 
       list.emplace_back(Redis::MultiBulkString({
-          slave->GetConn()->GetIP(),
+          slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),
       }));
@@ -960,7 +963,7 @@ void Server::GetRoleInfo(std::string *info) {
     }
     info->append(Redis::MultiLen(multi_len));
     info->append(Redis::BulkString("master"));
-    info->append(Redis::BulkString(std::to_string(storage_->LatestSeq())));
+    info->append(Redis::BulkString(std::to_string(storage_->LatestSeqNumber())));
     if (list.size() > 0) {
       info->append(Redis::Array(list));
     }
@@ -1186,9 +1189,10 @@ void Server::PrepareRestoreDB() {
 
   // Stop task runner
   LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
-  task_runner_.Stop();
-  task_runner_.Join();
-  task_runner_.Purge();
+  task_runner_.Cancel();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << "[server] " << s.Msg();
+  }
 
   // If the DB is restored, the object 'db_' will be destroyed, but
   // 'db_' will be accessed in data migration task. To avoid wrong
@@ -1232,7 +1236,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
   db_compacting_ = true;
 
-  Task task = [begin_key, end_key, this] {
+  return task_runner_.TryPublish([begin_key, end_key, this] {
     std::unique_ptr<Slice> begin = nullptr, end = nullptr;
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
@@ -1240,9 +1244,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncBgSaveDB() {
@@ -1253,7 +1255,7 @@ Status Server::AsyncBgSaveDB() {
 
   is_bgsave_in_progress_ = true;
 
-  Task task = [this] {
+  return task_runner_.TryPublish([this] {
     auto start_bgsave_time = Util::GetTimeStamp();
     Status s = storage_->CreateBackup();
     auto stop_bgsave_time = Util::GetTimeStamp();
@@ -1263,16 +1265,13 @@ Status Server::AsyncBgSaveDB() {
     last_bgsave_time_ = static_cast<int>(start_bgsave_time);
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
     last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time - start_bgsave_time);
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  Task task = [num_backups_to_keep, backup_max_keep_hours, this] {
+  return task_runner_.TryPublish([num_backups_to_keep, backup_max_keep_hours, this] {
     storage_->PurgeOldBackups(num_backups_to_keep, backup_max_keep_hours);
-  };
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::AsyncScanDBSize(const std::string &ns) {
@@ -1288,7 +1287,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
   db_scan_infos_[ns].is_scanning = true;
 
-  Task task = [ns, this] {
+  return task_runner_.TryPublish([ns, this] {
     Redis::Database db(storage_, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
@@ -1298,9 +1297,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns].key_num_stats = stats;
     time(&db_scan_infos_[ns].last_scan_time);
     db_scan_infos_[ns].is_scanning = false;
-  };
-
-  return task_runner_.Publish(task);
+  });
 }
 
 Status Server::autoResizeBlockAndSST() {
@@ -1366,7 +1363,7 @@ Status Server::autoResizeBlockAndSST() {
   }
 
   if (block_size != config_->RocksDB.block_size) {
-    auto s = storage_->SetColumnFamilyOption("table_factory.block_size", std::to_string(block_size));
+    auto s = storage_->SetOptionForAllColumnFamilies("table_factory.block_size", std::to_string(block_size));
     LOG(INFO) << "[server] Resize rocksdb.block_size from " << config_->RocksDB.block_size << " to " << block_size
               << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
               << ", total_keys: " << total_keys << ", result: " << s.Msg();
@@ -1452,7 +1449,8 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   // Slave clients
   slave_threads_mu_.lock();
   for (const auto &st : slave_threads_) {
-    if ((type & kTypeSlave) || (!addr.empty() && st->GetConn()->GetAddr() == addr) ||
+    if ((type & kTypeSlave) ||
+        (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetAnnounceAddr() == addr)) ||
         (id != 0 && st->GetConn()->GetID() == id)) {
       st->Stop();
       (*killed)++;
@@ -1497,6 +1495,12 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
 }
 
 Status Server::ScriptExists(const std::string &sha) {
+  lua_getglobal(lua_, (REDIS_LUA_FUNC_SHA_PREFIX + sha).c_str());
+  if (!lua_isnil(lua_, -1)) {
+    return Status::OK();
+  }
+  lua_pop(lua_, 1);
+
   std::string body;
   return ScriptGet(sha, &body);
 }
@@ -1506,9 +1510,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   auto s = storage_->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
-    if (s.IsNotFound()) return {Status::NotFound};
-
-    return {Status::NotOK, s.ToString()};
+    return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
   return Status::OK();
 }

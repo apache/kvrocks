@@ -23,6 +23,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "parse_util.h"
+
 std::string Scheduler::ToString() const {
   auto param2String = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
   return param2String(minute) + " " + param2String(hour) + " " + param2String(mday) + " " + param2String(month) + " " +
@@ -39,13 +41,12 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   }
 
   std::vector<Scheduler> new_schedulers;
-  Scheduler st;
   for (size_t i = 0; i < args.size(); i += 5) {
-    Status s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4], &st);
+    auto s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4]);
     if (!s.IsOK()) {
-      return s.Prefixed("time expression format error");
+      return std::move(s).Prefixed("time expression format error");
     }
-    new_schedulers.push_back(st);
+    new_schedulers.push_back(*s);
   }
   schedulers_ = std::move(new_schedulers);
   return Status::OK();
@@ -78,36 +79,29 @@ std::string Cron::ToString() {
   return ret;
 }
 
-Status Cron::convertToScheduleTime(const std::string &minute, const std::string &hour, const std::string &mday,
-                                   const std::string &month, const std::string &wday, Scheduler *st) {
-  Status s;
-  s = convertParam(minute, 0, 59, &st->minute);
-  if (!s.IsOK()) return s;
-  s = convertParam(hour, 0, 23, &st->hour);
-  if (!s.IsOK()) return s;
-  s = convertParam(mday, 1, 31, &st->mday);
-  if (!s.IsOK()) return s;
-  s = convertParam(month, 1, 12, &st->month);
-  if (!s.IsOK()) return s;
-  s = convertParam(wday, 0, 6, &st->wday);
-  return s;
+StatusOr<Scheduler> Cron::convertToScheduleTime(const std::string &minute, const std::string &hour,
+                                                const std::string &mday, const std::string &month,
+                                                const std::string &wday) {
+  Scheduler st;
+
+  st.minute = GET_OR_RET(convertParam(minute, 0, 59));
+  st.hour = GET_OR_RET(convertParam(hour, 0, 23));
+  st.mday = GET_OR_RET(convertParam(mday, 1, 31));
+  st.month = GET_OR_RET(convertParam(month, 1, 12));
+  st.wday = GET_OR_RET(convertParam(wday, 0, 6));
+
+  return st;
 }
 
-Status Cron::convertParam(const std::string &param, int lower_bound, int upper_bound, int *value) {
+StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int upper_bound) {
   if (param == "*") {
-    *value = -1;
-    return Status::OK();
+    return -1;
   }
 
-  try {
-    *value = std::stoi(param);
-  } catch (const std::invalid_argument &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not an integer or *");
-  } catch (const std::out_of_range &e) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) not convertable to int");
+  auto s = ParseInt<int>(param, {lower_bound, upper_bound}, 10);
+  if (!s) {
+    return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
   }
-  if (*value < lower_bound || *value > upper_bound) {
-    return Status(Status::NotOK, "malformed token(`" + param + "`) out of bound");
-  }
-  return Status::OK();
+
+  return *s;
 }

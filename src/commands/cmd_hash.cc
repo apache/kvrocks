@@ -44,10 +44,20 @@ class CommandHGet : public Commander {
 
 class CommandHSetNX : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() % 2 != 0) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    for (size_t i = 2; i < args_.size(); i += 2) {
+      field_values_.emplace_back(args_[i], args_[i + 1]);
+    }
+    return Commander::Parse(args);
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    auto s = hash_db.SetNX(args_[1], args_[2], args_[3], &ret);
+    auto s = hash_db.MSet(args_[1], field_values_, true, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -55,6 +65,9 @@ class CommandHSetNX : public Commander {
     *output = Redis::Integer(ret);
     return Status::OK();
   }
+
+ private:
+  std::vector<FieldValue> field_values_;
 };
 
 class CommandHStrlen : public Commander {
@@ -209,18 +222,16 @@ class CommandHMSet : public Commander {
     if (args.size() % 2 != 0) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+    for (size_t i = 2; i < args_.size(); i += 2) {
+      field_values_.emplace_back(args_[i], args_[i + 1]);
+    }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<FieldValue> field_values;
-    for (size_t i = 2; i < args_.size(); i += 2) {
-      field_values.emplace_back(FieldValue{args_[i], args_[i + 1]});
-    }
-
     int ret = 0;
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
-    auto s = hash_db.MSet(args_[1], field_values, false, &ret);
+    auto s = hash_db.MSet(args_[1], field_values_, false, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -232,6 +243,9 @@ class CommandHMSet : public Commander {
     }
     return Status::OK();
   }
+
+ private:
+  std::vector<FieldValue> field_values_;
 };
 
 class CommandHKeys : public Commander {
@@ -270,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = MultiBulkString(values);
+    *output = MultiBulkString(values, false);
 
     return Status::OK();
   }
@@ -292,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs);
+    *output = MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }
@@ -336,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs);
+    *output = MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }
@@ -366,7 +380,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHSetNX>("hsetnx", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),

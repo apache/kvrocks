@@ -25,8 +25,6 @@ import re
 from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
-from shutil import copyfile
-from warnings import warn
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
@@ -153,13 +151,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     version_res = run_pipe(command, '--version').read().strip()
     version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
 
-    version = check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
-
-    if version[0] > 12:
-        warn("We use clang-format 12 in CI, "
-             "so we recommend that you also use this version locally to avoid inconsistencies. "
-             "You can install it from your package manager (usually in clang-12 package) "
-             "or download it from https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1")
+    check_version(version_str, CLANG_FORMAT_REQUIRED_VERSION, "clang-format")
 
     basedir = Path(__file__).parent.absolute()
     sources = get_source_files(basedir)
@@ -231,10 +223,11 @@ def package_source(release_version: str) -> None:
     run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
     run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
 
-    tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
+
     # 2. Create the source tarball
-    output = run_pipe(git, 'ls-files')
-    run('xargs', 'tar', '-czf', tarball, stdin=output)
+    folder = f'apache-kvrocks-{version}-incubating-src'
+    tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
+    run(git, 'archive', '--format=tar.gz', f'--output={tarball}', f'--prefix={folder}/', 'HEAD')
 
     # 3. GPG Sign
     gpg = find_command('gpg', msg='gpg is required for source packaging')
@@ -242,10 +235,9 @@ def package_source(release_version: str) -> None:
 
     # 4. Generate sha512 checksum
     sha512sum = find_command('sha512sum', msg='sha512sum is required for source packaging')
-    output = run_pipe(sha512sum, tarball)
-    payload = output.read().strip()
     with open(f'{tarball}.sha512', 'w+') as f:
-        f.write(payload)
+        run(sha512sum, tarball, stdout=f)
+
 
 def test_cpp(dir: str, rest: List[str]) -> None:
     basedir = Path(dir).absolute()

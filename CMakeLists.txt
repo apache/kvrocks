@@ -116,6 +116,7 @@ include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)
 include(cmake/zlib.cmake)
 include(cmake/zstd.cmake)
+include(cmake/tbb.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
@@ -144,7 +145,7 @@ endif()
 if (ENABLE_OPENSSL)
 list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
-
+list(APPEND EXTERNAL_LIBS tbb)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
@@ -219,7 +220,8 @@ add_executable(kvrocks2redis ${KVROCKS2REDIS_SRCS})
 target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks unit tests
-file(GLOB TESTS_SRCS tests/cppunit/*.cc)
+file(GLOB_RECURSE TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
+target_include_directories(unittest PRIVATE tests/cppunit)
 
 target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main ${EXTERNAL_LIBS})

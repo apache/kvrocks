@@ -23,13 +23,15 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <thread>
+
+#include "time_util.h"
 
 TEST(TaskRunner, PublishOverflow) {
   TaskRunner tr(2, 3);
   Task t;
-  Status s;
   for (int i = 0; i < 5; i++) {
-    s = tr.Publish(t);
+    auto s = tr.TryPublish(t);
     if (i < 3) {
       ASSERT_TRUE(s.IsOK());
     } else {
@@ -38,32 +40,67 @@ TEST(TaskRunner, PublishOverflow) {
   }
 }
 
-TEST(TaskRunner, PublishToStopQueue) {
-  TaskRunner tr(2, 3);
-  tr.Stop();
+using namespace std::chrono_literals;
 
-  Task t;
-  Status s;
-  for (int i = 0; i < 5; i++) {
-    s = tr.Publish(t);
-    ASSERT_FALSE(s.IsOK());
-  }
-}
-
-TEST(TaskRunner, Run) {
-  std::atomic<int> counter = {0};
+TEST(TaskRunner, Counter) {
+  std::atomic<int> counter = 0;
   TaskRunner tr(3, 1024);
-  tr.Start();
 
-  Status s;
-  Task t;
   for (int i = 0; i < 100; i++) {
-    t = [&counter] { counter.fetch_add(1); };
-    s = tr.Publish(t);
+    Task t = [&counter] { counter.fetch_add(1); };
+    auto s = tr.TryPublish(t);
     ASSERT_TRUE(s.IsOK());
   }
-  sleep(1);
+
+  auto _ = tr.Start();
+  std::this_thread::sleep_for(1s);
   ASSERT_EQ(100, counter);
-  tr.Stop();
-  tr.Join();
+
+  tr.Cancel();
+  _ = tr.Join();
+}
+
+TEST(TaskRunner, Sleep) {
+  TaskRunner tr(3, 1024);
+
+  for (int i = 0; i < 100; i++) {
+    Task t = [i] { std::this_thread::sleep_for(i * 100ms); };
+    tr.Publish(t);
+  }
+
+  ASSERT_EQ(tr.Size(), 100);
+
+  auto _ = tr.Start();
+
+  std::this_thread::sleep_for(1s);
+  ASSERT_NEAR(tr.Size(), 90, 1);
+
+  auto begin = Util::GetTimeStampMS();
+  tr.Cancel();
+  _ = tr.Join();
+  ASSERT_LE(Util::GetTimeStampMS() - begin, 1500);
+}
+
+TEST(TaskRunner, PublishAfterStart) {
+  std::atomic<int> counter = 0;
+  TaskRunner tr(3, 1024);
+  auto _ = tr.Start();
+
+  std::this_thread::sleep_for(0.1s);
+
+  for (int i = 0; i < 10; i++) {
+    tr.Publish([&counter] { counter.fetch_add(1); });
+  }
+
+  std::this_thread::sleep_for(0.1s);
+
+  ASSERT_EQ(counter, 10);
+
+  for (int i = 0; i < 10; i++) {
+    tr.Publish([&counter] { counter.fetch_add(1); });
+  }
+
+  std::this_thread::sleep_for(0.1s);
+
+  ASSERT_EQ(counter, 20);
 }

@@ -75,7 +75,9 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr), base_(event_base_new())
 }
 
 Worker::~Worker() {
-  std::list<Redis::Connection *> conns;
+  std::vector<Redis::Connection *> conns;
+  conns.reserve(conns_.size() + monitor_conns_.size());
+
   for (const auto &iter : conns_) {
     conns.emplace_back(iter.second);
   }
@@ -85,6 +87,7 @@ Worker::~Worker() {
   for (const auto &iter : conns) {
     iter->Close();
   }
+
   event_free(timer_);
   if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
@@ -477,7 +480,8 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string 
       continue;
     }
 
-    if ((type & conn->GetClientType()) || (!addr.empty() && conn->GetAddr() == addr) ||
+    if ((type & conn->GetClientType()) ||
+        (!addr.empty() && (conn->GetAddr() == addr || conn->GetAnnounceAddr() == addr)) ||
         (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(Redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection
@@ -491,7 +495,7 @@ void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string 
 }
 
 void Worker::KickoutIdleClients(int timeout) {
-  std::list<std::pair<int, uint64_t>> to_be_killed_conns;
+  std::vector<std::pair<int, uint64_t>> to_be_killed_conns;
 
   {
     std::lock_guard<std::mutex> guard(conns_mu_);
@@ -518,20 +522,22 @@ void Worker::KickoutIdleClients(int timeout) {
 }
 
 void WorkerThread::Start() {
-  try {
-    t_ = std::thread([this]() {
-      Util::ThreadSetName("worker");
-      this->worker_->Run(std::this_thread::get_id());
-    });
-  } catch (const std::system_error &e) {
-    LOG(ERROR) << "[worker] Failed to start worker thread, err: " << e.what();
+  auto s = Util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
+
+  if (s) {
+    t_ = std::move(*s);
+  } else {
+    LOG(ERROR) << "[worker] Failed to start worker thread, err: " << s.Msg();
     return;
   }
+
   LOG(INFO) << "[worker] Thread #" << t_.get_id() << " started";
 }
 
 void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
-  if (t_.joinable()) t_.join();
+  if (auto s = Util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "[worker] " << s.Msg();
+  }
 }

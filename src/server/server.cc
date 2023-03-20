@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
+#include <rocksdb/statistics.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>

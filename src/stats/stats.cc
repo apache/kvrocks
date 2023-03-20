@@ -53,7 +53,6 @@ int64_t Stats::GetMemoryRSS() {
 #else
 #include <fcntl.h>
 
-#include <cstdio>
 #include <cstring>
 #include <string>
 

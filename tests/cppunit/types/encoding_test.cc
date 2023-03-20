@@ -50,7 +50,7 @@ TEST(Util, EncodeAndDecodeInt32AsVarint32) {
     std::string buf;
     PutVarint32(&buf, values[i]);
     EXPECT_EQ(buf.size(), encoded_sizes[i]);
-    uint32_t result;
+    uint32_t result = 0;
     rocksdb::Slice s(buf);
     GetVarint32(&s, &result);
     ASSERT_EQ(result, values[i]);

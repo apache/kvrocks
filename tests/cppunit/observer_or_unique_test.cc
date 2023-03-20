@@ -37,7 +37,7 @@ TEST(ObserverOrUniquePtr, Unique) {
   ASSERT_EQ(v, 0);
 }
 
-TEST(CompositePtr, Observer) {
+TEST(ObserverOrUniquePtr, Observer) {
   int v = 0;
   std::unique_ptr<Counter> c = nullptr;
   {
@@ -47,5 +47,6 @@ TEST(CompositePtr, Observer) {
     c.reset(observer.Get());
   }
   ASSERT_EQ(v, 1);
+  c.reset();
   ASSERT_EQ(v, 0);
 }

@@ -89,7 +89,9 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
 bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const {
   // lazy delete to avoid race condition between command Expire and subkey Compaction
   // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
-  int64_t lazy_expired_ts = Util::GetTimeStamp() + 1000;
+  //  `Util::GetTimeStamp() - 1000` means extending 1000s for expired items,
+  // or they will be recycled once they reach the expire time.
+  int64_t lazy_expired_ts = Util::GetTimeStamp() - 1000;
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
       || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version) {
     return true;

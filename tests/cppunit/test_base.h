@@ -43,13 +43,13 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
+    delete storage_;
+    delete config_;
     std::error_code ec;
     std::filesystem::remove_all(config_->db_dir, ec);
     if (ec) {
       std::cout << "Encounter filesystem error: " << ec << std::endl;
     }
-    delete storage_;
-    delete config_;
   }
 
  protected:

@@ -25,6 +25,7 @@
 #include <string>
 #include <utility>
 
+#include "time_util.h"
 #include "types/redis_bitmap.h"
 
 namespace Engine {
@@ -88,12 +89,9 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
 bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const {
   // lazy delete to avoid race condition between command Expire and subkey Compaction
   // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
-  int expire_ttl_lazy = metadata.expire;
-  if (expire_ttl_lazy > 0) {  // has ttl
-    expire_ttl_lazy += 1000;
-  }
+  int lazy_expired_ts = Util::GetTimeStamp() + 1000;
   if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
-      || metadata.ExpireAt(expire_ttl_lazy) || ikey.GetVersion() != metadata.version) {
+      || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version) {
     return true;
   }
   return false;

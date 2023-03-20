@@ -43,10 +43,12 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
+    auto db_dir = config_->db_dir;
     delete storage_;
     delete config_;
+
     std::error_code ec;
-    std::filesystem::remove_all(config_->db_dir, ec);
+    std::filesystem::remove_all(db_dir, ec);
     if (ec) {
       std::cout << "Encounter filesystem error: " << ec << std::endl;
     }

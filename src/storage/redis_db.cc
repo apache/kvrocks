@@ -74,7 +74,7 @@ rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::st
   return GetRawMetadata(ns_key, bytes);
 }
 
-rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
+rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -90,7 +90,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, int timestamp) {
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
-  if (metadata.expire == timestamp) return rocksdb::Status::OK();
+  if (metadata.expire / 1000 == timestamp) return rocksdb::Status::OK();
 
   auto buf = std::make_unique<char[]>(value.size());
   memcpy(buf.get(), value.data(), value.size());
@@ -140,7 +140,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
+rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -154,7 +154,11 @@ rocksdb::Status Database::TTL(const Slice &user_key, int *ttl) {
 
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
-  *ttl = metadata.TTL();
+  *ttl = metadata.TTL() / 1000;
+  if (*ttl < 0) {
+    *ttl = -2;
+  }
+
   return rocksdb::Status::OK();
 }
 
@@ -196,12 +200,10 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
         continue;
       }
       if (stats) {
-        int32_t ttl = metadata.TTL();
+        int64_t ttl = metadata.TTL();
         stats->n_key++;
-        if (ttl != -1) {
-          stats->n_expires++;
-          if (ttl > 0) ttl_sum += ttl;
-        }
+        stats->n_expires++;
+        if (ttl > 0) ttl_sum += ttl / 1000;
       }
       if (keys) {
         ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());
@@ -399,7 +401,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back("version");
   infos->emplace_back(std::to_string(metadata.version));
   infos->emplace_back("expire");
-  infos->emplace_back(std::to_string(metadata.expire));
+  infos->emplace_back(std::to_string(metadata.expire / 1000));
   infos->emplace_back("size");
   infos->emplace_back(std::to_string(metadata.size));
 

@@ -100,19 +100,25 @@ class InternalKey {
 class Metadata {
  public:
   uint8_t flags;
-  int expire;
+  uint64_t expire;
   uint64_t version;
-  uint32_t size;
+  uint64_t size;
 
- public:
   explicit Metadata(RedisType type, bool generate_version = true);
   static void InitVersionCounter();
 
+  bool Is64BitEncoded() const;
+  bool GetFixedCommon(rocksdb::Slice *input, uint64_t *value) const;
+  bool GetExpire(rocksdb::Slice *input);
+  void PutFixedCommon(std::string *dst, uint64_t value) const;
+  void PutExpire(std::string *dst);
+
   RedisType Type() const;
-  virtual int32_t TTL() const;
+  size_t CommonEncodedSize() const;
+  virtual int64_t TTL() const;
   virtual timeval Time() const;
   virtual bool Expired() const;
-  virtual bool ExpireAt(int64_t expired_ts) const;
+  virtual bool ExpireAt(uint64_t expired_ts) const;
   virtual void Encode(std::string *dst);
   virtual rocksdb::Status Decode(const std::string &bytes);
   bool operator==(const Metadata &that) const;

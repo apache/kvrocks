@@ -137,7 +137,7 @@ TEST_F(RedisStringTest, GetEmptyValue) {
 }
 
 TEST_F(RedisStringTest, GetSet) {
-  int ttl = 0;
+  int64_t ttl = 0;
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   std::vector<std::string> values = {"a", "b", "c", "d"};
@@ -177,7 +177,7 @@ TEST_F(RedisStringTest, MSetXX) {
   string->Set(key_, "test-value");
   string->SetXX(key_, "test-value", 3, &ret);
   EXPECT_EQ(ret, 1);
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2 && ttl <= 3);
   string->Del(key_);
@@ -211,7 +211,7 @@ TEST_F(RedisStringTest, MSetNX) {
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   int ret = 0;
   string->SetNX(key_, "test-value", 3, &ret);
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2 && ttl <= 3);
   string->Del(key_);
@@ -219,7 +219,7 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
 
 TEST_F(RedisStringTest, SetEX) {
   string->SetEX(key_, "test-value", 3);
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2 && ttl <= 3);
   string->Del(key_);
@@ -274,7 +274,7 @@ TEST_F(RedisStringTest, CAS) {
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(new_value, current_value);
 
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key, &ttl);
   EXPECT_TRUE(ttl >= 9 && ttl <= 10);
 

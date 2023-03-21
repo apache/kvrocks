@@ -24,10 +24,12 @@
 #include <sys/time.h>
 
 #include <atomic>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 
 #include "cluster/redis_slot.h"
+#include "encoding.h"
 #include "time_util.h"
 
 // 52 bit for microseconds and 11 bit for counter
@@ -146,32 +148,37 @@ void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output) {
 }
 
 Metadata::Metadata(RedisType type, bool generate_version)
-    : flags((uint8_t)0x0f & type), expire(0), version(0), size(0) {
+    : flags(uint8_t(0x80) | (uint8_t(0x0f) & type)), expire(0), version(0), size(0) {
   if (generate_version) version = generateVersion();
 }
 
 rocksdb::Status Metadata::Decode(const std::string &bytes) {
-  // flags(1byte) + expire (4byte)
-  if (bytes.size() < 5) {
+  Slice input(bytes);
+  if (!GetFixed8(&input, &flags)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
-  Slice input(bytes);
-  GetFixed8(&input, &flags);
-  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
-  if (Type() != kRedisString) {
-    if (input.size() < 12) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-    GetFixed64(&input, &version);
-    GetFixed32(&input, &size);
+
+  if (!GetExpire(&input)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
+
+  if (Type() != kRedisString) {
+    if (input.size() < 8 + CommonEncodedSize()) {
+      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    }
+    GetFixed64(&input, &version);
+    GetFixedCommon(&input, &size);
+  }
+
   return rocksdb::Status::OK();
 }
 
 void Metadata::Encode(std::string *dst) {
   PutFixed8(dst, flags);
-  PutFixed32(dst, (uint32_t)expire);
+  PutExpire(dst);
   if (Type() != kRedisString) {
     PutFixed64(dst, version);
-    PutFixed32(dst, size);
+    PutFixedCommon(dst, size);
   }
 }
 
@@ -198,17 +205,59 @@ bool Metadata::operator==(const Metadata &that) const {
   return true;
 }
 
-RedisType Metadata::Type() const { return static_cast<RedisType>(flags & (uint8_t)0x0f); }
+RedisType Metadata::Type() const { return static_cast<RedisType>(flags & uint8_t(0x0f)); }
 
-int32_t Metadata::TTL() const {
-  if (expire <= 0) {
-    return -1;
+bool Metadata::Is64BitEncoded() const { return flags & 0x80; }
+
+size_t Metadata::CommonEncodedSize() const { return Is64BitEncoded() ? 8 : 4; }
+
+bool Metadata::GetFixedCommon(rocksdb::Slice *input, uint64_t *value) const {
+  if (Is64BitEncoded()) {
+    return GetFixed64(input, value);
+  } else {
+    uint32_t v = 0;
+    bool res = GetFixed32(input, &v);
+    *value = v;
+    return res;
   }
-  auto now = Util::GetTimeStamp();
-  if (expire < now) {
-    return -2;
+}
+
+bool Metadata::GetExpire(rocksdb::Slice *input) {
+  uint64_t v = 0;
+
+  if (!GetFixedCommon(input, &v)) {
+    return false;
   }
-  return int32_t(expire - now);
+
+  if (Is64BitEncoded()) {
+    expire = v;
+  } else {
+    expire = v * 1000;
+  }
+
+  return true;
+}
+
+void Metadata::PutFixedCommon(std::string *dst, uint64_t value) const {
+  if (Is64BitEncoded()) {
+    PutFixed64(dst, value);
+  } else {
+    PutFixed32(dst, value);
+  }
+}
+
+void Metadata::PutExpire(std::string *dst) {
+  if (Is64BitEncoded()) {
+    PutFixed64(dst, expire);
+  } else {
+    PutFixed32(dst, expire / 1000);
+  }
+}
+
+int64_t Metadata::TTL() const {
+  auto now = Util::GetTimeStampMS();
+
+  return int64_t(expire - now);
 }
 
 timeval Metadata::Time() const {
@@ -219,12 +268,9 @@ timeval Metadata::Time() const {
   return created_at;
 }
 
-bool Metadata::ExpireAt(int64_t expired_ts) const {
+bool Metadata::ExpireAt(uint64_t expired_ts) const {
   if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;
-  }
-  if (expire <= 0) {
-    return false;
   }
   return expire < expired_ts;
 }
@@ -245,9 +291,9 @@ rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
   GetFixed8(&input, &flags);
   GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
   if (Type() != kRedisString) {
-    if (input.size() < 12) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    if (input.size() < 8 + CommonEncodedSize()) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     GetFixed64(&input, &version);
-    GetFixed32(&input, &size);
+    GetFixedCommon(&input, &size);
   }
   if (Type() == kRedisList) {
     if (input.size() < 16) return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
@@ -279,21 +325,20 @@ void StreamMetadata::Encode(std::string *dst) {
 }
 
 rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
-  // flags(1byte) + expire (4byte)
-  if (bytes.size() < 5) {
+  Slice input(bytes);
+  if (!GetFixed8(&input, &flags)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetExpire(&input)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
-  Slice input(bytes);
-  GetFixed8(&input, &flags);
-  GetFixed32(&input, reinterpret_cast<uint32_t *>(&expire));
-
-  if (input.size() < 12) {
+  if (input.size() < 8 + CommonEncodedSize()) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
   GetFixed64(&input, &version);
-  GetFixed32(&input, &size);
+  GetFixedCommon(&input, &size);
 
   if (input.size() < 88) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);

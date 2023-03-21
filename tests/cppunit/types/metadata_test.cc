@@ -47,14 +47,14 @@ TEST(InternalKey, EncodeAndDecode) {
 TEST(Metadata, EncodeAndDeocde) {
   std::string string_bytes;
   Metadata string_md(kRedisString);
-  string_md.expire = 123;
+  string_md.expire = 123000;
   string_md.Encode(&string_bytes);
   Metadata string_md1(kRedisNone);
   string_md1.Decode(string_bytes);
   ASSERT_EQ(string_md, string_md1);
   ListMetadata list_md;
   list_md.flags = 13;
-  list_md.expire = 123;
+  list_md.expire = 123000;
   list_md.version = 2;
   list_md.size = 1234;
   list_md.head = 123;
@@ -110,7 +110,7 @@ TEST_F(RedisTypeTest, Expire) {
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   redis->Expire(key_, int(now + 2));
-  int ttl = 0;
+  int64_t ttl = 0;
   redis->TTL(key_, &ttl);
   ASSERT_TRUE(ttl >= 1 && ttl <= 2);
   sleep(2);

@@ -18,6 +18,8 @@
  *
  */
 
+#include <cstdint>
+
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
@@ -69,7 +71,7 @@ class CommandTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl = 0;
+    int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
       *output = Redis::Integer(ttl);
@@ -84,7 +86,7 @@ class CommandPTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl = 0;
+    int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -235,7 +237,7 @@ class CommandPExpireAt : public Commander {
 class CommandPersist : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ttl = 0;
+    int64_t ttl = 0;
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

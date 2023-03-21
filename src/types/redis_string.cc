@@ -162,7 +162,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, i
 
   std::string raw_data;
   Metadata metadata(kRedisString, false);
-  metadata.expire = expire;
+  metadata.expire = expire * 1000;
   metadata.Encode(&raw_data);
   raw_data.append(value->data(), value->size());
   auto batch = storage_->GetWriteBatchBase();
@@ -234,7 +234,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   *ret = 1;
   std::string raw_value;
   Metadata metadata(kRedisString, false);
-  metadata.expire = expire;
+  metadata.expire = expire * 1000;
   metadata.Encode(&raw_value);
   raw_value.append(value);
   return updateRawValue(ns_key, raw_value);
@@ -362,7 +362,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
   for (const auto &pair : pairs) {
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire;
+    metadata.expire = expire * 1000;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     auto batch = storage_->GetWriteBatchBase();
@@ -405,7 +405,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, in
     }
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire;
+    metadata.expire = expire * 1000;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     auto batch = storage_->GetWriteBatchBase();
@@ -451,7 +451,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
       int64_t now = Util::GetTimeStamp();
       expire = int(now) + ttl;
     }
-    metadata.expire = expire;
+    metadata.expire = expire * 1000;
     metadata.Encode(&raw_value);
     raw_value.append(new_value);
     auto write_status = updateRawValue(ns_key, raw_value);

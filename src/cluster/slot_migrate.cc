@@ -619,7 +619,7 @@ Status SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &
                                       bytes.substr(Redis::STRING_HDR_SIZE, bytes.size() - Redis::STRING_HDR_SIZE)};
   if (metadata.expire > 0) {
     command.emplace_back("EXAT");
-    command.emplace_back(std::to_string(metadata.expire));
+    command.emplace_back(std::to_string(metadata.expire / 1000));
   }
   *restore_cmds += Redis::MultiBulkString(command, false);
   current_pipeline_size_++;
@@ -727,7 +727,8 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
 
   // Add TTL for complex key
   if (metadata.expire > 0) {
-    *restore_cmds += Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds +=
+        Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire / 1000)}, false);
     current_pipeline_size_++;
   }
 
@@ -803,7 +804,8 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
 
   // Add TTL
   if (metadata.expire > 0) {
-    *restore_cmds += Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds +=
+        Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire / 1000)}, false);
     current_pipeline_size_++;
   }
 

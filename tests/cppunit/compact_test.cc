@@ -50,7 +50,6 @@ TEST(Compact, Filter) {
   hash->Set(live_hash_key, "f2", "v2", &ret);
   auto status = storage_->Compact(nullptr, nullptr);
   assert(status.ok());
-
   rocksdb::DB* db = storage_->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = db->GetSnapshot();
@@ -92,6 +91,29 @@ TEST(Compact, Filter) {
   iter = NewIterator("zset_score");
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     EXPECT_TRUE(false);  // never reach here
+  }
+
+  Slice mk_with_ttl = "mk_with_ttl";
+  hash->Set(mk_with_ttl, "f1", "v1", &ret);
+  hash->Set(mk_with_ttl, "f2", "v2", &ret);
+
+  int retry = 2;
+  while (retry-- > 0) {
+    status = storage_->Compact(nullptr, nullptr);
+    assert(status.ok());
+    std::vector<FieldValue> fieldvalues;
+    auto getRes = hash->GetAll(mk_with_ttl, &fieldvalues);
+    auto sExpire = hash->Expire(mk_with_ttl, 1);  // expired immediately..
+
+    if (retry == 1) {
+      ASSERT_TRUE(getRes.ok());  // not expired first time
+      ASSERT_TRUE(sExpire.ok());
+    } else {
+      ASSERT_TRUE(getRes.ok());  // expired but still return ok....
+      ASSERT_EQ(0, fieldvalues.size());
+      ASSERT_TRUE(sExpire.IsNotFound());
+    }
+    usleep(10000);
   }
 
   db->ReleaseSnapshot(read_options.snapshot);

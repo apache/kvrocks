@@ -30,6 +30,7 @@
 #include "rocksdb/iterator.h"
 #include "server/server.h"
 #include "storage/redis_metadata.h"
+#include "time_util.h"
 
 namespace Redis {
 
@@ -156,9 +157,9 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
 
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
-  *ttl = metadata.TTL() / 1000;
-  if (*ttl < 0) {
-    *ttl = -2;
+  *ttl = metadata.TTL();
+  if (*ttl > 0) {
+    *ttl /= 1000;
   }
 
   return rocksdb::Status::OK();
@@ -203,9 +204,11 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
       }
       if (stats) {
         int64_t ttl = metadata.TTL();
-        stats->n_key++;
-        stats->n_expires++;
-        if (ttl > 0) ttl_sum += ttl / 1000;
+        if (ttl != -1) {
+          stats->n_key++;
+          stats->n_expires++;
+          if (ttl > 0) ttl_sum += ttl / 1000;
+        }
       }
       if (keys) {
         ExtractNamespaceKey(iter->key(), &ns, &user_key, storage_->IsSlotIdEncoded());

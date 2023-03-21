@@ -271,7 +271,14 @@ void Metadata::PutExpire(std::string *dst) {
 }
 
 int64_t Metadata::TTL() const {
+  if (expire == 0) {
+    return -1;
+  }
+
   auto now = Util::GetTimeStampMS();
+  if (expire < now) {
+    return -2;
+  }
 
   return int64_t(expire - now);
 }
@@ -288,6 +295,10 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
   if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
     return true;
   }
+  if (expire == 0) {
+    return false;
+  }
+
   return expire < expired_ts;
 }
 

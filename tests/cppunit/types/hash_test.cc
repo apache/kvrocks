@@ -55,6 +55,7 @@ TEST_F(RedisHashTest, GetAndSet) {
   for (size_t i = 0; i < fields_.size(); i++) {
     std::string got;
     auto s = hash->Get(key_, fields_[i], &got);
+    EXPECT_EQ(s.ToString(), "");
     EXPECT_EQ(values_[i], got);
   }
   auto s = hash->Delete(key_, fields_, &ret);

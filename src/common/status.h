@@ -81,6 +81,8 @@ class [[nodiscard]] Status {
   }
   Status& operator=(Status&& s) = default;
 
+  ~Status() = default;
+
   template <Code code>
   bool Is() const {
     return impl_ && impl_->code_ == code;

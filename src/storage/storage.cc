@@ -706,7 +706,7 @@ Status Storage::BeginTxn() {
   // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
   txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
-  return {Status::cOK};
+  return Status::OK();
 }
 
 Status Storage::CommitTxn() {
@@ -719,7 +719,7 @@ Status Storage::CommitTxn() {
   is_txn_mode_ = false;
   txn_write_batch_ = nullptr;
   if (s.ok()) {
-    return {Status::cOK};
+    return Status::OK();
   }
   return {Status::NotOK, s.ToString()};
 }

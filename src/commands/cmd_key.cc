@@ -135,7 +135,7 @@ class CommandExpire : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], seconds_);
+    auto s = redis.Expire(args_[1], seconds_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -157,7 +157,7 @@ class CommandPExpire : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], seconds_);
+    auto s = redis.Expire(args_[1], seconds_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -189,7 +189,7 @@ class CommandExpireAt : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], timestamp_);
+    auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -221,7 +221,7 @@ class CommandPExpireAt : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], timestamp_);
+    auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {

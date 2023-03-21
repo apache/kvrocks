@@ -97,6 +97,9 @@ class InternalKey {
   bool slot_id_encoded_;
 };
 
+constexpr uint8_t METADATA_64BIT_ENCODING_MASK = 0x80;
+constexpr uint8_t METADATA_TYPE_MASK = 0x0f;
+
 class Metadata {
  public:
   uint8_t flags;
@@ -106,6 +109,9 @@ class Metadata {
 
   explicit Metadata(RedisType type, bool generate_version = true);
   static void InitVersionCounter();
+
+  static size_t GetOffsetAfterExpire(uint8_t flags);
+  static size_t GetOffsetAfterSize(uint8_t flags);
 
   bool Is64BitEncoded() const;
   bool GetFixedCommon(rocksdb::Slice *input, uint64_t *value) const;

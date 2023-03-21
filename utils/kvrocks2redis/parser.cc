@@ -28,6 +28,7 @@
 #include "cluster/redis_slot.h"
 #include "db_util.h"
 #include "server/redis_reply.h"
+#include "storage/redis_metadata.h"
 #include "types/redis_string.h"
 
 Status Parser::ParseFullDB() {
@@ -63,8 +64,8 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t e
   std::string ns, user_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
 
-  auto command = Redis::Command2RESP(
-      {"SET", user_key, value.ToString().substr(Redis::STRING_HDR_SIZE, value.size() - Redis::STRING_HDR_SIZE)});
+  auto command =
+      Redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
   Status s = writer_->Write(ns, {command});
   if (!s.IsOK()) return s;
 

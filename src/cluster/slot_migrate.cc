@@ -615,8 +615,7 @@ StatusOr<KeyMigrationResult> SlotMigrate::MigrateOneKey(const rocksdb::Slice &ke
 
 Status SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
                                      std::string *restore_cmds) {
-  std::vector<std::string> command = {"set", key.ToString(),
-                                      bytes.substr(Redis::STRING_HDR_SIZE, bytes.size() - Redis::STRING_HDR_SIZE)};
+  std::vector<std::string> command = {"set", key.ToString(), bytes.substr(Metadata::GetOffsetAfterExpire(bytes[0]))};
   if (metadata.expire > 0) {
     command.emplace_back("EXAT");
     command.emplace_back(std::to_string(metadata.expire / 1000));

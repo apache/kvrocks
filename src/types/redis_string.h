@@ -33,8 +33,6 @@ struct StringPair {
 
 namespace Redis {
 
-const int STRING_HDR_SIZE = 5;
-
 class String : public Database {
  public:
   explicit String(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -47,7 +45,7 @@ class String : public Database {
   rocksdb::Status SetEX(const std::string &user_key, const std::string &value, int ttl);
   rocksdb::Status SetNX(const std::string &user_key, const std::string &value, int ttl, int *ret);
   rocksdb::Status SetXX(const std::string &user_key, const std::string &value, int ttl, int *ret);
-  rocksdb::Status SetRange(const std::string &user_key, int offset, const std::string &value, int *ret);
+  rocksdb::Status SetRange(const std::string &user_key, size_t offset, const std::string &value, int *ret);
   rocksdb::Status IncrBy(const std::string &user_key, int64_t increment, int64_t *ret);
   rocksdb::Status IncrByFloat(const std::string &user_key, double increment, double *ret);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);

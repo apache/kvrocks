@@ -90,16 +90,18 @@ rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
-  if (metadata.expire / 1000 == timestamp) return rocksdb::Status::OK();
+  if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
-  auto buf = std::make_unique<char[]>(value.size());
-  memcpy(buf.get(), value.data(), value.size());
   // +1 to skip the flags
-  EncodeFixed32(buf.get() + 1, (uint32_t)timestamp);
+  if (metadata.Is64BitEncoded()) {
+    EncodeFixed64(value.data() + 1, timestamp);
+  } else {
+    EncodeFixed32(value.data() + 1, timestamp / 1000);
+  }
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   batch->PutLogData(log_data.Encode());
-  batch->Put(metadata_cf_handle_, ns_key, Slice(buf.get(), value.size()));
+  batch->Put(metadata_cf_handle_, ns_key, value);
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   return s;
 }

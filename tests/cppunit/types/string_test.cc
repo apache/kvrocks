@@ -143,7 +143,7 @@ TEST_F(RedisStringTest, GetSet) {
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for (size_t i = 0; i < values.size(); i++) {
     std::string old_value;
-    string->Expire(key_, static_cast<int>(now + 1000));
+    string->Expire(key_, now * 1000 + 100000);
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);

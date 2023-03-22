@@ -109,7 +109,7 @@ TEST_F(RedisTypeTest, Expire) {
   EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  redis->Expire(key_, int(now + 2000));
+  redis->Expire(key_, now * 1000 + 2000);
   int64_t ttl = 0;
   redis->TTL(key_, &ttl);
   ASSERT_TRUE(ttl >= 1 && ttl <= 2);

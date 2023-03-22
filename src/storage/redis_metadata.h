@@ -102,9 +102,20 @@ constexpr uint8_t METADATA_TYPE_MASK = 0x0f;
 
 class Metadata {
  public:
+  // metadata flags
+  // <(1-bit) 64bit-common-field-indicator> 0 0 0 <(4-bit) redis-type>
+  // 64bit-common-field-indicator: make `expire` and `size` 64bit instead of 32bit
+  // NOTE: `expire` is stored in milliseconds for 64bit, seconds for 32bit
+  // redis-type: RedisType for the key-value
   uint8_t flags;
+
+  // expire timestamp, in milliseconds
   uint64_t expire;
+
+  // the current version: 53bit timestamp + 11bit counter
   uint64_t version;
+
+  // element size of the key-value
   uint64_t size;
 
   explicit Metadata(RedisType type, bool generate_version = true);

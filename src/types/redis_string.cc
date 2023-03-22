@@ -224,10 +224,10 @@ rocksdb::Status String::SetNX(const std::string &user_key, const std::string &va
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, int ttl, int *ret) {
   *ret = 0;
   int exists = 0;
-  int expire = 0;
+  int64_t expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = int(now) + ttl;
+    expire = now + ttl;
   }
 
   std::string ns_key;
@@ -266,13 +266,14 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
   }
 
   size_t size = raw_value.size();
-  offset += Metadata::GetOffsetAfterExpire(raw_value[0]);
+  size_t header_offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
+  offset += header_offset;
   if (offset > size) {
     // padding the value with zero byte while offset is longer than value size
     size_t paddings = offset - size;
     raw_value.append(paddings, '\0');
   }
-  if (offset + static_cast<int>(value.size()) >= size) {
+  if (offset + value.size() >= size) {
     raw_value = raw_value.substr(0, offset);
     raw_value.append(value);
   } else {
@@ -280,7 +281,7 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
       raw_value[offset + i] = value[i];
     }
   }
-  *ret = static_cast<int>(raw_value.size() - offset);
+  *ret = static_cast<int>(raw_value.size() - header_offset);
   return updateRawValue(ns_key, raw_value);
 }
 
@@ -357,10 +358,10 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
 }
 
 rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
-  int expire = 0;
+  int64_t expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = int(now) + ttl;
+    expire = now + ttl;
   }
 
   // Data race, key string maybe overwrite by other key while didn't lock the key here,
@@ -387,10 +388,10 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, int ttl) {
 rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, int ttl, int *ret) {
   *ret = 0;
 
-  int expire = 0;
+  int64_t expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = int(now) + ttl;
+    expire = now + ttl;
   }
 
   int exists = 0;
@@ -452,11 +453,11 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
   if (old_value == current_value) {
     std::string raw_value;
-    int expire = 0;
+    int64_t expire = 0;
     Metadata metadata(kRedisString, false);
     if (ttl > 0) {
       int64_t now = Util::GetTimeStamp();
-      expire = int(now) + ttl;
+      expire = now + ttl;
     }
     metadata.expire = expire * 1000;
     metadata.Encode(&raw_value);

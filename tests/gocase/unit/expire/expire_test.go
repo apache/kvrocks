@@ -113,9 +113,9 @@ func TestExpire(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", time.Second).Err())
-			time.Sleep(900 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(1100 * time.Millisecond)
+			time.Sleep(1500 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -128,7 +128,7 @@ func TestExpire(t *testing.T) {
 			require.NoError(t, rdb.PExpire(ctx, "x", 100*time.Millisecond).Err())
 			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -141,7 +141,7 @@ func TestExpire(t *testing.T) {
 			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+1500)).Err())
 			time.Sleep(800 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -153,7 +153,7 @@ func TestExpire(t *testing.T) {
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
 			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)

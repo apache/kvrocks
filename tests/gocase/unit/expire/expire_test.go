@@ -186,11 +186,11 @@ func TestExpire(t *testing.T) {
 
 	t.Run("Redis should actively expire keys incrementally", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key1", 500, "a").Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key2", 500, "a").Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key3", 500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key1", 1500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key2", 1500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key3", 1500, "a").Err())
 		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		require.EqualValues(t, 3, rdb.DBSize(ctx).Val())
 		time.Sleep(2000 * time.Millisecond)
 		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())

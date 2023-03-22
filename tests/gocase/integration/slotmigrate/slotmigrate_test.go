@@ -486,7 +486,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		sv := rdb0.SMembers(ctx, keys["set"]).Val()
 		zv := rdb0.ZRangeWithScores(ctx, keys["zset"], 0, -1).Val()
 		siv := rdb0.Do(ctx, "SIRANGE", keys["sortint"], 0, -1).Val()
-		stV := rdb0.XRange(ctx, keys["stream"], "-", "+").Val()
+		stV := rdb0.XRange(ctx, keys["stream"], "2", "+").Val()
 		streamInfo := rdb0.XInfoStream(ctx, keys["stream"]).Val()
 		require.EqualValues(t, "19-0", streamInfo.LastGeneratedID)
 		require.EqualValues(t, 19, streamInfo.EntriesAdded)
@@ -495,6 +495,15 @@ func TestSlotMigrateDataType(t *testing.T) {
 
 		// migrate slot 1, all keys above are belong to slot 1
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
+
+		// increment WAL migration
+		newStreamID := "20"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+			Stream: keys["stream"],
+			ID:     newStreamID + "-0",
+			Values: []string{"key" + newStreamID, "value" + newStreamID},
+		}).Err())
+		require.NoError(t, rdb0.XDel(ctx, keys["stream"], "1-0").Err())
 		waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
 
 		// check destination data
@@ -529,12 +538,12 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, siv, rdb1.Do(ctx, "SIRANGE", keys["sortint"], 0, -1).Val())
 		util.BetweenValues(t, rdb1.TTL(ctx, keys["sortint"]).Val(), time.Second, 10*time.Second)
 		// type stream
-		require.EqualValues(t, stV, rdb1.XRange(ctx, keys["stream"], "-", "+").Val())
+		require.EqualValues(t, stV, rdb1.XRange(ctx, keys["stream"], "-", "19").Val())
 		util.BetweenValues(t, rdb1.TTL(ctx, keys["stream"]).Val(), time.Second, 10*time.Second)
 		streamInfo = rdb1.XInfoStream(ctx, keys["stream"]).Val()
-		require.EqualValues(t, "19-0", streamInfo.LastGeneratedID)
-		require.EqualValues(t, 19, streamInfo.EntriesAdded)
-		require.EqualValues(t, "0-0", streamInfo.MaxDeletedEntryID)
+		require.EqualValues(t, "20-0", streamInfo.LastGeneratedID)
+		require.EqualValues(t, 20, streamInfo.EntriesAdded)
+		require.EqualValues(t, "1-0", streamInfo.MaxDeletedEntryID)
 		require.EqualValues(t, 19, streamInfo.Length)
 		// topology is changed on source server
 		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {

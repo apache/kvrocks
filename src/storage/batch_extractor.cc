@@ -81,9 +81,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     }
 
     return rocksdb::Status::OK();
-  }
-
-  if (column_family_id == kColumnFamilyIDDefault) {
+  } else if (column_family_id == kColumnFamilyIDDefault) {
     InternalKey ikey(key, is_slotid_encoded_);
     user_key = ikey.GetKey().ToString();
     if (slot_ >= 0) {
@@ -193,6 +191,12 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       default:
         break;
     }
+  } else if (column_family_id == kColumnFamilyIDStream) {
+    auto s = ExtractStreamAddCommand(is_slotid_encoded_, key, value, &command_args);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Fail to parse write_batch for the stream type: " << s.Msg();
+      return rocksdb::Status::OK();
+    }
   }
 
   if (!command_args.empty()) {
@@ -278,6 +282,13 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       default:
         break;
     }
+  } else if (column_family_id == kColumnFamilyIDStream) {
+    InternalKey ikey(key, is_slotid_encoded_);
+    Slice encoded_id = ikey.GetSubKey();
+    Redis::StreamEntryID entry_id;
+    GetFixed64(&encoded_id, &entry_id.ms);
+    GetFixed64(&encoded_id, &entry_id.seq);
+    command_args = {"XDEL", ikey.GetKey().ToString(), entry_id.ToString()};
   }
 
   if (!command_args.empty()) {
@@ -290,4 +301,24 @@ rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, co
                                                    const Slice &end_key) {
   // Do nothing about DeleteRange operations
   return rocksdb::Status::OK();
+}
+
+Status WriteBatchExtractor::ExtractStreamAddCommand(bool is_slotid_encoded, const Slice &subkey, const Slice &value,
+                                                    std::vector<std::string> *command_args) {
+  InternalKey ikey(subkey, is_slotid_encoded);
+  std::string user_key = ikey.GetKey().ToString();
+  *command_args = {"XADD", user_key};
+  std::vector<std::string> values;
+  auto s = Redis::DecodeRawStreamEntryValue(value.ToString(), &values);
+  if (!s.IsOK()) {
+    return {Status::NotOK, fmt::format("failed to decode stream values: {}", s.Msg())};
+  }
+  Slice encoded_id = ikey.GetSubKey();
+  Redis::StreamEntryID entry_id;
+  GetFixed64(&encoded_id, &entry_id.ms);
+  GetFixed64(&encoded_id, &entry_id.seq);
+
+  command_args->emplace_back(entry_id.ToString());
+  command_args->insert(command_args->end(), values.begin(), values.end());
+  return Status::OK();
 }

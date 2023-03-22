@@ -28,12 +28,11 @@
 
 class CompactionChecker {
  public:
-  explicit CompactionChecker(Engine::Storage *storage, Config *config) : storage_(storage), config_(config) {}
+  explicit CompactionChecker(Engine::Storage *storage) : storage_(storage) {}
   ~CompactionChecker() = default;
   void PickCompactionFiles(const std::string &cf_name);
   void CompactPropagateAndPubSubFiles();
 
  private:
   Engine::Storage *storage_ = nullptr;
-  Config *config_ = nullptr;
 };

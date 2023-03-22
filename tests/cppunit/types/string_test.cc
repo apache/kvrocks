@@ -179,7 +179,7 @@ TEST_F(RedisStringTest, MSetXX) {
   EXPECT_EQ(ret, 1);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
@@ -213,7 +213,7 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
   string->SetNX(key_, "test-value", 3, &ret);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
@@ -221,7 +221,7 @@ TEST_F(RedisStringTest, SetEX) {
   string->SetEX(key_, "test-value", 3);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
@@ -276,7 +276,7 @@ TEST_F(RedisStringTest, CAS) {
 
   int64_t ttl = 0;
   string->TTL(key, &ttl);
-  EXPECT_TRUE(ttl >= 9 && ttl <= 10);
+  EXPECT_TRUE(ttl >= 9000 && ttl <= 10000);
 
   string->Del(key);
 }

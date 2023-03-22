@@ -112,6 +112,6 @@ TEST_F(RedisTypeTest, Expire) {
   redis->Expire(key_, now * 1000 + 2000);
   int64_t ttl = 0;
   redis->TTL(key_, &ttl);
-  ASSERT_TRUE(ttl >= 1 && ttl <= 2);
+  ASSERT_TRUE(ttl >= 1000 && ttl <= 2000);
   sleep(2);
 }

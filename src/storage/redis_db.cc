@@ -157,8 +157,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
 
   Metadata metadata(kRedisNone, false);
   metadata.Decode(value);
-  auto res = metadata.TTL();
-  *ttl = res > 0 ? res / 1000 : res;
+  *ttl = metadata.TTL();
 
   return rocksdb::Status::OK();
 }

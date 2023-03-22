@@ -153,10 +153,10 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
 }
 
 rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, int ttl) {
-  int expire = 0;
+  int64_t expire = 0;
   if (ttl > 0) {
     int64_t now = Util::GetTimeStamp();
-    expire = int(now) + ttl;
+    expire = now + ttl;
   }
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

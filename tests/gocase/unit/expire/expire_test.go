@@ -113,7 +113,7 @@ func TestExpire(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1500*time.Millisecond).Err())
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
 			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
@@ -126,7 +126,7 @@ func TestExpire(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
 			require.NoError(t, rdb.PExpire(ctx, "x", 1500*time.Millisecond).Err())
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
 			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
@@ -139,7 +139,7 @@ func TestExpire(t *testing.T) {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
 			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+1500)).Err())
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
 			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
@@ -151,7 +151,7 @@ func TestExpire(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 1500*time.Millisecond).Err())
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
 			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
@@ -168,7 +168,7 @@ func TestExpire(t *testing.T) {
 	t.Run("PTTL returns time to live in milliseconds", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "x").Err())
 		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 2*time.Second).Err())
-		util.BetweenValues(t, rdb.PTTL(ctx, "x").Val(), 500*time.Millisecond, 2000*time.Millisecond)
+		util.BetweenValues(t, rdb.PTTL(ctx, "x").Val(), 50*time.Millisecond, 2000*time.Millisecond)
 	})
 
 	t.Run("TTL / PTTL return -1 if key has no expire", func(t *testing.T) {

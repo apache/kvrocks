@@ -132,6 +132,7 @@ class Metadata {
 
   static size_t GetOffsetAfterExpire(uint8_t flags);
   static size_t GetOffsetAfterSize(uint8_t flags);
+  static uint64_t ExpireMsToS(uint64_t ms);
 
   bool Is64BitEncoded() const;
   bool GetFixedCommon(rocksdb::Slice *input, uint64_t *value) const;

@@ -224,6 +224,18 @@ size_t Metadata::GetOffsetAfterSize(uint8_t flags) {
   return 1 + 4 + 8 + 4;
 }
 
+uint64_t Metadata::ExpireMsToS(uint64_t ms) {
+  if (ms == 0) {
+    return 0;
+  }
+
+  if (ms < 1000) {
+    return 1;
+  }
+
+  return ms / 1000;
+}
+
 bool Metadata::Is64BitEncoded() const { return flags & METADATA_64BIT_ENCODING_MASK; }
 
 size_t Metadata::CommonEncodedSize() const { return Is64BitEncoded() ? 8 : 4; }
@@ -267,7 +279,7 @@ void Metadata::PutExpire(std::string *dst) {
   if (Is64BitEncoded()) {
     PutFixed64(dst, expire);
   } else {
-    PutFixed32(dst, expire / 1000);
+    PutFixed32(dst, ExpireMsToS(expire));
   }
 }
 

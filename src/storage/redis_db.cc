@@ -97,7 +97,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   if (metadata.Is64BitEncoded()) {
     EncodeFixed64(value.data() + 1, timestamp);
   } else {
-    EncodeFixed32(value.data() + 1, timestamp / 1000);
+    EncodeFixed32(value.data() + 1, Metadata::ExpireMsToS(timestamp));
   }
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
@@ -403,7 +403,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back("version");
   infos->emplace_back(std::to_string(metadata.version));
   infos->emplace_back("expire");
-  infos->emplace_back(std::to_string(metadata.expire / 1000));
+  infos->emplace_back(std::to_string(Metadata::ExpireMsToS(metadata.expire)));
   infos->emplace_back("size");
   infos->emplace_back(std::to_string(metadata.size));
 

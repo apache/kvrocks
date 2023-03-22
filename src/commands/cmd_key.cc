@@ -74,7 +74,7 @@ class CommandTTL : public Commander {
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
-      *output = Redis::Integer(ttl > 0 ? ttl / 1000 : ttl);
+      *output = Redis::Integer(Metadata::ExpireMsToS(ttl));
       return Status::OK();
     }
 

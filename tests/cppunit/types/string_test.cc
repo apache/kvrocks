@@ -72,6 +72,7 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   string->MSet(pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
+  keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
@@ -172,10 +173,10 @@ TEST_F(RedisStringTest, GetDel) {
 
 TEST_F(RedisStringTest, MSetXX) {
   int ret = 0;
-  string->SetXX(key_, "test-value", 3, &ret);
+  string->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 0);
   string->Set(key_, "test-value");
-  string->SetXX(key_, "test-value", 3, &ret);
+  string->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 1);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
@@ -189,6 +190,7 @@ TEST_F(RedisStringTest, MSetNX) {
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
+  keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
@@ -210,7 +212,7 @@ TEST_F(RedisStringTest, MSetNX) {
 
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   int ret = 0;
-  string->SetNX(key_, "test-value", 3, &ret);
+  string->SetNX(key_, "test-value", 3000, &ret);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
@@ -218,7 +220,7 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
 }
 
 TEST_F(RedisStringTest, SetEX) {
-  string->SetEX(key_, "test-value", 3);
+  string->SetEX(key_, "test-value", 3000);
   int64_t ttl = 0;
   string->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
@@ -257,15 +259,15 @@ TEST_F(RedisStringTest, CAS) {
   auto status = string->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string->CAS("non_exist_key", value, new_value, 10, &ret);
+  status = string->CAS("non_exist_key", value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, ret);
 
-  status = string->CAS(key, "cas_value_err", new_value, 10, &ret);
+  status = string->CAS(key, "cas_value_err", new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, ret);
 
-  status = string->CAS(key, value, new_value, 10, &ret);
+  status = string->CAS(key, value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, ret);
 

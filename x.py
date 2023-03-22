@@ -17,9 +17,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
+import shutil
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
-from os import makedirs
 from pathlib import Path
 import re
 from subprocess import Popen, PIPE
@@ -104,7 +105,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
-    makedirs(dir, exist_ok=True)
+    os.makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
@@ -239,11 +240,33 @@ def package_source(release_version: str) -> None:
         run(sha512sum, tarball, stdout=f)
 
 
+def remove_files_or_dirs(files_or_dirs: List[str]):
+    """Remove a file or directory"""
+    for file_or_dir in files_or_dirs:
+        if os.path.isfile(file_or_dir) or os.path.islink(file_or_dir):
+            os.remove(file_or_dir)
+        elif os.path.isdir(file_or_dir):
+            shutil.rmtree(file_or_dir)
+        else:
+            raise Exception(f"target: {file_or_dir} is not a file or dir.")
+
+
 def test_cpp(dir: str, rest: List[str]) -> None:
     basedir = Path(dir).absolute()
     unittest = basedir / 'unittest'
 
     run(str(unittest), *rest, cwd=str(basedir), verbose=True)
+
+
+def cleanup_go_tests(workspace: str, verbose: bool):
+    """Clean up go tests"""
+    if verbose:
+        print(f"Cleanup go test workspace: {workspace}, it may take some time...")
+
+    remove_files_or_dirs(glob(f"{workspace}/Test*"))
+
+    if verbose:
+        print(f"Cleanup go test workspace: {workspace}, done.")
 
 
 def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
@@ -262,7 +285,11 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir), verbose=True)
+    cleanup_go_tests(workspace, verbose=True)
+    try:
+        run(go, *args, cwd=str(basedir), verbose=True)
+    finally:
+        cleanup_go_tests(workspace, verbose=True)
 
 
 if __name__ == '__main__':

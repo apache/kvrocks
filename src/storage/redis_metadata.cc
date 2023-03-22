@@ -147,10 +147,11 @@ void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output) {
   PutFixed16(output, static_cast<uint16_t>(slotid));
 }
 
-Metadata::Metadata(RedisType type, bool generate_version)
-    : flags(METADATA_64BIT_ENCODING_MASK | (METADATA_TYPE_MASK & type)), expire(0), version(0), size(0) {
-  if (generate_version) version = generateVersion();
-}
+Metadata::Metadata(RedisType type, bool generate_version, bool use_64bit_common_field)
+    : flags((use_64bit_common_field ? METADATA_64BIT_ENCODING_MASK : 0) | (METADATA_TYPE_MASK & type)),
+      expire(0),
+      version(generate_version ? generateVersion() : 0),
+      size(0) {}
 
 rocksdb::Status Metadata::Decode(const std::string &bytes) {
   Slice input(bytes);

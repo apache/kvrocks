@@ -118,7 +118,7 @@ class Metadata {
   // element size of the key-value
   uint64_t size;
 
-  explicit Metadata(RedisType type, bool generate_version = true);
+  explicit Metadata(RedisType type, bool generate_version = true, bool use_64bit_common_field = true);
   static void InitVersionCounter();
 
   static size_t GetOffsetAfterExpire(uint8_t flags);
@@ -132,10 +132,10 @@ class Metadata {
 
   RedisType Type() const;
   size_t CommonEncodedSize() const;
-  virtual int64_t TTL() const;
-  virtual timeval Time() const;
-  virtual bool Expired() const;
-  virtual bool ExpireAt(uint64_t expired_ts) const;
+  int64_t TTL() const;
+  timeval Time() const;
+  bool Expired() const;
+  bool ExpireAt(uint64_t expired_ts) const;
   virtual void Encode(std::string *dst);
   virtual rocksdb::Status Decode(const std::string &bytes);
   bool operator==(const Metadata &that) const;

@@ -205,7 +205,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
         if (ttl != -1) {
           stats->n_key++;
           stats->n_expires++;
-          if (ttl > 0) ttl_sum += ttl / 1000;
+          if (ttl > 0) ttl_sum += ttl;
         }
       }
       if (keys) {
@@ -224,7 +224,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   }
 
   if (stats && stats->n_expires > 0) {
-    stats->avg_ttl = ttl_sum / stats->n_expires;
+    stats->avg_ttl = ttl_sum / stats->n_expires / 1000;
   }
 }
 

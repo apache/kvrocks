@@ -30,6 +30,12 @@
 #include <type_traits>
 #include <utility>
 
+template <typename Code>
+struct StatusImpl {
+  Code code_;
+  std::string msg_;
+};
+
 class [[nodiscard]] Status {
  public:
   enum Code : unsigned char {
@@ -120,10 +126,7 @@ class [[nodiscard]] Status {
   static constexpr const char* ok_msg = "ok";
 
  private:
-  struct Impl {
-    Code code_;
-    std::string msg_;
-  };
+  using Impl = StatusImpl<Code>;
 
   std::unique_ptr<Impl> impl_;
 

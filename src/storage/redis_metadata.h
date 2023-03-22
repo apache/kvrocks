@@ -29,6 +29,14 @@
 #include "encoding.h"
 #include "types/redis_stream_base.h"
 
+constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT =
+#ifdef ENABLE_NEW_ENCODING
+    true
+#else
+    false
+#endif
+    ;
+
 enum RedisType {
   kRedisNone,
   kRedisString,
@@ -118,7 +126,8 @@ class Metadata {
   // element size of the key-value
   uint64_t size;
 
-  explicit Metadata(RedisType type, bool generate_version = true, bool use_64bit_common_field = true);
+  explicit Metadata(RedisType type, bool generate_version = true,
+                    bool use_64bit_common_field = USE_64BIT_COMMON_FIELD_DEFAULT);
   static void InitVersionCounter();
 
   static size_t GetOffsetAfterExpire(uint8_t flags);

@@ -201,8 +201,8 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
       }
       if (stats) {
         int64_t ttl = metadata.TTL();
+        stats->n_key++;
         if (ttl != -1) {
-          stats->n_key++;
           stats->n_expires++;
           if (ttl > 0) ttl_sum += ttl;
         }

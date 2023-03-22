@@ -145,7 +145,7 @@ class CommandExpire : public Commander {
   }
 
  private:
-  int seconds_ = 0;
+  uint64_t seconds_ = 0;
 };
 
 class CommandPExpire : public Commander {
@@ -167,7 +167,7 @@ class CommandPExpire : public Commander {
   }
 
  private:
-  int seconds_ = 0;
+  uint64_t seconds_ = 0;
 };
 
 class CommandExpireAt : public Commander {
@@ -199,7 +199,7 @@ class CommandExpireAt : public Commander {
   }
 
  private:
-  int timestamp_ = 0;
+  uint64_t timestamp_ = 0;
 };
 
 class CommandPExpireAt : public Commander {
@@ -231,7 +231,7 @@ class CommandPExpireAt : public Commander {
   }
 
  private:
-  int timestamp_ = 0;
+  uint64_t timestamp_ = 0;
 };
 
 class CommandPersist : public Commander {

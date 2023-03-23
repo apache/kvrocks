@@ -311,7 +311,7 @@ Status WriteBatchExtractor::ExtractStreamAddCommand(bool is_slotid_encoded, cons
   std::vector<std::string> values;
   auto s = Redis::DecodeRawStreamEntryValue(value.ToString(), &values);
   if (!s.IsOK()) {
-    return {Status::NotOK, fmt::format("failed to decode stream values: {}", s.Msg())};
+    return s.Prefixed("failed to decode stream values");
   }
   Slice encoded_id = ikey.GetSubKey();
   Redis::StreamEntryID entry_id;

@@ -80,6 +80,24 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       }
     }
 
+    if (metadata.Type() == kRedisStream) {
+      auto args = log_data_.GetArguments();
+      bool isSetID = args && args->size() > 0 && (*args)[0] == "XSETID";
+      if (!isSetID) {
+        return rocksdb::Status::OK();
+      }
+      StreamMetadata stream_metadata(kRedisStream);
+      auto s = stream_metadata.Decode(value.ToString());
+      if (!s.ok()) return s;
+      command_args = {"XSETID",
+                      user_key,
+                      stream_metadata.last_entry_id.ToString(),
+                      "ENTRIESADDED",
+                      std::to_string(stream_metadata.entries_added),
+                      "MAXDELETEDID",
+                      stream_metadata.max_deleted_entry_id.ToString()};
+      resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
+    }
     return rocksdb::Status::OK();
   } else if (column_family_id == kColumnFamilyIDDefault) {
     InternalKey ikey(key, is_slotid_encoded_);

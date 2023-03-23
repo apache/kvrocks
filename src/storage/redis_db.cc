@@ -404,8 +404,12 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back(std::to_string(metadata.version));
   infos->emplace_back("expire");
   infos->emplace_back(std::to_string(Metadata::ExpireMsToS(metadata.expire)));
+  infos->emplace_back("pexpire");
+  infos->emplace_back(std::to_string(metadata.expire));
   infos->emplace_back("size");
   infos->emplace_back(std::to_string(metadata.size));
+  infos->emplace_back("is_64bit_common_field");
+  infos->emplace_back(std::to_string(metadata.Is64BitEncoded()));
 
   infos->emplace_back("created_at");
   struct timeval created_at = metadata.Time();

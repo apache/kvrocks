@@ -58,7 +58,7 @@ struct CompactionCheckerRange {
   int Start;
   int Stop;
 
-  bool Enabled() { return Start != -1 || Stop != -1; }
+  bool Enabled() const { return Start != -1 || Stop != -1; }
 };
 
 struct CLIOptions {
@@ -200,8 +200,7 @@ struct Config {
 
   mutable std::mutex backup_mu_;
 
- public:
-  std::string NodesFilePath();
+  std::string NodesFilePath() const;
   Status Rewrite();
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values);
@@ -229,5 +228,5 @@ struct Config {
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
-  Status isNamespaceLegal(const std::string &ns);
+  static Status isNamespaceLegal(const std::string &ns);
 };

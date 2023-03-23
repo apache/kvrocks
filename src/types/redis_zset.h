@@ -79,9 +79,9 @@ class ZAddFlags {
 
   void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
 
-  static const ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
+  static ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
 
-  static const ZAddFlags Default() { return ZAddFlags{0}; }
+  static ZAddFlags Default() { return ZAddFlags{0}; }
 
  private:
   uint8_t flags = 0;

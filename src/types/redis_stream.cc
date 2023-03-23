@@ -170,7 +170,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 }
 
 rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
-                                       bool first_entry, StreamEntryID *next_entry_id) const {
+                                       bool first_entry, StreamEntryID *next_entry_id) {
   if (options.with_entry_id) {
     if (options.entry_id.ms == 0 && !options.entry_id.any_seq_number && options.entry_id.seq == 0) {
       return rocksdb::Status::InvalidArgument(errEntryIdOutOfRange);

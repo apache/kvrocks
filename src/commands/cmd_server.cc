@@ -728,7 +728,7 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
+  static std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
       end_cursor = kCursorPrefix + end_cursor;

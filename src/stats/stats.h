@@ -66,7 +66,6 @@ class Stats {
   std::atomic<uint64_t> psync_ok_counter = {0};
   std::map<std::string, command_stat> commands_stats;
 
- public:
   Stats();
   void IncrCalls(const std::string &command_name);
   void IncrLatency(uint64_t latency, const std::string &command_name);

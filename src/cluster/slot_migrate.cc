@@ -896,7 +896,7 @@ void SlotMigrate::ReleaseForbiddenSlot() {
   forbidden_slot_ = -1;
 }
 
-void SlotMigrate::ApplyMigrationSpeedLimit() {
+void SlotMigrate::ApplyMigrationSpeedLimit() const {
   if (migration_speed_ > 0) {
     uint64_t current_time = Util::GetTimeStampUS();
     uint64_t per_request_time = 1000000 * pipeline_size_limit_ / migration_speed_;

@@ -54,7 +54,6 @@ class TestBase : public testing::Test {  // NOLINT
     }
   }
 
- protected:
   Engine::Storage *storage_;
   Config *config_ = nullptr;
   std::string key_;

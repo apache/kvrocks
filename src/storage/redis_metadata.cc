@@ -275,7 +275,7 @@ void Metadata::PutFixedCommon(std::string *dst, uint64_t value) const {
   }
 }
 
-void Metadata::PutExpire(std::string *dst) {
+void Metadata::PutExpire(std::string *dst) const {
   if (Is64BitEncoded()) {
     PutFixed64(dst, expire);
   } else {

@@ -42,8 +42,8 @@ class CommandGeoBase : public Commander {
     return Status::OK();
   }
 
-  Status ParseLongLat(const std::string &longitude_para, const std::string &latitude_para, double *longitude,
-                      double *latitude) {
+  static Status ParseLongLat(const std::string &longitude_para, const std::string &latitude_para, double *longitude,
+                             double *latitude) {
     auto long_stat = ParseFloat(longitude_para);
     auto lat_stat = ParseFloat(latitude_para);
     if (!long_stat || !lat_stat) {
@@ -346,7 +346,7 @@ class CommandGeoRadius : public CommandGeoBase {
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {
  public:
-  CommandGeoRadiusByMember() : CommandGeoRadius() {}
+  CommandGeoRadiusByMember() = default;
 
   Status Parse(const std::vector<std::string> &args) override {
     auto radius = ParseFloat(args[3]);
@@ -380,12 +380,12 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
 
 class CommandGeoRadiusReadonly : public CommandGeoRadius {
  public:
-  CommandGeoRadiusReadonly() : CommandGeoRadius() {}
+  CommandGeoRadiusReadonly() = default;
 };
 
 class CommandGeoRadiusByMemberReadonly : public CommandGeoRadiusByMember {
  public:
-  CommandGeoRadiusByMemberReadonly() : CommandGeoRadiusByMember() {}
+  CommandGeoRadiusByMemberReadonly() = default;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 1),

@@ -200,6 +200,11 @@ class CommandGetRange : public Commander {
   int stop_ = 0;
 };
 
+class CommandSubStr : public CommandGetRange {
+ public:
+  CommandSubStr() : CommandGetRange() {}
+};
+
 class CommandSetRange : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -598,6 +603,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),

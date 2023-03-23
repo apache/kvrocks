@@ -24,6 +24,7 @@
 
 #include "storage/redis_metadata.h"
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_hash.h"
 
 TEST(InternalKey, EncodeAndDecode) {
@@ -114,4 +115,19 @@ TEST_F(RedisTypeTest, Expire) {
   redis->TTL(key_, &ttl);
   ASSERT_TRUE(ttl >= 1000 && ttl <= 2000);
   sleep(2);
+}
+
+TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {
+  auto expire_at = (Util::GetTimeStamp() + 10) * 1000;
+  Metadata md_old(kRedisString, true, false);
+  EXPECT_FALSE(md_old.Is64BitEncoded());
+  md_old.expire = expire_at;
+  std::string encoded_bytes;
+  md_old.Encode(&encoded_bytes);
+
+  Metadata md_new(kRedisNone, false, true);  // decoding existing metadata with 64-bit feature activated
+  md_new.Decode(encoded_bytes);
+  EXPECT_FALSE(md_new.Is64BitEncoded());
+  EXPECT_EQ(md_new.Type(), kRedisString);
+  EXPECT_EQ(md_new.expire, expire_at);
 }

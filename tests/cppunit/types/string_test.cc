@@ -72,6 +72,7 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   string->MSet(pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
+  keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
@@ -137,13 +138,13 @@ TEST_F(RedisStringTest, GetEmptyValue) {
 }
 
 TEST_F(RedisStringTest, GetSet) {
-  int ttl = 0;
+  int64_t ttl = 0;
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for (size_t i = 0; i < values.size(); i++) {
     std::string old_value;
-    string->Expire(key_, static_cast<int>(now + 1000));
+    string->Expire(key_, now * 1000 + 100000);
     string->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
@@ -172,14 +173,14 @@ TEST_F(RedisStringTest, GetDel) {
 
 TEST_F(RedisStringTest, MSetXX) {
   int ret = 0;
-  string->SetXX(key_, "test-value", 3, &ret);
+  string->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 0);
   string->Set(key_, "test-value");
-  string->SetXX(key_, "test-value", 3, &ret);
+  string->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 1);
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
@@ -189,6 +190,7 @@ TEST_F(RedisStringTest, MSetNX) {
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
+  keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
     keys.emplace_back(pair.key);
   }
@@ -210,18 +212,18 @@ TEST_F(RedisStringTest, MSetNX) {
 
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   int ret = 0;
-  string->SetNX(key_, "test-value", 3, &ret);
-  int ttl = 0;
+  string->SetNX(key_, "test-value", 3000, &ret);
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetEX) {
-  string->SetEX(key_, "test-value", 3);
-  int ttl = 0;
+  string->SetEX(key_, "test-value", 3000);
+  int64_t ttl = 0;
   string->TTL(key_, &ttl);
-  EXPECT_TRUE(ttl >= 2 && ttl <= 3);
+  EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
   string->Del(key_);
 }
 
@@ -257,15 +259,15 @@ TEST_F(RedisStringTest, CAS) {
   auto status = string->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string->CAS("non_exist_key", value, new_value, 10, &ret);
+  status = string->CAS("non_exist_key", value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, ret);
 
-  status = string->CAS(key, "cas_value_err", new_value, 10, &ret);
+  status = string->CAS(key, "cas_value_err", new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, ret);
 
-  status = string->CAS(key, value, new_value, 10, &ret);
+  status = string->CAS(key, value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, ret);
 
@@ -274,9 +276,9 @@ TEST_F(RedisStringTest, CAS) {
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(new_value, current_value);
 
-  int ttl = 0;
+  int64_t ttl = 0;
   string->TTL(key, &ttl);
-  EXPECT_TRUE(ttl >= 9 && ttl <= 10);
+  EXPECT_TRUE(ttl >= 9000 && ttl <= 10000);
 
   string->Del(key);
 }

@@ -18,6 +18,7 @@
  *
  */
 
+#include <cstdint>
 #include <optional>
 
 #include "commander.h"
@@ -95,7 +96,7 @@ class CommandGetEx : public Commander {
   }
 
  private:
-  int ttl_ = 0;
+  uint64_t ttl_ = 0;
   bool persist_ = false;
 };
 
@@ -316,14 +317,14 @@ class CommandSet : public Commander {
   }
 
  private:
-  int ttl_ = 0;
+  uint64_t ttl_ = 0;
   enum { NONE, NX, XX } set_flag_ = NONE;
 };
 
 class CommandSetEX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int>(args[2], 10);
+    auto parse_result = ParseInt<int64_t>(args[2], 10);
     if (!parse_result) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
@@ -337,13 +338,13 @@ class CommandSetEX : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::String string_db(svr->storage_, conn->GetNamespace());
-    auto s = string_db.SetEX(args_[1], args_[3], ttl_);
+    auto s = string_db.SetEX(args_[1], args_[3], ttl_ * 1000);
     *output = Redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
-  int ttl_ = 0;
+  uint64_t ttl_ = 0;
 };
 
 class CommandPSetEX : public Commander {
@@ -356,11 +357,7 @@ class CommandPSetEX : public Commander {
 
     if (*ttl_ms <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    if (*ttl_ms < 1000) {
-      ttl_ = 1;
-    } else {
-      ttl_ = static_cast<int>(*ttl_ms / 1000);
-    }
+    ttl_ = *ttl_ms;
 
     return Commander::Parse(args);
   }
@@ -373,7 +370,7 @@ class CommandPSetEX : public Commander {
   }
 
  private:
-  int ttl_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandMSet : public Commander {
@@ -557,9 +554,9 @@ class CommandCAS : public Commander {
     std::string_view flag;
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("EX", flag)) {
-        ttl_ = GET_OR_RET(parser.TakeInt<int>(TTL_RANGE<int>));
+        ttl_ = GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
       } else if (parser.EatEqICaseFlag("PX", flag)) {
-        ttl_ = static_cast<int>(TTLMsToS(GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>))));
+        ttl_ = GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>));
       } else {
         return parser.InvalidSyntax();
       }
@@ -580,7 +577,7 @@ class CommandCAS : public Commander {
   }
 
  private:
-  int ttl_ = 0;
+  uint64_t ttl_ = 0;
 };
 
 class CommandCAD : public Commander {

@@ -193,8 +193,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  uint32_t used_size = index + byte_index + 1;
-  uint32_t bitmap_size = std::max(used_size, metadata.size);
+  uint64_t used_size = index + byte_index + 1;
+  uint64_t bitmap_size = std::max(used_size, metadata.size);
   if (byte_index >= value.size()) {  // expand the bitmap
     size_t expand_size = 0;
     if (byte_index >= value.size() * 2) {
@@ -240,9 +240,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
-  if (stop > static_cast<int64_t>(metadata.size)) stop = metadata.size;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
+  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size);
   if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
 
   auto u_start = static_cast<uint32_t>(start);
@@ -289,8 +289,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
   if (start < 0 || stop < 0 || start > stop) {
     *pos = -1;
     return rocksdb::Status::OK();

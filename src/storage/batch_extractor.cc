@@ -59,10 +59,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     Metadata metadata(kRedisNone);
     metadata.Decode(value.ToString());
     if (metadata.Type() == kRedisString) {
-      command_args = {"SET", user_key, value.ToString().substr(5, value.size() - 5)};
+      command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
       resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
       if (metadata.expire > 0) {
-        command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
+        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
         resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
       }
     } else if (metadata.expire > 0) {
@@ -74,7 +74,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         }
         auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
-          command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
+          command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
         }
       }

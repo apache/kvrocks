@@ -63,7 +63,7 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(const std::vector<std::string> &keys) {
+  std::string GenerateOutput(const std::vector<std::string> &keys) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit)) {
       list.emplace_back(Redis::BulkString(keys.back()));

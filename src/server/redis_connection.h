@@ -71,15 +71,15 @@ class Connection {
   void PUnsubscribeAll(const unsubscribe_callback &reply = nullptr);
   int PSubscriptionsCount();
 
-  uint64_t GetAge();
-  uint64_t GetIdleTime();
+  uint64_t GetAge() const;
+  uint64_t GetIdleTime() const;
   void SetLastInteraction();
   std::string GetFlags();
   void EnableFlag(Flag flag);
   void DisableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag);
 
-  uint64_t GetID() { return id_; }
+  uint64_t GetID() const { return id_; }
   void SetID(uint64_t id) { id_ = id; }
   std::string GetName() { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
@@ -87,16 +87,16 @@ class Connection {
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() { return ip_; }
-  uint32_t GetPort() { return port_; }
+  uint32_t GetPort() const { return port_; }
   void SetListeningPort(int port) { listening_port_ = port; }
-  int GetListeningPort() { return listening_port_; }
+  int GetListeningPort() const { return listening_port_; }
   void SetAnnounceIP(std::string ip) { announce_ip_ = std::move(ip); }
   std::string GetAnnounceIP() { return !announce_ip_.empty() ? announce_ip_ : ip_; }
   std::string GetAnnounceAddr() { return GetAnnounceIP() + ":" + std::to_string(listening_port_); }
   uint64_t GetClientType();
   Server *GetServer() { return svr_; }
 
-  bool IsAdmin() { return is_admin_; }
+  bool IsAdmin() const { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
   std::string GetNamespace() { return ns_; }
@@ -104,7 +104,7 @@ class Connection {
 
   void NeedFreeBufferEvent(bool need_free = true) { need_free_bev_ = need_free; }
   void NeedNotFreeBufferEvent() { NeedFreeBufferEvent(false); }
-  bool IsNeedFreeBufferEvent() { return need_free_bev_; }
+  bool IsNeedFreeBufferEvent() const { return need_free_bev_; }
 
   Worker *Owner() { return owner_; }
   int GetFD() { return bufferevent_getfd(bev_); }
@@ -115,12 +115,12 @@ class Connection {
   bool isProfilingEnabled(const std::string &cmd);
   void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }
-  bool IsImporting() { return importing_; }
+  bool IsImporting() const { return importing_; }
 
   // Multi exec
   void SetInExec() { in_exec_ = true; }
-  bool IsInExec() { return in_exec_; }
-  bool IsMultiError() { return multi_error_; }
+  bool IsInExec() const { return in_exec_; }
+  bool IsMultiError() const { return multi_error_; }
   void ResetMultiExec();
   std::deque<Redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 

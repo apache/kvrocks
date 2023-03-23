@@ -658,7 +658,7 @@ class CommandXRead : public Commander {
     return sendResults(output, results);
   }
 
-  Status sendResults(std::string *output, const std::vector<StreamReadResult> &results) {
+  static Status sendResults(std::string *output, const std::vector<StreamReadResult> &results) {
     output->append(Redis::MultiLen(results.size()));
 
     for (const auto &result : results) {

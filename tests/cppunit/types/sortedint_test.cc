@@ -27,9 +27,7 @@
 
 class RedisSortedintTest : public TestBase {
  protected:
-  explicit RedisSortedintTest() : TestBase() {
-    sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns");
-  }
+  explicit RedisSortedintTest() { sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns"); }
   ~RedisSortedintTest() override = default;
 
   void SetUp() override {
@@ -37,7 +35,6 @@ class RedisSortedintTest : public TestBase {
     ids_ = {1, 2, 3, 4};
   }
 
- protected:
   std::unique_ptr<Redis::Sortedint> sortedint;
   std::vector<uint64_t> ids_;
 };

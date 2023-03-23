@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-const std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
+std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
   std::vector<std::string> file_created_reason = {"flush", "compaction", "recovery", "misc"};
   if (static_cast<size_t>(reason) < file_created_reason.size()) {
     return file_created_reason[static_cast<size_t>(reason)];
@@ -32,7 +32,7 @@ const std::string fileCreatedReason2String(const rocksdb::TableFileCreationReaso
   return "unknown";
 }
 
-const std::string stallConditionType2String(const rocksdb::WriteStallCondition type) {
+std::string stallConditionType2String(const rocksdb::WriteStallCondition type) {
   std::vector<std::string> stall_condition_strings = {"normal", "delay", "stop"};
   if (static_cast<size_t>(type) < stall_condition_strings.size()) {
     return stall_condition_strings[static_cast<size_t>(type)];
@@ -40,7 +40,7 @@ const std::string stallConditionType2String(const rocksdb::WriteStallCondition t
   return "unknown";
 }
 
-const std::string compressType2String(const rocksdb::CompressionType type) {
+std::string compressType2String(const rocksdb::CompressionType type) {
   std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
       {rocksdb::kNoCompression, "no"},
       {rocksdb::kSnappyCompression, "snappy"},

@@ -141,11 +141,11 @@ void Connection::SetAddr(std::string ip, uint32_t port) {
   addr_ = ip_ + ":" + std::to_string(port_);
 }
 
-uint64_t Connection::GetAge() { return static_cast<uint64_t>(Util::GetTimeStamp() - create_time_); }
+uint64_t Connection::GetAge() const { return static_cast<uint64_t>(Util::GetTimeStamp() - create_time_); }
 
 void Connection::SetLastInteraction() { last_interaction_ = Util::GetTimeStamp(); }
 
-uint64_t Connection::GetIdleTime() { return static_cast<uint64_t>(Util::GetTimeStamp() - last_interaction_); }
+uint64_t Connection::GetIdleTime() const { return static_cast<uint64_t>(Util::GetTimeStamp() - last_interaction_); }
 
 // Currently, master connection is not handled in connection
 // but in replication thread.

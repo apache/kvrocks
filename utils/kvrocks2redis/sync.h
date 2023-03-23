@@ -43,7 +43,7 @@ class Sync {
 
   void Start();
   void Stop();
-  bool IsStopped() { return stop_flag_; }
+  bool IsStopped() const { return stop_flag_; }
 
  private:
   int sock_fd_;
@@ -71,5 +71,5 @@ class Sync {
 
   Status updateNextSeq(rocksdb::SequenceNumber seq);
   Status readNextSeqFromFile(rocksdb::SequenceNumber *seq);
-  Status writeNextSeqToFile(rocksdb::SequenceNumber seq);
+  Status writeNextSeqToFile(rocksdb::SequenceNumber seq) const;
 };

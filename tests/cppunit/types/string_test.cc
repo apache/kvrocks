@@ -27,7 +27,7 @@
 
 class RedisStringTest : public TestBase {
  protected:
-  explicit RedisStringTest() : TestBase() { string = std::make_unique<Redis::String>(storage_, "string_ns"); }
+  explicit RedisStringTest() { string = std::make_unique<Redis::String>(storage_, "string_ns"); }
   ~RedisStringTest() override = default;
 
   void SetUp() override {
@@ -39,7 +39,6 @@ class RedisStringTest : public TestBase {
     };
   }
 
- protected:
   std::unique_ptr<Redis::String> string;
   std::vector<StringPair> pairs_;
 };

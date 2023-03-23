@@ -345,7 +345,7 @@ class CommandSInterStore : public Commander {
 
 class CommandSScan : public CommandSubkeyScanBase {
  public:
-  CommandSScan() : CommandSubkeyScanBase() {}
+  CommandSScan() = default;
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;

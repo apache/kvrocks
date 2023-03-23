@@ -24,7 +24,7 @@
 
 #include "server/redis_reply.h"
 
-std::string SlowEntry::ToRedisString() {
+std::string SlowEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(4));
   output.append(Redis::Integer(id));
@@ -34,7 +34,7 @@ std::string SlowEntry::ToRedisString() {
   return output;
 }
 
-std::string PerfEntry::ToRedisString() {
+std::string PerfEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(6));
   output.append(Redis::Integer(id));

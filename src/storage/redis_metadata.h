@@ -138,7 +138,7 @@ class Metadata {
   bool GetFixedCommon(rocksdb::Slice *input, uint64_t *value) const;
   bool GetExpire(rocksdb::Slice *input);
   void PutFixedCommon(std::string *dst, uint64_t value) const;
-  void PutExpire(std::string *dst);
+  void PutExpire(std::string *dst) const;
 
   RedisType Type() const;
   size_t CommonEncodedSize() const;
@@ -151,7 +151,7 @@ class Metadata {
   bool operator==(const Metadata &that) const;
 
  private:
-  uint64_t generateVersion();
+  static uint64_t generateVersion();
 };
 
 class HashMetadata : public Metadata {
@@ -185,7 +185,6 @@ class ListMetadata : public Metadata {
   uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
 
- public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;
 };
@@ -201,7 +200,6 @@ class StreamMetadata : public Metadata {
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 
- public:
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;
 };

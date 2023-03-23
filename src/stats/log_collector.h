@@ -37,8 +37,7 @@ class SlowEntry {
   uint64_t duration;
   std::vector<std::string> args;
 
- public:
-  std::string ToRedisString();
+  std::string ToRedisString() const;
 };
 
 class PerfEntry {
@@ -50,8 +49,7 @@ class PerfEntry {
   std::string perf_context;
   std::string iostats_context;
 
- public:
-  std::string ToRedisString();
+  std::string ToRedisString() const;
 };
 
 template <class T>

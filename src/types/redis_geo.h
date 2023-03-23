@@ -72,19 +72,19 @@ class Geo : public ZSet {
   rocksdb::Status Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members,
                        std::map<std::string, GeoPoint> *geo_points);
-  std::string EncodeGeoHash(double longitude, double latitude);
+  static std::string EncodeGeoHash(double longitude, double latitude);
 
  private:
-  int decodeGeoHash(double bits, double *xy);
+  static int decodeGeoHash(double bits, double *xy);
   int membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
                             std::vector<GeoPoint> *geo_points);
   int membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, double lon,
                           double lat, double radius);
-  void scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix52Bits *max);
+  static void scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix52Bits *max);
   int getPointsInRange(const Slice &user_key, double min, double max, double lon, double lat, double radius,
                        std::vector<GeoPoint> *geo_points);
-  bool appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius, double score,
-                            const std::string &member);
+  static bool appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius,
+                                   double score, const std::string &member);
 
   static bool sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2);
   static bool sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2);

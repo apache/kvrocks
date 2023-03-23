@@ -1154,7 +1154,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   *info = string_stream.str();
 }
 
-std::string Server::GetRocksDBStatsJson() {
+std::string Server::GetRocksDBStatsJson() const {
   std::string output;
 
   output.reserve(8 * 1024);
@@ -1408,11 +1408,11 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
       break;
     }
 
-    if (args->data()[i].length() <= kSlowLogMaxString) {
-      entry->args.emplace_back(args->data()[i]);
+    if ((*args)[i].length() <= kSlowLogMaxString) {
+      entry->args.emplace_back((*args)[i]);
     } else {
-      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", args->data()[i].substr(0, kSlowLogMaxString),
-                                           args->data()[i].length() - kSlowLogMaxString));
+      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", (*args)[i].substr(0, kSlowLogMaxString),
+                                           (*args)[i].length() - kSlowLogMaxString));
     }
   }
 
@@ -1505,7 +1505,7 @@ Status Server::ScriptExists(const std::string &sha) {
   return ScriptGet(sha, &body);
 }
 
-Status Server::ScriptGet(const std::string &sha, std::string *body) {
+Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = Engine::kLuaFunctionPrefix + sha;
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   auto s = storage_->Get(rocksdb::ReadOptions(), cf, func_name, body);
@@ -1515,7 +1515,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   return Status::OK();
 }
 
-Status Server::ScriptSet(const std::string &sha, const std::string &body) {
+Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
   std::string func_name = Engine::kLuaFunctionPrefix + sha;
   return storage_->WriteToPropagateCF(func_name, body);
 }
@@ -1536,7 +1536,7 @@ void Server::ScriptFlush() {
 // for specific commands, such as `script flush`.
 // channel: we put the same function commands into one channel to handle uniformly
 // tokens: the serialized commands
-Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) {
+Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) const {
   std::string value = Redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);

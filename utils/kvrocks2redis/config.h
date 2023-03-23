@@ -54,14 +54,13 @@ struct Config {
   std::map<std::string, redis_server> tokens;
   bool cluster_enable = false;
 
- public:
   Status Load(std::string path);
   Config() = default;
   ~Config() = default;
 
  private:
   std::string path_;
-  StatusOr<bool> yesnotoi(const std::string &input);
+  static StatusOr<bool> yesnotoi(const std::string &input);
   Status parseConfigFromString(const std::string &input);
 };
 

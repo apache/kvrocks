@@ -324,13 +324,13 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 
   std::string end_cursor;
   std::vector<std::string> keys;
-  auto s = Scan(cursor, 60, "", &keys, &end_cursor);
+  auto s = Scan(cursor, RANDOM_KEY_SCAN_LIMIT, "", &keys, &end_cursor);
   if (!s.ok()) {
     return s;
   }
   if (keys.empty() && !cursor.empty()) {
     // if reach the end, restart from beginning
-    s = Scan("", 60, "", &keys, &end_cursor);
+    s = Scan("", RANDOM_KEY_SCAN_LIMIT, "", &keys, &end_cursor);
     if (!s.ok()) {
       return s;
     }

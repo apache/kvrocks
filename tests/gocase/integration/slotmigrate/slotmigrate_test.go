@@ -543,7 +543,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - increment sync stream from WAL", func(t *testing.T) {
-		slot := 3
+		slot := 40
 		keys := make(map[string]string, 0)
 		for _, typ := range []string{"stream"} {
 			keys[typ] = fmt.Sprintf("%s_{%s}", typ, util.SlotTable[slot])

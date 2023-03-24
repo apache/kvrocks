@@ -115,13 +115,13 @@ class CommandExists : public Commander {
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + Util::GetTimeStamp();
+    ttl_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], seconds_ * 1000);
+    auto s = redis.Expire(args_[1], ttl_ * 1000 + Util::GetTimeStampMS());
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -131,7 +131,7 @@ class CommandExpire : public Commander {
   }
 
  private:
-  uint64_t seconds_ = 0;
+  uint64_t ttl_ = 0;
 };
 
 class CommandPExpire : public Commander {

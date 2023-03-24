@@ -31,6 +31,8 @@
 namespace Redis {
 class Database {
  public:
+  static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
+
   explicit Database(Engine::Storage *storage, std::string ns = "");
   rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
   rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);

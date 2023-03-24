@@ -719,7 +719,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisStream);
+  WriteBatchLogData log_data(kRedisStream, {"XSETID"});
   batch->PutLogData(log_data.Encode());
 
   std::string bytes;

@@ -234,7 +234,7 @@ uint64_t Metadata::ExpireMsToS(uint64_t ms) {
   }
 
   // We use rounding to get closer to the original value
-  return (ms + 500) / 1000;
+  return (ms + 499) / 1000;
 }
 
 bool Metadata::Is64BitEncoded() const { return flags & METADATA_64BIT_ENCODING_MASK; }

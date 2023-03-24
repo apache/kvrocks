@@ -336,7 +336,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
     }
   }
   if (!keys.empty()) {
-    unsigned int seed = time(nullptr);
+    unsigned int seed = Util::GetTimeStamp();
     *key = keys.at(rand_r(&seed) % keys.size());
   }
   return rocksdb::Status::OK();

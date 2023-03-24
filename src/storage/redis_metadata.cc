@@ -186,7 +186,6 @@ void Metadata::Encode(std::string *dst) {
 void Metadata::InitVersionCounter() {
   // use random position for initial counter to avoid conflicts,
   // when the slave was promoted as master and the system clock may backoff
-  srand(static_cast<unsigned>(Util::GetTimeStamp()));
   version_counter_ = static_cast<uint64_t>(std::rand());
 }
 

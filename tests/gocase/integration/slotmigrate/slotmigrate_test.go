@@ -549,7 +549,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 			keys[typ] = fmt.Sprintf("%s_{%s}", typ, util.SlotTable[slot])
 			require.NoError(t, rdb0.Del(ctx, keys[typ]).Err())
 		}
-		for i := 1; i < 10; i++ {
+		for i := 1; i < 1000; i++ {
 			idxStr := strconv.FormatInt(int64(i), 10)
 			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
 				Stream: keys["stream"],
@@ -558,27 +558,32 @@ func TestSlotMigrateDataType(t *testing.T) {
 			}).Err())
 		}
 		streamInfo := rdb0.XInfoStream(ctx, keys["stream"]).Val()
-		require.EqualValues(t, "9-0", streamInfo.LastGeneratedID)
-		require.EqualValues(t, 9, streamInfo.EntriesAdded)
+		require.EqualValues(t, "999-0", streamInfo.LastGeneratedID)
+		require.EqualValues(t, 999, streamInfo.EntriesAdded)
 		require.EqualValues(t, "0-0", streamInfo.MaxDeletedEntryID)
-		require.EqualValues(t, 9, streamInfo.Length)
+		require.EqualValues(t, 999, streamInfo.Length)
 
+		// Slowdown the migration speed to prevent running before next increment commands
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "256").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "4096").Err())
+		}()
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
-		newStreamID := "10"
+		newStreamID := "1001"
 		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
 			Stream: keys["stream"],
 			ID:     newStreamID + "-0",
 			Values: []string{"key" + newStreamID, "value" + newStreamID},
 		}).Err())
 		require.NoError(t, rdb0.XDel(ctx, keys["stream"], "1-0").Err())
-		require.NoError(t, rdb0.Do(ctx, "XSETID", keys["stream"], "10-0", "MAXDELETEDID", "2-0").Err())
-		waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
+		require.NoError(t, rdb0.Do(ctx, "XSETID", keys["stream"], "1001-0", "MAXDELETEDID", "2-0").Err())
+		waitForMigrateStateInDuration(t, rdb0, slot, SlotMigrationStateSuccess, time.Minute)
 
 		streamInfo = rdb1.XInfoStream(ctx, keys["stream"]).Val()
-		require.EqualValues(t, "10-0", streamInfo.LastGeneratedID)
-		require.EqualValues(t, 10, streamInfo.EntriesAdded)
+		require.EqualValues(t, "1001-0", streamInfo.LastGeneratedID)
+		require.EqualValues(t, 1000, streamInfo.EntriesAdded)
 		require.EqualValues(t, "2-0", streamInfo.MaxDeletedEntryID)
-		require.EqualValues(t, 9, streamInfo.Length)
+		require.EqualValues(t, 999, streamInfo.Length)
 	})
 
 	t.Run("MIGRATE - Migrating empty stream", func(t *testing.T) {

@@ -129,7 +129,7 @@ Config::Config() {
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
       {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
       {"force-compact-file-min-deleted-percentage", false,
-       new Int64Field(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
+       new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},

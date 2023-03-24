@@ -764,23 +764,10 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
       break;
     }
 
-    // Parse values of the complex key
-    // InternalKey is adopted to get complex key's value from the formatted key returned by iterator of rocksdb
-    InternalKey inkey(iter->key(), true);
-    std::vector<std::string> values;
-    auto s = Redis::DecodeRawStreamEntryValue(iter->value().ToString(), &values);
+    auto s = WriteBatchExtractor::ExtractStreamAddCommand(true, iter->key(), iter->value(), &user_cmd);
     if (!s.IsOK()) {
-      return {Status::NotOK, fmt::format("failed to decode stream values: {}", s.Msg())};
+      return s;
     }
-
-    Slice encoded_id = inkey.GetSubKey();
-    Redis::StreamEntryID entry_id;
-    GetFixed64(&encoded_id, &entry_id.ms);
-    GetFixed64(&encoded_id, &entry_id.seq);
-
-    user_cmd.emplace_back(entry_id.ToString());
-    user_cmd.insert(user_cmd.end(), values.begin(), values.end());
-
     *restore_cmds += Redis::MultiBulkString(user_cmd, false);
     current_pipeline_size_++;
 

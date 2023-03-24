@@ -86,7 +86,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       if (!isSetID) {
         return rocksdb::Status::OK();
       }
-      StreamMetadata stream_metadata(kRedisStream);
+      StreamMetadata stream_metadata;
       auto s = stream_metadata.Decode(value.ToString());
       if (!s.ok()) return s;
       command_args = {"XSETID",

@@ -408,7 +408,8 @@ class CommandClient : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
     // subcommand: getname id kill list info setname
-    if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list" || subcommand_ == "info") && args.size() == 2) {
+    if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list" || subcommand_ == "info") &&
+        args.size() == 2) {
       return Status::OK();
     }
 

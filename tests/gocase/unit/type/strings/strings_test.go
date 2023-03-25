@@ -476,6 +476,33 @@ func TestString(t *testing.T) {
 		require.EqualValues(t, "1234", rdb.GetRange(ctx, "mykey", -5000, 10000).Val())
 	})
 
+	// Since go-redis does not support SUBSTR, use Do to call the SUBSTR command.
+	t.Run("SUBSTR against non-existing key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mykey").Err())
+		require.Nil(t, rdb.Do(ctx, "SUBSTR", "mykey", 0, -1).Val())
+	})
+
+	t.Run("SUBSTR against string value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "Hello World", 0).Err())
+		require.EqualValues(t, "Hell", rdb.Do(ctx, "SUBSTR", "mykey", 0, 3).Val())
+		require.EqualValues(t, "ll", rdb.Do(ctx, "SUBSTR", "mykey", 2, 3).Val())
+		require.EqualValues(t, "Hello World", rdb.Do(ctx, "SUBSTR", "mykey", 0, -1).Val())
+		require.EqualValues(t, "orld", rdb.Do(ctx, "SUBSTR", "mykey", -4, -1).Val())
+		require.Nil(t, rdb.Do(ctx, "SUBSTR", "mykey", 5, 3).Val())
+		require.EqualValues(t, " World", rdb.Do(ctx, "SUBSTR", "mykey", 5, 5000).Val())
+		require.EqualValues(t, "Hello World", rdb.Do(ctx, "SUBSTR", "mykey", -5000, 10000).Val())
+	})
+
+	t.Run("SUBSTR against integer-encoded value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", 1234, 0).Err())
+		require.EqualValues(t, "123", rdb.Do(ctx, "SUBSTR", "mykey", 0, 2).Val())
+		require.EqualValues(t, "1234", rdb.Do(ctx, "SUBSTR", "mykey", 0, -1).Val())
+		require.EqualValues(t, "234", rdb.Do(ctx, "SUBSTR", "mykey", -3, -1).Val())
+		require.Nil(t, rdb.Do(ctx, "SUBSTR", "mykey", 5, 3).Val())
+		require.EqualValues(t, "4", rdb.Do(ctx, "SUBSTR", "mykey", 3, 5000).Val())
+		require.EqualValues(t, "1234", rdb.Do(ctx, "SUBSTR", "mykey", -5000, 10000).Val())
+	})
+
 	t.Run("Extended SET can detect syntax errors", func(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "SET", "foo", "bar", "non-existing-option").Err(), "syntax error")
 	})
@@ -623,7 +650,7 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
-	t.Run("GETRANGE with huge ranges, Github issue #1844", func(t *testing.T) {
+	t.Run("GETRANGE with huge ranges, Github issue redis/redis#1844", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.Equal(t, "bar", rdb.GetRange(ctx, "foo", 0, 2094967291).Val())
 	})

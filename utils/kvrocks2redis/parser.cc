@@ -28,6 +28,7 @@
 #include "cluster/redis_slot.h"
 #include "db_util.h"
 #include "server/redis_reply.h"
+#include "storage/redis_metadata.h"
 #include "types/redis_string.h"
 
 Status Parser::ParseFullDB() {
@@ -59,17 +60,17 @@ Status Parser::ParseFullDB() {
   return Status::OK();
 }
 
-Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, int expire) {
+Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire) {
   std::string ns, user_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
 
-  auto command = Redis::Command2RESP(
-      {"SET", user_key, value.ToString().substr(Redis::STRING_HDR_SIZE, value.size() - Redis::STRING_HDR_SIZE)});
+  auto command =
+      Redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
   Status s = writer_->Write(ns, {command});
   if (!s.IsOK()) return s;
 
   if (expire > 0) {
-    command = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire)});
+    command = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire / 1000)});
     s = writer_->Write(ns, {command});
   }
 
@@ -142,7 +143,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   if (metadata.expire > 0) {
-    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire)});
+    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
     Status s = writer_->Write(ns, {output});
     if (!s.IsOK()) return s.Prefixed("failed to write the EXPIREAT command to AOF");
   }

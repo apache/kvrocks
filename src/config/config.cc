@@ -394,7 +394,7 @@ void Config::initFieldCallback() {
          if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
          if (args[0] != "no" && args[1] != "one") {
            master_host = args[0];
-           auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, PORT_LIMIT - 1}, 10);
+           auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
            if (!parse_result) {
              return {Status::NotOK, "should be between 0 and 65535"};
            }
@@ -620,7 +620,7 @@ void Config::initFieldCallback() {
   }
 }
 
-std::string Config::NodesFilePath() { return dir + "/nodes.conf"; }
+std::string Config::NodesFilePath() const { return dir + "/nodes.conf"; }
 
 void Config::SetMaster(const std::string &host, uint32_t port) {
   master_host = host;

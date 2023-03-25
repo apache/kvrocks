@@ -31,14 +31,16 @@
 namespace Redis {
 class Database {
  public:
+  static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
+
   explicit Database(Engine::Storage *storage, std::string ns = "");
   rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
   rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
   rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes);
-  rocksdb::Status Expire(const Slice &user_key, int timestamp);
+  rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   rocksdb::Status Del(const Slice &user_key);
   rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
-  rocksdb::Status TTL(const Slice &user_key, int *ttl);
+  rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
   rocksdb::Status Type(const Slice &user_key, RedisType *type);
   rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   rocksdb::Status FlushDB();

@@ -407,14 +407,15 @@ class CommandClient : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = Util::ToLower(args[1]);
-    // subcommand: getname id kill list setname
-    if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list") && args.size() == 2) {
+    // subcommand: getname id kill list info setname
+    if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list" || subcommand_ == "info") &&
+        args.size() == 2) {
       return Status::OK();
     }
 
     if ((subcommand_ == "setname") && args.size() == 3) {
       // Check if the charset is ok. We need to do this otherwise
-      // CLIENT LIST format will break. You should always be able to
+      // CLIENT LIST or CLIENT INFO format will break. You should always be able to
       // split by space to get the different fields.
       for (auto ch : args[2]) {
         if (ch < '!' || ch > '~') {
@@ -478,12 +479,15 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME"};
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "list") {
       *output = Redis::BulkString(srv->GetClientsStr());
+      return Status::OK();
+    } else if (subcommand_ == "info") {
+      *output = Redis::BulkString(conn->ToString());
       return Status::OK();
     } else if (subcommand_ == "setname") {
       conn->SetName(conn_name_);
@@ -510,7 +514,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|KILL ip:port|GETNAME|SETNAME"};
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME"};
   }
 
  private:
@@ -728,7 +732,7 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
+  static std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
       end_cursor = kCursorPrefix + end_cursor;

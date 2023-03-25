@@ -758,12 +758,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
-bool Cluster::IsWriteForbiddenSlot(int slot) {
-  if (svr_->slot_migrate_->GetForbiddenSlot() == slot) {
-    return true;
-  }
-  return false;
-}
+bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrate_->GetForbiddenSlot() == slot; }
 
 Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {

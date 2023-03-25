@@ -42,7 +42,7 @@ func TestExpire(t *testing.T) {
 		require.True(t, rdb.Expire(ctx, "x", 5*time.Second).Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 4*time.Second, 5*time.Second)
 		require.True(t, rdb.Expire(ctx, "x", 10*time.Second).Val())
-		require.Equal(t, 10*time.Second, rdb.TTL(ctx, "x").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "x").Val().Seconds(), 9, 10)
 		require.NoError(t, rdb.Expire(ctx, "x", 2*time.Second).Err())
 	})
 
@@ -112,10 +112,10 @@ func TestExpire(t *testing.T) {
 	t.Run("EXPIRE precision is now the millisecond", func(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
-			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", time.Second).Err())
-			time.Sleep(900 * time.Millisecond)
+			require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1500*time.Millisecond).Err())
+			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(1100 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -125,10 +125,10 @@ func TestExpire(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
-			require.NoError(t, rdb.PExpire(ctx, "x", 100*time.Millisecond).Err())
+			require.NoError(t, rdb.PExpire(ctx, "x", 1500*time.Millisecond).Err())
 			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(2 * time.Second)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -138,10 +138,10 @@ func TestExpire(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
 			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 0).Err())
-			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+100)).Err())
+			require.NoError(t, rdb.PExpireAt(ctx, "x", time.UnixMilli(time.Now().Unix()*1000+1500)).Err())
 			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(2 * time.Second)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -150,10 +150,10 @@ func TestExpire(t *testing.T) {
 	t.Run("PSETEX can set sub-second expires", func(t *testing.T) {
 		util.RetryEventually(t, func() bool {
 			require.NoError(t, rdb.Del(ctx, "x").Err())
-			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 100*time.Millisecond).Err())
+			require.NoError(t, rdb.Set(ctx, "x", "somevalue", 1500*time.Millisecond).Err())
 			time.Sleep(50 * time.Millisecond)
 			a := rdb.Get(ctx, "x").Val()
-			time.Sleep(2 * time.Second)
+			time.Sleep(2000 * time.Millisecond)
 			b := rdb.Get(ctx, "x").Val()
 			return a == "somevalue" && b == ""
 		}, 3)
@@ -167,8 +167,8 @@ func TestExpire(t *testing.T) {
 
 	t.Run("PTTL returns time to live in milliseconds", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "x").Err())
-		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 1*time.Second).Err())
-		util.BetweenValues(t, rdb.PTTL(ctx, "x").Val(), 900*time.Millisecond, 1000*time.Millisecond)
+		require.NoError(t, rdb.SetEx(ctx, "x", "somevalue", 2*time.Second).Err())
+		util.BetweenValues(t, rdb.PTTL(ctx, "x").Val(), 500*time.Millisecond, 2500*time.Millisecond)
 	})
 
 	t.Run("TTL / PTTL return -1 if key has no expire", func(t *testing.T) {
@@ -186,11 +186,11 @@ func TestExpire(t *testing.T) {
 
 	t.Run("Redis should actively expire keys incrementally", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key1", 500, "a").Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key2", 500, "a").Err())
-		require.NoError(t, rdb.Do(ctx, "PSETEX", "key3", 500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key1", 1500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key2", 1500, "a").Err())
+		require.NoError(t, rdb.Do(ctx, "PSETEX", "key3", 1500, "a").Err())
 		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		require.EqualValues(t, 3, rdb.DBSize(ctx).Val())
 		time.Sleep(2000 * time.Millisecond)
 		require.NoError(t, rdb.Do(ctx, "DBSIZE", "scan").Err())

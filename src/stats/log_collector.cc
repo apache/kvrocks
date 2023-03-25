@@ -23,8 +23,9 @@
 #include <algorithm>
 
 #include "server/redis_reply.h"
+#include "time_util.h"
 
-std::string SlowEntry::ToRedisString() {
+std::string SlowEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(4));
   output.append(Redis::Integer(id));
@@ -34,7 +35,7 @@ std::string SlowEntry::ToRedisString() {
   return output;
 }
 
-std::string PerfEntry::ToRedisString() {
+std::string PerfEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(6));
   output.append(Redis::Integer(id));
@@ -79,7 +80,7 @@ template <class T>
 void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   std::lock_guard<std::mutex> guard(mu_);
   entry->id = ++id_;
-  entry->time = time(nullptr);
+  entry->time = Util::GetTimeStamp();
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     entries_.pop_back();
   }

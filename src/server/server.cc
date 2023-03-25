@@ -620,7 +620,7 @@ void Server::delConnContext(ConnContext *c) {
 }
 
 void Server::updateCachedTime() {
-  time_t ret = time(nullptr);
+  time_t ret = Util::GetTimeStamp();
   if (ret == -1) return;
   unix_time_.store(static_cast<int>(ret));
 }
@@ -887,12 +887,11 @@ void Server::GetMemoryInfo(std::string *info) {
 }
 
 void Server::GetReplicationInfo(std::string *info) {
-  time_t now = 0;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
-    time(&now);
+    time_t now = Util::GetTimeStamp();
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
@@ -1295,7 +1294,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
     db_scan_infos_[ns].key_num_stats = stats;
-    time(&db_scan_infos_[ns].last_scan_time);
+    db_scan_infos_[ns].last_scan_time = Util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
   });
 }

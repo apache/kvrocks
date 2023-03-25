@@ -131,6 +131,8 @@ struct Config {
   Cron compact_cron;
   Cron bgsave_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
+  int64_t force_compact_file_age;
+  int force_compact_file_min_deleted_percentage;
   std::map<std::string, std::string> tokens;
   std::string replica_announce_ip;
   uint32_t replica_announce_port = 0;

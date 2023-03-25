@@ -45,6 +45,11 @@ func TestIntrospection(t *testing.T) {
 		require.Regexp(t, "id=.* addr=.*:.* fd=.* name=.* age=.* idle=.* flags=N namespace=.* qbuf=.* .*obuf=.* cmd=client.*", v)
 	})
 
+	t.Run("CLIENT INFO", func(t *testing.T) {
+		v := rdb.Do(ctx, "CLIENT", "INFO").Val()
+		require.Regexp(t, "id=.* addr=.*:.* fd=.* name=.* age=.* idle=.* flags=N namespace=.* qbuf=.* .*obuf=.* cmd=client.*", v)
+	})
+
 	t.Run("MONITOR can log executed commands", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
@@ -62,6 +67,10 @@ func TestIntrospection(t *testing.T) {
 
 	t.Run("CLIENT LIST shows empty fields for unassigned names", func(t *testing.T) {
 		require.Regexp(t, ".*name= .*", rdb.ClientList(ctx).Val())
+	})
+
+	t.Run("CLIENT INFO shows empty fields for unassigned names", func(t *testing.T) {
+		require.Regexp(t, ".*name= .*", rdb.Do(ctx, "CLIENT", "INFO").Val())
 	})
 
 	t.Run("CLIENT SETNAME does not accept spaces", func(t *testing.T) {

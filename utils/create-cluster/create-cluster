@@ -65,7 +65,18 @@ then
         sed -i.bak "s|port.*|port ${PORT}|g" ${conf_file} && rm ${conf_file}.bak
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak
         $BIN_PATH/kvrocks -c ${conf_file}
-        sleep 2 # wait enough time
+        wait_times=0
+        max_wait_times=5
+        until nc -z 127.0.0.1 ${PORT}; do
+            sleep 1
+            wait_times=$((wait_times+1))
+            echo "instance is not ready wait ${wait_times}/${max_wait_times}s"
+            if [[ ${wait_times} > 5 ]]
+            then
+                echo "instance is not readys, please check it:" ${PORT}
+                exit 1
+            fi
+        done
         redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
         redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
         index=$((index+1))

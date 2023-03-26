@@ -18,7 +18,7 @@
 # under the License.
 
 # Settings
-BIN_PATH="../../src/"
+BIN_PATH="../../build/"
 HOST=127.0.0.1
 PORT=30000
 NODES=6
@@ -65,7 +65,7 @@ then
         sed -i.bak "s|port.*|port ${PORT}|g" ${conf_file} && rm ${conf_file}.bak
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak
         $BIN_PATH/kvrocks -c ${conf_file}
-        sleep 1
+        sleep 2 # wait enough time
         redis-cli -h 127.0.0.1 -p $PORT clusterx setnodeid ${node_id[$index]}
         redis-cli -h 127.0.0.1 -p $PORT clusterx setnodes "${cluster_nodes}" 1
         index=$((index+1))

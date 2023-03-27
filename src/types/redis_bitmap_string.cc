@@ -27,6 +27,7 @@
 
 #include "redis_string.h"
 #include "storage/redis_metadata.h"
+#include "type_util.h"
 
 namespace Redis {
 
@@ -143,13 +144,14 @@ size_t BitmapString::redisPopcount(const uint8_t *p, int64_t count) {
   return bits;
 }
 
-inline int clzll_endian(uint64_t x) {
-  if constexpr (BYTE_ORDER == LITTLE_ENDIAN) {
+template <typename T = void>
+inline int clzllWithEndian(uint64_t x) {
+  if constexpr (IsLittleEndian()) {
     return __builtin_clzll(__builtin_bswap64(x));
-  } else if constexpr (BYTE_ORDER == BIG_ENDIAN) {
+  } else if constexpr (IsBigEndian()) {
     return __builtin_clzll(x);
   } else {
-    std::abort();
+    static_assert(AlwaysFalse<T>);
   }
 }
 
@@ -170,7 +172,7 @@ int64_t BitmapString::redisBitpos(const uint8_t *c, int64_t count, bool bit) {
     for (; count >= 8; c += 8, count -= 8) {
       uint64_t x = *reinterpret_cast<const uint64_t *>(c);
       if (x != 0) {
-        return res + clzll_endian(x);
+        return res + clzllWithEndian(x);
       }
       res += 64;
     }
@@ -178,7 +180,7 @@ int64_t BitmapString::redisBitpos(const uint8_t *c, int64_t count, bool bit) {
     if (count > 0) {
       uint64_t v = 0;
       __builtin_memcpy(&v, c, count);
-      res += v == 0 ? count * 8 : clzll_endian(v);
+      res += v == 0 ? count * 8 : clzllWithEndian(v);
     }
 
     if (res == ct * 8) {
@@ -188,7 +190,7 @@ int64_t BitmapString::redisBitpos(const uint8_t *c, int64_t count, bool bit) {
     for (; count >= 8; c += 8, count -= 8) {
       uint64_t x = *reinterpret_cast<const uint64_t *>(c);
       if (x != (uint64_t)-1) {
-        return res + clzll_endian(~x);
+        return res + clzllWithEndian(~x);
       }
       res += 64;
     }
@@ -196,7 +198,7 @@ int64_t BitmapString::redisBitpos(const uint8_t *c, int64_t count, bool bit) {
     if (count > 0) {
       uint64_t v = -1;
       __builtin_memcpy(&v, c, count);
-      res += v == (uint64_t)-1 ? count * 8 : clzll_endian(~v);
+      res += v == (uint64_t)-1 ? count * 8 : clzllWithEndian(~v);
     }
   }
 

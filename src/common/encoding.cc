@@ -148,16 +148,15 @@ void PutDouble(std::string *dst, double value) {
 
   __builtin_memcpy(&u64, &value, sizeof(value));
 
-  auto ptr = &u64;
-  if ((*ptr >> 63) == 1) {
+  if ((u64 >> 63) == 1) {
     // signed bit would be zero
-    *ptr ^= 0xffffffffffffffff;
+    u64 ^= 0xffffffffffffffff;
   } else {
     // signed bit would be one
-    *ptr |= 0x8000000000000000;
+    u64 |= 0x8000000000000000;
   }
 
-  PutFixed64(dst, *ptr);
+  PutFixed64(dst, u64);
 }
 
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value) {

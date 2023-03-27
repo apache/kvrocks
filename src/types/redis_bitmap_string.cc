@@ -20,7 +20,6 @@
 
 #include "redis_bitmap_string.h"
 
-#include <endian.h>
 #include <glog/logging.h>
 
 #include <cstdint>

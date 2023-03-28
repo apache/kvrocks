@@ -38,8 +38,8 @@ class BitmapString : public Database {
                                 int64_t *pos);
 
  private:
-  static size_t redisPopcount(unsigned char *p, int64_t count);
-  static int64_t redisBitpos(unsigned char *c, int64_t count, int bit);
+  static size_t redisPopcount(const uint8_t *p, int64_t count);
+  static int64_t redisBitpos(const uint8_t *c, int64_t count, bool bit);
 };
 
 }  // namespace Redis

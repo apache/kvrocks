@@ -13,6 +13,7 @@ RestartSec=10s
 LimitNOFILE=100000
 LimitNPROC=4096
 TimeoutSec=300
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=multi-user.target

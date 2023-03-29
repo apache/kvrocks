@@ -1,7 +1,8 @@
 [Unit]
 Description=kvrocks SSD key-value database
 Documentation=https://github.com/apache/incubator-kvrocks
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=notify

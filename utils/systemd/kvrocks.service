@@ -11,6 +11,8 @@ Restart=on-failure
 ExecStop=/bin/kill -s TERM $MAINPID
 RestartSec=10s
 LimitNOFILE=100000
+LimitNPROC=4096
+TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

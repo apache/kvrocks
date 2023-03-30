@@ -151,7 +151,7 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
   if (old_node == myself_ && old_node != to_assign_node) {
     // If slot is migrated from this node
     if (migrated_slots_.count(slot) > 0) {
-      svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, slot);
+      svr_->slot_migrator_->ClearKeysOfSlot(kDefaultNamespace, slot);
       migrated_slots_.erase(slot);
     }
     // If slot is imported into this node
@@ -231,7 +231,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   if (!migrated_slots_.empty()) {
     for (auto &it : migrated_slots_) {
       if (slots_nodes_[it.first] != myself_) {
-        svr_->slot_migrate_->ClearKeysOfSlot(kDefaultNamespace, it.first);
+        svr_->slot_migrator_->ClearKeysOfSlot(kDefaultNamespace, it.first);
       }
     }
   }
@@ -322,9 +322,9 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
   }
 
   const auto dst = nodes_[dst_node_id];
-  Status s = svr_->slot_migrate_->MigrateStart(svr_, dst_node_id, dst->host_, dst->port_, slot,
-                                               svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
-                                               svr_->GetConfig()->sequence_gap);
+  Status s = svr_->slot_migrator_->PerformSlotMigration(
+      dst_node_id, dst->host_, dst->port_, slot, svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
+      svr_->GetConfig()->sequence_gap);
   return s;
 }
 
@@ -351,7 +351,7 @@ Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
         object_ptr->StopForLinkError(capture_fd);
       };
       // Stop forbidding writing slot to accept write commands
-      if (slot == svr_->slot_migrate_->GetForbiddenSlot()) svr_->slot_migrate_->ReleaseForbiddenSlot();
+      if (slot == svr_->slot_migrator_->GetForbiddenSlot()) svr_->slot_migrator_->ReleaseForbiddenSlot();
       LOG(INFO) << "[import] Start importing slot " << slot;
       break;
     case kImportSuccess:
@@ -416,7 +416,7 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   if (myself_ != nullptr && myself_->role_ == kClusterMaster && !svr_->IsSlave()) {
     // Get migrating status
     std::string migrate_infos;
-    svr_->slot_migrate_->GetMigrateInfo(&migrate_infos);
+    svr_->slot_migrator_->GetMigrationInfo(&migrate_infos);
     *cluster_infos += migrate_infos;
 
     // Get importing status
@@ -758,7 +758,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
-bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrate_->GetForbiddenSlot() == slot; }
+bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator_->GetForbiddenSlot() == slot; }
 
 Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {

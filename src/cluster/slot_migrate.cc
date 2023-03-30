@@ -31,7 +31,6 @@
 #include "thread_util.h"
 #include "time_util.h"
 #include "types/redis_stream_base.h"
-#include "types/redis_string.h"
 
 const char *errFailedToSendCommands = "failed to send commands to restore a key";
 const char *errMigrationTaskCanceled = "key migration stopped due to a task cancellation";
@@ -42,7 +41,7 @@ static std::map<RedisType, std::string> type_to_cmd = {
     {kRedisZSet, "zadd"},  {kRedisBitmap, "setbit"}, {kRedisSortedint, "siadd"}, {kRedisStream, "xadd"},
 };
 
-SlotMigrate::SlotMigrate(Server *svr, int migration_speed, int pipeline_size_limit, int seq_gap)
+SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipeline_size, int seq_gap_limit)
     : Database(svr->storage_, kDefaultNamespace), svr_(svr) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
@@ -61,61 +60,67 @@ SlotMigrate::SlotMigrate(Server *svr, int migration_speed, int pipeline_size_lim
   // This problem may exist in all functions of Database called in slot migration process.
   metadata_cf_handle_ = nullptr;
 
-  if (migration_speed >= 0) {
-    migration_speed_ = migration_speed;
+  if (max_migration_speed >= 0) {
+    max_migration_speed_ = max_migration_speed;
   }
-  if (pipeline_size_limit > 0) {
-    pipeline_size_limit_ = pipeline_size_limit;
+  if (max_pipeline_size > 0) {
+    max_pipeline_size_ = max_pipeline_size;
   }
-  if (seq_gap > 0) {
-    seq_gap_limit_ = seq_gap;
+  if (seq_gap_limit > 0) {
+    seq_gap_limit_ = seq_gap_limit;
   }
 
   if (svr->IsSlave()) {
-    SetMigrateStopFlag(true);
+    SetStopMigrationFlag(true);
   }
 }
 
-Status SlotMigrate::MigrateStart(Server *svr, const std::string &node_id, const std::string &dst_ip, int dst_port,
-                                 int slot, int speed, int pipeline_size, int seq_gap) {
+Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
+                                          int speed, int pipeline_size, int seq_gap) {
   // Only one slot migration job at the same time
   int16_t no_slot = -1;
-  if (!migrate_slot_.compare_exchange_strong(no_slot, (int16_t)slot)) {
+  if (!migrating_slot_.compare_exchange_strong(no_slot, static_cast<int16_t>(slot_id))) {
     return {Status::NotOK, "There is already a migrating slot"};
   }
 
-  if (forbidden_slot_ == slot) {
+  if (forbidden_slot_ == slot_id) {
     // Have to release migrate slot set above
-    migrate_slot_ = -1;
+    migrating_slot_ = -1;
     return {Status::NotOK, "Can't migrate slot which has been migrated"};
   }
 
-  migrate_state_ = kMigrateStarted;
+  migration_state_ = MigrationState::kStarted;
+
   if (speed <= 0) {
     speed = 0;
   }
+
   if (pipeline_size <= 0) {
-    pipeline_size = kDefaultPipelineSizeLimit;
+    pipeline_size = kDefaultMaxPipelineSize;
   }
+
   if (seq_gap <= 0) {
-    seq_gap = kDefaultSeqGapLimit;
+    seq_gap = kDefaultSequenceGapLimit;
   }
+
   dst_node_ = node_id;
 
   // Create migration job
-  auto job = std::make_unique<SlotMigrateJob>(slot, dst_ip, dst_port, speed, pipeline_size, seq_gap);
+  auto job = std::make_unique<SlotMigrationJob>(slot_id, dst_ip, dst_port, speed, pipeline_size, seq_gap);
   {
     std::lock_guard<std::mutex> guard(job_mutex_);
-    slot_job_ = std::move(job);
+    migration_job_ = std::move(job);
     job_cv_.notify_one();
   }
-  LOG(INFO) << "[migrate] Start migrating slot " << slot << " to " << dst_ip << ":" << dst_port;
+
+  LOG(INFO) << "[migrate] Start migrating slot " << slot_id << " to " << dst_ip << ":" << dst_port;
+
   return Status::OK();
 }
 
-SlotMigrate::~SlotMigrate() {
+SlotMigrator::~SlotMigrator() {
   if (thread_state_ == ThreadState::Running) {
-    stop_migrate_ = true;
+    stop_migration_ = true;
     thread_state_ = ThreadState::Terminated;
     job_cv_.notify_all();
     if (auto s = Util::ThreadJoin(t_); !s) {
@@ -124,7 +129,7 @@ SlotMigrate::~SlotMigrate() {
   }
 }
 
-Status SlotMigrate::CreateMigrateHandleThread() {
+Status SlotMigrator::CreateMigrationThread() {
   t_ = GET_OR_RET(Util::CreateThread("slot-migrate", [this] {
     thread_state_ = ThreadState::Running;
     this->Loop();
@@ -133,10 +138,10 @@ Status SlotMigrate::CreateMigrateHandleThread() {
   return Status::OK();
 }
 
-void SlotMigrate::Loop() {
+void SlotMigrator::Loop() {
   while (true) {
     std::unique_lock<std::mutex> ul(job_mutex_);
-    while (!IsTerminated() && !slot_job_) {
+    while (!IsTerminated() && !migration_job_) {
       job_cv_.wait(ul);
     }
     ul.unlock();
@@ -146,22 +151,22 @@ void SlotMigrate::Loop() {
       return;
     }
 
-    LOG(INFO) << "[migrate] migrate_slot: " << slot_job_->migrate_slot_ << ", dst_ip: " << slot_job_->dst_ip_
-              << ", dst_port: " << slot_job_->dst_port_ << ", speed_limit: " << slot_job_->speed_limit_
-              << ", pipeline_size_limit: " << slot_job_->pipeline_size_;
+    LOG(INFO) << "[migrate] Migrating slot: " << migration_job_->slot_id_ << ", dst_ip: " << migration_job_->dst_ip_
+              << ", dst_port: " << migration_job_->dst_port_ << ", max_speed: " << migration_job_->max_speed_
+              << ", max_pipeline_size: " << migration_job_->max_pipeline_size_;
 
-    dst_ip_ = slot_job_->dst_ip_;
-    dst_port_ = slot_job_->dst_port_;
-    migration_speed_ = slot_job_->speed_limit_;
-    pipeline_size_limit_ = slot_job_->pipeline_size_;
-    seq_gap_limit_ = slot_job_->seq_gap_;
+    dst_ip_ = migration_job_->dst_ip_;
+    dst_port_ = migration_job_->dst_port_;
+    max_migration_speed_ = migration_job_->max_speed_;
+    max_pipeline_size_ = migration_job_->max_pipeline_size_;
+    seq_gap_limit_ = migration_job_->seq_gap_limit_;
 
-    RunStateMachine();
+    RunMigrationProcess();
   }
 }
 
-void SlotMigrate::RunStateMachine() {
-  state_machine_ = kSlotMigrateStart;
+void SlotMigrator::RunMigrationProcess() {
+  current_stage_ = SlotMigrationStage::kStart;
 
   while (true) {
     if (IsTerminated()) {
@@ -170,76 +175,76 @@ void SlotMigrate::RunStateMachine() {
       return;
     }
 
-    switch (state_machine_) {
-      case kSlotMigrateStart: {
-        auto s = Start();
+    switch (current_stage_) {
+      case SlotMigrationStage::kStart: {
+        auto s = StartMigration();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to start migrating slot " << migrate_slot_;
-          state_machine_ = kSlotMigrateSnapshot;
+          LOG(INFO) << "[migrate] Succeed to start migrating slot " << migrating_slot_;
+          current_stage_ = SlotMigrationStage::kSnapshot;
         } else {
-          LOG(ERROR) << "[migrate] Failed to start migrating slot " << migrate_slot_ << ". Error: " << s.Msg();
-          state_machine_ = kSlotMigrateFailed;
+          LOG(ERROR) << "[migrate] Failed to start migrating slot " << migrating_slot_ << ". Error: " << s.Msg();
+          current_stage_ = SlotMigrationStage::kFailed;
         }
         break;
       }
-      case kSlotMigrateSnapshot: {
+      case SlotMigrationStage::kSnapshot: {
         auto s = SendSnapshot();
         if (s.IsOK()) {
-          state_machine_ = kSlotMigrateWal;
+          current_stage_ = SlotMigrationStage::kWAL;
         } else {
-          LOG(ERROR) << "[migrate] Failed to send snapshot of slot " << migrate_slot_ << ". Error: " << s.Msg();
-          state_machine_ = kSlotMigrateFailed;
+          LOG(ERROR) << "[migrate] Failed to send snapshot of slot " << migrating_slot_ << ". Error: " << s.Msg();
+          current_stage_ = SlotMigrationStage::kFailed;
         }
         break;
       }
-      case kSlotMigrateWal: {
-        auto s = SyncWal();
+      case SlotMigrationStage::kWAL: {
+        auto s = SyncWAL();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to sync WAL for a slot " << migrate_slot_;
-          state_machine_ = kSlotMigrateSuccess;
+          LOG(INFO) << "[migrate] Succeed to sync from WAL for a slot " << migrating_slot_;
+          current_stage_ = SlotMigrationStage::kSuccess;
         } else {
-          LOG(ERROR) << "[migrate] Failed to sync WAL for a slot " << migrate_slot_ << ". Error: " << s.Msg();
-          state_machine_ = kSlotMigrateFailed;
+          LOG(ERROR) << "[migrate] Failed to sync from WAL for a slot " << migrating_slot_ << ". Error: " << s.Msg();
+          current_stage_ = SlotMigrationStage::kFailed;
         }
         break;
       }
-      case kSlotMigrateSuccess: {
-        auto s = Success();
+      case SlotMigrationStage::kSuccess: {
+        auto s = FinishSuccessfulMigration();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to migrate slot " << migrate_slot_;
-          state_machine_ = kSlotMigrateClean;
-          migrate_state_ = kMigrateSuccess;
+          LOG(INFO) << "[migrate] Succeed to migrate slot " << migrating_slot_;
+          current_stage_ = SlotMigrationStage::kClean;
+          migration_state_ = MigrationState::kSuccess;
         } else {
-          LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot " << migrate_slot_
+          LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot " << migrating_slot_
                      << ". Error: " << s.Msg();
-          state_machine_ = kSlotMigrateFailed;
+          current_stage_ = SlotMigrationStage::kFailed;
         }
         break;
       }
-      case kSlotMigrateFailed: {
-        auto s = Fail();
+      case SlotMigrationStage::kFailed: {
+        auto s = FinishFailedMigration();
         if (!s.IsOK()) {
-          LOG(ERROR) << "[migrate] Failed to finish a failed migration of slot " << migrate_slot_
+          LOG(ERROR) << "[migrate] Failed to finish a failed migration of slot " << migrating_slot_
                      << ". Error: " << s.Msg();
         }
-        LOG(INFO) << "[migrate] Failed to migrate a slot" << migrate_slot_;
-        migrate_state_ = kMigrateFailed;
-        state_machine_ = kSlotMigrateClean;
+        LOG(INFO) << "[migrate] Failed to migrate a slot" << migrating_slot_;
+        migration_state_ = MigrationState::kFailed;
+        current_stage_ = SlotMigrationStage::kClean;
         break;
       }
-      case kSlotMigrateClean: {
+      case SlotMigrationStage::kClean: {
         Clean();
         return;
       }
       default:
-        LOG(ERROR) << "[migrate] Unexpected state for the state machine: " << state_machine_;
+        LOG(ERROR) << "[migrate] Unexpected state for the state machine: " << static_cast<int>(current_stage_);
         Clean();
         return;
     }
   }
 }
 
-Status SlotMigrate::Start() {
+Status SlotMigrator::StartMigration() {
   // Get snapshot and sequence
   slot_snapshot_ = storage_->GetDB()->GetSnapshot();
   if (!slot_snapshot_) {
@@ -247,8 +252,6 @@ Status SlotMigrate::Start() {
   }
 
   wal_begin_seq_ = slot_snapshot_->GetSequenceNumber();
-  slot_snapshot_time_ = Util::GetTimeStampUS();
-  current_pipeline_size_ = 0;
   last_send_time_ = 0;
 
   // Connect to the destination node
@@ -257,33 +260,35 @@ Status SlotMigrate::Start() {
     return {Status::NotOK, fmt::format("failed to connect to the destination node: {}", result.Msg())};
   }
 
-  slot_job_->slot_fd_ = *result;
+  dst_fd_.Reset(*result);
 
   // Auth first
   std::string pass = svr_->GetConfig()->requirepass;
   if (!pass.empty()) {
-    auto s = AuthDstServer(slot_job_->slot_fd_, pass);
+    auto s = AuthOnDstNode(*dst_fd_, pass);
     if (!s.IsOK()) {
       return s.Prefixed("failed to authenticate on destination node");
     }
   }
 
   // Set destination node import status to START
-  auto s = SetDstImportStatus(slot_job_->slot_fd_, kImportStart);
+  auto s = SetImportStatusOnDstNode(*dst_fd_, kImportStart);
   if (!s.IsOK()) {
     return s.Prefixed(errFailedToSetImportStatus);
   }
 
-  LOG(INFO) << "[migrate] Start migrating slot " << migrate_slot_ << ", connect destination fd " << slot_job_->slot_fd_;
+  LOG(INFO) << "[migrate] Start migrating slot " << migrating_slot_ << ", connect destination fd " << *dst_fd_;
+
   return Status::OK();
 }
 
-Status SlotMigrate::SendSnapshot() {
+Status SlotMigrator::SendSnapshot() {
   uint64_t migrated_key_cnt = 0;
   uint64_t expired_key_cnt = 0;
   uint64_t empty_key_cnt = 0;
   std::string restore_cmds;
-  int16_t slot = migrate_slot_;
+  int16_t slot = migrating_slot_;
+
   LOG(INFO) << "[migrate] Start migrating snapshot of slot " << slot;
 
   rocksdb::ReadOptions read_options;
@@ -301,7 +306,7 @@ Status SlotMigrate::SendSnapshot() {
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
     // The migrating task has to be stopped, if server role is changed from master to slave
     // or flush command (flushdb or flushall) is executed
-    if (stop_migrate_) {
+    if (stop_migration_) {
       return {Status::NotOK, errMigrationTaskCanceled};
     }
 
@@ -313,9 +318,8 @@ Status SlotMigrate::SendSnapshot() {
     // Get user key
     std::string ns, user_key;
     ExtractNamespaceKey(iter->key(), &ns, &user_key, true);
-    current_migrate_key_ = user_key;
 
-    // Add key's constructed cmd to restore_cmds, send pipeline or not according to current_pipeline_size_
+    // Add key's constructed commands to restore_cmds, send pipeline or not according to task's max_pipeline_size
     auto result = MigrateOneKey(user_key, iter->value(), &restore_cmds);
     if (!result.IsOK()) {
       return {Status::NotOK, fmt::format("failed to migrate a key {}: {}", user_key, result.Msg())};
@@ -337,7 +341,7 @@ Status SlotMigrate::SendSnapshot() {
   }
 
   // It's necessary to send commands that are still in the pipeline since the final pipeline may not be sent
-  // while iterating keys because its size could be less than pipeline_size_limit_
+  // while iterating keys because its size could be less than max_pipeline_size_
   auto s = SendCmdsPipelineIfNeed(&restore_cmds, true);
   if (!s.IsOK()) {
     return s.Prefixed(errFailedToSendCommands);
@@ -349,15 +353,17 @@ Status SlotMigrate::SendSnapshot() {
   return Status::OK();
 }
 
-Status SlotMigrate::SyncWal() {
-  // Send incremental data in WAL circularly until new increment less than a certain amount
-  auto s = SyncWalBeforeForbidSlot();
+Status SlotMigrator::SyncWAL() {
+  // Send incremental data from WAL circularly until new increment less than a certain amount
+  auto s = SyncWalBeforeForbiddingSlot();
   if (!s.IsOK()) {
     return s.Prefixed("failed to sync WAL before forbidding a slot");
   }
 
-  // Set forbidden slot, and send last incremental data
-  s = SyncWalAfterForbidSlot();
+  SetForbiddenSlot(migrating_slot_);
+
+  // Send last incremental data
+  s = SyncWalAfterForbiddingSlot();
   if (!s.IsOK()) {
     return s.Prefixed("failed to sync WAL after forbidding a slot");
   }
@@ -365,21 +371,21 @@ Status SlotMigrate::SyncWal() {
   return Status::OK();
 }
 
-Status SlotMigrate::Success() {
-  if (stop_migrate_) {
+Status SlotMigrator::FinishSuccessfulMigration() {
+  if (stop_migration_) {
     return {Status::NotOK, errMigrationTaskCanceled};
   }
 
   // Set import status on the destination node to SUCCESS
-  auto s = SetDstImportStatus(slot_job_->slot_fd_, kImportSuccess);
+  auto s = SetImportStatusOnDstNode(*dst_fd_, kImportSuccess);
   if (!s.IsOK()) {
     return s.Prefixed(errFailedToSetImportStatus);
   }
 
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
-  s = svr_->cluster_->SetSlotMigrated(migrate_slot_, dst_ip_port);
+  s = svr_->cluster_->SetSlotMigrated(migrating_slot_, dst_ip_port);
   if (!s.IsOK()) {
-    return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrate_slot_, dst_ip_port));
+    return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrating_slot_, dst_ip_port));
   }
 
   migrate_failed_slot_ = -1;
@@ -387,13 +393,13 @@ Status SlotMigrate::Success() {
   return Status::OK();
 }
 
-Status SlotMigrate::Fail() {
+Status SlotMigrator::FinishFailedMigration() {
   // Stop slot will forbid writing
-  migrate_failed_slot_ = migrate_slot_;
+  migrate_failed_slot_ = migrating_slot_;
   forbidden_slot_ = -1;
 
   // Set import status on the destination node to FAILED
-  auto s = SetDstImportStatus(slot_job_->slot_fd_, kImportFailed);
+  auto s = SetImportStatusOnDstNode(*dst_fd_, kImportFailed);
   if (!s.IsOK()) {
     return s.Prefixed(errFailedToSetImportStatus);
   }
@@ -401,31 +407,31 @@ Status SlotMigrate::Fail() {
   return Status::OK();
 }
 
-void SlotMigrate::Clean() {
-  LOG(INFO) << "[migrate] Clean resources of migrating slot " << migrate_slot_;
+void SlotMigrator::Clean() {
+  LOG(INFO) << "[migrate] Clean resources of migrating slot " << migrating_slot_;
   if (slot_snapshot_) {
     storage_->GetDB()->ReleaseSnapshot(slot_snapshot_);
     slot_snapshot_ = nullptr;
   }
 
-  state_machine_ = kSlotMigrateNone;
+  current_stage_ = SlotMigrationStage::kNone;
   current_pipeline_size_ = 0;
   wal_begin_seq_ = 0;
-  wal_increment_seq_ = 0;
   std::lock_guard<std::mutex> guard(job_mutex_);
-  slot_job_.reset();
-  migrate_slot_ = -1;
-  SetMigrateStopFlag(false);
+  migration_job_.reset();
+  dst_fd_.Reset();
+  migrating_slot_ = -1;
+  SetStopMigrationFlag(false);
 }
 
-Status SlotMigrate::AuthDstServer(int sock_fd, const std::string &password) {
+Status SlotMigrator::AuthOnDstNode(int sock_fd, const std::string &password) {
   std::string cmd = Redis::MultiBulkString({"auth", password}, false);
   auto s = Util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send AUTH command");
   }
 
-  s = CheckResponseOnce(sock_fd);
+  s = CheckSingleResponse(sock_fd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to check the response of AUTH command");
   }
@@ -433,17 +439,17 @@ Status SlotMigrate::AuthDstServer(int sock_fd, const std::string &password) {
   return Status::OK();
 }
 
-Status SlotMigrate::SetDstImportStatus(int sock_fd, int status) {
+Status SlotMigrator::SetImportStatusOnDstNode(int sock_fd, int status) {
   if (sock_fd <= 0) return {Status::NotOK, "invalid socket descriptor"};
 
   std::string cmd =
-      Redis::MultiBulkString({"cluster", "import", std::to_string(migrate_slot_), std::to_string(status)});
+      Redis::MultiBulkString({"cluster", "import", std::to_string(migrating_slot_), std::to_string(status)});
   auto s = Util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send command to the destination node");
   }
 
-  s = CheckResponseOnce(sock_fd);
+  s = CheckSingleResponse(sock_fd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to check the response from the destination node");
   }
@@ -451,7 +457,7 @@ Status SlotMigrate::SetDstImportStatus(int sock_fd, int status) {
   return Status::OK();
 }
 
-Status SlotMigrate::CheckResponseOnce(int sock_fd) { return CheckResponseWithCounts(sock_fd, 1); }
+Status SlotMigrator::CheckSingleResponse(int sock_fd) { return CheckMultipleResponses(sock_fd, 1); }
 
 // Commands  |  Response            |  Instance
 // ++++++++++++++++++++++++++++++++++++++++
@@ -478,7 +484,7 @@ Status SlotMigrate::CheckResponseOnce(int sock_fd) { return CheckResponseWithCou
 // sirem        Redis::Integer
 // del          Redis::Integer
 // xadd         Redis::BulkString
-Status SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
+Status SlotMigrator::CheckMultipleResponses(int sock_fd, int total) {
   if (sock_fd < 0 || total <= 0) {
     return {Status::NotOK, fmt::format("invalid arguments: sock_fd={}, count={}", sock_fd, total)};
   }
@@ -560,9 +566,9 @@ Status SlotMigrate::CheckResponseWithCounts(int sock_fd, int total) {
   }
 }
 
-StatusOr<KeyMigrationResult> SlotMigrate::MigrateOneKey(const rocksdb::Slice &key,
-                                                        const rocksdb::Slice &encoded_metadata,
-                                                        std::string *restore_cmds) {
+StatusOr<KeyMigrationResult> SlotMigrator::MigrateOneKey(const rocksdb::Slice &key,
+                                                         const rocksdb::Slice &encoded_metadata,
+                                                         std::string *restore_cmds) {
   std::string bytes = encoded_metadata.ToString();
   Metadata metadata(kRedisNone, false);
   metadata.Decode(bytes);
@@ -613,8 +619,8 @@ StatusOr<KeyMigrationResult> SlotMigrate::MigrateOneKey(const rocksdb::Slice &ke
   return KeyMigrationResult::kMigrated;
 }
 
-Status SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
-                                     std::string *restore_cmds) {
+Status SlotMigrator::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
+                                      std::string *restore_cmds) {
   std::vector<std::string> command = {"SET", key.ToString(), bytes.substr(Metadata::GetOffsetAfterExpire(bytes[0]))};
   if (metadata.expire > 0) {
     command.emplace_back("PXAT");
@@ -633,7 +639,7 @@ Status SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &
   return Status::OK();
 }
 
-Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds) {
+Status SlotMigrator::MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds) {
   std::string cmd;
   cmd = type_to_cmd[metadata.Type()];
 
@@ -651,7 +657,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
   int item_count = 0;
 
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
-    if (stop_migrate_) {
+    if (stop_migration_) {
       return {Status::NotOK, errMigrationTaskCanceled};
     }
 
@@ -739,7 +745,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
   return Status::OK();
 }
 
-Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
+Status SlotMigrator::MigrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = slot_snapshot_;
   storage_->SetReadOptions(read_options);
@@ -756,7 +762,7 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
   std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
 
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
-    if (stop_migrate_) {
+    if (stop_migration_) {
       return {Status::NotOK, errMigrationTaskCanceled};
     }
 
@@ -801,8 +807,8 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
   return Status::OK();
 }
 
-Status SlotMigrate::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
-                                     std::vector<std::string> *user_cmd, std::string *restore_cmds) {
+Status SlotMigrator::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
+                                      std::vector<std::string> *user_cmd, std::string *restore_cmds) {
   std::string index_str = inkey.GetSubKey().ToString();
   std::string fragment = (*iter)->value().ToString();
   auto parse_result = ParseInt<int>(index_str, 10);
@@ -837,13 +843,13 @@ Status SlotMigrate::MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<r
   return Status::OK();
 }
 
-Status SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
-  if (stop_migrate_) {
+Status SlotMigrator::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
+  if (stop_migration_) {
     return {Status::NotOK, errMigrationTaskCanceled};
   }
 
   // Check pipeline
-  if (!need && current_pipeline_size_ < pipeline_size_limit_) {
+  if (!need && current_pipeline_size_ < max_pipeline_size_) {
     return Status::OK();
   }
 
@@ -854,14 +860,14 @@ Status SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
 
   ApplyMigrationSpeedLimit();
 
-  auto s = Util::SockSend(slot_job_->slot_fd_, *commands);
+  auto s = Util::SockSend(*dst_fd_, *commands);
   if (!s.IsOK()) {
     return s.Prefixed("failed to write data to a socket");
   }
 
   last_send_time_ = Util::GetTimeStampUS();
 
-  s = CheckResponseWithCounts(slot_job_->slot_fd_, current_pipeline_size_);
+  s = CheckMultipleResponses(*dst_fd_, current_pipeline_size_);
   if (!s.IsOK()) {
     return s.Prefixed("wrong response from the destination node");
   }
@@ -873,34 +879,41 @@ Status SlotMigrate::SendCmdsPipelineIfNeed(std::string *commands, bool need) {
   return Status::OK();
 }
 
-void SlotMigrate::SetForbiddenSlot(int16_t slot) {
-  LOG(INFO) << "[migrate] Set forbidden slot " << slot;
-  forbidden_slot_ = slot;
+void SlotMigrator::SetForbiddenSlot(int16_t slot) {
+  LOG(INFO) << "[migrate] Setting forbidden slot " << slot;
+  // Block server to set forbidden slot
+  uint64_t during = Util::GetTimeStampUS();
+  {
+    auto exclusivity = svr_->WorkExclusivityGuard();
+    forbidden_slot_ = slot;
+  }
+  during = Util::GetTimeStampUS() - during;
+  LOG(INFO) << "[migrate] To set forbidden slot, server was blocked for " << during << "us";
 }
 
-void SlotMigrate::ReleaseForbiddenSlot() {
+void SlotMigrator::ReleaseForbiddenSlot() {
   LOG(INFO) << "[migrate] Release forbidden slot " << forbidden_slot_;
   forbidden_slot_ = -1;
 }
 
-void SlotMigrate::ApplyMigrationSpeedLimit() const {
-  if (migration_speed_ > 0) {
+void SlotMigrator::ApplyMigrationSpeedLimit() const {
+  if (max_migration_speed_ > 0) {
     uint64_t current_time = Util::GetTimeStampUS();
-    uint64_t per_request_time = 1000000 * pipeline_size_limit_ / migration_speed_;
+    uint64_t per_request_time = 1000000 * max_pipeline_size_ / max_migration_speed_;
     if (per_request_time == 0) {
       per_request_time = 1;
     }
     if (last_send_time_ + per_request_time > current_time) {
       uint64_t during = last_send_time_ + per_request_time - current_time;
-      LOG(INFO) << "[migrate] Sleep for migrating speed limit, sleep duration: " << during;
+      LOG(INFO) << "[migrate] Sleep to limit migration speed for: " << during;
       std::this_thread::sleep_for(std::chrono::microseconds(during));
     }
   }
 }
 
-Status SlotMigrate::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands) {
+Status SlotMigrator::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands) {
   // Iterate batch to get keys and construct commands for keys
-  WriteBatchExtractor write_batch_extractor(storage_->IsSlotIdEncoded(), migrate_slot_, false);
+  WriteBatchExtractor write_batch_extractor(storage_->IsSlotIdEncoded(), migrating_slot_, false);
   rocksdb::Status status = batch->writeBatchPtr->Iterate(&write_batch_extractor);
   if (!status.ok()) {
     LOG(ERROR) << "[migrate] Failed to parse write batch, Err: " << status.ToString();
@@ -919,7 +932,7 @@ Status SlotMigrate::GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::stri
   return Status::OK();
 }
 
-Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq) {
+Status SlotMigrator::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq) {
   if (!(*iter) || !(*iter)->Valid()) {
     LOG(ERROR) << "[migrate] WAL iterator is invalid";
     return {Status::NotOK};
@@ -929,7 +942,7 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
   std::string commands;
 
   while (true) {
-    if (stop_migrate_) {
+    if (stop_migration_) {
       LOG(ERROR) << "[migrate] Migration task end during migrating WAL data";
       return {Status::NotOK};
     }
@@ -978,12 +991,12 @@ Status SlotMigrate::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLog
   return Status::OK();
 }
 
-Status SlotMigrate::SyncWalBeforeForbidSlot() {
+Status SlotMigrator::SyncWalBeforeForbiddingSlot() {
   uint32_t count = 0;
 
   while (count < kMaxLoopTimes) {
-    wal_increment_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
-    uint64_t gap = wal_increment_seq_ - wal_begin_seq_;
+    uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
+    uint64_t gap = latest_seq - wal_begin_seq_;
     if (gap <= static_cast<uint64_t>(seq_gap_limit_)) {
       LOG(INFO) << "[migrate] Incremental data sequence: " << gap << ", less than limit: " << seq_gap_limit_
                 << ", go to set forbidden slot";
@@ -999,13 +1012,13 @@ Status SlotMigrate::SyncWalBeforeForbidSlot() {
     }
 
     // Iterate wal and migrate data
-    s = MigrateIncrementData(&iter, wal_increment_seq_);
+    s = MigrateIncrementData(&iter, latest_seq);
     if (!s.IsOK()) {
       LOG(ERROR) << "[migrate] Failed to migrate WAL data before setting forbidden slot";
       return {Status::NotOK};
     }
 
-    wal_begin_seq_ = wal_increment_seq_;
+    wal_begin_seq_ = latest_seq;
     count++;
   }
 
@@ -1013,20 +1026,11 @@ Status SlotMigrate::SyncWalBeforeForbidSlot() {
   return Status::OK();
 }
 
-Status SlotMigrate::SyncWalAfterForbidSlot() {
-  // Block server to set forbidden slot
-  uint64_t during = Util::GetTimeStampUS();
-  {
-    auto exclusivity = svr_->WorkExclusivityGuard();
-    SetForbiddenSlot(migrate_slot_);
-  }
-
-  wal_increment_seq_ = storage_->GetDB()->GetLatestSequenceNumber();
-  during = Util::GetTimeStampUS() - during;
-  LOG(INFO) << "[migrate] To set forbidden slot, server was blocked for " << during << "us";
+Status SlotMigrator::SyncWalAfterForbiddingSlot() {
+  uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
 
   // No incremental data
-  if (wal_increment_seq_ <= wal_begin_seq_) return Status::OK();
+  if (latest_seq <= wal_begin_seq_) return Status::OK();
 
   // Get WAL iter
   std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
@@ -1038,7 +1042,7 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
   }
 
   // Send incremental data
-  s = MigrateIncrementData(&iter, wal_increment_seq_);
+  s = MigrateIncrementData(&iter, latest_seq);
   if (!s.IsOK()) {
     LOG(ERROR) << "[migrate] Failed to migrate WAL data after setting forbidden slot";
     return {Status::NotOK};
@@ -1047,28 +1051,28 @@ Status SlotMigrate::SyncWalAfterForbidSlot() {
   return Status::OK();
 }
 
-void SlotMigrate::GetMigrateInfo(std::string *info) const {
+void SlotMigrator::GetMigrationInfo(std::string *info) const {
   info->clear();
-  if (migrate_slot_ < 0 && forbidden_slot_ < 0 && migrate_failed_slot_ < 0) {
+  if (migrating_slot_ < 0 && forbidden_slot_ < 0 && migrate_failed_slot_ < 0) {
     return;
   }
 
   int16_t slot = -1;
   std::string task_state;
 
-  switch (migrate_state_.load()) {
-    case kMigrateNone:
+  switch (migration_state_.load()) {
+    case MigrationState::kNone:
       task_state = "none";
       break;
-    case kMigrateStarted:
+    case MigrationState::kStarted:
       task_state = "start";
-      slot = migrate_slot_;
+      slot = migrating_slot_;
       break;
-    case kMigrateSuccess:
+    case MigrationState::kSuccess:
       task_state = "success";
       slot = forbidden_slot_;
       break;
-    case kMigrateFailed:
+    case MigrationState::kFailed:
       task_state = "fail";
       slot = migrate_failed_slot_;
       break;

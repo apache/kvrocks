@@ -19,6 +19,7 @@
  */
 
 #pragma once
+
 #include <map>
 #include <string>
 #include <vector>
@@ -28,26 +29,26 @@
 #include "status.h"
 #include "storage.h"
 
-// An extractor to extract update from raw writebatch
+// An extractor to extract update from raw write batch
 class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
  public:
-  explicit WriteBatchExtractor(bool is_slotid_encoded, int16_t slot = -1, bool to_redis = false)
-      : is_slotid_encoded_(is_slotid_encoded), slot_(slot), to_redis_(to_redis) {}
+  explicit WriteBatchExtractor(bool is_slot_id_encoded, int16_t slot_id = -1, bool to_redis = false)
+      : is_slot_id_encoded_(is_slot_id_encoded), slot_id_(slot_id), to_redis_(to_redis) {}
+
   void LogData(const rocksdb::Slice &blob) override;
   rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override;
-
   rocksdb::Status DeleteCF(uint32_t column_family_id, const Slice &key) override;
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key, const Slice &end_key) override;
   std::map<std::string, std::vector<std::string>> *GetRESPCommands() { return &resp_commands_; }
 
-  static Status ExtractStreamAddCommand(bool is_slotid_encoded, const Slice &subkey, const Slice &value,
+  static Status ExtractStreamAddCommand(bool is_slot_id_encoded, const Slice &subkey, const Slice &value,
                                         std::vector<std::string> *command_args);
 
  private:
   std::map<std::string, std::vector<std::string>> resp_commands_;
   Redis::WriteBatchLogData log_data_;
   bool first_seen_ = true;
-  bool is_slotid_encoded_ = false;
-  int slot_;
+  bool is_slot_id_encoded_ = false;
+  int slot_id_;
   bool to_redis_;
 };

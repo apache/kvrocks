@@ -60,7 +60,7 @@ class CommandCluster : public Commander {
     }
 
     if (subcommand_ == "keyslot") {
-      auto slot_id = GetSlotNumFromKey(args_[2]);
+      auto slot_id = GetSlotIdFromKey(args_[2]);
       *output = Redis::Integer(slot_id);
     } else if (subcommand_ == "slots") {
       std::vector<SlotInfo> infos;

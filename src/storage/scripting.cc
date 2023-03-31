@@ -883,12 +883,12 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
   if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
-    return {Status::NotOK, "Error compiling script (new function): " + errMsg + "\n"};
+    return {Status::NotOK, "Error compiling script (new function): " + errMsg};
   }
   if (lua_pcall(lua, 0, 0, 0)) {
     std::string errMsg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
-    return {Status::NotOK, "Error running script (new function): " + errMsg + "\n"};
+    return {Status::NotOK, "Error running script (new function): " + errMsg};
   }
   // would store lua function into propagate column family and propagate those scripts to slaves
   return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();

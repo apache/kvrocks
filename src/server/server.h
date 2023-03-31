@@ -127,7 +127,7 @@ class Server {
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
-  Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
+  static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
@@ -172,7 +172,7 @@ class Server {
   void GetRoleInfo(std::string *info);
   void GetCommandsStatsInfo(std::string *info);
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
-  std::string GetRocksDBStatsJson();
+  std::string GetRocksDBStatsJson() const;
   ReplState GetReplicationState();
 
   void PrepareRestoreDB();
@@ -197,12 +197,12 @@ class Server {
 
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
-  Status ScriptGet(const std::string &sha, std::string *body);
-  Status ScriptSet(const std::string &sha, const std::string &body);
+  Status ScriptGet(const std::string &sha, std::string *body) const;
+  Status ScriptSet(const std::string &sha, const std::string &body) const;
   void ScriptReset();
   void ScriptFlush();
 
-  Status Propagate(const std::string &channel, const std::vector<std::string> &tokens);
+  Status Propagate(const std::string &channel, const std::vector<std::string> &tokens) const;
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
 
@@ -226,7 +226,7 @@ class Server {
   void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
   void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
   void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
-  bool IsWatchedKeysModified(Redis::Connection *conn);
+  static bool IsWatchedKeysModified(Redis::Connection *conn);
   void ResetWatchedKeys(Redis::Connection *conn);
 
 #ifdef ENABLE_OPENSSL
@@ -237,7 +237,7 @@ class Server {
   void cron();
   void recordInstantaneousMetrics();
   void delConnContext(ConnContext *c);
-  void updateCachedTime();
+  static void updateCachedTime();
   Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range);
   void updateAllWatchedKeys();

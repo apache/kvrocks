@@ -40,6 +40,9 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key, const Slice &end_key) override;
   std::map<std::string, std::vector<std::string>> *GetRESPCommands() { return &resp_commands_; }
 
+  static Status ExtractStreamAddCommand(bool is_slotid_encoded, const Slice &subkey, const Slice &value,
+                                        std::vector<std::string> *command_args);
+
  private:
   std::map<std::string, std::vector<std::string>> resp_commands_;
   Redis::WriteBatchLogData log_data_;

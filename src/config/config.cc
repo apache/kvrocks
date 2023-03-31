@@ -127,6 +127,9 @@ Config::Config() {
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_, "")},
+      {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
+      {"force-compact-file-min-deleted-percentage", false,
+       new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},
@@ -391,7 +394,7 @@ void Config::initFieldCallback() {
          if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
          if (args[0] != "no" && args[1] != "one") {
            master_host = args[0];
-           auto parse_result = ParseInt<int>(args[1].c_str(), NumericRange<int>{1, PORT_LIMIT - 1}, 10);
+           auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
            if (!parse_result) {
              return {Status::NotOK, "should be between 0 and 65535"};
            }
@@ -617,7 +620,7 @@ void Config::initFieldCallback() {
   }
 }
 
-std::string Config::NodesFilePath() { return dir + "/nodes.conf"; }
+std::string Config::NodesFilePath() const { return dir + "/nodes.conf"; }
 
 void Config::SetMaster(const std::string &host, uint32_t port) {
   master_host = host;

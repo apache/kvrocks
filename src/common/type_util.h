@@ -18,35 +18,8 @@
  *
  */
 
-#include "cron.h"
+#pragma once
 
-#include <gtest/gtest.h>
-
-#include <memory>
-
-class CronTest : public testing::Test {
- protected:
-  explicit CronTest() {
-    cron = std::make_unique<Cron>();
-    std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
-    auto s = cron->SetScheduleTime(schedule);
-    EXPECT_TRUE(s.IsOK());
-  }
-  ~CronTest() override = default;
-
-  std::unique_ptr<Cron> cron;
-};
-
-TEST_F(CronTest, IsTimeMatch) {
-  std::time_t t = std::time(nullptr);
-  std::tm *now = std::localtime(&t);
-  now->tm_hour = 3;
-  ASSERT_TRUE(cron->IsTimeMatch(now));
-  now->tm_hour = 4;
-  ASSERT_FALSE(cron->IsTimeMatch(now));
-}
-
-TEST_F(CronTest, ToString) {
-  std::string got = cron->ToString();
-  ASSERT_EQ("* 3 * * *", got);
-}
+// dependent false for static_assert with constexpr if, see CWG2518/P2593R1
+template <typename T>
+constexpr bool AlwaysFalse = false;

@@ -18,6 +18,8 @@
  *
  */
 
+#include <cstdint>
+
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
@@ -69,10 +71,10 @@ class CommandTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl = 0;
+    int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
-      *output = Redis::Integer(ttl);
+      *output = Redis::Integer(ttl > 0 ? ttl / 1000 : ttl);
       return Status::OK();
     }
 
@@ -84,16 +86,11 @@ class CommandPTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    int ttl = 0;
+    int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ttl > 0) {
-      *output = Redis::Integer(ttl * 1000);
-    } else {
-      *output = Redis::Integer(ttl);
-    }
-
+    *output = Redis::Integer(ttl);
     return Status::OK();
   }
 };
@@ -115,25 +112,16 @@ class CommandExists : public Commander {
   }
 };
 
-StatusOr<int> TTLToTimestamp(int ttl) {
-  int64_t now = Util::GetTimeStamp();
-  if (ttl >= INT32_MAX - now) {
-    return {Status::RedisParseErr, "the expire time was overflow"};
-  }
-
-  return ttl + now;
-}
-
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(TTLToTimestamp(GET_OR_RET(ParseInt<int>(args[2], 10))));
+    ttl_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], seconds_);
+    auto s = redis.Expire(args_[1], ttl_ * 1000 + Util::GetTimeStampMS());
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -143,13 +131,13 @@ class CommandExpire : public Commander {
   }
 
  private:
-  int seconds_ = 0;
+  uint64_t ttl_ = 0;
 };
 
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(TTLToTimestamp(TTLMsToS(GET_OR_RET(ParseInt<int64_t>(args[2], 10)))));
+    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + Util::GetTimeStampMS();
     return Status::OK();
   }
 
@@ -165,7 +153,7 @@ class CommandPExpire : public Commander {
   }
 
  private:
-  int seconds_ = 0;
+  uint64_t seconds_ = 0;
 };
 
 class CommandExpireAt : public Commander {
@@ -176,18 +164,14 @@ class CommandExpireAt : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
-    if (*parse_result >= INT32_MAX) {
-      return {Status::RedisParseErr, "the expire time was overflow"};
-    }
-
-    timestamp_ = static_cast<int>(*parse_result);
+    timestamp_ = *parse_result;
 
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], timestamp_);
+    auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
     } else {
@@ -197,7 +181,7 @@ class CommandExpireAt : public Commander {
   }
 
  private:
-  int timestamp_ = 0;
+  uint64_t timestamp_ = 0;
 };
 
 class CommandPExpireAt : public Commander {
@@ -208,11 +192,7 @@ class CommandPExpireAt : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
-    if (*parse_result / 1000 >= INT32_MAX) {
-      return {Status::RedisParseErr, "the expire time was overflow"};
-    }
-
-    timestamp_ = static_cast<int>(*parse_result / 1000);
+    timestamp_ = *parse_result;
 
     return Commander::Parse(args);
   }
@@ -229,13 +209,13 @@ class CommandPExpireAt : public Commander {
   }
 
  private:
-  int timestamp_ = 0;
+  uint64_t timestamp_ = 0;
 };
 
 class CommandPersist : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ttl = 0;
+    int64_t ttl = 0;
     Redis::Database redis(svr->storage_, conn->GetNamespace());
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

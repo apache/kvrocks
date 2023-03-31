@@ -134,14 +134,13 @@ class SlotMigrate : public Redis::Database {
   Status MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
                           std::vector<std::string> *user_cmd, std::string *restore_cmds);
   Status SendCmdsPipelineIfNeed(std::string *commands, bool need);
-  void ApplyMigrationSpeedLimit();
+  void ApplyMigrationSpeedLimit() const;
   Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
   Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
   Status SyncWalBeforeForbidSlot();
   Status SyncWalAfterForbidSlot();
   void SetForbiddenSlot(int16_t slot);
 
- private:
   enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };
 

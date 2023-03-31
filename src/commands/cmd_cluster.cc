@@ -137,7 +137,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
       nodes_str_ = args_[2];
 
-      auto parse_result = ParseInt<int64_t>(args[3].c_str(), 10);
+      auto parse_result = ParseInt<int64_t>(args[3], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, "Invalid version"};
       }
@@ -156,7 +156,7 @@ class CommandClusterX : public Commander {
 
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
-      auto parse_id = ParseInt<int>(args[2].c_str(), 10);
+      auto parse_id = ParseInt<int>(args[2], 10);
       if (!parse_id) {
         return {Status::RedisParseErr, errValueNotInteger};
       }
@@ -175,7 +175,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisParseErr, "Invalid node id"};
       }
 
-      auto parse_version = ParseInt<int64_t>(args[5].c_str(), 10);
+      auto parse_version = ParseInt<int64_t>(args[5], 10);
       if (!parse_version) {
         return {Status::RedisParseErr, errValueNotInteger};
       }

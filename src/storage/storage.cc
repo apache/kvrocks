@@ -476,7 +476,7 @@ void Storage::EmptyDB() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  time_t now = time(nullptr);
+  time_t now = Util::GetTimeStamp();
   std::lock_guard<std::mutex> lg(config_->backup_mu_);
   std::string task_backup_dir = config_->backup_dir;
 
@@ -706,7 +706,7 @@ Status Storage::BeginTxn() {
   // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
   txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
-  return {Status::cOK};
+  return Status::OK();
 }
 
 Status Storage::CommitTxn() {
@@ -719,7 +719,7 @@ Status Storage::CommitTxn() {
   is_txn_mode_ = false;
   txn_write_batch_ = nullptr;
   if (s.ok()) {
-    return {Status::cOK};
+    return Status::OK();
   }
   return {Status::NotOK, s.ToString()};
 }

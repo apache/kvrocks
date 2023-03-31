@@ -33,8 +33,7 @@
 class [[nodiscard]] Status {
  public:
   enum Code : unsigned char {
-    cOK = 0,
-    NotOK,
+    NotOK = 1,
     NotFound,
 
     // DB
@@ -69,7 +68,6 @@ class [[nodiscard]] Status {
 
   Status() : Status(cOK) {}
 
-  // WARNING: it is NOT ALLOWED to construct Status with cOK code and a non-empty message string
   Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}  // NOLINT
 
   template <Code code>
@@ -111,6 +109,8 @@ class [[nodiscard]] Status {
  private:
   Code code_;
   std::string msg_;
+
+  static constexpr Code cOK = static_cast<Code>(0);
 
   template <typename>
   friend struct StatusOr;
@@ -201,7 +201,7 @@ struct [[nodiscard]] StatusOr {
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT
-    CHECK(code != Code::cOK);
+    CHECK(code != Status::cOK);
     new (&error_) error_type(std::move(msg));
   }
 
@@ -211,8 +211,8 @@ struct [[nodiscard]] StatusOr {
                  !std::is_same_v<Status, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>> &&
                  !std::is_same_v<Code, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>> &&
                  !std::is_same_v<StatusOr, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>>),
-                int>::type = 0>                // NOLINT
-  StatusOr(Ts&&... args) : code_(Code::cOK) {  // NOLINT
+                int>::type = 0>                  // NOLINT
+  StatusOr(Ts&&... args) : code_(Status::cOK) {  // NOLINT
     new (&value_) value_type(std::forward<Ts>(args)...);
   }
 
@@ -220,7 +220,7 @@ struct [[nodiscard]] StatusOr {
 
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
-    if (code_ == Code::cOK) {
+    if (code_ == Status::cOK) {
       new (&value_) value_type(std::move(other.value_));
     } else {
       new (&error_) error_type(std::move(other.error_));
@@ -229,7 +229,7 @@ struct [[nodiscard]] StatusOr {
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
-    CHECK(code_ != Code::cOK);
+    CHECK(code_ != Status::cOK);
     new (&error_) error_type(std::move(other.error_));
   }
 
@@ -240,7 +240,7 @@ struct [[nodiscard]] StatusOr {
     return code_ == code;
   }
 
-  bool IsOK() const { return Is<Code::cOK>(); }
+  bool IsOK() const { return Is<Status::cOK>(); }
   explicit operator bool() const { return IsOK(); }
 
   Status ToStatus() const& {

@@ -30,6 +30,8 @@ option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
 option(PORTABLE "build a portable binary (disable arch-specific optimizations)" OFF)
+# TODO: set ENABLE_NEW_ENCODING to ON when we are ready
+option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" OFF)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -193,6 +195,9 @@ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+endif()
+if(ENABLE_NEW_ENCODING)
+    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_NEW_ENCODING)
 endif()
 
 if(ENABLE_IPO)

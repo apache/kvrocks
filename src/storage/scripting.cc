@@ -417,7 +417,7 @@ void enableGlobalsProtection(lua_State *lua) {
       "mt.__newindex = function (t, n, v)\n"
       "  if dbg.getinfo(2) then\n"
       "    local w = dbg.getinfo(2, \"S\").what\n"
-      "    if w ~= \"main\" and w ~= \"C\" then\n"
+      "    if w ~= \"user_script\" and w ~= \"C\" then\n"
       "      error(\"Script attempted to create global variable '\"..tostring(n)..\"'\", 2)\n"
       "    end\n"
       "  end\n"

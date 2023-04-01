@@ -122,6 +122,7 @@ include(cmake/tbb.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
+include(cmake/jsoncons.cmake)
 
 if (USE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -148,6 +149,7 @@ if (ENABLE_OPENSSL)
 list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
 list(APPEND EXTERNAL_LIBS tbb)
+list(APPEND EXTERNAL_LIBS jsoncons)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h

@@ -85,7 +85,7 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
    * zero can be returned is: start > stop. */
   if (start <= stop) {
     int64_t bytes = stop - start + 1;
-    *cnt = redisPopcount(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes);
+    *cnt = RawPopcount(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes);
   }
   return rocksdb::Status::OK();
 }
@@ -105,7 +105,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
     *pos = -1;
   } else {
     int64_t bytes = stop - start + 1;
-    *pos = redisBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
+    *pos = RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
      * range with start-end, we can't consider the right of the range as
@@ -127,7 +127,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
  * 'count' bytes. The implementation of this function is required to
  * work with a input string length up to 512 MB.
  * */
-size_t BitmapString::redisPopcount(const uint8_t *p, int64_t count) {
+size_t BitmapString::RawPopcount(const uint8_t *p, int64_t count) {
   size_t bits = 0;
 
   for (; count >= 8; p += 8, count -= 8) {
@@ -162,7 +162,7 @@ inline int clzllWithEndian(uint64_t x) {
  * padded on the right. However if 'bit' is 1 it is possible that there is
  * not a single set bit in the bitmap. In this special case -1 is returned.
  * */
-int64_t BitmapString::redisBitpos(const uint8_t *c, int64_t count, bool bit) {
+int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   int64_t res = 0;
 
   if (bit) {

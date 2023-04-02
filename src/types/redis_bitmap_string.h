@@ -37,9 +37,8 @@ class BitmapString : public Database {
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
                                 int64_t *pos);
 
- private:
-  static size_t redisPopcount(const uint8_t *p, int64_t count);
-  static int64_t redisBitpos(const uint8_t *c, int64_t count, bool bit);
+  static size_t RawPopcount(const uint8_t *p, int64_t count);
+  static int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit);
 };
 
 }  // namespace Redis

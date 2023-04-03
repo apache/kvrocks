@@ -876,6 +876,75 @@ func TestSlotMigrateDataType(t *testing.T) {
 		// write the migrated slot to destination server
 		require.NoError(t, rdb1.Set(ctx, k, "slot17_value1", 0).Err())
 	})
+
+	t.Run("MIGRATE - LMOVE (src and dst are different) via parsing WAL logs", func(t *testing.T) {
+		slot1 := 18
+
+		srcListName := fmt.Sprintf("list_src_{%s}", util.SlotTable[slot1])
+		dstListName := fmt.Sprintf("list_dst_{%s}", util.SlotTable[slot1])
+
+		require.NoError(t, rdb0.Del(ctx, srcListName).Err())
+		require.NoError(t, rdb0.Del(ctx, dstListName).Err())
+
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "512").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "4096").Err())
+		}()
+
+		for i := 0; i < 1000; i++ {
+			require.NoError(t, rdb0.RPush(ctx, srcListName, fmt.Sprintf("element%d", i)).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot1, id1).Val())
+		requireMigrateState(t, rdb0, slot1, SlotMigrationStateStarted)
+
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb0.LMove(ctx, srcListName, dstListName, "RIGHT", "LEFT").Err())
+		}
+		waitForMigrateState(t, rdb0, slot1, SlotMigrationStateSuccess)
+
+		require.ErrorContains(t, rdb0.RPush(ctx, srcListName, "element1000").Err(), "MOVED")
+		require.Equal(t, int64(10), rdb1.LLen(ctx, dstListName).Val())
+		require.Equal(t, "element990", rdb1.LIndex(ctx, dstListName, 0).Val())
+		require.Equal(t, "element999", rdb1.LIndex(ctx, dstListName, -1).Val())
+		require.Equal(t, int64(990), rdb1.LLen(ctx, srcListName).Val())
+		require.Equal(t, "element0", rdb1.LIndex(ctx, srcListName, 0).Val())
+		require.Equal(t, "element989", rdb1.LIndex(ctx, srcListName, -1).Val())
+	})
+
+	t.Run("MIGRATE - LMOVE (src and dst are the same) via parsing WAL logs", func(t *testing.T) {
+		slot1 := 19
+
+		srcListName := fmt.Sprintf("list_src_{%s}", util.SlotTable[slot1])
+
+		require.NoError(t, rdb0.Del(ctx, srcListName).Err())
+
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "512").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "4096").Err())
+		}()
+
+		srcLen := 1_000
+
+		for i := 0; i < srcLen; i++ {
+			require.NoError(t, rdb0.RPush(ctx, srcListName, fmt.Sprintf("element%d", i)).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot1, id1).Val())
+		requireMigrateState(t, rdb0, slot1, SlotMigrationStateStarted)
+
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb0.LMove(ctx, srcListName, srcListName, "RIGHT", "LEFT").Err())
+		}
+		waitForMigrateState(t, rdb0, slot1, SlotMigrationStateSuccess)
+
+		require.ErrorContains(t, rdb0.RPush(ctx, srcListName, "element1000").Err(), "MOVED")
+		require.Equal(t, int64(srcLen), rdb1.LLen(ctx, srcListName).Val())
+		require.EqualValues(t, []string{"element990", "element991", "element992", "element993", "element994"},
+			rdb1.LRange(ctx, srcListName, 0, 4).Val())
+		require.EqualValues(t, []string{"element985", "element986", "element987", "element988", "element989"},
+			rdb1.LRange(ctx, srcListName, -5, -1).Val())
+	})
 }
 
 func waitForMigrateState(t testing.TB, client *redis.Client, slot int, state SlotMigrationState) {

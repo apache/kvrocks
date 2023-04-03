@@ -131,7 +131,7 @@ void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key,
   ns_key->append(ns.data(), ns.size());
 
   if (slot_id_encoded) {
-    auto slot_id = GetSlotNumFromKey(key.ToString());
+    auto slot_id = GetSlotIdFromKey(key.ToString());
     PutFixed16(ns_key, slot_id);
   }
 

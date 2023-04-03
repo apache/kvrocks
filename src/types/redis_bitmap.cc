@@ -38,15 +38,6 @@ const char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
     "configuration item max-bitmap-to-string-mb";
 
-extern const uint8_t kNum2Bits[256] = {
-    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2,
-    3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3,
-    3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5,
-    6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4,
-    3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4,
-    5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6,
-    6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
-
 rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
@@ -263,10 +254,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     if (s.IsNotFound()) continue;
     size_t j = 0;
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    for (; j < value.size(); j++) {
-      if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      *cnt += kNum2Bits[static_cast<uint8_t>(value[j])];
-    }
+    auto k = static_cast<int64_t>(value.size());
+    if (i == stop_index) k = u_stop % kBitmapSegmentBytes + 1;
+    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(value.data()) + j, k);
   }
   return rocksdb::Status::OK();
 }

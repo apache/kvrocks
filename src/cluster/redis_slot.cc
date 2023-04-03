@@ -54,7 +54,7 @@ uint16_t crc16(const char *buf, int len) {
   return crc;
 }
 
-uint16_t GetSlotNumFromKey(const std::string &key) {
+uint16_t GetSlotIdFromKey(const std::string &key) {
   auto tag = GetTagFromKey(key);
   if (tag.empty()) {
     tag = key;

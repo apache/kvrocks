@@ -496,7 +496,8 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove)});
+  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove), src.ToString(), src.ToString(),
+                                          src_left ? "left" : "right", dst_left ? "left" : "right"});
   batch->PutLogData(log_data.Encode());
 
   batch->Delete(curr_sub_key);
@@ -547,7 +548,8 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   elem->clear();
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove)});
+  WriteBatchLogData log_data(kRedisList, {std::to_string(kRedisCmdLMove), src.ToString(), dst.ToString(),
+                                          src_left ? "left" : "right", dst_left ? "left" : "right"});
   batch->PutLogData(log_data.Encode());
 
   uint64_t src_index = src_left ? src_metadata.head : src_metadata.tail - 1;

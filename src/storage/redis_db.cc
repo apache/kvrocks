@@ -242,7 +242,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
 
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
-    slot_start = cursor.empty() ? 0 : GetSlotNumFromKey(cursor);
+    slot_start = cursor.empty() ? 0 : GetSlotIdFromKey(cursor);
     ComposeNamespaceKey(namespace_, "", &ns_prefix, false);
     if (!prefix.empty()) {
       PutFixed16(&ns_prefix, slot_start);

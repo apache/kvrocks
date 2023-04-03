@@ -98,9 +98,6 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
-          - name: Ubuntu 22 GCC 10
-            os: ubuntu-22.04
-            compiler: gcc-10
           - name: Ubuntu 22 GCC
             os: ubuntu-22.04
             compiler: gcc

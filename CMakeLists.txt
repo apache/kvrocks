@@ -202,6 +202,11 @@ if(ENABLE_NEW_ENCODING)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_NEW_ENCODING)
 endif()
 
+# disable LTO on GCC <= 9 due to an ICE
+if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
+    set(ENABLE_IPO OFF)
+endif()
+
 if(ENABLE_IPO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_result OUTPUT ipo_output LANGUAGES CXX)

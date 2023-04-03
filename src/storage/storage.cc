@@ -40,6 +40,7 @@
 #include "event_listener.h"
 #include "event_util.h"
 #include "fd_util.h"
+#include "prefix_extractor.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"
@@ -89,6 +90,7 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
 void Storage::SetReadOptions(rocksdb::ReadOptions &read_options) {
   read_options.fill_cache = false;
   read_options.async_io = config_->RocksDB.read_options.async_io;
+  read_options.prefix_same_as_start = true;
 }
 
 rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
@@ -277,6 +279,10 @@ Status Storage::Open(bool read_only) {
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  subkey_opts.prefix_extractor.reset(new SubkeyPrefixExtractor(config_->cluster_enabled));
+  subkey_opts.memtable_whole_key_filtering = true;
+  subkey_opts.memtable_prefix_bloom_size_ratio = 0.25;
+
   subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
   SetBlobDB(&subkey_opts);

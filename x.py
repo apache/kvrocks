@@ -111,10 +111,12 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         cmake_options.append("-DDEPS_FETCH_PROXY=https://ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
-    if compiler == 'gcc':
-        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
-    elif compiler == 'clang':
-        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+    if compiler.startswith('gcc'):
+        cmake_options += [f"-DCMAKE_C_COMPILER={compiler}", f"-DCMAKE_CXX_COMPILER={compiler.replace('gcc', 'g++')}"]
+    elif compiler.startswith('clang'):
+        cmake_options += [f"-DCMAKE_C_COMPILER={compiler}", f"-DCMAKE_CXX_COMPILER={compiler.replace('clang', 'clang++')}"]
+    elif compiler != 'auto':
+        raise RuntimeError(f"expect a valid compiler (gcc*, clang*, auto), got {compiler}")
     if D:
         cmake_options += [f"-D{o}" for o in D]
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
@@ -327,8 +329,7 @@ if __name__ == '__main__':
                               help='use https://ghproxy.com to fetch dependencies')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
-    parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),
-                              help="compiler used to build kvrocks")
+    parser_build.add_argument('--compiler', default='auto', help="compiler used to build kvrocks")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
     parser_build.add_argument('-D', action='append', metavar='key=value', help='extra CMake definitions')
     parser_build.add_argument('--skip-build', default=False, action='store_true',

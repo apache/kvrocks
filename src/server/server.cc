@@ -30,6 +30,7 @@
 
 #include <atomic>
 #include <iomanip>
+#include <jsoncons/json.hpp>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -1154,28 +1155,23 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 }
 
 std::string Server::GetRocksDBStatsJson() const {
-  std::string output;
+  jsoncons::json stats_json;
 
-  output.reserve(8 * 1024);
-  output.append("{");
   auto stats = storage_->GetDB()->GetDBOptions().statistics;
   for (const auto &iter : rocksdb::TickersNameMap) {
-    output.append(fmt::format(R"("{}":{},)", iter.second.c_str(), stats->getTickerCount(iter.first)));
+    stats_json[iter.second] = stats->getTickerCount(iter.first);
   }
 
   for (const auto &iter : rocksdb::HistogramsNameMap) {
     rocksdb::HistogramData hist_data;
     stats->histogramData(iter.first, &hist_data);
     /* P50 P95 P99 P100 COUNT SUM */
-    output.append(fmt::format(R"("{}":[{},{},{},{},{},{}],)", iter.second, hist_data.median, hist_data.percentile95,
-                              hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum));
+    stats_json[iter.second] =
+        jsoncons::json(jsoncons::json_array_arg, {hist_data.median, hist_data.percentile95, hist_data.percentile99,
+                                                  hist_data.max, hist_data.count, hist_data.sum});
   }
 
-  output.pop_back();
-  output.append("}");
-  output.shrink_to_fit();
-
-  return output;
+  return stats_json.to_string();
 }
 
 // This function is called by replication thread when finished fetching all files from its master.

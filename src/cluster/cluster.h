@@ -103,8 +103,8 @@ class Cluster {
   std::string GenNodesInfo();
   void UpdateSlotsInfo();
   SlotInfo GenSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
-  Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
-                           std::unordered_map<int, std::string> *slots_nodes);
+  static Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
+                                  std::unordered_map<int, std::string> *slots_nodes);
   Server *svr_;
   std::vector<std::string> binds_;
   int port_;

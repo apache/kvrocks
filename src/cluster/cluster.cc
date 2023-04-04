@@ -758,12 +758,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
-bool Cluster::IsWriteForbiddenSlot(int slot) {
-  if (svr_->slot_migrate_->GetForbiddenSlot() == slot) {
-    return true;
-  }
-  return false;
-}
+bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrate_->GetForbiddenSlot() == slot; }
 
 Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {
@@ -778,7 +773,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
   for (auto i : keys_indexes) {
     if (i >= static_cast<int>(cmd_tokens.size())) break;
 
-    int cur_slot = GetSlotNumFromKey(cmd_tokens[i]);
+    int cur_slot = GetSlotIdFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {
       return {Status::RedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot"};
@@ -788,7 +783,9 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
 
   if (slots_nodes_[slot] == nullptr) {
     return {Status::ClusterDown, "CLUSTERDOWN Hash slot not served"};
-  } else if (myself_ && myself_ == slots_nodes_[slot]) {
+  }
+
+  if (myself_ && myself_ == slots_nodes_[slot]) {
     // We use central controller to manage the topology of the cluster.
     // Server can't change the topology directly, so we record the migrated slots
     // to move the requests of the migrated slots to the destination node.
@@ -802,22 +799,28 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     }
 
     return Status::OK();  // I'm serving this slot
-  } else if (myself_ && myself_->importing_slot_ == slot && conn->IsImporting()) {
+  }
+
+  if (myself_ && myself_->importing_slot_ == slot && conn->IsImporting()) {
     // While data migrating, the topology of the destination node has not been changed.
     // The destination node has to serve the requests from the migrating slot,
     // although the slot is not belong to itself. Therefore, we record the importing slot
     // and mark the importing connection to accept the importing data.
     return Status::OK();  // I'm serving the importing connection
-  } else if (myself_ && imported_slots_.count(slot)) {
+  }
+
+  if (myself_ && imported_slots_.count(slot)) {
     // After the slot is migrated, new requests of the migrated slot will be moved to
     // the destination server. Before the central controller change the topology, the destination
     // server should record the imported slots to accept new data of the imported slots.
     return Status::OK();  // I'm serving the imported slot
-  } else if (myself_ && myself_->role_ == kClusterSlave && !attributes->is_write() &&
-             nodes_.find(myself_->master_id_) != nodes_.end() && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
-    return Status::OK();  // My master is serving this slot
-  } else {
-    return {Status::RedisExecErr,
-            fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host_, slots_nodes_[slot]->port_)};
   }
+
+  if (myself_ && myself_->role_ == kClusterSlave && !attributes->is_write() &&
+      nodes_.find(myself_->master_id_) != nodes_.end() && nodes_[myself_->master_id_] == slots_nodes_[slot]) {
+    return Status::OK();  // My master is serving this slot
+  }
+
+  return {Status::RedisExecErr,
+          fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host_, slots_nodes_[slot]->port_)};
 }

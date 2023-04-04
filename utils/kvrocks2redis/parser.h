@@ -65,7 +65,7 @@ class Parser {
   std::unique_ptr<LatestSnapShot> latest_snapshot_;
   bool slot_id_encoded_ = false;
 
-  Status parseSimpleKV(const Slice &ns_key, const Slice &value, int expire);
+  Status parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire);
   Status parseComplexKV(const Slice &ns_key, const Metadata &metadata);
   Status parseBitmapSegment(const Slice &ns, const Slice &user_key, int index, const Slice &bitmap);
 };

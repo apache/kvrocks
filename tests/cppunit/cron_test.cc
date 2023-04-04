@@ -34,7 +34,6 @@ class CronTest : public testing::Test {
   }
   ~CronTest() override = default;
 
- protected:
   std::unique_ptr<Cron> cron;
 };
 

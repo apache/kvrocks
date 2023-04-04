@@ -86,18 +86,15 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
   return Status::OK();
 }
 
-bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const {
+bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) {
   // lazy delete to avoid race condition between command Expire and subkey Compaction
   // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
   //
-  // `Util::GetTimeStamp() - 300` means extending 5 minutes for expired items,
+  // `Util::GetTimeStampMS() - 300000` means extending 5 minutes for expired items,
   // to prevent them from being recycled once they reach the expiration time.
-  int64_t lazy_expired_ts = Util::GetTimeStamp() - 300;
-  if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
-      || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version) {
-    return true;
-  }
-  return false;
+  uint64_t lazy_expired_ts = Util::GetTimeStampMS() - 300000;
+  return metadata.Type() == kRedisString  // metadata key was overwrite by set command
+         || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
 }
 
 rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice &key, std::string *new_value,

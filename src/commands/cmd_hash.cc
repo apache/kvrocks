@@ -361,7 +361,7 @@ class CommandHRangeByLex : public Commander {
 
 class CommandHScan : public CommandSubkeyScanBase {
  public:
-  CommandHScan() : CommandSubkeyScanBase() {}
+  CommandHScan() = default;
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;

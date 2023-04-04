@@ -38,15 +38,6 @@ const char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
     "configuration item max-bitmap-to-string-mb";
 
-extern const uint8_t kNum2Bits[256] = {
-    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2,
-    3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3,
-    3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5,
-    6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4,
-    3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4,
-    5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6,
-    6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
-
 rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
@@ -193,8 +184,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  uint32_t used_size = index + byte_index + 1;
-  uint32_t bitmap_size = std::max(used_size, metadata.size);
+  uint64_t used_size = index + byte_index + 1;
+  uint64_t bitmap_size = std::max(used_size, metadata.size);
   if (byte_index >= value.size()) {  // expand the bitmap
     size_t expand_size = 0;
     if (byte_index >= value.size() * 2) {
@@ -240,9 +231,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
-  if (stop > static_cast<int64_t>(metadata.size)) stop = metadata.size;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
+  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size);
   if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
 
   auto u_start = static_cast<uint32_t>(start);
@@ -263,10 +254,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     if (s.IsNotFound()) continue;
     size_t j = 0;
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    for (; j < value.size(); j++) {
-      if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      *cnt += kNum2Bits[static_cast<uint8_t>(value[j])];
-    }
+    auto k = static_cast<int64_t>(value.size());
+    if (i == stop_index) k = u_stop % kBitmapSegmentBytes + 1;
+    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(value.data()) + j, k);
   }
   return rocksdb::Status::OK();
 }
@@ -289,8 +279,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
   if (start < 0 || stop < 0 || start > stop) {
     *pos = -1;
     return rocksdb::Status::OK();

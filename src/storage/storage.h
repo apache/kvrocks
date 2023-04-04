@@ -92,7 +92,7 @@ class Storage {
   rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
   rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
                       const rocksdb::Slice &key, std::string *value);
-  void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys,
+  void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
                 const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
@@ -109,8 +109,8 @@ class Storage {
 
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
-  bool IsClosing() { return db_closing_; }
-  const std::string GetName() { return config_->db_name; }
+  bool IsClosing() const { return db_closing_; }
+  std::string GetName() { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
@@ -127,6 +127,7 @@ class Storage {
   uint64_t GetCompactionCount() { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
+  const Config *GetConfig() { return config_; }
 
   Status BeginTxn();
   Status CommitTxn();

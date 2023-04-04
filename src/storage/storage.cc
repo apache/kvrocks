@@ -476,7 +476,7 @@ void Storage::EmptyDB() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  time_t now = time(nullptr);
+  time_t now = Util::GetTimeStamp();
   std::lock_guard<std::mutex> lg(config_->backup_mu_);
   std::string task_backup_dir = config_->backup_dir;
 

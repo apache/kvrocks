@@ -30,6 +30,8 @@ option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
 option(PORTABLE "build a portable binary (disable arch-specific optimizations)" OFF)
+# TODO: set ENABLE_NEW_ENCODING to ON when we are ready
+option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" OFF)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -120,6 +122,7 @@ include(cmake/tbb.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
+include(cmake/jsoncons.cmake)
 
 if (USE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -146,6 +149,7 @@ if (ENABLE_OPENSSL)
 list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
 list(APPEND EXTERNAL_LIBS tbb)
+list(APPEND EXTERNAL_LIBS jsoncons)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
@@ -193,6 +197,14 @@ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
 target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+endif()
+if(ENABLE_NEW_ENCODING)
+    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_NEW_ENCODING)
+endif()
+
+# disable LTO on GCC <= 9 due to an ICE
+if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
+    set(ENABLE_IPO OFF)
 endif()
 
 if(ENABLE_IPO)

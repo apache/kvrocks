@@ -30,6 +30,7 @@
 
 #include "commands/commander.h"
 #include "fmt/format.h"
+#include "lua.h"
 #include "parse_util.h"
 #include "rand.h"
 #include "server/redis_connection.h"
@@ -416,7 +417,7 @@ void enableGlobalsProtection(lua_State *lua) {
       "mt.__newindex = function (t, n, v)\n"
       "  if dbg.getinfo(2) then\n"
       "    local w = dbg.getinfo(2, \"S\").what\n"
-      "    if w ~= \"main\" and w ~= \"C\" then\n"
+      "    if w ~= \"user_script\" and w ~= \"C\" then\n"
       "      error(\"Script attempted to create global variable '\"..tostring(n)..\"'\", 2)\n"
       "    end\n"
       "  end\n"
@@ -878,18 +879,13 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
     std::copy(sha->begin(), sha->end(), funcname + 2);
   }
 
-  auto funcdef = fmt::format("function {}() {}\nend", funcname, body);
+  if (luaL_loadbuffer(lua, body.c_str(), body.size(), "@user_script")) {
+    std::string errMsg = lua_tostring(lua, -1);
+    lua_pop(lua, 1);
+    return {Status::NotOK, "Error while compiling new script: " + errMsg};
+  }
+  lua_setglobal(lua, funcname);
 
-  if (luaL_loadbuffer(lua, funcdef.c_str(), funcdef.size(), "@user_script")) {
-    std::string errMsg = lua_tostring(lua, -1);
-    lua_pop(lua, 1);
-    return {Status::NotOK, "Error compiling script (new function): " + errMsg + "\n"};
-  }
-  if (lua_pcall(lua, 0, 0, 0)) {
-    std::string errMsg = lua_tostring(lua, -1);
-    lua_pop(lua, 1);
-    return {Status::NotOK, "Error running script (new function): " + errMsg + "\n"};
-  }
   // would store lua function into propagate column family and propagate those scripts to slaves
   return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();
 }

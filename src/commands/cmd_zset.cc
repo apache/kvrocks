@@ -712,7 +712,7 @@ class CommandZInterStore : public CommandZUnionStore {
 
 class CommandZScan : public CommandSubkeyScanBase {
  public:
-  CommandZScan() : CommandSubkeyScanBase() {}
+  CommandZScan() = default;
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());

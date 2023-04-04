@@ -27,7 +27,7 @@
 
 class RedisListTest : public TestBase {
  protected:
-  explicit RedisListTest() : TestBase() { list = std::make_unique<Redis::List>(storage_, "list_ns"); }
+  explicit RedisListTest() { list = std::make_unique<Redis::List>(storage_, "list_ns"); }
   ~RedisListTest() override = default;
 
   void SetUp() override {
@@ -38,7 +38,6 @@ class RedisListTest : public TestBase {
                "list-test-key-1", "list-test-key-2", "list-test-key-3", "list-test-key-4", "list-test-key-5"};
   }
 
- protected:
   std::unique_ptr<Redis::List> list;
 };
 
@@ -76,7 +75,6 @@ class RedisListLMoveTest : public RedisListTest {
     }
   }
 
- protected:
   std::string dst_key_ = "test-dst-key";
   std::vector<Slice> dst_fields_;
 };

@@ -233,65 +233,103 @@ For src/common/rocksdb_crc32c.h and src/storage/batch_debugger.h are modified fr
 We choose the Apache License 2.0 from the dual-licensed RocksDB code, 
 and have added the RocksDB license notice in each file header.
 
-For the library LuaJIT(https://github.com/KvrocksLabs/LuaJIT) -- a Just-In-Time Compiler for Lua. https://luajit.org/
+For the library LuaJIT(https://github.com/KvrocksLabs/LuaJIT):
 
-LuaJIT is free software, released under the MIT license.
+LuaJIT is a Just-In-Time Compiler for Lua, released under the MIT license.
 
-Copyright (C) 2005-2022 Mike Pall. All rights reserved.
+    ===============================================================================
+    LuaJIT -- a Just-In-Time Compiler for Lua. https://luajit.org/
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+    Copyright (C) 2005-2022 Mike Pall. All rights reserved.
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
 
-[ MIT license: https://www.opensource.org/licenses/mit-license.php ]
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+    THE SOFTWARE.
 
-===============================================================================
-[ LuaJIT includes code from Lua 5.1/5.2, which has this license statement: ]
+    [ MIT license: https://www.opensource.org/licenses/mit-license.php ]
 
-Copyright (C) 1994-2012 Lua.org, PUC-Rio.
+    ===============================================================================
+    [ LuaJIT includes code from Lua 5.1/5.2, which has this license statement: ]
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+    Copyright (C) 1994-2012 Lua.org, PUC-Rio.
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
 
-===============================================================================
-[ LuaJIT includes code from dlmalloc, which has this license statement: ]
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+    THE SOFTWARE.
 
-This is a version (aka dlmalloc) of malloc/free/realloc written by
-Doug Lea and released to the public domain, as explained at
-https://creativecommons.org/licenses/publicdomain
+    ===============================================================================
+    [ LuaJIT includes code from dlmalloc, which has this license statement: ]
 
-===============================================================================
+    This is a version (aka dlmalloc) of malloc/free/realloc written by
+    Doug Lea and released to the public domain, as explained at
+    https://creativecommons.org/licenses/publicdomain
+
+    ===============================================================================
 
 For the library oneTBB (https://github.com/oneapi-src/oneTBB):
 
 oneAPI Threading Building Blocks (oneTBB) is a flexible C++ library that simplifies the work of adding parallelism to complex applications. 
 It is licensed under Apache-2.0 License, refer to LICENSE in the root directory.
+
+
+For the library jsoncons (https://github.com/danielaparker/jsoncons):
+
+jsoncons is a C++, header-only library for constructing JSON and JSON-like data formats such as CBOR.
+It is released under the Boost Software License Version 1.0.
+
+    //          Copyright Daniel Parker 2013 - 2020.
+    // Distributed under the Boost Software License, Version 1.0.
+    //    (See accompanying file LICENSE or copy at
+    //          http://www.boost.org/LICENSE_1_0.txt)
+
+    Boost Software License - Version 1.0 - August 17th, 2003
+
+    Permission is hereby granted, free of charge, to any person or organization
+    obtaining a copy of the software and accompanying documentation covered by
+    this license (the "Software") to use, reproduce, display, distribute,
+    execute, and transmit the Software, and to prepare derivative works of the
+    Software, and to permit third-parties to whom the Software is furnished to
+    do so, all subject to the following:
+
+    The copyright notices in the Software and this entire statement, including
+    the above license grant, this restriction and the following disclaimer,
+    must be included in all copies of the Software, in whole or in part, and
+    all derivative works of the Software, unless such copies or derivative
+    works are solely in the form of machine-executable object code generated by
+    a source language processor.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+    SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+    FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.

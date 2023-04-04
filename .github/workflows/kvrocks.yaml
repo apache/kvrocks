@@ -98,6 +98,12 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
+          - name: Ubuntu 22 GCC
+            os: ubuntu-22.04
+            compiler: gcc
+          - name: Ubuntu 22 Clang
+            os: ubuntu-22.04
+            compiler: clang
           - name: Ubuntu GCC ASan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON

@@ -122,6 +122,7 @@ include(cmake/tbb.cmake)
 include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
+include(cmake/jsoncons.cmake)
 
 if (USE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -148,6 +149,7 @@ if (ENABLE_OPENSSL)
 list(APPEND EXTERNAL_LIBS OpenSSL::SSL)
 endif()
 list(APPEND EXTERNAL_LIBS tbb)
+list(APPEND EXTERNAL_LIBS jsoncons)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 
 # Add git sha to version.h
@@ -198,6 +200,11 @@ if(ENABLE_OPENSSL)
 endif()
 if(ENABLE_NEW_ENCODING)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_NEW_ENCODING)
+endif()
+
+# disable LTO on GCC <= 9 due to an ICE
+if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
+    set(ENABLE_IPO OFF)
 endif()
 
 if(ENABLE_IPO)

@@ -36,7 +36,7 @@ class SubkeyPrefixExtractor : public rocksdb::SliceTransform {
   rocksdb::Slice Transform(const rocksdb::Slice &key) const override {
     const char *ptr = key.data();
     uint8_t ns_size = ptr[0];
-    ptr += 1 + ns_size;  // drop ns encoding size and ns
+    ptr += 1 + ns_size;  // add the ns encoding size and ns
     if (cluster_enabled_) {
       // add the cluster slot size if it's enabled
       ptr += 2;
@@ -46,11 +46,12 @@ class SubkeyPrefixExtractor : public rocksdb::SliceTransform {
     if (ptr > key.data() + key.size()) return key;
     uint32_t key_size = DecodeFixed32(ptr);
 
-    ptr += 4 + key_size;  // drop key encoding size and key
+    ptr += 4 + key_size;  // add the key encoding size and key
+    ptr += 8;             // add the version encoding size
     // return the origin key if it's too short
     if (ptr > key.data() + key.size()) return key;
 
-    return {key.data(), ptr - key.data()};
+    return {key.data(), static_cast<size_t>(ptr - key.data())};
   }
 
   bool InDomain(const rocksdb::Slice &key) const override {

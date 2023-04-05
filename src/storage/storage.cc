@@ -104,6 +104,8 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
   table_options.data_block_index_type = rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
   table_options.data_block_hash_table_util_ratio = 0.75;
   table_options.block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  // Enable the whole key filtering to speed up the point lookup
+  table_options.whole_key_filtering = true;
   return table_options;
 }
 
@@ -281,7 +283,7 @@ Status Storage::Open(bool read_only) {
   subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
   subkey_opts.prefix_extractor.reset(new SubkeyPrefixExtractor(config_->cluster_enabled));
   subkey_opts.memtable_whole_key_filtering = true;
-  subkey_opts.memtable_prefix_bloom_size_ratio = 0.25;
+  subkey_opts.memtable_prefix_bloom_size_ratio = 0.2;
 
   subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));

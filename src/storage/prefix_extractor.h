@@ -50,11 +50,7 @@ class SubkeyPrefixExtractor : public rocksdb::SliceTransform {
     // return the origin key if it's too short
     if (ptr > key.data() + key.size()) return key;
 
-    size_t prefix_len = 1 /* ns encoding size */ + ns_size + 4 /* encoding key size */ + key_size;
-    if (cluster_enabled_) {
-      prefix_len += 2;  // add slot id encoding size if the cluster mode is enabled
-    }
-    return {key.data(), prefix_len};
+    return {key.data(), ptr - key.data()};
   }
 
   bool InDomain(const rocksdb::Slice &key) const override {

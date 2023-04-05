@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(zstd
-  facebook/zstd v1.5.4
-  MD5=1a8186bc33d1c41760d9ad3e121fa7e5
+  facebook/zstd v1.5.5
+  MD5=f336cde1961ee7e5d3a7f8c0c0f96987
 )
 
 FetchContent_GetProperties(zstd)

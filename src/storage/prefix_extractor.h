@@ -47,7 +47,6 @@ class SubkeyPrefixExtractor : public rocksdb::SliceTransform {
     uint32_t key_size = DecodeFixed32(ptr);
 
     ptr += 4 + key_size;  // add the key encoding size and key
-    ptr += 8;             // add the version encoding size
     // return the origin key if it's too short
     if (ptr > key.data() + key.size()) return key;
 

@@ -293,15 +293,8 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
-  // The iterator would use SeekToLast to seek keys if max_infinite is true,
-  // then the SeekToLast will take the upper bound as its target prefix.
-  // RocksDB check the existence of prefix in bloom filter if the prefix extractor
-  // was enabled, and the upper would always be missed in bloom since its version
-  // is key's version + 1. So we need to remove the upper bound here.
   rocksdb::Slice upper_bound(next_version_prefix_key);
-  if (!spec.max_infinite) {
-    read_options.iterate_upper_bound = &upper_bound;
-  }
+  read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);

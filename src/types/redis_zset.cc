@@ -440,12 +440,8 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
-  // Cannot use the upper bound when max_infinite is ture,
-  // for the more detail explain can see: Hash::RangeByLex
   rocksdb::Slice upper_bound(next_version_prefix_key);
-  if (!spec.max_infinite) {
-    read_options.iterate_upper_bound = &upper_bound;
-  }
+  read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);

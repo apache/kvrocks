@@ -20,7 +20,6 @@
 
 #include "redis_set.h"
 
-#include <iostream>
 #include <map>
 #include <memory>
 
@@ -340,7 +339,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
     member_counters[member] = 1;
   }
   for (size_t i = 1; i < keys.size(); i++) {
-    auto s = Members(keys[i], &target_members);
+    s = Members(keys[i], &target_members);
     if (!s.ok() || target_members.empty()) return s;
     for (const auto &member : target_members) {
       if (member_counters.find(member) == member_counters.end()) continue;

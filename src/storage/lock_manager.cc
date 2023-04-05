@@ -30,11 +30,11 @@ LockManager::LockManager(int hash_power) : hash_power_(hash_power), hash_mask_((
   }
 }
 
-unsigned LockManager::hash(const rocksdb::Slice &key) {
+unsigned LockManager::hash(const rocksdb::Slice &key) const {
   return std::hash<std::string_view>{}(std::string_view{key.data(), key.size()}) & hash_mask_;
 }
 
-unsigned LockManager::Size() { return (1U << hash_power_); }
+unsigned LockManager::Size() const { return (1U << hash_power_); }
 
 void LockManager::Lock(const rocksdb::Slice &key) { mutex_pool_[hash(key)]->lock(); }
 

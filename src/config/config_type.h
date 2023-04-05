@@ -68,7 +68,6 @@ class ConfigField {
   virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
   virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
 
- public:
   int line_number = 0;
   bool readonly = true;
   validate_fn validate = nullptr;

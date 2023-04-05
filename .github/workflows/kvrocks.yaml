@@ -98,6 +98,12 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
+          - name: Ubuntu 22 GCC
+            os: ubuntu-22.04
+            compiler: gcc
+          - name: Ubuntu 22 Clang
+            os: ubuntu-22.04
+            compiler: clang
           - name: Ubuntu GCC ASan
             os: ubuntu-20.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -140,6 +146,14 @@ jobs:
             os: ubuntu-20.04
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: clang
+          - name: Ubuntu GCC with new encoding
+            os: ubuntu-20.04
+            compiler: gcc
+            new_encoding: -DENABLE_NEW_ENCODING=TRUE
+          - name: Ubuntu Clang with new encoding
+            os: ubuntu-20.04
+            compiler: clang
+            new_encoding: -DENABLE_NEW_ENCODING=TRUE
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -182,7 +196,7 @@ jobs:
       - name: Build Kvrocks
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
-            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}

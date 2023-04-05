@@ -28,34 +28,18 @@
 #include "time_util.h"
 
 template <typename T>
-T TTLMsToS(T ttl) {
-  if (ttl <= 0) {
-    return ttl;
-  } else if (ttl < 1000) {
-    return 1;
-  } else {
-    return ttl / 1000;
-  }
-}
-
-inline int ExpireToTTL(int64_t expire) {
-  int64_t now = Util::GetTimeStamp();
-  return static_cast<int>(expire - now);
-}
-
-template <typename T>
 constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
 
 template <typename T>
-StatusOr<std::optional<int>> ParseTTL(CommandParser<T> &parser, std::string_view &curr_flag) {
+StatusOr<std::optional<int64_t>> ParseTTL(CommandParser<T> &parser, std::string_view &curr_flag) {
   if (parser.EatEqICaseFlag("EX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int>(TTL_RANGE<int>));
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
   } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
-    return ExpireToTTL(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000 - Util::GetTimeStampMS();
   } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
-    return TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)));
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
   } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
-    return ExpireToTTL(TTLMsToS(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>))));
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) - Util::GetTimeStampMS();
   } else {
     return std::nullopt;
   }

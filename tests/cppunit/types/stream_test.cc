@@ -24,9 +24,9 @@
 #include "time_util.h"
 #include "types/redis_stream.h"
 
-class RedisStreamTest : public TestBase {
+class RedisStreamTest : public TestBase {  // NOLINT
  public:
-  void checkStreamEntryValues(const std::vector<std::string> &got, const std::vector<std::string> &expected) {
+  static void checkStreamEntryValues(const std::vector<std::string> &got, const std::vector<std::string> &expected) {
     EXPECT_EQ(got.size(), expected.size());
     for (size_t i = 0; i < got.size(); ++i) {
       EXPECT_EQ(got[i], expected[i]);
@@ -34,7 +34,7 @@ class RedisStreamTest : public TestBase {
   }
 
  protected:
-  RedisStreamTest() : TestBase(), name("test_stream") { stream = new Redis::Stream(storage_, "stream_ns"); }
+  RedisStreamTest() : name("test_stream") { stream = new Redis::Stream(storage_, "stream_ns"); }
 
   ~RedisStreamTest() override { delete stream; }
 
@@ -42,7 +42,6 @@ class RedisStreamTest : public TestBase {
 
   void TearDown() override { stream->Del(name); }
 
- protected:
   std::string name;
   Redis::Stream *stream;
 };

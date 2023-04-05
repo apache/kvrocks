@@ -27,22 +27,20 @@
 
 class RedisSortedintTest : public TestBase {
  protected:
-  explicit RedisSortedintTest() : TestBase() {
-    sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns");
-  }
-  ~RedisSortedintTest() = default;
+  explicit RedisSortedintTest() { sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns"); }
+  ~RedisSortedintTest() override = default;
+
   void SetUp() override {
     key_ = "test-sortedint-key";
     ids_ = {1, 2, 3, 4};
   }
 
- protected:
   std::unique_ptr<Redis::Sortedint> sortedint;
   std::vector<uint64_t> ids_;
 };
 
 TEST_F(RedisSortedintTest, AddAndRemove) {
-  int ret;
+  int ret = 0;
   rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   s = sortedint->Card(key_, &ret);
@@ -55,7 +53,7 @@ TEST_F(RedisSortedintTest, AddAndRemove) {
 }
 
 TEST_F(RedisSortedintTest, Range) {
-  int ret;
+  int ret = 0;
   rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   std::vector<uint64_t> ids;

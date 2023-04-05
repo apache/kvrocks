@@ -23,6 +23,8 @@
 
 #include <memory>
 
+constexpr Status::Code cOK = static_cast<Status::Code>(0);
+
 TEST(StatusOr, Scalar) {
   auto f = [](int x) -> StatusOr<int> {
     if (x > 10) {
@@ -35,7 +37,7 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*f(1), 7);
   ASSERT_EQ(*f(5), 15);
   ASSERT_EQ(f(7).GetValue(), 19);
-  ASSERT_EQ(f(7).GetCode(), Status::cOK);
+  ASSERT_EQ(f(7).GetCode(), cOK);
   ASSERT_EQ(f(7).Msg(), "ok");
   ASSERT_TRUE(f(6));
   ASSERT_EQ(f(11).GetCode(), Status::NotOK);
@@ -46,7 +48,7 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*x, 15);
   ASSERT_EQ(x.Msg(), "ok");
   ASSERT_EQ(x.GetValue(), 15);
-  ASSERT_EQ(x.GetCode(), Status::cOK);
+  ASSERT_EQ(x.GetCode(), cOK);
 
   auto y = f(11);
   ASSERT_EQ(y.Msg(), "x large than 10");
@@ -66,7 +68,7 @@ TEST(StatusOr, Scalar) {
   ASSERT_EQ(*g(1), 70);
   ASSERT_EQ(*g(5), 150);
   ASSERT_EQ(g(1).GetValue(), 70);
-  ASSERT_EQ(g(1).GetCode(), Status::cOK);
+  ASSERT_EQ(g(1).GetCode(), cOK);
   ASSERT_EQ(g(1).Msg(), "ok");
   ASSERT_EQ(g(6).GetCode(), Status::NotOK);
   ASSERT_EQ(g(6).Msg(), "y large than 5");
@@ -77,7 +79,7 @@ TEST(StatusOr, Scalar) {
 }
 
 TEST(StatusOr, String) {
-  auto f = [](std::string x) -> StatusOr<std::string> {
+  auto f = [](std::string x) -> StatusOr<std::string> {  // NOLINT
     if (x.size() > 10) {
       return {Status::NotOK, "string too long"};
     }
@@ -85,7 +87,7 @@ TEST(StatusOr, String) {
     return x + " hello";
   };
 
-  auto g = [f](std::string x) -> StatusOr<std::string> {
+  auto g = [f](std::string x) -> StatusOr<std::string> {  // NOLINT
     if (x.size() < 5) {
       return {Status::NotOK, "string too short"};
     }
@@ -107,18 +109,18 @@ TEST(StatusOr, String) {
   ASSERT_EQ(g("loooooooooooog").GetCode(), Status::NotOK);
   ASSERT_EQ(g("loooooooooooog").Msg(), "string too long");
 
-  ASSERT_EQ(g("twice").ToStatus().GetCode(), Status::cOK);
+  ASSERT_EQ(g("twice").ToStatus().GetCode(), cOK);
   ASSERT_EQ(g("").ToStatus().GetCode(), Status::NotOK);
 
   auto x = g("twice");
-  ASSERT_EQ(x.ToStatus().GetCode(), Status::cOK);
+  ASSERT_EQ(x.ToStatus().GetCode(), cOK);
   auto y = g("");
   ASSERT_EQ(y.ToStatus().GetCode(), Status::NotOK);
 }
 
 TEST(StatusOr, SharedPtr) {
-  struct A {
-    A(int *x) : x(x) { *x = 233; }
+  struct A {  // NOLINT
+    explicit A(int *x) : x(x) { *x = 233; }
     ~A() { *x = 0; }
 
     int *x;

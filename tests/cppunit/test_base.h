@@ -27,7 +27,7 @@
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
 
-class TestBase : public testing::Test {
+class TestBase : public testing::Test {  // NOLINT
  protected:
   explicit TestBase() : config_(new Config()) {
     config_->db_dir = "testdb";
@@ -43,16 +43,17 @@ class TestBase : public testing::Test {
     }
   }
   ~TestBase() override {
+    auto db_dir = config_->db_dir;
+    delete storage_;
+    delete config_;
+
     std::error_code ec;
-    std::filesystem::remove_all(config_->db_dir, ec);
+    std::filesystem::remove_all(db_dir, ec);
     if (ec) {
       std::cout << "Encounter filesystem error: " << ec << std::endl;
     }
-    delete storage_;
-    delete config_;
   }
 
- protected:
   Engine::Storage *storage_;
   Config *config_ = nullptr;
   std::string key_;

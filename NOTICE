@@ -64,6 +64,14 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 * LuaJIT(https://github.com/KvrocksLabs/LuaJIT)
 
 ================================================================
+Boost Software License Version 1.0
+================================================================
+The following components are provided under the Boost Software License Version 1.0. See project link for details.
+The text of each license is also included in licenses/LICENSE-[project].txt
+
+* jsoncons (https://github.com/danielaparker/jsoncons)
+
+================================================================
 zlib/libpng licenses
 ================================================================
 The following components are provided under the zlib/libpng License. See project link for details.

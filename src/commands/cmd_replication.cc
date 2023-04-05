@@ -120,7 +120,7 @@ class CommandPSync : public Commander {
   std::string replica_replid;
 
   // Return OK if the seq is in the range of the current WAL
-  Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
+  static Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
     if (seq == storage->LatestSeqNumber() + 1) {
       return Status::OK();
     }

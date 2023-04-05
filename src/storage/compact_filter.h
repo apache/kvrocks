@@ -31,6 +31,7 @@
 #include "storage.h"
 
 namespace Engine {
+
 class MetadataFilter : public rocksdb::CompactionFilter {
  public:
   explicit MetadataFilter(Storage *storage) : stor_(storage) {}
@@ -56,11 +57,11 @@ class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
 
 class SubKeyFilter : public rocksdb::CompactionFilter {
  public:
-  explicit SubKeyFilter(Storage *storage) : cached_key_(""), cached_metadata_(""), stor_(storage) {}
+  explicit SubKeyFilter(Storage *storage) : stor_(storage) {}
 
   const char *Name() const override { return "SubkeyFilter"; }
   Status GetMetadata(const InternalKey &ikey, Metadata *metadata) const;
-  bool IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const;
+  static bool IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata);
   rocksdb::CompactionFilter::Decision FilterBlobByKey(int level, const Slice &key, std::string *new_value,
                                                       std::string *skip_until) const override;
   bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
@@ -122,4 +123,5 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
     return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
   }
 };
+
 }  // namespace Engine

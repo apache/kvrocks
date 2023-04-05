@@ -23,12 +23,14 @@
 #include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
+#include <rocksdb/statistics.h>
 #include <sys/resource.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
 
 #include <atomic>
 #include <iomanip>
+#include <jsoncons/json.hpp>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -166,7 +168,7 @@ Status Server::Start() {
   }
 
   if (auto s = task_runner_.Start(); !s) {
-    return s.Prefixed("Failed to start task runner");
+    LOG(WARNING) << "Failed to start task runner: " << s.Msg();
   }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
@@ -174,7 +176,7 @@ Status Server::Start() {
   compaction_checker_thread_ = GET_OR_RET(Util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
     time_t last_compact_date = 0;
-    CompactionChecker compaction_checker(this->storage_);
+    CompactionChecker compaction_checker{this->storage_};
 
     while (!stop_) {
       // Sleep first
@@ -619,7 +621,7 @@ void Server::delConnContext(ConnContext *c) {
 }
 
 void Server::updateCachedTime() {
-  time_t ret = time(nullptr);
+  time_t ret = Util::GetTimeStamp();
   if (ret == -1) return;
   unix_time_.store(static_cast<int>(ret));
 }
@@ -886,12 +888,11 @@ void Server::GetMemoryInfo(std::string *info) {
 }
 
 void Server::GetReplicationInfo(std::string *info) {
-  time_t now = 0;
   std::ostringstream string_stream;
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
-    time(&now);
+    time_t now = Util::GetTimeStamp();
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
@@ -1153,29 +1154,24 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   *info = string_stream.str();
 }
 
-std::string Server::GetRocksDBStatsJson() {
-  std::string output;
+std::string Server::GetRocksDBStatsJson() const {
+  jsoncons::json stats_json;
 
-  output.reserve(8 * 1024);
-  output.append("{");
   auto stats = storage_->GetDB()->GetDBOptions().statistics;
   for (const auto &iter : rocksdb::TickersNameMap) {
-    output.append(fmt::format(R"("{}":{},)", iter.second.c_str(), stats->getTickerCount(iter.first)));
+    stats_json[iter.second] = stats->getTickerCount(iter.first);
   }
 
   for (const auto &iter : rocksdb::HistogramsNameMap) {
     rocksdb::HistogramData hist_data;
     stats->histogramData(iter.first, &hist_data);
     /* P50 P95 P99 P100 COUNT SUM */
-    output.append(fmt::format(R"("{}":[{},{},{},{},{},{}],)", iter.second, hist_data.median, hist_data.percentile95,
-                              hist_data.percentile99, hist_data.max, hist_data.count, hist_data.sum));
+    stats_json[iter.second] =
+        jsoncons::json(jsoncons::json_array_arg, {hist_data.median, hist_data.percentile95, hist_data.percentile99,
+                                                  hist_data.max, hist_data.count, hist_data.sum});
   }
 
-  output.pop_back();
-  output.append("}");
-  output.shrink_to_fit();
-
-  return output;
+  return stats_json.to_string();
 }
 
 // This function is called by replication thread when finished fetching all files from its master.
@@ -1294,7 +1290,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
     db_scan_infos_[ns].key_num_stats = stats;
-    time(&db_scan_infos_[ns].last_scan_time);
+    db_scan_infos_[ns].last_scan_time = Util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
   });
 }
@@ -1407,11 +1403,11 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
       break;
     }
 
-    if (args->data()[i].length() <= kSlowLogMaxString) {
-      entry->args.emplace_back(args->data()[i]);
+    if ((*args)[i].length() <= kSlowLogMaxString) {
+      entry->args.emplace_back((*args)[i]);
     } else {
-      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", args->data()[i].substr(0, kSlowLogMaxString),
-                                           args->data()[i].length() - kSlowLogMaxString));
+      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", (*args)[i].substr(0, kSlowLogMaxString),
+                                           (*args)[i].length() - kSlowLogMaxString));
     }
   }
 
@@ -1504,7 +1500,7 @@ Status Server::ScriptExists(const std::string &sha) {
   return ScriptGet(sha, &body);
 }
 
-Status Server::ScriptGet(const std::string &sha, std::string *body) {
+Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = Engine::kLuaFunctionPrefix + sha;
   auto cf = storage_->GetCFHandle(Engine::kPropagateColumnFamilyName);
   auto s = storage_->Get(rocksdb::ReadOptions(), cf, func_name, body);
@@ -1514,7 +1510,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) {
   return Status::OK();
 }
 
-Status Server::ScriptSet(const std::string &sha, const std::string &body) {
+Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
   std::string func_name = Engine::kLuaFunctionPrefix + sha;
   return storage_->WriteToPropagateCF(func_name, body);
 }
@@ -1535,7 +1531,7 @@ void Server::ScriptFlush() {
 // for specific commands, such as `script flush`.
 // channel: we put the same function commands into one channel to handle uniformly
 // tokens: the serialized commands
-Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) {
+Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) const {
   std::string value = Redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
     value += Redis::BulkString(iter);

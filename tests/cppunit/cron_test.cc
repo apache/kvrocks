@@ -34,12 +34,11 @@ class CronTest : public testing::Test {
   }
   ~CronTest() override = default;
 
- protected:
   std::unique_ptr<Cron> cron;
 };
 
 TEST_F(CronTest, IsTimeMatch) {
-  std::time_t t = std::time(0);
+  std::time_t t = std::time(nullptr);
   std::tm *now = std::localtime(&t);
   now->tm_hour = 3;
   ASSERT_TRUE(cron->IsTimeMatch(now));

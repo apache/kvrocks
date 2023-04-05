@@ -194,7 +194,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
     SSL_CTX_set_default_passwd_cb(ssl_ctx.get(), [](char *buf, int size, int, void *cfg) -> int {
       strncpy(buf, static_cast<const Config *>(cfg)->tls_key_file_pass.c_str(), size);
       buf[size - 1] = '\0';
-      return strlen(buf);
+      return static_cast<int>(strlen(buf));
     });
   }
 

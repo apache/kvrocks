@@ -25,6 +25,15 @@
 
 #include <string>
 
+enum class Endian {
+  LITTLE = __ORDER_LITTLE_ENDIAN__,
+  BIG = __ORDER_BIG_ENDIAN__,
+  NATIVE = __BYTE_ORDER__,
+};
+
+constexpr bool IsLittleEndian() { return Endian::NATIVE == Endian::LITTLE; }
+constexpr bool IsBigEndian() { return Endian::NATIVE == Endian::BIG; }
+
 bool GetFixed8(rocksdb::Slice *input, uint8_t *value);
 bool GetFixed16(rocksdb::Slice *input, uint16_t *value);
 bool GetFixed32(rocksdb::Slice *input, uint32_t *value);
@@ -44,8 +53,7 @@ uint16_t DecodeFixed16(const char *ptr);
 uint32_t DecodeFixed32(const char *ptr);
 uint64_t DecodeFixed64(const char *ptr);
 double DecodeDouble(const char *ptr);
+
 char *EncodeVarint32(char *dst, uint32_t v);
 void PutVarint32(std::string *dst, uint32_t v);
-const char *GetVarint32PtrFallback(const char *p, const char *limit, uint32_t *value);
-const char *GetVarint32Ptr(const char *p, const char *limit, uint32_t *value);
 bool GetVarint32(rocksdb::Slice *input, uint32_t *value);

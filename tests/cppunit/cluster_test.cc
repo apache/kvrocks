@@ -113,8 +113,8 @@ TEST(Cluster, CluseterGetNodes) {
 
   std::vector<std::string> vnodes = Util::Split(output_nodes, "\n");
 
-  for (unsigned i = 0; i < vnodes.size(); i++) {
-    std::vector<std::string> node_fields = Util::Split(vnodes[i], " ");
+  for (const auto &vnode : vnodes) {
+    std::vector<std::string> node_fields = Util::Split(vnode, " ");
 
     if (node_fields[0] == "07c37dfeb235213a872192d90877d0cd55635b91") {
       ASSERT_TRUE(node_fields.size() == 8);

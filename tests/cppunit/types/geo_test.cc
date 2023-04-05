@@ -28,9 +28,10 @@
 
 class RedisGeoTest : public TestBase {
  protected:
-  RedisGeoTest() : TestBase() { geo = std::make_unique<Redis::Geo>(storage_, "geo_ns"); }
-  ~RedisGeoTest() = default;
-  void SetUp() {
+  RedisGeoTest() { geo = std::make_unique<Redis::Geo>(storage_, "geo_ns"); }
+  ~RedisGeoTest() override = default;
+
+  void SetUp() override {
     key_ = "test_geo_key";
     fields_ = {"geo_test_key-1", "geo_test_key-2", "geo_test_key-3", "geo_test_key-4",
                "geo_test_key-5", "geo_test_key-6", "geo_test_key-7"};
@@ -40,7 +41,6 @@ class RedisGeoTest : public TestBase {
                   "s00zh0dsdy0", "s00zh0dsdy0", "zzp7u51dwf0"};
   }
 
- protected:
   std::vector<double> longitudes_;
   std::vector<double> latitudes_;
   std::vector<std::string> geoHashes_;
@@ -48,7 +48,7 @@ class RedisGeoTest : public TestBase {
 };
 
 TEST_F(RedisGeoTest, Add) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -66,21 +66,21 @@ TEST_F(RedisGeoTest, Add) {
 }
 
 TEST_F(RedisGeoTest, Dist) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  double dist;
+  double dist = 0.0;
   geo->Dist(key_, fields_[2], fields_[3], &dist);
   EXPECT_EQ(ceilf(dist), 194102);
   geo->Del(key_);
 }
 
 TEST_F(RedisGeoTest, Hash) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -96,7 +96,7 @@ TEST_F(RedisGeoTest, Hash) {
 }
 
 TEST_F(RedisGeoTest, Pos) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -114,7 +114,7 @@ TEST_F(RedisGeoTest, Pos) {
 }
 
 TEST_F(RedisGeoTest, Radius) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -132,7 +132,7 @@ TEST_F(RedisGeoTest, Radius) {
 }
 
 TEST_F(RedisGeoTest, RadiusByMember) {
-  int ret;
+  int ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});

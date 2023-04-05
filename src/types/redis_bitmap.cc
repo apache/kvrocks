@@ -38,15 +38,6 @@ const char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
     "configuration item max-bitmap-to-string-mb";
 
-extern const uint8_t kNum2Bits[256] = {
-    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2,
-    3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3,
-    3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5,
-    6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4,
-    3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4,
-    5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6,
-    6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
-
 rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
@@ -122,7 +113,6 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  uint32_t frag_index = 0, valid_size = 0;
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
@@ -131,11 +121,11 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
     if (!parse_result) {
       return rocksdb::Status::InvalidArgument(parse_result.Msg());
     }
-    frag_index = *parse_result;
+    uint32_t frag_index = *parse_result;
     fragment = iter->value().ToString();
     // To be compatible with data written before the commit d603b0e(#338)
     // and avoid returning extra null char after expansion.
-    valid_size = std::min(
+    uint32_t valid_size = std::min(
         {fragment.size(), static_cast<size_t>(kBitmapSegmentBytes), static_cast<size_t>(metadata.size - frag_index)});
 
     /*
@@ -166,7 +156,6 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
     for (uint32_t i = 0; i < valid_size; i++) {
       if (!fragment[i]) continue;
       fragment[i] = static_cast<char>(swap_table[static_cast<uint8_t>(fragment[i])]);
-      ;
     }
     value->replace(frag_index, valid_size, fragment.data(), valid_size);
   }
@@ -195,8 +184,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  uint32_t used_size = index + byte_index + 1;
-  uint32_t bitmap_size = std::max(used_size, metadata.size);
+  uint64_t used_size = index + byte_index + 1;
+  uint64_t bitmap_size = std::max(used_size, metadata.size);
   if (byte_index >= value.size()) {  // expand the bitmap
     size_t expand_size = 0;
     if (byte_index >= value.size() * 2) {
@@ -242,9 +231,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
-  if (stop > static_cast<int64_t>(metadata.size)) stop = metadata.size;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
+  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size);
   if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
 
   auto u_start = static_cast<uint32_t>(start);
@@ -265,10 +254,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     if (s.IsNotFound()) continue;
     size_t j = 0;
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    for (; j < value.size(); j++) {
-      if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      *cnt += kNum2Bits[static_cast<uint8_t>(value[j])];
-    }
+    auto k = static_cast<int64_t>(value.size());
+    if (i == stop_index) k = u_stop % kBitmapSegmentBytes + 1;
+    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(value.data()) + j, k);
   }
   return rocksdb::Status::OK();
 }
@@ -291,8 +279,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos);
   }
 
-  if (start < 0) start += metadata.size + 1;
-  if (stop < 0) stop += metadata.size + 1;
+  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
   if (start < 0 || stop < 0 || start > stop) {
     *pos = -1;
     return rocksdb::Status::OK();
@@ -352,14 +340,13 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
-  rocksdb::Status s;
   std::vector<std::pair<std::string, BitmapMetadata>> meta_pairs;
   uint64_t max_size = 0, num_keys = op_keys.size();
 
   for (const auto &op_key : op_keys) {
     BitmapMetadata metadata(false);
     AppendNamespacePrefix(op_key, &ns_op_key);
-    s = GetMetadata(ns_op_key, &metadata, &raw_value);
+    auto s = GetMetadata(ns_op_key, &metadata, &raw_value);
     if (!s.ok()) {
       if (s.IsNotFound()) {
         num_keys--;
@@ -388,7 +375,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
-    uint64_t i = 0, frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
+    uint64_t frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
     uint16_t frag_maxlen = 0, frag_minlen = 0;
     std::string sub_key, fragment;
@@ -432,14 +419,14 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
           auto *lres = reinterpret_cast<uint64_t *>(frag_res.get());
           const uint64_t *lp[16];
-          for (i = 0; i < frag_numkeys; i++) {
+          for (uint64_t i = 0; i < frag_numkeys; i++) {
             lp[i] = reinterpret_cast<const uint64_t *>(fragments[i].data());
           }
           memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
 
           if (op_flag == kBitOpAnd) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
-              for (i = 1; i < frag_numkeys; i++) {
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
                 lres[0] &= lp[i][0];
                 lres[1] &= lp[i][1];
                 lres[2] &= lp[i][2];
@@ -452,7 +439,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
             }
           } else if (op_flag == kBitOpOr) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
-              for (i = 1; i < frag_numkeys; i++) {
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
                 lres[0] |= lp[i][0];
                 lres[1] |= lp[i][1];
                 lres[2] |= lp[i][2];
@@ -465,7 +452,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
             }
           } else if (op_flag == kBitOpXor) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
-              for (i = 1; i < frag_numkeys; i++) {
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
                 lres[0] ^= lp[i][0];
                 lres[1] ^= lp[i][1];
                 lres[2] ^= lp[i][2];
@@ -493,7 +480,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
           if (op_flag == kBitOpNot) output = ~output;
-          for (i = 1; i < frag_numkeys; i++) {
+          for (uint64_t i = 1; i < frag_numkeys; i++) {
             byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
             switch (op_flag) {
               case kBitOpAnd:

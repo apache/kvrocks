@@ -18,25 +18,26 @@
  *
  */
 
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-
-#include <iomanip>
-#include <ostream>
 #ifdef __linux__
 #define _XOPEN_SOURCE 700  // NOLINT
 #else
 #define _XOPEN_SOURCE
 #endif
+
+#include <dlfcn.h>
 #include <event2/thread.h>
 #include <execinfo.h>
+#include <fcntl.h>
 #include <glog/logging.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <ucontext.h>
+
+#include <iomanip>
+#include <ostream>
 
 #include "config.h"
 #include "fd_util.h"
@@ -45,6 +46,7 @@
 #include "server/server.h"
 #include "storage/storage.h"
 #include "string_util.h"
+#include "time_util.h"
 #include "version.h"
 
 namespace google {
@@ -275,13 +277,15 @@ bool isSupervisedMode(int mode) {
 static Status createPidFile(const std::string &path) {
   auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
   if (!fd) {
-    return Status(Status::NotOK, strerror(errno));
+    return Status::FromErrno();
   }
+
   std::string pid_str = std::to_string(getpid());
   auto s = Util::Write(*fd, pid_str);
   if (!s.IsOK()) {
     return s.Prefixed("failed to write to PID-file");
   }
+
   return Status::OK();
 }
 
@@ -306,6 +310,7 @@ static void daemonize() {
 }
 
 int main(int argc, char *argv[]) {
+  srand(static_cast<unsigned>(Util::GetTimeStamp()));
   google::InitGoogleLogging("kvrocks");
   evthread_use_pthreads();
 

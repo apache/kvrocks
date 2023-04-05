@@ -25,9 +25,11 @@
 #include <string>
 #include <utility>
 
+#include "time_util.h"
 #include "types/redis_bitmap.h"
 
 namespace Engine {
+
 using rocksdb::Slice;
 
 bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
@@ -66,31 +68,33 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
       // metadata was deleted(perhaps compaction or manual)
       // clear the metadata
       cached_metadata_.clear();
-      return Status(Status::NotFound, "metadata is not found");
+      return {Status::NotFound, "metadata is not found"};
     } else {
       cached_key_.clear();
       cached_metadata_.clear();
-      return Status(Status::NotOK, "fetch error: " + s.ToString());
+      return {Status::NotOK, "fetch error: " + s.ToString()};
     }
   }
   // the metadata was not found
-  if (cached_metadata_.empty()) return Status(Status::NotFound, "metadata is not found");
+  if (cached_metadata_.empty()) return {Status::NotFound, "metadata is not found"};
   // the metadata is cached
   rocksdb::Status s = metadata->Decode(cached_metadata_);
   if (!s.ok()) {
     cached_key_.clear();
-    return Status(Status::NotOK, "decode error: " + s.ToString());
-    ;
+    return {Status::NotOK, "decode error: " + s.ToString()};
   }
   return Status::OK();
 }
 
-bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) const {
-  if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
-      || metadata.Expired() || ikey.GetVersion() != metadata.version) {
-    return true;
-  }
-  return false;
+bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) {
+  // lazy delete to avoid race condition between command Expire and subkey Compaction
+  // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
+  //
+  // `Util::GetTimeStampMS() - 300000` means extending 5 minutes for expired items,
+  // to prevent them from being recycled once they reach the expiration time.
+  uint64_t lazy_expired_ts = Util::GetTimeStampMS() - 300000;
+  return metadata.Type() == kRedisString  // metadata key was overwrite by set command
+         || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
 }
 
 rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice &key, std::string *new_value,

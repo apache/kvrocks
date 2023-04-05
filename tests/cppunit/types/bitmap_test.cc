@@ -27,12 +27,12 @@
 
 class RedisBitmapTest : public TestBase {
  protected:
-  explicit RedisBitmapTest() : TestBase() { bitmap = std::make_unique<Redis::Bitmap>(storage_, "bitmap_ns"); }
-  ~RedisBitmapTest() = default;
+  explicit RedisBitmapTest() { bitmap = std::make_unique<Redis::Bitmap>(storage_, "bitmap_ns"); }
+  ~RedisBitmapTest() override = default;
+
   void SetUp() override { key_ = "test_bitmap_key"; }
   void TearDown() override {}
 
- protected:
   std::unique_ptr<Redis::Bitmap> bitmap;
 };
 
@@ -55,7 +55,7 @@ TEST_F(RedisBitmapTest, BitCount) {
     bool bit = false;
     bitmap->SetBit(key_, offset, true, &bit);
   }
-  uint32_t cnt;
+  uint32_t cnt = 0;
   bitmap->BitCount(key_, 0, 4 * 1024, &cnt);
   EXPECT_EQ(cnt, 6);
   bitmap->BitCount(key_, 0, -1, &cnt);
@@ -64,8 +64,8 @@ TEST_F(RedisBitmapTest, BitCount) {
 }
 
 TEST_F(RedisBitmapTest, BitPosClearBit) {
-  int64_t pos;
-  bool old_bit;
+  int64_t pos = 0;
+  bool old_bit = false;
   for (int i = 0; i < 1024 + 16; i++) {
     bitmap->BitPos(key_, false, 0, -1, true, &pos);
     EXPECT_EQ(pos, i);
@@ -81,7 +81,7 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
     bool bit = false;
     bitmap->SetBit(key_, offset, true, &bit);
   }
-  int64_t pos;
+  int64_t pos = 0;
   int start_indexes[] = {0, 1, 124, 1025, 1027, 3 * 1024 + 1};
   for (size_t i = 0; i < sizeof(start_indexes) / sizeof(start_indexes[0]); i++) {
     bitmap->BitPos(key_, true, start_indexes[i], -1, true, &pos);

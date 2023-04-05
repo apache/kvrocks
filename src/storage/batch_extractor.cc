@@ -21,7 +21,6 @@
 #include "batch_extractor.h"
 
 #include <glog/logging.h>
-#include <rocksdb/write_batch.h>
 
 #include "cluster/redis_slot.h"
 #include "parse_util.h"
@@ -49,20 +48,23 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     return rocksdb::Status::OK();
   }
 
-  std::string ns, user_key, sub_key;
+  std::string ns, user_key;
   std::vector<std::string> command_args;
+
   if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key, is_slotid_encoded_);
-    if (slot_ >= 0) {
-      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    ExtractNamespaceKey(key, &ns, &user_key, is_slot_id_encoded_);
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+      return rocksdb::Status::OK();
     }
+
     Metadata metadata(kRedisNone);
     metadata.Decode(value.ToString());
+
     if (metadata.Type() == kRedisString) {
-      command_args = {"SET", user_key, value.ToString().substr(5, value.size() - 5)};
+      command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
       resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
       if (metadata.expire > 0) {
-        command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
+        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
         resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
       }
     } else if (metadata.expire > 0) {
@@ -70,66 +72,108 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       if (args->size() > 0) {
         auto parse_result = ParseInt<int>((*args)[0], 10);
         if (!parse_result) {
-          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+          return rocksdb::Status::InvalidArgument(
+              fmt::format("failed to parse Redis command from log data: {}", parse_result.Msg()));
         }
+
         auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
-          command_args = {"EXPIREAT", user_key, std::to_string(metadata.expire)};
+          command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
         }
       }
+    }
+
+    if (metadata.Type() == kRedisStream) {
+      auto args = log_data_.GetArguments();
+      bool is_set_id = args && args->size() > 0 && (*args)[0] == "XSETID";
+      if (!is_set_id) {
+        return rocksdb::Status::OK();
+      }
+
+      StreamMetadata stream_metadata;
+      auto s = stream_metadata.Decode(value.ToString());
+      if (!s.ok()) return s;
+
+      command_args = {"XSETID",
+                      user_key,
+                      stream_metadata.last_entry_id.ToString(),
+                      "ENTRIESADDED",
+                      std::to_string(stream_metadata.entries_added),
+                      "MAXDELETEDID",
+                      stream_metadata.max_deleted_entry_id.ToString()};
+      resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
     }
 
     return rocksdb::Status::OK();
   }
 
   if (column_family_id == kColumnFamilyIDDefault) {
-    InternalKey ikey(key, is_slotid_encoded_);
+    InternalKey ikey(key, is_slot_id_encoded_);
     user_key = ikey.GetKey().ToString();
-    if (slot_ >= 0) {
-      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+      return rocksdb::Status::OK();
     }
-    sub_key = ikey.GetSubKey().ToString();
+
+    std::string sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
+
     switch (log_data_.GetRedisType()) {
       case kRedisHash:
         command_args = {"HSET", user_key, sub_key, value.ToString()};
         break;
       case kRedisList: {
         auto args = log_data_.GetArguments();
-        if (args->size() < 1) {
-          LOG(ERROR) << "Fail to parse write_batch in putcf type list : args error ,should at least contain cmd";
+        if (args->empty()) {
+          LOG(ERROR)
+              << "Failed to parse write_batch in PutCF. Type=List: no arguments, at least should contain a command";
           return rocksdb::Status::OK();
         }
+
         auto parse_result = ParseInt<int>((*args)[0], 10);
         if (!parse_result) {
-          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+          return rocksdb::Status::InvalidArgument(
+              fmt::format("failed to parse Redis command from log data: {}", parse_result.Msg()));
         }
+
         auto cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLSet:
             if (args->size() < 2) {
-              LOG(ERROR) << "Fail to parse write_batch in putcf cmd lset : args error ,should contain lset index";
+              LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=LSET: no enough arguments, at least should "
+                            "contain an index";
               return rocksdb::Status::OK();
             }
+
             command_args = {"LSET", user_key, (*args)[1], value.ToString()};
             break;
           case kRedisCmdLInsert:
             if (first_seen_) {
               if (args->size() < 4) {
-                LOG(ERROR)
-                    << "Fail to parse write_batch in putcf cmd linsert : args error, should contain before pivot value";
+                LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=LINSERT: no enough arguments, should "
+                              "contain before pivot value";
                 return rocksdb::Status::OK();
               }
+
               command_args = {"LINSERT", user_key, (*args)[1] == "1" ? "before" : "after", (*args)[2], (*args)[3]};
               first_seen_ = false;
             }
             break;
+          case kRedisCmdLPush:
+            command_args = {"LPUSH", user_key, value.ToString()};
+            break;
+          case kRedisCmdRPush:
+            command_args = {"RPUSH", user_key, value.ToString()};
+            break;
           case kRedisCmdLRem:
-            // lrem will be parsed in deletecf, so ignore this putcf
+            // LREM will be parsed in DeleteCF, so ignore it here
+            break;
+          case kRedisCmdLMove:
+            // LMOVE will be parsed in DeleteCF, so ignore it here
             break;
           default:
-            command_args = {cmd == kRedisCmdLPush ? "LPUSH" : "RPUSH", user_key, value.ToString()};
+            LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=List: unhandled command with code "
+                       << *parse_result;
         }
         break;
       }
@@ -143,43 +187,53 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       }
       case kRedisBitmap: {
         auto args = log_data_.GetArguments();
-        if (args->size() < 1) {
-          LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : args error ,should at least contain cmd";
+        if (args->empty()) {
+          LOG(ERROR)
+              << "Failed to parse write_batch in PutCF. Type=Bitmap: no arguments, at least should contain a command";
           return rocksdb::Status::OK();
         }
-        auto parse_result = ParseInt<int>((*args)[0], 10);
-        if (!parse_result) {
-          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+
+        auto parsed_cmd = ParseInt<int>((*args)[0], 10);
+        if (!parsed_cmd) {
+          return rocksdb::Status::InvalidArgument(
+              fmt::format("failed to parse Redis command from log data: {}", parsed_cmd.Msg()));
         }
-        auto cmd = static_cast<RedisCommand>(*parse_result);
+
+        auto cmd = static_cast<RedisCommand>(*parsed_cmd);
         switch (cmd) {
           case kRedisCmdSetBit: {
             if (args->size() < 2) {
-              LOG(ERROR) << "Fail to parse write_batch in putcf cmd setbit : args error ,should contain setbit offset";
+              LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=SETBIT: no enough arguments, should contain "
+                            "an offset";
               return rocksdb::Status::OK();
             }
-            auto parse_result = ParseInt<int>((*args)[1], 10);
-            if (!parse_result) {
-              return rocksdb::Status::InvalidArgument(parse_result.Msg());
+
+            auto parsed_offset = ParseInt<int>((*args)[1], 10);
+            if (!parsed_offset) {
+              return rocksdb::Status::InvalidArgument(
+                  fmt::format("failed to parse an offset of SETBIT: {}", parsed_offset.Msg()));
             }
-            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parse_result);
+
+            bool bit_value = Redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parsed_offset);
             command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
             break;
           }
           case kRedisCmdBitOp:
             if (first_seen_) {
               if (args->size() < 4) {
-                LOG(ERROR)
-                    << "Fail to parse write_batch in putcf cmd bitop : args error, should at least contain srckey";
+                LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=BITOP: no enough arguments, at least "
+                              "should contain srckey";
                 return rocksdb::Status::OK();
               }
+
               command_args = {"BITOP", (*args)[1], user_key};
               command_args.insert(command_args.end(), args->begin() + 2, args->end());
               first_seen_ = false;
             }
             break;
           default:
-            LOG(ERROR) << "Fail to parse write_batch in putcf type bitmap : cmd error";
+            LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Bitmap: unhandled command with code "
+                       << *parsed_cmd;
             return rocksdb::Status::OK();
         }
         break;
@@ -193,11 +247,18 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       default:
         break;
     }
+  } else if (column_family_id == kColumnFamilyIDStream) {
+    auto s = ExtractStreamAddCommand(is_slot_id_encoded_, key, value, &command_args);
+    if (!s.IsOK()) {
+      LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Stream: " << s.Msg();
+      return rocksdb::Status::OK();
+    }
   }
 
   if (!command_args.empty()) {
     resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
   }
+
   return rocksdb::Status::OK();
 }
 
@@ -206,22 +267,28 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     return rocksdb::Status::OK();
   }
 
-  std::string ns, user_key, sub_key;
   std::vector<std::string> command_args;
+  std::string ns;
+
   if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key, is_slotid_encoded_);
-    if (slot_ >= 0) {
-      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    std::string user_key;
+    ExtractNamespaceKey(key, &ns, &user_key, is_slot_id_encoded_);
+
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+      return rocksdb::Status::OK();
     }
+
     command_args = {"DEL", user_key};
   } else if (column_family_id == kColumnFamilyIDDefault) {
-    InternalKey ikey(key, is_slotid_encoded_);
-    user_key = ikey.GetKey().ToString();
-    if (slot_ >= 0) {
-      if (static_cast<uint16_t>(slot_) != GetSlotNumFromKey(user_key)) return rocksdb::Status::OK();
+    InternalKey ikey(key, is_slot_id_encoded_);
+    std::string user_key = ikey.GetKey().ToString();
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+      return rocksdb::Status::OK();
     }
-    sub_key = ikey.GetSubKey().ToString();
+
+    std::string sub_key = ikey.GetSubKey().ToString();
     ns = ikey.GetNamespace().ToString();
+
     switch (log_data_.GetRedisType()) {
       case kRedisHash:
         command_args = {"HDEL", user_key, sub_key};
@@ -234,22 +301,28 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
         break;
       case kRedisList: {
         auto args = log_data_.GetArguments();
-        if (args->size() < 1) {
-          LOG(ERROR) << "Fail to parse write_batch in DeleteCF type list : args error ,should contain cmd";
+        if (args->empty()) {
+          LOG(ERROR)
+              << "Failed to parse write_batch in DeleteCF. Type=List: no arguments, at least should contain a command";
           return rocksdb::Status::OK();
         }
+
         auto parse_result = ParseInt<int>((*args)[0], 10);
         if (!parse_result) {
-          return rocksdb::Status::InvalidArgument(parse_result.Msg());
+          return rocksdb::Status::InvalidArgument(
+              fmt::format("failed to parse Redis command from log data: {}", parse_result.Msg()));
         }
+
         auto cmd = static_cast<RedisCommand>(*parse_result);
         switch (cmd) {
           case kRedisCmdLTrim:
             if (first_seen_) {
               if (args->size() < 3) {
-                LOG(ERROR) << "Fail to parse write_batch in DeleteCF cmd ltrim : args error ,should contain start,stop";
+                LOG(ERROR) << "Failed to parse write_batch in DeleteCF; Command=LTRIM: no enough arguments, should "
+                              "contain start and stop";
                 return rocksdb::Status::OK();
               }
+
               command_args = {"LTRIM", user_key, (*args)[1], (*args)[2]};
               first_seen_ = false;
             }
@@ -257,15 +330,35 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           case kRedisCmdLRem:
             if (first_seen_) {
               if (args->size() < 3) {
-                LOG(ERROR) << "Fail to parse write_batch in DeleteCF cmd lrem : args error ,should contain count,value";
+                LOG(ERROR) << "Failed to parse write_batch in DeleteCF. Command=LREM: no enough arguments, should "
+                              "contain count and value";
                 return rocksdb::Status::OK();
               }
+
               command_args = {"LREM", user_key, (*args)[1], (*args)[2]};
               first_seen_ = false;
             }
             break;
+          case kRedisCmdLPop:
+            command_args = {"LPOP", user_key};
+            break;
+          case kRedisCmdRPop:
+            command_args = {"RPOP", user_key};
+            break;
+          case kRedisCmdLMove:
+            if (first_seen_) {
+              if (args->size() < 5) {
+                LOG(ERROR) << "Failed to parse write_batch in DeleteCF; Command=LMOVE: no enough arguments, should "
+                              "contain source, destination and where/from arguments";
+                return rocksdb::Status::OK();
+              }
+              command_args = {"LMOVE", (*args)[1], (*args)[2], (*args)[3], (*args)[4]};
+              first_seen_ = false;
+            }
+            break;
           default:
-            command_args = {cmd == kRedisCmdLPop ? "LPOP" : "RPOP", user_key};
+            LOG(ERROR) << "Failed to parse write_batch in DeleteCF. Type=List: unhandled command with code "
+                       << *parse_result;
         }
         break;
       }
@@ -278,16 +371,47 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       default:
         break;
     }
+  } else if (column_family_id == kColumnFamilyIDStream) {
+    InternalKey ikey(key, is_slot_id_encoded_);
+    Slice encoded_id = ikey.GetSubKey();
+    Redis::StreamEntryID entry_id;
+    GetFixed64(&encoded_id, &entry_id.ms);
+    GetFixed64(&encoded_id, &entry_id.seq);
+    command_args = {"XDEL", ikey.GetKey().ToString(), entry_id.ToString()};
   }
 
   if (!command_args.empty()) {
     resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
   }
+
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
                                                    const Slice &end_key) {
-  // Do nothing about DeleteRange operations
+  // Do nothing with DeleteRange operations
   return rocksdb::Status::OK();
+}
+
+Status WriteBatchExtractor::ExtractStreamAddCommand(bool is_slot_id_encoded, const Slice &subkey, const Slice &value,
+                                                    std::vector<std::string> *command_args) {
+  InternalKey ikey(subkey, is_slot_id_encoded);
+  std::string user_key = ikey.GetKey().ToString();
+  *command_args = {"XADD", user_key};
+
+  std::vector<std::string> values;
+  auto s = Redis::DecodeRawStreamEntryValue(value.ToString(), &values);
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to decode stream values");
+  }
+
+  Slice encoded_id = ikey.GetSubKey();
+  Redis::StreamEntryID entry_id;
+  GetFixed64(&encoded_id, &entry_id.ms);
+  GetFixed64(&encoded_id, &entry_id.seq);
+
+  command_args->emplace_back(entry_id.ToString());
+  command_args->insert(command_args->end(), values.begin(), values.end());
+
+  return Status::OK();
 }

@@ -615,10 +615,9 @@ StatusOr<KeyMigrationResult> SlotMigrate::MigrateOneKey(const rocksdb::Slice &ke
 
 Status SlotMigrate::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
                                      std::string *restore_cmds) {
-  std::vector<std::string> command = {"set", key.ToString(),
-                                      bytes.substr(Redis::STRING_HDR_SIZE, bytes.size() - Redis::STRING_HDR_SIZE)};
+  std::vector<std::string> command = {"SET", key.ToString(), bytes.substr(Metadata::GetOffsetAfterExpire(bytes[0]))};
   if (metadata.expire > 0) {
-    command.emplace_back("EXAT");
+    command.emplace_back("PXAT");
     command.emplace_back(std::to_string(metadata.expire));
   }
   *restore_cmds += Redis::MultiBulkString(command, false);
@@ -727,7 +726,7 @@ Status SlotMigrate::MigrateComplexKey(const rocksdb::Slice &key, const Metadata 
 
   // Add TTL for complex key
   if (metadata.expire > 0) {
-    *restore_cmds += Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
     current_pipeline_size_++;
   }
 
@@ -765,23 +764,10 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
       break;
     }
 
-    // Parse values of the complex key
-    // InternalKey is adopted to get complex key's value from the formatted key returned by iterator of rocksdb
-    InternalKey inkey(iter->key(), true);
-    std::vector<std::string> values;
-    auto s = Redis::DecodeRawStreamEntryValue(iter->value().ToString(), &values);
+    auto s = WriteBatchExtractor::ExtractStreamAddCommand(true, iter->key(), iter->value(), &user_cmd);
     if (!s.IsOK()) {
-      return {Status::NotOK, fmt::format("failed to decode stream values: {}", s.Msg())};
+      return s;
     }
-
-    Slice encoded_id = inkey.GetSubKey();
-    Redis::StreamEntryID entry_id;
-    GetFixed64(&encoded_id, &entry_id.ms);
-    GetFixed64(&encoded_id, &entry_id.seq);
-
-    user_cmd.emplace_back(entry_id.ToString());
-    user_cmd.insert(user_cmd.end(), values.begin(), values.end());
-
     *restore_cmds += Redis::MultiBulkString(user_cmd, false);
     current_pipeline_size_++;
 
@@ -803,7 +789,7 @@ Status SlotMigrate::MigrateStream(const Slice &key, const StreamMetadata &metada
 
   // Add TTL
   if (metadata.expire > 0) {
-    *restore_cmds += Redis::MultiBulkString({"EXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
     current_pipeline_size_++;
   }
 
@@ -897,7 +883,7 @@ void SlotMigrate::ReleaseForbiddenSlot() {
   forbidden_slot_ = -1;
 }
 
-void SlotMigrate::ApplyMigrationSpeedLimit() {
+void SlotMigrate::ApplyMigrationSpeedLimit() const {
   if (migration_speed_ > 0) {
     uint64_t current_time = Util::GetTimeStampUS();
     uint64_t per_request_time = 1000000 * pipeline_size_limit_ / migration_speed_;

@@ -66,28 +66,41 @@ class [[nodiscard]] Status {
     BlockingCmd,
   };
 
-  Status() : Status(cOK) {}
+  Status() : impl_{nullptr} {}
 
-  Status(Code code, std::string msg = {}) : code_(code), msg_(std::move(msg)) {}  // NOLINT
+  Status(Code code, std::string msg = {}) : impl_{new Impl{code, std::move(msg)}} {  // NOLINT
+    CHECK(code != cOK);
+  }
+
+  Status(const Status& s) : impl_{s.impl_ ? new Impl{s.impl_->code_, s.impl_->msg_} : nullptr} {}
+  Status(Status&&) = default;
+
+  Status& operator=(const Status& s) {
+    Status tmp = s;
+    return *this = std::move(tmp);
+  }
+  Status& operator=(Status&& s) = default;
+
+  ~Status() = default;
 
   template <Code code>
   bool Is() const {
-    return code_ == code;
+    return impl_ && impl_->code_ == code;
   }
 
-  bool IsOK() const { return Is<cOK>(); }
+  bool IsOK() const { return !impl_; }
   explicit operator bool() const { return IsOK(); }
 
-  Code GetCode() const { return code_; }
+  Code GetCode() const { return impl_ ? impl_->code_ : cOK; }
 
   std::string Msg() const& {
     if (*this) return ok_msg;
-    return msg_;
+    return impl_->msg_;
   }
 
   std::string Msg() && {
     if (*this) return ok_msg;
-    return std::move(msg_);
+    return std::move(impl_->msg_);
   }
 
   static Status OK() { return {}; }
@@ -99,7 +112,7 @@ class [[nodiscard]] Status {
     if (*this) {
       return {};
     }
-    return {code_, fmt::format("{}: {}", prefix, msg_)};
+    return {impl_->code_, fmt::format("{}: {}", prefix, impl_->msg_)};
   }
 
   void GetValue() {}
@@ -107,8 +120,12 @@ class [[nodiscard]] Status {
   static constexpr const char* ok_msg = "ok";
 
  private:
-  Code code_;
-  std::string msg_;
+  struct Impl {
+    Code code_;
+    std::string msg_;
+  };
+
+  std::unique_ptr<Impl> impl_;
 
   static constexpr Code cOK = static_cast<Code>(0);
 
@@ -195,9 +212,9 @@ struct [[nodiscard]] StatusOr {
 
   using Code = Status::Code;
 
-  StatusOr(Status s) : code_(s.code_) {  // NOLINT
+  StatusOr(Status s) : code_(s.GetCode()) {  // NOLINT
     CHECK(!s);
-    new (&error_) error_type(std::move(s.msg_));
+    new (&error_) error_type(std::move(s.impl_->msg_));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT

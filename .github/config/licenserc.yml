@@ -33,6 +33,7 @@ header:
     - '**/*.yaml'
   paths-ignore:
     - 'src/common/rand.h'
+    - 'src/common/rand.cc'
     - 'src/common/rocksdb_crc32c.h'
     - 'src/common/sha1.h'
     - 'src/common/sha1.cc'

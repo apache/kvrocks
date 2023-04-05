@@ -298,8 +298,8 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   // RocksDB check the existence of prefix in bloom filter if the prefix extractor
   // was enabled, and the upper would always be missed in bloom since its version
   // is key's version + 1. So we need to remove the upper bound here.
+  rocksdb::Slice upper_bound(next_version_prefix_key);
   if (!spec.max_infinite) {
-    rocksdb::Slice upper_bound(next_version_prefix_key);
     read_options.iterate_upper_bound = &upper_bound;
   }
   rocksdb::Slice lower_bound(prefix_key);

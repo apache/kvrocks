@@ -28,7 +28,7 @@ SlotImport::SlotImport(Server *svr)
       import_fd_(-1) {
   std::lock_guard<std::mutex> guard(mutex_);
   // Let metadata_cf_handle_ be nullptr, then get them in real time while use them.
-  // See comments in SlotMigrate::SlotMigrate for detailed reason.
+  // See comments in SlotMigrator::SlotMigrator for detailed reason.
   metadata_cf_handle_ = nullptr;
 }
 
@@ -100,7 +100,7 @@ void SlotImport::StopForLinkError(int fd) {
 
   // Maybe server has failovered
   // Situation:
-  // Refer to the situation described in SlotMigrate::SlotMigrate
+  // Refer to the situation described in SlotMigrator::SlotMigrator
   // 1. Change server to slave when it is importing data.
   // 2. Source server's migration process end after destination server has finished replication.
   // 3. The migration link closed by source server, then this function will be call by OnEvent.

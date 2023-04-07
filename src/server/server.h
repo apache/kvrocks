@@ -111,7 +111,7 @@ class ServerLogData {
 };
 
 class SlotImport;
-class SlotMigrate;
+class SlotMigrator;
 
 class Server {
  public:
@@ -220,7 +220,7 @@ class Server {
   Engine::Storage *storage_;
   std::unique_ptr<Cluster> cluster_;
   static std::atomic<int> unix_time_;
-  std::unique_ptr<SlotMigrate> slot_migrate_;
+  std::unique_ptr<SlotMigrator> slot_migrator_;
   std::unique_ptr<SlotImport> slot_import_;
 
   void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);

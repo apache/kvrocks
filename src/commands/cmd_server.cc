@@ -153,8 +153,8 @@ class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->IsMigrationInProgress()) {
-        svr->slot_migrate_->SetMigrateStopFlag(true);
+      if (svr->slot_migrator_->IsMigrationInProgress()) {
+        svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
     }
@@ -179,8 +179,8 @@ class CommandFlushAll : public Commander {
     }
 
     if (svr->GetConfig()->cluster_enabled) {
-      if (svr->slot_migrate_->IsMigrationInProgress()) {
-        svr->slot_migrate_->SetMigrateStopFlag(true);
+      if (svr->slot_migrator_->IsMigrationInProgress()) {
+        svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
     }
@@ -880,7 +880,7 @@ class CommandSlaveOf : public Commander {
       *output = Redis::SimpleString("OK");
       LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
       if (svr->GetConfig()->cluster_enabled) {
-        svr->slot_migrate_->SetMigrateStopFlag(false);
+        svr->slot_migrator_->SetStopMigrationFlag(false);
         LOG(INFO) << "Change server role to master, restart migration task";
       }
 
@@ -893,7 +893,7 @@ class CommandSlaveOf : public Commander {
       LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
                    << "')";
       if (svr->GetConfig()->cluster_enabled) {
-        svr->slot_migrate_->SetMigrateStopFlag(true);
+        svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Change server role to slave, stop migration task";
       }
     } else {

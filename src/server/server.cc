@@ -153,14 +153,14 @@ Status Server::Start() {
       return s.Prefixed("failed to load cluster nodes info");
     }
     // Create objects used for slot migration
-    slot_migrate_ =
-        std::make_unique<SlotMigrate>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
-    slot_import_ = std::make_unique<SlotImport>(this);
-    // Create migrating thread
-    s = slot_migrate_->CreateMigrateHandleThread();
+    slot_migrator_ =
+        std::make_unique<SlotMigrator>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
+    s = slot_migrator_->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");
     }
+
+    slot_import_ = std::make_unique<SlotImport>(this);
   }
 
   for (const auto &worker : worker_threads_) {
@@ -1212,8 +1212,8 @@ void Server::PrepareRestoreDB() {
 void Server::WaitNoMigrateProcessing() {
   if (config_->cluster_enabled) {
     LOG(INFO) << "[server] Waiting until no migration task is running...";
-    slot_migrate_->SetMigrateStopFlag(true);
-    while (slot_migrate_->GetMigrateStateMachine() != MigrateStateMachine::kSlotMigrateNone) {
+    slot_migrator_->SetStopMigrationFlag(true);
+    while (slot_migrator_->GetCurrentSlotMigrationStage() != SlotMigrationStage::kNone) {
       usleep(500);
     }
   }

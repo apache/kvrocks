@@ -448,19 +448,19 @@ void Config::initFieldCallback() {
       {"migrate-speed",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrate_->SetMigrateSpeedLimit(migrate_speed);
+         if (cluster_enabled) srv->slot_migrator_->SetMaxMigrationSpeed(migrate_speed);
          return Status::OK();
        }},
       {"migrate-pipeline-size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrate_->SetPipelineSize(pipeline_size);
+         if (cluster_enabled) srv->slot_migrator_->SetMaxPipelineSize(pipeline_size);
          return Status::OK();
        }},
       {"migrate-sequence-gap",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrate_->SetSequenceGapSize(sequence_gap);
+         if (cluster_enabled) srv->slot_migrator_->SetSequenceGapLimit(sequence_gap);
          return Status::OK();
        }},
       {"log-retention-days",
@@ -786,16 +786,20 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
   if (iter == fields_.end() || iter->second->readonly) {
     return {Status::NotOK, "Unsupported CONFIG parameter: " + key};
   }
+
   auto &field = iter->second;
   if (field->validate) {
     auto s = field->validate(key, value);
-    if (!s.IsOK()) return s;
+    if (!s.IsOK()) return s.Prefixed("invalid value");
   }
+
   auto s = field->Set(value);
-  if (!s.IsOK()) return s;
+  if (!s.IsOK()) return s.Prefixed("failed to set new value");
+
   if (field->callback) {
     return field->callback(svr, key, value);
   }
+
   return Status::OK();
 }
 

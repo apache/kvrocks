@@ -128,8 +128,8 @@ class SlotMigrator : public Redis::Database {
   void ApplyMigrationSpeedLimit() const;
   Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
   Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
-  Status SyncWalBeforeForbiddingSlot();
-  Status SyncWalAfterForbiddingSlot();
+  Status SyncWALBeforeForbiddingSlot();
+  Status SyncWALAfterForbiddingSlot();
   void SetForbiddenSlot(int16_t slot);
 
   enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };

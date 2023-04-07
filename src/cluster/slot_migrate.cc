@@ -355,7 +355,7 @@ Status SlotMigrator::SendSnapshot() {
 
 Status SlotMigrator::SyncWAL() {
   // Send incremental data from WAL circularly until new increment less than a certain amount
-  auto s = SyncWalBeforeForbiddingSlot();
+  auto s = SyncWALBeforeForbiddingSlot();
   if (!s.IsOK()) {
     return s.Prefixed("failed to sync WAL before forbidding a slot");
   }
@@ -363,7 +363,7 @@ Status SlotMigrator::SyncWAL() {
   SetForbiddenSlot(migrating_slot_);
 
   // Send last incremental data
-  s = SyncWalAfterForbiddingSlot();
+  s = SyncWALAfterForbiddingSlot();
   if (!s.IsOK()) {
     return s.Prefixed("failed to sync WAL after forbidding a slot");
   }
@@ -991,7 +991,7 @@ Status SlotMigrator::MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLo
   return Status::OK();
 }
 
-Status SlotMigrator::SyncWalBeforeForbiddingSlot() {
+Status SlotMigrator::SyncWALBeforeForbiddingSlot() {
   uint32_t count = 0;
 
   while (count < kMaxLoopTimes) {
@@ -1026,7 +1026,7 @@ Status SlotMigrator::SyncWalBeforeForbiddingSlot() {
   return Status::OK();
 }
 
-Status SlotMigrator::SyncWalAfterForbiddingSlot() {
+Status SlotMigrator::SyncWALAfterForbiddingSlot() {
   uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
 
   // No incremental data

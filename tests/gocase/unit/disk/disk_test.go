@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/go-redis/redis/v9"
@@ -142,4 +143,15 @@ func TestDisk(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "Disk", "usage", "nonexistentkey").Err(), "Not found")
 	})
 
+	t.Run("Memory usage existing key - check that Kvrocks support it", func(t *testing.T) {
+		key := "arbitrary-key"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+
+		require.NoError(t, rdb.Set(ctx, key, "some-arbitrary-value-with-non-zero-length",
+			time.Duration(0)).Err())
+
+		size, err := rdb.MemoryUsage(ctx, key).Result()
+		require.NoError(t, err)
+		require.Greater(t, size, int64(0))
+	})
 }

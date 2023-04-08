@@ -296,6 +296,8 @@ class CommandDisk : public Commander {
   }
 };
 
+class CommandMemory : public CommandDisk {};
+
 class CommandRole : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -645,14 +647,13 @@ class CommandHello final : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
     if (args_.size() >= 2) {
-      int64_t protocol = 0;
       auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
         return {Status::NotOK, "Protocol version is not an integer or out of range"};
       }
 
-      protocol = *parse_result;
+      int64_t protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
@@ -941,6 +942,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),

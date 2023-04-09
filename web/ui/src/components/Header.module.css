@@ -1,0 +1,25 @@
+.wrapper{
+    display: flex;
+    height: 100%;
+    width: 100%;
+}
+.left{
+    display: inline-block;
+    height: 100%;
+    cursor: pointer;
+}
+.leftWrapperFlex{
+    display: flex;
+    height: 100%;
+    padding: 10px 0;
+}
+.logo{
+    height: 100%;
+}
+.title{
+    color: white;
+    display: inline-block;
+    font-size: 35px;
+    line-height: 100%;
+    margin: 8px;
+}

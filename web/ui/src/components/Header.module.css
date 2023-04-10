@@ -7,6 +7,8 @@
     display: inline-block;
     height: 100%;
     cursor: pointer;
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 .leftWrapperFlex{
     display: flex;
@@ -17,9 +19,18 @@
     height: 100%;
 }
 .title{
-    color: white;
     display: inline-block;
     font-size: 35px;
     line-height: 100%;
     margin: 8px;
+}
+.menu{
+    width: 100%;
+    margin-left: 50px;
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+.right{
+    flex-grow: 0;
+    flex-shrink: 0;
 }

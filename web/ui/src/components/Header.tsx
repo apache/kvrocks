@@ -1,22 +1,41 @@
 import { useCallback } from 'react';
 import logo from '../logo.svg';
 import styles from './Header.module.css';
-import { Menu } from 'antd';
+import { Dropdown, Menu, Space, Typography } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
 import { ItemType } from 'antd/es/menu/hooks/useItems';
+import type { MenuClickEventHandler } from 'rc-menu/lib/interface';
+import { useNavigate, useLocation } from 'react-router-dom';
+
 const menuItems: ItemType[] = [
     {
-        key: 'data',
+        key: '/data',
         label: 'Data',
     },
     {
-        key: 'state',
-        label: 'State',
+        key: '/info',
+        label: 'Info',
     },
-]
+];
+const languageItems = [
+    {
+        key: 'en-us',
+        label: 'English',
+    },
+    {
+        key: 'zh-cn',
+        label: '中文',
+    },
+];
 export const Header = () => {
+    const navigate = useNavigate();
+    const {pathname: currentRoutePath} = useLocation();
     const onLogoClick = useCallback(() => {
-        console.log('logo clicked')
-    },[])
+        navigate('/');
+    },[navigate]);
+    const onMenuClick:MenuClickEventHandler = useCallback(e => {
+        navigate(e.key);
+    },[navigate]);
     return (
         <div className={styles.wrapper}>
             <div className={styles.left} onClick={onLogoClick}>
@@ -28,12 +47,27 @@ export const Header = () => {
                 </div>
             </div>
             <Menu 
-                theme="dark" 
+                theme="light" 
                 mode="horizontal" 
                 items={menuItems}
-                defaultSelectedKeys={['data']}
-                style={{width: '100%', marginLeft: '50px'}}
+                selectedKeys={[currentRoutePath]}
+                className={styles.menu}
+                onClick={onMenuClick}
             ></Menu>
+            <div className={styles.right}>
+                <Dropdown menu={{
+                    items: languageItems,
+                    selectable: true,
+                    defaultSelectedKeys: ['en-us']
+                }}>
+                    <Typography.Link>
+                        <Space>
+                            Language
+                            <DownOutlined />
+                        </Space>
+                    </Typography.Link>
+                </Dropdown>
+            </div>
         </div>
-    )
-}
+    );
+};

@@ -65,6 +65,13 @@ async function apiWrapper(cb, req, res, next) {
     }
 }
 
+server.all('*', function(req, res, next){
+    res.header('Access-Control-Allow-Origin', '*');  
+    res.header('Access-Control-Allow-Headers', '*');  
+    res.header('Access-Control-Allow-Methods', 'PUT, POST, GET, DELETE, OPTIONS');
+    next();
+})
+
 server.get('/all', function (req, res) {
     apiWrapper(async () => {
         const allKeys = await client.keys('*');

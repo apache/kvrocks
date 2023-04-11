@@ -13,7 +13,7 @@ function App() {
                 <Header></Header>
                 <div className='wrapper'></div>
             </HeaderWrapper>
-            <Content>
+            <Content style={{padding: '20px 50px', minHeight: 'calc(100vh - 64px)'}}>
                 {
                     routerElement
                 }

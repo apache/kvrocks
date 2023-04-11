@@ -1,24 +1,25 @@
-interface baseRow{
+export interface BaseRow{
     key: string,
     type: string,
+    ttl: number,
     value: any
 }
-interface stringRow extends baseRow{
+interface StringRow extends BaseRow{
     type: 'string',
     value: string
 }
-interface listRow extends baseRow{
+interface ListRow extends BaseRow{
     type: 'list',
     value: string[]
 }
-interface hashRow extends baseRow{
+interface HashRow extends BaseRow{
     type: 'hash',
     value: {
         [key in string]: string
     }
 }
-interface setRow extends baseRow{
+interface SetRow extends BaseRow{
     type: 'set',
     value: string[]
 }
-export type rowData= stringRow|listRow|hashRow|setRow
+export type rowData= StringRow|ListRow|HashRow|SetRow

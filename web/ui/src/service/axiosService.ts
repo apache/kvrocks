@@ -1,5 +1,5 @@
 import { Axios } from 'axios';
-import { rowData } from '../types/types';
+import { BaseRow, rowData } from '../types/types';
 class AxiosService {
     private axios: Axios;
     constructor() {
@@ -11,14 +11,38 @@ class AxiosService {
     private errorHandler(err: any) {
         console.error('Api error',err);
     }
-    async getAll(from: number, to: number): Promise<rowData[]> {
+    private async post(url: string, data: object) {
         try {
-            const response = await this.axios.get('/all');
+            const {data:result}=await this.axios.post(url, JSON.stringify(data), {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            return result;
+        } catch (err) {
+            this.errorHandler(err);
+        }
+    }
+    async getAll(from: number, to: number): Promise<{data:rowData[], totalCount: number}> {
+        try {
+            const response = await this.axios.get('/all', {
+                params: {
+                    from,
+                    to
+                }
+            });
             return JSON.parse(response.data);
         } catch (err) {
             this.errorHandler(err);
         }
-        return [];
+        return {
+            data: [],
+            totalCount: 0
+        };
+    }
+    async create(data: BaseRow) {
+        await this.post('/create', data);
+        return;
     }
 }
 const axiosService = new AxiosService();

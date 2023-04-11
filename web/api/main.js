@@ -1,7 +1,9 @@
 const {createClient} = require('redis');
 const express = require('express');
+const bodyParser = require('body-parser');
 const { waitUntil } = require('./util');
-const server = express();
+const app = express();
+app.use(bodyParser.json());
 const client = createClient({
     socket: {
         port: 6666,
@@ -65,14 +67,14 @@ async function apiWrapper(cb, req, res, next) {
     }
 }
 
-server.all('*', function(req, res, next){
+app.all('*', function(req, res, next){
     res.header('Access-Control-Allow-Origin', '*');  
     res.header('Access-Control-Allow-Headers', '*');  
     res.header('Access-Control-Allow-Methods', 'PUT, POST, GET, DELETE, OPTIONS');
     next();
 })
 
-server.get('/all', function (req, res) {
+app.get('/all', function (req, res) {
     apiWrapper(async () => {
         const allKeys = await client.keys('*');
         let start = parseInt(req.query.from);
@@ -87,6 +89,7 @@ server.get('/all', function (req, res) {
         const result = [];
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
+            const ttl = await client.ttl(key);
             const type = await client.type(key);
             let value = null;
             switch (type) {
@@ -110,17 +113,55 @@ server.get('/all', function (req, res) {
                 key,
                 type,
                 value,
+                ttl,
             })
         }
-        res.send(result);
+        res.send({
+            data: result,
+            totalCount: allKeys.length
+        });
     }, ...arguments)
- })
+})
 
-server.get('/allKeys', function(req, res) {
+app.get('/allKeys', function(req, res) {
     apiWrapper(async () => {
         const keys = await client.keys('*');
         res.send(keys);
     }, ...arguments)
 })
 
-server.listen(8888, () => console.log('api on 8888'))
+app.post('/create', function(req, res) {
+    apiWrapper(async () => {
+        const body = req.body;
+        if(typeof body !== 'object'){
+            throw 'No body'
+        }
+        const key = body['key']
+        if(typeof key !== 'string' || key === ''){
+            throw 'No key';
+        }
+        const type = body['type'];
+        const value = body['value'];
+        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set'].includes(type)){
+            throw 'Unknown type'
+        }
+        if(type == 'string' && typeof value == 'string'){
+            // create string
+            await client.set(key, value);
+        } else if(type == 'list' && Array.isArray(value)){
+            // create list
+        } else if(type == 'hash' && typeof value === 'object' && !Array.isArray(value)){
+            // create hash
+        } else if(type == 'set' && Array.isArray(value)){
+            // create set
+        } else {
+            throw 'Bad request'
+        }
+        if('ttl' in body && typeof body['ttl'] === 'number' && body['ttl'] > 0){
+            await client.expire(key, body['ttl'])
+        }
+        res.send('');
+    }, ...arguments)
+})
+
+app.listen(8888, () => console.log('api on 8888'))

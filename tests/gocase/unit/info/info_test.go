@@ -88,4 +88,8 @@ func TestInfo(t *testing.T) {
 		require.GreaterOrEqual(t, lastBgsaveTimeSec, 0)
 		require.Less(t, lastBgsaveTimeSec, 3)
 	})
+
+	t.Run("get cluster information by INFO", func(t *testing.T) {
+		require.Equal(t, "0", util.FindInfoEntry(rdb, "cluster_enabled", "cluster"))
+	})
 }

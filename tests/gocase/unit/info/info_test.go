@@ -31,6 +31,11 @@ import (
 )
 
 func TestInfo(t *testing.T) {
+	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { srv0.Close() }()
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -89,7 +94,11 @@ func TestInfo(t *testing.T) {
 		require.Less(t, lastBgsaveTimeSec, 3)
 	})
 
-	t.Run("get cluster information by INFO", func(t *testing.T) {
+	t.Run("get cluster information by INFO - cluster not enabled", func(t *testing.T) {
 		require.Equal(t, "0", util.FindInfoEntry(rdb, "cluster_enabled", "cluster"))
+	})
+
+	t.Run("get cluster information by INFO - cluster enabled", func(t *testing.T) {
+		require.Equal(t, "1", util.FindInfoEntry(rdb0, "cluster_enabled", "cluster"))
 	})
 }

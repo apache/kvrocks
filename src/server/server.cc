@@ -1029,6 +1029,15 @@ void Server::GetCommandsStatsInfo(std::string *info) {
   *info = string_stream.str();
 }
 
+void Server::GetClusterInfo(std::string *info) {
+  std::ostringstream string_stream;
+
+  string_stream << "# Cluster\r\n";
+  string_stream << "cluster_enabled:" << config_->cluster_enabled << "\r\n";
+
+  *info = string_stream.str();
+}
+
 // WARNING: we must not access DB(i.e. RocksDB) when server is loading since
 // DB is closed and the pointer is invalid. Server may crash if we access DB during loading.
 // If you add new fields which access DB into INFO command output, make sure
@@ -1108,6 +1117,13 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     GetCommandsStatsInfo(&commands_stats_info);
     if (section_cnt++) string_stream << "\r\n";
     string_stream << commands_stats_info;
+  }
+
+  if (all || section == "cluster") {
+    std::string cluster_info;
+    GetClusterInfo(&cluster_info);
+    if (section_cnt++) string_stream << "\r\n";
+    string_stream << cluster_info;
   }
 
   // In keyspace section, we access DB, so we can't do that when loading

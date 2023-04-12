@@ -261,7 +261,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::string &body_or_sh
     lua_pop(lua, 2);
   } else {
     *output = replyToRedisReply(lua);
-    lua_pop(lua, 1);
+    lua_pop(lua, 2);
   }
 
   // clean global variables to prevent information leak in function commands
@@ -688,6 +688,7 @@ void pushError(lua_State *lua, const char *err) {
   lua_settable(lua, -3);
 }
 
+// this function does not pop any element on the stack
 std::string replyToRedisReply(lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
@@ -717,7 +718,7 @@ std::string replyToRedisReply(lua_State *lua) {
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         output = Redis::Error(lua_tostring(lua, -1));
-        lua_pop(lua, 2);
+        lua_pop(lua, 1);
         return output;
       }
       lua_pop(lua, 1); /* Discard field name pushed before. */
@@ -743,6 +744,7 @@ std::string replyToRedisReply(lua_State *lua) {
           }
           mbulklen++;
           output += replyToRedisReply(lua);
+          lua_pop(lua, 1);
         }
         output = Redis::MultiLen(mbulklen) + output;
       }
@@ -750,7 +752,6 @@ std::string replyToRedisReply(lua_State *lua) {
     default:
       output = Redis::NilString();
   }
-  lua_pop(lua, 1);
   return output;
 }
 

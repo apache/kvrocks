@@ -821,7 +821,7 @@ int redisMathRandom(lua_State *lua) {
      some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
   lua_Number r = (lua_Number)(redisLrand48() % REDIS_LRAND48_MAX) / (lua_Number)REDIS_LRAND48_MAX;
   switch (lua_gettop(lua)) {  /* check number of arguments */
-    case 0: {               /* no arguments */
+    case 0: {                 /* no arguments */
       lua_pushnumber(lua, r); /* Number between 0 and 1 */
       break;
     }

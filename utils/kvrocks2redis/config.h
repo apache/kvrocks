@@ -28,7 +28,7 @@
 
 namespace Kvrocks2redis {
 
-struct redis_server {
+struct RedisServer {
   std::string host;
   uint32_t port;
   std::string auth;
@@ -51,7 +51,7 @@ struct Config {
   std::string kvrocks_auth;
   std::string kvrocks_host;
   int kvrocks_port = 0;
-  std::map<std::string, redis_server> tokens;
+  std::map<std::string, RedisServer> tokens;
   bool cluster_enable = false;
 
   Status Load(std::string path);

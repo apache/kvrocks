@@ -329,14 +329,14 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? raiseError(lua) : 1;
   }
 
-  auto redisCmd = cmd_iter->second;
-  if (read_only && !(redisCmd->flags & Redis::kCmdReadOnly)) {
+  auto redis_cmd = cmd_iter->second;
+  if (read_only && !(redis_cmd->flags & Redis::kCmdReadOnly)) {
     pushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? raiseError(lua) : 1;
   }
 
-  auto cmd = redisCmd->factory();
-  cmd->SetAttributes(redisCmd);
+  auto cmd = redis_cmd->factory();
+  cmd->SetAttributes(redis_cmd);
   cmd->SetArgs(args);
 
   int arity = cmd->GetAttributes()->arity;
@@ -436,21 +436,21 @@ void enableGlobalsProtection(lua_State *lua) {
 }
 
 void loadLibraries(lua_State *lua) {
-  auto loadLib = [](lua_State *lua, const char *libname, lua_CFunction func) {
+  auto load_lib = [](lua_State *lua, const char *libname, lua_CFunction func) {
     lua_pushcfunction(lua, func);
     lua_pushstring(lua, libname);
     lua_call(lua, 1, 0);
   };
 
-  loadLib(lua, "", luaopen_base);
-  loadLib(lua, LUA_TABLIBNAME, luaopen_table);
-  loadLib(lua, LUA_STRLIBNAME, luaopen_string);
-  loadLib(lua, LUA_MATHLIBNAME, luaopen_math);
-  loadLib(lua, LUA_DBLIBNAME, luaopen_debug);
-  loadLib(lua, "cjson", luaopen_cjson);
-  loadLib(lua, "struct", luaopen_struct);
-  loadLib(lua, "cmsgpack", luaopen_cmsgpack);
-  loadLib(lua, "bit", luaopen_bit);
+  load_lib(lua, "", luaopen_base);
+  load_lib(lua, LUA_TABLIBNAME, luaopen_table);
+  load_lib(lua, LUA_STRLIBNAME, luaopen_string);
+  load_lib(lua, LUA_MATHLIBNAME, luaopen_math);
+  load_lib(lua, LUA_DBLIBNAME, luaopen_debug);
+  load_lib(lua, "cjson", luaopen_cjson);
+  load_lib(lua, "struct", luaopen_struct);
+  load_lib(lua, "cmsgpack", luaopen_cmsgpack);
+  load_lib(lua, "bit", luaopen_bit);
 }
 
 /* Returns a table with a single field 'field' set to the string value
@@ -816,36 +816,36 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
 
 /* The following implementation is the one shipped with Lua itself but with
  * rand() replaced by redisLrand48(). */
-int redisMathRandom(lua_State *L) {
+int redisMathRandom(lua_State *lua) {
   /* the `%' avoids the (rare) case of r==1, and is needed also because on
      some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
   lua_Number r = (lua_Number)(redisLrand48() % REDIS_LRAND48_MAX) / (lua_Number)REDIS_LRAND48_MAX;
-  switch (lua_gettop(L)) {  /* check number of arguments */
+  switch (lua_gettop(lua)) {  /* check number of arguments */
     case 0: {               /* no arguments */
-      lua_pushnumber(L, r); /* Number between 0 and 1 */
+      lua_pushnumber(lua, r); /* Number between 0 and 1 */
       break;
     }
     case 1: { /* only upper limit */
-      int u = luaL_checkint(L, 1);
-      luaL_argcheck(L, 1 <= u, 1, "interval is empty");
-      lua_pushnumber(L, floor(r * u) + 1); /* int between 1 and `u' */
+      int u = luaL_checkint(lua, 1);
+      luaL_argcheck(lua, 1 <= u, 1, "interval is empty");
+      lua_pushnumber(lua, floor(r * u) + 1); /* int between 1 and `u' */
       break;
     }
     case 2: { /* lower and upper limits */
-      int l = luaL_checkint(L, 1);
-      int u = luaL_checkint(L, 2);
-      luaL_argcheck(L, l <= u, 2, "interval is empty");
-      lua_pushnumber(L, floor(r * (u - l + 1)) + l); /* int between `l' and `u' */
+      int l = luaL_checkint(lua, 1);
+      int u = luaL_checkint(lua, 2);
+      luaL_argcheck(lua, l <= u, 2, "interval is empty");
+      lua_pushnumber(lua, floor(r * (u - l + 1)) + l); /* int between `l' and `u' */
       break;
     }
     default:
-      return luaL_error(L, "wrong number of arguments");
+      return luaL_error(lua, "wrong number of arguments");
   }
   return 1;
 }
 
-int redisMathRandomSeed(lua_State *L) {
-  redisSrand48(luaL_checkint(L, 1));
+int redisMathRandomSeed(lua_State *lua) {
+  redisSrand48(luaL_checkint(lua, 1));
   return 0;
 }
 
@@ -881,9 +881,9 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
   }
 
   if (luaL_loadbuffer(lua, body.c_str(), body.size(), "@user_script")) {
-    std::string errMsg = lua_tostring(lua, -1);
+    std::string err_msg = lua_tostring(lua, -1);
     lua_pop(lua, 1);
-    return {Status::NotOK, "Error while compiling new script: " + errMsg};
+    return {Status::NotOK, "Error while compiling new script: " + err_msg};
   }
   lua_setglobal(lua, funcname);
 

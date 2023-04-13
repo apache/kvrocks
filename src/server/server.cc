@@ -1498,9 +1498,9 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
     return {Status::RedisUnknownCmd};
   }
 
-  auto redisCmd = cmd_iter->second;
-  *cmd = redisCmd->factory();
-  (*cmd)->SetAttributes(redisCmd);
+  auto redis_cmd = cmd_iter->second;
+  *cmd = redis_cmd->factory();
+  (*cmd)->SetAttributes(redis_cmd);
 
   return Status::OK();
 }

@@ -42,12 +42,12 @@ enum StatsMetricFlags {
 
 const int STATS_METRIC_SAMPLES = 16;  // Number of samples per metric
 
-struct command_stat {
+struct CommandStat {
   std::atomic<uint64_t> calls;
   std::atomic<uint64_t> latency;
 };
 
-struct inst_metric {
+struct InstMetric {
   uint64_t last_sample_time;   // Timestamp of the last sample in ms
   uint64_t last_sample_count;  // Count in the last sample
   uint64_t samples[STATS_METRIC_SAMPLES];
@@ -59,12 +59,12 @@ class Stats {
   std::atomic<uint64_t> total_calls = {0};
   std::atomic<uint64_t> in_bytes = {0};
   std::atomic<uint64_t> out_bytes = {0};
-  std::vector<struct inst_metric> inst_metrics;
+  std::vector<struct InstMetric> inst_metrics;
 
   std::atomic<uint64_t> fullsync_counter = {0};
   std::atomic<uint64_t> psync_err_counter = {0};
   std::atomic<uint64_t> psync_ok_counter = {0};
-  std::map<std::string, command_stat> commands_stats;
+  std::map<std::string, CommandStat> commands_stats;
 
   Stats();
   void IncrCalls(const std::string &command_name);

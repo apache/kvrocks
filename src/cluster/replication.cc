@@ -131,9 +131,8 @@ void FeedSlaveThread::loop() {
     // 3. To avoid master don't send replication stream to slave since of packing
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
-    if (is_first_repl_batch || batches_bulk.size() >= k_max_delay_bytes_ ||
-        updates_in_batches >= k_max_delay_updates_ ||
-        srv_->storage_->LatestSeqNumber() - batch.sequence <= k_max_delay_updates_) {
+    if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
+        srv_->storage_->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
       // Send entire bulk which contain multiple batches
       auto s = Util::SockSend(conn_->GetFD(), batches_bulk);
       if (!s.IsOK()) {
@@ -144,7 +143,7 @@ void FeedSlaveThread::loop() {
       }
       is_first_repl_batch = false;
       batches_bulk.clear();
-      if (batches_bulk.capacity() > k_max_delay_bytes_ * 2) batches_bulk.shrink_to_fit();
+      if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();

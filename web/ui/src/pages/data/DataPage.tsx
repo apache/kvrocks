@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import axiosService from '../../service/axiosService';
 import { KvRow, RowType, kvDataTable } from './entity';
 import { Button, Card, Modal, Space, Table, Tag, Tooltip, notification } from 'antd';
@@ -76,20 +76,20 @@ export const DataPage = function() {
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [creationModalOpen, setCreationModalOpen] = useState<boolean>(false);
     const [recordForCreation, setRecordForCreation] = useState<KvRow>(new KvRow());
-    useEffect(() => {
-        refresh();
-    }, [pageSize,currentPage]);
     const refresh = useCallback(() => {
         const from = Math.max(0, pageSize * (currentPage - 1));
         const to = Math.max(from, pageSize * currentPage - 1);
         fetchData(from, to);
-    },[]);
+    },[pageSize,currentPage]);
+    useEffect(refresh, [refresh]);
     const fetchData = useCallback(async (from: number, to: number) => {
         setLoading(true);
         const data = await axiosService.getAll(from,to);
-        setData(new kvDataTable(data.data));
-        setTotalCount(data.totalCount);
-        setLoading(false);
+        if(data) {
+            setData(new kvDataTable(data.data));
+            setTotalCount(data.totalCount);
+            setLoading(false);
+        }
     },[]);
     const onTableChange = useCallback((
         pagination: TablePaginationConfig, 
@@ -107,14 +107,16 @@ export const DataPage = function() {
         setCreationModalOpen(false);
     },[]);
     const onCreationConfirm = useCallback(async () => {
-        setCreationModalOpen(false);
         const key = recordForCreation.key;
-        await axiosService.create(recordForCreation.getPostBody());
-        notification.success({
-            message: 'Create successful',
-            description: key,
-            placement: 'bottomRight'
-        });
+        const success = await axiosService.create(recordForCreation.getPostBody());
+        if(success) {
+            setCreationModalOpen(false);
+            notification.success({
+                message: 'Create successful',
+                description: key,
+                placement: 'bottomRight'
+            });
+        }
     },[]);
     return (
         <div>

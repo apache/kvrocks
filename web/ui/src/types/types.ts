@@ -4,21 +4,21 @@ export interface BaseRow{
     ttl: number,
     value: any
 }
-interface StringRow extends BaseRow{
+export interface StringRow extends BaseRow{
     type: 'string',
     value: string
 }
-interface ListRow extends BaseRow{
+export interface ListRow extends BaseRow{
     type: 'list',
     value: string[]
 }
-interface HashRow extends BaseRow{
+export interface HashRow extends BaseRow{
     type: 'hash',
     value: {
         [key in string]: string
     }
 }
-interface SetRow extends BaseRow{
+export interface SetRow extends BaseRow{
     type: 'set',
     value: string[]
 }

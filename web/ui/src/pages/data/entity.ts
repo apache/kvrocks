@@ -42,6 +42,23 @@ export class KvRow implements RowType {
             break;
         }
     }
+    generateDefaultRawValueForType() {
+        switch (this.type) {
+        case 'string':
+            this.rawValue = '';
+            break;
+        case 'list':
+        case 'set':
+            this.rawValue = [];
+            break;
+        case 'hash':
+            this.rawValue = {};
+            break;
+        default:
+            this.value = '';
+            break;
+        }
+    }
     getPostBody(): BaseRow {
         const result = {
             key: this.key,

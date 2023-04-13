@@ -63,7 +63,15 @@ async function apiWrapper(cb, req, res, next) {
     try {
         await cb();
     } catch (err) {
-        next(err)
+        let errMsg = '';
+        if(typeof err == 'string'){
+            errMsg = err;
+        }else if(err instanceof Error){
+            errMsg = err.message;
+        } else {
+            errMsg = 'Unkwon error';
+        }
+        res.status(500).send(errMsg)
     }
 }
 
@@ -140,6 +148,10 @@ app.post('/create', function(req, res) {
         if(typeof key !== 'string' || key === ''){
             throw 'No key';
         }
+        const relatedKeys = await client.keys(`${key}*`);
+        if(Array.isArray(relatedKeys) && relatedKeys.includes(key)){
+            throw 'Duplicate key'
+        }
         const type = body['type'];
         const value = body['value'];
         if(typeof type !== 'string' || !['string', 'list', 'hash', 'set'].includes(type)){
@@ -150,17 +162,19 @@ app.post('/create', function(req, res) {
             await client.set(key, value);
         } else if(type == 'list' && Array.isArray(value)){
             // create list
+            await client.rPush(key, value);
         } else if(type == 'hash' && typeof value === 'object' && !Array.isArray(value)){
             // create hash
         } else if(type == 'set' && Array.isArray(value)){
             // create set
+            await client.sAdd(key, value);
         } else {
             throw 'Bad request'
         }
         if('ttl' in body && typeof body['ttl'] === 'number' && body['ttl'] > 0){
             await client.expire(key, body['ttl'])
         }
-        res.send('');
+        res.send('OK');
     }, ...arguments)
 })
 

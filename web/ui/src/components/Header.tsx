@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import logo from '../logo.svg';
 import styles from './Header.module.css';
 import { Dropdown, Menu, Space, Typography } from 'antd';
-import { DownOutlined, LineChartOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { DownOutlined, InfoCircleOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { ItemType } from 'antd/es/menu/hooks/useItems';
 import type { MenuClickEventHandler } from 'rc-menu/lib/interface';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -14,7 +14,7 @@ const menuItems: ItemType[] = [
     },
     {
         key: '/info',
-        label: (<Space><LineChartOutlined /> Info</Space>),
+        label: (<Space><InfoCircleOutlined /> Info</Space>),
     },
 ];
 const languageItems = [

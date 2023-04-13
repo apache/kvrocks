@@ -26,9 +26,9 @@
 #include "parse_util.h"
 
 std::string Scheduler::ToString() const {
-  auto param2String = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
-  return param2String(minute) + " " + param2String(hour) + " " + param2String(mday) + " " + param2String(month) + " " +
-         param2String(wday);
+  auto param2string = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
+  return param2string(minute) + " " + param2string(hour) + " " + param2string(mday) + " " + param2string(month) + " " +
+         param2string(wday);
 }
 
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {

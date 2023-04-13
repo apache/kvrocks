@@ -156,11 +156,11 @@ TEST_F(RedisHashTest, HIncr) {
   }
   std::string bytes;
   hash->Get(key_, field, &bytes);
-  auto parseResult = ParseInt<int64_t>(bytes, 10);
-  if (!parseResult) {
+  auto parse_result = ParseInt<int64_t>(bytes, 10);
+  if (!parse_result) {
     FAIL();
   }
-  EXPECT_EQ(32, *parseResult);
+  EXPECT_EQ(32, *parse_result);
   hash->Del(key_);
 }
 

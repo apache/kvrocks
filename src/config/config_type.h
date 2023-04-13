@@ -46,15 +46,15 @@ using IntField = IntegerField<int>;
 using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
-struct configEnum {
+struct ConfigEnum {
   const char *name;
   const int val;
 };
 
 enum configType { SingleConfig, MultiConfig };
 
-int configEnumGetValue(configEnum *ce, const char *name);
-const char *configEnumGetName(configEnum *ce, int val);
+int configEnumGetValue(ConfigEnum *ce, const char *name);
+const char *configEnumGetName(ConfigEnum *ce, int val);
 
 class ConfigField {
  public:
@@ -186,7 +186,7 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, configEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
+  EnumField(int *receiver, ConfigEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
   ~EnumField() override = default;
   std::string ToString() override { return configEnumGetName(enums_, *receiver_); }
   Status ToNumber(int64_t *n) override {
@@ -204,5 +204,5 @@ class EnumField : public ConfigField {
 
  private:
   int *receiver_;
-  configEnum *enums_ = nullptr;
+  ConfigEnum *enums_ = nullptr;
 };

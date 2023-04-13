@@ -160,9 +160,9 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   metadata.entries_added += 1;
 
-  std::string metadataBytes;
-  metadata.Encode(&metadataBytes);
-  batch->Put(metadata_cf_handle_, ns_key, metadataBytes);
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
 
   *id = next_entry_id;
 

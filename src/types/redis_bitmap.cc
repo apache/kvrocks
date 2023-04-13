@@ -288,7 +288,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);
 
-  auto bitPosInByte = [](char byte, bool bit) -> int {
+  auto bit_pos_in_byte = [](char byte, bool bit) -> int {
     for (int i = 0; i < 8; i++) {
       if (bit && (byte & (1 << i)) != 0) return i;
       if (!bit && (byte & (1 << i)) == 0) return i;
@@ -319,8 +319,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
     for (; j < value.size(); j++) {
       if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      if (bitPosInByte(value[j], bit) != -1) {
-        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bitPosInByte(value[j], bit));
+      if (bit_pos_in_byte(value[j], bit) != -1) {
+        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bit_pos_in_byte(value[j], bit));
         return rocksdb::Status::OK();
       }
     }

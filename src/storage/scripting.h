@@ -73,7 +73,7 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
 
 void SHA1Hex(char *digest, const char *script, size_t len);
 
-int redisMathRandom(lua_State *L);
-int redisMathRandomSeed(lua_State *L);
+int redisMathRandom(lua_State *l);
+int redisMathRandomSeed(lua_State *l);
 
 }  // namespace Lua

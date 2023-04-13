@@ -77,7 +77,7 @@ class ZAddFlags {
   bool HasIncr() const { return (flags & kZSetIncr) != 0; }
   bool HasAnyFlags() const { return flags != 0; }
 
-  void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
+  void SetFlag(ZSetFlags set_flags) { flags |= set_flags; }
 
   static ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
 

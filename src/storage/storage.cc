@@ -220,8 +220,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
     // If the status message contains `Column families not opened` means that we have created the column
     // families, let's ignore the error.
-    std::string notOpenedPrefix = "Column families not opened";
-    if (s.IsInvalidArgument() && s.ToString().find(notOpenedPrefix) != std::string::npos) {
+    std::string not_opened_prefix = "Column families not opened";
+    if (s.IsInvalidArgument() && s.ToString().find(not_opened_prefix) != std::string::npos) {
       return Status::OK();
     }
 

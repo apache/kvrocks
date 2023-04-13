@@ -27,7 +27,7 @@
 
 Stats::Stats() {
   for (int i = 0; i < STATS_METRIC_COUNT; i++) {
-    struct inst_metric im;
+    struct InstMetric im;
     im.last_sample_time = 0;
     im.last_sample_count = 0;
     im.idx = 0;

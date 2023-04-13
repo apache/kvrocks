@@ -9,7 +9,7 @@ By Steve Reid <steve@edmweb.com>
 
 #include <cstdint>
 
-struct SHA1_CTX {
+struct SHA1_CTX {  // NOLINT
   uint32_t state[5];
   uint32_t count[2];
   unsigned char buffer[64];

@@ -616,7 +616,7 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
   }
 
   int64_t version = -1;
-  std::string id, nodesInfo;
+  std::string id, nodes_info;
   std::string line;
   while (!file.eof()) {
     std::getline(file, line);
@@ -638,12 +638,12 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
         return {Status::NotOK, errInvalidNodeID};
       }
     } else if (key == "node") {
-      nodesInfo.append(parsed->second + "\n");
+      nodes_info.append(parsed->second + "\n");
     } else {
       return {Status::NotOK, fmt::format("unknown key: {}", key)};
     }
   }
-  return SetClusterNodes(nodesInfo, version, false);
+  return SetClusterNodes(nodes_info, version, false);
 }
 
 Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,

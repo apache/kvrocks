@@ -186,6 +186,7 @@ struct Config {
     int max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
+    int max_background_jobs;
 
     struct WriteOptions {
       bool sync;

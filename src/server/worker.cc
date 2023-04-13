@@ -144,7 +144,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
   }
 #else
-  bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+  bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 #endif
   if (!bev) {
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());

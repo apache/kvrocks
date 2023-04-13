@@ -170,6 +170,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
   options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
   options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
+  options.max_background_jobs = config_->RocksDB.max_background_jobs;
 
   return options;
 }

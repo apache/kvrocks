@@ -1,8 +1,9 @@
 import { Card, Form, Input, InputNumber, Radio, Space, Switch } from 'antd';
 import { KvRow } from './entity';
-import { useEffect, useState } from 'react';
+import { MutableRefObject, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ListEditor } from '../../components/ListEditor';
 import { HashRow, ListRow, SetRow, StringRow } from '../../types/types';
+import { HashEditor } from '../../components/HashEditor';
 
 function useBinding(record: KvRow) {
     const [type, _setType] = useState<KvRow['type']>(record.type);
@@ -32,9 +33,9 @@ function useBinding(record: KvRow) {
     const [ttl, setTtl] = useState<KvRow['ttl']>(record.ttl);
     useEffect(() => {record.ttl=ttl;}, [ttl]);
     const [cachedValueForString, setCachedValueForString] = useState<StringRow['value']>(typeof value == 'string' ? value : '');
-    const [cachedValueForList, setCachedValueForList] = useState<ListRow['value']>(Array.isArray(value)?value:['']);
+    const [cachedValueForList, setCachedValueForList] = useState<ListRow['value']>(Array.isArray(value)?value:[]);
     const [cachedValueForHash, setCachedValueForHash] = useState<HashRow['value']>(typeof value == 'object' && !Array.isArray(value) ? value : {});
-    const [cachedValueForSet, setCachedValueForSet] = useState<SetRow['value']>(Array.isArray(value)?value:['']);
+    const [cachedValueForSet, setCachedValueForSet] = useState<SetRow['value']>(Array.isArray(value)?value:[]);
     function setType(v: KvRow['type']) {
         _setType(v);
         switch (v) {
@@ -66,8 +67,46 @@ function useBinding(record: KvRow) {
     };
 }
 
-export function RecordCreation (prop:{record: KvRow}) {
+export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{valid?:() => boolean}>}) {
     const {type, setType, key, setKey, value, setValue,ttl,setTtl} = useBinding(prop.record);
+    useImperativeHandle(prop.event,() => ({
+        valid: () => {
+            const  validedArr = [
+                validKey(),
+                validValue()
+            ];
+            return !validedArr.some(item => item == false);
+        }
+    }));
+    const [keyErrorText, setKeyErrorText] = useState('');
+    const validKey = useCallback(() => {
+        if(!key) {
+            setKeyErrorText('Please input key');
+            return false;
+        } else {
+            setKeyErrorText('');
+            return true;
+        }
+    }, [key]);
+    const [strValueErrorText, setStrValueErrorText] = useState('');
+    const listValueRef = useRef<{valid?:() => boolean}>({});
+    const validValue = useCallback(() => {
+        if(type == 'string') {
+            if(typeof value == 'string' && !value) {
+                setStrValueErrorText('Please input value');
+                return false;
+            } else {
+                setStrValueErrorText('');
+                return true;
+            }
+        } else {
+            const validFun = listValueRef?.current?.valid;
+            if(!validFun) {
+                return true;
+            }
+            return validFun();
+        }
+    },[value]);
     return (
         <div>
             <Form
@@ -83,25 +122,59 @@ export function RecordCreation (prop:{record: KvRow}) {
                         <Radio.Button value='set'>set</Radio.Button>
                     </Radio.Group>
                 </Form.Item>
-                <Form.Item label="Key">
-                    <Input placeholder='Input key...' value={key} onChange={e => setKey(e.target.value)}></Input>
+                <Form.Item 
+                    label="Key"
+                    help={keyErrorText}
+                    validateStatus={keyErrorText && 'error'}
+                >
+                    <Input 
+                        placeholder='Input key...'
+                        onBlur={validKey}
+                        value={key}
+                        onChange={e => setKey(e.target.value)}
+                    ></Input>
                 </Form.Item>
-                <Form.Item label="Value">
+                <Form.Item 
+                    label="Value"
+                    help={type=='string' && strValueErrorText}
+                    validateStatus={(type=='string' && strValueErrorText) ? 'error' : ''}
+                >
                     {
                         (() => {
                             switch (type) {
                             case 'string':
-                                return <Input placeholder='Input value...' value={value as string} onChange={e => setValue(e.target.value)}></Input>;
+                                return <Input
+                                    placeholder='Input value...'
+                                    onBlur={validValue}
+                                    value={value as string}
+                                    onChange={e => setValue(e.target.value)}
+                                ></Input>;
                             case 'list':
                                 return (<Card key={'list'}>
-                                    <ListEditor value={value as string[]} onChange={e => setValue(e)} allowDragSorting/>
+                                    <ListEditor 
+                                        value={value as string[]} 
+                                        onChange={e => setValue(e)} 
+                                        allowDragSorting
+                                        allowReproduce
+                                        event={listValueRef}
+                                    />
                                 </Card>
                                 );
                             case 'set':
                                 return (<Card key={'set'}>
-                                    <ListEditor value={value as string[]} onChange={e => setValue(e)}/>
+                                    <ListEditor
+                                        value={value as string[]}
+                                        event={listValueRef}
+                                    />
                                 </Card>
                                 );
+                            case 'hash':
+                                return <Card key={'hash'}>
+                                    <HashEditor
+                                        value={value as HashRow['value']}
+                                        event={listValueRef}
+                                    />
+                                </Card>;
                             default:
                                 break;
                             }

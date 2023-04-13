@@ -165,6 +165,11 @@ app.post('/create', function(req, res) {
             await client.rPush(key, value);
         } else if(type == 'hash' && typeof value === 'object' && !Array.isArray(value)){
             // create hash
+            for (const field in value) {
+                if (Object.hasOwnProperty.call(value, field)) {
+                    await client.hSet(key, field, value[field]);
+                }
+            }
         } else if(type == 'set' && Array.isArray(value)){
             // create set
             await client.sAdd(key, value);

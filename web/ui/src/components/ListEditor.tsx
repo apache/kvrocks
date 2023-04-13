@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { MutableRefObject, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { DndTable, RowType as DndTableRowType } from './DndTable';
 import { getRandomString } from '../common/util';
-import { Button, Input, Table } from 'antd';
+import { Button, Form, Input, Table } from 'antd';
 import { ColumnsType } from 'antd/es/table/interface';
 import { DeleteOutlined,PlusOutlined } from '@ant-design/icons';
 
 interface RowType extends DndTableRowType{
     key: string,
-    value: string
+    value: string,
+    errMsg: string,
+    valid?: () => boolean,
 }
 function transformValueToRowType(values: string[], previousDataSource?: RowType[]): RowType[] {
     const keys: string[] = [];
@@ -20,26 +22,83 @@ function transformValueToRowType(values: string[], previousDataSource?: RowType[
         keys.push(uniqueKey);
         return {
             key:uniqueKey,
-            value: value
+            value: value,
+            errMsg: exists?.errMsg || '',
         };
     });
 }
+
+
+interface CellProps {
+    children: React.ReactNode,
+    isValueColumn: boolean
+    record: RowType,
+    index: number,
+    handleValueChange: (newValue: string) => void
+}
+const Cell: React.FC<CellProps> = ({
+    children,
+    record,
+    index,
+    isValueColumn,
+    handleValueChange,
+    ...restProps
+}) => {
+    if(!isValueColumn) {
+        return (<td {...restProps}>
+            {children}
+        </td>);
+    }
+    const [errMsg, setErrMsg] = useState(record.errMsg);
+    const valid = useCallback(() => {
+        if(record.value) {
+            record.errMsg = '';
+        } else {
+            record.errMsg = 'Please input value';
+        }
+        if(record.errMsg != errMsg) {
+            setErrMsg(record.errMsg);
+        }
+        return record.errMsg == '';
+    },[record.value]);
+    record.valid = valid;
+    return (<td {...restProps}>
+        <Form.Item 
+            style={{margin: 0}}
+            help={errMsg}
+            validateStatus={errMsg ? 'error' : ''}
+        >
+            <Input
+                defaultValue={record.value}
+                onChange={e => handleValueChange(e.target.value)}
+                onBlur={valid}
+            ></Input>
+        </Form.Item>
+    </td>);
+};
 export function ListEditor(props: {
     value: string[],
-    onChange: (list:string[]) => any,
+    onChange?: (list:string[]) => any,
     allowDragSorting?: boolean,
+    allowReproduce?: boolean,
+    event?: MutableRefObject<{valid?:() => boolean}>
 }) {
+    useImperativeHandle(props.event, () => ({
+        valid: () => dataSource.map(d => d.valid ? d.valid() : true).filter(d => !d).length == 0
+    }));
     const [dataSource, setDataSource] = useState<RowType[]>(transformValueToRowType(props.value));
     const columns: ColumnsType<RowType>=[
         {
             dataIndex: 'value',
-            render: (value, record, index) => (<Input
-                defaultValue={value}
-                onChange={e => {
-                    record.value = e.target.value;
-                    props.value[index] = record.value;
-                }}
-            ></Input>)
+            onCell: (record: RowType, index: number | undefined) => ({
+                record: record,
+                index: index,
+                isValueColumn: true,
+                handleValueChange: (newValue: string) => {
+                    record.value = newValue;
+                    props.value[index as number] = newValue;
+                }
+            } as any)
         },{
             width: '50px',
             render: (value, record, index) => (<Button 
@@ -56,7 +115,7 @@ export function ListEditor(props: {
     },[props.value]);
     useEffect(updateDataSource,[props.value]);
     const onTableDataChange = useCallback((data: RowType[]) => {
-        props.onChange(data.map(item => item.value));
+        props.onChange && props.onChange(data.map(item => item.value));
     },[]);
     const onDelete = useCallback((index: number) => {
         props.value.splice(index,1);
@@ -68,22 +127,33 @@ export function ListEditor(props: {
     }, [props.value]);
     return (<div>
         { dataSource && dataSource.length 
-            ? (props.allowDragSorting
-                ? 
-                <DndTable
-                    showHeader={false}
-                    columns={columns}
-                    dataSource={dataSource}
-                    pagination={false}
-                    onDataChange={onTableDataChange}
-                ></DndTable>
-                : 
-                <Table
-                    showHeader={false}
-                    columns={columns}
-                    dataSource={dataSource}
-                    pagination={false}
-                ></Table>
+            ? (
+                props.allowDragSorting
+                    ? 
+                    <DndTable
+                        components={{
+                            body: {
+                                cell: Cell
+                            }
+                        }}
+                        showHeader={false}
+                        columns={columns}
+                        dataSource={dataSource}
+                        pagination={false}
+                        onDataChange={onTableDataChange}
+                    ></DndTable>
+                    : 
+                    <Table
+                        components={{
+                            body: {
+                                cell: Cell
+                            }
+                        }}
+                        showHeader={false}
+                        columns={columns}
+                        dataSource={dataSource}
+                        pagination={false}
+                    ></Table>
             )
             : null  }
         <Button

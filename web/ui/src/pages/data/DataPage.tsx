@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axiosService from '../../service/axiosService';
 import { KvRow, RowType, kvDataTable } from './entity';
 import { Button, Card, Modal, Space, Table, Tag, Tooltip, notification } from 'antd';
@@ -74,7 +74,9 @@ export const DataPage = function() {
     const [loading, setLoading] = useState<boolean>(true);
     const [pageSize, setPageSize] = useState<number>(10);
     const [currentPage, setCurrentPage] = useState<number>(1);
+    const creationRef = useRef<{valid?:() => boolean}>({});
     const [creationModalOpen, setCreationModalOpen] = useState<boolean>(false);
+    const [creationModalConfirmLoading, setCreationModalConfirmLoading] = useState<boolean>(false);
     const [recordForCreation, setRecordForCreation] = useState<KvRow>(new KvRow());
     const refresh = useCallback(() => {
         const from = Math.max(0, pageSize * (currentPage - 1));
@@ -107,8 +109,16 @@ export const DataPage = function() {
         setCreationModalOpen(false);
     },[]);
     const onCreationConfirm = useCallback(async () => {
+        setCreationModalConfirmLoading(true);
+        const validFun = creationRef?.current?.valid;
+        const valided = validFun && validFun();
+        if(!valided) {
+            setCreationModalConfirmLoading(false);
+            return;
+        }
         const key = recordForCreation.key;
         const success = await axiosService.create(recordForCreation.getPostBody());
+        setCreationModalConfirmLoading(false);
         if(success) {
             setCreationModalOpen(false);
             notification.success({
@@ -147,8 +157,9 @@ export const DataPage = function() {
                 onCancel={onCreationCancel}
                 onOk={onCreationConfirm}
                 width="50vw"
+                confirmLoading={creationModalConfirmLoading}
             >
-                <RecordCreation record={recordForCreation} ></RecordCreation>
+                <RecordCreation event={creationRef} record={recordForCreation} ></RecordCreation>
             </Modal>
         </div>
     );

@@ -98,7 +98,9 @@ export function DndTable<RT extends RowType> (props: DndTableProps<RT>) {
                     <Table
                         {...props}
                         components={{
+                            ...(props?.components || {}),
                             body: {
+                                ...(props.components?.body),
                                 row: Row,
                             },
                         }}

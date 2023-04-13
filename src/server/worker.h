@@ -86,7 +86,7 @@ class Worker {
   std::mutex conns_mu_;
   std::map<int, Redis::Connection *> conns_;
   std::map<int, Redis::Connection *> monitor_conns_;
-  int last_iter_conn_fd = 0;  // fd of last processed connection in previous cron
+  int last_iter_conn_fd_ = 0;  // fd of last processed connection in previous cron
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;

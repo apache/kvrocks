@@ -50,7 +50,7 @@ Status Parser::ParseFullDB() {
     }
 
     if (metadata.Type() == kRedisString) {
-      s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
+      s = parseSimpleKV(iter->key(), iter->value(), metadata.expire_);
     } else {
       s = parseComplexKV(iter->key(), metadata);
     }
@@ -86,9 +86,9 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   std::string ns, user_key;
   ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version_, slot_id_encoded_).Encode(&prefix_key);
   std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata.version_ + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = latest_snapshot_->GetSnapShot();
@@ -142,8 +142,8 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     }
   }
 
-  if (metadata.expire > 0) {
-    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
+  if (metadata.expire_ > 0) {
+    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire_ / 1000)});
     Status s = writer_->Write(ns, {output});
     if (!s.IsOK()) return s.Prefixed("failed to write the EXPIREAT command to AOF");
   }

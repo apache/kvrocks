@@ -147,8 +147,8 @@ class CommandPubSub : public Commander {
 
       output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
-        output->append(Redis::BulkString(chan_subscribe_num.channel));
-        output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
+        output->append(Redis::BulkString(chan_subscribe_num.channel_));
+        output->append(Redis::Integer(chan_subscribe_num.subscribe_num_));
       }
 
       return Status::OK();

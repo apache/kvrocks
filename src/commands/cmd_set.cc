@@ -349,7 +349,7 @@ class CommandSScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::Set set_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> members;
-    auto s = set_db.Scan(key, cursor, limit, prefix, &members);
+    auto s = set_db.Scan(key_, cursor_, limit_, prefix_, &members);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

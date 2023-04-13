@@ -31,10 +31,10 @@
 #include "storage/redis_metadata.h"
 
 struct FieldValue {
-  std::string field;
-  std::string value;
+  std::string field_;
+  std::string value_;
 
-  FieldValue(std::string f, std::string v) : field(std::move(f)), value(std::move(v)) {}
+  FieldValue(std::string f, std::string v) : field_(std::move(f)), value_(std::move(v)) {}
 };
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };

@@ -75,15 +75,15 @@ class FeedSlaveThread {
   }
 
  private:
-  uint64_t interval = 0;
+  uint64_t interval_ = 0;
   std::atomic<bool> stop_ = false;
   Server *srv_ = nullptr;
   std::unique_ptr<Redis::Connection> conn_ = nullptr;
   std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
-  const size_t kMaxDelayUpdates = 16;
-  const size_t kMaxDelayBytes = 16 * 1024;
+  const size_t k_max_delay_updates_ = 16;
+  const size_t k_max_delay_bytes_ = 16 * 1024;
 
   void loop();
   void checkLivenessIfNeed();

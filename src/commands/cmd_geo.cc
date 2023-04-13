@@ -199,7 +199,7 @@ class CommandGeoPos : public Commander {
         list.emplace_back(Redis::NilString());
       } else {
         list.emplace_back(Redis::MultiBulkString(
-            {Util::Float2String(iter->second.longitude), Util::Float2String(iter->second.latitude)}));
+            {Util::Float2String(iter->second.longitude_), Util::Float2String(iter->second.latitude_)}));
       }
     }
     *output = Redis::Array(list);
@@ -309,19 +309,19 @@ class CommandGeoRadius : public CommandGeoBase {
     for (int i = 0; i < returned_items_count; i++) {
       auto geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
-        list.emplace_back(Redis::BulkString(geo_point.member));
+        list.emplace_back(Redis::BulkString(geo_point.member_));
       } else {
         std::vector<std::string> one;
-        one.emplace_back(Redis::BulkString(geo_point.member));
+        one.emplace_back(Redis::BulkString(geo_point.member_));
         if (with_dist_) {
-          one.emplace_back(Redis::BulkString(Util::Float2String(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(Redis::BulkString(Util::Float2String(GetDistanceByUnit(geo_point.dist_))));
         }
         if (with_hash_) {
-          one.emplace_back(Redis::BulkString(Util::Float2String(geo_point.score)));
+          one.emplace_back(Redis::BulkString(Util::Float2String(geo_point.score_)));
         }
         if (with_coord_) {
           one.emplace_back(Redis::MultiBulkString(
-              {Util::Float2String(geo_point.longitude), Util::Float2String(geo_point.latitude)}));
+              {Util::Float2String(geo_point.longitude_), Util::Float2String(geo_point.latitude_)}));
         }
         list.emplace_back(Redis::Array(one));
       }

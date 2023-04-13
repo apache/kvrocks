@@ -669,8 +669,8 @@ class CommandHello final : public Commander {
       const std::string &opt = args_[next_arg];
       if (opt == "AUTH" && more_args != 0) {
         const auto &user_password = args_[next_arg + 1];
-        auto authResult = AuthenticateUser(conn, svr->GetConfig(), user_password);
-        switch (authResult) {
+        auto auth_result = AuthenticateUser(conn, svr->GetConfig(), user_password);
+        switch (auth_result) {
           case AuthResult::INVALID_PASSWORD:
             return {Status::NotOK, "invalid password"};
           case AuthResult::NO_REQUIRE_PASS:

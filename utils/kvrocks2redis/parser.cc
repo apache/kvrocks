@@ -32,14 +32,14 @@
 #include "types/redis_string.h"
 
 Status Parser::ParseFullDB() {
-  rocksdb::DB *db_ = storage_->GetDB();
-  if (!latest_snapshot_) latest_snapshot_ = std::make_unique<LatestSnapShot>(db_);
-  rocksdb::ColumnFamilyHandle *metadata_cf_handle_ = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
+  rocksdb::DB *db = storage_->GetDB();
+  if (!latest_snapshot_) latest_snapshot_ = std::make_unique<LatestSnapShot>(db);
+  rocksdb::ColumnFamilyHandle *metadata_cf_handle = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = latest_snapshot_->GetSnapShot();
   read_options.fill_cache = false;
-  std::unique_ptr<rocksdb::Iterator> iter(db_->NewIterator(read_options, metadata_cf_handle_));
+  std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_options, metadata_cf_handle));
   Status s;
 
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {

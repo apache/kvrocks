@@ -54,7 +54,7 @@ rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Sl
 }
 
 rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &members,
-                          std::vector<std::string> *geoHashes) {
+                          std::vector<std::string> *geo_hashes) {
   std::map<std::string, GeoPoint> geo_points;
   auto s = MGet(user_key, members, &geo_points);
   if (!s.ok()) return s;
@@ -62,10 +62,10 @@ rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &membe
   for (const auto &member : members) {
     auto iter = geo_points.find(member.ToString());
     if (iter == geo_points.end()) {
-      geoHashes->emplace_back(std::string());
+      geo_hashes->emplace_back(std::string());
       continue;
     }
-    geoHashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));
+    geo_hashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));
   }
 
   return rocksdb::Status::OK();
@@ -186,7 +186,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
   r[1].max = 90;
   geohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
 
-  std::string geoHash;
+  std::string geo_hash;
   for (int i = 0; i < 11; i++) {
     int idx = 0;
     if (i == 10) {
@@ -197,9 +197,9 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
     } else {
       idx = static_cast<int>((hash.bits >> (52 - ((i + 1) * 5))) & 0x1f);
     }
-    geoHash += geoalphabet[idx];
+    geo_hash += geoalphabet[idx];
   }
-  return geoHash;
+  return geo_hash;
 }
 
 int Geo::decodeGeoHash(double bits, double *xy) {

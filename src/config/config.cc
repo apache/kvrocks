@@ -45,18 +45,18 @@ constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files 
 constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =
     "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
-configEnum compression_types[] = {
+ConfigEnum compression_types[] = {
     {"no", rocksdb::CompressionType::kNoCompression},     {"snappy", rocksdb::CompressionType::kSnappyCompression},
     {"lz4", rocksdb::CompressionType::kLZ4Compression},   {"zstd", rocksdb::CompressionType::kZSTD},
     {"zlib", rocksdb::CompressionType::kZlibCompression}, {nullptr, 0}};
 
-configEnum supervised_modes[] = {{"no", kSupervisedNone},
+ConfigEnum supervised_modes[] = {{"no", kSupervisedNone},
                                  {"auto", kSupervisedAutoDetect},
                                  {"upstart", kSupervisedUpStart},
                                  {"systemd", kSupervisedSystemd},
                                  {nullptr, 0}};
 
-configEnum log_levels[] = {{"info", google::INFO},
+ConfigEnum log_levels[] = {{"info", google::INFO},
                            {"warning", google::WARNING},
                            {"error", google::ERROR},
                            {"fatal", google::FATAL},
@@ -67,7 +67,7 @@ std::string trimRocksDBPrefix(std::string s) {
   return s.substr(8, s.size() - 8);
 }
 
-int configEnumGetValue(configEnum *ce, const char *name) {
+int configEnumGetValue(ConfigEnum *ce, const char *name) {
   while (ce->name != nullptr) {
     if (strcasecmp(ce->name, name) == 0) return ce->val;
     ce++;
@@ -75,7 +75,7 @@ int configEnumGetValue(configEnum *ce, const char *name) {
   return INT_MIN;
 }
 
-const char *configEnumGetName(configEnum *ce, int val) {
+const char *configEnumGetName(ConfigEnum *ce, int val) {
   while (ce->name != nullptr) {
     if (ce->val == val) return ce->name;
     ce++;
@@ -700,8 +700,8 @@ Status Config::finish() {
   if (backup_dir.empty()) backup_dir = dir + "/backup";
   if (log_dir.empty()) log_dir = dir;
   if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
-  std::vector<std::string> createDirs = {dir};
-  for (const auto &name : createDirs) {
+  std::vector<std::string> create_dirs = {dir};
+  for (const auto &name : create_dirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
@@ -821,9 +821,9 @@ Status Config::Rewrite() {
     new_config[iter.first] = iter.second->ToString();
   }
 
-  std::string namespacePrefix = "namespace.";
+  std::string namespace_prefix = "namespace.";
   for (const auto &iter : tokens) {
-    new_config[namespacePrefix + iter.second] = iter.first;
+    new_config[namespace_prefix + iter.second] = iter.first;
   }
 
   std::ifstream file(path_);
@@ -837,7 +837,7 @@ Status Config::Rewrite() {
         continue;
       }
       auto kv = std::move(*parsed);
-      if (Util::HasPrefix(kv.first, namespacePrefix)) {
+      if (Util::HasPrefix(kv.first, namespace_prefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
       }

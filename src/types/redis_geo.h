@@ -59,7 +59,7 @@ class Geo : public ZSet {
   explicit Geo(Engine::Storage *storage, const std::string &ns) : ZSet(storage, ns) {}
   rocksdb::Status Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, int *ret);
   rocksdb::Status Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist);
-  rocksdb::Status Hash(const Slice &user_key, const std::vector<Slice> &members, std::vector<std::string> *geoHashes);
+  rocksdb::Status Hash(const Slice &user_key, const std::vector<Slice> &members, std::vector<std::string> *geo_hashes);
   rocksdb::Status Pos(const Slice &user_key, const std::vector<Slice> &members,
                       std::map<std::string, GeoPoint> *geo_points);
   rocksdb::Status Radius(const Slice &user_key, double longitude, double latitude, double radius_meters, int count,

@@ -246,12 +246,12 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
     InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
 
     if (metadata.size > 0) {
-      std::string fieldValue;
-      s = storage_->Get(rocksdb::ReadOptions(), sub_key, &fieldValue);
+      std::string field_value;
+      s = storage_->Get(rocksdb::ReadOptions(), sub_key, &field_value);
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
-        if (nx || fieldValue == fv.value) continue;
+        if (nx || field_value == fv.value) continue;
 
         exists = true;
       }

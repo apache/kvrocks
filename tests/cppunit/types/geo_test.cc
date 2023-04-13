@@ -55,10 +55,10 @@ TEST_F(RedisGeoTest, Add) {
   }
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  std::vector<std::string> geoHashes;
-  geo->Hash(key_, fields_, &geoHashes);
+  std::vector<std::string> geo_hashes;
+  geo->Hash(key_, fields_, &geo_hashes);
   for (size_t i = 0; i < fields_.size(); i++) {
-    EXPECT_EQ(geoHashes[i], geoHashes_[i]);
+    EXPECT_EQ(geo_hashes[i], geoHashes_[i]);
   }
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(ret, 0);
@@ -87,10 +87,10 @@ TEST_F(RedisGeoTest, Hash) {
   }
   geo->Add(key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  std::vector<std::string> geoHashes;
-  geo->Hash(key_, fields_, &geoHashes);
+  std::vector<std::string> geo_hashes;
+  geo->Hash(key_, fields_, &geo_hashes);
   for (size_t i = 0; i < fields_.size(); i++) {
-    EXPECT_EQ(geoHashes[i], geoHashes_[i]);
+    EXPECT_EQ(geo_hashes[i], geoHashes_[i]);
   }
   geo->Del(key_);
 }

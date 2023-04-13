@@ -126,7 +126,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   }
 
   event_base *base = evconnlistener_get_base(listener);
-  auto evThreadSafeFlags =
+  auto ev_thread_safe_flags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
 
   bufferevent *bev = nullptr;
@@ -139,12 +139,12 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
       evutil_closesocket(fd);
       return;
     }
-    bev = bufferevent_openssl_socket_new(base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, evThreadSafeFlags);
+    bev = bufferevent_openssl_socket_new(base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, ev_thread_safe_flags);
   } else {
-    bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+    bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
   }
 #else
-  bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+  bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 #endif
   if (!bev) {
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
@@ -194,9 +194,9 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket
              << " thread #" << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
-  auto evThreadSafeFlags =
+  auto ev_thread_safe_flags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
-  bufferevent *bev = bufferevent_socket_new(base, fd, evThreadSafeFlags);
+  bufferevent *bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 
   auto conn = new Redis::Connection(bev, worker);
   bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);

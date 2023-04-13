@@ -26,26 +26,26 @@ class StringReplyTest : public testing::Test {
  protected:
   static void SetUpTestCase() {
     for (int i = 0; i < 100000; i++) {
-      values.emplace_back("values" + std::to_string(i));
+      values_.emplace_back("values" + std::to_string(i));
     }
   }
-  static void TearDownTestCase() { values.clear(); }
-  static std::vector<std::string> values;
+  static void TearDownTestCase() { values_.clear(); }
+  static std::vector<std::string> values_;
 
   void SetUp() override {}
   void TearDown() override {}
 };
 
-std::vector<std::string> StringReplyTest::values;
+std::vector<std::string> StringReplyTest::values_;
 
 TEST_F(StringReplyTest, MultiBulkString) {
-  std::string result = Redis::MultiBulkString(values);
+  std::string result = Redis::MultiBulkString(values_);
   ASSERT_EQ(result.length(), 13 * 10 + 14 * 90 + 15 * 900 + 17 * 9000 + 18 * 90000 + 9);
 }
 
 TEST_F(StringReplyTest, BulkString) {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
-  for (const auto &v : values) {
+  std::string result = "*" + std::to_string(values_.size()) + CRLF;
+  for (const auto &v : values_) {
     result += Redis::BulkString(v);
   }
 

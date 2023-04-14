@@ -52,7 +52,6 @@
 #include "version.h"
 #include "worker.h"
 
-std::atomic<int> Server::unix_time = {0};
 constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(Engine::Storage *storage, Config *config)

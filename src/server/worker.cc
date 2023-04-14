@@ -58,12 +58,12 @@ Worker::Worker(Server *svr, Config *config) : svr_(svr), base_(event_base_new())
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
-  uint32_t ports[3] = {config->port, config->tls_port, 0};
-  auto binds = config->binds;
+  uint32_t ports[3] = {config->port_, config->tls_port_, 0};
+  auto binds = config->binds_;
 
   for (uint32_t *port = ports; *port; ++port) {
     for (const auto &bind : binds) {
-      Status s = listenTCP(bind, *port, config->backlog);
+      Status s = listenTCP(bind, *port, config->backlog_);
       if (!s.IsOK()) {
         LOG(ERROR) << "[worker] Failed to listen on: " << bind << ":" << *port << ". Error: " << s.Msg();
         exit(1);
@@ -102,8 +102,8 @@ Worker::~Worker() {
 void Worker::TimerCB(int, int16_t events, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   auto config = worker->svr_->GetConfig();
-  if (config->timeout == 0) return;
-  worker->KickoutIdleClients(config->timeout);
+  if (config->timeout_ == 0) return;
+  worker->KickoutIdleClients(config->timeout_);
 }
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
@@ -132,7 +132,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   bufferevent *bev = nullptr;
 #ifdef ENABLE_OPENSSL
   SSL *ssl = nullptr;
-  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port_) {
     ssl = SSL_new(worker->svr_->ssl_ctx_.get());
     if (!ssl) {
       LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
@@ -158,7 +158,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
 #ifdef ENABLE_OPENSSL
-  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == worker->svr_->GetConfig()->tls_port_) {
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif
@@ -191,7 +191,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
 void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
                                      void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr_->GetConfig()->unixsocket_
              << " thread #" << worker->tid_;
   event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
@@ -213,7 +213,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
     return;
   }
 
-  conn->SetAddr(worker->svr_->GetConfig()->unixsocket, 0);
+  conn->SetAddr(worker->svr_->GetConfig()->unixsocket_, 0);
   if (worker->rate_limit_group_) {
     bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
   }
@@ -319,7 +319,7 @@ Status Worker::AddConnection(Redis::Connection *c) {
     return {Status::NotOK, "connection was exists"};
   }
 
-  int max_clients = svr_->GetConfig()->maxclients;
+  int max_clients = svr_->GetConfig()->maxclients_;
   if (svr_->IncrClientNum() >= max_clients) {
     svr_->DecrClientNum();
     return {Status::NotOK, "max number of clients reached"};
@@ -504,7 +504,7 @@ void Worker::KickoutIdleClients(int timeout) {
     }
 
     int iterations = std::min(static_cast<int>(conns_.size()), 50);
-    auto iter = conns_.upper_bound(last_iter_conn_fd);
+    auto iter = conns_.upper_bound(last_iter_conn_fd_);
     while (iterations--) {
       if (iter == conns_.end()) iter = conns_.begin();
       if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
@@ -513,7 +513,7 @@ void Worker::KickoutIdleClients(int timeout) {
       iter++;
     }
     iter--;
-    last_iter_conn_fd = iter->first;
+    last_iter_conn_fd_ = iter->first;
   }
 
   for (const auto &conn : to_be_killed_conns) {

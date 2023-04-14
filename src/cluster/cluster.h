@@ -53,19 +53,19 @@ class ClusterNode {
   std::string master_id_;
   std::string slots_info_;
   std::bitset<kClusterSlots> slots_;
-  std::vector<std::string> replicas;
+  std::vector<std::string> replicas_;
   int importing_slot_ = -1;
 };
 
 struct SlotInfo {
-  int start;
-  int end;
+  int start_;
+  int end_;
   struct NodeInfo {
-    std::string host;
-    int port;
-    std::string id;
+    std::string host_;
+    int port_;
+    std::string id_;
   };
-  std::vector<NodeInfo> nodes;
+  std::vector<NodeInfo> nodes_;
 };
 
 using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;

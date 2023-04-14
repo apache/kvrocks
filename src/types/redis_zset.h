@@ -37,21 +37,21 @@ const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_l
                                                                 : std::numeric_limits<double>::max());
 
 struct ZRangeSpec {
-  double min = kMinScore, max = kMaxScore;
-  bool minex = false, maxex = false; /* are min or max exclusive */
-  int offset = -1, count = -1;
-  bool removed = false, reversed = false;
+  double min_ = kMinScore, max_ = kMaxScore;
+  bool minex_ = false, maxex_ = false; /* are min or max exclusive */
+  int offset_ = -1, count_ = -1;
+  bool removed_ = false, reversed_ = false;
   ZRangeSpec() = default;
 };
 
 struct KeyWeight {
-  std::string key;
-  double weight;
+  std::string key_;
+  double weight_;
 };
 
 struct MemberScore {
-  std::string member;
-  double score;
+  std::string member_;
+  double score_;
 };
 
 enum ZSetFlags {
@@ -67,24 +67,24 @@ enum ZSetFlags {
 
 class ZAddFlags {
  public:
-  explicit ZAddFlags(uint8_t flags = 0) : flags(flags) {}
+  explicit ZAddFlags(uint8_t flags = 0) : flags_(flags) {}
 
-  bool HasNX() const { return (flags & kZSetNX) != 0; }
-  bool HasXX() const { return (flags & kZSetXX) != 0; }
-  bool HasLT() const { return (flags & kZSetLT) != 0; }
-  bool HasGT() const { return (flags & kZSetGT) != 0; }
-  bool HasCH() const { return (flags & kZSetCH) != 0; }
-  bool HasIncr() const { return (flags & kZSetIncr) != 0; }
-  bool HasAnyFlags() const { return flags != 0; }
+  bool HasNX() const { return (flags_ & kZSetNX) != 0; }
+  bool HasXX() const { return (flags_ & kZSetXX) != 0; }
+  bool HasLT() const { return (flags_ & kZSetLT) != 0; }
+  bool HasGT() const { return (flags_ & kZSetGT) != 0; }
+  bool HasCH() const { return (flags_ & kZSetCH) != 0; }
+  bool HasIncr() const { return (flags_ & kZSetIncr) != 0; }
+  bool HasAnyFlags() const { return flags_ != 0; }
 
-  void SetFlag(ZSetFlags set_flags) { flags |= set_flags; }
+  void SetFlag(ZSetFlags set_flags) { flags_ |= set_flags; }
 
   static ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
 
   static ZAddFlags Default() { return ZAddFlags{0}; }
 
  private:
-  uint8_t flags = 0;
+  uint8_t flags_ = 0;
 };
 
 namespace Redis {

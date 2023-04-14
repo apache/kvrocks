@@ -67,7 +67,7 @@ A million repetitions of "a"
 void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]) {
   uint32_t a = 0, b = 0, c = 0, d = 0, e = 0;
   union CHAR64LONG16 {
-    unsigned char c[64];
+    unsigned char c_[64];
     uint32_t l[16];
   };
 #ifdef SHA1HANDSOFF
@@ -185,12 +185,12 @@ void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]) {
 
 void SHA1Init(SHA1_CTX* context) {
   /* SHA1 initialization constants */
-  context->state[0] = 0x67452301;
-  context->state[1] = 0xEFCDAB89;
-  context->state[2] = 0x98BADCFE;
-  context->state[3] = 0x10325476;
-  context->state[4] = 0xC3D2E1F0;
-  context->count[0] = context->count[1] = 0;
+  context->state_[0] = 0x67452301;
+  context->state_[1] = 0xEFCDAB89;
+  context->state_[2] = 0x98BADCFE;
+  context->state_[3] = 0x10325476;
+  context->state_[4] = 0xC3D2E1F0;
+  context->count_[0] = context->count_[1] = 0;
 }
 
 /* Run your data through this. */
@@ -198,21 +198,21 @@ void SHA1Init(SHA1_CTX* context) {
 void SHA1Update(SHA1_CTX* context, const unsigned char* data, uint32_t len) {
   uint32_t i = 0, j = 0;
 
-  j = context->count[0];
-  if ((context->count[0] += len << 3) < j) context->count[1]++;
-  context->count[1] += (len >> 29);
+  j = context->count_[0];
+  if ((context->count_[0] += len << 3) < j) context->count_[1]++;
+  context->count_[1] += (len >> 29);
   j = (j >> 3) & 63;
   if ((j + len) > 63) {
-    memcpy(&context->buffer[j], data, (i = 64 - j));
-    SHA1Transform(context->state, context->buffer);
+    memcpy(&context->buffer_[j], data, (i = 64 - j));
+    SHA1Transform(context->state_, context->buffer_);
     for (; i + 63 < len; i += 64) {
-      SHA1Transform(context->state, &data[i]);
+      SHA1Transform(context->state_, &data[i]);
     }
     j = 0;
   } else {
     i = 0;
   }
-  memcpy(&context->buffer[j], &data[i], len - i);
+  memcpy(&context->buffer_[j], &data[i], len - i);
 }
 
 /* Add padding and return the message digest. */
@@ -223,17 +223,17 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX* context) {
 
   for (i = 0; i < 8; i++) {
     finalcount[i] =
-        (unsigned char)((context->count[(i >= 4 ? 0 : 1)] >> ((3 - (i & 3)) * 8)) & 255); /* Endian independent */
+        (unsigned char)((context->count_[(i >= 4 ? 0 : 1)] >> ((3 - (i & 3)) * 8)) & 255); /* Endian independent */
   }
   c = 0200;
   SHA1Update(context, &c, 1);
-  while ((context->count[0] & 504) != 448) {
+  while ((context->count_[0] & 504) != 448) {
     c = 0000;
     SHA1Update(context, &c, 1);
   }
   SHA1Update(context, finalcount, 8); /* Should cause a SHA1Transform() */
   for (i = 0; i < 20; i++) {
-    digest[i] = (unsigned char)((context->state[i >> 2] >> ((3 - (i & 3)) * 8)) & 255);
+    digest[i] = (unsigned char)((context->state_[i >> 2] >> ((3 - (i & 3)) * 8)) & 255);
   }
   /* Wipe variables */
   memset(context, '\0', sizeof(*context));

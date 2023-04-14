@@ -161,7 +161,7 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
 
   for (int i = 1; i < argc; ++i) {
     if ((argv[i] == "-c"sv || argv[i] == "--config"sv) && i + 1 < argc) {
-      opts.conf_file = argv[++i];
+      opts.conf_file_ = argv[++i];
     } else if (argv[i] == "-v"sv || argv[i] == "--version"sv) {
       std::cout << printVersion << std::endl;
       std::exit(0);
@@ -170,7 +170,7 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
       std::exit(0);
     } else if (std::string_view(argv[i], 2) == "--" && std::string_view(argv[i]).size() > 2 && i + 1 < argc) {
       auto key = std::string_view(argv[i] + 2);
-      opts.cli_options.emplace_back(key, argv[++i]);
+      opts.cli_options_.emplace_back(key, argv[++i]);
     } else {
       printUsage(*argv);
       std::exit(1);
@@ -181,20 +181,20 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
 }
 
 static void initGoogleLog(const Config *config) {
-  FLAGS_minloglevel = config->log_level;
+  FLAGS_minloglevel = config->log_level_;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
 
-  if (Util::ToLower(config->log_dir) == "stdout") {
+  if (Util::ToLower(config->log_dir_) == "stdout") {
     for (int level = google::INFO; level <= google::FATAL; level++) {
       google::SetLogDestination(level, "");
     }
     FLAGS_stderrthreshold = google::ERROR;
     FLAGS_logtostdout = true;
   } else {
-    FLAGS_log_dir = config->log_dir + "/";
-    if (config->log_retention_days != -1) {
-      google::EnableLogCleaner(config->log_retention_days);
+    FLAGS_log_dir = config->log_dir_ + "/";
+    if (config->log_retention_days_ != -1) {
+      google::EnableLogCleaner(config->log_retention_days_);
     }
   }
 }
@@ -331,8 +331,8 @@ int main(int argc, char *argv[]) {
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
-  if (!config.binds.empty()) {
-    uint32_t ports[] = {config.port, config.tls_port, 0};
+  if (!config.binds_.empty()) {
+    uint32_t ports[] = {config.port_, config.tls_port_, 0};
     for (uint32_t *port = ports; *port; ++port) {
       if (Util::IsPortInUse(*port)) {
         LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use";
@@ -340,18 +340,18 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  bool is_supervised = isSupervisedMode(config.supervised_mode);
-  if (config.daemonize && !is_supervised) daemonize();
-  s = createPidFile(config.pidfile);
+  bool is_supervised = isSupervisedMode(config.supervised_mode_);
+  if (config.daemonize_ && !is_supervised) daemonize();
+  s = createPidFile(config.pidfile_);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     return 1;
   }
-  auto pidfile_exit = MakeScopeExit([&config] { removePidFile(config.pidfile); });
+  auto pidfile_exit = MakeScopeExit([&config] { removePidFile(config.pidfile_); });
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL
-  if (config.tls_port) {
+  if (config.tls_port_) {
     InitSSL();
   }
 #endif

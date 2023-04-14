@@ -241,7 +241,7 @@ StatusOr<std::string> SockReadLine(int fd) {
     return Status::FromErrno("read response err(empty)");
   }
 
-  return std::string(line.get(), line.length);
+  return std::string(line.get(), line.length_);
 }
 
 int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {

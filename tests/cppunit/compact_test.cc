@@ -29,9 +29,9 @@
 
 TEST(Compact, Filter) {
   Config config;
-  config.db_dir = "compactdb";
-  config.backup_dir = "compactdb/backup";
-  config.slot_id_encoded = false;
+  config.db_dir_ = "compactdb";
+  config.backup_dir_ = "compactdb/backup";
+  config.slot_id_encoded_ = false;
 
   auto storage = std::make_unique<Engine::Storage>(&config);
   Status s = storage->Open();
@@ -118,7 +118,7 @@ TEST(Compact, Filter) {
 
   db->ReleaseSnapshot(read_options.snapshot);
   std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
+  std::filesystem::remove_all(config.db_dir_, ec);
   if (ec) {
     std::cout << "Encounter filesystem error: " << ec << std::endl;
   }

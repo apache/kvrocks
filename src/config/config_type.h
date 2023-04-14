@@ -47,8 +47,8 @@ using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
 struct ConfigEnum {
-  const char *name;
-  const int val;
+  const char *name_;
+  const int val_;
 };
 
 enum configType { SingleConfig, MultiConfig };
@@ -64,15 +64,15 @@ class ConfigField {
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) { return {Status::NotOK, "not supported"}; }
   virtual Status ToBool(bool *b) { return {Status::NotOK, "not supported"}; }
-  virtual configType GetConfigType() { return config_type; }
-  virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
-  virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
+  virtual configType GetConfigType() { return config_type_; }
+  virtual bool IsMultiConfig() { return config_type_ == configType::MultiConfig; }
+  virtual bool IsSingleConfig() { return config_type_ == configType::SingleConfig; }
 
-  int line_number = 0;
-  bool readonly = true;
-  validate_fn validate = nullptr;
-  callback_fn callback = nullptr;
-  configType config_type = configType::SingleConfig;
+  int line_number_ = 0;
+  bool readonly_ = true;
+  validate_fn validate_ = nullptr;
+  callback_fn callback_ = nullptr;
+  configType config_type_ = configType::SingleConfig;
 };
 
 class StringField : public ConfigField {
@@ -93,7 +93,7 @@ class MultiStringField : public ConfigField {
  public:
   MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input) : receiver_(receiver) {
     *receiver_ = std::move(input);
-    this->config_type = configType::MultiConfig;
+    this->config_type_ = configType::MultiConfig;
   }
   ~MultiStringField() override = default;
   std::string ToString() override {

@@ -29,7 +29,7 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
   for (const auto &geo_point : *geo_points) {
     /* Turn the coordinates into the score of the element. */
     GeoHashBits hash;
-    geohashEncodeWGS84(geo_point.longitude, geo_point.latitude, GEO_STEP_MAX, &hash);
+    GeohashEncodeWGS84(geo_point.longitude, geo_point.latitude, GEO_STEP_MAX, &hash);
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
     member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
@@ -184,7 +184,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
   r[0].max = 180;
   r[1].min = -90;
   r[1].max = 90;
-  geohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
+  GeohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
 
   std::string geo_hash;
   for (int i = 0; i < 11; i++) {
@@ -204,7 +204,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
 
 int Geo::decodeGeoHash(double bits, double *xy) {
   GeoHashBits hash = {(uint64_t)bits, GEO_STEP_MAX};
-  return geohashDecodeToLongLatWGS84(hash, xy);
+  return GeohashDecodeToLongLatWGS84(hash, xy);
 }
 
 /* Search all eight neighbors + self geohash box */

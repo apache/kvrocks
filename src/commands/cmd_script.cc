@@ -42,7 +42,7 @@ class CommandEvalImpl : public Commander {
       return {Status::NotOK, "Number of keys can't be negative"};
     }
 
-    return lua::evalGenericCommand(
+    return lua::EvalGenericCommand(
         conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
         std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), evalsha, output, read_only);
   }
@@ -90,7 +90,7 @@ class CommandScript : public Commander {
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = lua::createFunction(svr, args_[2], &sha, svr->Lua(), true);
+      auto s = lua::CreateFunction(svr, args_[2], &sha, svr->Lua(), true);
       if (!s.IsOK()) {
         return s;
       }

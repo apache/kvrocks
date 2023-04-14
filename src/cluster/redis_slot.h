@@ -26,6 +26,6 @@ constexpr const uint16_t HASH_SLOTS_MASK = 0x3fff;
 constexpr const uint16_t HASH_SLOTS_SIZE = HASH_SLOTS_MASK + 1;  // 16384
 constexpr const uint16_t HASH_SLOTS_MAX_ITERATIONS = 50;
 
-uint16_t crc16(const char *buf, int len);
+uint16_t Crc16(const char *buf, int len);
 uint16_t GetSlotIdFromKey(const std::string &key);
 std::string GetTagFromKey(const std::string &key);

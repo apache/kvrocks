@@ -25,7 +25,7 @@
 
 namespace redis {
 
-Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
+Status GetBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
   auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -38,7 +38,7 @@ Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
 class CommandGetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = getBitOffsetFromArgument(args[2], &offset_);
+    Status s = GetBitOffsetFromArgument(args[2], &offset_);
     if (!s.IsOK()) return s;
 
     return Commander::Parse(args);
@@ -61,7 +61,7 @@ class CommandGetBit : public Commander {
 class CommandSetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = getBitOffsetFromArgument(args[2], &offset_);
+    Status s = GetBitOffsetFromArgument(args[2], &offset_);
     if (!s.IsOK()) return s;
 
     if (args[3] == "0") {

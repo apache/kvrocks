@@ -38,7 +38,7 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 int GetLocalPort(int fd);
 bool IsPortInUse(uint32_t port);
 
-int aeWait(int fd, int mask, int milliseconds);
+int AeWait(int fd, int mask, int milliseconds);
 
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);

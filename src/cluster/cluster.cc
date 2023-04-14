@@ -643,6 +643,8 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
       return {Status::NotOK, fmt::format("unknown key: {}", key)};
     }
   }
+
+  myid_ = id;
   return SetClusterNodes(nodes_info, version, false);
 }
 

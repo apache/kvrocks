@@ -116,7 +116,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {  // NO
 }
 
 UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method) {
-  if (config->tls_cert_file.empty() || config->tls_key_file.empty()) {
+  if (config->tls_cert_file_.empty() || config->tls_key_file_.empty()) {
     LOG(ERROR) << "Both tls-cert-file and tls-key-file must be specified while TLS is enabled";
     return nullptr;
   }
@@ -127,7 +127,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
     return nullptr;
   }
 
-  auto proto_status = ParseSSLProtocols(config->tls_protocols);
+  auto proto_status = ParseSSLProtocols(config->tls_protocols_);
   if (!proto_status) {
     LOG(ERROR) << proto_status.Msg();
     return nullptr;
@@ -145,7 +145,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   ctx_options |= SSL_OP_NO_CLIENT_RENEGOTIATION;
 #endif
 
-  if (config->tls_prefer_server_ciphers) {
+  if (config->tls_prefer_server_ciphers_) {
     ctx_options |= SSL_OP_CIPHER_SERVER_PREFERENCE;
   }
 
@@ -153,10 +153,10 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
 
   SSL_CTX_set_mode(ssl_ctx.get(), SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
-  if (config->tls_session_caching) {
+  if (config->tls_session_caching_) {
     SSL_CTX_set_session_cache_mode(ssl_ctx.get(), SSL_SESS_CACHE_SERVER);
-    SSL_CTX_set_timeout(ssl_ctx.get(), config->tls_session_cache_timeout);
-    SSL_CTX_sess_set_cache_size(ssl_ctx.get(), config->tls_session_cache_size);
+    SSL_CTX_set_timeout(ssl_ctx.get(), config->tls_session_cache_timeout_);
+    SSL_CTX_sess_set_cache_size(ssl_ctx.get(), config->tls_session_cache_size_);
 
     const char *session_id = "kvrocks";
     SSL_CTX_set_session_id_context(ssl_ctx.get(), (const unsigned char *)session_id, strlen(session_id));
@@ -164,41 +164,41 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
     SSL_CTX_set_session_cache_mode(ssl_ctx.get(), SSL_SESS_CACHE_OFF);
   }
 
-  if (config->tls_auth_clients == TLS_AUTH_CLIENTS_NO) {
+  if (config->tls_auth_clients_ == TLS_AUTH_CLIENTS_NO) {
     SSL_CTX_set_verify(ssl_ctx.get(), SSL_VERIFY_NONE, nullptr);
-  } else if (config->tls_auth_clients == TLS_AUTH_CLIENTS_OPTIONAL) {
+  } else if (config->tls_auth_clients_ == TLS_AUTH_CLIENTS_OPTIONAL) {
     SSL_CTX_set_verify(ssl_ctx.get(), SSL_VERIFY_PEER, nullptr);
   } else {
     SSL_CTX_set_verify(ssl_ctx.get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
   }
 
-  auto ca_file = config->tls_ca_cert_file.empty() ? nullptr : config->tls_ca_cert_file.c_str();
-  auto ca_dir = config->tls_ca_cert_dir.empty() ? nullptr : config->tls_ca_cert_dir.c_str();
+  auto ca_file = config->tls_ca_cert_file_.empty() ? nullptr : config->tls_ca_cert_file_.c_str();
+  auto ca_dir = config->tls_ca_cert_dir_.empty() ? nullptr : config->tls_ca_cert_dir_.c_str();
   if (ca_file || ca_dir) {
     if (SSL_CTX_load_verify_locations(ssl_ctx.get(), ca_file, ca_dir) != 1) {
       LOG(ERROR) << "Failed to load CA certificates: " << SSLErrors{};
       return nullptr;
     }
-  } else if (config->tls_auth_clients != TLS_AUTH_CLIENTS_NO) {
+  } else if (config->tls_auth_clients_ != TLS_AUTH_CLIENTS_NO) {
     LOG(ERROR) << "Either tls-ca-cert-file or tls-ca-cert-dir must be specified while tls-auth-clients is enabled";
     return nullptr;
   }
 
-  if (SSL_CTX_use_certificate_chain_file(ssl_ctx.get(), config->tls_cert_file.c_str()) != 1) {
+  if (SSL_CTX_use_certificate_chain_file(ssl_ctx.get(), config->tls_cert_file_.c_str()) != 1) {
     LOG(ERROR) << "Failed to load SSL certificate file: " << SSLErrors{};
     return nullptr;
   }
 
-  if (!config->tls_key_file_pass.empty()) {
+  if (!config->tls_key_file_pass_.empty()) {
     SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx.get(), static_cast<void *>(const_cast<Config *>(config)));
     SSL_CTX_set_default_passwd_cb(ssl_ctx.get(), [](char *buf, int size, int, void *cfg) -> int {
-      strncpy(buf, static_cast<const Config *>(cfg)->tls_key_file_pass.c_str(), size);
+      strncpy(buf, static_cast<const Config *>(cfg)->tls_key_file_pass_.c_str(), size);
       buf[size - 1] = '\0';
       return static_cast<int>(strlen(buf));
     });
   }
 
-  if (SSL_CTX_use_PrivateKey_file(ssl_ctx.get(), config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
+  if (SSL_CTX_use_PrivateKey_file(ssl_ctx.get(), config->tls_key_file_.c_str(), SSL_FILETYPE_PEM) != 1) {
     LOG(ERROR) << "Failed to load SSL private key file: " << SSLErrors{};
     return nullptr;
   }
@@ -208,13 +208,14 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
     return nullptr;
   }
 
-  if (!config->tls_ciphers.empty() && !SSL_CTX_set_cipher_list(ssl_ctx.get(), config->tls_ciphers.c_str())) {
+  if (!config->tls_ciphers_.empty() && !SSL_CTX_set_cipher_list(ssl_ctx.get(), config->tls_ciphers_.c_str())) {
     LOG(ERROR) << "Failed to set SSL ciphers: " << SSLErrors{};
     return nullptr;
   }
 
 #ifdef SSL_OP_NO_TLSv1_3
-  if (!config->tls_ciphersuites.empty() && !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
+  if (!config->tls_ciphersuites_.empty() &&
+      !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites_.c_str())) {
     LOG(ERROR) << "Failed to set SSL ciphersuites: " << SSLErrors{};
     return nullptr;
   }

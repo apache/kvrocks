@@ -60,47 +60,47 @@ enum GeoDirection {
 };
 
 struct GeoHashBits {
-  uint64_t bits = 0;
-  uint8_t step = 0;
+  uint64_t bits_ = 0;
+  uint8_t step_ = 0;
 };
 
 struct GeoHashRange {
-  double min = 0;
-  double max = 0;
+  double min_ = 0;
+  double max_ = 0;
 };
 
 struct GeoHashArea {
-  GeoHashBits hash;
-  GeoHashRange longitude;
-  GeoHashRange latitude;
+  GeoHashBits hash_;
+  GeoHashRange longitude_;
+  GeoHashRange latitude_;
 };
 
 struct GeoHashNeighbors {
-  GeoHashBits north;
-  GeoHashBits east;
-  GeoHashBits west;
-  GeoHashBits south;
-  GeoHashBits north_east;
-  GeoHashBits south_east;
-  GeoHashBits north_west;
-  GeoHashBits south_west;
+  GeoHashBits north_;
+  GeoHashBits east_;
+  GeoHashBits west_;
+  GeoHashBits south_;
+  GeoHashBits north_east_;
+  GeoHashBits south_east_;
+  GeoHashBits north_west_;
+  GeoHashBits south_west_;
 };
 
 using GeoHashFix52Bits = uint64_t;
 
 struct GeoHashRadius {
-  GeoHashBits hash;
-  GeoHashArea area;
-  GeoHashNeighbors neighbors;
+  GeoHashBits hash_;
+  GeoHashArea area_;
+  GeoHashNeighbors neighbors_;
 };
 
-inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits && !r.step; }
-inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !bool(r.max) && !bool(r.min); }
+inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits_ && !r.step_; }
+inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !bool(r.max_) && !bool(r.min_); }
 inline constexpr bool RANGEPISZERO(const GeoHashRange *r) { return !r || RANGEISZERO(*r); }
 
-inline constexpr void GZERO(GeoHashBits &s) { s.bits = s.step = 0; }
-inline constexpr bool GISZERO(const GeoHashBits &s) { return (!s.bits && !s.step); }
-inline constexpr bool GISNOTZERO(const GeoHashBits &s) { return (s.bits || s.step); }
+inline constexpr void GZERO(GeoHashBits &s) { s.bits_ = s.step_ = 0; }
+inline constexpr bool GISZERO(const GeoHashBits &s) { return (!s.bits_ && !s.step_); }
+inline constexpr bool GISNOTZERO(const GeoHashBits &s) { return (s.bits_ || s.step_); }
 
 /*
  * 0:success

@@ -43,37 +43,37 @@ enum StatsMetricFlags {
 const int STATS_METRIC_SAMPLES = 16;  // Number of samples per metric
 
 struct CommandStat {
-  std::atomic<uint64_t> calls;
-  std::atomic<uint64_t> latency;
+  std::atomic<uint64_t> calls_;
+  std::atomic<uint64_t> latency_;
 };
 
 struct InstMetric {
-  uint64_t last_sample_time;   // Timestamp of the last sample in ms
-  uint64_t last_sample_count;  // Count in the last sample
-  uint64_t samples[STATS_METRIC_SAMPLES];
-  int idx;
+  uint64_t last_sample_time_;   // Timestamp of the last sample in ms
+  uint64_t last_sample_count_;  // Count in the last sample
+  uint64_t samples_[STATS_METRIC_SAMPLES];
+  int idx_;
 };
 
 class Stats {
  public:
-  std::atomic<uint64_t> total_calls = {0};
-  std::atomic<uint64_t> in_bytes = {0};
-  std::atomic<uint64_t> out_bytes = {0};
-  std::vector<struct InstMetric> inst_metrics;
+  std::atomic<uint64_t> total_calls_ = {0};
+  std::atomic<uint64_t> in_bytes_ = {0};
+  std::atomic<uint64_t> out_bytes_ = {0};
+  std::vector<struct InstMetric> inst_metrics_;
 
-  std::atomic<uint64_t> fullsync_counter = {0};
-  std::atomic<uint64_t> psync_err_counter = {0};
-  std::atomic<uint64_t> psync_ok_counter = {0};
-  std::map<std::string, CommandStat> commands_stats;
+  std::atomic<uint64_t> fullsync_counter_ = {0};
+  std::atomic<uint64_t> psync_err_counter_ = {0};
+  std::atomic<uint64_t> psync_ok_counter_ = {0};
+  std::map<std::string, CommandStat> commands_stats_;
 
   Stats();
   void IncrCalls(const std::string &command_name);
   void IncrLatency(uint64_t latency, const std::string &command_name);
-  void IncrInbondBytes(uint64_t bytes) { in_bytes.fetch_add(bytes, std::memory_order_relaxed); }
-  void IncrOutbondBytes(uint64_t bytes) { out_bytes.fetch_add(bytes, std::memory_order_relaxed); }
-  void IncrFullSyncCounter() { fullsync_counter.fetch_add(1, std::memory_order_relaxed); }
-  void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
-  void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
+  void IncrInbondBytes(uint64_t bytes) { in_bytes_.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrOutbondBytes(uint64_t bytes) { out_bytes_.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrFullSyncCounter() { fullsync_counter_.fetch_add(1, std::memory_order_relaxed); }
+  void IncrPSyncErrCounter() { psync_err_counter_.fetch_add(1, std::memory_order_relaxed); }
+  void IncrPSyncOKCounter() { psync_ok_counter_.fetch_add(1, std::memory_order_relaxed); }
   static int64_t GetMemoryRSS();
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
   uint64_t GetInstantaneousMetric(int metric);

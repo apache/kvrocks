@@ -39,23 +39,23 @@ enum class StreamTrimStrategy {
 };
 
 struct StreamEntryID {
-  uint64_t ms = 0;
-  uint64_t seq = 0;
+  uint64_t ms_ = 0;
+  uint64_t seq_ = 0;
 
   StreamEntryID() = default;
-  StreamEntryID(uint64_t ms, uint64_t seq) : ms(ms), seq(seq) {}
+  StreamEntryID(uint64_t ms, uint64_t seq) : ms_(ms), seq_(seq) {}
 
   void Clear() {
-    ms = 0;
-    seq = 0;
+    ms_ = 0;
+    seq_ = 0;
   }
 
-  bool IsMaximum() const { return ms == UINT64_MAX && seq == UINT64_MAX; }
-  bool IsMinimum() const { return ms == 0 && seq == 0; }
+  bool IsMaximum() const { return ms_ == UINT64_MAX && seq_ == UINT64_MAX; }
+  bool IsMinimum() const { return ms_ == 0 && seq_ == 0; }
 
   bool operator<(const StreamEntryID &rhs) const {
-    if (ms < rhs.ms) return true;
-    if (ms == rhs.ms) return seq < rhs.seq;
+    if (ms_ < rhs.ms_) return true;
+    if (ms_ == rhs.ms_) return seq_ < rhs.seq_;
     return false;
   }
 
@@ -65,77 +65,77 @@ struct StreamEntryID {
 
   bool operator<=(const StreamEntryID &rhs) const { return !(rhs < *this); }
 
-  bool operator==(const StreamEntryID &rhs) const { return ms == rhs.ms && seq == rhs.seq; }
+  bool operator==(const StreamEntryID &rhs) const { return ms_ == rhs.ms_ && seq_ == rhs.seq_; }
 
-  std::string ToString() const { return fmt::format("{}-{}", ms, seq); }
+  std::string ToString() const { return fmt::format("{}-{}", ms_, seq_); }
 
   static StreamEntryID Minimum() { return StreamEntryID{0, 0}; }
   static StreamEntryID Maximum() { return StreamEntryID{UINT64_MAX, UINT64_MAX}; }
 };
 
 struct NewStreamEntryID {
-  uint64_t ms = 0;
-  uint64_t seq = 0;
-  bool any_seq_number = false;
+  uint64_t ms_ = 0;
+  uint64_t seq_ = 0;
+  bool any_seq_number_ = false;
 
   NewStreamEntryID() = default;
-  explicit NewStreamEntryID(uint64_t ms) : ms(ms), any_seq_number(true) {}
-  NewStreamEntryID(uint64_t ms, uint64_t seq) : ms(ms), seq(seq) {}
+  explicit NewStreamEntryID(uint64_t ms) : ms_(ms), any_seq_number_(true) {}
+  NewStreamEntryID(uint64_t ms, uint64_t seq) : ms_(ms), seq_(seq) {}
 };
 
 struct StreamEntry {
-  std::string key;
-  std::vector<std::string> values;
+  std::string key_;
+  std::vector<std::string> values_;
 
-  StreamEntry(std::string k, std::vector<std::string> vv) : key(std::move(k)), values(std::move(vv)) {}
+  StreamEntry(std::string k, std::vector<std::string> vv) : key_(std::move(k)), values_(std::move(vv)) {}
 };
 
 struct StreamTrimOptions {
-  uint64_t max_len;
-  StreamEntryID min_id;
-  StreamTrimStrategy strategy = StreamTrimStrategy::None;
+  uint64_t max_len_;
+  StreamEntryID min_id_;
+  StreamTrimStrategy strategy_ = StreamTrimStrategy::None;
 };
 
 struct StreamAddOptions {
-  NewStreamEntryID entry_id;
-  StreamTrimOptions trim_options;
-  bool nomkstream = false;
-  bool with_entry_id = false;
+  NewStreamEntryID entry_id_;
+  StreamTrimOptions trim_options_;
+  bool nomkstream_ = false;
+  bool with_entry_id_ = false;
 };
 
 struct StreamRangeOptions {
-  StreamEntryID start;
-  StreamEntryID end;
-  uint64_t count;
-  bool with_count = false;
-  bool reverse = false;
-  bool exclude_start = false;
-  bool exclude_end = false;
+  StreamEntryID start_;
+  StreamEntryID end_;
+  uint64_t count_;
+  bool with_count_ = false;
+  bool reverse_ = false;
+  bool exclude_start_ = false;
+  bool exclude_end_ = false;
 };
 
 struct StreamLenOptions {
-  StreamEntryID entry_id;
-  bool with_entry_id = false;
-  bool to_first = false;
+  StreamEntryID entry_id_;
+  bool with_entry_id_ = false;
+  bool to_first_ = false;
 };
 
 struct StreamInfo {
-  uint64_t size;
-  uint64_t entries_added;
-  StreamEntryID last_generated_id;
-  StreamEntryID max_deleted_entry_id;
-  StreamEntryID recorded_first_entry_id;
-  std::unique_ptr<StreamEntry> first_entry;
-  std::unique_ptr<StreamEntry> last_entry;
-  std::vector<StreamEntry> entries;
+  uint64_t size_;
+  uint64_t entries_added_;
+  StreamEntryID last_generated_id_;
+  StreamEntryID max_deleted_entry_id_;
+  StreamEntryID recorded_first_entry_id_;
+  std::unique_ptr<StreamEntry> first_entry_;
+  std::unique_ptr<StreamEntry> last_entry_;
+  std::vector<StreamEntry> entries_;
 };
 
 struct StreamReadResult {
-  std::string name;
-  std::vector<StreamEntry> entries;
+  std::string name_;
+  std::vector<StreamEntry> entries_;
 
   StreamReadResult(std::string name, std::vector<StreamEntry> result)
-      : name(std::move(name)), entries(std::move(result)) {}
+      : name_(std::move(name)), entries_(std::move(result)) {}
 };
 
 rocksdb::Status IncrementStreamEntryID(StreamEntryID *id);

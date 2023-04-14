@@ -49,7 +49,7 @@ class CommandCluster : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!svr->GetConfig()->cluster_enabled) {
+    if (!svr->GetConfig()->cluster_enabled_) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }
@@ -68,14 +68,14 @@ class CommandCluster : public Commander {
       if (s.IsOK()) {
         output->append(Redis::MultiLen(infos.size()));
         for (const auto &info : infos) {
-          output->append(Redis::MultiLen(info.nodes.size() + 2));
-          output->append(Redis::Integer(info.start));
-          output->append(Redis::Integer(info.end));
-          for (const auto &n : info.nodes) {
+          output->append(Redis::MultiLen(info.nodes_.size() + 2));
+          output->append(Redis::Integer(info.start_));
+          output->append(Redis::Integer(info.end_));
+          for (const auto &n : info.nodes_) {
             output->append(Redis::MultiLen(3));
-            output->append(Redis::BulkString(n.host));
-            output->append(Redis::Integer(n.port));
-            output->append(Redis::BulkString(n.id));
+            output->append(Redis::BulkString(n.host_));
+            output->append(Redis::Integer(n.port_));
+            output->append(Redis::BulkString(n.id_));
           }
         }
       } else {
@@ -191,7 +191,7 @@ class CommandClusterX : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!svr->GetConfig()->cluster_enabled) {
+    if (!svr->GetConfig()->cluster_enabled_) {
       *output = Redis::Error("Cluster mode is not enabled");
       return Status::OK();
     }
@@ -239,7 +239,7 @@ class CommandClusterX : public Commander {
     } else {
       *output = Redis::Error("Invalid cluster command options");
     }
-    if (need_persist_nodes_info && svr->GetConfig()->persist_cluster_nodes_enabled) {
+    if (need_persist_nodes_info && svr->GetConfig()->persist_cluster_nodes_enabled_) {
       return svr->cluster_->DumpClusterNodes(svr->GetConfig()->NodesFilePath());
     }
     return Status::OK();

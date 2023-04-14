@@ -35,7 +35,7 @@ class CommandPSync : public Commander {
     size_t seq_arg = 1;
     if (args.size() == 3) {
       seq_arg = 2;
-      new_psync = true;
+      new_psync_ = true;
     }
 
     auto parse_result = ParseInt<uint64_t>(args[seq_arg], 10);
@@ -43,11 +43,11 @@ class CommandPSync : public Commander {
       return {Status::RedisParseErr, "value is not an unsigned long long or out of range"};
     }
 
-    next_repl_seq = static_cast<rocksdb::SequenceNumber>(*parse_result);
-    if (new_psync) {
+    next_repl_seq_ = static_cast<rocksdb::SequenceNumber>(*parse_result);
+    if (new_psync_) {
       assert(args.size() == 3);
-      replica_replid = args[1];
-      if (replica_replid.size() != kReplIdLength) {
+      replica_replid_ = args[1];
+      if (replica_replid_.size() != kReplIdLength) {
         return {Status::RedisParseErr, "Wrong replication id length"};
       }
     }
@@ -58,27 +58,27 @@ class CommandPSync : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     LOG(INFO) << "Slave " << conn->GetAddr() << ", listening port: " << conn->GetListeningPort()
               << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
-              << " with next sequence: " << next_repl_seq
-              << " replication id: " << (replica_replid.length() ? replica_replid : "not supported")
+              << " with next sequence: " << next_repl_seq_
+              << " replication id: " << (replica_replid_.length() ? replica_replid_ : "not supported")
               << ", and local sequence: " << svr->storage_->LatestSeqNumber();
 
     bool need_full_sync = false;
 
     // Check replication id of the last sequence log
-    if (new_psync && svr->GetConfig()->use_rsid_psync) {
-      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq - 1);
+    if (new_psync_ && svr->GetConfig()->use_rsid_psync_) {
+      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
       LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
       // Or WAL may have nothing when starting from db of old version kvrocks.
-      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
+      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid_) {
         *output = "wrong replication id of the last log";
         need_full_sync = true;
       }
     }
 
     // Check Log sequence
-    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
+    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq_).IsOK()) {
       *output = "sequence out of range, please use fullsync";
       need_full_sync = true;
     }
@@ -99,7 +99,7 @@ class CommandPSync : public Commander {
     }
 
     svr->stats_.IncrPSyncOKCounter();
-    s = svr->AddSlave(conn, next_repl_seq);
+    s = svr->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
       s = Util::SockSend(conn->GetFD(), err);
@@ -115,9 +115,9 @@ class CommandPSync : public Commander {
   }
 
  private:
-  rocksdb::SequenceNumber next_repl_seq = 0;
-  bool new_psync = false;
-  std::string replica_replid;
+  rocksdb::SequenceNumber next_repl_seq_ = 0;
+  bool new_psync_ = false;
+  std::string replica_replid_;
 
   // Return OK if the seq is in the range of the current WAL
   static Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
@@ -283,8 +283,8 @@ class CommandFetchFile : public Commander {
         if (svr->IsStopped()) break;
 
         uint64_t file_size = 0, max_replication_bytes = 0;
-        if (svr->GetConfig()->max_replication_mb > 0) {
-          max_replication_bytes = (svr->GetConfig()->max_replication_mb * MiB) / svr->GetFetchFileThreadNum();
+        if (svr->GetConfig()->max_replication_mb_ > 0) {
+          max_replication_bytes = (svr->GetConfig()->max_replication_mb_ * MiB) / svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
         auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_, file, &file_size));

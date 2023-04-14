@@ -28,13 +28,13 @@
 Stats::Stats() {
   for (int i = 0; i < STATS_METRIC_COUNT; i++) {
     struct InstMetric im;
-    im.last_sample_time = 0;
-    im.last_sample_count = 0;
-    im.idx = 0;
-    for (uint64_t &sample : im.samples) {
+    im.last_sample_time_ = 0;
+    im.last_sample_count_ = 0;
+    im.idx_ = 0;
+    for (uint64_t &sample : im.samples_) {
       sample = 0;
     }
-    inst_metrics.push_back(im);
+    inst_metrics_.push_back(im);
   }
 }
 
@@ -83,28 +83,28 @@ int64_t Stats::GetMemoryRSS() {
 #endif
 
 void Stats::IncrCalls(const std::string &command_name) {
-  total_calls.fetch_add(1, std::memory_order_relaxed);
-  commands_stats[command_name].calls.fetch_add(1, std::memory_order_relaxed);
+  total_calls_.fetch_add(1, std::memory_order_relaxed);
+  commands_stats_[command_name].calls_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
-  commands_stats[command_name].latency.fetch_add(latency, std::memory_order_relaxed);
+  commands_stats_[command_name].latency_.fetch_add(latency, std::memory_order_relaxed);
 }
 
 void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
   uint64_t curr_time = Util::GetTimeStampMS();
-  uint64_t t = curr_time - inst_metrics[metric].last_sample_time;
-  uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
+  uint64_t t = curr_time - inst_metrics_[metric].last_sample_time_;
+  uint64_t ops = current_reading - inst_metrics_[metric].last_sample_count_;
   uint64_t ops_sec = t > 0 ? (ops * 1000 / t) : 0;
-  inst_metrics[metric].samples[inst_metrics[metric].idx] = ops_sec;
-  inst_metrics[metric].idx++;
-  inst_metrics[metric].idx %= STATS_METRIC_SAMPLES;
-  inst_metrics[metric].last_sample_time = curr_time;
-  inst_metrics[metric].last_sample_count = current_reading;
+  inst_metrics_[metric].samples_[inst_metrics_[metric].idx_] = ops_sec;
+  inst_metrics_[metric].idx_++;
+  inst_metrics_[metric].idx_ %= STATS_METRIC_SAMPLES;
+  inst_metrics_[metric].last_sample_time_ = curr_time;
+  inst_metrics_[metric].last_sample_count_ = current_reading;
 }
 
 uint64_t Stats::GetInstantaneousMetric(int metric) {
   uint64_t sum = 0;
-  for (uint64_t sample : inst_metrics[metric].samples) sum += sample;
+  for (uint64_t sample : inst_metrics_[metric].samples_) sum += sample;
   return sum / STATS_METRIC_SAMPLES;
 }

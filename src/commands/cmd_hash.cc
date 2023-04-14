@@ -236,7 +236,7 @@ class CommandHMSet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (GetAttributes()->name == "hset") {
+    if (GetAttributes()->name_ == "hset") {
       *output = Redis::Integer(ret);
     } else {
       *output = Redis::SimpleString("OK");
@@ -261,7 +261,7 @@ class CommandHKeys : public Commander {
     std::vector<std::string> keys;
     keys.reserve(field_values.size());
     for (const auto &fv : field_values) {
-      keys.emplace_back(fv.field);
+      keys.emplace_back(fv.field_);
     }
     *output = Redis::MultiBulkString(keys);
 
@@ -282,7 +282,7 @@ class CommandHVals : public Commander {
     std::vector<std::string> values;
     values.reserve(field_values.size());
     for (const auto &p : field_values) {
-      values.emplace_back(p.value);
+      values.emplace_back(p.value_);
     }
     *output = MultiBulkString(values, false);
 
@@ -303,8 +303,8 @@ class CommandHGetAll : public Commander {
     std::vector<std::string> kv_pairs;
     kv_pairs.reserve(field_values.size());
     for (const auto &p : field_values) {
-      kv_pairs.emplace_back(p.field);
-      kv_pairs.emplace_back(p.value);
+      kv_pairs.emplace_back(p.field_);
+      kv_pairs.emplace_back(p.value_);
     }
     *output = MultiBulkString(kv_pairs, false);
 
@@ -318,16 +318,16 @@ class CommandHRangeByLex : public Commander {
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICase("REV")) {
-        spec_.reversed = true;
+        spec_.reversed_ = true;
       } else if (parser.EatEqICase("LIMIT")) {
-        spec_.offset = GET_OR_RET(parser.TakeInt());
-        spec_.count = GET_OR_RET(parser.TakeInt());
+        spec_.offset_ = GET_OR_RET(parser.TakeInt());
+        spec_.count_ = GET_OR_RET(parser.TakeInt());
       } else {
         return parser.InvalidSyntax();
       }
     }
     Status s;
-    if (spec_.reversed) {
+    if (spec_.reversed_) {
       s = ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
       s = ParseRangeLexSpec(args[2], args[3], &spec_);
@@ -347,8 +347,8 @@ class CommandHRangeByLex : public Commander {
     }
     std::vector<std::string> kv_pairs;
     for (const auto &p : field_values) {
-      kv_pairs.emplace_back(p.field);
-      kv_pairs.emplace_back(p.value);
+      kv_pairs.emplace_back(p.field_);
+      kv_pairs.emplace_back(p.value_);
     }
     *output = MultiBulkString(kv_pairs, false);
 
@@ -366,7 +366,7 @@ class CommandHScan : public CommandSubkeyScanBase {
     Redis::Hash hash_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> fields;
     std::vector<std::string> values;
-    auto s = hash_db.Scan(key, cursor, limit, prefix, &fields, &values);
+    auto s = hash_db.Scan(key_, cursor_, limit_, prefix_, &fields, &values);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

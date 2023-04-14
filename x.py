@@ -164,7 +164,7 @@ def clang_format(clang_format_path: str, fix: bool = False) -> None:
     run(command, *options, *sources, verbose=True, cwd=basedir)
 
 
-def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_tidy_path: str) -> None:
+def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_tidy_path: str, fix: bool) -> None:
     # use the run-clang-tidy Python script provided by LLVM Clang
     run_command = find_command(run_clang_tidy_path, msg="run-clang-tidy is required")
     tidy_command = find_command(clang_tidy_path, msg="clang-tidy is required")
@@ -182,6 +182,8 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     options = ['-p', dir, '-clang-tidy-binary', tidy_command]
     if jobs is not None:
         options.append(f'-j{jobs}')
+    
+    options.extend(['-fix'] if fix else [])
 
     regexes = ['kvrocks/src/', 'utils/kvrocks2redis/', 'tests/cppunit/']
 
@@ -306,6 +308,8 @@ if __name__ == '__main__':
                                    help="path of clang-tidy used to check source")
     parser_check_tidy.add_argument('--run-clang-tidy-path', default='run-clang-tidy',
                                    help="path of run-clang-tidy used to check source")
+    parser_check_tidy.add_argument('--fix', default=False, action='store_true',
+                              help='automatically fix codebase via clang-tidy suggested changes')
     parser_check_golangci_lint = parser_check_subparsers.add_parser(
         'golangci-lint',
         description="Check code with golangci-lint (https://golangci-lint.run/)",

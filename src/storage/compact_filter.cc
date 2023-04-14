@@ -94,7 +94,7 @@ bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &me
   // to prevent them from being recycled once they reach the expiration time.
   uint64_t lazy_expired_ts = Util::GetTimeStampMS() - 300000;
   return metadata.Type() == kRedisString  // metadata key was overwrite by set command
-         || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
+         || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version_;
 }
 
 rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice &key, std::string *new_value,

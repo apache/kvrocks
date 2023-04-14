@@ -32,22 +32,22 @@
 
 class SlowEntry {
  public:
-  uint64_t id;
-  time_t time;
-  uint64_t duration;
-  std::vector<std::string> args;
+  uint64_t id_;
+  time_t time_;
+  uint64_t duration_;
+  std::vector<std::string> args_;
 
   std::string ToRedisString() const;
 };
 
 class PerfEntry {
  public:
-  uint64_t id;
-  time_t time;
-  uint64_t duration;
-  std::string cmd_name;
-  std::string perf_context;
-  std::string iostats_context;
+  uint64_t id_;
+  time_t time_;
+  uint64_t duration_;
+  std::string cmd_name_;
+  std::string perf_context_;
+  std::string iostats_context_;
 
   std::string ToRedisString() const;
 };

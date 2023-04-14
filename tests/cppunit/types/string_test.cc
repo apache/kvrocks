@@ -27,7 +27,7 @@
 
 class RedisStringTest : public TestBase {
  protected:
-  explicit RedisStringTest() { string = std::make_unique<Redis::String>(storage_, "string_ns"); }
+  explicit RedisStringTest() { string_ = std::make_unique<Redis::String>(storage_, "string_ns"); }
   ~RedisStringTest() override = default;
 
   void SetUp() override {
@@ -39,100 +39,100 @@ class RedisStringTest : public TestBase {
     };
   }
 
-  std::unique_ptr<Redis::String> string;
+  std::unique_ptr<Redis::String> string_;
   std::vector<StringPair> pairs_;
 };
 
 TEST_F(RedisStringTest, Append) {
   int ret = 0;
   for (size_t i = 0; i < 32; i++) {
-    rocksdb::Status s = string->Append(key_, "a", &ret);
+    rocksdb::Status s = string_->Append(key_, "a", &ret);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(static_cast<int>(i + 1), ret);
   }
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, GetAndSet) {
   for (auto &pair : pairs_) {
-    string->Set(pair.key.ToString(), pair.value.ToString());
+    string_->Set(pair.key_.ToString(), pair.value_.ToString());
   }
   for (auto &pair : pairs_) {
     std::string got_value;
-    string->Get(pair.key.ToString(), &got_value);
-    EXPECT_EQ(pair.value, got_value);
+    string_->Get(pair.key_.ToString(), &got_value);
+    EXPECT_EQ(pair.value_, got_value);
   }
   for (auto &pair : pairs_) {
-    string->Del(pair.key);
+    string_->Del(pair.key_);
   }
 }
 
 TEST_F(RedisStringTest, MGetAndMSet) {
-  string->MSet(pairs_);
+  string_->MSet(pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
-    keys.emplace_back(pair.key);
+    keys.emplace_back(pair.key_);
   }
-  string->MGet(keys, &values);
+  string_->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value, values[i]);
+    EXPECT_EQ(pairs_[i].value_, values[i]);
   }
   for (auto &pair : pairs_) {
-    string->Del(pair.key);
+    string_->Del(pair.key_);
   }
 }
 
 TEST_F(RedisStringTest, IncrByFloat) {
   double f = 0.0;
   double max_float = std::numeric_limits<double>::max();
-  string->IncrByFloat(key_, 1.0, &f);
+  string_->IncrByFloat(key_, 1.0, &f);
   EXPECT_EQ(1.0, f);
-  string->IncrByFloat(key_, max_float - 1, &f);
+  string_->IncrByFloat(key_, max_float - 1, &f);
   EXPECT_EQ(max_float, f);
-  string->IncrByFloat(key_, 1.2, &f);
+  string_->IncrByFloat(key_, 1.2, &f);
   EXPECT_EQ(max_float, f);
-  string->IncrByFloat(key_, -1 * max_float, &f);
+  string_->IncrByFloat(key_, -1 * max_float, &f);
   EXPECT_EQ(0, f);
-  string->IncrByFloat(key_, -1 * max_float, &f);
+  string_->IncrByFloat(key_, -1 * max_float, &f);
   EXPECT_EQ(-1 * max_float, f);
-  string->IncrByFloat(key_, -1.2, &f);
+  string_->IncrByFloat(key_, -1.2, &f);
   EXPECT_EQ(-1 * max_float, f);
   // key hold value is not the number
-  string->Set(key_, "abc");
-  rocksdb::Status s = string->IncrByFloat(key_, 1.2, &f);
+  string_->Set(key_, "abc");
+  rocksdb::Status s = string_->IncrByFloat(key_, 1.2, &f);
   EXPECT_TRUE(s.IsInvalidArgument());
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, IncrBy) {
   int64_t ret = 0;
-  string->IncrBy(key_, 1, &ret);
+  string_->IncrBy(key_, 1, &ret);
   EXPECT_EQ(1, ret);
-  string->IncrBy(key_, INT64_MAX - 1, &ret);
+  string_->IncrBy(key_, INT64_MAX - 1, &ret);
   EXPECT_EQ(INT64_MAX, ret);
-  rocksdb::Status s = string->IncrBy(key_, 1, &ret);
+  rocksdb::Status s = string_->IncrBy(key_, 1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
-  string->IncrBy(key_, INT64_MIN + 1, &ret);
+  string_->IncrBy(key_, INT64_MIN + 1, &ret);
   EXPECT_EQ(0, ret);
-  string->IncrBy(key_, INT64_MIN, &ret);
+  string_->IncrBy(key_, INT64_MIN, &ret);
   EXPECT_EQ(INT64_MIN, ret);
-  s = string->IncrBy(key_, -1, &ret);
+  s = string_->IncrBy(key_, -1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
   // key hold value is not the number
-  string->Set(key_, "abc");
-  s = string->IncrBy(key_, 1, &ret);
+  string_->Set(key_, "abc");
+  s = string_->IncrBy(key_, 1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, GetEmptyValue) {
   const std::string key = "empty_value_key";
-  auto s = string->Set(key, "");
+  auto s = string_->Set(key, "");
   EXPECT_TRUE(s.ok());
   std::string value;
-  s = string->Get(key, &value);
+  s = string_->Get(key, &value);
   EXPECT_TRUE(s.ok() && value.empty());
 }
 
@@ -143,167 +143,167 @@ TEST_F(RedisStringTest, GetSet) {
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for (size_t i = 0; i < values.size(); i++) {
     std::string old_value;
-    string->Expire(key_, now * 1000 + 100000);
-    string->GetSet(key_, values[i], &old_value);
+    string_->Expire(key_, now * 1000 + 100000);
+    string_->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
-      string->TTL(key_, &ttl);
+      string_->TTL(key_, &ttl);
       EXPECT_TRUE(ttl == -1);
     } else {
       EXPECT_TRUE(old_value.empty());
     }
   }
-  string->Del(key_);
+  string_->Del(key_);
 }
 TEST_F(RedisStringTest, GetDel) {
   for (auto &pair : pairs_) {
-    string->Set(pair.key.ToString(), pair.value.ToString());
+    string_->Set(pair.key_.ToString(), pair.value_.ToString());
   }
   for (auto &pair : pairs_) {
     std::string got_value;
-    string->GetDel(pair.key.ToString(), &got_value);
-    EXPECT_EQ(pair.value, got_value);
+    string_->GetDel(pair.key_.ToString(), &got_value);
+    EXPECT_EQ(pair.value_, got_value);
 
     std::string second_got_value;
-    auto s = string->GetDel(pair.key.ToString(), &second_got_value);
+    auto s = string_->GetDel(pair.key_.ToString(), &second_got_value);
     EXPECT_TRUE(!s.ok() && s.IsNotFound());
   }
 }
 
 TEST_F(RedisStringTest, MSetXX) {
   int ret = 0;
-  string->SetXX(key_, "test-value", 3000, &ret);
+  string_->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 0);
-  string->Set(key_, "test-value");
-  string->SetXX(key_, "test-value", 3000, &ret);
+  string_->Set(key_, "test-value");
+  string_->SetXX(key_, "test-value", 3000, &ret);
   EXPECT_EQ(ret, 1);
   int64_t ttl = 0;
-  string->TTL(key_, &ttl);
+  string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, MSetNX) {
   int ret = 0;
-  string->MSetNX(pairs_, 0, &ret);
+  string_->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(1, ret);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
-    keys.emplace_back(pair.key);
+    keys.emplace_back(pair.key_);
   }
-  string->MGet(keys, &values);
+  string_->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value, values[i]);
+    EXPECT_EQ(pairs_[i].value_, values[i]);
   }
 
   std::vector<StringPair> new_pairs{
-      {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key, pairs_[0].value}, {"d", "4"},
+      {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key_, pairs_[0].value_}, {"d", "4"},
   };
-  string->MSetNX(pairs_, 0, &ret);
+  string_->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(0, ret);
 
   for (auto &pair : pairs_) {
-    string->Del(pair.key);
+    string_->Del(pair.key_);
   }
 }
 
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   int ret = 0;
-  string->SetNX(key_, "test-value", 3000, &ret);
+  string_->SetNX(key_, "test-value", 3000, &ret);
   int64_t ttl = 0;
-  string->TTL(key_, &ttl);
+  string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetEX) {
-  string->SetEX(key_, "test-value", 3000);
+  string_->SetEX(key_, "test-value", 3000);
   int64_t ttl = 0;
-  string->TTL(key_, &ttl);
+  string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetRange) {
   int ret = 0;
-  string->Set(key_, "hello,world");
-  string->SetRange(key_, 6, "redis", &ret);
+  string_->Set(key_, "hello,world");
+  string_->SetRange(key_, 6, "redis", &ret);
   EXPECT_EQ(11, ret);
   std::string value;
-  string->Get(key_, &value);
+  string_->Get(key_, &value);
   EXPECT_EQ("hello,redis", value);
 
-  string->SetRange(key_, 6, "test", &ret);
+  string_->SetRange(key_, 6, "test", &ret);
   EXPECT_EQ(11, ret);
-  string->Get(key_, &value);
+  string_->Get(key_, &value);
   EXPECT_EQ("hello,tests", value);
 
-  string->SetRange(key_, 6, "redis-1234", &ret);
-  string->Get(key_, &value);
+  string_->SetRange(key_, 6, "redis-1234", &ret);
+  string_->Get(key_, &value);
   EXPECT_EQ("hello,redis-1234", value);
 
-  string->SetRange(key_, 15, "1", &ret);
+  string_->SetRange(key_, 15, "1", &ret);
   EXPECT_EQ(16, ret);
-  string->Get(key_, &value);
+  string_->Get(key_, &value);
   EXPECT_EQ(16, value.size());
-  string->Del(key_);
+  string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, CAS) {
   int ret = 0;
   std::string key = "cas_key", value = "cas_value", new_value = "new_value";
 
-  auto status = string->Set(key, value);
+  auto status = string_->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string->CAS("non_exist_key", value, new_value, 10000, &ret);
+  status = string_->CAS("non_exist_key", value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, ret);
 
-  status = string->CAS(key, "cas_value_err", new_value, 10000, &ret);
+  status = string_->CAS(key, "cas_value_err", new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, ret);
 
-  status = string->CAS(key, value, new_value, 10000, &ret);
+  status = string_->CAS(key, value, new_value, 10000, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, ret);
 
   std::string current_value;
-  status = string->Get(key, &current_value);
+  status = string_->Get(key, &current_value);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(new_value, current_value);
 
   int64_t ttl = 0;
-  string->TTL(key, &ttl);
+  string_->TTL(key, &ttl);
   EXPECT_TRUE(ttl >= 9000 && ttl <= 11000);
 
-  string->Del(key);
+  string_->Del(key);
 }
 
 TEST_F(RedisStringTest, CAD) {
   int ret = 0;
   std::string key = "cas_key", value = "cas_value";
 
-  auto status = string->Set(key, value);
+  auto status = string_->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string->CAD("non_exist_key", value, &ret);
+  status = string_->CAD("non_exist_key", value, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, ret);
 
-  status = string->CAD(key, "cas_value_err", &ret);
+  status = string_->CAD(key, "cas_value_err", &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, ret);
 
-  status = string->CAD(key, value, &ret);
+  status = string_->CAD(key, value, &ret);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, ret);
 
   std::string current_value;
-  status = string->Get(key, &current_value);
+  status = string_->Get(key, &current_value);
   ASSERT_TRUE(status.IsNotFound());
 
-  string->Del(key);
+  string_->Del(key);
 }

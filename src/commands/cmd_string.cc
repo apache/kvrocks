@@ -43,7 +43,7 @@ class CommandGet : public Commander {
     // to the `max-bitmap-to-string-mb` configuration.
     if (s.IsInvalidArgument()) {
       Config *config = svr->GetConfig();
-      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
+      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb_) * MiB;
       Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }
@@ -83,7 +83,7 @@ class CommandGetEx : public Commander {
     // to the `max-bitmap-to-string-mb` configuration.
     if (s.IsInvalidArgument()) {
       Config *config = svr->GetConfig();
-      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
+      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb_) * MiB;
       Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
     }

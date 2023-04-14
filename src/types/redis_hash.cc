@@ -44,7 +44,7 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint32_t *ret) {
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
-  *ret = metadata.size;
+  *ret = metadata.size_;
   return rocksdb::Status::OK();
 }
 
@@ -58,7 +58,7 @@ rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key;
-  InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  InternalKey(ns_key, field, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   return storage_->Get(read_options, sub_key, value);
 }
 
@@ -75,7 +75,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key;
-  InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  InternalKey(ns_key, field, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
@@ -103,7 +103,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   batch->PutLogData(log_data.Encode());
   batch->Put(sub_key, std::to_string(*ret));
   if (!exists) {
-    metadata.size += 1;
+    metadata.size_ += 1;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -124,7 +124,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key;
-  InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  InternalKey(ns_key, field, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
   if (s.ok()) {
     std::string value_bytes;
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value_bytes);
@@ -149,7 +149,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
   batch->PutLogData(log_data.Encode());
   batch->Put(sub_key, std::to_string(*ret));
   if (!exists) {
-    metadata.size += 1;
+    metadata.size_ += 1;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -177,7 +177,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
 
   std::string sub_key, value;
   for (const auto &field : fields) {
-    InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, field, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     value.clear();
     s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
@@ -207,7 +207,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
 
   std::string sub_key, value;
   for (const auto &field : fields) {
-    InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, field, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
       *ret += 1;
@@ -217,7 +217,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   if (*ret == 0) {
     return rocksdb::Status::OK();
   }
-  metadata.size -= *ret;
+  metadata.size_ -= *ret;
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -243,15 +243,15 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
     bool exists = false;
 
     std::string sub_key;
-    InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, fv.field_, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
 
-    if (metadata.size > 0) {
+    if (metadata.size_ > 0) {
       std::string field_value;
       s = storage_->Get(rocksdb::ReadOptions(), sub_key, &field_value);
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
-        if (nx || field_value == fv.value) continue;
+        if (nx || field_value == fv.value_) continue;
 
         exists = true;
       }
@@ -259,12 +259,12 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 
     if (!exists) added++;
 
-    batch->Put(sub_key, fv.value);
+    batch->Put(sub_key, fv.value_);
   }
 
   if (added > 0) {
     *ret = added;
-    metadata.size += added;
+    metadata.size_ += added;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -276,7 +276,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,
                                  std::vector<FieldValue> *field_values) {
   field_values->clear();
-  if (spec.count == 0) {
+  if (spec.count_ == 0) {
     return rocksdb::Status::OK();
   }
   std::string ns_key;
@@ -285,11 +285,11 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  std::string start_member = spec.reversed ? spec.max : spec.min;
+  std::string start_member = spec.reversed_ ? spec.max_ : spec.min_;
   std::string start_key, prefix_key, next_version_prefix_key;
-  InternalKey(ns_key, start_member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, start_member, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
@@ -300,36 +300,36 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
-  if (!spec.reversed) {
+  if (!spec.reversed_) {
     iter->Seek(start_key);
   } else {
-    if (spec.max_infinite) {
+    if (spec.max_infinite_) {
       iter->SeekToLast();
     } else {
       iter->SeekForPrev(start_key);
     }
   }
   int64_t pos = 0;
-  for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
+  for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed_ ? iter->Next() : iter->Prev())) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    if (spec.reversed) {
-      if (ikey.GetSubKey().ToString() < spec.min || (spec.minex && ikey.GetSubKey().ToString() == spec.min)) {
+    if (spec.reversed_) {
+      if (ikey.GetSubKey().ToString() < spec.min_ || (spec.minex_ && ikey.GetSubKey().ToString() == spec.min_)) {
         break;
       }
-      if ((spec.maxex && ikey.GetSubKey().ToString() == spec.max) ||
-          (!spec.max_infinite && ikey.GetSubKey().ToString() > spec.max)) {
+      if ((spec.maxex_ && ikey.GetSubKey().ToString() == spec.max_) ||
+          (!spec.max_infinite_ && ikey.GetSubKey().ToString() > spec.max_)) {
         continue;
       }
     } else {
-      if (spec.minex && ikey.GetSubKey().ToString() == spec.min) continue;  // the min member was exclusive
-      if ((spec.maxex && ikey.GetSubKey().ToString() == spec.max) ||
-          (!spec.max_infinite && ikey.GetSubKey().ToString() > spec.max))
+      if (spec.minex_ && ikey.GetSubKey().ToString() == spec.min_) continue;  // the min member was exclusive
+      if ((spec.maxex_ && ikey.GetSubKey().ToString() == spec.max_) ||
+          (!spec.max_infinite_ && ikey.GetSubKey().ToString() > spec.max_))
         break;
     }
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
+    if (spec.offset_ >= 0 && pos++ < spec.offset_) continue;
 
     field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
-    if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
+    if (spec.count_ > 0 && field_values->size() >= static_cast<unsigned>(spec.count_)) break;
   }
   return rocksdb::Status::OK();
 }
@@ -344,8 +344,8 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key, next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);

@@ -31,87 +31,87 @@
 /// LOG(INFO) << inspector.seen << ", cnt: " << inspector.cnt;
 /// ```
 struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
-  std::string seen;
-  int cnt = 0;
+  std::string seen_;
+  int cnt_ = 0;
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice& key, const rocksdb::Slice& value) override {
-    ++cnt;
+    ++cnt_;
     if (column_family_id == 0) {
-      seen += "Put(" + key.ToString() + ", " + value.ToString() + ")";
+      seen_ += "Put(" + key.ToString() + ", " + value.ToString() + ")";
     } else {
-      seen += "PutCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ", " + value.ToString() + ")";
+      seen_ += "PutCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ", " + value.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }
   rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice& key) override {
-    ++cnt;
+    ++cnt_;
     if (column_family_id == 0) {
-      seen += "Delete(" + key.ToString() + ")";
+      seen_ += "Delete(" + key.ToString() + ")";
     } else {
-      seen += "DeleteCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ")";
+      seen_ += "DeleteCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }
   rocksdb::Status SingleDeleteCF(uint32_t column_family_id, const rocksdb::Slice& key) override {
-    ++cnt;
+    ++cnt_;
     if (column_family_id == 0) {
-      seen += "SingleDelete(" + key.ToString() + ")";
+      seen_ += "SingleDelete(" + key.ToString() + ")";
     } else {
-      seen += "SingleDeleteCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ")";
+      seen_ += "SingleDeleteCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice& begin_key,
                                 const rocksdb::Slice& end_key) override {
-    ++cnt;
+    ++cnt_;
     if (column_family_id == 0) {
-      seen += "DeleteRange(" + begin_key.ToString() + ", " + end_key.ToString() + ")";
+      seen_ += "DeleteRange(" + begin_key.ToString() + ", " + end_key.ToString() + ")";
     } else {
-      seen += "DeleteRangeCF(" + std::to_string(column_family_id) + ", " + begin_key.ToString() + ", " +
-              end_key.ToString() + ")";
+      seen_ += "DeleteRangeCF(" + std::to_string(column_family_id) + ", " + begin_key.ToString() + ", " +
+               end_key.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }
   rocksdb::Status MergeCF(uint32_t column_family_id, const rocksdb::Slice& key, const rocksdb::Slice& value) override {
-    ++cnt;
+    ++cnt_;
     if (column_family_id == 0) {
-      seen += "Merge(" + key.ToString() + ", " + value.ToString() + ")";
+      seen_ += "Merge(" + key.ToString() + ", " + value.ToString() + ")";
     } else {
-      seen += "MergeCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ", " + value.ToString() + ")";
+      seen_ += "MergeCF(" + std::to_string(column_family_id) + ", " + key.ToString() + ", " + value.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }
   void LogData(const rocksdb::Slice& blob) override {
-    ++cnt;
-    seen += "LogData(" + blob.ToString() + ")";
+    ++cnt_;
+    seen_ += "LogData(" + blob.ToString() + ")";
   }
   rocksdb::Status MarkBeginPrepare(bool unprepare) override {
-    ++cnt;
-    seen += "MarkBeginPrepare(" + std::string(unprepare ? "true" : "false") + ")";
+    ++cnt_;
+    seen_ += "MarkBeginPrepare(" + std::string(unprepare ? "true" : "false") + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkEndPrepare(const rocksdb::Slice& xid) override {
-    ++cnt;
-    seen += "MarkEndPrepare(" + xid.ToString() + ")";
+    ++cnt_;
+    seen_ += "MarkEndPrepare(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkNoop(bool empty_batch) override {
-    ++cnt;
-    seen += "MarkNoop(" + std::string(empty_batch ? "true" : "false") + ")";
+    ++cnt_;
+    seen_ += "MarkNoop(" + std::string(empty_batch ? "true" : "false") + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkCommit(const rocksdb::Slice& xid) override {
-    ++cnt;
-    seen += "MarkCommit(" + xid.ToString() + ")";
+    ++cnt_;
+    seen_ += "MarkCommit(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkCommitWithTimestamp(const rocksdb::Slice& xid, const rocksdb::Slice& ts) override {
-    ++cnt;
-    seen += "MarkCommitWithTimestamp(" + xid.ToString() + ", " + ts.ToString(true) + ")";
+    ++cnt_;
+    seen_ += "MarkCommitWithTimestamp(" + xid.ToString() + ", " + ts.ToString(true) + ")";
     return rocksdb::Status::OK();
   }
   rocksdb::Status MarkRollback(const rocksdb::Slice& xid) override {
-    ++cnt;
-    seen += "MarkRollback(" + xid.ToString() + ")";
+    ++cnt_;
+    seen_ += "MarkRollback(" + xid.ToString() + ")";
     return rocksdb::Status::OK();
   }
 };

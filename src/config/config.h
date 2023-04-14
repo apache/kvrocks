@@ -55,151 +55,151 @@ constexpr const char *kDefaultNamespace = "__namespace";
 
 struct CompactionCheckerRange {
  public:
-  int Start;
-  int Stop;
+  int start_;
+  int stop_;
 
-  bool Enabled() const { return Start != -1 || Stop != -1; }
+  bool Enabled() const { return start_ != -1 || stop_ != -1; }
 };
 
 struct CLIOptions {
-  std::string conf_file;
-  std::vector<std::pair<std::string, std::string>> cli_options;
+  std::string conf_file_;
+  std::vector<std::pair<std::string, std::string>> cli_options_;
 
   CLIOptions() = default;
-  explicit CLIOptions(std::string_view file) : conf_file(file) {}
+  explicit CLIOptions(std::string_view file) : conf_file_(file) {}
 };
 
 struct Config {
  public:
   Config();
   ~Config() = default;
-  uint32_t port = 0;
-  uint32_t tls_port = 0;
-  std::string tls_cert_file;
-  std::string tls_key_file;
-  std::string tls_key_file_pass;
-  std::string tls_ca_cert_file;
-  std::string tls_ca_cert_dir;
-  std::string tls_auth_clients;
-  bool tls_prefer_server_ciphers = false;
-  std::string tls_ciphers;
-  std::string tls_ciphersuites;
-  std::string tls_protocols;
-  bool tls_session_caching = true;
-  int tls_session_cache_size = 1024 * 20;
-  int tls_session_cache_timeout = 300;
-  int workers = 0;
-  int timeout = 0;
-  int log_level = 0;
-  int backlog = 511;
-  int maxclients = 10000;
-  int max_backup_to_keep = 1;
-  int max_backup_keep_hours = 24;
-  int slowlog_log_slower_than = 100000;
-  int slowlog_max_len = 128;
-  bool daemonize = false;
-  int supervised_mode = kSupervisedNone;
-  bool slave_readonly = true;
-  bool slave_serve_stale_data = true;
-  bool slave_empty_db_before_fullsync = false;
-  int slave_priority = 100;
-  int max_db_size = 0;
-  int max_replication_mb = 0;
-  int max_io_mb = 0;
-  int max_bitmap_to_string_mb = 16;
-  bool master_use_repl_port = false;
-  bool purge_backup_on_fullsync = false;
-  bool auto_resize_block_and_sst = true;
-  int fullsync_recv_file_delay = 0;
-  bool use_rsid_psync = false;
-  std::vector<std::string> binds;
-  std::string dir;
-  std::string db_dir;
-  std::string backup_dir;  // GUARD_BY(backup_mu_)
-  std::string backup_sync_dir;
-  std::string checkpoint_dir;
-  std::string sync_checkpoint_dir;
-  std::string log_dir;
-  std::string pidfile;
-  std::string db_name;
-  std::string masterauth;
-  std::string requirepass;
-  std::string master_host;
-  std::string unixsocket;
-  int unixsocketperm = 0777;
-  uint32_t master_port = 0;
-  Cron compact_cron;
-  Cron bgsave_cron;
-  CompactionCheckerRange compaction_checker_range{-1, -1};
-  int64_t force_compact_file_age;
-  int force_compact_file_min_deleted_percentage;
-  std::map<std::string, std::string> tokens;
-  std::string replica_announce_ip;
-  uint32_t replica_announce_port = 0;
+  uint32_t port_ = 0;
+  uint32_t tls_port_ = 0;
+  std::string tls_cert_file_;
+  std::string tls_key_file_;
+  std::string tls_key_file_pass_;
+  std::string tls_ca_cert_file_;
+  std::string tls_ca_cert_dir_;
+  std::string tls_auth_clients_;
+  bool tls_prefer_server_ciphers_ = false;
+  std::string tls_ciphers_;
+  std::string tls_ciphersuites_;
+  std::string tls_protocols_;
+  bool tls_session_caching_ = true;
+  int tls_session_cache_size_ = 1024 * 20;
+  int tls_session_cache_timeout_ = 300;
+  int workers_ = 0;
+  int timeout_ = 0;
+  int log_level_ = 0;
+  int backlog_ = 511;
+  int maxclients_ = 10000;
+  int max_backup_to_keep_ = 1;
+  int max_backup_keep_hours_ = 24;
+  int slowlog_log_slower_than_ = 100000;
+  int slowlog_max_len_ = 128;
+  bool daemonize_ = false;
+  int supervised_mode_ = kSupervisedNone;
+  bool slave_readonly_ = true;
+  bool slave_serve_stale_data_ = true;
+  bool slave_empty_db_before_fullsync_ = false;
+  int slave_priority_ = 100;
+  int max_db_size_ = 0;
+  int max_replication_mb_ = 0;
+  int max_io_mb_ = 0;
+  int max_bitmap_to_string_mb_ = 16;
+  bool master_use_repl_port_ = false;
+  bool purge_backup_on_fullsync_ = false;
+  bool auto_resize_block_and_sst_ = true;
+  int fullsync_recv_file_delay_ = 0;
+  bool use_rsid_psync_ = false;
+  std::vector<std::string> binds_;
+  std::string dir_;
+  std::string db_dir_;
+  std::string backup_dir_;  // GUARD_BY(backup_mu_)
+  std::string backup_sync_dir_;
+  std::string checkpoint_dir_;
+  std::string sync_checkpoint_dir_;
+  std::string log_dir_;
+  std::string pidfile_;
+  std::string db_name_;
+  std::string masterauth_;
+  std::string requirepass_;
+  std::string master_host_;
+  std::string unixsocket_;
+  int unixsocketperm_ = 0777;
+  uint32_t master_port_ = 0;
+  Cron compact_cron_;
+  Cron bgsave_cron_;
+  CompactionCheckerRange compaction_checker_range_{-1, -1};
+  int64_t force_compact_file_age_;
+  int force_compact_file_min_deleted_percentage_;
+  std::map<std::string, std::string> tokens_;
+  std::string replica_announce_ip_;
+  uint32_t replica_announce_port_ = 0;
 
-  bool persist_cluster_nodes_enabled = true;
-  bool slot_id_encoded = false;
-  bool cluster_enabled = false;
-  int migrate_speed;
-  int pipeline_size;
-  int sequence_gap;
+  bool persist_cluster_nodes_enabled_ = true;
+  bool slot_id_encoded_ = false;
+  bool cluster_enabled_ = false;
+  int migrate_speed_;
+  int pipeline_size_;
+  int sequence_gap_;
 
-  int log_retention_days;
+  int log_retention_days_;
   // profiling
-  int profiling_sample_ratio = 0;
-  int profiling_sample_record_threshold_ms = 0;
-  int profiling_sample_record_max_len = 128;
-  std::set<std::string> profiling_sample_commands;
-  bool profiling_sample_all_commands = false;
+  int profiling_sample_ratio_ = 0;
+  int profiling_sample_record_threshold_ms_ = 0;
+  int profiling_sample_record_max_len_ = 128;
+  std::set<std::string> profiling_sample_commands_;
+  bool profiling_sample_all_commands_ = false;
 
   struct RocksDB {
-    int block_size;
-    bool cache_index_and_filter_blocks;
-    int metadata_block_cache_size;
-    int subkey_block_cache_size;
-    bool share_metadata_and_subkey_block_cache;
-    int row_cache_size;
-    int max_open_files;
-    int write_buffer_size;
-    int max_write_buffer_number;
-    int max_background_compactions;
-    int max_background_flushes;
-    int max_sub_compactions;
-    int stats_dump_period_sec;
-    bool enable_pipelined_write;
-    int64_t delayed_write_rate;
-    int compaction_readahead_size;
-    int target_file_size_base;
-    int WAL_ttl_seconds;
-    int WAL_size_limit_MB;
-    int max_total_wal_size;
-    int level0_slowdown_writes_trigger;
-    int level0_stop_writes_trigger;
-    int level0_file_num_compaction_trigger;
-    int compression;
-    bool disable_auto_compactions;
-    bool enable_blob_files;
-    int min_blob_size;
-    int blob_file_size;
-    bool enable_blob_garbage_collection;
-    int blob_garbage_collection_age_cutoff;
-    int max_bytes_for_level_base;
-    int max_bytes_for_level_multiplier;
-    bool level_compaction_dynamic_level_bytes;
-    int max_background_jobs;
+    int block_size_;
+    bool cache_index_and_filter_blocks_;
+    int metadata_block_cache_size_;
+    int subkey_block_cache_size_;
+    bool share_metadata_and_subkey_block_cache_;
+    int row_cache_size_;
+    int max_open_files_;
+    int write_buffer_size_;
+    int max_write_buffer_number_;
+    int max_background_compactions_;
+    int max_background_flushes_;
+    int max_sub_compactions_;
+    int stats_dump_period_sec_;
+    bool enable_pipelined_write_;
+    int64_t delayed_write_rate_;
+    int compaction_readahead_size_;
+    int target_file_size_base_;
+    int wal_ttl_seconds_;
+    int wal_size_limit_mb_;
+    int max_total_wal_size_;
+    int level0_slowdown_writes_trigger_;
+    int level0_stop_writes_trigger_;
+    int level0_file_num_compaction_trigger_;
+    int compression_;
+    bool disable_auto_compactions_;
+    bool enable_blob_files_;
+    int min_blob_size_;
+    int blob_file_size_;
+    bool enable_blob_garbage_collection_;
+    int blob_garbage_collection_age_cutoff_;
+    int max_bytes_for_level_base_;
+    int max_bytes_for_level_multiplier_;
+    bool level_compaction_dynamic_level_bytes_;
+    int max_background_jobs_;
 
     struct WriteOptions {
-      bool sync;
-      bool disable_WAL;
-      bool no_slowdown;
-      bool low_pri;
-      bool memtable_insert_hint_per_batch;
-    } write_options;
+      bool sync_;
+      bool disable_wal_;
+      bool no_slowdown_;
+      bool low_pri_;
+      bool memtable_insert_hint_per_batch_;
+    } write_options_;
 
     struct ReadOptions {
-      bool async_io;
-    } read_options;
-  } RocksDB;
+      bool async_io_;
+    } read_options_;
+  } rocks_db_;
 
   mutable std::mutex backup_mu_;
 
@@ -217,12 +217,12 @@ struct Config {
 
  private:
   std::string path_;
-  std::string binds_;
+  std::string binds_str_;
   std::string slaveof_;
-  std::string compact_cron_;
-  std::string bgsave_cron_;
-  std::string compaction_checker_range_;
-  std::string profiling_sample_commands_;
+  std::string compact_cron_str_;
+  std::string bgsave_cron_str_;
+  std::string compaction_checker_range_str_;
+  std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
 

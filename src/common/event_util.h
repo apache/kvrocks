@@ -45,9 +45,9 @@ struct UniqueFreePtr : std::unique_ptr<T, StaticFree> {
 
 struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
   UniqueEvbufReadln(evbuffer *buffer, evbuffer_eol_style eol_style)
-      : UniqueFreePtr(evbuffer_readln(buffer, &length, eol_style)) {}
+      : UniqueFreePtr(evbuffer_readln(buffer, &length_, eol_style)) {}
 
-  size_t length;
+  size_t length_;
 };
 
 using StaticEvbufFree = StaticFunction<decltype(evbuffer_free), evbuffer_free>;

@@ -110,7 +110,7 @@ class Storage {
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
-  std::string GetName() { return config_->db_name; }
+  std::string GetName() { return config_->db_name_; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
@@ -126,7 +126,7 @@ class Storage {
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
   uint64_t GetCompactionCount() { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
-  bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
+  bool IsSlotIdEncoded() { return config_->slot_id_encoded_; }
   const Config *GetConfig() { return config_; }
 
   Status BeginTxn();
@@ -144,18 +144,18 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<time_t> create_time = 0;
-      std::atomic<time_t> access_time = 0;
-      uint64_t latest_seq = 0;
+      std::atomic<time_t> create_time_ = 0;
+      std::atomic<time_t> access_time_ = 0;
+      uint64_t latest_seq_ = 0;
     };
 
     // Slave side
     struct MetaInfo {
-      int64_t timestamp;
-      rocksdb::SequenceNumber seq;
-      std::string meta_data;
+      int64_t timestamp_;
+      rocksdb::SequenceNumber seq_;
+      std::string meta_data_;
       // [[filename, checksum]...]
-      std::vector<std::pair<std::string, uint32_t>> files;
+      std::vector<std::pair<std::string, uint32_t>> files_;
     };
     static Status ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf,
                                    Storage::ReplDataManager::MetaInfo *meta);
@@ -167,9 +167,9 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
-  void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }
+  time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time_; }
+  void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time_ = t; }
+  time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time_; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
 

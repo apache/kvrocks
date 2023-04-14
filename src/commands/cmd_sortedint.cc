@@ -192,11 +192,11 @@ class CommandSortedintRevRange : public CommandSortedintRange {
 
 class CommandSortedintRangeByValue : public Commander {
  public:
-  explicit CommandSortedintRangeByValue(bool reversed = false) { spec_.reversed = reversed; }
+  explicit CommandSortedintRangeByValue(bool reversed = false) { spec_.reversed_ = reversed; }
 
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
-    if (spec_.reversed) {
+    if (spec_.reversed_) {
       s = Redis::Sortedint::ParseRangeSpec(args[3], args[2], &spec_);
     } else {
       s = Redis::Sortedint::ParseRangeSpec(args[2], args[3], &spec_);
@@ -216,8 +216,8 @@ class CommandSortedintRangeByValue : public Commander {
         return {Status::RedisParseErr, errValueNotInteger};
       }
 
-      spec_.offset = *parse_offset;
-      spec_.count = *parse_count;
+      spec_.offset_ = *parse_offset;
+      spec_.count_ = *parse_count;
     }
 
     return Commander::Parse(args);

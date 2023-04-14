@@ -31,18 +31,18 @@ const char *kErrInvalidEntryIdSpecified = "Invalid stream ID specified as stream
 const char *kErrDecodingStreamEntryValueFailure = "failed to decode stream entry value";
 
 rocksdb::Status IncrementStreamEntryID(StreamEntryID *id) {
-  if (id->seq == UINT64_MAX) {
-    if (id->ms == UINT64_MAX) {
+  if (id->seq_ == UINT64_MAX) {
+    if (id->ms_ == UINT64_MAX) {
       // special case where 'id' is the last possible entry ID
-      id->ms = 0;
-      id->seq = 0;
+      id->ms_ = 0;
+      id->seq_ = 0;
       return rocksdb::Status::InvalidArgument(kErrLastEntryIdReached);
     } else {
-      id->ms++;
-      id->seq = 0;
+      id->ms_++;
+      id->seq_ = 0;
     }
   } else {
-    id->seq++;
+    id->seq_++;
   }
 
   return rocksdb::Status::OK();
@@ -50,9 +50,9 @@ rocksdb::Status IncrementStreamEntryID(StreamEntryID *id) {
 
 rocksdb::Status GetNextStreamEntryID(const StreamEntryID &last_id, StreamEntryID *new_id) {
   uint64_t ms = Util::GetTimeStampMS();
-  if (ms > last_id.ms) {
-    new_id->ms = ms;
-    new_id->seq = 0;
+  if (ms > last_id.ms_) {
+    new_id->ms_ = ms;
+    new_id->seq_ = 0;
     return rocksdb::Status::OK();
   } else {
     *new_id = last_id;
@@ -71,16 +71,16 @@ Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_ms;
-    id->seq = *parse_seq;
+    id->ms_ = *parse_ms;
+    id->seq_ = *parse_seq;
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
     if (!parse_input) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_input;
-    id->seq = 0;
+    id->ms_ = *parse_input;
+    id->seq_ = 0;
   }
   return Status::OK();
 }
@@ -95,17 +95,17 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_ms;
+    id->ms_ = *parse_ms;
 
     if (seq_str == "*") {
-      id->any_seq_number = true;
+      id->any_seq_number_ = true;
     } else {
       auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
       if (!parse_seq) {
         return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
       }
 
-      id->seq = *parse_seq;
+      id->seq_ = *parse_seq;
     }
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
@@ -113,8 +113,8 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_input;
-    id->seq = 0;
+    id->ms_ = *parse_input;
+    id->seq_ = 0;
   }
 
   return Status::OK();
@@ -133,16 +133,16 @@ Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_ms;
-    id->seq = *parse_seq;
+    id->ms_ = *parse_ms;
+    id->seq_ = *parse_seq;
   } else {
     auto parse_input = ParseInt<uint64_t>(input, 10);
     if (!parse_input) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
 
-    id->ms = *parse_input;
-    id->seq = UINT64_MAX;
+    id->ms_ = *parse_input;
+    id->seq_ = UINT64_MAX;
   }
 
   return Status::OK();

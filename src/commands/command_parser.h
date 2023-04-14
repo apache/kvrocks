@@ -41,26 +41,26 @@ struct CommandParser {
  public:
   using value_type = typename Iter::value_type;
 
-  CommandParser(Iter begin, Iter end) : begin(std::move(begin)), end(std::move(end)) {}
+  CommandParser(Iter begin, Iter end) : begin_(std::move(begin)), end_(std::move(end)) {}
 
   template <typename Container>
   explicit CommandParser(const Container& con, size_t skip_num = 0) : CommandParser(std::begin(con), std::end(con)) {
-    std::advance(begin, skip_num);
+    std::advance(begin_, skip_num);
   }
 
   template <typename Container>
   explicit CommandParser(Container&& con, size_t skip_num = 0)
       : CommandParser(MoveIterator(std::begin(con)), MoveIterator(std::end(con))) {
-    std::advance(begin, skip_num);
+    std::advance(begin_, skip_num);
   }
 
-  decltype(auto) RawPeek() const { return *begin; }
+  decltype(auto) RawPeek() const { return *begin_; }
 
-  decltype(auto) RawTake() { return *begin++; }
+  decltype(auto) RawTake() { return *begin_++; }
 
-  decltype(auto) RawNext() { ++begin; }
+  decltype(auto) RawNext() { ++begin_; }
 
-  bool Good() const { return begin != end; }
+  bool Good() const { return begin_ != end_; }
 
   template <typename Pred>
   bool EatPred(Pred&& pred) {
@@ -109,8 +109,8 @@ struct CommandParser {
   static Status InvalidSyntax() { return {Status::RedisParseErr, "syntax error"}; }
 
  private:
-  Iter begin;
-  Iter end;
+  Iter begin_;
+  Iter end_;
 };
 
 template <typename Container>

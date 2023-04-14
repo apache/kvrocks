@@ -60,13 +60,13 @@ Server::Server(Engine::Storage *storage, Config *config)
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = Redis::GetOriginalCommands();
   for (const auto &iter : *commands) {
-    stats_.commands_stats[iter.first].calls = 0;
-    stats_.commands_stats[iter.first].latency = 0;
+    stats_.commands_stats_[iter.first].calls_ = 0;
+    stats_.commands_stats_[iter.first].latency_ = 0;
   }
 
 #ifdef ENABLE_OPENSSL
   // init ssl context
-  if (config->tls_port) {
+  if (config->tls_port_) {
     ssl_ctx_ = CreateSSLContext(config);
     if (!ssl_ctx_) {
       exit(1);
@@ -75,26 +75,26 @@ Server::Server(Engine::Storage *storage, Config *config)
 #endif
 
   // Init cluster
-  cluster_ = std::make_unique<Cluster>(this, config_->binds, config_->port);
+  cluster_ = std::make_unique<Cluster>(this, config_->binds_, config_->port_);
 
-  for (int i = 0; i < config->workers; i++) {
+  for (int i = 0; i < config->workers_; i++) {
     auto worker = std::make_unique<Worker>(this, config);
     // multiple workers can't listen to the same unix socket, so
     // listen unix socket only from a single worker - the first one
-    if (!config->unixsocket.empty() && i == 0) {
-      Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
+    if (!config->unixsocket_.empty() && i == 0) {
+      Status s = worker->ListenUnixSocket(config->unixsocket_, config->unixsocketperm_, config->backlog_);
       if (!s.IsOK()) {
-        LOG(ERROR) << "[server] Failed to listen on unix socket: " << config->unixsocket << ". Error: " << s.Msg();
+        LOG(ERROR) << "[server] Failed to listen on unix socket: " << config->unixsocket_ << ". Error: " << s.Msg();
         exit(1);
       }
-      LOG(INFO) << "[server] Listening on unix socket: " << config->unixsocket;
+      LOG(INFO) << "[server] Listening on unix socket: " << config->unixsocket_;
     }
     worker_threads_.emplace_back(std::make_unique<WorkerThread>(std::move(worker)));
   }
 
   AdjustOpenFilesLimit();
-  slow_log_.SetMaxEntries(config->slowlog_max_len);
-  perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
+  slow_log_.SetMaxEntries(config->slowlog_max_len_);
+  perf_log_.SetMaxEntries(config->profiling_sample_record_max_len_);
   lua_ = Lua::CreateState();
 }
 
@@ -136,8 +136,8 @@ Server::~Server() {
 //     - feed-replica-data-info: generate checkpoint and send files list when full sync
 //     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
-  if (!config_->master_host.empty()) {
-    Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
+  if (!config_->master_host_.empty()) {
+    Status s = AddMaster(config_->master_host_, static_cast<uint32_t>(config_->master_port_), false);
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
@@ -147,14 +147,14 @@ Status Server::Start() {
     }
   }
 
-  if (config_->cluster_enabled && config_->persist_cluster_nodes_enabled) {
+  if (config_->cluster_enabled_ && config_->persist_cluster_nodes_enabled_) {
     auto s = cluster_->LoadClusterNodes(config_->NodesFilePath());
     if (!s.IsOK()) {
       return s.Prefixed("failed to load cluster nodes info");
     }
     // Create objects used for slot migration
     slot_migrator_ =
-        std::make_unique<SlotMigrator>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
+        std::make_unique<SlotMigrator>(this, config_->migrate_speed_, config_->pipeline_size_, config_->sequence_gap_);
     s = slot_migrator_->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");
@@ -187,12 +187,12 @@ Status Server::Start() {
       if (storage_->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
+          && config_->compaction_checker_range_.Enabled()) {
         auto now = static_cast<time_t>(Util::GetTimeStamp());
         std::tm local_time{};
         localtime_r(&now, &local_time);
-        if (local_time.tm_hour >= config_->compaction_checker_range.Start &&
-            local_time.tm_hour <= config_->compaction_checker_range.Stop) {
+        if (local_time.tm_hour >= config_->compaction_checker_range_.start_ &&
+            local_time.tm_hour <= config_->compaction_checker_range_.stop_) {
           std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName, Engine::kSubkeyColumnFamilyName,
                                                Engine::kZSetScoreColumnFamilyName, Engine::kStreamColumnFamilyName};
           for (const auto &cf_name : cf_names) {
@@ -262,7 +262,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   // For master using old version, it uses replication thread to implement
   // replication, and uses 'listen-port + 1' as thread listening port.
   uint32_t master_listen_port = port;
-  if (GetConfig()->master_use_repl_port) master_listen_port += 1;
+  if (GetConfig()->master_use_repl_port_) master_listen_port += 1;
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
@@ -379,7 +379,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   channel_reply.append(Redis::BulkString(channel));
   channel_reply.append(Redis::BulkString(msg));
   for (const auto &conn_ctx : to_publish_conn_ctxs) {
-    auto s = conn_ctx.owner->Reply(conn_ctx.fd, channel_reply);
+    auto s = conn_ctx.owner_->Reply(conn_ctx.fd_, channel_reply);
     if (s.IsOK()) {
       cnt++;
     }
@@ -393,7 +393,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
     pattern_reply.append(Redis::BulkString(patterns[index++]));
     pattern_reply.append(Redis::BulkString(channel));
     pattern_reply.append(Redis::BulkString(msg));
-    auto s = conn_ctx.owner->Reply(conn_ctx.fd, pattern_reply);
+    auto s = conn_ctx.owner_->Reply(conn_ctx.fd_, pattern_reply);
     if (s.IsOK()) {
       cnt++;
     }
@@ -424,7 +424,7 @@ void Server::UnsubscribeChannel(const std::string &channel, Redis::Connection *c
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
+    if (conn->GetFD() == conn_ctx->fd_ && conn->Owner() == conn_ctx->owner_) {
       delConnContext(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
@@ -480,7 +480,7 @@ void Server::PUnsubscribeChannel(const std::string &pattern, Redis::Connection *
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
+    if (conn->GetFD() == conn_ctx->fd_ && conn->Owner() == conn_ctx->owner_) {
       delConnContext(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
@@ -515,7 +515,7 @@ void Server::UnblockOnKey(const std::string &key, Redis::Connection *conn) {
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
+    if (conn->GetFD() == conn_ctx->fd_ && conn->Owner() == conn_ctx->owner_) {
       delConnContext(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
@@ -559,7 +559,7 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Conne
 
     for (auto it = iter->second.begin(); it != iter->second.end();) {
       const auto &consumer = *it;
-      if (conn->GetFD() == consumer->fd && conn->Owner() == consumer->owner) {
+      if (conn->GetFD() == consumer->fd_ && conn->Owner() == consumer->owner_) {
         iter->second.erase(it);
         if (iter->second.empty()) {
           blocked_stream_consumers_.erase(iter);
@@ -581,9 +581,9 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
 
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    auto s = conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    auto s = conn_ctx->owner_->EnableWriteEvent(conn_ctx->fd_);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx->fd << ": " << s.Msg();
+      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx->fd_ << ": " << s.Msg();
     }
     delConnContext(conn_ctx);
     iter->second.pop_front();
@@ -600,10 +600,10 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
 
   for (auto it = iter->second.begin(); it != iter->second.end();) {
     auto consumer = *it;
-    if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
-      auto s = consumer->owner->EnableWriteEvent(consumer->fd);
+    if (consumer->ns_ == ns && entry_id > consumer->last_consumed_id_) {
+      auto s = consumer->owner_->EnableWriteEvent(consumer->fd_);
       if (!s.IsOK()) {
-        LOG(ERROR) << "[server] Failed to enable write event on blocked stream consumer " << consumer->fd << ": "
+        LOG(ERROR) << "[server] Failed to enable write event on blocked stream consumer " << consumer->fd_ << ": "
                    << s.Msg();
       }
       it = iter->second.erase(it);
@@ -653,9 +653,9 @@ uint64_t Server::GetClientID() { return client_id_.fetch_add(1, std::memory_orde
 
 void Server::recordInstantaneousMetrics() {
   auto rocksdb_stats = storage_->GetDB()->GetDBOptions().statistics;
-  stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls);
-  stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes);
-  stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes);
+  stats_.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats_.total_calls_);
+  stats_.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats_.in_bytes_);
+  stats_.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats_.out_bytes_);
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT,
                                   rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
   stats_.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_GET,
@@ -696,23 +696,23 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
-          config_->compact_cron.IsTimeMatch(&now)) {
+      if (!config_->compaction_checker_range_.Enabled() && config_->compact_cron_.IsEnabled() &&
+          config_->compact_cron_.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
       }
-      if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
+      if (config_->bgsave_cron_.IsEnabled() && config_->bgsave_cron_.IsTimeMatch(&now)) {
         Status s = AsyncBgSaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
     }
     // check every 10s
     if (counter != 0 && counter % 100 == 0) {
-      Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep, config_->max_backup_keep_hours);
+      Status s = AsyncPurgeOldBackups(config_->max_backup_to_keep_, config_->max_backup_keep_hours_);
 
       // Purge backup if needed, it will cost much disk space if we keep backup and full sync
       // checkpoints at the same time
-      if (config_->purge_backup_on_fullsync && (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
+      if (config_->purge_backup_on_fullsync_ && (storage_->ExistCheckpoint() || storage_->ExistSyncCheckpoint())) {
         s = AsyncPurgeOldBackups(0, 0);
       }
     }
@@ -726,7 +726,7 @@ void Server::cron() {
         // TODO(shooterit): support to config the alive time of checkpoint
         auto now = static_cast<time_t>(Util::GetTimeStamp());
         if ((GetFetchFileThreadNum() == 0 && now - access_time > 30) || (now - create_time > 24 * 60 * 60)) {
-          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
+          auto s = rocksdb::DestroyDB(config_->checkpoint_dir_, rocksdb::Options());
           if (!s.ok()) {
             LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
           } else {
@@ -854,7 +854,7 @@ void Server::GetServerInfo(std::string *info) {
 #endif
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
-  string_stream << "tcp_port:" << config_->port << "\r\n";
+  string_stream << "tcp_port:" << config_->port_ << "\r\n";
   int64_t now = Util::GetTimeStamp();
   string_stream << "uptime_in_seconds:" << now - start_time_ << "\r\n";
   string_stream << "uptime_in_days:" << (now - start_time_) / 86400 << "\r\n";
@@ -864,7 +864,7 @@ void Server::GetServerInfo(std::string *info) {
 void Server::GetClientsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Clients\r\n";
-  string_stream << "maxclients:" << config_->maxclients << "\r\n";
+  string_stream << "maxclients:" << config_->maxclients_ << "\r\n";
   string_stream << "connected_clients:" << connected_clients_ << "\r\n";
   string_stream << "monitor_clients:" << monitor_clients_ << "\r\n";
   string_stream << "blocked_clients:" << blocked_clients_ << "\r\n";
@@ -901,7 +901,7 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
     string_stream << "slave_repl_offset:" << storage_->LatestSeqNumber() << "\r\n";
-    string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
+    string_stream << "slave_priority:" << config_->slave_priority_ << "\r\n";
   }
 
   int idx = 0;
@@ -993,17 +993,17 @@ void Server::GetStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Stats\r\n";
   string_stream << "total_connections_received:" << total_clients_ << "\r\n";
-  string_stream << "total_commands_processed:" << stats_.total_calls << "\r\n";
+  string_stream << "total_commands_processed:" << stats_.total_calls_ << "\r\n";
   string_stream << "instantaneous_ops_per_sec:" << stats_.GetInstantaneousMetric(STATS_METRIC_COMMAND) << "\r\n";
-  string_stream << "total_net_input_bytes:" << stats_.in_bytes << "\r\n";
-  string_stream << "total_net_output_bytes:" << stats_.out_bytes << "\r\n";
+  string_stream << "total_net_input_bytes:" << stats_.in_bytes_ << "\r\n";
+  string_stream << "total_net_output_bytes:" << stats_.out_bytes_ << "\r\n";
   string_stream << "instantaneous_input_kbps:"
                 << static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
   string_stream << "instantaneous_output_kbps:"
                 << static_cast<float>(stats_.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
-  string_stream << "sync_full:" << stats_.fullsync_counter << "\r\n";
-  string_stream << "sync_partial_ok:" << stats_.psync_ok_counter << "\r\n";
-  string_stream << "sync_partial_err:" << stats_.psync_err_counter << "\r\n";
+  string_stream << "sync_full:" << stats_.fullsync_counter_ << "\r\n";
+  string_stream << "sync_partial_ok:" << stats_.psync_ok_counter_ << "\r\n";
+  string_stream << "sync_partial_err:" << stats_.psync_err_counter_ << "\r\n";
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
@@ -1017,11 +1017,11 @@ void Server::GetCommandsStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Commandstats\r\n";
 
-  for (const auto &cmd_stat : stats_.commands_stats) {
-    auto calls = cmd_stat.second.calls.load();
+  for (const auto &cmd_stat : stats_.commands_stats_) {
+    auto calls = cmd_stat.second.calls_.load();
     if (calls == 0) continue;
 
-    auto latency = cmd_stat.second.latency.load();
+    auto latency = cmd_stat.second.latency_.load();
     string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls << ",usec=" << latency
                   << ",usec_per_call=" << ((calls == 0) ? 0 : static_cast<float>(latency / calls)) << "\r\n";
   }
@@ -1033,7 +1033,7 @@ void Server::GetClusterInfo(std::string *info) {
   std::ostringstream string_stream;
 
   string_stream << "# Cluster\r\n";
-  string_stream << "cluster_enabled:" << config_->cluster_enabled << "\r\n";
+  string_stream << "cluster_enabled:" << config_->cluster_enabled_ << "\r\n";
 
   *info = string_stream.str();
 }
@@ -1138,18 +1138,18 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
     string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
-    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
-                  << ",expired=" << stats.n_expired << "\r\n";
+    string_stream << "db0:keys=" << stats.n_key_ << ",expires=" << stats.n_expires_ << ",avg_ttl=" << stats.avg_ttl_
+                  << ",expired=" << stats.n_expired_ << "\r\n";
     string_stream << "sequence:" << storage_->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size:" << storage_->GetTotalSize(ns) << "\r\n";
-    string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
-    double used_percent = config_->max_db_size ? static_cast<double>(storage_->GetTotalSize() * 100) /
-                                                     static_cast<double>(config_->max_db_size * GiB)
-                                               : 0;
+    string_stream << "max_db_size:" << config_->max_db_size_ * GiB << "\r\n";
+    double used_percent = config_->max_db_size_ ? static_cast<double>(storage_->GetTotalSize() * 100) /
+                                                      static_cast<double>(config_->max_db_size_ * GiB)
+                                                : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
 
     struct statvfs stat;
-    if (statvfs(config_->db_dir.c_str(), &stat) == 0) {
+    if (statvfs(config_->db_dir_.c_str(), &stat) == 0) {
       auto disk_capacity = stat.f_blocks * stat.f_frsize;
       auto used_disk_size = (stat.f_blocks - stat.f_bavail) * stat.f_frsize;
       string_stream << "disk_capacity:" << disk_capacity << "\r\n";
@@ -1226,7 +1226,7 @@ void Server::PrepareRestoreDB() {
 }
 
 void Server::WaitNoMigrateProcessing() {
-  if (config_->cluster_enabled) {
+  if (config_->cluster_enabled_) {
     LOG(INFO) << "[server] Waiting until no migration task is running...";
     slot_migrator_->SetStopMigrationFlag(true);
     while (slot_migrator_->GetCurrentSlotMigrationStage() != SlotMigrationStage::kNone) {
@@ -1292,11 +1292,11 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns] = DBScanInfo{};
   }
 
-  if (db_scan_infos_[ns].is_scanning) {
+  if (db_scan_infos_[ns].is_scanning_) {
     return {Status::NotOK, "scanning the db now"};
   }
 
-  db_scan_infos_[ns].is_scanning = true;
+  db_scan_infos_[ns].is_scanning_ = true;
 
   return task_runner_.TryPublish([ns, this] {
     Redis::Database db(storage_, ns);
@@ -1305,9 +1305,9 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
-    db_scan_infos_[ns].key_num_stats = stats;
-    db_scan_infos_[ns].last_scan_time = Util::GetTimeStamp();
-    db_scan_infos_[ns].is_scanning = false;
+    db_scan_infos_[ns].key_num_stats_ = stats;
+    db_scan_infos_[ns].last_scan_time_ = Util::GetTimeStamp();
+    db_scan_infos_[ns].is_scanning_ = false;
   });
 }
 
@@ -1346,13 +1346,13 @@ Status Server::autoResizeBlockAndSST() {
     block_size = 2 * KiB;
   }
 
-  if (target_file_size_base == config_->RocksDB.target_file_size_base &&
-      target_file_size_base == config_->RocksDB.write_buffer_size && block_size == config_->RocksDB.block_size) {
+  if (target_file_size_base == config_->rocks_db_.target_file_size_base_ &&
+      target_file_size_base == config_->rocks_db_.write_buffer_size_ && block_size == config_->rocks_db_.block_size_) {
     return Status::OK();
   }
 
-  if (target_file_size_base != config_->RocksDB.target_file_size_base) {
-    auto old_target_file_size_base = config_->RocksDB.target_file_size_base;
+  if (target_file_size_base != config_->rocks_db_.target_file_size_base_) {
+    auto old_target_file_size_base = config_->rocks_db_.target_file_size_base_;
     auto s = config_->Set(this, "rocksdb.target_file_size_base", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.target_file_size_base from " << old_target_file_size_base << " to "
               << target_file_size_base << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
@@ -1362,8 +1362,8 @@ Status Server::autoResizeBlockAndSST() {
     }
   }
 
-  if (target_file_size_base != config_->RocksDB.write_buffer_size) {
-    auto old_write_buffer_size = config_->RocksDB.write_buffer_size;
+  if (target_file_size_base != config_->rocks_db_.write_buffer_size_) {
+    auto old_write_buffer_size = config_->rocks_db_.write_buffer_size_;
     auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
     LOG(INFO) << "[server] Resize rocksdb.write_buffer_size from " << old_write_buffer_size << " to "
               << target_file_size_base << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
@@ -1373,16 +1373,16 @@ Status Server::autoResizeBlockAndSST() {
     }
   }
 
-  if (block_size != config_->RocksDB.block_size) {
+  if (block_size != config_->rocks_db_.block_size_) {
     auto s = storage_->SetOptionForAllColumnFamilies("table_factory.block_size", std::to_string(block_size));
-    LOG(INFO) << "[server] Resize rocksdb.block_size from " << config_->RocksDB.block_size << " to " << block_size
+    LOG(INFO) << "[server] Resize rocksdb.block_size from " << config_->rocks_db_.block_size_ << " to " << block_size
               << ", average_kv_size: " << average_kv_size << ", total_size: " << total_size
               << ", total_keys: " << total_keys << ", result: " << s.Msg();
     if (!s.IsOK()) {
       return s;
     }
 
-    config_->RocksDB.block_size = block_size;
+    config_->rocks_db_.block_size_ = block_size;
   }
 
   auto s = config_->Rewrite();
@@ -1395,39 +1395,39 @@ void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
     std::lock_guard<std::mutex> lg(db_job_mu_);
-    *stats = iter->second.key_num_stats;
+    *stats = iter->second.key_num_stats_;
   }
 }
 
 time_t Server::GetLastScanTime(const std::string &ns) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
-    return iter->second.last_scan_time;
+    return iter->second.last_scan_time_;
   }
   return 0;
 }
 
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration) {
-  int64_t threshold = config_->slowlog_log_slower_than;
+  int64_t threshold = config_->slowlog_log_slower_than_;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
 
   auto entry = std::make_unique<SlowEntry>();
   size_t argc = args->size() > kSlowLogMaxArgc ? kSlowLogMaxArgc : args->size();
   for (size_t i = 0; i < argc; i++) {
     if (argc != args->size() && i == argc - 1) {
-      entry->args.emplace_back(fmt::format("... ({} more arguments)", args->size() - argc + 1));
+      entry->args_.emplace_back(fmt::format("... ({} more arguments)", args->size() - argc + 1));
       break;
     }
 
     if ((*args)[i].length() <= kSlowLogMaxString) {
-      entry->args.emplace_back((*args)[i]);
+      entry->args_.emplace_back((*args)[i]);
     } else {
-      entry->args.emplace_back(fmt::format("{}... ({} more bytes)", (*args)[i].substr(0, kSlowLogMaxString),
-                                           (*args)[i].length() - kSlowLogMaxString));
+      entry->args_.emplace_back(fmt::format("{}... ({} more bytes)", (*args)[i].substr(0, kSlowLogMaxString),
+                                            (*args)[i].length() - kSlowLogMaxString));
     }
   }
 
-  entry->duration = duration;
+  entry->duration_ = duration;
   slow_log_.PushEntry(std::move(entry));
 }
 
@@ -1499,7 +1499,7 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
   }
 
   auto redis_cmd = cmd_iter->second;
-  *cmd = redis_cmd->factory();
+  *cmd = redis_cmd->factory_();
   (*cmd)->SetAttributes(redis_cmd);
 
   return Status::OK();
@@ -1580,8 +1580,8 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
 // log files and so forth.
 void Server::AdjustOpenFilesLimit() {
   const int min_reserved_fds = 128;
-  auto rocksdb_max_open_file = static_cast<rlim_t>(config_->RocksDB.max_open_files);
-  auto max_clients = static_cast<rlim_t>(config_->maxclients);
+  auto rocksdb_max_open_file = static_cast<rlim_t>(config_->rocks_db_.max_open_files_);
+  auto max_clients = static_cast<rlim_t>(config_->maxclients_);
   auto max_files = max_clients + rocksdb_max_open_file + min_reserved_fds;
 
   struct rlimit limit;
@@ -1658,8 +1658,8 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
 void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range) {
   std::shared_lock lock(watched_key_mutex_);
 
-  for (size_t i = range.first_key; range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key;
-       i += range.key_step) {
+  for (size_t i = range.first_key_;
+       range.last_key_ > 0 ? i <= size_t(range.last_key_) : i <= args.size() + range.last_key_; i += range.key_step_) {
     if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
       for (auto *conn : iter->second) {
         conn->watched_keys_modified_ = true;
@@ -1680,12 +1680,12 @@ void Server::updateAllWatchedKeys() {
 
 void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
   if (attr.is_write() && watched_key_size_ > 0) {
-    if (attr.key_range.first_key > 0) {
-      updateWatchedKeysFromRange(args, attr.key_range);
-    } else if (attr.key_range.first_key < 0) {
-      Redis::CommandKeyRange range = attr.key_range_gen(args);
+    if (attr.key_range_.first_key_ > 0) {
+      updateWatchedKeysFromRange(args, attr.key_range_);
+    } else if (attr.key_range_.first_key_ < 0) {
+      Redis::CommandKeyRange range = attr.key_range_gen_(args);
 
-      if (range.first_key > 0) {
+      if (range.first_key_ > 0) {
         updateWatchedKeysFromRange(args, range);
       }
     } else {

@@ -255,14 +255,14 @@ int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patter
 
 bool Connection::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
-  if (config->profiling_sample_ratio == 0) return false;
+  if (config->profiling_sample_ratio_ == 0) return false;
 
-  if (!config->profiling_sample_all_commands &&
-      config->profiling_sample_commands.find(cmd) == config->profiling_sample_commands.end()) {
+  if (!config->profiling_sample_all_commands_ &&
+      config->profiling_sample_commands_.find(cmd) == config->profiling_sample_commands_.end()) {
     return false;
   }
 
-  if (config->profiling_sample_ratio == 100 || std::rand() % 100 <= config->profiling_sample_ratio) {
+  if (config->profiling_sample_ratio_ == 100 || std::rand() % 100 <= config->profiling_sample_ratio_) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
     rocksdb::get_perf_context()->Reset();
     rocksdb::get_iostats_context()->Reset();
@@ -273,7 +273,7 @@ bool Connection::isProfilingEnabled(const std::string &cmd) {
 }
 
 void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
-  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
+  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms_;
   if (threshold > 0 && static_cast<int>(duration / 1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
     return;
@@ -285,16 +285,16 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   if (perf_context.empty()) return;  // request without db operation
 
   auto entry = std::unique_ptr<PerfEntry>();
-  entry->cmd_name = cmd;
-  entry->duration = duration;
-  entry->iostats_context = std::move(iostats_context);
-  entry->perf_context = std::move(perf_context);
+  entry->cmd_name_ = cmd;
+  entry->duration_ = duration;
+  entry->iostats_context_ = std::move(iostats_context);
+  entry->perf_context_ = std::move(perf_context);
   svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
-  std::string reply, password = config->requirepass;
+  std::string reply, password = config->requirepass_;
 
   while (!to_process_cmds->empty()) {
     auto cmd_tokens = to_process_cmds->front();
@@ -323,7 +323,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     const auto attributes = current_cmd_->GetAttributes();
-    auto cmd_name = attributes->name;
+    auto cmd_name = attributes->name_;
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
     std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
@@ -331,11 +331,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
+    if (IsFlagEnabled(Connection::kMultiExec) && attributes->name_ != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
                (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-               (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") &&
+               (config->cluster_enabled_ && (cmd_name == "clusterx" || cmd_name == "cluster") &&
                 cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
 
@@ -346,7 +346,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       concurrency = svr_->WorkConcurrencyGuard();
     }
 
-    if (attributes->flags & kCmdROScript) {
+    if (attributes->flags_ & kCmdROScript) {
       // if executing read only lua script commands, set current connection.
       svr_->SetCurrentConnection(this);
     }
@@ -357,7 +357,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    int arity = attributes->arity;
+    int arity = attributes->arity_;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
@@ -374,13 +374,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->is_no_multi()) {
-      std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
+      std::string no_multi_err = "Err Can't execute " + attributes->name_ + " in MULTI";
       Reply(Redis::Error(no_multi_err));
       multi_error_ = true;
       continue;
     }
 
-    if (config->cluster_enabled) {
+    if (config->cluster_enabled_) {
       s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
@@ -396,12 +396,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
+    if (config->slave_readonly_ && svr_->IsSlave() && attributes->is_write()) {
       Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
 
-    if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
+    if (!config->slave_serve_stale_data_ && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         svr_->GetReplicationState() != kReplConnected) {
       Reply(
           Redis::Error("MASTERDOWN Link with MASTER is down "

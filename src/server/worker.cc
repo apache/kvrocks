@@ -28,6 +28,7 @@
 
 #include "event2/bufferevent.h"
 #include "io_util.h"
+#include "scope_exit.h"
 #include "thread_util.h"
 #include "time_util.h"
 
@@ -222,16 +223,16 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
 Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
   bool ipv6_used = strchr(host.data(), ':');
 
-  struct addrinfo hints;
-  memset(&hints, 0, sizeof(hints));
+  addrinfo hints = {};
   hints.ai_family = ipv6_used ? AF_INET6 : AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  struct addrinfo *srv_info = nullptr;
+  addrinfo *srv_info = nullptr;
   if (int rv = getaddrinfo(host.data(), std::to_string(port).c_str(), &hints, &srv_info); rv != 0) {
     return {Status::NotOK, gai_strerror(rv)};
   }
+  auto exit = MakeScopeExit([srv_info] { freeaddrinfo(srv_info); });
 
   for (auto p = srv_info; p != nullptr; p = p->ai_next) {
     int fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -239,20 +240,20 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
 
     int sock_opt = 1;
     if (ipv6_used && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
-      goto error;
+      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
     }
 
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
-      goto error;
+      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
     }
 
     // to support multi-thread binding on macOS
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
-      goto error;
+      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
     }
 
     if (bind(fd, p->ai_addr, p->ai_addrlen)) {
-      goto error;
+      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
     }
 
     evutil_make_socket_nonblocking(fd);
@@ -260,13 +261,7 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
     listen_events_.emplace_back(lev);
   }
 
-  freeaddrinfo(srv_info);
   return Status::OK();
-
-error:
-  freeaddrinfo(srv_info);
-
-  return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
 }
 
 Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) {

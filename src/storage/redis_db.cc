@@ -412,7 +412,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back(std::to_string(metadata.Is64BitEncoded()));
 
   infos->emplace_back("created_at");
-  struct timeval created_at = metadata.Time();
+  timeval created_at = metadata.Time();
   std::time_t tm = created_at.tv_sec;
   char time_str[25];
   if (!std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&tm))) {

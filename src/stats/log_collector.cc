@@ -28,8 +28,8 @@
 std::string SlowEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(4));
-  output.append(Redis::Integer(id_));
-  output.append(Redis::Integer(time_));
+  output.append(Redis::Integer(id));
+  output.append(Redis::Integer(time));
   output.append(Redis::Integer(duration));
   output.append(Redis::MultiBulkString(args));
   return output;
@@ -38,8 +38,8 @@ std::string SlowEntry::ToRedisString() const {
 std::string PerfEntry::ToRedisString() const {
   std::string output;
   output.append(Redis::MultiLen(6));
-  output.append(Redis::Integer(id_));
-  output.append(Redis::Integer(time_));
+  output.append(Redis::Integer(id));
+  output.append(Redis::Integer(time));
   output.append(Redis::BulkString(cmd_name));
   output.append(Redis::Integer(duration));
   output.append(Redis::BulkString(perf_context));
@@ -79,8 +79,8 @@ void LogCollector<T>::SetMaxEntries(int64_t max_entries) {
 template <class T>
 void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   std::lock_guard<std::mutex> guard(mu_);
-  entry->id_ = ++id_;
-  entry->time_ = Util::GetTimeStamp();
+  entry->id = ++id_;
+  entry->time = Util::GetTimeStamp();
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     entries_.pop_back();
   }

@@ -69,7 +69,7 @@ class Worker {
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);
 
   lua_State *Lua() { return lua_; }
-  Server *svr_;
+  Server *svr;
 
  private:
   Status listenTCP(const std::string &host, uint32_t port, int backlog);

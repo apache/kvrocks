@@ -72,7 +72,7 @@ class [[nodiscard]] Status {
     CHECK(code != cOK);
   }
 
-  Status(const Status& s) : impl_{s.impl_ ? new Impl{s.impl_->code_, s.impl_->msg_} : nullptr} {}
+  Status(const Status& s) : impl_{s.impl_ ? new Impl{s.impl_->code, s.impl_->msg} : nullptr} {}
   Status(Status&&) = default;
 
   Status& operator=(const Status& s) {
@@ -85,22 +85,22 @@ class [[nodiscard]] Status {
 
   template <Code code>
   bool Is() const {
-    return impl_ && impl_->code_ == code;
+    return impl_ && impl_->code == code;
   }
 
   bool IsOK() const { return !impl_; }
   explicit operator bool() const { return IsOK(); }
 
-  Code GetCode() const { return impl_ ? impl_->code_ : cOK; }
+  Code GetCode() const { return impl_ ? impl_->code : cOK; }
 
   std::string Msg() const& {
     if (*this) return ok_msg;
-    return impl_->msg_;
+    return impl_->msg;
   }
 
   std::string Msg() && {
     if (*this) return ok_msg;
-    return std::move(impl_->msg_);
+    return std::move(impl_->msg);
   }
 
   static Status OK() { return {}; }
@@ -112,7 +112,7 @@ class [[nodiscard]] Status {
     if (*this) {
       return {};
     }
-    return {impl_->code_, fmt::format("{}: {}", prefix, impl_->msg_)};
+    return {impl_->code, fmt::format("{}: {}", prefix, impl_->msg)};
   }
 
   void GetValue() {}
@@ -121,8 +121,8 @@ class [[nodiscard]] Status {
 
  private:
   struct Impl {
-    Code code_;
-    std::string msg_;
+    Code code;
+    std::string msg;
   };
 
   std::unique_ptr<Impl> impl_;
@@ -214,12 +214,12 @@ struct [[nodiscard]] StatusOr {
 
   StatusOr(Status s) : code_(s.GetCode()) {  // NOLINT
     CHECK(!s);
-    new (&error_) error_type(std::move(s.impl_->msg_));
+    new (&error) error_type(std::move(s.impl_->msg));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT
     CHECK(code != Status::cOK);
-    new (&error_) error_type(std::move(msg));
+    new (&error) error_type(std::move(msg));
   }
 
   template <typename... Ts,
@@ -230,7 +230,7 @@ struct [[nodiscard]] StatusOr {
                  !std::is_same_v<StatusOr, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>>),
                 int>::type = 0>                  // NOLINT
   StatusOr(Ts&&... args) : code_(Status::cOK) {  // NOLINT
-    new (&value_) value_type(std::forward<Ts>(args)...);
+    new (&value) value_type(std::forward<Ts>(args)...);
   }
 
   StatusOr(const StatusOr&) = delete;
@@ -238,16 +238,16 @@ struct [[nodiscard]] StatusOr {
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     if (code_ == Status::cOK) {
-      new (&value_) value_type(std::move(other.value_));
+      new (&value) value_type(std::move(other.value));
     } else {
-      new (&error_) error_type(std::move(other.error_));
+      new (&error) error_type(std::move(other.error));
     }
   }
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     CHECK(code_ != Status::cOK);
-    new (&error_) error_type(std::move(other.error_));
+    new (&error) error_type(std::move(other.error));
   }
 
   StatusOr& operator=(const StatusOr&) = delete;
@@ -262,12 +262,12 @@ struct [[nodiscard]] StatusOr {
 
   Status ToStatus() const& {
     if (*this) return Status::OK();
-    return {code_, *error_};
+    return {code_, *error};
   }
 
   Status ToStatus() && {
     if (*this) return Status::OK();
-    return {code_, std::move(*error_)};
+    return {code_, std::move(*error)};
   }
 
   operator Status() const& { return ToStatus(); }  // NOLINT
@@ -278,12 +278,12 @@ struct [[nodiscard]] StatusOr {
 
   value_type& GetValue() & {
     CHECK(*this);
-    return value_;
+    return value;
   }
 
   value_type&& GetValue() && {
     CHECK(*this);
-    return std::move(value_);
+    return std::move(value);
   }
 
   const value_type& ValueOr(const value_type& v) const& {
@@ -320,7 +320,7 @@ struct [[nodiscard]] StatusOr {
 
   const value_type& GetValue() const& {
     CHECK(*this);
-    return value_;
+    return value;
   }
 
   value_type& operator*() & { return GetValue(); }
@@ -335,34 +335,34 @@ struct [[nodiscard]] StatusOr {
 
   std::string Msg() const& {
     if (*this) return Status::ok_msg;
-    return *error_;
+    return *error;
   }
 
   std::string Msg() && {
     if (*this) return Status::ok_msg;
-    return std::move(*error_);
+    return std::move(*error);
   }
 
   StatusOr Prefixed(std::string_view prefix) && {
     if (*this) {
       return std::move(*this);
     }
-    return {code_, fmt::format("{}: {}", prefix, std::move(*error_))};
+    return {code_, fmt::format("{}: {}", prefix, std::move(*error))};
   }
 
   ~StatusOr() {
     if (*this) {
-      value_.~value_type();
+      value.~value_type();
     } else {
-      error_.~error_type();
+      error.~error_type();
     }
   }
 
  private:
   Status::Code code_;
   union {
-    value_type value_;
-    error_type error_;
+    value_type value;
+    error_type error;
   };
 
   template <typename>

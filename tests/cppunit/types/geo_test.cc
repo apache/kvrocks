@@ -106,8 +106,8 @@ TEST_F(RedisGeoTest, Pos) {
   std::map<std::string, GeoPoint> gps;
   geo_->Pos(key_, fields_, &gps);
   for (size_t i = 0; i < fields_.size(); i++) {
-    EXPECT_EQ(gps[fields_[i].ToString()].member_, fields_[i].ToString());
-    EXPECT_EQ(geo_->EncodeGeoHash(gps[fields_[i].ToString()].longitude_, gps[fields_[i].ToString()].latitude_),
+    EXPECT_EQ(gps[fields_[i].ToString()].member, fields_[i].ToString());
+    EXPECT_EQ(geo_->EncodeGeoHash(gps[fields_[i].ToString()].longitude, gps[fields_[i].ToString()].latitude),
               geo_hashes_[i]);
   }
   geo_->Del(key_);
@@ -125,8 +125,8 @@ TEST_F(RedisGeoTest, Radius) {
   geo_->Radius(key_, longitudes_[0], latitudes_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
-    EXPECT_EQ(gps[i].member_, fields_[i].ToString());
-    EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude_, gps[i].latitude_), geo_hashes_[i]);
+    EXPECT_EQ(gps[i].member, fields_[i].ToString());
+    EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
   geo_->Del(key_);
 }
@@ -143,8 +143,8 @@ TEST_F(RedisGeoTest, RadiusByMember) {
   geo_->RadiusByMember(key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
-    EXPECT_EQ(gps[i].member_, fields_[i].ToString());
-    EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude_, gps[i].latitude_), geo_hashes_[i]);
+    EXPECT_EQ(gps[i].member, fields_[i].ToString());
+    EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
   geo_->Del(key_);
 }

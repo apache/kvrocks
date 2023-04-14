@@ -56,60 +56,60 @@ Status Config::parseConfigFromString(const std::string &input) {
   size_t size = args.size();
 
   if (size == 1 && key == "daemonize") {
-    daemonize_ = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'daemonize'"));
+    daemonize = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'daemonize'"));
   } else if (size == 1 && key == "data-dir") {
-    data_dir_ = args[0];
-    if (data_dir_.empty()) {
+    data_dir = args[0];
+    if (data_dir.empty()) {
       return {Status::NotOK, "'data-dir' was not specified"};
     }
 
-    if (data_dir_.back() != '/') {
-      data_dir_ += "/";
+    if (data_dir.back() != '/') {
+      data_dir += "/";
     }
-    db_dir_ = data_dir_ + "db";
+    db_dir = data_dir + "db";
   } else if (size == 1 && key == "output-dir") {
-    output_dir_ = args[0];
-    if (output_dir_.empty()) {
+    output_dir = args[0];
+    if (output_dir.empty()) {
       return {Status::NotOK, "'output-dir' was not specified"};
     }
 
-    if (output_dir_.back() != '/') {
-      output_dir_ += "/";
+    if (output_dir.back() != '/') {
+      output_dir += "/";
     }
-    pidfile_ = output_dir_ + "kvrocks2redis.pid";
-    next_seq_file_path_ = output_dir_ + "last_next_seq.txt";
+    pidfile = output_dir + "kvrocks2redis.pid";
+    next_seq_file_path = output_dir + "last_next_seq.txt";
   } else if (size == 1 && key == "log-level") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (Util::ToLower(args[0]) == kLogLevels[i]) {
-        loglevel_ = static_cast<int>(i);
+        loglevel = static_cast<int>(i);
         break;
       }
     }
   } else if (size == 1 && key == "pidfile") {
-    pidfile_ = args[0];
+    pidfile = args[0];
   } else if (size >= 2 && key == "kvrocks") {
-    kvrocks_host_ = args[0];
+    kvrocks_host = args[0];
     // In new versions, we don't use extra port to implement replication
-    kvrocks_port_ = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
+    kvrocks_port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
 
     if (size == 3) {
-      kvrocks_auth_ = args[2];
+      kvrocks_auth = args[2];
     }
   } else if (size == 1 && key == "cluster-enable") {
-    cluster_enable_ = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));
+    cluster_enable = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));
   } else if (size >= 2 && strncasecmp(key.data(), "namespace.", 10) == 0) {
     std::string ns = original_key.substr(10);
     if (ns.size() > INT8_MAX) {
       return {Status::NotOK, fmt::format("namespace size exceed limit {}", INT8_MAX)};
     }
 
-    tokens_[ns].host_ = args[0];
-    tokens_[ns].port_ = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
+    tokens[ns].host = args[0];
+    tokens[ns].port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
 
     if (size >= 3) {
-      tokens_[ns].auth_ = args[2];
+      tokens[ns].auth = args[2];
     }
-    tokens_[ns].db_number_ = size == 4 ? std::atoi(args[3].c_str()) : 0;
+    tokens[ns].db_number = size == 4 ? std::atoi(args[3].c_str()) : 0;
   } else {
     return {Status::NotOK, "unknown configuration directive or wrong number of arguments"};
   }
@@ -136,19 +136,19 @@ Status Config::Load(std::string path) {
     line_num++;
   }
 
-  auto s = rocksdb::Env::Default()->FileExists(data_dir_);
+  auto s = rocksdb::Env::Default()->FileExists(data_dir);
   if (!s.ok()) {
     if (s.IsNotFound()) {
-      return {Status::NotOK, fmt::format("the specified Kvrocks working directory '{}' doesn't exist", data_dir_)};
+      return {Status::NotOK, fmt::format("the specified Kvrocks working directory '{}' doesn't exist", data_dir)};
     }
     return {Status::NotOK, s.ToString()};
   }
 
-  s = rocksdb::Env::Default()->FileExists(output_dir_);
+  s = rocksdb::Env::Default()->FileExists(output_dir);
   if (!s.ok()) {
     if (s.IsNotFound()) {
       return {Status::NotOK,
-              fmt::format("the specified directory '{}' for intermediate files doesn't exist", output_dir_)};
+              fmt::format("the specified directory '{}' for intermediate files doesn't exist", output_dir)};
     }
     return {Status::NotOK, s.ToString()};
   }

@@ -55,15 +55,15 @@ TEST_F(RedisStringTest, Append) {
 
 TEST_F(RedisStringTest, GetAndSet) {
   for (auto &pair : pairs_) {
-    string_->Set(pair.key_.ToString(), pair.value_.ToString());
+    string_->Set(pair.key.ToString(), pair.value.ToString());
   }
   for (auto &pair : pairs_) {
     std::string got_value;
-    string_->Get(pair.key_.ToString(), &got_value);
-    EXPECT_EQ(pair.value_, got_value);
+    string_->Get(pair.key.ToString(), &got_value);
+    EXPECT_EQ(pair.value, got_value);
   }
   for (auto &pair : pairs_) {
-    string_->Del(pair.key_);
+    string_->Del(pair.key);
   }
 }
 
@@ -73,14 +73,14 @@ TEST_F(RedisStringTest, MGetAndMSet) {
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
-    keys.emplace_back(pair.key_);
+    keys.emplace_back(pair.key);
   }
   string_->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value_, values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
   for (auto &pair : pairs_) {
-    string_->Del(pair.key_);
+    string_->Del(pair.key);
   }
 }
 
@@ -157,15 +157,15 @@ TEST_F(RedisStringTest, GetSet) {
 }
 TEST_F(RedisStringTest, GetDel) {
   for (auto &pair : pairs_) {
-    string_->Set(pair.key_.ToString(), pair.value_.ToString());
+    string_->Set(pair.key.ToString(), pair.value.ToString());
   }
   for (auto &pair : pairs_) {
     std::string got_value;
-    string_->GetDel(pair.key_.ToString(), &got_value);
-    EXPECT_EQ(pair.value_, got_value);
+    string_->GetDel(pair.key.ToString(), &got_value);
+    EXPECT_EQ(pair.value, got_value);
 
     std::string second_got_value;
-    auto s = string_->GetDel(pair.key_.ToString(), &second_got_value);
+    auto s = string_->GetDel(pair.key.ToString(), &second_got_value);
     EXPECT_TRUE(!s.ok() && s.IsNotFound());
   }
 }
@@ -191,21 +191,21 @@ TEST_F(RedisStringTest, MSetNX) {
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
   for (const auto &pair : pairs_) {
-    keys.emplace_back(pair.key_);
+    keys.emplace_back(pair.key);
   }
   string_->MGet(keys, &values);
   for (size_t i = 0; i < pairs_.size(); i++) {
-    EXPECT_EQ(pairs_[i].value_, values[i]);
+    EXPECT_EQ(pairs_[i].value, values[i]);
   }
 
   std::vector<StringPair> new_pairs{
-      {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key_, pairs_[0].value_}, {"d", "4"},
+      {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key, pairs_[0].value}, {"d", "4"},
   };
   string_->MSetNX(pairs_, 0, &ret);
   EXPECT_EQ(0, ret);
 
   for (auto &pair : pairs_) {
-    string_->Del(pair.key_);
+    string_->Del(pair.key);
   }
 }
 

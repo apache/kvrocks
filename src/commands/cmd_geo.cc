@@ -107,7 +107,7 @@ class CommandGeoAdd : public CommandGeoBase {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Add(args_[1], &geo_points_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -135,7 +135,7 @@ class CommandGeoDist : public CommandGeoBase {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double distance = 0;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -161,7 +161,7 @@ class CommandGeoHash : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<std::string> hashes;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Hash(args_[1], members_, &hashes);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -186,7 +186,7 @@ class CommandGeoPos : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::map<std::string, GeoPoint> geo_points;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Pos(args_[1], members_, &geo_points);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -199,7 +199,7 @@ class CommandGeoPos : public Commander {
         list.emplace_back(Redis::NilString());
       } else {
         list.emplace_back(Redis::MultiBulkString(
-            {Util::Float2String(iter->second.longitude_), Util::Float2String(iter->second.latitude_)}));
+            {Util::Float2String(iter->second.longitude), Util::Float2String(iter->second.latitude)}));
       }
     }
     *output = Redis::Array(list);
@@ -287,7 +287,7 @@ class CommandGeoRadius : public CommandGeoBase {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_, store_key_,
                            store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
@@ -309,19 +309,19 @@ class CommandGeoRadius : public CommandGeoBase {
     for (int i = 0; i < returned_items_count; i++) {
       auto geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
-        list.emplace_back(Redis::BulkString(geo_point.member_));
+        list.emplace_back(Redis::BulkString(geo_point.member));
       } else {
         std::vector<std::string> one;
-        one.emplace_back(Redis::BulkString(geo_point.member_));
+        one.emplace_back(Redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(Redis::BulkString(Util::Float2String(GetDistanceByUnit(geo_point.dist_))));
+          one.emplace_back(Redis::BulkString(Util::Float2String(GetDistanceByUnit(geo_point.dist))));
         }
         if (with_hash_) {
-          one.emplace_back(Redis::BulkString(Util::Float2String(geo_point.score_)));
+          one.emplace_back(Redis::BulkString(Util::Float2String(geo_point.score)));
         }
         if (with_coord_) {
           one.emplace_back(Redis::MultiBulkString(
-              {Util::Float2String(geo_point.longitude_), Util::Float2String(geo_point.latitude_)}));
+              {Util::Float2String(geo_point.longitude), Util::Float2String(geo_point.latitude)}));
         }
         list.emplace_back(Redis::Array(one));
       }
@@ -366,7 +366,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
-    Redis::Geo geo_db(svr->storage_, conn->GetNamespace());
+    Redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
                                    store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {

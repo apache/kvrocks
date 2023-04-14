@@ -10,9 +10,9 @@ By Steve Reid <steve@edmweb.com>
 #include <cstdint>
 
 struct SHA1_CTX {  // NOLINT
-  uint32_t state_[5];
-  uint32_t count_[2];
-  unsigned char buffer_[64];
+  uint32_t state[5];
+  uint32_t count[2];
+  unsigned char buffer[64];
 };
 
 void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]);

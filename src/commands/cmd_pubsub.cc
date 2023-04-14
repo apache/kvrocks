@@ -32,7 +32,7 @@ class CommandPublish : public Commander {
     if (!svr->IsSlave()) {
       // Compromise: can't replicate message to sub-replicas in a cascading-like structure.
       // Replication relies on WAL seq, increase the seq on slave will break the replication, hence the compromise
-      Redis::PubSub pubsub_db(svr->storage_);
+      Redis::PubSub pubsub_db(svr->storage);
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
@@ -147,8 +147,8 @@ class CommandPubSub : public Commander {
 
       output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
-        output->append(Redis::BulkString(chan_subscribe_num.channel_));
-        output->append(Redis::Integer(chan_subscribe_num.subscribe_num_));
+        output->append(Redis::BulkString(chan_subscribe_num.channel));
+        output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
       }
 
       return Status::OK();

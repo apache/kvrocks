@@ -40,8 +40,8 @@ const char *kDefaultConfPath = "./kvrocks2redis.conf";
 std::function<void()> hup_handler;
 
 struct Options {
-  std::string conf_file_ = kDefaultConfPath;
-  bool show_usage_ = false;
+  std::string conf_file = kDefaultConfPath;
+  bool show_usage = false;
 };
 
 extern "C" void signal_handler(int sig) {
@@ -61,11 +61,11 @@ static Options parseCommandLineOptions(int argc, char **argv) {
   while ((ch = ::getopt(argc, argv, "c:h")) != -1) {
     switch (ch) {
       case 'c': {
-        opts.conf_file_ = optarg;
+        opts.conf_file = optarg;
         break;
       }
       case 'h': {
-        opts.show_usage_ = true;
+        opts.show_usage = true;
         break;
       }
       default:
@@ -76,10 +76,10 @@ static Options parseCommandLineOptions(int argc, char **argv) {
 }
 
 static void initGoogleLog(const Kvrocks2redis::Config *config) {
-  FLAGS_minloglevel = config->loglevel_;
+  FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->output_dir_;
+  FLAGS_log_dir = config->output_dir;
 }
 
 static Status createPidFile(const std::string &path) {
@@ -132,8 +132,8 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = parseCommandLineOptions(argc, argv);
-  if (opts.show_usage_) usage(argv[0]);
-  std::string config_file_path = std::move(opts.conf_file_);
+  if (opts.show_usage) usage(argv[0]);
+  std::string config_file_path = std::move(opts.conf_file);
 
   Kvrocks2redis::Config config;
   Status s = config.Load(config_file_path);
@@ -144,18 +144,18 @@ int main(int argc, char *argv[]) {
 
   initGoogleLog(&config);
 
-  if (config.daemonize_) daemonize();
+  if (config.daemonize) daemonize();
 
-  s = createPidFile(config.pidfile_);
+  s = createPidFile(config.pidfile);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to create pidfile '" << config.pidfile_ << "': " << s.Msg();
+    LOG(ERROR) << "Failed to create pidfile '" << config.pidfile << "': " << s.Msg();
     exit(1);
   }
 
   Config kvrocks_config;
-  kvrocks_config.db_dir_ = config.db_dir_;
-  kvrocks_config.cluster_enabled_ = config.cluster_enable_;
-  kvrocks_config.slot_id_encoded_ = config.cluster_enable_;
+  kvrocks_config.db_dir = config.db_dir;
+  kvrocks_config.cluster_enabled = config.cluster_enable;
+  kvrocks_config.slot_id_encoded = config.cluster_enable;
 
   Engine::Storage storage(&kvrocks_config);
   s = storage.Open(true);
@@ -176,6 +176,6 @@ int main(int argc, char *argv[]) {
   };
   sync.Start();
 
-  removePidFile(config.pidfile_);
+  removePidFile(config.pidfile);
   return 0;
 }

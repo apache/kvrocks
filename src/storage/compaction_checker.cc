@@ -57,9 +57,9 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   }
   int64_t now = Util::GetTimeStamp();
 
-  auto force_compact_file_age = storage_->GetConfig()->force_compact_file_age_;
+  auto force_compact_file_age = storage_->GetConfig()->force_compact_file_age;
   auto force_compact_min_ratio =
-      static_cast<double>(storage_->GetConfig()->force_compact_file_min_deleted_percentage_ / 100);
+      static_cast<double>(storage_->GetConfig()->force_compact_file_min_deleted_percentage / 100);
 
   std::string best_filename;
   double best_delete_ratio = 0;

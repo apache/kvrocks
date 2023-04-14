@@ -48,29 +48,29 @@
 #include "worker.h"
 
 struct DBScanInfo {
-  time_t last_scan_time_ = 0;
-  KeyNumStats key_num_stats_;
-  bool is_scanning_ = false;
+  time_t last_scan_time = 0;
+  KeyNumStats key_num_stats;
+  bool is_scanning = false;
 };
 
 struct ConnContext {
-  Worker *owner_;
-  int fd_;
-  ConnContext(Worker *w, int fd) : owner_(w), fd_(fd) {}
+  Worker *owner;
+  int fd;
+  ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
 };
 
 struct StreamConsumer {
-  Worker *owner_;
-  int fd_;
-  std::string ns_;
-  Redis::StreamEntryID last_consumed_id_;
+  Worker *owner;
+  int fd;
+  std::string ns;
+  Redis::StreamEntryID last_consumed_id;
   StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id)
-      : owner_(w), fd_(fd), ns_(std::move(ns)), last_consumed_id_(id) {}
+      : owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
 };
 
 struct ChannelSubscribeNum {
-  std::string channel_;
-  size_t subscribe_num_;
+  std::string channel;
+  size_t subscribe_num;
 };
 
 enum SlowLog {
@@ -217,12 +217,12 @@ class Server {
   std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
 
-  Stats stats_;
-  Engine::Storage *storage_;
-  std::unique_ptr<Cluster> cluster_;
+  Stats stats;
+  Engine::Storage *storage;
+  std::unique_ptr<Cluster> cluster;
   static std::atomic<int> unix_time_;
-  std::unique_ptr<SlotMigrator> slot_migrator_;
-  std::unique_ptr<SlotImport> slot_import_;
+  std::unique_ptr<SlotMigrator> slot_migrator;
+  std::unique_ptr<SlotImport> slot_import;
 
   void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
   void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
@@ -231,7 +231,7 @@ class Server {
   void ResetWatchedKeys(Redis::Connection *conn);
 
 #ifdef ENABLE_OPENSSL
-  UniqueSSLContext ssl_ctx_;
+  UniqueSSLContext ssl_ctx;
 #endif
 
  private:

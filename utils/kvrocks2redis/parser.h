@@ -50,7 +50,7 @@ class LatestSnapShot {
 
 class Parser {
  public:
-  explicit Parser(Engine::Storage *storage, Writer *writer)
+  explicit Parser(engine::Storage *storage, Writer *writer)
       : storage_(storage), writer_(writer), slot_id_encoded_(storage_->IsSlotIdEncoded()) {
     latest_snapshot_ = std::make_unique<LatestSnapShot>(storage->GetDB());
   }
@@ -60,7 +60,7 @@ class Parser {
   Status ParseWriteBatch(const std::string &batch_string);
 
  protected:
-  Engine::Storage *storage_ = nullptr;
+  engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
   std::unique_ptr<LatestSnapShot> latest_snapshot_;
   bool slot_id_encoded_ = false;

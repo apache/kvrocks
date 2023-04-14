@@ -30,7 +30,7 @@
 #include "fmt/format.h"
 #include "status.h"
 
-namespace Redis {
+namespace redis {
 
 enum class StreamTrimStrategy {
   None = 0,
@@ -147,4 +147,4 @@ Status ParseRangeEnd(const std::string &input, StreamEntryID *id);
 std::string EncodeStreamEntryValue(const std::vector<std::string> &args);
 Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::string> *result);
 
-}  // namespace Redis
+}  // namespace redis

@@ -23,7 +23,7 @@
 #include <fmt/std.h>
 #include <pthread.h>
 
-namespace Util {
+namespace util {
 
 void ThreadSetName(const char *name) {
 #ifdef __APPLE__
@@ -48,4 +48,4 @@ Status ThreadJoin(std::thread &t) { return ThreadOperationImpl<&std::thread::joi
 
 Status ThreadDetach(std::thread &t) { return ThreadOperationImpl<&std::thread::detach>(t, "detach"); }
 
-}  // namespace Util
+}  // namespace util

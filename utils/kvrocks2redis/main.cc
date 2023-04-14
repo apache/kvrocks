@@ -75,7 +75,7 @@ static Options parseCommandLineOptions(int argc, char **argv) {
   return opts;
 }
 
-static void initGoogleLog(const Kvrocks2redis::Config *config) {
+static void initGoogleLog(const kvrocks2redis::Config *config) {
   FLAGS_minloglevel = config->loglevel;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
@@ -89,7 +89,7 @@ static Status createPidFile(const std::string &path) {
   }
 
   std::string pid_str = std::to_string(getpid());
-  auto s = Util::Write(fd, pid_str);
+  auto s = util::Write(fd, pid_str);
   if (!s.IsOK()) {
     return s.Prefixed("failed to write to PID-file");
   }
@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
   if (opts.show_usage) usage(argv[0]);
   std::string config_file_path = std::move(opts.conf_file);
 
-  Kvrocks2redis::Config config;
+  kvrocks2redis::Config config;
   Status s = config.Load(config_file_path);
   if (!s.IsOK()) {
     std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
   kvrocks_config.cluster_enabled = config.cluster_enable;
   kvrocks_config.slot_id_encoded = config.cluster_enable;
 
-  Engine::Storage storage(&kvrocks_config);
+  engine::Storage storage(&kvrocks_config);
   s = storage.Open(true);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open Kvrocks storage: " << s.Msg();

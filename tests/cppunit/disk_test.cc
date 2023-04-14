@@ -46,8 +46,8 @@ class RedisDiskTest : public TestBase {
 
 TEST_F(RedisDiskTest, StringDisk) {
   key_ = "stringdisk_key";
-  std::unique_ptr<Redis::String> string = std::make_unique<Redis::String>(storage_, "disk_ns_string");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_string");
+  std::unique_ptr<redis::String> string = std::make_unique<redis::String>(storage_, "disk_ns_string");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_string");
   std::vector<int> value_size{1024 * 1024};
   EXPECT_TRUE(string->Set(key_, std::string(value_size[0], 'a')).ok());
   uint64_t result = 0;
@@ -58,8 +58,8 @@ TEST_F(RedisDiskTest, StringDisk) {
 }
 
 TEST_F(RedisDiskTest, HashDisk) {
-  std::unique_ptr<Redis::Hash> hash = std::make_unique<Redis::Hash>(storage_, "disk_ns_hash");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_hash");
+  std::unique_ptr<redis::Hash> hash = std::make_unique<redis::Hash>(storage_, "disk_ns_hash");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_hash");
   key_ = "hashdisk_key";
   fields_ = {"hashdisk_kkey1", "hashdisk_kkey2", "hashdisk_kkey3", "hashdisk_kkey4", "hashdisk_kkey5"};
   values_.resize(5);
@@ -82,8 +82,8 @@ TEST_F(RedisDiskTest, HashDisk) {
 }
 
 TEST_F(RedisDiskTest, SetDisk) {
-  std::unique_ptr<Redis::Set> set = std::make_unique<Redis::Set>(storage_, "disk_ns_set");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_set");
+  std::unique_ptr<redis::Set> set = std::make_unique<redis::Set>(storage_, "disk_ns_set");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_set");
   key_ = "setdisk_key";
   values_.resize(5);
   uint64_t approximate_size = 0;
@@ -107,8 +107,8 @@ TEST_F(RedisDiskTest, SetDisk) {
 }
 
 TEST_F(RedisDiskTest, ListDisk) {
-  std::unique_ptr<Redis::List> list = std::make_unique<Redis::List>(storage_, "disk_ns_list");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_list");
+  std::unique_ptr<redis::List> list = std::make_unique<redis::List>(storage_, "disk_ns_list");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_list");
   key_ = "listdisk_key";
   values_.resize(5);
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
@@ -130,8 +130,8 @@ TEST_F(RedisDiskTest, ListDisk) {
 }
 
 TEST_F(RedisDiskTest, ZsetDisk) {
-  std::unique_ptr<Redis::ZSet> zset = std::make_unique<Redis::ZSet>(storage_, "disk_ns_zet");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_zet");
+  std::unique_ptr<redis::ZSet> zset = std::make_unique<redis::ZSet>(storage_, "disk_ns_zet");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
   int ret = 0;
   uint64_t approximate_size = 0;
@@ -152,8 +152,8 @@ TEST_F(RedisDiskTest, ZsetDisk) {
 }
 
 TEST_F(RedisDiskTest, BitmapDisk) {
-  std::unique_ptr<Redis::Bitmap> bitmap = std::make_unique<Redis::Bitmap>(storage_, "disk_ns_bitmap");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_bitmap");
+  std::unique_ptr<redis::Bitmap> bitmap = std::make_unique<redis::Bitmap>(storage_, "disk_ns_bitmap");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_bitmap");
   key_ = "bitmapdisk_key";
   bool bit = false;
   uint64_t approximate_size = 0;
@@ -169,8 +169,8 @@ TEST_F(RedisDiskTest, BitmapDisk) {
 }
 
 TEST_F(RedisDiskTest, SortedintDisk) {
-  std::unique_ptr<Redis::Sortedint> sortedint = std::make_unique<Redis::Sortedint>(storage_, "disk_ns_sortedint");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_sortedint");
+  std::unique_ptr<redis::Sortedint> sortedint = std::make_unique<redis::Sortedint>(storage_, "disk_ns_sortedint");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
   int ret = 0;
   uint64_t approximate_size = 0;
@@ -186,12 +186,12 @@ TEST_F(RedisDiskTest, SortedintDisk) {
 }
 
 TEST_F(RedisDiskTest, StreamDisk) {
-  std::unique_ptr<Redis::Stream> stream = std::make_unique<Redis::Stream>(storage_, "disk_ns_stream");
-  std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_stream");
+  std::unique_ptr<redis::Stream> stream = std::make_unique<redis::Stream>(storage_, "disk_ns_stream");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_stream");
   key_ = "streamdisk_key";
-  Redis::StreamAddOptions options;
+  redis::StreamAddOptions options;
   options.with_entry_id = false;
-  Redis::StreamEntryID id;
+  redis::StreamEntryID id;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
     std::vector<std::string> values = {"key" + std::to_string(i), "val" + std::to_string(i)};

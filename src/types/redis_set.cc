@@ -25,7 +25,7 @@
 
 #include "db_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status Set::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
   return Database::GetMetadata(kRedisSet, ns_key, metadata);
@@ -153,7 +153,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
@@ -226,7 +226,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
@@ -380,4 +380,4 @@ rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys
   *ret = static_cast<int>(members.size());
   return Overwrite(dst, members);
 }
-}  // namespace Redis
+}  // namespace redis

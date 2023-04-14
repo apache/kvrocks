@@ -20,7 +20,7 @@
 
 #include "redis_pubsub.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
   auto batch = storage_->GetWriteBatchBase();
@@ -28,4 +28,4 @@ rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-}  // namespace Redis
+}  // namespace redis

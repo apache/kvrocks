@@ -29,7 +29,7 @@
 
 #define REDIS_LUA_FUNC_SHA_PREFIX "f_"  // NOLINT
 
-namespace Lua {
+namespace lua {
 
 lua_State *CreateState(bool read_only = false);
 void DestroyState(lua_State *lua);
@@ -49,7 +49,7 @@ int redisLogCommand(lua_State *lua);
 
 Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
-Status evalGenericCommand(Redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
+Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
                           const std::vector<std::string> &argv, bool evalsha, std::string *output,
                           bool read_only = false);
 
@@ -76,4 +76,4 @@ void SHA1Hex(char *digest, const char *script, size_t len);
 int redisMathRandom(lua_State *l);
 int redisMathRandomSeed(lua_State *l);
 
-}  // namespace Lua
+}  // namespace lua

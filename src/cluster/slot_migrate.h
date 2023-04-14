@@ -71,7 +71,7 @@ struct SlotMigrationJob {
   int seq_gap_limit;
 };
 
-class SlotMigrator : public Redis::Database {
+class SlotMigrator : public redis::Database {
  public:
   explicit SlotMigrator(Server *svr, int max_migration_speed = kDefaultMaxMigrationSpeed,
                         int max_pipeline_size = kDefaultMaxPipelineSize, int seq_gap_limit = kDefaultSequenceGapLimit);
@@ -100,37 +100,37 @@ class SlotMigrator : public Redis::Database {
   void GetMigrationInfo(std::string *info) const;
 
  private:
-  void Loop();
-  void RunMigrationProcess();
-  bool IsTerminated() { return thread_state_ == ThreadState::Terminated; }
-  Status StartMigration();
-  Status SendSnapshot();
-  Status SyncWAL();
-  Status FinishSuccessfulMigration();
-  Status FinishFailedMigration();
-  void Clean();
+  void loop();
+  void runMigrationProcess();
+  bool isTerminated() { return thread_state_ == ThreadState::Terminated; }
+  Status startMigration();
+  Status sendSnapshot();
+  Status syncWal();
+  Status finishSuccessfulMigration();
+  Status finishFailedMigration();
+  void clean();
 
-  Status AuthOnDstNode(int sock_fd, const std::string &password);
-  Status SetImportStatusOnDstNode(int sock_fd, int status);
-  Status CheckSingleResponse(int sock_fd);
-  Status CheckMultipleResponses(int sock_fd, int total);
+  Status authOnDstNode(int sock_fd, const std::string &password);
+  Status setImportStatusOnDstNode(int sock_fd, int status);
+  Status checkSingleResponse(int sock_fd);
+  Status checkMultipleResponses(int sock_fd, int total);
 
-  StatusOr<KeyMigrationResult> MigrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &encoded_metadata,
+  StatusOr<KeyMigrationResult> migrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &encoded_metadata,
                                              std::string *restore_cmds);
-  Status MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
+  Status migrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
                           std::string *restore_cmds);
-  Status MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
-  Status MigrateStream(const rocksdb::Slice &key, const StreamMetadata &metadata, std::string *restore_cmds);
-  Status MigrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
+  Status migrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
+  Status migrateStream(const rocksdb::Slice &key, const StreamMetadata &metadata, std::string *restore_cmds);
+  Status migrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
                           std::vector<std::string> *user_cmd, std::string *restore_cmds);
 
-  Status SendCmdsPipelineIfNeed(std::string *commands, bool need);
-  void ApplyMigrationSpeedLimit() const;
-  Status GenerateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
-  Status MigrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
-  Status SyncWALBeforeForbiddingSlot();
-  Status SyncWALAfterForbiddingSlot();
-  void SetForbiddenSlot(int16_t slot);
+  Status sendCmdsPipelineIfNeed(std::string *commands, bool need);
+  void applyMigrationSpeedLimit() const;
+  Status generateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands);
+  Status migrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
+  Status syncWalBeforeForbiddingSlot();
+  Status syncWalAfterForbiddingSlot();
+  void setForbiddenSlot(int16_t slot);
 
   enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };

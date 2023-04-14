@@ -74,7 +74,7 @@ StatusOr<unsigned long> ParseSSLProtocols(const std::string &protocols) {  // NO
     return ctx_options | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
   }
 
-  auto protos = Util::Split(Util::ToLower(protocols), " ");
+  auto protos = util::Split(util::ToLower(protocols), " ");
 
   std::bitset<4> has_protocol;
   for (const auto &proto : protos) {

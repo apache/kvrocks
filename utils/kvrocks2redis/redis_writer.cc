@@ -30,10 +30,10 @@
 #include "server/redis_reply.h"
 #include "thread_util.h"
 
-RedisWriter::RedisWriter(Kvrocks2redis::Config *config) : Writer(config) {
+RedisWriter::RedisWriter(kvrocks2redis::Config *config) : Writer(config) {
   try {
     t_ = std::thread([this]() {
-      Util::ThreadSetName("redis-writer");
+      util::ThreadSetName("redis-writer");
       this->sync();
       assert(stop_flag_);
     });
@@ -72,7 +72,7 @@ Status RedisWriter::FlushDB(const std::string &ns) {
     return s;
   }
 
-  s = Write(ns, {Redis::Command2RESP({"FLUSHDB"})});
+  s = Write(ns, {redis::Command2RESP({"FLUSHDB"})});
   if (!s.IsOK()) return s;
 
   return Status::OK();
@@ -123,13 +123,13 @@ void RedisWriter::sync() {
         }
 
         std::string con = std::string(buffer, getted_line_leng);
-        s = Util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
+        s = util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
         if (!s.IsOK()) {
           LOG(ERROR) << "ERR send data to redis err: " << s.Msg();
           break;
         }
 
-        auto line_state = Util::SockReadLine(redis_fds_[iter.first]);
+        auto line_state = util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
           LOG(ERROR) << "read redis response err: " << s.Msg();
           break;
@@ -162,7 +162,7 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
                                  int db_index) {
   auto iter = redis_fds_.find(ns);
   if (iter == redis_fds_.end()) {
-    redis_fds_[ns] = GET_OR_RET(Util::SockConnect(host, port).Prefixed("Failed to connect to redis"));
+    redis_fds_[ns] = GET_OR_RET(util::SockConnect(host, port).Prefixed("Failed to connect to redis"));
 
     if (!auth.empty()) {
       auto s = authRedis(ns, auth);
@@ -188,12 +188,12 @@ Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host,
 
 Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
   const auto auth_len_str = std::to_string(auth.length());
-  auto s = Util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
+  auto s = util::SockSend(redis_fds_[ns], "*2" CRLF "$4" CRLF "auth" CRLF "$" + auth_len_str + CRLF + auth + CRLF);
   if (!s.IsOK()) {
     return s.Prefixed("[kvrocks2redis] failed to send AUTH command");
   }
 
-  std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read redis auth response err"));
+  std::string line = GET_OR_RET(util::SockReadLine(redis_fds_[ns]).Prefixed("read redis auth response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis Auth failed: " + line};
   }
@@ -204,14 +204,14 @@ Status RedisWriter::authRedis(const std::string &ns, const std::string &auth) {
 Status RedisWriter::selectDB(const std::string &ns, int db_number) {
   const auto db_number_str = std::to_string(db_number);
   const auto db_number_str_len = std::to_string(db_number_str.length());
-  auto s = Util::SockSend(redis_fds_[ns],
+  auto s = util::SockSend(redis_fds_[ns],
                           "*2" CRLF "$6" CRLF "select" CRLF "$" + db_number_str_len + CRLF + db_number_str + CRLF);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send SELECT command to socket");
   }
 
   LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
-  std::string line = GET_OR_RET(Util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
+  std::string line = GET_OR_RET(util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis select db failed: " + line};
   }
@@ -249,7 +249,7 @@ Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::o
     offset_string += " ";
   }
   offset_string += '\0';
-  return Util::Pwrite(next_offset_fds_[ns], offset_string, 0);
+  return util::Pwrite(next_offset_fds_[ns], offset_string, 0);
 }
 
 std::string RedisWriter::getNextOffsetFilePath(const std::string &ns) {

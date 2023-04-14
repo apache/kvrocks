@@ -30,7 +30,7 @@
 
 class Server;
 
-namespace Redis {
+namespace redis {
 
 using CommandTokens = std::vector<std::string>;
 
@@ -63,4 +63,4 @@ class Request {
   Server *svr_;
 };
 
-}  // namespace Redis
+}  // namespace redis

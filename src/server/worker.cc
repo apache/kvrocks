@@ -54,7 +54,7 @@
 Worker::Worker(Server *svr, Config *config) : svr(svr), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
-  timer_ = event_new(base_, -1, EV_PERSIST, TimerCB, this);
+  timer_ = event_new(base_, -1, EV_PERSIST, timerCb, this);
   timeval tm = {10, 0};
   evtimer_add(timer_, &tm);
 
@@ -71,11 +71,11 @@ Worker::Worker(Server *svr, Config *config) : svr(svr), base_(event_base_new()) 
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
-  lua_ = Lua::CreateState(true);
+  lua_ = lua::CreateState(true);
 }
 
 Worker::~Worker() {
-  std::vector<Redis::Connection *> conns;
+  std::vector<redis::Connection *> conns;
   conns.reserve(conns_.size() + monitor_conns_.size());
 
   for (const auto &iter : conns_) {
@@ -96,10 +96,10 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
-  Lua::DestroyState(lua_);
+  lua::DestroyState(lua_);
 }
 
-void Worker::TimerCB(int, int16_t events, void *ctx) {
+void Worker::timerCb(int, int16_t events, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
   auto config = worker->svr->GetConfig();
   if (config->timeout == 0) return;
@@ -108,17 +108,17 @@ void Worker::TimerCB(int, int16_t events, void *ctx) {
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
   auto worker = static_cast<Worker *>(ctx);
-  int local_port = Util::GetLocalPort(fd);  // NOLINT
+  int local_port = util::GetLocalPort(fd);  // NOLINT
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
 
-  auto s = Util::SockSetTcpKeepalive(fd, 120);
+  auto s = util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
     LOG(ERROR) << "[worker] Failed to set tcp-keepalive on socket. Error: " << s.Msg();
     evutil_closesocket(fd);
     return;
   }
 
-  s = Util::SockSetTcpNoDelay(fd, 1);
+  s = util::SockSetTcpNoDelay(fd, 1);
   if (!s.IsOK()) {
     LOG(ERROR) << "[worker] Failed to set tcp-nodelay on socket. Error: " << s.Msg();
     evutil_closesocket(fd);
@@ -162,14 +162,14 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif
-  auto conn = new Redis::Connection(bev, worker);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
+  auto conn = new redis::Connection(bev, worker);
+  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
 
   s = worker->AddConnection(conn);
   if (!s.IsOK()) {
-    std::string err_msg = Redis::Error("ERR " + s.Msg());
-    s = Util::SockSend(fd, err_msg);
+    std::string err_msg = redis::Error("ERR " + s.Msg());
+    s = util::SockSend(fd, err_msg);
     if (!s.IsOK()) {
       LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
     }
@@ -179,7 +179,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
 
   std::string ip;
   uint32_t port = 0;
-  if (Util::GetPeerAddr(fd, &ip, &port) == 0) {
+  if (util::GetPeerAddr(fd, &ip, &port) == 0) {
     conn->SetAddr(ip, port);
   }
 
@@ -198,14 +198,14 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
   bufferevent *bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 
-  auto conn = new Redis::Connection(bev, worker);
-  bufferevent_setcb(bev, Redis::Connection::OnRead, Redis::Connection::OnWrite, Redis::Connection::OnEvent, conn);
+  auto conn = new redis::Connection(bev, worker);
+  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent, conn);
   bufferevent_enable(bev, EV_READ);
 
   auto s = worker->AddConnection(conn);
   if (!s.IsOK()) {
-    std::string err_msg = Redis::Error("ERR " + s.Msg());
-    s = Util::SockSend(fd, err_msg);
+    std::string err_msg = redis::Error("ERR " + s.Msg());
+    s = util::SockSend(fd, err_msg);
     if (!s.IsOK()) {
       LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
     }
@@ -312,7 +312,7 @@ void Worker::Stop() {
   }
 }
 
-Status Worker::AddConnection(Redis::Connection *c) {
+Status Worker::AddConnection(redis::Connection *c) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(c->GetFD());
   if (iter != conns_.end()) {
@@ -325,15 +325,15 @@ Status Worker::AddConnection(Redis::Connection *c) {
     return {Status::NotOK, "max number of clients reached"};
   }
 
-  conns_.insert(std::pair<int, Redis::Connection *>(c->GetFD(), c));
+  conns_.insert(std::pair<int, redis::Connection *>(c->GetFD(), c));
   uint64_t id = svr->GetClientID();
   c->SetID(id);
 
   return Status::OK();
 }
 
-Redis::Connection *Worker::removeConnection(int fd) {
-  Redis::Connection *conn = nullptr;
+redis::Connection *Worker::removeConnection(int fd) {
+  redis::Connection *conn = nullptr;
 
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
@@ -354,7 +354,7 @@ Redis::Connection *Worker::removeConnection(int fd) {
   return conn;
 }
 
-void Worker::DetachConnection(Redis::Connection *conn) {
+void Worker::DetachConnection(redis::Connection *conn) {
   if (!conn) return;
 
   removeConnection(conn->GetFD());
@@ -368,7 +368,7 @@ void Worker::DetachConnection(Redis::Connection *conn) {
   bufferevent_setcb(bev, nullptr, nullptr, nullptr, nullptr);
 }
 
-void Worker::FreeConnection(Redis::Connection *conn) {
+void Worker::FreeConnection(redis::Connection *conn) {
   if (!conn) return;
 
   removeConnection(conn->GetFD());
@@ -417,25 +417,25 @@ Status Worker::Reply(int fd, const std::string &reply) {
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
     iter->second->SetLastInteraction();
-    Redis::Reply(iter->second->Output(), reply);
+    redis::Reply(iter->second->Output(), reply);
     return Status::OK();
   }
 
   return {Status::NotOK, "connection doesn't exist"};
 }
 
-void Worker::BecomeMonitorConn(Redis::Connection *conn) {
+void Worker::BecomeMonitorConn(redis::Connection *conn) {
   {
     std::lock_guard<std::mutex> guard(conns_mu_);
     conns_.erase(conn->GetFD());
     monitor_conns_[conn->GetFD()] = conn;
   }
   svr->IncrMonitorClientNum();
-  conn->EnableFlag(Redis::Connection::kMonitor);
+  conn->EnableFlag(redis::Connection::kMonitor);
 }
 
-void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
-  auto now = Util::GetTimeStampUS();
+void Worker::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
+  auto now = util::GetTimeStampUS();
 
   std::string output;
   output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
@@ -450,7 +450,7 @@ void Worker::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::st
     if (conn == iter.second) continue;  // skip the monitor command
 
     if (conn->GetNamespace() == iter.second->GetNamespace() || iter.second->GetNamespace() == kDefaultNamespace) {
-      iter.second->Reply(Redis::SimpleString(output));
+      iter.second->Reply(redis::SimpleString(output));
     }
   }
 }
@@ -460,32 +460,32 @@ std::string Worker::GetClientsStr() {
 
   std::string output;
   for (const auto &iter : conns_) {
-    Redis::Connection *conn = iter.second;
+    redis::Connection *conn = iter.second;
     output.append(conn->ToString());
   }
 
   return output;
 }
 
-void Worker::KillClient(Redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
+void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
                         int64_t *killed) {
   std::lock_guard<std::mutex> guard(conns_mu_);
 
   for (const auto &iter : conns_) {
-    Redis::Connection *conn = iter.second;
+    redis::Connection *conn = iter.second;
     if (skipme && self == conn) continue;
 
     // no need to kill the client again if the kCloseAfterReply flag is set
-    if (conn->IsFlagEnabled(Redis::Connection::kCloseAfterReply)) {
+    if (conn->IsFlagEnabled(redis::Connection::kCloseAfterReply)) {
       continue;
     }
 
     if ((type & conn->GetClientType()) ||
         (!addr.empty() && (conn->GetAddr() == addr || conn->GetAnnounceAddr() == addr)) ||
         (id != 0 && conn->GetID() == id)) {
-      conn->EnableFlag(Redis::Connection::kCloseAfterReply);
+      conn->EnableFlag(redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection
-      if (!conn->IsFlagEnabled(Redis::Connection::kSlave)) {  // don't enable any event in slave connection
+      if (!conn->IsFlagEnabled(redis::Connection::kSlave)) {  // don't enable any event in slave connection
         auto bev = conn->GetBufferEvent();
         bufferevent_enable(bev, EV_WRITE);
       }
@@ -522,7 +522,7 @@ void Worker::KickoutIdleClients(int timeout) {
 }
 
 void WorkerThread::Start() {
-  auto s = Util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
+  auto s = util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
 
   if (s) {
     t_ = std::move(*s);
@@ -537,7 +537,7 @@ void WorkerThread::Start() {
 void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
-  if (auto s = Util::ThreadJoin(t_); !s) {
+  if (auto s = util::ThreadJoin(t_); !s) {
     LOG(WARNING) << "[worker] " << s.Msg();
   }
 }

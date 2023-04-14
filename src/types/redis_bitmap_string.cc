@@ -28,7 +28,7 @@
 #include "storage/redis_metadata.h"
 #include "type_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
   auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
@@ -204,4 +204,4 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   return res;
 }
 
-}  // namespace Redis
+}  // namespace redis

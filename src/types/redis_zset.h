@@ -87,11 +87,11 @@ class ZAddFlags {
   uint8_t flags_ = 0;
 };
 
-namespace Redis {
+namespace redis {
 
 class ZSet : public SubKeyScanner {
  public:
-  explicit ZSet(Engine::Storage *storage, const std::string &ns)
+  explicit ZSet(engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(const Slice &user_key, int *ret);
@@ -126,4 +126,4 @@ class ZSet : public SubKeyScanner {
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
 };
 
-}  // namespace Redis
+}  // namespace redis

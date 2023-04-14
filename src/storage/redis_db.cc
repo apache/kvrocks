@@ -32,9 +32,9 @@
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
-namespace Redis {
+namespace redis {
 
-Database::Database(Engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
+Database::Database(engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
   metadata_cf_handle_ = storage->GetCFHandle("metadata");
 }
 
@@ -184,7 +184,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -238,7 +238,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -336,7 +336,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
     }
   }
   if (!keys.empty()) {
-    unsigned int seed = Util::GetTimeStamp();
+    unsigned int seed = util::GetTimeStamp();
     *key = keys.at(rand_r(&seed) % keys.size());
   }
   return rocksdb::Status::OK();
@@ -362,7 +362,7 @@ rocksdb::Status Database::FlushAll() {
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
@@ -476,7 +476,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, cons
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, cf_handle);
+  auto iter = util::UniqueIterator(storage_, read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     return rocksdb::Status::NotFound();
@@ -531,7 +531,7 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slo
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, metadata_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   bool end = false;
   for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
     std::string prefix;
@@ -578,7 +578,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
     InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
@@ -628,7 +628,7 @@ std::string WriteBatchLogData::Encode() {
 
 Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   const std::string &log_data = blob.ToString();
-  std::vector<std::string> args = Util::Split(log_data, " ");
+  std::vector<std::string> args = util::Split(log_data, " ");
   auto parse_result = ParseInt<int>(args[0], 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -638,4 +638,4 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
 
   return Status::OK();
 }
-}  // namespace Redis
+}  // namespace redis

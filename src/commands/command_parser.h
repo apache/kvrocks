@@ -73,7 +73,7 @@ struct CommandParser {
   }
 
   bool EatEqICase(std::string_view str) {
-    return EatPred([str](const auto& v) { return Util::EqualICase(str, v); });
+    return EatPred([str](const auto& v) { return util::EqualICase(str, v); });
   }
 
   bool EatEqICaseFlag(std::string_view str, std::string_view& flag) {

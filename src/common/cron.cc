@@ -27,8 +27,8 @@
 
 std::string Scheduler::ToString() const {
   auto param2string = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
-  return param2string(minute) + " " + param2string(hour) + " " + param2string(mday) + " " + param2string(month) +
-         " " + param2string(wday);
+  return param2string(minute) + " " + param2string(hour) + " " + param2string(mday) + " " + param2string(month) + " " +
+         param2string(wday);
 }
 
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {

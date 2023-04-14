@@ -214,8 +214,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
 #ifdef SSL_OP_NO_TLSv1_3
-  if (!config->tls_ciphersuites.empty() &&
-      !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
+  if (!config->tls_ciphersuites.empty() && !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
     LOG(ERROR) << "Failed to set SSL ciphersuites: " << SSLErrors{};
     return nullptr;
   }

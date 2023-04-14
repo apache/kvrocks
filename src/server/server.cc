@@ -657,17 +657,17 @@ void Server::recordInstantaneousMetrics() {
   stats.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats.in_bytes);
   stats.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats.out_bytes);
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_WRITTEN));
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_GET,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_READ));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_KEYS_READ));
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_MULTIGET,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_MULTIGET_KEYS_READ));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_MULTIGET_KEYS_READ));
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_SEEK,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK));
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_NEXT,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT));
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PREV,
-                                  rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV));
+                                 rocksdb_stats->getTickerCount(rocksdb::Tickers::NUMBER_DB_PREV));
 }
 
 void Server::cron() {
@@ -1144,8 +1144,8 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     string_stream << "used_db_size:" << storage->GetTotalSize(ns) << "\r\n";
     string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";
     double used_percent = config_->max_db_size ? static_cast<double>(storage->GetTotalSize() * 100) /
-                                                      static_cast<double>(config_->max_db_size * GiB)
-                                                : 0;
+                                                     static_cast<double>(config_->max_db_size * GiB)
+                                               : 0;
     string_stream << "used_percent: " << used_percent << "%\r\n";
 
     struct statvfs stat;
@@ -1423,7 +1423,7 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
       entry->args.emplace_back((*args)[i]);
     } else {
       entry->args.emplace_back(fmt::format("{}... ({} more bytes)", (*args)[i].substr(0, kSlowLogMaxString),
-                                            (*args)[i].length() - kSlowLogMaxString));
+                                           (*args)[i].length() - kSlowLogMaxString));
     }
   }
 
@@ -1658,8 +1658,8 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
 void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range) {
   std::shared_lock lock(watched_key_mutex_);
 
-  for (size_t i = range.first_key;
-       range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key; i += range.key_step) {
+  for (size_t i = range.first_key; range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key;
+       i += range.key_step) {
     if (auto iter = watched_key_map_.find(args[i]); iter != watched_key_map_.end()) {
       for (auto *conn : iter->second) {
         conn->watched_keys_modified = true;

@@ -67,7 +67,7 @@ struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
       seen += "DeleteRange(" + begin_key.ToString() + ", " + end_key.ToString() + ")";
     } else {
       seen += "DeleteRangeCF(" + std::to_string(column_family_id) + ", " + begin_key.ToString() + ", " +
-               end_key.ToString() + ")";
+              end_key.ToString() + ")";
     }
     return rocksdb::Status::OK();
   }

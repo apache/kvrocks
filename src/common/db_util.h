@@ -29,14 +29,14 @@
 namespace DBUtil {
 
 struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
-  using base_type = std::unique_ptr<rocksdb::Iterator>;
+  using BaseType = std::unique_ptr<rocksdb::Iterator>;
 
-  explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
+  explicit UniqueIterator(rocksdb::Iterator* iter) : BaseType(iter) {}
   UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
                  rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(storage->NewIterator(options, column_family)) {}
+      : BaseType(storage->NewIterator(options, column_family)) {}
   UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : base_type(storage->NewIterator(options)) {}
+      : BaseType(storage->NewIterator(options)) {}
 };
 
 }  // namespace DBUtil

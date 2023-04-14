@@ -127,7 +127,7 @@ class [[nodiscard]] Status {
 
   std::unique_ptr<Impl> impl_;
 
-  static constexpr Code cOK = static_cast<Code>(0);
+  static constexpr Code cOK = static_cast<Code>(0);  // NOLINT
 
   template <typename>
   friend struct StatusOr;
@@ -135,21 +135,21 @@ class [[nodiscard]] Status {
 
 namespace type_details {
 template <typename... Ts>
-using first_element_t = typename std::tuple_element_t<0, std::tuple<Ts...>>;
+using FirstElement = typename std::tuple_element_t<0, std::tuple<Ts...>>;
 
 template <typename T>
-using remove_cvref_t = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
+using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
 }  // namespace type_details
 
 template <typename, typename = void>
 struct StringInStatusOr : private std::string {
-  using base_type = std::string;
+  using BaseType = std::string;
   static constexpr bool inplace = true;
 
-  explicit StringInStatusOr(std::string&& v) : base_type(std::move(v)) {}
+  explicit StringInStatusOr(std::string&& v) : BaseType(std::move(v)) {}
 
   template <typename U>
-  StringInStatusOr(StringInStatusOr<U>&& v) : base_type(*std::move(v)) {}  // NOLINT
+  StringInStatusOr(StringInStatusOr<U>&& v) : BaseType(*std::move(v)) {}  // NOLINT
   StringInStatusOr(const StringInStatusOr& v) = delete;
 
   StringInStatusOr& operator=(const StringInStatusOr&) = delete;
@@ -165,26 +165,26 @@ struct StringInStatusOr : private std::string {
 
 template <typename T>
 struct StringInStatusOr<T, std::enable_if_t<sizeof(T) < sizeof(std::string)>> : private std::unique_ptr<std::string> {
-  using base_type = std::unique_ptr<std::string>;
+  using BaseType = std::unique_ptr<std::string>;
   static constexpr bool inplace = false;
 
-  explicit StringInStatusOr(std::string&& v) : base_type(new std::string(std::move(v))) {}
+  explicit StringInStatusOr(std::string&& v) : BaseType(new std::string(std::move(v))) {}
 
   template <typename U, typename std::enable_if_t<StringInStatusOr<U>::inplace, int> = 0>
-  StringInStatusOr(StringInStatusOr<U>&& v) : base_type(new std::string(*std::move(v))) {}  // NOLINT
+  StringInStatusOr(StringInStatusOr<U>&& v) : BaseType(new std::string(*std::move(v))) {}  // NOLINT
   template <typename U, typename std::enable_if_t<!StringInStatusOr<U>::inplace, int> = 0>
   StringInStatusOr(StringInStatusOr<U>&& v)  // NOLINT
-      : base_type((typename StringInStatusOr<U>::base_type &&)(std::move(v))) {}
+      : BaseType((typename StringInStatusOr<U>::BaseType &&)(std::move(v))) {}
 
   StringInStatusOr(const StringInStatusOr& v) = delete;
 
   StringInStatusOr& operator=(const StringInStatusOr&) = delete;
 
-  std::string& operator*() & { return base_type::operator*(); }
+  std::string& operator*() & { return BaseType::operator*(); }
 
-  const std::string& operator*() const& { return base_type::operator*(); }
+  const std::string& operator*() const& { return BaseType::operator*(); }
 
-  std::string&& operator*() && { return std::move(base_type::operator*()); }
+  std::string&& operator*() && { return std::move(BaseType::operator*()); }
 
   ~StringInStatusOr() = default;
 };
@@ -200,37 +200,37 @@ struct IsStatusOr<StatusOr<T>> : std::integral_constant<bool, true> {};
 
 template <typename T>
 struct [[nodiscard]] StatusOr {
-  static_assert(!std::is_same_v<T, Status>, "value_type cannot be Status");
-  static_assert(!std::is_same_v<T, Status::Code>, "value_type cannot be Status::Code");
-  static_assert(!IsStatusOr<T>::value, "value_type cannot be StatusOr");
-  static_assert(!std::is_reference_v<T>, "value_type cannot be reference");
+  static_assert(!std::is_same_v<T, Status>, "ValueType cannot be Status");
+  static_assert(!std::is_same_v<T, Status::Code>, "ValueType cannot be Status::Code");
+  static_assert(!IsStatusOr<T>::value, "ValueType cannot be StatusOr");
+  static_assert(!std::is_reference_v<T>, "ValueType cannot be reference");
 
-  using value_type = T;
+  using ValueType = T;
 
   // we use std::unique_ptr to make the error part as small as enough
-  using error_type = StringInStatusOr<value_type>;
+  using ErrorType = StringInStatusOr<ValueType>;
 
   using Code = Status::Code;
 
   StatusOr(Status s) : code_(s.GetCode()) {  // NOLINT
     CHECK(!s);
-    new (&error) error_type(std::move(s.impl_->msg));
+    new (&error) ErrorType(std::move(s.impl_->msg));
   }
 
   StatusOr(Code code, std::string msg = {}) : code_(code) {  // NOLINT
     CHECK(code != Status::cOK);
-    new (&error) error_type(std::move(msg));
+    new (&error) ErrorType(std::move(msg));
   }
 
-  template <typename... Ts,
-            typename std::enable_if<
-                (sizeof...(Ts) > 0 &&
-                 !std::is_same_v<Status, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>> &&
-                 !std::is_same_v<Code, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>> &&
-                 !std::is_same_v<StatusOr, type_details::remove_cvref_t<type_details::first_element_t<Ts...>>>),
-                int>::type = 0>                  // NOLINT
+  template <
+      typename... Ts,
+      typename std::enable_if<(sizeof...(Ts) > 0 &&
+                               !std::is_same_v<Status, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
+                               !std::is_same_v<Code, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
+                               !std::is_same_v<StatusOr, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>>),
+                              int>::type = 0>    // NOLINT
   StatusOr(Ts&&... args) : code_(Status::cOK) {  // NOLINT
-    new (&value) value_type(std::forward<Ts>(args)...);
+    new (&value) ValueType(std::forward<Ts>(args)...);
   }
 
   StatusOr(const StatusOr&) = delete;
@@ -238,16 +238,16 @@ struct [[nodiscard]] StatusOr {
   template <typename U, typename std::enable_if<std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     if (code_ == Status::cOK) {
-      new (&value) value_type(std::move(other.value));
+      new (&value) ValueType(std::move(other.value));
     } else {
-      new (&error) error_type(std::move(other.error));
+      new (&error) ErrorType(std::move(other.error));
     }
   }
 
   template <typename U, typename std::enable_if<!std::is_convertible<U, T>::value, int>::type = 0>
   StatusOr(StatusOr<U>&& other) : code_(other.code_) {  // NOLINT
     CHECK(code_ != Status::cOK);
-    new (&error) error_type(std::move(other.error));
+    new (&error) ErrorType(std::move(other.error));
   }
 
   StatusOr& operator=(const StatusOr&) = delete;
@@ -276,17 +276,17 @@ struct [[nodiscard]] StatusOr {
 
   Code GetCode() const { return code_; }
 
-  value_type& GetValue() & {
+  ValueType& GetValue() & {
     CHECK(*this);
     return value;
   }
 
-  value_type&& GetValue() && {
+  ValueType&& GetValue() && {
     CHECK(*this);
     return std::move(value);
   }
 
-  const value_type& ValueOr(const value_type& v) const& {
+  const ValueType& ValueOr(const ValueType& v) const& {
     if (IsOK()) {
       return GetValue();
     } else {
@@ -294,7 +294,7 @@ struct [[nodiscard]] StatusOr {
     }
   }
 
-  value_type ValueOr(value_type&& v) const& {
+  ValueType ValueOr(ValueType&& v) const& {
     if (IsOK()) {
       return GetValue();
     } else {
@@ -302,7 +302,7 @@ struct [[nodiscard]] StatusOr {
     }
   }
 
-  value_type ValueOr(const T& v) && {
+  ValueType ValueOr(const T& v) && {
     if (IsOK()) {
       return std::move(*this).GetValue();
     } else {
@@ -310,7 +310,7 @@ struct [[nodiscard]] StatusOr {
     }
   }
 
-  value_type&& ValueOr(T&& v) && {
+  ValueType&& ValueOr(T&& v) && {
     if (IsOK()) {
       return std::move(*this).GetValue();
     } else {
@@ -318,20 +318,20 @@ struct [[nodiscard]] StatusOr {
     }
   }
 
-  const value_type& GetValue() const& {
+  const ValueType& GetValue() const& {
     CHECK(*this);
     return value;
   }
 
-  value_type& operator*() & { return GetValue(); }
+  ValueType& operator*() & { return GetValue(); }
 
-  value_type&& operator*() && { return std::move(GetValue()); }
+  ValueType&& operator*() && { return std::move(GetValue()); }
 
-  const value_type& operator*() const& { return GetValue(); }
+  const ValueType& operator*() const& { return GetValue(); }
 
-  value_type* operator->() { return &GetValue(); }
+  ValueType* operator->() { return &GetValue(); }
 
-  const value_type* operator->() const { return &GetValue(); }
+  const ValueType* operator->() const { return &GetValue(); }
 
   std::string Msg() const& {
     if (*this) return Status::ok_msg;
@@ -352,17 +352,17 @@ struct [[nodiscard]] StatusOr {
 
   ~StatusOr() {
     if (*this) {
-      value.~value_type();
+      value.~ValueType();
     } else {
-      error.~error_type();
+      error.~ErrorType();
     }
   }
 
  private:
   Status::Code code_;
   union {
-    value_type value;
-    error_type error;
+    ValueType value;
+    ErrorType error;
   };
 
   template <typename>

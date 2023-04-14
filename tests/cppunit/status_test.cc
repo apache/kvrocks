@@ -171,10 +171,10 @@ TEST(StatusOr, Size) {
     std::string a, b;
   };
 
-  static_assert(!StatusOr<char>::error_type::inplace);
-  static_assert(!StatusOr<int>::error_type::inplace);
-  static_assert(StatusOr<std::string>::error_type::inplace);
-  static_assert(StatusOr<A>::error_type::inplace);
+  static_assert(!StatusOr<char>::ErrorType::inplace);
+  static_assert(!StatusOr<int>::ErrorType::inplace);
+  static_assert(StatusOr<std::string>::ErrorType::inplace);
+  static_assert(StatusOr<A>::ErrorType::inplace);
 
   struct B1 {
     char a;

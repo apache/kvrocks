@@ -234,7 +234,7 @@ Config::Config() {
 // The validate function would be invoked before the field was set,
 // to make sure that new value is valid.
 void Config::initFieldValidator() {
-  std::map<std::string, validate_fn> validators = {
+  std::map<std::string, ValidateFn> validators = {
       {"requirepass",
        [this](const std::string &k, const std::string &v) -> Status {
          if (v.empty() && !tokens.empty()) {
@@ -337,7 +337,7 @@ void Config::initFieldCallback() {
   };
 #endif
 
-  std::map<std::string, callback_fn> callbacks = {
+  std::map<std::string, CallbackFn> callbacks = {
       {"dir",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          db_dir = dir + "/db";

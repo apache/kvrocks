@@ -34,11 +34,11 @@ void InitSSL();
 using StaticSSLCTXFree = StaticFunction<decltype(SSL_CTX_free), SSL_CTX_free>;
 
 struct UniqueSSLContext : std::unique_ptr<SSL_CTX, StaticSSLCTXFree> {
-  using base_type = std::unique_ptr<SSL_CTX, StaticSSLCTXFree>;
+  using BaseType = std::unique_ptr<SSL_CTX, StaticSSLCTXFree>;
 
-  using base_type::base_type;
+  using BaseType::BaseType;
 
-  explicit UniqueSSLContext(const SSL_METHOD *method = SSLv23_method()) : base_type(SSL_CTX_new(method)) {}
+  explicit UniqueSSLContext(const SSL_METHOD *method = SSLv23_method()) : BaseType(SSL_CTX_new(method)) {}
 };
 
 UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method = SSLv23_method());
@@ -46,13 +46,13 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
 using StaticSSLFree = StaticFunction<decltype(SSL_free), SSL_free>;
 
 struct UniqueSSL : std::unique_ptr<SSL, StaticSSLFree> {
-  using base_type = std::unique_ptr<SSL, StaticSSLFree>;
+  using BaseType = std::unique_ptr<SSL, StaticSSLFree>;
 
-  using base_type::base_type;
+  using BaseType::BaseType;
 
   UniqueSSL() = default;
 
-  explicit UniqueSSL(SSL_CTX *ctx) : base_type(SSL_new(ctx)) {}
+  explicit UniqueSSL(SSL_CTX *ctx) : BaseType(SSL_new(ctx)) {}
 };
 
 struct SSLErrors {

@@ -39,7 +39,7 @@ struct MoveIterator : Iter {
 template <typename Iter>
 struct CommandParser {
  public:
-  using value_type = typename Iter::value_type;
+  using ValueType = typename Iter::value_type;
 
   CommandParser(Iter begin, Iter end) : begin_(std::move(begin)), end_(std::move(end)) {}
 
@@ -87,7 +87,7 @@ struct CommandParser {
     return false;
   }
 
-  StatusOr<value_type> TakeStr() {
+  StatusOr<ValueType> TakeStr() {
     if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
 
     return RawTake();

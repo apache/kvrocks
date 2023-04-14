@@ -12,11 +12,15 @@ CheckOptions:
     value:         False
   - key:           readability-identifier-naming.LocalVariableCase
     value:         lower_case
+  - key:           readability-identifier-naming.LocalConstantCase
+    value:         aNy_CasE  # FIXME: use a more strictly case
   - key:           readability-identifier-naming.StructCase
     value:         CamelCase
   - key:           readability-identifier-naming.ClassCase
     value:         CamelCase
   - key:           readability-identifier-naming.UnionCase
+    value:         CamelCase
+  - key:           readability-identifier-naming.EnumCase
     value:         CamelCase
   - key:           readability-identifier-naming.ParameterCase
     value:         lower_case
@@ -27,11 +31,19 @@ CheckOptions:
   #   value:         camelBack
   # - key:           readability-identifier-naming.ProtectedMethodCase
   #   value:         camelBack
-  - key:           readability-identifier-naming.LocalConstantCase
-    value:         aNy_CasE  # FIXME: use a more strictly case
   - key:           readability-identifier-naming.MemberCase
     value:         lower_case
   - key:           readability-identifier-naming.MemberSuffix
     value:         _
   - key:           readability-identifier-naming.PublicMemberCase
     value:         lower_case
+  - key:           readability-identifier-naming.ClassMemberCase
+    value:         lower_case
+  - key:           readability-identifier-naming.ClassConstantCase
+    value:         aNy_CasE  # FIXME: use a more strictly case
+  - key:           readability-identifier-naming.TypeAliasCase
+    value:         CamelCase
+  - key:           readability-identifier-naming.TypedefCase
+    value:         CamelCase
+  - key:           readability-identifier-naming.MacroCase
+    value:         UPPER_CASE

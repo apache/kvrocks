@@ -771,8 +771,8 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
             crcs.push_back(f_crc);
           }
           unsigned files_count = files.size();
-          fetch_file_callback fn = [&fetch_cnt, &skip_cnt, files_count](const std::string &fetch_file,
-                                                                        const uint32_t fetch_crc) {
+          FetchFileCallback fn = [&fetch_cnt, &skip_cnt, files_count](const std::string &fetch_file,
+                                                                      const uint32_t fetch_crc) {
             fetch_cnt.fetch_add(1);
             uint32_t cur_skip_cnt = skip_cnt.load();
             uint32_t cur_fetch_cnt = fetch_cnt.load();
@@ -829,7 +829,7 @@ Status ReplicationThread::sendAuth(int sock_fd) {
 }
 
 Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file,
-                                    uint32_t crc, const fetch_file_callback &fn) {
+                                    uint32_t crc, const FetchFileCallback &fn) {
   size_t file_size = 0;
 
   // Read file size line
@@ -888,7 +888,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
 }
 
 Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
-                                     const std::vector<uint32_t> &crcs, const fetch_file_callback &fn) {
+                                     const std::vector<uint32_t> &crcs, const FetchFileCallback &fn) {
   std::string files_str;
   for (const auto &file : files) {
     files_str += file;

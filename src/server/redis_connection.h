@@ -61,14 +61,14 @@ class Connection {
   void SendFile(int fd);
   std::string ToString();
 
-  using unsubscribe_callback = std::function<void(std::string, int)>;
+  using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
   void UnsubscribeChannel(const std::string &channel);
-  void UnsubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void UnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int SubscriptionsCount();
   void PSubscribeChannel(const std::string &pattern);
   void PUnsubscribeChannel(const std::string &pattern);
-  void PUnsubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void PUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int PSubscriptionsCount();
 
   uint64_t GetAge() const;

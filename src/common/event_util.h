@@ -38,9 +38,9 @@ using StaticFree = StaticFunction<decltype(std::free), std::free>;
 
 template <typename T>
 struct UniqueFreePtr : std::unique_ptr<T, StaticFree> {
-  using base_type = std::unique_ptr<T, StaticFree>;
+  using BaseType = std::unique_ptr<T, StaticFree>;
 
-  using base_type::base_type;
+  using BaseType::BaseType;
 };
 
 struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
@@ -53,8 +53,8 @@ struct UniqueEvbufReadln : UniqueFreePtr<char[]> {
 using StaticEvbufFree = StaticFunction<decltype(evbuffer_free), evbuffer_free>;
 
 struct UniqueEvbuf : std::unique_ptr<evbuffer, StaticEvbufFree> {
-  using base_type = std::unique_ptr<evbuffer, StaticEvbufFree>;
+  using BaseType = std::unique_ptr<evbuffer, StaticEvbufFree>;
 
-  UniqueEvbuf() : base_type(evbuffer_new()) {}
-  explicit UniqueEvbuf(evbuffer *buffer) : base_type(buffer) {}
+  UniqueEvbuf() : BaseType(evbuffer_new()) {}
+  explicit UniqueEvbuf(evbuffer *buffer) : BaseType(buffer) {}
 };

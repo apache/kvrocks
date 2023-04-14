@@ -56,7 +56,7 @@ enum WriteBatchType {
   kBatchTypeStream,
 };
 
-using fetch_file_callback = std::function<void(const std::string, const uint32_t)>;
+using FetchFileCallback = std::function<void(const std::string, const uint32_t)>;
 
 class FeedSlaveThread {
  public:
@@ -193,9 +193,9 @@ class ReplicationThread {
   // Synchronized-Blocking ops
   Status sendAuth(int sock_fd);
   Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file, uint32_t crc,
-                   const fetch_file_callback &fn);
+                   const FetchFileCallback &fn);
   Status fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
-                    const std::vector<uint32_t> &crcs, const fetch_file_callback &fn);
+                    const std::vector<uint32_t> &crcs, const FetchFileCallback &fn);
   Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
   static bool isWrongPsyncNum(const char *err);

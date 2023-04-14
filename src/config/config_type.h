@@ -35,8 +35,8 @@
 // forward declaration
 class Server;
 
-using validate_fn = std::function<Status(const std::string &, const std::string &)>;
-using callback_fn = std::function<Status(Server *, const std::string &, const std::string &)>;
+using ValidateFn = std::function<Status(const std::string &, const std::string &)>;
+using CallbackFn = std::function<Status(Server *, const std::string &, const std::string &)>;
 
 // forward declaration
 template <typename>
@@ -51,7 +51,7 @@ struct ConfigEnum {
   const int val;
 };
 
-enum configType { SingleConfig, MultiConfig };
+enum ConfigType { SingleConfig, MultiConfig };
 
 int configEnumGetValue(ConfigEnum *ce, const char *name);
 const char *configEnumGetName(ConfigEnum *ce, int val);
@@ -64,15 +64,15 @@ class ConfigField {
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) { return {Status::NotOK, "not supported"}; }
   virtual Status ToBool(bool *b) { return {Status::NotOK, "not supported"}; }
-  virtual configType GetConfigType() { return config_type; }
-  virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
-  virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
+  virtual ConfigType GetConfigType() { return config_type; }
+  virtual bool IsMultiConfig() { return config_type == ConfigType::MultiConfig; }
+  virtual bool IsSingleConfig() { return config_type == ConfigType::SingleConfig; }
 
   int line_number = 0;
   bool readonly = true;
-  validate_fn validate = nullptr;
-  callback_fn callback = nullptr;
-  configType config_type = configType::SingleConfig;
+  ValidateFn validate = nullptr;
+  CallbackFn callback = nullptr;
+  ConfigType config_type = ConfigType::SingleConfig;
 };
 
 class StringField : public ConfigField {
@@ -93,7 +93,7 @@ class MultiStringField : public ConfigField {
  public:
   MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input) : receiver_(receiver) {
     *receiver_ = std::move(input);
-    this->config_type = configType::MultiConfig;
+    this->config_type = ConfigType::MultiConfig;
   }
   ~MultiStringField() override = default;
   std::string ToString() override {

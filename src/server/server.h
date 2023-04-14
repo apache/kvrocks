@@ -220,7 +220,7 @@ class Server {
   Stats stats;
   Engine::Storage *storage;
   std::unique_ptr<Cluster> cluster;
-  static std::atomic<int> unix_time_;
+  static std::atomic<int> unix_time;
   std::unique_ptr<SlotMigrator> slot_migrator;
   std::unique_ptr<SlotImport> slot_import;
 

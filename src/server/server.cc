@@ -52,7 +52,7 @@
 #include "version.h"
 #include "worker.h"
 
-std::atomic<int> Server::unix_time_ = {0};
+std::atomic<int> Server::unix_time = {0};
 constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(Engine::Storage *storage, Config *config)
@@ -623,7 +623,7 @@ void Server::delConnContext(ConnContext *c) {
 void Server::updateCachedTime() {
   time_t ret = Util::GetTimeStamp();
   if (ret == -1) return;
-  unix_time_.store(static_cast<int>(ret));
+  unix_time.store(static_cast<int>(ret));
 }
 
 int Server::IncrClientNum() {
@@ -983,10 +983,10 @@ void Server::SetLastRandomKeyCursor(const std::string &cursor) {
 }
 
 int Server::GetCachedUnixTime() {
-  if (unix_time_.load() == 0) {
-    unix_time_.store(static_cast<int>(Util::GetTimeStamp()));
+  if (unix_time.load() == 0) {
+    unix_time.store(static_cast<int>(Util::GetTimeStamp()));
   }
-  return unix_time_.load();
+  return unix_time.load();
 }
 
 void Server::GetStatsInfo(std::string *info) {

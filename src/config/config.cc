@@ -62,12 +62,12 @@ ConfigEnum log_levels[] = {{"info", google::INFO},
                            {"fatal", google::FATAL},
                            {nullptr, 0}};
 
-std::string trimRocksDBPrefix(std::string s) {
+std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
   return s.substr(8, s.size() - 8);
 }
 
-int configEnumGetValue(ConfigEnum *ce, const char *name) {
+int ConfigEnumGetValue(ConfigEnum *ce, const char *name) {
   while (ce->name != nullptr) {
     if (strcasecmp(ce->name, name) == 0) return ce->val;
     ce++;
@@ -75,7 +75,7 @@ int configEnumGetValue(ConfigEnum *ce, const char *name) {
   return INT_MIN;
 }
 
-const char *configEnumGetName(ConfigEnum *ce, int val) {
+const char *ConfigEnumGetName(ConfigEnum *ce, int val) {
   while (ce->name != nullptr) {
     if (ce->val == val) return ce->name;
     ce++;
@@ -319,11 +319,11 @@ void Config::initFieldValidator() {
 void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
-    return srv->storage->SetDBOption(trimRocksDBPrefix(k), v);
+    return srv->storage->SetDBOption(TrimRocksDbPrefix(k), v);
   };
   auto set_cf_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
-    return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+    return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
   };
 #ifdef ENABLE_OPENSSL
   auto set_tls_option = [](Server *srv, const std::string &k, const std::string &v) {
@@ -492,31 +492,31 @@ void Config::initFieldCallback() {
       {"rocksdb.target_file_size_base",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
                                                             std::to_string(rocks_db.target_file_size_base * MiB));
        }},
       {"rocksdb.write_buffer_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
                                                             std::to_string(rocks_db.write_buffer_size * MiB));
        }},
       {"rocksdb.disable_auto_compactions",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          std::string disable_auto_compactions = v == "yes" ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), disable_auto_compactions);
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), disable_auto_compactions);
        }},
       {"rocksdb.max_total_wal_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage->SetDBOption(trimRocksDBPrefix(k), std::to_string(rocks_db.max_total_wal_size * MiB));
+         return srv->storage->SetDBOption(TrimRocksDbPrefix(k), std::to_string(rocks_db.max_total_wal_size * MiB));
        }},
       {"rocksdb.enable_blob_files",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          std::string enable_blob_files = rocks_db.enable_blob_files ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_files);
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_files);
        }},
       {"rocksdb.min_blob_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -524,7 +524,7 @@ void Config::initFieldCallback() {
          if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
        }},
       {"rocksdb.blob_file_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -532,7 +532,7 @@ void Config::initFieldCallback() {
          if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
                                                             std::to_string(rocks_db.blob_file_size));
        }},
       {"rocksdb.enable_blob_garbage_collection",
@@ -542,7 +542,7 @@ void Config::initFieldCallback() {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
          std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_garbage_collection);
        }},
       {"rocksdb.blob_garbage_collection_age_cutoff",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -561,13 +561,13 @@ void Config::initFieldCallback() {
          }
 
          double cutoff = val / 100.0;
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), std::to_string(cutoff));
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), std::to_string(cutoff));
        }},
       {"rocksdb.level_compaction_dynamic_level_bytes",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
-         return srv->storage->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
+         return srv->storage->SetDBOption(TrimRocksDbPrefix(k), level_compaction_dynamic_level_bytes);
        }},
       {"rocksdb.max_bytes_for_level_base",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
@@ -575,7 +575,7 @@ void Config::initFieldCallback() {
          if (!rocks_db.level_compaction_dynamic_level_bytes) {
            return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
          }
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
                                                             std::to_string(rocks_db.max_bytes_for_level_base));
        }},
       {"rocksdb.max_bytes_for_level_multiplier",
@@ -584,7 +584,7 @@ void Config::initFieldCallback() {
          if (!rocks_db.level_compaction_dynamic_level_bytes) {
            return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
          }
-         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
        }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

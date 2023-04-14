@@ -125,7 +125,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
         continue;
       }
 
-      auto retmask = util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
+      auto retmask = util::AeWait(*cfd, AE_WRITABLE, conn_timeout);
       if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
         return Status::FromErrno();
       }
@@ -293,7 +293,7 @@ bool IsPortInUse(uint32_t port) {
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
-int aeWait(int fd, int mask, int timeout) {
+int AeWait(int fd, int mask, int timeout) {
   pollfd pfd;
   int retmask = 0;
 

@@ -53,8 +53,8 @@ struct ConfigEnum {
 
 enum ConfigType { SingleConfig, MultiConfig };
 
-int configEnumGetValue(ConfigEnum *ce, const char *name);
-const char *configEnumGetName(ConfigEnum *ce, int val);
+int ConfigEnumGetValue(ConfigEnum *ce, const char *name);
+const char *ConfigEnumGetName(ConfigEnum *ce, int val);
 
 class ConfigField {
  public:
@@ -188,13 +188,13 @@ class EnumField : public ConfigField {
  public:
   EnumField(int *receiver, ConfigEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
   ~EnumField() override = default;
-  std::string ToString() override { return configEnumGetName(enums_, *receiver_); }
+  std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int e = configEnumGetValue(enums_, v.c_str());
+    int e = ConfigEnumGetValue(enums_, v.c_str());
     if (e == INT_MIN) {
       return {Status::NotOK, "invalid enum option"};
     }

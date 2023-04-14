@@ -49,8 +49,8 @@ const double EARTH_RADIUS_IN_METERS = 6372797.560856;
 const double MERCATOR_MAX = 20037726.37;
 // const double MERCATOR_MIN = -20037726.37;
 
-static inline double deg_rad(double ang) { return ang * D_R; }
-static inline double rad_deg(double ang) { return ang / D_R; }
+static inline double DegRad(double ang) { return ang * D_R; }
+static inline double RadDeg(double ang) { return ang / D_R; }
 
 /**
  * Hashing works like this:
@@ -71,7 +71,7 @@ static inline double rad_deg(double ang) { return ang / D_R; }
  * x and y must initially be less than 2**32 (65536).
  * From:  https://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
  */
-static inline uint64_t interleave64(uint32_t xlo, uint32_t ylo) {
+static inline uint64_t Interleave64(uint32_t xlo, uint32_t ylo) {
   static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
                                0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL};
   static const unsigned int S[] = {1, 2, 4, 8, 16};
@@ -100,7 +100,7 @@ static inline uint64_t interleave64(uint32_t xlo, uint32_t ylo) {
 /* reverse the interleave process
  * derived from http://stackoverflow.com/questions/4909263
  */
-static inline uint64_t deinterleave64(uint64_t interleaved) {
+static inline uint64_t Deinterleave64(uint64_t interleaved) {
   static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
                                0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL, 0x00000000FFFFFFFFULL};
   static const unsigned int S[] = {0, 1, 2, 4, 8, 16};
@@ -129,7 +129,7 @@ static inline uint64_t deinterleave64(uint64_t interleaved) {
   return x | (y << 32);
 }
 
-void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
+void GeohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
   /* These are constraints from EPSG:900913 / EPSG:3785 / OSGEO:41001 */
   /* We can't geocode at the north/south pole. */
   long_range->max = GEO_LONG_MAX;
@@ -138,7 +138,7 @@ void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range) {
   lat_range->min = GEO_LAT_MIN;
 }
 
-int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
+int GeohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
                   uint8_t step, GeoHashBits *hash) {
   /* Check basic arguments sanity. */
   if (!hash || step > 32 || step == 0 || RANGEPISZERO(lat_range) || RANGEPISZERO(long_range)) return 0;
@@ -162,21 +162,21 @@ int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range,
   /* convert to fixed point based on the step size */
   lat_offset *= static_cast<double>(1ULL << step);
   long_offset *= static_cast<double>(1ULL << step);
-  hash->bits = interleave64(static_cast<uint32_t>(lat_offset), static_cast<uint32_t>(long_offset));
+  hash->bits = Interleave64(static_cast<uint32_t>(lat_offset), static_cast<uint32_t>(long_offset));
   return 1;
 }
 
-int geohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBits *hash) {
+int GeohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBits *hash) {
   GeoHashRange r[2] = {{0}};
-  geohashGetCoordRange(&r[0], &r[1]);
-  return geohashEncode(&r[0], &r[1], longitude, latitude, step, hash);
+  GeohashGetCoordRange(&r[0], &r[1]);
+  return GeohashEncode(&r[0], &r[1], longitude, latitude, step, hash);
 }
 
-int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash) {
-  return geohashEncodeType(longitude, latitude, step, hash);
+int GeohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash) {
+  return GeohashEncodeType(longitude, latitude, step, hash);
 }
 
-int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
+int GeohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
                   GeoHashArea *area) {
   if (HASHISZERO(hash) || !area || RANGEISZERO(lat_range) || RANGEISZERO(long_range)) {
     return 0;
@@ -184,7 +184,7 @@ int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
 
   area->hash = hash;
   uint8_t step = hash.step;
-  uint64_t hash_sep = deinterleave64(hash.bits); /* hash = [LAT][LONG] */
+  uint64_t hash_sep = Deinterleave64(hash.bits); /* hash = [LAT][LONG] */
 
   double lat_scale = lat_range.max - lat_range.min;
   double long_scale = long_range.max - long_range.min;
@@ -203,15 +203,15 @@ int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range,
   return 1;
 }
 
-int geohashDecodeType(const GeoHashBits &hash, GeoHashArea *area) {
+int GeohashDecodeType(const GeoHashBits &hash, GeoHashArea *area) {
   GeoHashRange r[2] = {{0}};
-  geohashGetCoordRange(&r[0], &r[1]);
-  return geohashDecode(r[0], r[1], hash, area);
+  GeohashGetCoordRange(&r[0], &r[1]);
+  return GeohashDecode(r[0], r[1], hash, area);
 }
 
-int geohashDecodeWGS84(const GeoHashBits &hash, GeoHashArea *area) { return geohashDecodeType(hash, area); }
+int GeohashDecodeWGS84(const GeoHashBits &hash, GeoHashArea *area) { return GeohashDecodeType(hash, area); }
 
-int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
+int GeohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
   if (!xy) return 0;
   xy[0] = (area->longitude.min + area->longitude.max) / 2;
   if (xy[0] > GEO_LONG_MAX) xy[0] = GEO_LONG_MAX;
@@ -222,15 +222,15 @@ int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy) {
   return 1;
 }
 
-int geohashDecodeToLongLatType(const GeoHashBits &hash, double *xy) {
+int GeohashDecodeToLongLatType(const GeoHashBits &hash, double *xy) {
   GeoHashArea area = {{0}};
-  if (!xy || !geohashDecodeType(hash, &area)) return 0;
-  return geohashDecodeAreaToLongLat(&area, xy);
+  if (!xy || !GeohashDecodeType(hash, &area)) return 0;
+  return GeohashDecodeAreaToLongLat(&area, xy);
 }
 
-int geohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy) { return geohashDecodeToLongLatType(hash, xy); }
+int GeohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy) { return GeohashDecodeToLongLatType(hash, xy); }
 
-static void geohash_move_x(GeoHashBits *hash, int8_t d) {
+static void GeohashMoveX(GeoHashBits *hash, int8_t d) {
   if (d == 0) return;
 
   uint64_t x = hash->bits & 0xaaaaaaaaaaaaaaaaULL;
@@ -249,7 +249,7 @@ static void geohash_move_x(GeoHashBits *hash, int8_t d) {
   hash->bits = (x | y);
 }
 
-static void geohash_move_y(GeoHashBits *hash, int8_t d) {
+static void GeohashMoveY(GeoHashBits *hash, int8_t d) {
   if (d == 0) return;
 
   uint64_t x = hash->bits & 0xaaaaaaaaaaaaaaaaULL;
@@ -266,7 +266,7 @@ static void geohash_move_y(GeoHashBits *hash, int8_t d) {
   hash->bits = (x | y);
 }
 
-void geohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors) {
+void GeohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors) {
   neighbors->east = *hash;
   neighbors->west = *hash;
   neighbors->north = *hash;
@@ -276,29 +276,29 @@ void geohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors) {
   neighbors->north_east = *hash;
   neighbors->north_west = *hash;
 
-  geohash_move_x(&neighbors->east, 1);
-  geohash_move_y(&neighbors->east, 0);
+  GeohashMoveX(&neighbors->east, 1);
+  GeohashMoveY(&neighbors->east, 0);
 
-  geohash_move_x(&neighbors->west, -1);
-  geohash_move_y(&neighbors->west, 0);
+  GeohashMoveX(&neighbors->west, -1);
+  GeohashMoveY(&neighbors->west, 0);
 
-  geohash_move_x(&neighbors->south, 0);
-  geohash_move_y(&neighbors->south, -1);
+  GeohashMoveX(&neighbors->south, 0);
+  GeohashMoveY(&neighbors->south, -1);
 
-  geohash_move_x(&neighbors->north, 0);
-  geohash_move_y(&neighbors->north, 1);
+  GeohashMoveX(&neighbors->north, 0);
+  GeohashMoveY(&neighbors->north, 1);
 
-  geohash_move_x(&neighbors->north_west, -1);
-  geohash_move_y(&neighbors->north_west, 1);
+  GeohashMoveX(&neighbors->north_west, -1);
+  GeohashMoveY(&neighbors->north_west, 1);
 
-  geohash_move_x(&neighbors->north_east, 1);
-  geohash_move_y(&neighbors->north_east, 1);
+  GeohashMoveX(&neighbors->north_east, 1);
+  GeohashMoveY(&neighbors->north_east, 1);
 
-  geohash_move_x(&neighbors->south_east, 1);
-  geohash_move_y(&neighbors->south_east, -1);
+  GeohashMoveX(&neighbors->south_east, 1);
+  GeohashMoveY(&neighbors->south_east, -1);
 
-  geohash_move_x(&neighbors->south_west, -1);
-  geohash_move_y(&neighbors->south_west, -1);
+  GeohashMoveX(&neighbors->south_west, -1);
+  GeohashMoveY(&neighbors->south_west, -1);
 }
 
 /* This function is used in order to estimate the step (bits precision)
@@ -347,10 +347,10 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
 int GeoHashHelper::BoundingBox(double longitude, double latitude, double radius_meters, double *bounds) {
   if (!bounds) return 0;
 
-  bounds[0] = longitude - rad_deg(radius_meters / EARTH_RADIUS_IN_METERS / cos(deg_rad(latitude)));
-  bounds[2] = longitude + rad_deg(radius_meters / EARTH_RADIUS_IN_METERS / cos(deg_rad(latitude)));
-  bounds[1] = latitude - rad_deg(radius_meters / EARTH_RADIUS_IN_METERS);
-  bounds[3] = latitude + rad_deg(radius_meters / EARTH_RADIUS_IN_METERS);
+  bounds[0] = longitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
+  bounds[2] = longitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
+  bounds[1] = latitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
+  bounds[3] = latitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
   return 1;
 }
 
@@ -373,10 +373,10 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
 
   int steps = EstimateStepsByRadius(radius_meters, latitude);
 
-  geohashGetCoordRange(&long_range, &lat_range);
-  geohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
-  geohashNeighbors(&hash, &neighbors);
-  geohashDecode(long_range, lat_range, hash, &area);
+  GeohashGetCoordRange(&long_range, &lat_range);
+  GeohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
+  GeohashNeighbors(&hash, &neighbors);
+  GeohashDecode(long_range, lat_range, hash, &area);
 
   /* Check if the step is enough at the limits of the covered area.
    * Sometimes when the search area is near an edge of the
@@ -387,10 +387,10 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   {
     GeoHashArea north, south, east, west;
 
-    geohashDecode(long_range, lat_range, neighbors.north, &north);
-    geohashDecode(long_range, lat_range, neighbors.south, &south);
-    geohashDecode(long_range, lat_range, neighbors.east, &east);
-    geohashDecode(long_range, lat_range, neighbors.west, &west);
+    GeohashDecode(long_range, lat_range, neighbors.north, &north);
+    GeohashDecode(long_range, lat_range, neighbors.south, &south);
+    GeohashDecode(long_range, lat_range, neighbors.east, &east);
+    GeohashDecode(long_range, lat_range, neighbors.west, &west);
 
     if (GetDistance(longitude, latitude, longitude, north.latitude.max) < radius_meters) decrease_step = 1;
     if (GetDistance(longitude, latitude, longitude, south.latitude.min) < radius_meters) decrease_step = 1;
@@ -400,9 +400,9 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
 
   if (steps > 1 && decrease_step) {
     steps--;
-    geohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
-    geohashNeighbors(&hash, &neighbors);
-    geohashDecode(long_range, lat_range, hash, &area);
+    GeohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
+    GeohashNeighbors(&hash, &neighbors);
+    GeohashDecode(long_range, lat_range, hash, &area);
   }
 
   /* Exclude the search areas that are useless. */
@@ -447,10 +447,10 @@ GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits &hash) {
 /* Calculate distance using haversin great circle distance formula. */
 double GeoHashHelper::GetDistance(double lon1d, double lat1d, double lon2d, double lat2d) {
   double lat1r = NAN, lon1r = NAN, lat2r = NAN, lon2r = NAN, u = NAN, v = NAN;
-  lat1r = deg_rad(lat1d);
-  lon1r = deg_rad(lon1d);
-  lat2r = deg_rad(lat2d);
-  lon2r = deg_rad(lon2d);
+  lat1r = DegRad(lat1d);
+  lon1r = DegRad(lon1d);
+  lat2r = DegRad(lat2d);
+  lon2r = DegRad(lon2d);
   u = sin((lat2r - lat1r) / 2);
   v = sin((lon2r - lon1r) / 2);
   return 2.0 * EARTH_RADIUS_IN_METERS * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));

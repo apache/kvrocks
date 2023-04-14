@@ -53,10 +53,10 @@ namespace lua {
 
 lua_State *CreateState(bool read_only) {
   lua_State *lua = lua_open();
-  loadLibraries(lua);
-  removeUnsupportedFunctions(lua);
-  loadFuncs(lua, read_only);
-  enableGlobalsProtection(lua);
+  LoadLibraries(lua);
+  RemoveUnsupportedFunctions(lua);
+  LoadFuncs(lua, read_only);
+  EnableGlobalsProtection(lua);
   return lua;
 }
 
@@ -65,22 +65,22 @@ void DestroyState(lua_State *lua) {
   lua_close(lua);
 }
 
-void loadFuncs(lua_State *lua, bool read_only) {
+void LoadFuncs(lua_State *lua, bool read_only) {
   lua_newtable(lua);
 
   /* redis.call */
   lua_pushstring(lua, "call");
-  lua_pushcfunction(lua, redisCallCommand);
+  lua_pushcfunction(lua, RedisCallCommand);
   lua_settable(lua, -3);
 
   /* redis.pcall */
   lua_pushstring(lua, "pcall");
-  lua_pushcfunction(lua, redisPCallCommand);
+  lua_pushcfunction(lua, RedisPCallCommand);
   lua_settable(lua, -3);
 
   /* redis.log and log levels. */
   lua_pushstring(lua, "log");
-  lua_pushcfunction(lua, redisLogCommand);
+  lua_pushcfunction(lua, RedisLogCommand);
   lua_settable(lua, -3);
 
   lua_pushstring(lua, "LOG_DEBUG");
@@ -101,15 +101,15 @@ void loadFuncs(lua_State *lua, bool read_only) {
 
   /* redis.sha1hex */
   lua_pushstring(lua, "sha1hex");
-  lua_pushcfunction(lua, redisSha1hexCommand);
+  lua_pushcfunction(lua, RedisSha1hexCommand);
   lua_settable(lua, -3);
 
   /* redis.error_reply and redis.status_reply */
   lua_pushstring(lua, "error_reply");
-  lua_pushcfunction(lua, redisErrorReplyCommand);
+  lua_pushcfunction(lua, RedisErrorReplyCommand);
   lua_settable(lua, -3);
   lua_pushstring(lua, "status_reply");
-  lua_pushcfunction(lua, redisStatusReplyCommand);
+  lua_pushcfunction(lua, RedisStatusReplyCommand);
   lua_settable(lua, -3);
 
   /* redis.read_only */
@@ -123,11 +123,11 @@ void loadFuncs(lua_State *lua, bool read_only) {
   lua_getglobal(lua, "math");
 
   lua_pushstring(lua, "random");
-  lua_pushcfunction(lua, redisMathRandom);
+  lua_pushcfunction(lua, RedisMathRandom);
   lua_settable(lua, -3);
 
   lua_pushstring(lua, "randomseed");
-  lua_pushcfunction(lua, redisMathRandomSeed);
+  lua_pushcfunction(lua, RedisMathRandomSeed);
   lua_settable(lua, -3);
 
   lua_setglobal(lua, "math");
@@ -162,7 +162,7 @@ void loadFuncs(lua_State *lua, bool read_only) {
   lua_pcall(lua, 0, 0, 0);
 }
 
-int redisLogCommand(lua_State *lua) {
+int RedisLogCommand(lua_State *lua) {
   int argc = lua_gettop(lua);
 
   if (argc < 2) {
@@ -203,7 +203,7 @@ int redisLogCommand(lua_State *lua) {
   return 0;
 }
 
-Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
+Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
                           const std::vector<std::string> &argv, bool evalsha, std::string *output, bool read_only) {
   Server *srv = conn->GetServer();
 
@@ -241,7 +241,7 @@ Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     }
 
     std::string sha = funcname + 2;
-    auto s = createFunction(srv, body, &sha, lua, false);
+    auto s = CreateFunction(srv, body, &sha, lua, false);
     if (!s.IsOK()) {
       lua_pop(lua, 1); /* remove the error handler from the stack. */
       return s;
@@ -252,15 +252,15 @@ Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
 
   /* Populate the argv and keys table accordingly to the arguments that
    * EVAL received. */
-  setGlobalArray(lua, "KEYS", keys);
-  setGlobalArray(lua, "ARGV", argv);
+  SetGlobalArray(lua, "KEYS", keys);
+  SetGlobalArray(lua, "ARGV", argv);
 
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("ERR running script (call to {}): {}", funcname, lua_tostring(lua, -1));
     *output = redis::Error(msg);
     lua_pop(lua, 2);
   } else {
-    *output = replyToRedisReply(lua);
+    *output = ReplyToRedisReply(lua);
     lua_pop(lua, 2);
   }
 
@@ -288,13 +288,13 @@ Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   return Status::OK();
 }
 
-int redisCallCommand(lua_State *lua) { return redisGenericCommand(lua, 1); }
+int RedisCallCommand(lua_State *lua) { return RedisGenericCommand(lua, 1); }
 
-int redisPCallCommand(lua_State *lua) { return redisGenericCommand(lua, 0); }
+int RedisPCallCommand(lua_State *lua) { return RedisGenericCommand(lua, 0); }
 
 // TODO: we do not want to repeat same logic as Connection::ExecuteCommands,
 // so the function need to be refactored
-int redisGenericCommand(lua_State *lua, int raise_error) {
+int RedisGenericCommand(lua_State *lua, int raise_error) {
   lua_getglobal(lua, "redis");
   lua_getfield(lua, -1, "read_only");
   int read_only = lua_toboolean(lua, -1);
@@ -302,8 +302,8 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
 
   int argc = lua_gettop(lua);
   if (argc == 0) {
-    pushError(lua, "Please specify at least one argument for redis.call()");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "Please specify at least one argument for redis.call()");
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   std::vector<std::string> args;
@@ -315,8 +315,8 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
       size_t obj_len = 0;
       const char *obj_s = lua_tolstring(lua, j, &obj_len);
       if (obj_s == nullptr) {
-        pushError(lua, "Lua redis() command arguments must be strings or integers");
-        return raise_error ? raiseError(lua) : 1;
+        PushError(lua, "Lua redis() command arguments must be strings or integers");
+        return raise_error ? RaiseError(lua) : 1;
       }
       args.emplace_back(obj_s, obj_len);
     }
@@ -325,14 +325,14 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   auto commands = redis::GetCommands();
   auto cmd_iter = commands->find(util::ToLower(args[0]));
   if (cmd_iter == commands->end()) {
-    pushError(lua, "Unknown Redis command called from Lua script");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "Unknown Redis command called from Lua script");
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   auto redis_cmd = cmd_iter->second;
   if (read_only && !(redis_cmd->flags & redis::kCmdReadOnly)) {
-    pushError(lua, "Write commands are not allowed from read-only scripts");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "Write commands are not allowed from read-only scripts");
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   auto cmd = redis_cmd->factory();
@@ -341,13 +341,13 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
 
   int arity = cmd->GetAttributes()->arity;
   if (((arity > 0 && argc != arity) || (arity < 0 && argc < -arity))) {
-    pushError(lua, "Wrong number of args calling Redis command From Lua script");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "Wrong number of args calling Redis command From Lua script");
+    return raise_error ? RaiseError(lua) : 1;
   }
   auto attributes = cmd->GetAttributes();
   if (attributes->flags & redis::kCmdNoScript) {
-    pushError(lua, "This Redis command is not allowed from scripts");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "This Redis command is not allowed from scripts");
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   std::string cmd_name = util::ToLower(args[0]);
@@ -358,28 +358,28 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   if (config->cluster_enabled) {
     auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
-      pushError(lua, s.Msg().c_str());
-      return raise_error ? raiseError(lua) : 1;
+      PushError(lua, s.Msg().c_str());
+      return raise_error ? RaiseError(lua) : 1;
     }
   }
 
   if (config->slave_readonly && srv->IsSlave() && attributes->IsWrite()) {
-    pushError(lua, "READONLY You can't write against a read only slave.");
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, "READONLY You can't write against a read only slave.");
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   if (!config->slave_serve_stale_data && srv->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
       srv->GetReplicationState() != kReplConnected) {
-    pushError(lua,
+    PushError(lua,
               "MASTERDOWN Link with MASTER is down "
               "and slave-serve-stale-data is set to 'no'.");
-    return raise_error ? raiseError(lua) : 1;
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   auto s = cmd->Parse(args);
   if (!s) {
-    pushError(lua, s.Msg().data());
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, s.Msg().data());
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   srv->stats.IncrCalls(cmd_name);
@@ -394,22 +394,22 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   srv->FeedMonitorConns(conn, args);
   if (!s) {
-    pushError(lua, s.Msg().data());
-    return raise_error ? raiseError(lua) : 1;
+    PushError(lua, s.Msg().data());
+    return raise_error ? RaiseError(lua) : 1;
   }
 
-  redisProtocolToLuaType(lua, output.data());
+  RedisProtocolToLuaType(lua, output.data());
   return 1;
 }
 
-void removeUnsupportedFunctions(lua_State *lua) {
+void RemoveUnsupportedFunctions(lua_State *lua) {
   lua_pushnil(lua);
   lua_setglobal(lua, "loadfile");
   lua_pushnil(lua);
   lua_setglobal(lua, "dofile");
 }
 
-void enableGlobalsProtection(lua_State *lua) {
+void EnableGlobalsProtection(lua_State *lua) {
   const char *code =
       "local dbg=debug\n"
       "local mt = {}\n"
@@ -435,7 +435,7 @@ void enableGlobalsProtection(lua_State *lua) {
   lua_pcall(lua, 0, 0, 0);
 }
 
-void loadLibraries(lua_State *lua) {
+void LoadLibraries(lua_State *lua) {
   auto load_lib = [](lua_State *lua, const char *libname, lua_CFunction func) {
     lua_pushcfunction(lua, func);
     lua_pushstring(lua, libname);
@@ -460,9 +460,9 @@ void loadLibraries(lua_State *lua) {
  * return redis.error_reply("ERR Some Error")
  * return redis.status_reply("ERR Some Error")
  */
-int redisReturnSingleFieldTable(lua_State *lua, const char *field) {
+int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
   if (lua_gettop(lua) != 1 || lua_type(lua, -1) != LUA_TSTRING) {
-    pushError(lua, "wrong number or type of arguments");
+    PushError(lua, "wrong number or type of arguments");
     return 1;
   }
 
@@ -474,14 +474,14 @@ int redisReturnSingleFieldTable(lua_State *lua, const char *field) {
 }
 
 /* redis.error_reply() */
-int redisErrorReplyCommand(lua_State *lua) { return redisReturnSingleFieldTable(lua, "err"); }
+int RedisErrorReplyCommand(lua_State *lua) { return RedisReturnSingleFieldTable(lua, "err"); }
 
 /* redis.status_reply() */
-int redisStatusReplyCommand(lua_State *lua) { return redisReturnSingleFieldTable(lua, "ok"); }
+int RedisStatusReplyCommand(lua_State *lua) { return RedisReturnSingleFieldTable(lua, "ok"); }
 
 /* This adds redis.sha1hex(string) to Lua scripts using the same hashing
  * function used for sha1ing lua scripts. */
-int redisSha1hexCommand(lua_State *lua) {
+int RedisSha1hexCommand(lua_State *lua) {
   int argc = lua_gettop(lua);
 
   if (argc != 1) {
@@ -546,52 +546,52 @@ void SHA1Hex(char *digest, const char *script, size_t len) {
  * error string.
  */
 
-const char *redisProtocolToLuaType(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaType(lua_State *lua, const char *reply) {
   const char *p = reply;
 
   switch (*p) {
     case ':':
-      p = redisProtocolToLuaType_Int(lua, reply);
+      p = RedisProtocolToLuaTypeInt(lua, reply);
       break;
     case '$':
-      p = redisProtocolToLuaType_Bulk(lua, reply);
+      p = RedisProtocolToLuaTypeBulk(lua, reply);
       break;
     case '+':
-      p = redisProtocolToLuaType_Status(lua, reply);
+      p = RedisProtocolToLuaTypeStatus(lua, reply);
       break;
     case '-':
-      p = redisProtocolToLuaType_Error(lua, reply);
+      p = RedisProtocolToLuaTypeError(lua, reply);
       break;
     case '*':
-      p = redisProtocolToLuaType_Aggregate(lua, reply, *p);
+      p = RedisProtocolToLuaTypeAggregate(lua, reply, *p);
       break;
     case '%':
-      p = redisProtocolToLuaType_Aggregate(lua, reply, *p);
+      p = RedisProtocolToLuaTypeAggregate(lua, reply, *p);
       break;
     case '~':
-      p = redisProtocolToLuaType_Aggregate(lua, reply, *p);
+      p = RedisProtocolToLuaTypeAggregate(lua, reply, *p);
       break;
     case '_':
-      p = redisProtocolToLuaType_Null(lua, reply);
+      p = RedisProtocolToLuaTypeNull(lua, reply);
       break;
     case '#':
-      p = redisProtocolToLuaType_Bool(lua, reply, p[1]);
+      p = RedisProtocolToLuaTypeBool(lua, reply, p[1]);
       break;
     case ',':
-      p = redisProtocolToLuaType_Double(lua, reply);
+      p = RedisProtocolToLuaTypeDouble(lua, reply);
       break;
   }
   return p;
 }
 
-const char *redisProtocolToLuaType_Int(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
   auto value = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
   lua_pushnumber(lua, static_cast<lua_Number>(value));
   return p + 2;
 }
 
-const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeBulk(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
   auto bulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
 
@@ -604,7 +604,7 @@ const char *redisProtocolToLuaType_Bulk(lua_State *lua, const char *reply) {
   }
 }
 
-const char *redisProtocolToLuaType_Status(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeStatus(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
 
   lua_newtable(lua);
@@ -614,7 +614,7 @@ const char *redisProtocolToLuaType_Status(lua_State *lua, const char *reply) {
   return p + 2;
 }
 
-const char *redisProtocolToLuaType_Error(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeError(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
 
   lua_newtable(lua);
@@ -624,7 +624,7 @@ const char *redisProtocolToLuaType_Error(lua_State *lua, const char *reply) {
   return p + 2;
 }
 
-const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, int atype) {
+const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, int atype) {
   const char *p = strchr(reply + 1, '\r');
   int64_t mbulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
   int j = 0;
@@ -637,25 +637,25 @@ const char *redisProtocolToLuaType_Aggregate(lua_State *lua, const char *reply, 
   lua_newtable(lua);
   for (j = 0; j < mbulklen; j++) {
     lua_pushnumber(lua, j + 1);
-    p = redisProtocolToLuaType(lua, p);
+    p = RedisProtocolToLuaType(lua, p);
     lua_settable(lua, -3);
   }
   return p;
 }
 
-const char *redisProtocolToLuaType_Null(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
   lua_pushnil(lua);
   return p + 2;
 }
 
-const char *redisProtocolToLuaType_Bool(lua_State *lua, const char *reply, int tf) {
+const char *RedisProtocolToLuaTypeBool(lua_State *lua, const char *reply, int tf) {
   const char *p = strchr(reply + 1, '\r');
   lua_pushboolean(lua, tf == 't');
   return p + 2;
 }
 
-const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply) {
+const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply) {
   const char *p = strchr(reply + 1, '\r');
   char buf[MAX_LONG_DOUBLE_CHARS + 1];
   size_t len = p - reply - 1;
@@ -681,7 +681,7 @@ const char *redisProtocolToLuaType_Double(lua_State *lua, const char *reply) {
  * with a single "err" field set to the error string. Note that this
  * table is never a valid reply by proper commands, since the returned
  * tables are otherwise always indexed by integers, never by strings. */
-void pushError(lua_State *lua, const char *err) {
+void PushError(lua_State *lua, const char *err) {
   lua_newtable(lua);
   lua_pushstring(lua, "err");
   lua_pushstring(lua, err);
@@ -689,7 +689,7 @@ void pushError(lua_State *lua, const char *err) {
 }
 
 // this function does not pop any element on the stack
-std::string replyToRedisReply(lua_State *lua) {
+std::string ReplyToRedisReply(lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
@@ -743,7 +743,7 @@ std::string replyToRedisReply(lua_State *lua) {
             break;
           }
           mbulklen++;
-          output += replyToRedisReply(lua);
+          output += ReplyToRedisReply(lua);
           lua_pop(lua, 1);
         }
         output = redis::MultiLen(mbulklen) + output;
@@ -759,7 +759,7 @@ std::string replyToRedisReply(lua_State *lua) {
  * by the non-error-trapping version of redis.pcall(), which is redis.call(),
  * this function will raise the Lua error so that the execution of the
  * script will be halted. */
-[[noreturn]] int raiseError(lua_State *lua) {
+[[noreturn]] int RaiseError(lua_State *lua) {
   lua_pushstring(lua, "err");
   lua_gettable(lua, -2);
   lua_error(lua);
@@ -772,7 +772,7 @@ std::string replyToRedisReply(lua_State *lua) {
  *
  * The array is sorted using table.sort itself, and assuming all the
  * list elements are strings. */
-void sortArray(lua_State *lua) {
+void SortArray(lua_State *lua) {
   /* Initial Stack: array */
   lua_getglobal(lua, "table");
   lua_pushstring(lua, "sort");
@@ -797,7 +797,7 @@ void sortArray(lua_State *lua) {
   lua_pop(lua, 1); /* Stack: array (sorted) */
 }
 
-void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems) {
+void SetGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems) {
   lua_newtable(lua);
   for (size_t i = 0; i < elems.size(); i++) {
     lua_pushlstring(lua, elems[i].c_str(), elems[i].size());
@@ -816,10 +816,10 @@ void setGlobalArray(lua_State *lua, const std::string &var, const std::vector<st
 
 /* The following implementation is the one shipped with Lua itself but with
  * rand() replaced by redisLrand48(). */
-int redisMathRandom(lua_State *lua) {
+int RedisMathRandom(lua_State *lua) {
   /* the `%' avoids the (rare) case of r==1, and is needed also because on
      some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
-  lua_Number r = (lua_Number)(redisLrand48() % REDIS_LRAND48_MAX) / (lua_Number)REDIS_LRAND48_MAX;
+  lua_Number r = (lua_Number)(RedisLrand48() % REDIS_LRAND48_MAX) / (lua_Number)REDIS_LRAND48_MAX;
   switch (lua_gettop(lua)) {  /* check number of arguments */
     case 0: {                 /* no arguments */
       lua_pushnumber(lua, r); /* Number between 0 and 1 */
@@ -844,8 +844,8 @@ int redisMathRandom(lua_State *lua) {
   return 1;
 }
 
-int redisMathRandomSeed(lua_State *lua) {
-  redisSrand48(luaL_checkint(lua, 1));
+int RedisMathRandomSeed(lua_State *lua) {
+  RedisSrand48(luaL_checkint(lua, 1));
   return 0;
 }
 
@@ -870,7 +870,7 @@ int redisMathRandomSeed(lua_State *lua) {
  *
  * If 'c' is not NULL, on error the client is informed with an appropriate
  * error describing the nature of the problem and the Lua interpreter error. */
-Status createFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store) {
+Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store) {
   char funcname[2 + 40 + 1] = REDIS_LUA_FUNC_SHA_PREFIX;
 
   if (sha->empty()) {

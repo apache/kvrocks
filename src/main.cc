@@ -57,14 +57,14 @@ Server *srv = nullptr;
 
 Server *GetServer() { return srv; }
 
-extern "C" void signalHandler(int sig) {
+extern "C" void SignalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
     LOG(INFO) << "Bye Bye";
     srv->Stop();
   }
 }
 
-std::ostream &printVersion(std::ostream &os) {
+std::ostream &PrintVersion(std::ostream &os) {
   os << "kvrocks ";
 
   if (VERSION != "unstable") {
@@ -80,10 +80,10 @@ std::ostream &printVersion(std::ostream &os) {
   return os;
 }
 
-extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
+extern "C" void SegvHandler(int sig, siginfo_t *info, void *secret) {
   void *trace[100];
 
-  LOG(ERROR) << "======= Ooops! " << printVersion << " got signal: " << strsignal(sig) << " (" << sig << ") =======";
+  LOG(ERROR) << "======= Ooops! " << PrintVersion << " got signal: " << strsignal(sig) << " (" << sig << ") =======";
   int trace_size = backtrace(trace, sizeof(trace) / sizeof(void *));
   char **messages = backtrace_symbols(trace, trace_size);
 
@@ -118,14 +118,14 @@ extern "C" void segvHandler(int sig, siginfo_t *info, void *secret) {
   kill(getpid(), sig);
 }
 
-void setupSigSegvAction() {
+void SetupSigSegvAction() {
   struct sigaction act;
 
   sigemptyset(&act.sa_mask);
   /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
    * is used. Otherwise, sa_handler is used */
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
-  act.sa_sigaction = segvHandler;
+  act.sa_sigaction = SegvHandler;
   sigaction(SIGSEGV, &act, nullptr);
   sigaction(SIGBUS, &act, nullptr);
   sigaction(SIGFPE, &act, nullptr);
@@ -133,7 +133,7 @@ void setupSigSegvAction() {
   sigaction(SIGABRT, &act, nullptr);
 
   act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-  act.sa_handler = signalHandler;
+  act.sa_handler = SignalHandler;
   sigaction(SIGTERM, &act, nullptr);
   sigaction(SIGINT, &act, nullptr);
 }
@@ -142,7 +142,7 @@ struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
 } new_opt;
 
-static void printUsage(const char *program) {
+static void PrintUsage(const char *program) {
   std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
             << "Usage:" << std::endl
             << std::left << new_opt << "-c, --config <filename>"
@@ -155,7 +155,7 @@ static void printUsage(const char *program) {
             << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 
-static CLIOptions parseCommandLineOptions(int argc, char **argv) {
+static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
   using namespace std::string_view_literals;
   CLIOptions opts;
 
@@ -163,16 +163,16 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
     if ((argv[i] == "-c"sv || argv[i] == "--config"sv) && i + 1 < argc) {
       opts.conf_file = argv[++i];
     } else if (argv[i] == "-v"sv || argv[i] == "--version"sv) {
-      std::cout << printVersion << std::endl;
+      std::cout << PrintVersion << std::endl;
       std::exit(0);
     } else if (argv[i] == "-h"sv || argv[i] == "--help"sv) {
-      printUsage(*argv);
+      PrintUsage(*argv);
       std::exit(0);
     } else if (std::string_view(argv[i], 2) == "--" && std::string_view(argv[i]).size() > 2 && i + 1 < argc) {
       auto key = std::string_view(argv[i] + 2);
       opts.cli_options.emplace_back(key, argv[++i]);
     } else {
-      printUsage(*argv);
+      PrintUsage(*argv);
       std::exit(1);
     }
   }
@@ -180,7 +180,7 @@ static CLIOptions parseCommandLineOptions(int argc, char **argv) {
   return opts;
 }
 
-static void initGoogleLog(const Config *config) {
+static void InitGoogleLog(const Config *config) {
   FLAGS_minloglevel = config->log_level;
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
@@ -199,7 +199,7 @@ static void initGoogleLog(const Config *config) {
   }
 }
 
-bool supervisedUpstart() {
+bool SupervisedUpstart() {
   const char *upstart_job = getenv("UPSTART_JOB");
   if (!upstart_job) {
     LOG(WARNING) << "upstart supervision requested, but UPSTART_JOB not found";
@@ -211,7 +211,7 @@ bool supervisedUpstart() {
   return true;
 }
 
-bool supervisedSystemd() {
+bool SupervisedSystemd() {
   const char *notify_socket = getenv("NOTIFY_SOCKET");
   if (!notify_socket) {
     LOG(WARNING) << "systemd supervision requested, but NOTIFY_SOCKET not found";
@@ -256,7 +256,7 @@ bool supervisedSystemd() {
   return true;
 }
 
-bool isSupervisedMode(int mode) {
+bool IsSupervisedMode(int mode) {
   if (mode == kSupervisedAutoDetect) {
     const char *upstart_job = getenv("UPSTART_JOB");
     const char *notify_socket = getenv("NOTIFY_SOCKET");
@@ -267,14 +267,14 @@ bool isSupervisedMode(int mode) {
     }
   }
   if (mode == kSupervisedUpStart) {
-    return supervisedUpstart();
+    return SupervisedUpstart();
   } else if (mode == kSupervisedSystemd) {
-    return supervisedSystemd();
+    return SupervisedSystemd();
   }
   return false;
 }
 
-static Status createPidFile(const std::string &path) {
+static Status CreatePidFile(const std::string &path) {
   auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
   if (!fd) {
     return Status::FromErrno();
@@ -289,9 +289,9 @@ static Status createPidFile(const std::string &path) {
   return Status::OK();
 }
 
-static void removePidFile(const std::string &path) { std::remove(path.data()); }
+static void RemovePidFile(const std::string &path) { std::remove(path.data()); }
 
-static void daemonize() {
+static void Daemonize() {
   pid_t pid = fork();
   if (pid < 0) {
     LOG(ERROR) << "Failed to fork the process, err: " << strerror(errno);
@@ -315,9 +315,9 @@ int main(int argc, char *argv[]) {
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
-  setupSigSegvAction();
+  SetupSigSegvAction();
 
-  auto opts = parseCommandLineOptions(argc, argv);
+  auto opts = ParseCommandLineOptions(argc, argv);
 
   Config config;
   Status s = config.Load(opts);
@@ -326,8 +326,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  initGoogleLog(&config);
-  LOG(INFO) << printVersion;
+  InitGoogleLog(&config);
+  LOG(INFO) << PrintVersion;
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
@@ -340,14 +340,14 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  bool is_supervised = isSupervisedMode(config.supervised_mode);
-  if (config.daemonize && !is_supervised) daemonize();
-  s = createPidFile(config.pidfile);
+  bool is_supervised = IsSupervisedMode(config.supervised_mode);
+  if (config.daemonize && !is_supervised) Daemonize();
+  s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     return 1;
   }
-  auto pidfile_exit = MakeScopeExit([&config] { removePidFile(config.pidfile); });
+  auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL

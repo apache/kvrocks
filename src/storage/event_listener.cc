@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
+std::string FileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
   std::vector<std::string> file_created_reason = {"flush", "compaction", "recovery", "misc"};
   if (static_cast<size_t>(reason) < file_created_reason.size()) {
     return file_created_reason[static_cast<size_t>(reason)];
@@ -32,7 +32,7 @@ std::string fileCreatedReason2String(const rocksdb::TableFileCreationReason reas
   return "unknown";
 }
 
-std::string stallConditionType2String(const rocksdb::WriteStallCondition type) {
+std::string StallConditionType2String(const rocksdb::WriteStallCondition type) {
   std::vector<std::string> stall_condition_strings = {"normal", "delay", "stop"};
   if (static_cast<size_t>(type) < stall_condition_strings.size()) {
     return stall_condition_strings[static_cast<size_t>(type)];
@@ -40,7 +40,7 @@ std::string stallConditionType2String(const rocksdb::WriteStallCondition type) {
   return "unknown";
 }
 
-std::string compressType2String(const rocksdb::CompressionType type) {
+std::string CompressType2String(const rocksdb::CompressionType type) {
   std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
       {rocksdb::kNoCompression, "no"},
       {rocksdb::kSnappyCompression, "snappy"},
@@ -59,7 +59,7 @@ std::string compressType2String(const rocksdb::CompressionType type) {
   return iter->second;
 }
 
-bool isDiskQuotaExceeded(const rocksdb::Status &bg_error) {
+bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
   // EDQUOT: Disk quota exceeded (POSIX.1-2001)
   std::string exceeded_quota_str = "Disk quota exceeded";
   std::string err_msg = bg_error.ToString();
@@ -70,7 +70,7 @@ bool isDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
             << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
-            << ", output compression type: " << compressType2String(ci.compression)
+            << ", output compression type: " << CompressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
             << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes
@@ -115,7 +115,7 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
       // Should not arrive here
       break;
   }
-  if ((bg_error->IsNoSpace() || isDiskQuotaExceeded(*bg_error)) &&
+  if ((bg_error->IsNoSpace() || IsDiskQuotaExceeded(*bg_error)) &&
       bg_error->severity() < rocksdb::Status::kFatalError) {
     storage_->SetDBInRetryableIOError(true);
   }
@@ -130,12 +130,12 @@ void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &inf
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
   LOG(WARNING) << "[event_listener/stall_cond_changed] column family: " << info.cf_name
-               << " write stall condition was changed, from " << stallConditionType2String(info.condition.prev)
-               << " to " << stallConditionType2String(info.condition.cur);
+               << " write stall condition was changed, from " << StallConditionType2String(info.condition.prev)
+               << " to " << StallConditionType2String(info.condition.cur);
 }
 
 void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) {
   LOG(INFO) << "[event_listener/table_file_created] column family: " << info.cf_name
             << ", file path: " << info.file_path << ", file size: " << info.file_size << ", job id: " << info.job_id
-            << ", reason: " << fileCreatedReason2String(info.reason) << ", status: " << info.status.ToString();
+            << ", reason: " << FileCreatedReason2String(info.reason) << ", status: " << info.status.ToString();
 }

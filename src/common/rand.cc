@@ -50,7 +50,7 @@
 
 #include <stdint.h>
 
-namespace redis_rand {
+namespace redis_rand_impl {
 
 constexpr const int N = 16;
 constexpr const int MASK = ((1 << (N - 1)) + (1 << (N - 1)) - 1);
@@ -125,15 +125,15 @@ static void Next() {
   x[0] = LOW(p[0]);
 }
 
-}  // namespace redis_rand
+}  // namespace redis_rand_impl
 
 int32_t RedisLrand48() {
-  using namespace redis_rand;
+  using namespace redis_rand_impl;
   Next();
   return static_cast<int32_t>(x[2] << (N - 1)) + static_cast<int32_t>(x[1] >> 1);
 }
 
 void RedisSrand48(int32_t seedval) {
-  using namespace redis_rand;
+  using namespace redis_rand_impl;
   SEED(X0, static_cast<uint32_t>(LOW(seedval)), static_cast<uint32_t>(HIGH(seedval)));
 }

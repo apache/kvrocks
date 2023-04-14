@@ -150,11 +150,11 @@ TEST(Cluster, CluseterGetSlotInfo) {
   ASSERT_TRUE(s.IsOK());
   ASSERT_TRUE(slots_infos.size() == 1);
   SlotInfo info = slots_infos[0];
-  ASSERT_TRUE(info.start == 5461);
-  ASSERT_TRUE(info.end == 10922);
-  ASSERT_TRUE(info.nodes.size() == 2);
-  ASSERT_TRUE(info.nodes[0].port == 30002);
-  ASSERT_TRUE(info.nodes[1].id == "07c37dfeb235213a872192d90877d0cd55635b91");
+  ASSERT_TRUE(info.start_ == 5461);
+  ASSERT_TRUE(info.end_ == 10922);
+  ASSERT_TRUE(info.nodes_.size() == 2);
+  ASSERT_TRUE(info.nodes_[0].port_ == 30002);
+  ASSERT_TRUE(info.nodes_[1].id_ == "07c37dfeb235213a872192d90877d0cd55635b91");
 }
 
 TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
@@ -181,17 +181,17 @@ TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
   ASSERT_TRUE(s.IsOK());
   ASSERT_EQ(2, slots_infos.size());
   SlotInfo slot0_info = slots_infos[0];
-  ASSERT_EQ(5461, slot0_info.start);
-  ASSERT_EQ(10922, slot0_info.end);
-  ASSERT_EQ(2, slot0_info.nodes.size());
-  ASSERT_EQ(30002, slot0_info.nodes[0].port);
-  ASSERT_EQ("07c37dfeb235213a872192d90877d0cd55635b91", slot0_info.nodes[1].id);
+  ASSERT_EQ(5461, slot0_info.start_);
+  ASSERT_EQ(10922, slot0_info.end_);
+  ASSERT_EQ(2, slot0_info.nodes_.size());
+  ASSERT_EQ(30002, slot0_info.nodes_[0].port_);
+  ASSERT_EQ("07c37dfeb235213a872192d90877d0cd55635b91", slot0_info.nodes_[1].id_);
   SlotInfo slot1_info = slots_infos[1];
-  ASSERT_EQ(10923, slot1_info.start);
-  ASSERT_EQ(16383, slot1_info.end);
-  ASSERT_EQ(1, slot1_info.nodes.size());
-  ASSERT_EQ(30003, slot1_info.nodes[0].port);
-  ASSERT_EQ("17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1", slot1_info.nodes[0].id);
+  ASSERT_EQ(10923, slot1_info.start_);
+  ASSERT_EQ(16383, slot1_info.end_);
+  ASSERT_EQ(1, slot1_info.nodes_.size());
+  ASSERT_EQ(30003, slot1_info.nodes_[0].port_);
+  ASSERT_EQ("17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1", slot1_info.nodes_[0].id_);
 
   unlink(nodes_filename.c_str());
 }

@@ -48,29 +48,29 @@
 #include "worker.h"
 
 struct DBScanInfo {
-  time_t last_scan_time = 0;
-  KeyNumStats key_num_stats;
-  bool is_scanning = false;
+  time_t last_scan_time_ = 0;
+  KeyNumStats key_num_stats_;
+  bool is_scanning_ = false;
 };
 
 struct ConnContext {
-  Worker *owner;
-  int fd;
-  ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
+  Worker *owner_;
+  int fd_;
+  ConnContext(Worker *w, int fd) : owner_(w), fd_(fd) {}
 };
 
 struct StreamConsumer {
-  Worker *owner;
-  int fd;
-  std::string ns;
-  Redis::StreamEntryID last_consumed_id;
+  Worker *owner_;
+  int fd_;
+  std::string ns_;
+  Redis::StreamEntryID last_consumed_id_;
   StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id)
-      : owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
+      : owner_(w), fd_(fd), ns_(std::move(ns)), last_consumed_id_(id) {}
 };
 
 struct ChannelSubscribeNum {
-  std::string channel;
-  size_t subscribe_num;
+  std::string channel_;
+  size_t subscribe_num_;
 };
 
 enum SlowLog {

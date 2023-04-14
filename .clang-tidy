@@ -29,9 +29,7 @@ CheckOptions:
   #   value:         camelBack
   - key:           readability-identifier-naming.LocalConstantCase
     value:         aNy_CasE  # FIXME: use a more strictly case
-  - key:           readability-identifier-naming.ClassMemberCase
+  - key:           readability-identifier-naming.MemberCase
     value:         lower_case
-  - key:           readability-identifier-naming.ClassMemberSuffix
+  - key:           readability-identifier-naming.MemberSuffix
     value:         _
-  - key:           readability-identifier-naming.ClassConstantCase
-    value:         aNy_CasE  # FIXME: use a more strictly case

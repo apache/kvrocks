@@ -35,14 +35,14 @@ enum class AuthResult {
 };
 
 AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string &user_password) {
-  auto iter = config->tokens.find(user_password);
-  if (iter != config->tokens.end()) {
+  auto iter = config->tokens_.find(user_password);
+  if (iter != config->tokens_.end()) {
     conn->SetNamespace(iter->second);
     conn->BecomeUser();
     return AuthResult::OK;
   }
 
-  const auto &requirepass = config->requirepass;
+  const auto &requirepass = config->requirepass_;
   if (!requirepass.empty() && user_password != requirepass) {
     return AuthResult::INVALID_PASSWORD;
   }
@@ -90,13 +90,13 @@ class CommandNamespace : public Commander {
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
-        auto tokens = config->tokens;
+        auto tokens = config->tokens_;
         for (auto &token : tokens) {
           namespaces.emplace_back(token.second);  // namespace
           namespaces.emplace_back(token.first);   // token
         }
         namespaces.emplace_back(kDefaultNamespace);
-        namespaces.emplace_back(config->requirepass);
+        namespaces.emplace_back(config->requirepass_);
         *output = Redis::MultiBulkString(namespaces, false);
       } else {
         std::string token;
@@ -152,7 +152,7 @@ class CommandKeys : public Commander {
 class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled) {
+    if (svr->GetConfig()->cluster_enabled_) {
       if (svr->slot_migrator_->IsMigrationInProgress()) {
         svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
@@ -178,7 +178,7 @@ class CommandFlushAll : public Commander {
       return Status::OK();
     }
 
-    if (svr->GetConfig()->cluster_enabled) {
+    if (svr->GetConfig()->cluster_enabled_) {
       if (svr->slot_migrator_->IsMigrationInProgress()) {
         svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
@@ -313,7 +313,7 @@ class CommandDBSize : public Commander {
     if (args_.size() == 1) {
       KeyNumStats stats;
       svr->GetLatestKeyNumStats(ns, &stats);
-      *output = Redis::Integer(stats.n_key);
+      *output = Redis::Integer(stats.n_key_);
     } else if (args_.size() == 2 && args_[1] == "scan") {
       Status s = svr->AsyncScanDBSize(ns);
       if (s.IsOK()) {
@@ -697,7 +697,7 @@ class CommandHello final : public Commander {
 
     output_list.push_back(Redis::BulkString("mode"));
     // Note: sentinel is not supported in kvrocks.
-    if (svr->GetConfig()->cluster_enabled) {
+    if (svr->GetConfig()->cluster_enabled_) {
       output_list.push_back(Redis::BulkString("cluster"));
     } else {
       output_list.push_back(Redis::BulkString("standalone"));
@@ -751,7 +751,7 @@ class CommandScan : public CommandScanBase {
     Redis::Database redis_db(svr->storage_, conn->GetNamespace());
     std::vector<std::string> keys;
     std::string end_cursor;
-    auto s = redis_db.Scan(cursor, limit, prefix, &keys, &end_cursor);
+    auto s = redis_db.Scan(cursor_, limit_, prefix_, &keys, &end_cursor);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -859,11 +859,11 @@ class CommandSlaveOf : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled) {
+    if (svr->GetConfig()->cluster_enabled_) {
       return {Status::RedisExecErr, "can't change to slave in cluster mode"};
     }
 
-    if (svr->GetConfig()->RocksDB.write_options.disable_WAL) {
+    if (svr->GetConfig()->rocks_db_.write_options_.disable_wal_) {
       return {Status::RedisExecErr, "slaveof doesn't work with disable_wal option"};
     }
 
@@ -880,7 +880,7 @@ class CommandSlaveOf : public Commander {
 
       *output = Redis::SimpleString("OK");
       LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-      if (svr->GetConfig()->cluster_enabled) {
+      if (svr->GetConfig()->cluster_enabled_) {
         svr->slot_migrator_->SetStopMigrationFlag(false);
         LOG(INFO) << "Change server role to master, restart migration task";
       }
@@ -893,7 +893,7 @@ class CommandSlaveOf : public Commander {
       *output = Redis::SimpleString("OK");
       LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
                    << "')";
-      if (svr->GetConfig()->cluster_enabled) {
+      if (svr->GetConfig()->cluster_enabled_) {
         svr->slot_migrator_->SetStopMigrationFlag(true);
         LOG(INFO) << "Change server role to slave, stop migration task";
       }

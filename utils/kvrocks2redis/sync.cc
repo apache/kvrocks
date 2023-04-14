@@ -64,10 +64,10 @@ void Sync::Start() {
 
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
+    auto sock_fd = Util::SockConnect(config_->kvrocks_host_, config_->kvrocks_port_);
     if (!sock_fd) {
-      LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host,
-                                config_->kvrocks_port, sock_fd.Msg());
+      LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host_,
+                                config_->kvrocks_port_, sock_fd.Msg());
       usleep(10000);
       continue;
     }
@@ -106,8 +106,8 @@ void Sync::Stop() {
 
 Status Sync::auth() {
   // Send auth when needed
-  if (!config_->kvrocks_auth.empty()) {
-    const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
+  if (!config_->kvrocks_auth_.empty()) {
+    const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth_});
     auto s = Util::SockSend(sock_fd_, auth_command);
     if (!s) return s.Prefixed("send auth command err");
     std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
@@ -164,7 +164,7 @@ Status Sync::incrementBatchLoop() {
         usleep(10000);
         continue;
       }
-      incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
+      incr_bulk_len_ = line.length_ > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
       if (incr_bulk_len_ == 0) {
         return {Status::NotOK, "[kvrocks2redis] Invalid increment data size"};
       }
@@ -203,7 +203,7 @@ Status Sync::incrementBatchLoop() {
 
 void Sync::parseKVFromLocalStorage() {
   LOG(INFO) << "[kvrocks2redis] Start parsing kv from the local storage";
-  for (const auto &iter : config_->tokens) {
+  for (const auto &iter : config_->tokens_) {
     auto s = writer_->FlushDB(iter.first);
     if (!s.IsOK()) {
       LOG(ERROR) << "[kvrocks2redis] Failed to flush target redis db in namespace: " << iter.first
@@ -230,7 +230,7 @@ Status Sync::updateNextSeq(rocksdb::SequenceNumber seq) {
 }
 
 Status Sync::readNextSeqFromFile(rocksdb::SequenceNumber *seq) {
-  next_seq_fd_ = open(config_->next_seq_file_path.data(), O_RDWR | O_CREAT, 0666);
+  next_seq_fd_ = open(config_->next_seq_file_path_.data(), O_RDWR | O_CREAT, 0666);
   if (next_seq_fd_ < 0) {
     return {Status::NotOK, std::string("Failed to open next seq file :") + strerror(errno)};
   }

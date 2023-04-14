@@ -25,13 +25,19 @@
 #include "status.h"
 
 struct CommonRangeLexSpec {
-  std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int64_t offset, count;
-  bool removed, reversed;
+  std::string min_, max_;
+  bool minex_, maxex_; /* are min or max exclusive */
+  bool max_infinite_;  /* are max infinite */
+  int64_t offset_, count_;
+  bool removed_, reversed_;
   CommonRangeLexSpec()
-      : minex(false), maxex(false), max_infinite(false), offset(-1), count(-1), removed(false), reversed(false) {}
+      : minex_(false),
+        maxex_(false),
+        max_infinite_(false),
+        offset_(-1),
+        count_(-1),
+        removed_(false),
+        reversed_(false) {}
 };
 
 Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);

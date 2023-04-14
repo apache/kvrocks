@@ -197,7 +197,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   for (auto &n : nodes_) {
     if (n.second->role_ == kClusterSlave) {
       if (nodes_.find(n.second->master_id_) != nodes_.end()) {
-        nodes_[n.second->master_id_]->replicas.push_back(n.first);
+        nodes_[n.second->master_id_]->replicas_.push_back(n.first);
       }
     }
     if (n.second->role_ == kClusterMaster && n.second->slots_.count() > 0) {
@@ -323,8 +323,8 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
 
   const auto dst = nodes_[dst_node_id];
   Status s = svr_->slot_migrator_->PerformSlotMigration(
-      dst_node_id, dst->host_, dst->port_, slot, svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
-      svr_->GetConfig()->sequence_gap);
+      dst_node_id, dst->host_, dst->port_, slot, svr_->GetConfig()->migrate_speed_, svr_->GetConfig()->pipeline_size_,
+      svr_->GetConfig()->sequence_gap_);
   return s;
 }
 
@@ -470,7 +470,7 @@ SlotInfo Cluster::GenSlotNodeInfo(int start, int end, const std::shared_ptr<Clus
   std::vector<SlotInfo::NodeInfo> vn;
   vn.push_back({n->host_, n->port_, n->id_});  // itself
 
-  for (const auto &id : n->replicas) {  // replicas
+  for (const auto &id : n->replicas_) {  // replicas
     if (nodes_.find(id) == nodes_.end()) continue;
     vn.push_back({nodes_[id]->host_, nodes_[id]->port_, nodes_[id]->id_});
   }
@@ -765,7 +765,7 @@ bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator_->GetF
 Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 Redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = Redis::GetKeysFromCommand(attributes->name, static_cast<int>(cmd_tokens.size()), &keys_indexes);
+  auto s = Redis::GetKeysFromCommand(attributes->name_, static_cast<int>(cmd_tokens.size()), &keys_indexes);
   // No keys
   if (!s.IsOK()) return Status::OK();
 

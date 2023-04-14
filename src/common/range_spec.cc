@@ -26,29 +26,29 @@ Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonR
   }
 
   if (min == "-") {
-    spec->min = "";
+    spec->min_ = "";
   } else {
     if (min[0] == '(') {
-      spec->minex = true;
+      spec->minex_ = true;
     } else if (min[0] == '[') {
-      spec->minex = false;
+      spec->minex_ = false;
     } else {
       return {Status::NotOK, "the min is illegal"};
     }
-    spec->min = min.substr(1);
+    spec->min_ = min.substr(1);
   }
 
   if (max == "+") {
-    spec->max_infinite = true;
+    spec->max_infinite_ = true;
   } else {
     if (max[0] == '(') {
-      spec->maxex = true;
+      spec->maxex_ = true;
     } else if (max[0] == '[') {
-      spec->maxex = false;
+      spec->maxex_ = false;
     } else {
       return {Status::NotOK, "the max is illegal"};
     }
-    spec->max = max.substr(1);
+    spec->max_ = max.substr(1);
   }
   return Status::OK();
 }

@@ -133,18 +133,18 @@ class CommandXAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::StreamAddOptions options;
-    options.nomkstream = nomkstream_;
+    options.nomkstream_ = nomkstream_;
     if (with_max_len_) {
-      options.trim_options.strategy = StreamTrimStrategy::MaxLen;
-      options.trim_options.max_len = max_len_;
+      options.trim_options_.strategy_ = StreamTrimStrategy::MaxLen;
+      options.trim_options_.max_len_ = max_len_;
     }
     if (with_min_id_) {
-      options.trim_options.strategy = StreamTrimStrategy::MinID;
-      options.trim_options.min_id = min_id_;
+      options.trim_options_.strategy_ = StreamTrimStrategy::MinID;
+      options.trim_options_.min_id_ = min_id_;
     }
     if (with_entry_id_) {
-      options.with_entry_id = true;
-      options.entry_id = entry_id_;
+      options.with_entry_id_ = true;
+      options.entry_id_ = entry_id_;
     }
 
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
@@ -218,12 +218,12 @@ class CommandXLen : public Commander {
       auto s = Redis::ParseStreamEntryID(args[2], &id);
       if (!s.IsOK()) return s;
 
-      options_.with_entry_id = true;
-      options_.entry_id = id;
+      options_.with_entry_id_ = true;
+      options_.entry_id_ = id;
 
       if (args.size() > 3) {
         if (args[3] == "-") {
-          options_.to_first = true;
+          options_.to_first_ = true;
         } else if (args[3] != "+") {
           return {Status::RedisParseErr, errInvalidSyntax};
         }
@@ -303,39 +303,39 @@ class CommandXInfo : public Commander {
       output->append(Redis::MultiLen(12));
     }
     output->append(Redis::BulkString("length"));
-    output->append(Redis::Integer(info.size));
+    output->append(Redis::Integer(info.size_));
     output->append(Redis::BulkString("last-generated-id"));
-    output->append(Redis::BulkString(info.last_generated_id.ToString()));
+    output->append(Redis::BulkString(info.last_generated_id_.ToString()));
     output->append(Redis::BulkString("max-deleted-entry-id"));
-    output->append(Redis::BulkString(info.max_deleted_entry_id.ToString()));
+    output->append(Redis::BulkString(info.max_deleted_entry_id_.ToString()));
     output->append(Redis::BulkString("entries-added"));
-    output->append(Redis::Integer(info.entries_added));
+    output->append(Redis::Integer(info.entries_added_));
     output->append(Redis::BulkString("recorded-first-entry-id"));
-    output->append(Redis::BulkString(info.recorded_first_entry_id.ToString()));
+    output->append(Redis::BulkString(info.recorded_first_entry_id_.ToString()));
     if (!full_) {
       output->append(Redis::BulkString("first-entry"));
-      if (info.first_entry) {
+      if (info.first_entry_) {
         output->append(Redis::MultiLen(2));
-        output->append(Redis::BulkString(info.first_entry->key));
-        output->append(Redis::MultiBulkString(info.first_entry->values));
+        output->append(Redis::BulkString(info.first_entry_->key_));
+        output->append(Redis::MultiBulkString(info.first_entry_->values_));
       } else {
         output->append(Redis::NilString());
       }
       output->append(Redis::BulkString("last-entry"));
-      if (info.last_entry) {
+      if (info.last_entry_) {
         output->append(Redis::MultiLen(2));
-        output->append(Redis::BulkString(info.last_entry->key));
-        output->append(Redis::MultiBulkString(info.last_entry->values));
+        output->append(Redis::BulkString(info.last_entry_->key_));
+        output->append(Redis::MultiBulkString(info.last_entry_->values_));
       } else {
         output->append(Redis::NilString());
       }
     } else {
       output->append(Redis::BulkString("entries"));
-      output->append(Redis::MultiLen(info.entries.size()));
-      for (const auto &e : info.entries) {
+      output->append(Redis::MultiLen(info.entries_.size()));
+      for (const auto &e : info.entries_) {
         output->append(Redis::MultiLen(2));
-        output->append(Redis::BulkString(e.key));
-        output->append(Redis::MultiBulkString(e.values));
+        output->append(Redis::BulkString(e.key_));
+        output->append(Redis::MultiBulkString(e.values_));
       }
     }
 
@@ -401,13 +401,13 @@ class CommandXRange : public Commander {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
 
     Redis::StreamRangeOptions options;
-    options.reverse = false;
-    options.start = start_;
-    options.end = end_;
-    options.with_count = with_count_;
-    options.count = count_;
-    options.exclude_start = exclude_start_;
-    options.exclude_end = exclude_end_;
+    options.reverse_ = false;
+    options.start_ = start_;
+    options.end_ = end_;
+    options.with_count_ = with_count_;
+    options.count_ = count_;
+    options.exclude_start_ = exclude_start_;
+    options.exclude_end_ = exclude_end_;
 
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
@@ -419,8 +419,8 @@ class CommandXRange : public Commander {
 
     for (const auto &e : result) {
       output->append(Redis::MultiLen(2));
-      output->append(Redis::BulkString(e.key));
-      output->append(Redis::MultiBulkString(e.values));
+      output->append(Redis::BulkString(e.key_));
+      output->append(Redis::MultiBulkString(e.values_));
     }
 
     return Status::OK();
@@ -494,13 +494,13 @@ class CommandXRevRange : public Commander {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
 
     Redis::StreamRangeOptions options;
-    options.reverse = true;
-    options.start = start_;
-    options.end = end_;
-    options.with_count = with_count_;
-    options.count = count_;
-    options.exclude_start = exclude_start_;
-    options.exclude_end = exclude_end_;
+    options.reverse_ = true;
+    options.start_ = start_;
+    options.end_ = end_;
+    options.with_count_ = with_count_;
+    options.count_ = count_;
+    options.exclude_start_ = exclude_start_;
+    options.exclude_end_ = exclude_end_;
 
     std::vector<StreamEntry> result;
     auto s = stream_db.Range(stream_name_, options, &result);
@@ -512,8 +512,8 @@ class CommandXRevRange : public Commander {
 
     for (const auto &e : result) {
       output->append(Redis::MultiLen(2));
-      output->append(Redis::BulkString(e.key));
-      output->append(Redis::MultiBulkString(e.values));
+      output->append(Redis::BulkString(e.key_));
+      output->append(Redis::MultiBulkString(e.values_));
     }
 
     return Status::OK();
@@ -622,13 +622,13 @@ class CommandXRead : public Commander {
       }
 
       Redis::StreamRangeOptions options;
-      options.reverse = false;
-      options.start = ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
-      options.with_count = with_count_;
-      options.count = count_;
-      options.exclude_start = true;
-      options.exclude_end = false;
+      options.reverse_ = false;
+      options.start_ = ids_[i];
+      options.end_ = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.with_count_ = with_count_;
+      options.count_ = count_;
+      options.exclude_start_ = true;
+      options.exclude_end_ = false;
 
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
@@ -663,12 +663,12 @@ class CommandXRead : public Commander {
 
     for (const auto &result : results) {
       output->append(Redis::MultiLen(2));
-      output->append(Redis::BulkString(result.name));
-      output->append(Redis::MultiLen(result.entries.size()));
-      for (const auto &entry : result.entries) {
+      output->append(Redis::BulkString(result.name_));
+      output->append(Redis::MultiLen(result.entries_.size()));
+      for (const auto &entry : result.entries_) {
         output->append(Redis::MultiLen(2));
-        output->append(Redis::BulkString(entry.key));
-        output->append(Redis::MultiBulkString(entry.values));
+        output->append(Redis::BulkString(entry.key_));
+        output->append(Redis::MultiBulkString(entry.values_));
       }
     }
 
@@ -737,20 +737,20 @@ class CommandXRead : public Commander {
 
     for (size_t i = 0; i < command->streams_.size(); ++i) {
       Redis::StreamRangeOptions options;
-      options.reverse = false;
-      options.start = command->ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
-      options.with_count = command->with_count_;
-      options.count = command->count_;
-      options.exclude_start = true;
-      options.exclude_end = false;
+      options.reverse_ = false;
+      options.start_ = command->ids_[i];
+      options.end_ = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.with_count_ = command->with_count_;
+      options.count_ = command->count_;
+      options.exclude_start_ = true;
+      options.exclude_end_ = false;
 
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(command->streams_[i], options, &result);
       if (!s.ok()) {
         command->conn_->Reply(Redis::MultiLen(-1));
         LOG(ERROR) << "ERR executing XRANGE for stream " << command->streams_[i] << " from "
-                   << command->ids_[i].ToString() << " to " << options.end.ToString() << " with count "
+                   << command->ids_[i].ToString() << " to " << options.end_.ToString() << " with count "
                    << command->count_ << ": " << s.ToString();
       }
 
@@ -773,12 +773,12 @@ class CommandXRead : public Commander {
 
     for (const auto &result : results) {
       output.append(Redis::MultiLen(2));
-      output.append(Redis::BulkString(result.name));
-      output.append(Redis::MultiLen(result.entries.size()));
-      for (const auto &entry : result.entries) {
+      output.append(Redis::BulkString(result.name_));
+      output.append(Redis::MultiLen(result.entries_.size()));
+      for (const auto &entry : result.entries_) {
         output.append(Redis::MultiLen(2));
-        output.append(Redis::BulkString(entry.key));
-        output.append(Redis::MultiBulkString(entry.values));
+        output.append(Redis::BulkString(entry.key_));
+        output.append(Redis::MultiBulkString(entry.values_));
       }
     }
 
@@ -902,9 +902,9 @@ class CommandXTrim : public Commander {
     Redis::Stream stream_db(svr->storage_, conn->GetNamespace());
 
     StreamTrimOptions options;
-    options.strategy = strategy_;
-    options.max_len = max_len_;
-    options.min_id = min_id_;
+    options.strategy_ = strategy_;
+    options.max_len_ = max_len_;
+    options.min_id_ = min_id_;
 
     uint64_t removed = 0;
     auto s = stream_db.Trim(args_[1], options, &removed);
@@ -953,7 +953,7 @@ class CommandXSetId : public Commander {
           return {Status::RedisParseErr, s.Msg()};
         }
 
-        max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms, id.seq);
+        max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms_, id.seq_);
         i += 2;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};

@@ -51,14 +51,14 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
-    InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, id_buf, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *ret += 1;
   }
   if (*ret > 0) {
-    metadata.size += *ret;
+    metadata.size_ += *ret;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -84,14 +84,14 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
-    InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, id_buf, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *ret += 1;
   }
   if (*ret == 0) return rocksdb::Status::OK();
-  metadata.size -= *ret;
+  metadata.size_ -= *ret;
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -106,7 +106,7 @@ rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
   SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = static_cast<int>(metadata.size);
+  *ret = static_cast<int>(metadata.size_);
   return rocksdb::Status::OK();
 }
 
@@ -127,9 +127,9 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
     start_id = std::numeric_limits<uint64_t>::max();
   }
   PutFixed64(&start_buf, start_id);
-  InternalKey(ns_key, start_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  InternalKey(ns_key, start_buf, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -167,10 +167,10 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_buf, start_key, prefix_key, next_version_prefix_key;
-  PutFixed64(&start_buf, spec.reversed ? spec.max : spec.min);
-  InternalKey(ns_key, start_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  PutFixed64(&start_buf, spec.reversed_ ? spec.max_ : spec.min_);
+  InternalKey(ns_key, start_buf, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&start_key);
+  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -183,28 +183,28 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
 
   int pos = 0;
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
-  if (!spec.reversed) {
+  if (!spec.reversed_) {
     iter->Seek(start_key);
   } else {
     iter->SeekForPrev(start_key);
   }
 
   uint64_t id = 0;
-  for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed ? iter->Next() : iter->Prev()) {
+  for (; iter->Valid() && iter->key().starts_with(prefix_key); !spec.reversed_ ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
     GetFixed64(&sub_key, &id);
-    if (spec.reversed) {
-      if ((spec.minex && id == spec.min) || id < spec.min) break;
-      if ((spec.maxex && id == spec.max) || id > spec.max) continue;
+    if (spec.reversed_) {
+      if ((spec.minex_ && id == spec.min_) || id < spec.min_) break;
+      if ((spec.maxex_ && id == spec.max_) || id > spec.max_) continue;
     } else {
-      if ((spec.minex && id == spec.min) || id < spec.min) continue;
-      if ((spec.maxex && id == spec.max) || id > spec.max) break;
+      if ((spec.minex_ && id == spec.min_) || id < spec.min_) continue;
+      if ((spec.maxex_ && id == spec.max_) || id > spec.max_) break;
     }
-    if (spec.offset >= 0 && pos++ < spec.offset) continue;
+    if (spec.offset_ >= 0 && pos++ < spec.offset_) continue;
     if (ids) ids->emplace_back(id);
     if (size) *size += 1;
-    if (spec.count > 0 && ids && ids->size() >= static_cast<unsigned>(spec.count)) break;
+    if (spec.count_ > 0 && ids && ids->size() >= static_cast<unsigned>(spec.count_)) break;
   }
   return rocksdb::Status::OK();
 }
@@ -224,7 +224,7 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
-    InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, id_buf, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
@@ -242,33 +242,33 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
   }
 
   if (min == "-inf") {
-    spec->min = std::numeric_limits<uint64_t>::lowest();
+    spec->min_ = std::numeric_limits<uint64_t>::lowest();
   } else {
     const char *sptr = min.data();
     if (!min.empty() && min[0] == '(') {
-      spec->minex = true;
+      spec->minex_ = true;
       sptr++;
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
       return {Status::NotOK, "the min isn't integer"};
     }
-    spec->min = *parse_result;
+    spec->min_ = *parse_result;
   }
 
   if (max == "+inf") {
-    spec->max = std::numeric_limits<uint64_t>::max();
+    spec->max_ = std::numeric_limits<uint64_t>::max();
   } else {
     const char *sptr = max.data();
     if (!max.empty() && max[0] == '(') {
-      spec->maxex = true;
+      spec->maxex_ = true;
       sptr++;
     }
     auto parse_result = ParseInt<uint64_t>(sptr, 10);
     if (!parse_result) {
       return {Status::NotOK, "the max isn't integer"};
     }
-    spec->max = *parse_result;
+    spec->max_ = *parse_result;
   }
   return Status::OK();
 }

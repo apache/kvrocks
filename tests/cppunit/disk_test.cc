@@ -138,9 +138,9 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::vector<MemberScore> mscores(5);
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
   for (int i = 0; i < int(value_size.size()); i++) {
-    mscores[i].member_ = std::string(value_size[i], static_cast<char>('a' + i));
-    mscores[i].score_ = 1.0;
-    approximate_size += (key_.size() + 8 + mscores[i].member_.size() + 8) * 2;
+    mscores[i].member = std::string(value_size[i], static_cast<char>('a' + i));
+    mscores[i].score = 1.0;
+    approximate_size += (key_.size() + 8 + mscores[i].member.size() + 8) * 2;
   }
   rocksdb::Status s = zset->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
@@ -190,7 +190,7 @@ TEST_F(RedisDiskTest, StreamDisk) {
   std::unique_ptr<Redis::Disk> disk = std::make_unique<Redis::Disk>(storage_, "disk_ns_stream");
   key_ = "streamdisk_key";
   Redis::StreamAddOptions options;
-  options.with_entry_id_ = false;
+  options.with_entry_id = false;
   Redis::StreamEntryID id;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {

@@ -30,8 +30,8 @@ std::string SlowEntry::ToRedisString() const {
   output.append(Redis::MultiLen(4));
   output.append(Redis::Integer(id_));
   output.append(Redis::Integer(time_));
-  output.append(Redis::Integer(duration_));
-  output.append(Redis::MultiBulkString(args_));
+  output.append(Redis::Integer(duration));
+  output.append(Redis::MultiBulkString(args));
   return output;
 }
 
@@ -40,10 +40,10 @@ std::string PerfEntry::ToRedisString() const {
   output.append(Redis::MultiLen(6));
   output.append(Redis::Integer(id_));
   output.append(Redis::Integer(time_));
-  output.append(Redis::BulkString(cmd_name_));
-  output.append(Redis::Integer(duration_));
-  output.append(Redis::BulkString(perf_context_));
-  output.append(Redis::BulkString(iostats_context_));
+  output.append(Redis::BulkString(cmd_name));
+  output.append(Redis::Integer(duration));
+  output.append(Redis::BulkString(perf_context));
+  output.append(Redis::BulkString(iostats_context));
   return output;
 }
 

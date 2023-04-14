@@ -73,10 +73,10 @@ constexpr const char *kErrMsgKeyExpired = "the key was expired";
 using rocksdb::Slice;
 
 struct KeyNumStats {
-  uint64_t n_key_ = 0;
-  uint64_t n_expires_ = 0;
-  uint64_t n_expired_ = 0;
-  uint64_t avg_ttl_ = 0;
+  uint64_t n_key = 0;
+  uint64_t n_expires = 0;
+  uint64_t n_expired = 0;
+  uint64_t avg_ttl = 0;
 };
 
 void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
@@ -115,16 +115,16 @@ class Metadata {
   // 64bit-common-field-indicator: make `expire` and `size` 64bit instead of 32bit
   // NOTE: `expire` is stored in milliseconds for 64bit, seconds for 32bit
   // redis-type: RedisType for the key-value
-  uint8_t flags_;
+  uint8_t flags;
 
   // expire timestamp, in milliseconds
-  uint64_t expire_;
+  uint64_t expire;
 
   // the current version: 53bit timestamp + 11bit counter
-  uint64_t version_;
+  uint64_t version;
 
   // element size of the key-value
-  uint64_t size_;
+  uint64_t size;
 
   explicit Metadata(RedisType type, bool generate_version = true,
                     bool use_64bit_common_field = USE_64BIT_COMMON_FIELD_DEFAULT);
@@ -181,8 +181,8 @@ class SortedintMetadata : public Metadata {
 
 class ListMetadata : public Metadata {
  public:
-  uint64_t head_;
-  uint64_t tail_;
+  uint64_t head;
+  uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
 
   void Encode(std::string *dst) override;
@@ -191,12 +191,12 @@ class ListMetadata : public Metadata {
 
 class StreamMetadata : public Metadata {
  public:
-  Redis::StreamEntryID last_generated_id_;
-  Redis::StreamEntryID recorded_first_entry_id_;
-  Redis::StreamEntryID max_deleted_entry_id_;
-  Redis::StreamEntryID first_entry_id_;
-  Redis::StreamEntryID last_entry_id_;
-  uint64_t entries_added_ = 0;
+  Redis::StreamEntryID last_generated_id;
+  Redis::StreamEntryID recorded_first_entry_id;
+  Redis::StreamEntryID max_deleted_entry_id;
+  Redis::StreamEntryID first_entry_id;
+  Redis::StreamEntryID last_entry_id;
+  uint64_t entries_added = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 

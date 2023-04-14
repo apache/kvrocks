@@ -51,11 +51,11 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata->Type() != type &&
-      (metadata->size_ > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
+      (metadata->size > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
     metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
-  if (metadata->size_ == 0 && type != kRedisStream) {  // stream is allowed to be empty
+  if (metadata->size == 0 && type != kRedisStream) {  // stream is allowed to be empty
     metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no elements");
   }
@@ -88,10 +88,10 @@ rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata.Type() != kRedisString && metadata.size_ == 0) {
+  if (metadata.Type() != kRedisString && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
-  if (metadata.expire_ == timestamp) return rocksdb::Status::OK();
+  if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
   // +1 to skip the flags
   if (metadata.Is64BitEncoded()) {
@@ -196,14 +196,14 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
       value = iter->value().ToString();
       metadata.Decode(value);
       if (metadata.Expired()) {
-        if (stats) stats->n_expired_++;
+        if (stats) stats->n_expired++;
         continue;
       }
       if (stats) {
         int64_t ttl = metadata.TTL();
-        stats->n_key_++;
+        stats->n_key++;
         if (ttl != -1) {
-          stats->n_expires_++;
+          stats->n_expires++;
           if (ttl > 0) ttl_sum += ttl;
         }
       }
@@ -222,8 +222,8 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
     ns_prefix.append(prefix);
   }
 
-  if (stats && stats->n_expires_ > 0) {
-    stats->avg_ttl_ = ttl_sum / stats->n_expires_ / 1000;
+  if (stats && stats->n_expires > 0) {
+    stats->avg_ttl = ttl_sum / stats->n_expires / 1000;
   }
 }
 
@@ -401,13 +401,13 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   infos->emplace_back("type");
   infos->emplace_back(RedisTypeNames[metadata.Type()]);
   infos->emplace_back("version");
-  infos->emplace_back(std::to_string(metadata.version_));
+  infos->emplace_back(std::to_string(metadata.version));
   infos->emplace_back("expire");
-  infos->emplace_back(std::to_string(Metadata::ExpireMsToS(metadata.expire_)));
+  infos->emplace_back(std::to_string(Metadata::ExpireMsToS(metadata.expire)));
   infos->emplace_back("pexpire");
-  infos->emplace_back(std::to_string(metadata.expire_));
+  infos->emplace_back(std::to_string(metadata.expire));
   infos->emplace_back("size");
-  infos->emplace_back(std::to_string(metadata.size_));
+  infos->emplace_back(std::to_string(metadata.size));
   infos->emplace_back("is_64bit_common_field");
   infos->emplace_back(std::to_string(metadata.Is64BitEncoded()));
 
@@ -426,9 +426,9 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
     GetMetadata(kRedisList, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
-    infos->emplace_back(std::to_string(list_metadata.head_));
+    infos->emplace_back(std::to_string(list_metadata.head));
     infos->emplace_back("tail");
-    infos->emplace_back(std::to_string(list_metadata.tail_));
+    infos->emplace_back(std::to_string(list_metadata.tail));
   }
 
   return rocksdb::Status::OK();
@@ -581,14 +581,14 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   auto iter = DBUtil::UniqueIterator(storage_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {
-    InternalKey(ns_key, subkey_prefix, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
+    InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
   } else {
-    InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
+    InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&match_prefix_key);
   }
 
   std::string start_key;
   if (!cursor.empty()) {
-    InternalKey(ns_key, cursor, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&start_key);
+    InternalKey(ns_key, cursor, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
   } else {
     start_key = match_prefix_key;
   }

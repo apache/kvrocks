@@ -92,43 +92,43 @@ using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 struct CommandKeyRange {
   // index of the first key in command tokens
   // 0 stands for no key, since the first index of command arguments is command name
-  int first_key_;
+  int first_key;
 
   // index of the last key in command tokens
   // in normal one-key commands, first key and last key index are both 1
   // -n stands for the n-th last index of the sequence, i.e. args.size() - n
-  int last_key_;
+  int last_key;
 
   // step length of key position
   // e.g. key step 2 means "key other key other ..." sequence
-  int key_step_;
+  int key_step;
 };
 
 using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
 
 struct CommandAttributes {
-  std::string name_;
+  std::string name;
 
   // number of command arguments
   // positive number n means number of arguments is equal to n
   // negative number -n means number of arguments is equal to or large than n
-  int arity_;
+  int arity;
 
-  std::string description_;
-  uint64_t flags_;
+  std::string description;
+  uint64_t flags;
 
-  CommandKeyRange key_range_;
+  CommandKeyRange key_range;
 
   // if key_range.first_key == -1, key_range_gen is used instead
-  CommandKeyRangeGen key_range_gen_;
+  CommandKeyRangeGen key_range_gen;
 
-  CommanderFactory factory_;
+  CommanderFactory factory;
 
-  bool is_write() const { return (flags_ & kCmdWrite) != 0; }
-  bool is_ok_loading() const { return (flags_ & kCmdLoading) != 0; }
-  bool is_exclusive() const { return (flags_ & kCmdExclusive) != 0; }
-  bool is_multi() const { return (flags_ & kCmdMulti) != 0; }
-  bool is_no_multi() const { return (flags_ & kCmdNoMulti) != 0; }
+  bool is_write() const { return (flags & kCmdWrite) != 0; }
+  bool is_ok_loading() const { return (flags & kCmdLoading) != 0; }
+  bool is_exclusive() const { return (flags & kCmdExclusive) != 0; }
+  bool is_multi() const { return (flags & kCmdMulti) != 0; }
+  bool is_no_multi() const { return (flags & kCmdNoMulti) != 0; }
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;

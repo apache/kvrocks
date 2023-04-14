@@ -46,26 +46,26 @@ class ClusterNode {
  public:
   explicit ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
                        std::bitset<kClusterSlots> slots);
-  std::string id_;
-  std::string host_;
-  int port_;
-  int role_;
-  std::string master_id_;
-  std::string slots_info_;
-  std::bitset<kClusterSlots> slots_;
-  std::vector<std::string> replicas_;
-  int importing_slot_ = -1;
+  std::string id;
+  std::string host;
+  int port;
+  int role;
+  std::string master_id;
+  std::string slots_info;
+  std::bitset<kClusterSlots> slots;
+  std::vector<std::string> replicas;
+  int importing_slot = -1;
 };
 
 struct SlotInfo {
-  int start_;
-  int end_;
+  int start;
+  int end;
   struct NodeInfo {
-    std::string host_;
-    int port_;
-    std::string id_;
+    std::string host;
+    int port;
+    std::string id;
   };
-  std::vector<NodeInfo> nodes_;
+  std::vector<NodeInfo> nodes;
 };
 
 using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;

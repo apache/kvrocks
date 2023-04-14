@@ -330,22 +330,22 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   auto redis_cmd = cmd_iter->second;
-  if (read_only && !(redis_cmd->flags_ & Redis::kCmdReadOnly)) {
+  if (read_only && !(redis_cmd->flags & Redis::kCmdReadOnly)) {
     pushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? raiseError(lua) : 1;
   }
 
-  auto cmd = redis_cmd->factory_();
+  auto cmd = redis_cmd->factory();
   cmd->SetAttributes(redis_cmd);
   cmd->SetArgs(args);
 
-  int arity = cmd->GetAttributes()->arity_;
+  int arity = cmd->GetAttributes()->arity;
   if (((arity > 0 && argc != arity) || (arity < 0 && argc < -arity))) {
     pushError(lua, "Wrong number of args calling Redis command From Lua script");
     return raise_error ? raiseError(lua) : 1;
   }
   auto attributes = cmd->GetAttributes();
-  if (attributes->flags_ & Redis::kCmdNoScript) {
+  if (attributes->flags & Redis::kCmdNoScript) {
     pushError(lua, "This Redis command is not allowed from scripts");
     return raise_error ? raiseError(lua) : 1;
   }
@@ -355,20 +355,20 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   Config *config = srv->GetConfig();
 
   Redis::Connection *conn = srv->GetCurrentConnection();
-  if (config->cluster_enabled_) {
-    auto s = srv->cluster_->CanExecByMySelf(attributes, args, conn);
+  if (config->cluster_enabled) {
+    auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
       pushError(lua, s.Msg().c_str());
       return raise_error ? raiseError(lua) : 1;
     }
   }
 
-  if (config->slave_readonly_ && srv->IsSlave() && attributes->is_write()) {
+  if (config->slave_readonly && srv->IsSlave() && attributes->is_write()) {
     pushError(lua, "READONLY You can't write against a read only slave.");
     return raise_error ? raiseError(lua) : 1;
   }
 
-  if (!config->slave_serve_stale_data_ && srv->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
+  if (!config->slave_serve_stale_data && srv->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
       srv->GetReplicationState() != kReplConnected) {
     pushError(lua,
               "MASTERDOWN Link with MASTER is down "
@@ -382,7 +382,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? raiseError(lua) : 1;
   }
 
-  srv->stats_.IncrCalls(cmd_name);
+  srv->stats.IncrCalls(cmd_name);
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = conn->isProfilingEnabled(cmd_name);
   std::string output;
@@ -391,7 +391,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) conn->recordProfilingSampleIfNeed(cmd_name, duration);
   srv->SlowlogPushEntryIfNeeded(&args, duration);
-  srv->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+  srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   srv->FeedMonitorConns(conn, args);
   if (!s) {
     pushError(lua, s.Msg().data());

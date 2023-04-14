@@ -40,7 +40,7 @@
 namespace Redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
-    : need_free_bev_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
+    : need_free_bev_(true), bev_(bev), req_(owner->svr), owner_(owner), svr_(owner->svr) {
   int64_t now = Util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
@@ -67,7 +67,7 @@ std::string Connection::ToString() {
 }
 
 void Connection::Close() {
-  if (close_cb_) close_cb_(GetFD());
+  if (close_cb) close_cb(GetFD());
   owner_->FreeConnection(this);
 }
 
@@ -125,7 +125,7 @@ void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->svr_->stats_.IncrOutbondBytes(msg.size());
+  owner_->svr->stats.IncrOutbondBytes(msg.size());
   Redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
@@ -184,14 +184,14 @@ void Connection::SubscribeChannel(const std::string &channel) {
   }
 
   subscribe_channels_.emplace_back(channel);
-  owner_->svr_->SubscribeChannel(channel, this);
+  owner_->svr->SubscribeChannel(channel, this);
 }
 
 void Connection::UnsubscribeChannel(const std::string &channel) {
   for (auto iter = subscribe_channels_.begin(); iter != subscribe_channels_.end(); iter++) {
     if (*iter == channel) {
       subscribe_channels_.erase(iter);
-      owner_->svr_->UnsubscribeChannel(channel, this);
+      owner_->svr->UnsubscribeChannel(channel, this);
       return;
     }
   }
@@ -205,7 +205,7 @@ void Connection::UnsubscribeAll(const unsubscribe_callback &reply) {
 
   int removed = 0;
   for (const auto &chan : subscribe_channels_) {
-    owner_->svr_->UnsubscribeChannel(chan, this);
+    owner_->svr->UnsubscribeChannel(chan, this);
     removed++;
     if (reply) {
       reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subscribe_patterns_.size()));
@@ -221,14 +221,14 @@ void Connection::PSubscribeChannel(const std::string &pattern) {
     if (pattern == p) return;
   }
   subscribe_patterns_.emplace_back(pattern);
-  owner_->svr_->PSubscribeChannel(pattern, this);
+  owner_->svr->PSubscribeChannel(pattern, this);
 }
 
 void Connection::PUnsubscribeChannel(const std::string &pattern) {
   for (auto iter = subscribe_patterns_.begin(); iter != subscribe_patterns_.end(); iter++) {
     if (*iter == pattern) {
       subscribe_patterns_.erase(iter);
-      owner_->svr_->PUnsubscribeChannel(pattern, this);
+      owner_->svr->PUnsubscribeChannel(pattern, this);
       return;
     }
   }
@@ -242,7 +242,7 @@ void Connection::PUnsubscribeAll(const unsubscribe_callback &reply) {
 
   int removed = 0;
   for (const auto &pattern : subscribe_patterns_) {
-    owner_->svr_->PUnsubscribeChannel(pattern, this);
+    owner_->svr->PUnsubscribeChannel(pattern, this);
     removed++;
     if (reply) {
       reply(pattern, static_cast<int>(subscribe_patterns_.size() - removed + subscribe_channels_.size()));
@@ -255,14 +255,14 @@ int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patter
 
 bool Connection::isProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
-  if (config->profiling_sample_ratio_ == 0) return false;
+  if (config->profiling_sample_ratio == 0) return false;
 
-  if (!config->profiling_sample_all_commands_ &&
-      config->profiling_sample_commands_.find(cmd) == config->profiling_sample_commands_.end()) {
+  if (!config->profiling_sample_all_commands &&
+      config->profiling_sample_commands.find(cmd) == config->profiling_sample_commands.end()) {
     return false;
   }
 
-  if (config->profiling_sample_ratio_ == 100 || std::rand() % 100 <= config->profiling_sample_ratio_) {
+  if (config->profiling_sample_ratio == 100 || std::rand() % 100 <= config->profiling_sample_ratio) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
     rocksdb::get_perf_context()->Reset();
     rocksdb::get_iostats_context()->Reset();
@@ -273,7 +273,7 @@ bool Connection::isProfilingEnabled(const std::string &cmd) {
 }
 
 void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
-  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms_;
+  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
   if (threshold > 0 && static_cast<int>(duration / 1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
     return;
@@ -285,16 +285,16 @@ void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   if (perf_context.empty()) return;  // request without db operation
 
   auto entry = std::unique_ptr<PerfEntry>();
-  entry->cmd_name_ = cmd;
-  entry->duration_ = duration;
-  entry->iostats_context_ = std::move(iostats_context);
-  entry->perf_context_ = std::move(perf_context);
+  entry->cmd_name = cmd;
+  entry->duration = duration;
+  entry->iostats_context = std::move(iostats_context);
+  entry->perf_context = std::move(perf_context);
   svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
-  std::string reply, password = config->requirepass_;
+  std::string reply, password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
     auto cmd_tokens = to_process_cmds->front();
@@ -302,7 +302,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) && !IsFlagEnabled(Connection::kMultiExec)) break;
 
-    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));
@@ -322,8 +322,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
     }
 
-    const auto attributes = current_cmd_->GetAttributes();
-    auto cmd_name = attributes->name_;
+    const auto attributes = current_cmd->GetAttributes();
+    auto cmd_name = attributes->name;
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
     std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
@@ -331,11 +331,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (IsFlagEnabled(Connection::kMultiExec) && attributes->name_ != "exec") {
+    if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (attributes->is_exclusive() ||
                (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-               (config->cluster_enabled_ && (cmd_name == "clusterx" || cmd_name == "cluster") &&
+               (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") &&
                 cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
       exclusivity = svr_->WorkExclusivityGuard();
 
@@ -346,7 +346,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       concurrency = svr_->WorkConcurrencyGuard();
     }
 
-    if (attributes->flags_ & kCmdROScript) {
+    if (attributes->flags & kCmdROScript) {
       // if executing read only lua script commands, set current connection.
       svr_->SetCurrentConnection(this);
     }
@@ -357,7 +357,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    int arity = attributes->arity_;
+    int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
@@ -365,8 +365,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    current_cmd_->SetArgs(cmd_tokens);
-    s = current_cmd_->Parse();
+    current_cmd->SetArgs(cmd_tokens);
+    s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       Reply(Redis::Error("ERR " + s.Msg()));
@@ -374,14 +374,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->is_no_multi()) {
-      std::string no_multi_err = "Err Can't execute " + attributes->name_ + " in MULTI";
+      std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
       Reply(Redis::Error(no_multi_err));
       multi_error_ = true;
       continue;
     }
 
-    if (config->cluster_enabled_) {
-      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens, this);
+    if (config->cluster_enabled) {
+      s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
         Reply(Redis::Error(s.Msg()));
@@ -396,12 +396,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    if (config->slave_readonly_ && svr_->IsSlave() && attributes->is_write()) {
+    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
       Reply(Redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
 
-    if (!config->slave_serve_stale_data_ && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
+    if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         svr_->GetReplicationState() != kReplConnected) {
       Reply(
           Redis::Error("MASTERDOWN Link with MASTER is down "
@@ -410,17 +410,17 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
-    svr_->stats_.IncrCalls(cmd_name);
+    svr_->stats.IncrCalls(cmd_name);
 
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = isProfilingEnabled(cmd_name);
-    s = current_cmd_->Execute(svr_, this, &reply);
+    s = current_cmd->Execute(svr_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
 
     svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration);
-    svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+    svr_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,

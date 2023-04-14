@@ -37,21 +37,21 @@ const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_l
                                                                 : std::numeric_limits<double>::max());
 
 struct ZRangeSpec {
-  double min_ = kMinScore, max_ = kMaxScore;
-  bool minex_ = false, maxex_ = false; /* are min or max exclusive */
-  int offset_ = -1, count_ = -1;
-  bool removed_ = false, reversed_ = false;
+  double min = kMinScore, max = kMaxScore;
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int offset = -1, count = -1;
+  bool removed = false, reversed = false;
   ZRangeSpec() = default;
 };
 
 struct KeyWeight {
-  std::string key_;
-  double weight_;
+  std::string key;
+  double weight;
 };
 
 struct MemberScore {
-  std::string member_;
-  double score_;
+  std::string member;
+  double score;
 };
 
 enum ZSetFlags {

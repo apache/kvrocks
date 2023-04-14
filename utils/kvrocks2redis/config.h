@@ -29,30 +29,30 @@
 namespace Kvrocks2redis {
 
 struct RedisServer {
-  std::string host_;
-  uint32_t port_;
-  std::string auth_;
-  int db_number_;
+  std::string host;
+  uint32_t port;
+  std::string auth;
+  int db_number;
 };
 
 struct Config {
  public:
-  int loglevel_ = 0;
-  bool daemonize_ = false;
+  int loglevel = 0;
+  bool daemonize = false;
 
-  std::string data_dir_ = "./data";
-  std::string output_dir_ = "./";
-  std::string db_dir_ = data_dir_ + "/db";
-  std::string pidfile_ = output_dir_ + "/kvrocks2redis2.pid";
-  std::string aof_file_name_ = "appendonly.aof";
-  std::string next_offset_file_name_ = "last_next_offset.txt";
-  std::string next_seq_file_path_ = output_dir_ + "/last_next_seq.txt";
+  std::string data_dir = "./data";
+  std::string output_dir = "./";
+  std::string db_dir = data_dir + "/db";
+  std::string pidfile = output_dir + "/kvrocks2redis2.pid";
+  std::string aof_file_name = "appendonly.aof";
+  std::string next_offset_file_name = "last_next_offset.txt";
+  std::string next_seq_file_path = output_dir + "/last_next_seq.txt";
 
-  std::string kvrocks_auth_;
-  std::string kvrocks_host_;
-  int kvrocks_port_ = 0;
-  std::map<std::string, RedisServer> tokens_;
-  bool cluster_enable_ = false;
+  std::string kvrocks_auth;
+  std::string kvrocks_host;
+  int kvrocks_port = 0;
+  std::map<std::string, RedisServer> tokens;
+  bool cluster_enable = false;
 
   Status Load(std::string path);
   Config() = default;

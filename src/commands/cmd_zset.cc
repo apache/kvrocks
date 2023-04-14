@@ -62,15 +62,15 @@ class CommandZAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    double old_score = member_scores_[0].score_;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    double old_score = member_scores_[0].score;
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     if (flags_.HasIncr()) {
-      auto new_score = member_scores_[0].score_;
+      auto new_score = member_scores_[0].score;
       if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
           ret == 0) {  // not the first time using incr && score not changed
         *output = Redis::NilString();
@@ -134,7 +134,7 @@ class CommandZCount : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -152,7 +152,7 @@ class CommandZCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -176,7 +176,7 @@ class CommandZIncrBy : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double score = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.IncrBy(args_[1], args_[3], incr_, &score);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -203,7 +203,7 @@ class CommandZLexCount : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -234,7 +234,7 @@ class CommandZPop : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
     auto s = zset_db.Pop(args_[1], count_, min_, &member_scores);
     if (!s.ok()) {
@@ -243,8 +243,8 @@ class CommandZPop : public Commander {
 
     output->append(Redis::MultiLen(member_scores.size() * 2));
     for (const auto &ms : member_scores) {
-      output->append(Redis::BulkString(ms.member_));
-      output->append(Redis::BulkString(Util::Float2String(ms.score_)));
+      output->append(Redis::BulkString(ms.member));
+      output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
 
     return Status::OK();
@@ -286,7 +286,7 @@ class CommandZRange : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
     uint8_t flags = !reversed_ ? 0 : kZSetReversed;
     auto s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
@@ -301,8 +301,8 @@ class CommandZRange : public Commander {
     }
 
     for (const auto &ms : member_scores) {
-      output->append(Redis::BulkString(ms.member_));
-      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score_)));
+      output->append(Redis::BulkString(ms.member));
+      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
 
     return Status::OK();
@@ -322,11 +322,11 @@ class CommandZRevRange : public CommandZRange {
 
 class CommandZRangeByLex : public Commander {
  public:
-  explicit CommandZRangeByLex(bool reversed = false) { spec_.reversed_ = reversed; }
+  explicit CommandZRangeByLex(bool reversed = false) { spec_.reversed = reversed; }
 
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
-    if (spec_.reversed_) {
+    if (spec_.reversed) {
       s = ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
       s = ParseRangeLexSpec(args[2], args[3], &spec_);
@@ -343,15 +343,15 @@ class CommandZRangeByLex : public Commander {
         return {Status::RedisParseErr, errValueNotInteger};
       }
 
-      spec_.offset_ = *parse_offset;
-      spec_.count_ = *parse_count;
+      spec_.offset = *parse_offset;
+      spec_.count = *parse_count;
     }
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> members;
     auto s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
     if (!s.ok()) {
@@ -368,10 +368,10 @@ class CommandZRangeByLex : public Commander {
 
 class CommandZRangeByScore : public Commander {
  public:
-  explicit CommandZRangeByScore(bool reversed = false) { spec_.reversed_ = reversed; }
+  explicit CommandZRangeByScore(bool reversed = false) { spec_.reversed = reversed; }
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
-    if (spec_.reversed_) {
+    if (spec_.reversed) {
       s = Redis::ZSet::ParseRangeSpec(args[3], args[2], &spec_);
     } else {
       s = Redis::ZSet::ParseRangeSpec(args[2], args[3], &spec_);
@@ -393,8 +393,8 @@ class CommandZRangeByScore : public Commander {
           return {Status::RedisParseErr, errValueNotInteger};
         }
 
-        spec_.offset_ = *parse_offset;
-        spec_.count_ = *parse_count;
+        spec_.offset = *parse_offset;
+        spec_.count = *parse_count;
         i += 3;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -405,7 +405,7 @@ class CommandZRangeByScore : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
     auto s = zset_db.RangeByScore(args_[1], spec_, &member_scores, &size);
     if (!s.ok()) {
@@ -419,8 +419,8 @@ class CommandZRangeByScore : public Commander {
     }
 
     for (const auto &ms : member_scores) {
-      output->append(Redis::BulkString(ms.member_));
-      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score_)));
+      output->append(Redis::BulkString(ms.member));
+      if (with_scores_) output->append(Redis::BulkString(Util::Float2String(ms.score)));
     }
 
     return Status::OK();
@@ -436,7 +436,7 @@ class CommandZRank : public Commander {
   explicit CommandZRank(bool reversed = false) : reversed_(reversed) {}
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -478,7 +478,7 @@ class CommandZRem : public Commander {
     }
 
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Remove(args_[1], members, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -506,7 +506,7 @@ class CommandZRemRangeByRank : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -533,7 +533,7 @@ class CommandZRemRangeByScore : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -559,7 +559,7 @@ class CommandZRemRangeByLex : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -577,7 +577,7 @@ class CommandZScore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     double score = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Score(args_[1], args_[2], &score);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -600,7 +600,7 @@ class CommandZMScore : public Commander {
       members.emplace_back(args_[i]);
     }
     std::map<std::string, double> mscores;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.MGet(args_[1], members, &mscores);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -663,7 +663,7 @@ class CommandZUnionStore : public Commander {
           if (!weight || std::isnan(*weight)) {
             return {Status::RedisParseErr, "weight is not a double or out of range"};
           }
-          keys_weights_[k].weight_ = *weight;
+          keys_weights_[k].weight = *weight;
 
           k++;
         }
@@ -677,7 +677,7 @@ class CommandZUnionStore : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -699,7 +699,7 @@ class CommandZInterStore : public CommandZUnionStore {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int size = 0;
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -715,7 +715,7 @@ class CommandZScan : public CommandSubkeyScanBase {
   CommandZScan() = default;
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::ZSet zset_db(svr->storage_, conn->GetNamespace());
+    Redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> members;
     std::vector<double> scores;
     auto s = zset_db.Scan(key_, cursor_, limit_, prefix_, &members, &scores);

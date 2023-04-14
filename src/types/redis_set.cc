@@ -43,10 +43,10 @@ rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &m
   batch->PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     batch->Put(sub_key, Slice());
   }
-  metadata.size_ = static_cast<uint32_t>(members.size());
+  metadata.size = static_cast<uint32_t>(members.size());
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -70,14 +70,14 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   batch->PutLogData(log_data.Encode());
   std::string sub_key;
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *ret += 1;
   }
   if (*ret > 0) {
-    metadata.size_ += *ret;
+    metadata.size += *ret;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -101,15 +101,15 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *ret += 1;
   }
   if (*ret > 0) {
-    if (static_cast<int>(metadata.size_) != *ret) {
-      metadata.size_ -= *ret;
+    if (static_cast<int>(metadata.size) != *ret) {
+      metadata.size -= *ret;
       std::string bytes;
       metadata.Encode(&bytes);
       batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -128,7 +128,7 @@ rocksdb::Status Set::Card(const Slice &user_key, int *ret) {
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = static_cast<int>(metadata.size_);
+  *ret = static_cast<int>(metadata.size);
   return rocksdb::Status::OK();
 }
 
@@ -143,8 +143,8 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix, next_version_prefix;
-  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -184,7 +184,7 @@ rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key, value;
   for (const auto &member : members) {
-    InternalKey(ns_key, member, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
@@ -216,8 +216,8 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   batch->PutLogData(log_data.Encode());
 
   std::string prefix, next_version_prefix;
-  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -234,7 +234,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
     if (++n >= count) break;
   }
   if (pop && n > 0) {
-    metadata.size_ -= n;
+    metadata.size -= n;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);

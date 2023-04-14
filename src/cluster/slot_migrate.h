@@ -53,22 +53,22 @@ enum class KeyMigrationResult { kMigrated, kExpired, kUnderlyingStructEmpty };
 
 struct SlotMigrationJob {
   SlotMigrationJob(int slot_id, std::string dst_ip, int dst_port, int speed, int pipeline_size, int seq_gap)
-      : slot_id_(static_cast<int16_t>(slot_id)),
-        dst_ip_(std::move(dst_ip)),
-        dst_port_(dst_port),
-        max_speed_(speed),
-        max_pipeline_size_(pipeline_size),
-        seq_gap_limit_(seq_gap) {}
+      : slot_id(static_cast<int16_t>(slot_id)),
+        dst_ip(std::move(dst_ip)),
+        dst_port(dst_port),
+        max_speed(speed),
+        max_pipeline_size(pipeline_size),
+        seq_gap_limit(seq_gap) {}
   SlotMigrationJob(const SlotMigrationJob &other) = delete;
   SlotMigrationJob &operator=(const SlotMigrationJob &other) = delete;
   ~SlotMigrationJob() = default;
 
-  int16_t slot_id_;
-  std::string dst_ip_;
-  int dst_port_;
-  int max_speed_;
-  int max_pipeline_size_;
-  int seq_gap_limit_;
+  int16_t slot_id;
+  std::string dst_ip;
+  int dst_port;
+  int max_speed;
+  int max_pipeline_size;
+  int seq_gap_limit;
 };
 
 class SlotMigrator : public Redis::Database {

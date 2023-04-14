@@ -28,8 +28,8 @@
 #include "storage/redis_metadata.h"
 
 struct StringPair {
-  Slice key_;
-  Slice value_;
+  Slice key;
+  Slice value;
 };
 
 namespace Redis {

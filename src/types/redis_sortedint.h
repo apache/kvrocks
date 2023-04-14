@@ -35,11 +35,11 @@ struct SortedintRangeSpec {
   SortedintRangeSpec() = default;
 };
 
-namespace Redis {
+namespace redis {
 
 class Sortedint : public Database {
  public:
-  explicit Sortedint(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  explicit Sortedint(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status MExist(const Slice &user_key, const std::vector<uint64_t> &ids, std::vector<int> *exists);
   rocksdb::Status Add(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret);
@@ -53,4 +53,4 @@ class Sortedint : public Database {
   rocksdb::Status GetMetadata(const Slice &ns_key, SortedintMetadata *metadata);
 };
 
-}  // namespace Redis
+}  // namespace redis

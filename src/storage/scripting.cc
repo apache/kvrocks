@@ -49,7 +49,7 @@ enum {
   LL_WARNING,
 };
 
-namespace Lua {
+namespace lua {
 
 lua_State *CreateState(bool read_only) {
   lua_State *lua = lua_open();
@@ -203,7 +203,7 @@ int redisLogCommand(lua_State *lua) {
   return 0;
 }
 
-Status evalGenericCommand(Redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
+Status evalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
                           const std::vector<std::string> &argv, bool evalsha, std::string *output, bool read_only) {
   Server *srv = conn->GetServer();
 
@@ -257,7 +257,7 @@ Status evalGenericCommand(Redis::Connection *conn, const std::string &body_or_sh
 
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("ERR running script (call to {}): {}", funcname, lua_tostring(lua, -1));
-    *output = Redis::Error(msg);
+    *output = redis::Error(msg);
     lua_pop(lua, 2);
   } else {
     *output = replyToRedisReply(lua);
@@ -322,15 +322,15 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto commands = Redis::GetCommands();
-  auto cmd_iter = commands->find(Util::ToLower(args[0]));
+  auto commands = redis::GetCommands();
+  auto cmd_iter = commands->find(util::ToLower(args[0]));
   if (cmd_iter == commands->end()) {
     pushError(lua, "Unknown Redis command called from Lua script");
     return raise_error ? raiseError(lua) : 1;
   }
 
   auto redis_cmd = cmd_iter->second;
-  if (read_only && !(redis_cmd->flags & Redis::kCmdReadOnly)) {
+  if (read_only && !(redis_cmd->flags & redis::kCmdReadOnly)) {
     pushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? raiseError(lua) : 1;
   }
@@ -345,16 +345,16 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? raiseError(lua) : 1;
   }
   auto attributes = cmd->GetAttributes();
-  if (attributes->flags & Redis::kCmdNoScript) {
+  if (attributes->flags & redis::kCmdNoScript) {
     pushError(lua, "This Redis command is not allowed from scripts");
     return raise_error ? raiseError(lua) : 1;
   }
 
-  std::string cmd_name = Util::ToLower(args[0]);
+  std::string cmd_name = util::ToLower(args[0]);
   Server *srv = GetServer();
   Config *config = srv->GetConfig();
 
-  Redis::Connection *conn = srv->GetCurrentConnection();
+  redis::Connection *conn = srv->GetCurrentConnection();
   if (config->cluster_enabled) {
     auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
@@ -363,7 +363,7 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  if (config->slave_readonly && srv->IsSlave() && attributes->is_write()) {
+  if (config->slave_readonly && srv->IsSlave() && attributes->IsWrite()) {
     pushError(lua, "READONLY You can't write against a read only slave.");
     return raise_error ? raiseError(lua) : 1;
   }
@@ -384,12 +384,12 @@ int redisGenericCommand(lua_State *lua, int raise_error) {
 
   srv->stats.IncrCalls(cmd_name);
   auto start = std::chrono::high_resolution_clock::now();
-  bool is_profiling = conn->isProfilingEnabled(cmd_name);
+  bool is_profiling = conn->IsProfilingEnabled(cmd_name);
   std::string output;
   s = cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  if (is_profiling) conn->recordProfilingSampleIfNeed(cmd_name, duration);
+  if (is_profiling) conn->RecordProfilingSampleIfNeed(cmd_name, duration);
   srv->SlowlogPushEntryIfNeeded(&args, duration);
   srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   srv->FeedMonitorConns(conn, args);
@@ -698,13 +698,13 @@ std::string replyToRedisReply(lua_State *lua) {
   switch (t) {
     case LUA_TSTRING:
       obj_s = lua_tolstring(lua, -1, &obj_len);
-      output = Redis::BulkString(std::string(obj_s, obj_len));
+      output = redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
-      output = lua_toboolean(lua, -1) ? Redis::Integer(1) : Redis::NilString();
+      output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
       break;
     case LUA_TNUMBER:
-      output = Redis::Integer((int64_t)(lua_tonumber(lua, -1)));
+      output = redis::Integer((int64_t)(lua_tonumber(lua, -1)));
       break;
     case LUA_TTABLE:
       /* We need to check if it is an array, an error, or a status reply.
@@ -717,7 +717,7 @@ std::string replyToRedisReply(lua_State *lua) {
       lua_gettable(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = Redis::Error(lua_tostring(lua, -1));
+        output = redis::Error(lua_tostring(lua, -1));
         lua_pop(lua, 1);
         return output;
       }
@@ -728,7 +728,7 @@ std::string replyToRedisReply(lua_State *lua) {
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         obj_s = lua_tolstring(lua, -1, &obj_len);
-        output = Redis::BulkString(std::string(obj_s, obj_len));
+        output = redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
       } else {
@@ -746,11 +746,11 @@ std::string replyToRedisReply(lua_State *lua) {
           output += replyToRedisReply(lua);
           lua_pop(lua, 1);
         }
-        output = Redis::MultiLen(mbulklen) + output;
+        output = redis::MultiLen(mbulklen) + output;
       }
       break;
     default:
-      output = Redis::NilString();
+      output = redis::NilString();
   }
   return output;
 }
@@ -891,4 +891,4 @@ Status createFunction(Server *srv, const std::string &body, std::string *sha, lu
   return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();
 }
 
-}  // namespace Lua
+}  // namespace lua

@@ -37,15 +37,15 @@ StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
 
   if (*rest == 0) {
     return num;
-  } else if (Util::EqualICase(rest, "k")) {
+  } else if (util::EqualICase(rest, "k")) {
     return CheckedShiftLeft(num, 10);
-  } else if (Util::EqualICase(rest, "m")) {
+  } else if (util::EqualICase(rest, "m")) {
     return CheckedShiftLeft(num, 20);
-  } else if (Util::EqualICase(rest, "g")) {
+  } else if (util::EqualICase(rest, "g")) {
     return CheckedShiftLeft(num, 30);
-  } else if (Util::EqualICase(rest, "t")) {
+  } else if (util::EqualICase(rest, "t")) {
     return CheckedShiftLeft(num, 40);
-  } else if (Util::EqualICase(rest, "p")) {
+  } else if (util::EqualICase(rest, "p")) {
     return CheckedShiftLeft(num, 50);
   }
 

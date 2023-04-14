@@ -49,7 +49,7 @@
 #define AE_ERROR 4     // NOLINT
 #define AE_HUP 8       // NOLINT
 
-namespace Util {
+namespace util {
 
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
@@ -125,7 +125,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
         continue;
       }
 
-      auto retmask = Util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
+      auto retmask = util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
       if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
         return Status::FromErrno();
       }
@@ -330,4 +330,4 @@ Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
 
-}  // namespace Util
+}  // namespace util

@@ -29,10 +29,10 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-namespace Redis {
+namespace redis {
 class List : public Database {
  public:
-  explicit List(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  explicit List(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Size(const Slice &user_key, uint32_t *ret);
   rocksdb::Status Trim(const Slice &user_key, int start, int stop);
   rocksdb::Status Set(const Slice &user_key, int index, Slice elem);
@@ -54,4 +54,4 @@ class List : public Database {
   rocksdb::Status lmoveOnSingleList(const Slice &src, bool src_left, bool dst_left, std::string *elem);
   rocksdb::Status lmoveOnTwoLists(const Slice &src, const Slice &dst, bool src_left, bool dst_left, std::string *elem);
 };
-}  // namespace Redis
+}  // namespace redis

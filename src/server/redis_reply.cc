@@ -22,7 +22,7 @@
 
 #include <numeric>
 
-namespace Redis {
+namespace redis {
 
 void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, data.c_str(), data.length()); }
 
@@ -69,4 +69,4 @@ std::string Array(const std::vector<std::string> &list) {
 
 std::string Command2RESP(const std::vector<std::string> &cmd_args) { return MultiBulkString(cmd_args, false); }
 
-}  // namespace Redis
+}  // namespace redis

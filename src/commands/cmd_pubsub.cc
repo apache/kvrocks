@@ -23,7 +23,7 @@
 #include "server/server.h"
 #include "storage/redis_pubsub.h"
 
-namespace Redis {
+namespace redis {
 
 class CommandPublish : public Commander {
  public:
@@ -32,7 +32,7 @@ class CommandPublish : public Commander {
     if (!svr->IsSlave()) {
       // Compromise: can't replicate message to sub-replicas in a cascading-like structure.
       // Replication relies on WAL seq, increase the seq on slave will break the replication, hence the compromise
-      Redis::PubSub pubsub_db(svr->storage);
+      redis::PubSub pubsub_db(svr->storage);
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
@@ -40,16 +40,16 @@ class CommandPublish : public Commander {
     }
 
     int receivers = svr->PublishMessage(args_[1], args_[2]);
-    *output = Redis::Integer(receivers);
+    *output = redis::Integer(receivers);
     return Status::OK();
   }
 };
 
 void SubscribeCommandReply(std::string *output, const std::string &name, const std::string &sub_name, int num) {
-  output->append(Redis::MultiLen(3));
-  output->append(Redis::BulkString(name));
-  output->append(sub_name.empty() ? Redis::NilString() : Redis::BulkString(sub_name));
-  output->append(Redis::Integer(num));
+  output->append(redis::MultiLen(3));
+  output->append(redis::BulkString(name));
+  output->append(sub_name.empty() ? redis::NilString() : redis::BulkString(sub_name));
+  output->append(redis::Integer(num));
 }
 
 class CommandSubscribe : public Commander {
@@ -113,7 +113,7 @@ class CommandPUnSubscribe : public Commander {
 class CommandPubSub : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    subcommand_ = Util::ToLower(args[1]);
+    subcommand_ = util::ToLower(args[1]);
     if (subcommand_ == "numpat" && args.size() == 2) {
       return Status::OK();
     }
@@ -137,7 +137,7 @@ class CommandPubSub : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "numpat") {
-      *output = Redis::Integer(srv->GetPubSubPatternSize());
+      *output = redis::Integer(srv->GetPubSubPatternSize());
       return Status::OK();
     }
 
@@ -145,10 +145,10 @@ class CommandPubSub : public Commander {
       std::vector<ChannelSubscribeNum> channel_subscribe_nums;
       srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
 
-      output->append(Redis::MultiLen(channel_subscribe_nums.size() * 2));
+      output->append(redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
-        output->append(Redis::BulkString(chan_subscribe_num.channel));
-        output->append(Redis::Integer(chan_subscribe_num.subscribe_num));
+        output->append(redis::BulkString(chan_subscribe_num.channel));
+        output->append(redis::Integer(chan_subscribe_num.subscribe_num));
       }
 
       return Status::OK();
@@ -157,7 +157,7 @@ class CommandPubSub : public Commander {
     if (subcommand_ == "channels") {
       std::vector<std::string> channels;
       srv->GetChannelsByPattern(pattern_, &channels);
-      *output = Redis::MultiBulkString(channels);
+      *output = redis::MultiBulkString(channels);
       return Status::OK();
     }
 
@@ -178,4 +178,4 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0), )
 
-}  // namespace Redis
+}  // namespace redis

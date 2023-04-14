@@ -32,7 +32,7 @@ TEST(StringUtil, ToLower) {
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
-    input = Util::ToLower(input);
+    input = util::ToLower(input);
     ASSERT_EQ(input, iter->second);
   }
 }
@@ -44,40 +44,40 @@ TEST(StringUtil, Trim) {
   };
   for (auto iter = cases.begin(); iter != cases.end(); iter++) {
     std::string input = iter->first;
-    std::string output = Util::Trim(input, " \t\n");
+    std::string output = util::Trim(input, " \t\n");
     ASSERT_EQ(output, iter->second);
   }
 }
 
 TEST(StringUtil, Split) {
   std::vector<std::string> expected = {"a", "b", "c", "d"};
-  std::vector<std::string> array = Util::Split("a,b,c,d", ",");
+  std::vector<std::string> array = util::Split("a,b,c,d", ",");
   ASSERT_EQ(expected, array);
-  array = Util::Split("a,b,,c,d,", ",");
+  array = util::Split("a,b,,c,d,", ",");
   ASSERT_EQ(expected, array);
-  array = Util::Split(",a,b,c,d,", ",");
+  array = util::Split(",a,b,c,d,", ",");
   ASSERT_EQ(expected, array);
-  array = Util::Split("a     b  c  d   ", " ");
+  array = util::Split("a     b  c  d   ", " ");
   ASSERT_EQ(expected, array);
-  array = Util::Split("a\tb\nc\t\nd   ", " \t\n");
+  array = util::Split("a\tb\nc\t\nd   ", " \t\n");
   ASSERT_EQ(expected, array);
 
-  ASSERT_EQ(Util::Split("a", " "), std::vector<std::string>{"a"});
-  ASSERT_EQ(Util::Split("a bc", " "), (std::vector<std::string>{"a", "bc"}));
-  ASSERT_EQ(Util::Split("a  b c def gh ", " "), (std::vector<std::string>{"a", "b", "c", "def", "gh"}));
-  ASSERT_EQ(Util::Split("  hello;hi,,; one ;;; two,, ", " ,;"),
+  ASSERT_EQ(util::Split("a", " "), std::vector<std::string>{"a"});
+  ASSERT_EQ(util::Split("a bc", " "), (std::vector<std::string>{"a", "bc"}));
+  ASSERT_EQ(util::Split("a  b c def gh ", " "), (std::vector<std::string>{"a", "b", "c", "def", "gh"}));
+  ASSERT_EQ(util::Split("  hello;hi,,; one ;;; two,, ", " ,;"),
             (std::vector<std::string>{"hello", "hi", "one", "two"}));
 }
 
 TEST(StringUtil, TokenizeRedisProtocol) {
   std::vector<std::string> expected = {"this", "is", "a", "test"};
-  auto array = Util::TokenizeRedisProtocol("*4\r\n$4\r\nthis\r\n$2\r\nis\r\n$1\r\na\r\n$4\r\ntest\r\n");
+  auto array = util::TokenizeRedisProtocol("*4\r\n$4\r\nthis\r\n$2\r\nis\r\n$1\r\na\r\n$4\r\ntest\r\n");
   ASSERT_EQ(expected, array);
 }
 
 TEST(StringUtil, HasPrefix) {
-  ASSERT_TRUE(Util::HasPrefix("has_prefix_is_true", "has_prefix"));
-  ASSERT_FALSE(Util::HasPrefix("has_prefix_is_false", "_has_prefix"));
-  ASSERT_TRUE(Util::HasPrefix("has_prefix", "has_prefix"));
-  ASSERT_FALSE(Util::HasPrefix("has", "has_prefix"));
+  ASSERT_TRUE(util::HasPrefix("has_prefix_is_true", "has_prefix"));
+  ASSERT_FALSE(util::HasPrefix("has_prefix_is_false", "_has_prefix"));
+  ASSERT_TRUE(util::HasPrefix("has_prefix", "has_prefix"));
+  ASSERT_FALSE(util::HasPrefix("has", "has_prefix"));
 }

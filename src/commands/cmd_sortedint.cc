@@ -23,7 +23,7 @@
 #include "server/server.h"
 #include "types/redis_sortedint.h"
 
-namespace Redis {
+namespace redis {
 
 class CommandSortedintAdd : public Commander {
  public:
@@ -40,14 +40,14 @@ class CommandSortedintAdd : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = sortedint_db.Add(args_[1], ids_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = Redis::Integer(ret);
+    *output = redis::Integer(ret);
     return Status::OK();
   }
 
@@ -70,14 +70,14 @@ class CommandSortedintRem : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = sortedint_db.Remove(args_[1], ids_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = Redis::Integer(ret);
+    *output = redis::Integer(ret);
     return Status::OK();
   }
 
@@ -88,14 +88,14 @@ class CommandSortedintRem : public Commander {
 class CommandSortedintCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = sortedint_db.Card(args_[1], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = Redis::Integer(ret);
+    *output = redis::Integer(ret);
     return Status::OK();
   }
 };
@@ -103,7 +103,7 @@ class CommandSortedintCard : public Commander {
 class CommandSortedintExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     std::vector<uint64_t> ids;
     for (size_t i = 2; i < args_.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args_[i], 10);
@@ -123,9 +123,9 @@ class CommandSortedintExists : public Commander {
     if (s.IsNotFound()) {
       exists.resize(ids.size(), 0);
     }
-    output->append(Redis::MultiLen(exists.size()));
+    output->append(redis::MultiLen(exists.size()));
     for (auto exist : exists) {
-      output->append(Redis::Integer(exist));
+      output->append(redis::Integer(exist));
     }
 
     return Status::OK();
@@ -147,7 +147,7 @@ class CommandSortedintRange : public Commander {
     limit_ = *parse_limit;
 
     if (args.size() == 6) {
-      if (Util::ToLower(args[4]) != "cursor") {
+      if (util::ToLower(args[4]) != "cursor") {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
 
@@ -163,16 +163,16 @@ class CommandSortedintRange : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     std::vector<uint64_t> ids;
     auto s = sortedint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    output->append(Redis::MultiLen(ids.size()));
+    output->append(redis::MultiLen(ids.size()));
     for (const auto id : ids) {
-      output->append(Redis::BulkString(std::to_string(id)));
+      output->append(redis::BulkString(std::to_string(id)));
     }
 
     return Status::OK();
@@ -197,16 +197,16 @@ class CommandSortedintRangeByValue : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     Status s;
     if (spec_.reversed) {
-      s = Redis::Sortedint::ParseRangeSpec(args[3], args[2], &spec_);
+      s = redis::Sortedint::ParseRangeSpec(args[3], args[2], &spec_);
     } else {
-      s = Redis::Sortedint::ParseRangeSpec(args[2], args[3], &spec_);
+      s = redis::Sortedint::ParseRangeSpec(args[2], args[3], &spec_);
     }
     if (!s.IsOK()) {
       return {Status::RedisParseErr, s.Msg()};
     }
 
     if (args.size() == 7) {
-      if (Util::ToLower(args[4]) != "limit") {
+      if (util::ToLower(args[4]) != "limit") {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
 
@@ -226,15 +226,15 @@ class CommandSortedintRangeByValue : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<uint64_t> ids;
     int size = 0;
-    Redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
     auto s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    output->append(Redis::MultiLen(ids.size()));
+    output->append(redis::MultiLen(ids.size()));
     for (auto id : ids) {
-      output->append(Redis::BulkString(std::to_string(id)));
+      output->append(redis::BulkString(std::to_string(id)));
     }
 
     return Status::OK();
@@ -258,4 +258,4 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSortedintAdd>("siadd", -3, "write", 1
                         MakeCmdAttr<CommandSortedintRangeByValue>("sirangebyvalue", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSortedintRevRangeByValue>("sirevrangebyvalue", -4, "read-only", 1, 1, 1), )
 
-}  // namespace Redis
+}  // namespace redis

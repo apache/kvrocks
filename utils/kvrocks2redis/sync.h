@@ -35,7 +35,7 @@
 
 class Sync {
  public:
-  explicit Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config);
+  explicit Sync(engine::Storage *storage, Writer *writer, Parser *parser, kvrocks2redis::Config *config);
   ~Sync();
 
   Sync(const Sync &) = delete;
@@ -48,10 +48,10 @@ class Sync {
  private:
   int sock_fd_;
   bool stop_flag_ = false;
-  Engine::Storage *storage_ = nullptr;
+  engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
   Parser *parser_ = nullptr;
-  Kvrocks2redis::Config *config_ = nullptr;
+  kvrocks2redis::Config *config_ = nullptr;
   int next_seq_fd_;
   rocksdb::SequenceNumber next_seq_ = static_cast<rocksdb::SequenceNumber>(0);
 

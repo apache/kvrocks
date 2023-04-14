@@ -24,7 +24,7 @@
 
 #include "parse_util.h"
 
-namespace Util {
+namespace util {
 
 std::string Float2String(double d) {
   if (std::isinf(d)) {
@@ -312,4 +312,4 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   return tokens;
 }
 
-}  // namespace Util
+}  // namespace util

@@ -28,7 +28,7 @@
 
 #include "db_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
   return Database::GetMetadata(kRedisZSet, ns_key, metadata);
@@ -193,7 +193,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -262,7 +262,7 @@ rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t 
   storage_->SetReadOptions(read_options);
 
   auto batch = storage_->GetWriteBatchBase();
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -364,7 +364,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -447,7 +447,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -607,7 +607,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -844,4 +844,4 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
   return rocksdb::Status::OK();
 }
 
-}  // namespace Redis
+}  // namespace redis

@@ -36,7 +36,7 @@ Writer::~Writer() {
 Status Writer::Write(const std::string &ns, const std::vector<std::string> &aofs) {
   GET_OR_RET(GetAofFd(ns));
   for (const auto &aof : aofs) {
-    GET_OR_RET(Util::Write(aof_fds_[ns], aof));
+    GET_OR_RET(util::Write(aof_fds_[ns], aof));
   }
 
   return Status::OK();

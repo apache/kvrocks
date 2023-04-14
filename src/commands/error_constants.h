@@ -20,7 +20,7 @@
 
 #pragma once
 
-namespace Redis {
+namespace redis {
 
 inline constexpr const char *errInvalidSyntax = "syntax error";
 inline constexpr const char *errInvalidExpireTime = "invalid expire time";
@@ -40,4 +40,4 @@ inline constexpr const char *errValueIsNotFloat = "value is not a valid float";
 inline constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
 inline constexpr const char *errUnknownOption = "unknown option";
 
-}  // namespace Redis
+}  // namespace redis

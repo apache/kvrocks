@@ -28,12 +28,12 @@
 #include "redis_metadata.h"
 #include "storage.h"
 
-namespace Redis {
+namespace redis {
 class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
-  explicit Database(Engine::Storage *storage, std::string ns = "");
+  explicit Database(engine::Storage *storage, std::string ns = "");
   rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
   rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
   rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes);
@@ -58,14 +58,14 @@ class Database {
                                   int count);
 
  protected:
-  Engine::Storage *storage_;
+  engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;
 
   friend class LatestSnapShot;
   class LatestSnapShot {
    public:
-    explicit LatestSnapShot(Engine::Storage *storage)
+    explicit LatestSnapShot(engine::Storage *storage)
         : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
     ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
     const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
@@ -74,14 +74,14 @@ class Database {
     LatestSnapShot &operator=(const LatestSnapShot &) = delete;
 
    private:
-    Engine::Storage *storage_ = nullptr;
+    engine::Storage *storage_ = nullptr;
     const rocksdb::Snapshot *snapshot_ = nullptr;
   };
 };
 
-class SubKeyScanner : public Redis::Database {
+class SubKeyScanner : public redis::Database {
  public:
-  explicit SubKeyScanner(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  explicit SubKeyScanner(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
@@ -103,4 +103,4 @@ class WriteBatchLogData {
   std::vector<std::string> args_;
 };
 
-}  // namespace Redis
+}  // namespace redis

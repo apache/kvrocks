@@ -24,7 +24,7 @@
 #include "error_constants.h"
 #include "parse_util.h"
 
-namespace Redis {
+namespace redis {
 
 inline constexpr const char *kCursorPrefix = "_";
 
@@ -66,14 +66,14 @@ class CommandScanBase : public Commander {
   std::string GenerateOutput(const std::vector<std::string> &keys) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit_)) {
-      list.emplace_back(Redis::BulkString(keys.back()));
+      list.emplace_back(redis::BulkString(keys.back()));
     } else {
-      list.emplace_back(Redis::BulkString("0"));
+      list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys, false));
+    list.emplace_back(redis::MultiBulkString(keys, false));
 
-    return Redis::Array(list);
+    return redis::Array(list);
   }
 
  protected:
@@ -94,14 +94,14 @@ class CommandSubkeyScanBase : public CommandScanBase {
     key_ = args[1];
     ParseCursor(args[2]);
     if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      Status s = ParseMatchAndCountParam(util::ToLower(args[3]), args_[4]);
       if (!s.IsOK()) {
         return s;
       }
     }
 
     if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
+      Status s = ParseMatchAndCountParam(util::ToLower(args[5]), args_[6]);
       if (!s.IsOK()) {
         return s;
       }
@@ -113,9 +113,9 @@ class CommandSubkeyScanBase : public CommandScanBase {
     std::vector<std::string> list;
     auto items_count = fields.size();
     if (items_count == static_cast<size_t>(limit_)) {
-      list.emplace_back(Redis::BulkString(fields.back()));
+      list.emplace_back(redis::BulkString(fields.back()));
     } else {
-      list.emplace_back(Redis::BulkString("0"));
+      list.emplace_back(redis::BulkString("0"));
     }
     std::vector<std::string> fvs;
     if (items_count > 0) {
@@ -124,12 +124,12 @@ class CommandSubkeyScanBase : public CommandScanBase {
         fvs.emplace_back(values[i]);
       }
     }
-    list.emplace_back(Redis::MultiBulkString(fvs, false));
-    return Redis::Array(list);
+    list.emplace_back(redis::MultiBulkString(fvs, false));
+    return redis::Array(list);
   }
 
  protected:
   std::string key_;
 };
 
-}  // namespace Redis
+}  // namespace redis

@@ -26,7 +26,7 @@
 
 #include "status.h"
 
-namespace Kvrocks2redis {
+namespace kvrocks2redis {
 
 struct RedisServer {
   std::string host;
@@ -64,4 +64,4 @@ struct Config {
   Status parseConfigFromString(const std::string &input);
 };
 
-}  // namespace Kvrocks2redis
+}  // namespace kvrocks2redis

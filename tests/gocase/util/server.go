@@ -183,7 +183,9 @@ func StartServerWithCLIOptions(t testing.TB, configs map[string]string, options 
 
 	addr, err := findFreePort()
 	require.NoError(t, err)
-	configs["bind"] = addr.IP.String()
+	if configs["bind"] == "" {
+		configs["bind"] = addr.IP.String()
+	}
 	configs["port"] = fmt.Sprintf("%d", addr.Port)
 
 	dir := *workspace

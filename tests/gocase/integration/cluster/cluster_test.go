@@ -131,7 +131,10 @@ func TestClusterNodes(t *testing.T) {
 }
 
 func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
-	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	srv1 := util.StartServer(t, map[string]string{
+		"bind":            "0.0.0.0",
+		"cluster-enabled": "yes",
+	})
 	defer srv1.Close()
 	ctx := context.Background()
 	rdb1 := srv1.NewClient()
@@ -139,7 +142,10 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	nodeID1 := "07c37dfeb235213a872192d90877d0cd55635b91"
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", nodeID1).Err())
 
-	srv2 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	srv2 := util.StartServer(t, map[string]string{
+		"bind":            "0.0.0.0",
+		"cluster-enabled": "yes",
+	})
 	defer srv2.Close()
 	rdb2 := srv2.NewClient()
 	defer func() { require.NoError(t, rdb2.Close()) }()
@@ -163,7 +169,7 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	require.Contains(t, nodes, "0-2 4-8193 10000 10002-11002 16381-16383")
 
 	newNodeID := "0123456789012345678901234567890123456789"
-	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", newNodeID).Err())
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODEID", newNodeID).Err())
 	srv1.Restart()
 	slots = rdb1.ClusterSlots(ctx).Val()
 	require.EqualValues(t, 10000, slots[2].Start)
@@ -177,7 +183,8 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	srv1.Restart()
 	srv2.Restart()
 	nodes = rdb1.ClusterNodes(ctx).Val()
-	require.Contains(t, nodes, "1-2 4-8193 10000 10002-11002 16381-16383")
+
+	require.Regexp(t, ".*myself,master.*1-2 4-8193 10000 10002-11002 16381-16383.*", nodes)
 	nodes = rdb2.ClusterNodes(ctx).Val()
 	require.Contains(t, nodes, "1-2 4-8193 10000 10002-11002 16381-16383")
 }

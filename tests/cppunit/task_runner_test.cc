@@ -75,10 +75,10 @@ TEST(TaskRunner, Sleep) {
   std::this_thread::sleep_for(1s);
   ASSERT_NEAR(tr.Size(), 90, 1);
 
-  auto begin = Util::GetTimeStampMS();
+  auto begin = util::GetTimeStampMS();
   tr.Cancel();
   _ = tr.Join();
-  ASSERT_LE(Util::GetTimeStampMS() - begin, 1500);
+  ASSERT_LE(util::GetTimeStampMS() - begin, 1500);
 }
 
 TEST(TaskRunner, PublishAfterStart) {

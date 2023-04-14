@@ -31,11 +31,11 @@
 
 using rocksdb::Slice;
 
-namespace Redis {
+namespace redis {
 
 class Stream : public SubKeyScanner {
  public:
-  explicit Stream(Engine::Storage *storage, const std::string &ns)
+  explicit Stream(engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle("stream")) {}
   rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
                       StreamEntryID *id);
@@ -65,4 +65,4 @@ class Stream : public SubKeyScanner {
                 rocksdb::WriteBatch *batch);
 };
 
-}  // namespace Redis
+}  // namespace redis

@@ -35,11 +35,11 @@ StatusOr<std::optional<int64_t>> ParseTTL(CommandParser<T> &parser, std::string_
   if (parser.EatEqICaseFlag("EX", curr_flag)) {
     return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
   } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000 - Util::GetTimeStampMS();
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000 - util::GetTimeStampMS();
   } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
     return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
   } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) - Util::GetTimeStampMS();
+    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) - util::GetTimeStampMS();
   } else {
     return std::nullopt;
   }

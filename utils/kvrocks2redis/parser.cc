@@ -34,7 +34,7 @@
 Status Parser::ParseFullDB() {
   rocksdb::DB *db = storage_->GetDB();
   if (!latest_snapshot_) latest_snapshot_ = std::make_unique<LatestSnapShot>(db);
-  rocksdb::ColumnFamilyHandle *metadata_cf_handle = storage_->GetCFHandle(Engine::kMetadataColumnFamilyName);
+  rocksdb::ColumnFamilyHandle *metadata_cf_handle = storage_->GetCFHandle(engine::kMetadataColumnFamilyName);
 
   rocksdb::ReadOptions read_options;
   read_options.snapshot = latest_snapshot_->GetSnapShot();
@@ -65,12 +65,12 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t e
   ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
 
   auto command =
-      Redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
+      redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
   Status s = writer_->Write(ns, {command});
   if (!s.IsOK()) return s;
 
   if (expire > 0) {
-    command = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire / 1000)});
+    command = redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire / 1000)});
     s = writer_->Write(ns, {command});
   }
 
@@ -97,7 +97,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   storage_->SetReadOptions(read_options);
 
   std::string output;
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {
       break;
@@ -108,17 +108,17 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     std::string value = iter->value().ToString();
     switch (type) {
       case kRedisHash:
-        output = Redis::Command2RESP({"HSET", user_key, sub_key, value});
+        output = redis::Command2RESP({"HSET", user_key, sub_key, value});
         break;
       case kRedisSet:
-        output = Redis::Command2RESP({"SADD", user_key, sub_key});
+        output = redis::Command2RESP({"SADD", user_key, sub_key});
         break;
       case kRedisList:
-        output = Redis::Command2RESP({"RPUSH", user_key, value});
+        output = redis::Command2RESP({"RPUSH", user_key, value});
         break;
       case kRedisZSet: {
         double score = DecodeDouble(value.data());
-        output = Redis::Command2RESP({"ZADD", user_key, Util::Float2String(score), sub_key});
+        output = redis::Command2RESP({"ZADD", user_key, util::Float2String(score), sub_key});
         break;
       }
       case kRedisBitmap: {
@@ -129,7 +129,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       }
       case kRedisSortedint: {
         std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
-        output = Redis::Command2RESP({"ZADD", user_key, val, val});
+        output = redis::Command2RESP({"ZADD", user_key, val, val});
         break;
       }
       default:
@@ -143,7 +143,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   }
 
   if (metadata.expire > 0) {
-    output = Redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
+    output = redis::Command2RESP({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
     Status s = writer_->Write(ns, {output});
     if (!s.IsOK()) return s.Prefixed("failed to write the EXPIREAT command to AOF");
   }
@@ -161,7 +161,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
 
       s = writer_->Write(
           ns.ToString(),
-          {Redis::Command2RESP({"SETBIT", user_key.ToString(), std::to_string(index * 8 + i * 8 + j), "1"})});
+          {redis::Command2RESP({"SETBIT", user_key.ToString(), std::to_string(index * 8 + i * 8 + j), "1"})});
       if (!s.IsOK()) return s.Prefixed("failed to write SETBIT command to AOF");
     }
   }

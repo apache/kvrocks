@@ -60,7 +60,7 @@ using FetchFileCallback = std::function<void(const std::string, const uint32_t)>
 
 class FeedSlaveThread {
  public:
-  explicit FeedSlaveThread(Server *srv, Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
+  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
       : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq) {}
   ~FeedSlaveThread() = default;
 
@@ -68,7 +68,7 @@ class FeedSlaveThread {
   void Stop();
   void Join();
   bool IsStopped() { return stop_; }
-  Redis::Connection *GetConn() { return conn_.get(); }
+  redis::Connection *GetConn() { return conn_.get(); }
   rocksdb::SequenceNumber GetCurrentReplSeq() {
     auto seq = next_repl_seq_.load();
     return seq == 0 ? 0 : seq - 1;
@@ -78,7 +78,7 @@ class FeedSlaveThread {
   uint64_t interval_ = 0;
   std::atomic<bool> stop_ = false;
   Server *srv_ = nullptr;
-  std::unique_ptr<Redis::Connection> conn_ = nullptr;
+  std::unique_ptr<redis::Connection> conn_ = nullptr;
   std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
@@ -146,7 +146,7 @@ class ReplicationThread {
   std::string host_;
   uint32_t port_;
   Server *srv_ = nullptr;
-  Engine::Storage *storage_ = nullptr;
+  engine::Storage *storage_ = nullptr;
   std::atomic<ReplState> repl_state_;
   std::atomic<time_t> last_io_time_ = 0;
   bool next_try_old_psync_ = false;
@@ -201,9 +201,9 @@ class ReplicationThread {
   static bool isWrongPsyncNum(const char *err);
   static bool isUnknownOption(const char *err);
 
-  static void EventTimerCB(int, int16_t, void *ctx);
+  static void eventTimerCb(int, int16_t, void *ctx);
 
-  Status ParseWriteBatch(const std::string &batch_string);
+  Status parseWriteBatch(const std::string &batch_string);
 };
 
 /*

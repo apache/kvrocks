@@ -32,7 +32,7 @@ Status TaskRunner::Start() {
 
   state_ = Running;
   for (auto &thread : threads_) {
-    thread = GET_OR_RET(Util::CreateThread("task-runner", [this] { run(); }));
+    thread = GET_OR_RET(util::CreateThread("task-runner", [this] { run(); }));
   }
 
   return Status::OK();
@@ -44,7 +44,7 @@ Status TaskRunner::Join() {
   }
 
   for (auto &thread : threads_) {
-    if (auto s = Util::ThreadJoin(thread); !s) {
+    if (auto s = util::ThreadJoin(thread); !s) {
       return s.Prefixed("Task thread operation failed");
     }
   }

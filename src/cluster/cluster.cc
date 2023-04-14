@@ -175,7 +175,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   ClusterNodes nodes;
   std::unordered_map<int, std::string> slots_nodes;
-  Status s = ParseClusterNodes(nodes_str, &nodes, &slots_nodes);
+  Status s = parseClusterNodes(nodes_str, &nodes, &slots_nodes);
   if (!s.IsOK()) return s;
 
   // Update version and cluster topology
@@ -323,7 +323,7 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
   return s;
 }
 
-Status Cluster::ImportSlot(Redis::Connection *conn, int slot, int state) {
+Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
   if (IsNotMaster()) {
     return {Status::NotOK, "Slave can't import slot"};
   }
@@ -451,7 +451,7 @@ Status Cluster::GetSlotsInfo(std::vector<SlotInfo> *slots_infos) {
     }
     // Generate slots info when occur different node with start or end of slot
     if (i == kClusterSlots || n != slots_nodes_[i]) {
-      slots_infos->emplace_back(GenSlotNodeInfo(start, i - 1, n));
+      slots_infos->emplace_back(genSlotNodeInfo(start, i - 1, n));
       if (i == kClusterSlots) break;
       n = slots_nodes_[i];
       start = i;
@@ -461,7 +461,7 @@ Status Cluster::GetSlotsInfo(std::vector<SlotInfo> *slots_infos) {
   return Status::OK();
 }
 
-SlotInfo Cluster::GenSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n) {
+SlotInfo Cluster::genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n) {
   std::vector<SlotInfo::NodeInfo> vn;
   vn.push_back({n->host, n->port, n->id});  // itself
 
@@ -480,14 +480,14 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
     return {Status::ClusterDown, errClusterNoInitialized};
   }
 
-  *nodes_str = GenNodesDescription();
+  *nodes_str = genNodesDescription();
   return Status::OK();
 }
 
-std::string Cluster::GenNodesDescription() {
-  UpdateSlotsInfo();
+std::string Cluster::genNodesDescription() {
+  updateSlotsInfo();
 
-  auto now = Util::GetTimeStampMS();
+  auto now = util::GetTimeStampMS();
   std::string nodes_desc;
   for (const auto &item : nodes_) {
     const std::shared_ptr<ClusterNode> n = item.second;
@@ -517,7 +517,7 @@ std::string Cluster::GenNodesDescription() {
   return nodes_desc;
 }
 
-void Cluster::UpdateSlotsInfo() {
+void Cluster::updateSlotsInfo() {
   int start = -1;
   // reset the previous slots info
   for (const auto &item : nodes_) {
@@ -553,8 +553,8 @@ void Cluster::UpdateSlotsInfo() {
   }
 }
 
-std::string Cluster::GenNodesInfo() {
-  UpdateSlotsInfo();
+std::string Cluster::genNodesInfo() {
+  updateSlotsInfo();
 
   std::string nodes_info;
   for (const auto &item : nodes_) {
@@ -589,7 +589,7 @@ Status Cluster::DumpClusterNodes(const std::string &file) {
   std::ofstream output_file(tmp_path, std::ios::out);
   output_file << fmt::format("version {}\n", version_);
   output_file << fmt::format("id {}\n", myid_);
-  output_file << GenNodesInfo();
+  output_file << genNodesInfo();
   output_file.close();
   if (rename(tmp_path.data(), file.data()) < 0) {
     return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
@@ -643,9 +643,9 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
   return SetClusterNodes(nodes_info, version, false);
 }
 
-Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
+Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes) {
-  std::vector<std::string> nodes_info = Util::Split(nodes_str, "\n");
+  std::vector<std::string> nodes_info = util::Split(nodes_str, "\n");
   if (nodes_info.size() == 0) {
     return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
   }
@@ -654,7 +654,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
   // Parse all nodes
   for (const auto &node_str : nodes_info) {
-    std::vector<std::string> fields = Util::Split(node_str, " ");
+    std::vector<std::string> fields = util::Split(node_str, " ");
     if (fields.size() < 5) {
       return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
     }
@@ -708,7 +708,7 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // 6) slot info
     auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
     for (unsigned i = 5; i < fields.size(); i++) {
-      std::vector<std::string> ranges = Util::Split(fields[i], "-");
+      std::vector<std::string> ranges = util::Split(fields[i], "-");
       if (ranges.size() == 1) {
         auto parse_start = ParseInt<int>(ranges[0], valid_range, 10);
         if (!parse_start) {
@@ -757,10 +757,10 @@ Status Cluster::ParseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
 bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator->GetForbiddenSlot() == slot; }
 
-Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                                Redis::Connection *conn) {
+Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                                redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = Redis::GetKeysFromCommand(attributes->name, static_cast<int>(cmd_tokens.size()), &keys_indexes);
+  auto s = redis::GetKeysFromCommand(attributes->name, static_cast<int>(cmd_tokens.size()), &keys_indexes);
   // No keys
   if (!s.IsOK()) return Status::OK();
 
@@ -791,7 +791,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
-    if (attributes->is_write() && IsWriteForbiddenSlot(slot)) {
+    if (attributes->IsWrite() && IsWriteForbiddenSlot(slot)) {
       return {Status::RedisExecErr, "TRYAGAIN Can't write to slot being migrated which is in write forbidden phase"};
     }
 
@@ -813,7 +813,7 @@ Status Cluster::CanExecByMySelf(const Redis::CommandAttributes *attributes, cons
     return Status::OK();  // I'm serving the imported slot
   }
 
-  if (myself_ && myself_->role == kClusterSlave && !attributes->is_write() &&
+  if (myself_ && myself_->role == kClusterSlave && !attributes->IsWrite() &&
       nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot]) {
     return Status::OK();  // My master is serving this slot
   }

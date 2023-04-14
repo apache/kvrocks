@@ -254,12 +254,12 @@ void Config::initFieldValidator() {
        }},
       {"compact-cron",
        [this](const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> args = Util::Split(v, " \t");
+         std::vector<std::string> args = util::Split(v, " \t");
          return compact_cron.SetScheduleTime(args);
        }},
       {"bgsave-cron",
        [this](const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> args = Util::Split(v, " \t");
+         std::vector<std::string> args = util::Split(v, " \t");
          return bgsave_cron.SetScheduleTime(args);
        }},
       {"compaction-checker-range",
@@ -269,7 +269,7 @@ void Config::initFieldValidator() {
            compaction_checker_range.stop = -1;
            return Status::OK();
          }
-         std::vector<std::string> args = Util::Split(v, "-");
+         std::vector<std::string> args = util::Split(v, "-");
          if (args.size() != 2) {
            return {Status::NotOK, "invalid range format, the range should be between 0 and 24"};
          }
@@ -282,19 +282,19 @@ void Config::initFieldValidator() {
        }},
       {"rename-command",
        [](const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> all_args = Util::Split(v, "\n");
+         std::vector<std::string> all_args = util::Split(v, "\n");
          for (auto &p : all_args) {
-           std::vector<std::string> args = Util::Split(p, " \t");
+           std::vector<std::string> args = util::Split(p, " \t");
            if (args.size() != 2) {
              return {Status::NotOK, "Invalid rename-command format"};
            }
-           auto commands = Redis::GetCommands();
-           auto cmd_iter = commands->find(Util::ToLower(args[0]));
+           auto commands = redis::GetCommands();
+           auto cmd_iter = commands->find(util::ToLower(args[0]));
            if (cmd_iter == commands->end()) {
              return {Status::NotOK, "No such command in rename-command"};
            }
            if (args[1] != "\"\"") {
-             auto new_command_name = Util::ToLower(args[1]);
+             auto new_command_name = util::ToLower(args[1]);
              if (commands->find(new_command_name) != commands->end()) {
                return {Status::NotOK, "Target command name already exists"};
              }
@@ -376,7 +376,7 @@ void Config::initFieldCallback() {
        }},
       {"bind",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> args = Util::Split(v, " \t");
+         std::vector<std::string> args = util::Split(v, " \t");
          binds = std::move(args);
          return Status::OK();
        }},
@@ -391,7 +391,7 @@ void Config::initFieldCallback() {
          if (v.empty()) {
            return Status::OK();
          }
-         std::vector<std::string> args = Util::Split(v, " \t");
+         std::vector<std::string> args = util::Split(v, " \t");
          if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
          if (args[0] != "no" && args[1] != "one") {
            master_host = args[0];
@@ -405,7 +405,7 @@ void Config::initFieldCallback() {
        }},
       {"profiling-sample-commands",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> cmds = Util::Split(v, ",");
+         std::vector<std::string> cmds = util::Split(v, ",");
          profiling_sample_all_commands = false;
          profiling_sample_commands.clear();
          for (auto const &cmd : cmds) {
@@ -414,7 +414,7 @@ void Config::initFieldCallback() {
              profiling_sample_commands.clear();
              return Status::OK();
            }
-           if (!Redis::IsCommandExists(cmd)) {
+           if (!redis::IsCommandExists(cmd)) {
              return {Status::NotOK, cmd + " is not Kvrocks supported command"};
            }
            // profiling_sample_commands use command's original name, regardless of rename-command directive
@@ -467,7 +467,7 @@ void Config::initFieldCallback() {
       {"log-retention-days",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (Util::ToLower(log_dir) == "stdout") {
+         if (util::ToLower(log_dir) == "stdout") {
            return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
          }
 
@@ -649,7 +649,7 @@ void Config::ClearMaster() {
 }
 
 Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
-  std::string field_key = Util::ToLower(input.first);
+  std::string field_key = util::ToLower(input.first);
   const char ns_str[] = "namespace.";
   size_t ns_str_size = sizeof(ns_str) - 1;
   if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
@@ -768,9 +768,9 @@ Status Config::Load(const CLIOptions &opts) {
 void Config::Get(const std::string &key, std::vector<std::string> *values) {
   values->clear();
   for (const auto &iter : fields_) {
-    if (key == "*" || Util::ToLower(key) == iter.first) {
+    if (key == "*" || util::ToLower(key) == iter.first) {
       if (iter.second->IsMultiConfig()) {
-        for (const auto &p : Util::Split(iter.second->ToString(), "\n")) {
+        for (const auto &p : util::Split(iter.second->ToString(), "\n")) {
           values->emplace_back(iter.first);
           values->emplace_back(p);
         }
@@ -783,7 +783,7 @@ void Config::Get(const std::string &key, std::vector<std::string> *values) {
 }
 
 Status Config::Set(Server *svr, std::string key, const std::string &value) {
-  key = Util::ToLower(key);
+  key = util::ToLower(key);
   auto iter = fields_.find(key);
   if (iter == fields_.end() || iter->second->readonly) {
     return {Status::NotOK, "Unsupported CONFIG parameter: " + key};
@@ -837,11 +837,11 @@ Status Config::Rewrite() {
         continue;
       }
       auto kv = std::move(*parsed);
-      if (Util::HasPrefix(kv.first, namespace_prefix)) {
+      if (util::HasPrefix(kv.first, namespace_prefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
       }
-      auto iter = new_config.find(Util::ToLower(kv.first));
+      auto iter = new_config.find(util::ToLower(kv.first));
       if (iter != new_config.end()) {
         if (!iter->second.empty()) lines.emplace_back(DumpConfigLine({iter->first, iter->second}));
         new_config.erase(iter);

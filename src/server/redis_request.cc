@@ -34,7 +34,7 @@
 #include "redis_reply.h"
 #include "server.h"
 
-namespace Redis {
+namespace redis {
 
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
 const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
@@ -90,7 +90,7 @@ Status Request::Tokenize(evbuffer *input) {
             return {Status::NotOK, "Protocol error: invalid bulk length"};
           }
 
-          tokens_ = Util::Split(std::string(line.get(), line.length), " \t");
+          tokens_ = util::Split(std::string(line.get(), line.length), " \t");
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
         }
@@ -138,4 +138,4 @@ Status Request::Tokenize(evbuffer *input) {
   }
 }
 
-}  // namespace Redis
+}  // namespace redis

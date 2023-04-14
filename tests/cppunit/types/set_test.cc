@@ -27,7 +27,7 @@
 
 class RedisSetTest : public TestBase {
  protected:
-  explicit RedisSetTest() { set_ = std::make_unique<Redis::Set>(storage_, "set_ns"); }
+  explicit RedisSetTest() { set_ = std::make_unique<redis::Set>(storage_, "set_ns"); }
   ~RedisSetTest() override = default;
 
   void SetUp() override {
@@ -35,7 +35,7 @@ class RedisSetTest : public TestBase {
     fields_ = {"set-key-1", "set-key-2", "set-key-3", "set-key-4"};
   }
 
-  std::unique_ptr<Redis::Set> set_;
+  std::unique_ptr<redis::Set> set_;
 };
 
 TEST_F(RedisSetTest, AddAndRemove) {

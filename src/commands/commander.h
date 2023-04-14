@@ -43,7 +43,7 @@
 
 class Server;
 
-namespace Redis {
+namespace redis {
 
 class Connection;
 struct CommandAttributes;
@@ -124,11 +124,11 @@ struct CommandAttributes {
 
   CommanderFactory factory;
 
-  bool is_write() const { return (flags & kCmdWrite) != 0; }
-  bool is_ok_loading() const { return (flags & kCmdLoading) != 0; }
-  bool is_exclusive() const { return (flags & kCmdExclusive) != 0; }
-  bool is_multi() const { return (flags & kCmdMulti) != 0; }
-  bool is_no_multi() const { return (flags & kCmdNoMulti) != 0; }
+  bool IsWrite() const { return (flags & kCmdWrite) != 0; }
+  bool IsOkLoading() const { return (flags & kCmdLoading) != 0; }
+  bool IsExclusive() const { return (flags & kCmdExclusive) != 0; }
+  bool IsMulti() const { return (flags & kCmdMulti) != 0; }
+  bool IsNoMulti() const { return (flags & kCmdNoMulti) != 0; }
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
@@ -136,7 +136,7 @@ using CommandMap = std::map<std::string, const CommandAttributes *>;
 inline uint64_t ParseCommandFlags(const std::string &description, const std::string &cmd_name) {
   uint64_t flags = 0;
 
-  for (const auto &flag : Util::Split(description, " ")) {
+  for (const auto &flag : util::Split(description, " ")) {
     if (flag == "write")
       flags |= kCmdWrite;
     else if (flag == "read-only")
@@ -234,4 +234,4 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes);
 Status GetKeysFromCommand(const std::string &name, int argc, std::vector<int> *keys_indexes);
 bool IsCommandExists(const std::string &name);
 
-}  // namespace Redis
+}  // namespace redis

@@ -35,7 +35,7 @@ class TestBase : public testing::Test {  // NOLINT
     config_->rocks_db.compression = rocksdb::CompressionType::kNoCompression;
     config_->rocks_db.write_buffer_size = 1;
     config_->rocks_db.block_size = 100;
-    storage_ = new Engine::Storage(config_);
+    storage_ = new engine::Storage(config_);
     Status s = storage_->Open();
     if (!s.IsOK()) {
       std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
@@ -54,7 +54,7 @@ class TestBase : public testing::Test {  // NOLINT
     }
   }
 
-  Engine::Storage *storage_;
+  engine::Storage *storage_;
   Config *config_ = nullptr;
   std::string key_;
   std::vector<Slice> fields_;

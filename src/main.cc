@@ -185,7 +185,7 @@ static void initGoogleLog(const Config *config) {
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
 
-  if (Util::ToLower(config->log_dir) == "stdout") {
+  if (util::ToLower(config->log_dir) == "stdout") {
     for (int level = google::INFO; level <= google::FATAL; level++) {
       google::SetLogDestination(level, "");
     }
@@ -281,7 +281,7 @@ static Status createPidFile(const std::string &path) {
   }
 
   std::string pid_str = std::to_string(getpid());
-  auto s = Util::Write(*fd, pid_str);
+  auto s = util::Write(*fd, pid_str);
   if (!s.IsOK()) {
     return s.Prefixed("failed to write to PID-file");
   }
@@ -310,7 +310,7 @@ static void daemonize() {
 }
 
 int main(int argc, char *argv[]) {
-  srand(static_cast<unsigned>(Util::GetTimeStamp()));
+  srand(static_cast<unsigned>(util::GetTimeStamp()));
   google::InitGoogleLogging("kvrocks");
   evthread_use_pthreads();
 
@@ -334,7 +334,7 @@ int main(int argc, char *argv[]) {
   if (!config.binds.empty()) {
     uint32_t ports[] = {config.port, config.tls_port, 0};
     for (uint32_t *port = ports; *port; ++port) {
-      if (Util::IsPortInUse(*port)) {
+      if (util::IsPortInUse(*port)) {
         LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use";
         return 1;
       }
@@ -356,7 +356,7 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-  Engine::Storage storage(&config);
+  engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();

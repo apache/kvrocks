@@ -47,7 +47,7 @@
 #include "table_properties_collector.h"
 #include "time_util.h"
 
-namespace Engine {
+namespace engine {
 
 constexpr const char *kReplicationIdKey = "replication_id_";
 
@@ -56,7 +56,7 @@ const int64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 Storage::Storage(Config *config)
-    : backup_creating_time_(Util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
+    : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
   Metadata::InitVersionCounter();
   SetWriteOptions(config->rocks_db.write_options);
 }
@@ -367,7 +367,7 @@ Status Storage::CreateBackup() {
   }
 
   // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
-  backup_creating_time_ = static_cast<time_t>(Util::GetTimeStamp());
+  backup_creating_time_ = static_cast<time_t>(util::GetTimeStamp());
 
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
@@ -477,7 +477,7 @@ void Storage::EmptyDB() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  time_t now = Util::GetTimeStamp();
+  time_t now = util::GetTimeStamp();
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
 
@@ -650,7 +650,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   std::string prefix, begin_key, end_key;
   ComposeNamespaceKey(ns, "", &prefix, false);
 
-  Redis::Database db(this, ns);
+  redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;
   rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
@@ -842,7 +842,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     uint64_t checkpoint_latest_seq = 0;
     s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->rocks_db.write_buffer_size * MiB,
                                      &checkpoint_latest_seq);
-    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    auto now = static_cast<time_t>(util::GetTimeStamp());
     storage->checkpoint_info_.create_time = now;
     storage->checkpoint_info_.access_time = now;
     storage->checkpoint_info_.latest_seq = checkpoint_latest_seq;
@@ -858,7 +858,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
 
-    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    auto now = static_cast<time_t>(util::GetTimeStamp());
     if (now - storage->GetCheckpointCreateTime() > can_shared_time) {
       LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
       return {Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint"};
@@ -1103,4 +1103,4 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   return crc == tmp_crc;
 }
 
-}  // namespace Engine
+}  // namespace engine

@@ -35,7 +35,7 @@
 
 // forward declaration
 class Server;
-namespace Engine {
+namespace engine {
 class Storage;
 }
 

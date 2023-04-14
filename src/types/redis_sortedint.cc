@@ -26,7 +26,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *metadata) {
   return Database::GetMetadata(kRedisSortedint, ns_key, metadata);
@@ -141,7 +141,7 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   storage_->SetReadOptions(read_options);
 
   uint64_t id = 0, pos = 0;
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -182,7 +182,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   storage_->SetReadOptions(read_options);
 
   int pos = 0;
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -273,4 +273,4 @@ Status Sortedint::ParseRangeSpec(const std::string &min, const std::string &max,
   return Status::OK();
 }
 
-}  // namespace Redis
+}  // namespace redis

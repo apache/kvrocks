@@ -25,11 +25,11 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-namespace Redis {
+namespace redis {
 
 class Disk : public Database {
  public:
-  explicit Disk(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {
+  explicit Disk(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {
     option_.include_memtables = true;
     option_.include_files = true;
   }
@@ -50,4 +50,4 @@ class Disk : public Database {
   rocksdb::SizeApproximationOptions option_;
 };
 
-}  // namespace Redis
+}  // namespace redis

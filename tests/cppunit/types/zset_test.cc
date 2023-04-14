@@ -27,7 +27,7 @@
 
 class RedisZSetTest : public TestBase {
  protected:
-  RedisZSetTest() { zset_ = std::make_unique<Redis::ZSet>(storage_, "zset_ns"); }
+  RedisZSetTest() { zset_ = std::make_unique<redis::ZSet>(storage_, "zset_ns"); }
   ~RedisZSetTest() override = default;
 
   void SetUp() override {
@@ -38,7 +38,7 @@ class RedisZSetTest : public TestBase {
   }
 
   std::vector<double> scores_;
-  std::unique_ptr<Redis::ZSet> zset_;
+  std::unique_ptr<redis::ZSet> zset_;
 };
 
 TEST_F(RedisZSetTest, Add) {

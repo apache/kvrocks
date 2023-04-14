@@ -33,15 +33,15 @@
 #include "config/config_util.h"
 #include "string_util.h"
 
-namespace Kvrocks2redis {
+namespace kvrocks2redis {
 
 static constexpr const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
 static constexpr size_t kNumLogLevel = std::size(kLogLevels);
 
 StatusOr<bool> Config::yesnotoi(const std::string &input) {
-  if (Util::EqualICase(input, "yes")) {
+  if (util::EqualICase(input, "yes")) {
     return true;
-  } else if (Util::EqualICase(input, "no")) {
+  } else if (util::EqualICase(input, "no")) {
     return false;
   }
   return {Status::NotOK, "value must be 'yes' or 'no'"};
@@ -51,8 +51,8 @@ Status Config::parseConfigFromString(const std::string &input) {
   auto [original_key, value] = GET_OR_RET(ParseConfigLine(input));
   if (original_key.empty()) return Status::OK();
 
-  std::vector<std::string> args = Util::Split(value, " \t\r\n");
-  auto key = Util::ToLower(original_key);
+  std::vector<std::string> args = util::Split(value, " \t\r\n");
+  auto key = util::ToLower(original_key);
   size_t size = args.size();
 
   if (size == 1 && key == "daemonize") {
@@ -80,7 +80,7 @@ Status Config::parseConfigFromString(const std::string &input) {
     next_seq_file_path = output_dir + "last_next_seq.txt";
   } else if (size == 1 && key == "log-level") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
-      if (Util::ToLower(args[0]) == kLogLevels[i]) {
+      if (util::ToLower(args[0]) == kLogLevels[i]) {
         loglevel = static_cast<int>(i);
         break;
       }
@@ -156,4 +156,4 @@ Status Config::Load(std::string path) {
   return Status::OK();
 }
 
-}  // namespace Kvrocks2redis
+}  // namespace kvrocks2redis

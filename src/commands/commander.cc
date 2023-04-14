@@ -20,7 +20,7 @@
 
 #include "commander.h"
 
-namespace Redis {
+namespace redis {
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
   for (const auto &attr : list) {
@@ -40,20 +40,20 @@ void ResetCommands() { command_details::commands = command_details::original_com
 
 std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;
-  command.append(Redis::MultiLen(6));
-  command.append(Redis::BulkString(command_attributes->name));
-  command.append(Redis::Integer(command_attributes->arity));
-  command_flags.append(Redis::MultiLen(1));
-  command_flags.append(Redis::BulkString(command_attributes->is_write() ? "write" : "readonly"));
+  command.append(redis::MultiLen(6));
+  command.append(redis::BulkString(command_attributes->name));
+  command.append(redis::Integer(command_attributes->arity));
+  command_flags.append(redis::MultiLen(1));
+  command_flags.append(redis::BulkString(command_attributes->IsWrite() ? "write" : "readonly"));
   command.append(command_flags);
-  command.append(Redis::Integer(command_attributes->key_range.first_key));
-  command.append(Redis::Integer(command_attributes->key_range.last_key));
-  command.append(Redis::Integer(command_attributes->key_range.key_step));
+  command.append(redis::Integer(command_attributes->key_range.first_key));
+  command.append(redis::Integer(command_attributes->key_range.last_key));
+  command.append(redis::Integer(command_attributes->key_range.key_step));
   return command;
 }
 
 void GetAllCommandsInfo(std::string *info) {
-  info->append(Redis::MultiLen(command_details::original_commands.size()));
+  info->append(redis::MultiLen(command_details::original_commands.size()));
   for (const auto &iter : command_details::original_commands) {
     auto command_attribute = iter.second;
     auto command_info = GetCommandInfo(command_attribute);
@@ -62,11 +62,11 @@ void GetAllCommandsInfo(std::string *info) {
 }
 
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
-  info->append(Redis::MultiLen(cmd_names.size()));
+  info->append(redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
-    auto cmd_iter = command_details::original_commands.find(Util::ToLower(cmd_name));
+    auto cmd_iter = command_details::original_commands.find(util::ToLower(cmd_name));
     if (cmd_iter == command_details::original_commands.end()) {
-      info->append(Redis::NilString());
+      info->append(redis::NilString());
     } else {
       auto command_attribute = cmd_iter->second;
       auto command_info = GetCommandInfo(command_attribute);
@@ -76,7 +76,7 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
 }
 
 Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
-  auto cmd_iter = command_details::original_commands.find(Util::ToLower(cmd_name));
+  auto cmd_iter = command_details::original_commands.find(util::ToLower(cmd_name));
   if (cmd_iter == command_details::original_commands.end()) {
     return {Status::RedisUnknownCmd, "Invalid command specified"};
   }
@@ -105,7 +105,7 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
 }
 
 bool IsCommandExists(const std::string &name) {
-  return command_details::original_commands.find(Util::ToLower(name)) != command_details::original_commands.end();
+  return command_details::original_commands.find(util::ToLower(name)) != command_details::original_commands.end();
 }
 
-}  // namespace Redis
+}  // namespace redis

@@ -27,7 +27,7 @@
 
 class EventListener : public rocksdb::EventListener {
  public:
-  explicit EventListener(Engine::Storage *storage) : storage_(storage) {}
+  explicit EventListener(engine::Storage *storage) : storage_(storage) {}
   ~EventListener() override = default;
   void OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) override;
   void OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) override;
@@ -38,5 +38,5 @@ class EventListener : public rocksdb::EventListener {
   void OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) override;
 
  private:
-  Engine::Storage *storage_ = nullptr;
+  engine::Storage *storage_ = nullptr;
 };

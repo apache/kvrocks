@@ -46,7 +46,7 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
 
  private:
   std::map<std::string, std::vector<std::string>> resp_commands_;
-  Redis::WriteBatchLogData log_data_;
+  redis::WriteBatchLogData log_data_;
   bool first_seen_ = true;
   bool is_slot_id_encoded_ = false;
   int slot_id_;

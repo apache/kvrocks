@@ -24,13 +24,12 @@ CheckOptions:
     value:         CamelCase
   - key:           readability-identifier-naming.ParameterCase
     value:         lower_case
-  # FIXME: enable these options
-  # - key:           readability-identifier-naming.PublicMethodCase
-  #   value:         CamelCase
-  # - key:           readability-identifier-naming.PrivateMethodCase
-  #   value:         camelBack
-  # - key:           readability-identifier-naming.ProtectedMethodCase
-  #   value:         camelBack
+  - key:           readability-identifier-naming.PublicMethodCase
+    value:         CamelCase
+  - key:           readability-identifier-naming.PrivateMethodCase
+    value:         camelBack
+  - key:           readability-identifier-naming.ProtectedMethodCase
+    value:         camelBack
   - key:           readability-identifier-naming.MemberCase
     value:         lower_case
   - key:           readability-identifier-naming.MemberSuffix
@@ -47,3 +46,5 @@ CheckOptions:
     value:         CamelCase
   - key:           readability-identifier-naming.MacroCase
     value:         UPPER_CASE
+  - key:           readability-identifier-naming.NamespaceCase
+    value:         lower_case

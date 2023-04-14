@@ -39,11 +39,11 @@ struct FieldValue {
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
 
-namespace Redis {
+namespace redis {
 
 class Hash : public SubKeyScanner {
  public:
-  Hash(Engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  Hash(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Size(const Slice &user_key, uint32_t *ret);
   rocksdb::Status Get(const Slice &user_key, const Slice &field, std::string *value);
@@ -66,4 +66,4 @@ class Hash : public SubKeyScanner {
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
 };
 
-}  // namespace Redis
+}  // namespace redis

@@ -54,10 +54,10 @@
 
 constexpr const char *REDIS_VERSION = "4.0.0";
 
-Server::Server(Engine::Storage *storage, Config *config)
-    : storage(storage), start_time_(Util::GetTimeStamp()), config_(config) {
+Server::Server(engine::Storage *storage, Config *config)
+    : storage(storage), start_time_(util::GetTimeStamp()), config_(config) {
   // init commands stats here to prevent concurrent insert, and cause core
-  auto commands = Redis::GetOriginalCommands();
+  auto commands = redis::GetOriginalCommands();
   for (const auto &iter : *commands) {
     stats.commands_stats[iter.first].calls = 0;
     stats.commands_stats[iter.first].latency = 0;
@@ -94,7 +94,7 @@ Server::Server(Engine::Storage *storage, Config *config)
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
-  lua_ = Lua::CreateState();
+  lua_ = lua::CreateState();
 }
 
 Server::~Server() {
@@ -118,7 +118,7 @@ Server::~Server() {
     delete iter.first;
   }
 
-  Lua::DestroyState(lua_);
+  lua::DestroyState(lua_);
   libevent_global_shutdown();
 }
 
@@ -170,9 +170,9 @@ Status Server::Start() {
     LOG(WARNING) << "Failed to start task runner: " << s.Msg();
   }
   // setup server cron thread
-  cron_thread_ = GET_OR_RET(Util::CreateThread("server-cron", [this] { this->cron(); }));
+  cron_thread_ = GET_OR_RET(util::CreateThread("server-cron", [this] { this->cron(); }));
 
-  compaction_checker_thread_ = GET_OR_RET(Util::CreateThread("compact-check", [this] {
+  compaction_checker_thread_ = GET_OR_RET(util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
     time_t last_compact_date = 0;
     CompactionChecker compaction_checker{this->storage};
@@ -187,13 +187,13 @@ Status Server::Start() {
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
-        auto now = static_cast<time_t>(Util::GetTimeStamp());
+        auto now = static_cast<time_t>(util::GetTimeStamp());
         std::tm local_time{};
         localtime_r(&now, &local_time);
         if (local_time.tm_hour >= config_->compaction_checker_range.start &&
             local_time.tm_hour <= config_->compaction_checker_range.stop) {
-          std::vector<std::string> cf_names = {Engine::kMetadataColumnFamilyName, Engine::kSubkeyColumnFamilyName,
-                                               Engine::kZSetScoreColumnFamilyName, Engine::kStreamColumnFamilyName};
+          std::vector<std::string> cf_names = {engine::kMetadataColumnFamilyName, engine::kSubkeyColumnFamilyName,
+                                               engine::kZSetScoreColumnFamilyName, engine::kStreamColumnFamilyName};
           for (const auto &cf_name : cf_names) {
             compaction_checker.PickCompactionFiles(cf_name);
           }
@@ -236,10 +236,10 @@ void Server::Join() {
   if (auto s = task_runner_.Join(); !s) {
     LOG(WARNING) << s.Msg();
   }
-  if (auto s = Util::ThreadJoin(cron_thread_); !s) {
+  if (auto s = util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
-  if (auto s = Util::ThreadJoin(compaction_checker_thread_); !s) {
+  if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
   }
 }
@@ -297,7 +297,7 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
-Status Server::AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
+Status Server::AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
   auto t = std::make_unique<FeedSlaveThread>(this, conn, next_repl_seq);
   auto s = t->Start();
   if (!s.IsOK()) {
@@ -323,7 +323,7 @@ void Server::DisconnectSlaves() {
   }
 }
 
-void Server::cleanupExitedSlaves() {
+void Server::CleanupExitedSlaves() {
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
 
   for (auto it = slave_threads_.begin(); it != slave_threads_.end();) {
@@ -337,7 +337,7 @@ void Server::cleanupExitedSlaves() {
   }
 }
 
-void Server::FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens) {
+void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
   for (const auto &worker_thread : worker_threads_) {
@@ -363,7 +363,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   std::vector<std::string> patterns;
   std::vector<ConnContext> to_publish_patterns_conn_ctxs;
   for (const auto &iter : pubsub_patterns_) {
-    if (Util::StringMatch(iter.first, channel, 0)) {
+    if (util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {
         to_publish_patterns_conn_ctxs.emplace_back(*conn_ctx);
         patterns.emplace_back(iter.first);
@@ -373,10 +373,10 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   pubsub_channels_mu_.unlock();
 
   std::string channel_reply;
-  channel_reply.append(Redis::MultiLen(3));
-  channel_reply.append(Redis::BulkString("message"));
-  channel_reply.append(Redis::BulkString(channel));
-  channel_reply.append(Redis::BulkString(msg));
+  channel_reply.append(redis::MultiLen(3));
+  channel_reply.append(redis::BulkString("message"));
+  channel_reply.append(redis::BulkString(channel));
+  channel_reply.append(redis::BulkString(msg));
   for (const auto &conn_ctx : to_publish_conn_ctxs) {
     auto s = conn_ctx.owner->Reply(conn_ctx.fd, channel_reply);
     if (s.IsOK()) {
@@ -387,11 +387,11 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   // We should publish corresponding pattern and message for connections
   for (const auto &conn_ctx : to_publish_patterns_conn_ctxs) {
     std::string pattern_reply;
-    pattern_reply.append(Redis::MultiLen(4));
-    pattern_reply.append(Redis::BulkString("pmessage"));
-    pattern_reply.append(Redis::BulkString(patterns[index++]));
-    pattern_reply.append(Redis::BulkString(channel));
-    pattern_reply.append(Redis::BulkString(msg));
+    pattern_reply.append(redis::MultiLen(4));
+    pattern_reply.append(redis::BulkString("pmessage"));
+    pattern_reply.append(redis::BulkString(patterns[index++]));
+    pattern_reply.append(redis::BulkString(channel));
+    pattern_reply.append(redis::BulkString(msg));
     auto s = conn_ctx.owner->Reply(conn_ctx.fd, pattern_reply);
     if (s.IsOK()) {
       cnt++;
@@ -401,7 +401,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   return cnt;
 }
 
-void Server::SubscribeChannel(const std::string &channel, Redis::Connection *conn) {
+void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
@@ -414,7 +414,7 @@ void Server::SubscribeChannel(const std::string &channel, Redis::Connection *con
   }
 }
 
-void Server::UnsubscribeChannel(const std::string &channel, Redis::Connection *conn) {
+void Server::UnsubscribeChannel(const std::string &channel, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto iter = pubsub_channels_.find(channel);
@@ -438,7 +438,7 @@ void Server::GetChannelsByPattern(const std::string &pattern, std::vector<std::s
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   for (const auto &iter : pubsub_channels_) {
-    if (pattern.empty() || Util::StringMatch(pattern, iter.first, 0)) {
+    if (pattern.empty() || util::StringMatch(pattern, iter.first, 0)) {
       channels->emplace_back(iter.first);
     }
   }
@@ -457,7 +457,7 @@ void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
   }
 }
 
-void Server::PSubscribeChannel(const std::string &pattern, Redis::Connection *conn) {
+void Server::PSubscribeChannel(const std::string &pattern, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
@@ -470,7 +470,7 @@ void Server::PSubscribeChannel(const std::string &pattern, Redis::Connection *co
   }
 }
 
-void Server::PUnsubscribeChannel(const std::string &pattern, Redis::Connection *conn) {
+void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto iter = pubsub_patterns_.find(pattern);
@@ -490,7 +490,7 @@ void Server::PUnsubscribeChannel(const std::string &pattern, Redis::Connection *
   }
 }
 
-void Server::BlockOnKey(const std::string &key, Redis::Connection *conn) {
+void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
@@ -505,7 +505,7 @@ void Server::BlockOnKey(const std::string &key, Redis::Connection *conn) {
   IncrBlockedClientNum();
 }
 
-void Server::UnblockOnKey(const std::string &key, Redis::Connection *conn) {
+void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto iter = blocking_keys_.find(key);
@@ -527,8 +527,8 @@ void Server::UnblockOnKey(const std::string &key, Redis::Connection *conn) {
   DecrBlockedClientNum();
 }
 
-void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
-                            Redis::Connection *conn) {
+void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
+                            redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   IncrBlockedClientNum();
@@ -545,7 +545,7 @@ void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vec
   }
 }
 
-void Server::UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn) {
+void Server::UnblockOnStreams(const std::vector<std::string> &keys, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   DecrBlockedClientNum();
@@ -589,7 +589,7 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
   }
 }
 
-void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id) {
+void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto iter = blocked_stream_consumers_.find(key);
@@ -620,7 +620,7 @@ void Server::delConnContext(ConnContext *c) {
 }
 
 void Server::updateCachedTime() {
-  time_t ret = Util::GetTimeStamp();
+  time_t ret = util::GetTimeStamp();
   if (ret == -1) return;
   unix_time.store(static_cast<int>(ret));
 }
@@ -691,7 +691,7 @@ void Server::cron() {
 
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (counter != 0 && counter % 200 == 0) {
-      auto t = static_cast<time_t>(Util::GetTimeStamp());
+      auto t = static_cast<time_t>(util::GetTimeStamp());
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
@@ -723,7 +723,7 @@ void Server::cron() {
 
       if (storage->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
-        auto now = static_cast<time_t>(Util::GetTimeStamp());
+        auto now = static_cast<time_t>(util::GetTimeStamp());
         if ((GetFetchFileThreadNum() == 0 && now - access_time > 30) || (now - create_time > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
@@ -746,7 +746,7 @@ void Server::cron() {
       storage->SetDBInRetryableIOError(false);
     }
 
-    cleanupExitedSlaves();
+    CleanupExitedSlaves();
     recordInstantaneousMetrics();
   }
 }
@@ -854,7 +854,7 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
-  int64_t now = Util::GetTimeStamp();
+  int64_t now = util::GetTimeStamp();
   string_stream << "uptime_in_seconds:" << now - start_time_ << "\r\n";
   string_stream << "uptime_in_days:" << (now - start_time_) / 86400 << "\r\n";
   *info = string_stream.str();
@@ -873,8 +873,8 @@ void Server::GetClientsInfo(std::string *info) {
 void Server::GetMemoryInfo(std::string *info) {
   int64_t rss = Stats::GetMemoryRSS();
   int memory_lua = lua_gc(lua_, LUA_GCCOUNT, 0) * 1024;
-  std::string used_memory_rss_human = Util::BytesToHuman(rss);
-  std::string used_memory_lua_human = Util::BytesToHuman(memory_lua);
+  std::string used_memory_rss_human = util::BytesToHuman(rss);
+  std::string used_memory_lua_human = util::BytesToHuman(memory_lua);
 
   std::ostringstream string_stream;
   string_stream << "# Memory\r\n";
@@ -891,7 +891,7 @@ void Server::GetReplicationInfo(std::string *info) {
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
-    time_t now = Util::GetTimeStamp();
+    time_t now = util::GetTimeStamp();
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
@@ -940,7 +940,7 @@ void Server::GetRoleInfo(std::string *info) {
       roles.emplace_back("connecting");
     }
     roles.emplace_back(std::to_string(storage->LatestSeqNumber()));
-    *info = Redis::MultiBulkString(roles);
+    *info = redis::MultiBulkString(roles);
   } else {
     std::vector<std::string> list;
 
@@ -948,7 +948,7 @@ void Server::GetRoleInfo(std::string *info) {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
-      list.emplace_back(Redis::MultiBulkString({
+      list.emplace_back(redis::MultiBulkString({
           slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),
@@ -960,11 +960,11 @@ void Server::GetRoleInfo(std::string *info) {
     if (list.size() > 0) {
       multi_len = 3;
     }
-    info->append(Redis::MultiLen(multi_len));
-    info->append(Redis::BulkString("master"));
-    info->append(Redis::BulkString(std::to_string(storage->LatestSeqNumber())));
+    info->append(redis::MultiLen(multi_len));
+    info->append(redis::BulkString("master"));
+    info->append(redis::BulkString(std::to_string(storage->LatestSeqNumber())));
     if (list.size() > 0) {
-      info->append(Redis::Array(list));
+      info->append(redis::Array(list));
     }
   }
 }
@@ -983,7 +983,7 @@ void Server::SetLastRandomKeyCursor(const std::string &cursor) {
 
 int Server::GetCachedUnixTime() {
   if (unix_time.load() == 0) {
-    unix_time.store(static_cast<int>(Util::GetTimeStamp()));
+    unix_time.store(static_cast<int>(util::GetTimeStamp()));
   }
   return unix_time.load();
 }
@@ -1266,9 +1266,9 @@ Status Server::AsyncBgSaveDB() {
   is_bgsave_in_progress_ = true;
 
   return task_runner_.TryPublish([this] {
-    auto start_bgsave_time = Util::GetTimeStamp();
+    auto start_bgsave_time = util::GetTimeStamp();
     Status s = storage->CreateBackup();
-    auto stop_bgsave_time = Util::GetTimeStamp();
+    auto stop_bgsave_time = util::GetTimeStamp();
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
@@ -1298,14 +1298,14 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   db_scan_infos_[ns].is_scanning = true;
 
   return task_runner_.TryPublish([ns, this] {
-    Redis::Database db(storage, ns);
+    redis::Database db(storage, ns);
     KeyNumStats stats;
     db.GetKeyNumStats("", &stats);
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
     db_scan_infos_[ns].key_num_stats = stats;
-    db_scan_infos_[ns].last_scan_time = Util::GetTimeStamp();
+    db_scan_infos_[ns].last_scan_time = util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
   });
 }
@@ -1446,7 +1446,7 @@ std::string Server::GetClientsStr() {
 }
 
 void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
-                        Redis::Connection *conn) {
+                        redis::Connection *conn) {
   *killed = 0;
 
   // Normal clients and pubsub clients
@@ -1488,11 +1488,11 @@ ReplState Server::GetReplicationState() {
   return kReplConnecting;
 }
 
-Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd) {
+Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd) {
   if (cmd_name.empty()) return {Status::RedisUnknownCmd};
 
-  auto commands = Redis::GetCommands();
-  auto cmd_iter = commands->find(Util::ToLower(cmd_name));
+  auto commands = redis::GetCommands();
+  auto cmd_iter = commands->find(util::ToLower(cmd_name));
   if (cmd_iter == commands->end()) {
     return {Status::RedisUnknownCmd};
   }
@@ -1516,8 +1516,8 @@ Status Server::ScriptExists(const std::string &sha) {
 }
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
-  std::string func_name = Engine::kLuaFunctionPrefix + sha;
-  auto cf = storage->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  std::string func_name = engine::kLuaFunctionPrefix + sha;
+  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1526,17 +1526,17 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
 }
 
 Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
-  std::string func_name = Engine::kLuaFunctionPrefix + sha;
+  std::string func_name = engine::kLuaFunctionPrefix + sha;
   return storage->WriteToPropagateCF(func_name, body);
 }
 
 void Server::ScriptReset() {
-  auto lua = lua_.exchange(Lua::CreateState());
-  Lua::DestroyState(lua);
+  auto lua = lua_.exchange(lua::CreateState());
+  lua::DestroyState(lua);
 }
 
 void Server::ScriptFlush() {
-  auto cf = storage->GetCFHandle(Engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
   storage->FlushScripts(storage->DefaultWriteOptions(), cf);
   ScriptReset();
 }
@@ -1547,15 +1547,15 @@ void Server::ScriptFlush() {
 // channel: we put the same function commands into one channel to handle uniformly
 // tokens: the serialized commands
 Status Server::Propagate(const std::string &channel, const std::vector<std::string> &tokens) const {
-  std::string value = Redis::MultiLen(tokens.size());
+  std::string value = redis::MultiLen(tokens.size());
   for (const auto &iter : tokens) {
-    value += Redis::BulkString(iter);
+    value += redis::BulkString(iter);
   }
   return storage->WriteToPropagateCF(channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
-  auto subcommand = Util::ToLower(tokens[1]);
+  auto subcommand = util::ToLower(tokens[1]);
   if (subcommand == "flush") {
     ScriptReset();
   }
@@ -1565,7 +1565,7 @@ Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens
 Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   if (tokens.empty()) return Status::OK();
 
-  auto command = Util::ToLower(tokens[0]);
+  auto command = util::ToLower(tokens[0]);
   if (command == "script" && tokens.size() >= 2) {
     return ExecPropagateScriptCommand(tokens);
   }
@@ -1654,7 +1654,7 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   return {Status::NotOK};
 }
 
-void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range) {
+void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range) {
   std::shared_lock lock(watched_key_mutex_);
 
   for (size_t i = range.first_key; range.last_key > 0 ? i <= size_t(range.last_key) : i <= args.size() + range.last_key;
@@ -1677,12 +1677,12 @@ void Server::updateAllWatchedKeys() {
   }
 }
 
-void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr) {
-  if (attr.is_write() && watched_key_size_ > 0) {
+void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr) {
+  if (attr.IsWrite() && watched_key_size_ > 0) {
     if (attr.key_range.first_key > 0) {
       updateWatchedKeysFromRange(args, attr.key_range);
     } else if (attr.key_range.first_key < 0) {
-      Redis::CommandKeyRange range = attr.key_range_gen(args);
+      redis::CommandKeyRange range = attr.key_range_gen(args);
 
       if (range.first_key > 0) {
         updateWatchedKeysFromRange(args, range);
@@ -1706,14 +1706,14 @@ void Server::UpdateWatchedKeysManually(const std::vector<std::string> &keys) {
   }
 }
 
-void Server::WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys) {
+void Server::WatchKey(redis::Connection *conn, const std::vector<std::string> &keys) {
   std::unique_lock lock(watched_key_mutex_);
 
   for (const auto &key : keys) {
     if (auto iter = watched_key_map_.find(key); iter != watched_key_map_.end()) {
       iter->second.emplace(conn);
     } else {
-      watched_key_map_.emplace(key, std::set<Redis::Connection *>{conn});
+      watched_key_map_.emplace(key, std::set<redis::Connection *>{conn});
     }
 
     conn->watched_keys.insert(key);
@@ -1722,9 +1722,9 @@ void Server::WatchKey(Redis::Connection *conn, const std::vector<std::string> &k
   watched_key_size_ = watched_key_map_.size();
 }
 
-bool Server::IsWatchedKeysModified(Redis::Connection *conn) { return conn->watched_keys_modified; }
+bool Server::IsWatchedKeysModified(redis::Connection *conn) { return conn->watched_keys_modified; }
 
-void Server::ResetWatchedKeys(Redis::Connection *conn) {
+void Server::ResetWatchedKeys(redis::Connection *conn) {
   if (watched_key_size_ != 0) {
     std::unique_lock lock(watched_key_mutex_);
 

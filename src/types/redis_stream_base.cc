@@ -24,7 +24,7 @@
 #include "parse_util.h"
 #include "time_util.h"
 
-namespace Redis {
+namespace redis {
 
 const char *kErrLastEntryIdReached = "last possible entry id reached";
 const char *kErrInvalidEntryIdSpecified = "Invalid stream ID specified as stream command argument";
@@ -49,7 +49,7 @@ rocksdb::Status IncrementStreamEntryID(StreamEntryID *id) {
 }
 
 rocksdb::Status GetNextStreamEntryID(const StreamEntryID &last_id, StreamEntryID *new_id) {
-  uint64_t ms = Util::GetTimeStampMS();
+  uint64_t ms = util::GetTimeStampMS();
   if (ms > last_id.ms) {
     new_id->ms = ms;
     new_id->seq = 0;
@@ -174,4 +174,4 @@ Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::stri
   return Status::OK();
 }
 
-}  // namespace Redis
+}  // namespace redis

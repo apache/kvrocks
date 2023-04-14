@@ -32,11 +32,11 @@ struct StringPair {
   Slice value;
 };
 
-namespace Redis {
+namespace redis {
 
 class String : public Database {
  public:
-  explicit String(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  explicit String(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Append(const std::string &user_key, const std::string &value, int *ret);
   rocksdb::Status Get(const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(const std::string &user_key, std::string *value, uint64_t ttl);
@@ -64,4 +64,4 @@ class String : public Database {
   rocksdb::Status updateRawValue(const std::string &ns_key, const std::string &raw_value);
 };
 
-}  // namespace Redis
+}  // namespace redis

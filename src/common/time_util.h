@@ -22,7 +22,7 @@
 
 #include <chrono>
 
-namespace Util {
+namespace util {
 
 template <typename Duration = std::chrono::seconds>
 auto GetTimeStamp() {
@@ -31,4 +31,4 @@ auto GetTimeStamp() {
 inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
 inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
 
-}  // namespace Util
+}  // namespace util

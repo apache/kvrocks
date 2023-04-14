@@ -28,7 +28,7 @@
 #include "time_util.h"
 #include "types/redis_bitmap.h"
 
-namespace Engine {
+namespace engine {
 
 using rocksdb::Slice;
 
@@ -92,7 +92,7 @@ bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &me
   //
   // `Util::GetTimeStampMS() - 300000` means extending 5 minutes for expired items,
   // to prevent them from being recycled once they reach the expiration time.
-  uint64_t lazy_expired_ts = Util::GetTimeStampMS() - 300000;
+  uint64_t lazy_expired_ts = util::GetTimeStampMS() - 300000;
   return metadata.Type() == kRedisString  // metadata key was overwrite by set command
          || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
 }
@@ -135,7 +135,7 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
     return false;
   }
 
-  return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && Redis::Bitmap::IsEmptySegment(value));
+  return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));
 }
 
-}  // namespace Engine
+}  // namespace engine

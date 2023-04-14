@@ -190,7 +190,7 @@ void Metadata::InitVersionCounter() {
 }
 
 uint64_t Metadata::generateVersion() {
-  uint64_t timestamp = Util::GetTimeStampUS();
+  uint64_t timestamp = util::GetTimeStampUS();
   uint64_t counter = version_counter_.fetch_add(1);
   return (timestamp << VersionCounterBits) + (counter % (1 << VersionCounterBits));
 }
@@ -288,7 +288,7 @@ int64_t Metadata::TTL() const {
     return -1;
   }
 
-  auto now = Util::GetTimeStampMS();
+  auto now = util::GetTimeStampMS();
   if (expire < now) {
     return -2;
   }
@@ -315,7 +315,7 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
   return expire < expired_ts;
 }
 
-bool Metadata::Expired() const { return ExpireAt(Util::GetTimeStampMS()); }
+bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
 
 ListMetadata::ListMetadata(bool generate_version)
     : Metadata(kRedisList, generate_version), head(UINT64_MAX / 2), tail(head) {}

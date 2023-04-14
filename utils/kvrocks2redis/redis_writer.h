@@ -31,7 +31,7 @@
 
 class RedisWriter : public Writer {
  public:
-  explicit RedisWriter(Kvrocks2redis::Config *config);
+  explicit RedisWriter(kvrocks2redis::Config *config);
 
   RedisWriter(const RedisWriter &) = delete;
   RedisWriter &operator=(const RedisWriter &) = delete;

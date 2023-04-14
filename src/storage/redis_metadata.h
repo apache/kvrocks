@@ -191,11 +191,11 @@ class ListMetadata : public Metadata {
 
 class StreamMetadata : public Metadata {
  public:
-  Redis::StreamEntryID last_generated_id;
-  Redis::StreamEntryID recorded_first_entry_id;
-  Redis::StreamEntryID max_deleted_entry_id;
-  Redis::StreamEntryID first_entry_id;
-  Redis::StreamEntryID last_entry_id;
+  redis::StreamEntryID last_generated_id;
+  redis::StreamEntryID recorded_first_entry_id;
+  redis::StreamEntryID max_deleted_entry_id;
+  redis::StreamEntryID first_entry_id;
+  redis::StreamEntryID last_entry_id;
   uint64_t entries_added = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}

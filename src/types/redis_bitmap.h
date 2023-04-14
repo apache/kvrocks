@@ -37,11 +37,11 @@ enum BitOpFlags {
   kBitOpNot,
 };
 
-namespace Redis {
+namespace redis {
 
 class Bitmap : public Database {
  public:
-  Bitmap(Engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  Bitmap(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status GetBit(const Slice &user_key, uint32_t offset, bool *bit);
   rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
   rocksdb::Status SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit);
@@ -56,4 +56,4 @@ class Bitmap : public Database {
   rocksdb::Status GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value);
 };
 
-}  // namespace Redis
+}  // namespace redis

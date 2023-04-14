@@ -32,7 +32,7 @@
 
 class RedisHashTest : public TestBase {
  protected:
-  explicit RedisHashTest() { hash_ = std::make_unique<Redis::Hash>(storage_, "hash_ns"); }
+  explicit RedisHashTest() { hash_ = std::make_unique<redis::Hash>(storage_, "hash_ns"); }
   ~RedisHashTest() override = default;
 
   void SetUp() override {
@@ -42,7 +42,7 @@ class RedisHashTest : public TestBase {
   }
   void TearDown() override {}
 
-  std::unique_ptr<Redis::Hash> hash_;
+  std::unique_ptr<redis::Hash> hash_;
 };
 
 TEST_F(RedisHashTest, GetAndSet) {

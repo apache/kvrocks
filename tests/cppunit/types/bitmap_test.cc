@@ -27,13 +27,13 @@
 
 class RedisBitmapTest : public TestBase {
  protected:
-  explicit RedisBitmapTest() { bitmap_ = std::make_unique<Redis::Bitmap>(storage_, "bitmap_ns"); }
+  explicit RedisBitmapTest() { bitmap_ = std::make_unique<redis::Bitmap>(storage_, "bitmap_ns"); }
   ~RedisBitmapTest() override = default;
 
   void SetUp() override { key_ = "test_bitmap_key"; }
   void TearDown() override {}
 
-  std::unique_ptr<Redis::Bitmap> bitmap_;
+  std::unique_ptr<redis::Bitmap> bitmap_;
 };
 
 TEST_F(RedisBitmapTest, GetAndSetBit) {

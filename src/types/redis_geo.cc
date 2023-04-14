@@ -22,7 +22,7 @@
 
 #include <algorithm>
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, int *ret) {
   std::vector<MemberScore> member_scores;
@@ -348,4 +348,4 @@ bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1
 
 bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist >= gp2.dist; }
 
-}  // namespace Redis
+}  // namespace redis

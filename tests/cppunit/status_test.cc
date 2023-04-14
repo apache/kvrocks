@@ -120,10 +120,10 @@ TEST(StatusOr, String) {
 
 TEST(StatusOr, SharedPtr) {
   struct A {  // NOLINT
-    explicit A(int *x) : x_(x) { *x = 233; }
-    ~A() { *x_ = 0; }
+    explicit A(int *x) : x(x) { *x = 233; }
+    ~A() { *x = 0; }
 
-    int *x_;
+    int *x;
   };
 
   int val = 0;
@@ -168,7 +168,7 @@ TEST(StatusOr, ValueOr) {
 
 TEST(StatusOr, Size) {
   struct A {
-    std::string a_, b_;
+    std::string a, b;
   };
 
   static_assert(!StatusOr<char>::error_type::inplace);
@@ -177,16 +177,16 @@ TEST(StatusOr, Size) {
   static_assert(StatusOr<A>::error_type::inplace);
 
   struct B1 {
-    char a_;
-    void *b_;
+    char a;
+    void *b;
   };
   struct B2 {
-    char a_;
-    std::string b_;
+    char a;
+    std::string b;
   };
   struct B3 {
-    char a_;
-    A b_;
+    char a;
+    A b;
   };
   static_assert(sizeof(StatusOr<char>) == sizeof(B1));
   static_assert(sizeof(StatusOr<int>) == sizeof(B1));

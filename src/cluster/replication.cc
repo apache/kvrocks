@@ -105,7 +105,7 @@ void FeedSlaveThread::loop() {
 
     if (!iter_ || !iter_->Valid()) {
       if (iter_) LOG(INFO) << "WAL was rotated, would reopen again";
-      if (!srv_->storage_->WALHasNewData(curr_seq) || !srv_->storage_->GetWALIter(curr_seq, &iter_).IsOK()) {
+      if (!srv_->storage->WALHasNewData(curr_seq) || !srv_->storage->GetWALIter(curr_seq, &iter_).IsOK()) {
         iter_ = nullptr;
         usleep(yield_microseconds);
         checkLivenessIfNeed();
@@ -132,7 +132,7 @@ void FeedSlaveThread::loop() {
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
     if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
-        srv_->storage_->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
+        srv_->storage->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
       // Send entire bulk which contain multiple batches
       auto s = Util::SockSend(conn_->GetFD(), batches_bulk);
       if (!s.IsOK()) {
@@ -148,7 +148,7 @@ void FeedSlaveThread::loop() {
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
-    while (!IsStopped() && !srv_->storage_->WALHasNewData(curr_seq)) {
+    while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);
       checkLivenessIfNeed();
     }
@@ -242,7 +242,7 @@ void ReplicationThread::CallbacksStateMachine::Start() {
 
   // Note: It may cause data races to use 'masterauth' directly.
   // It is acceptable because password change is a low frequency operation.
-  if (!repl_->srv_->GetConfig()->masterauth_.empty()) {
+  if (!repl_->srv_->GetConfig()->masterauth.empty()) {
     handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", authReadCB);
     handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", authWriteCB);
   }
@@ -293,7 +293,7 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port, Server *sr
     : host_(std::move(host)),
       port_(port),
       srv_(srv),
-      storage_(srv->storage_),
+      storage_(srv->storage),
       repl_state_(kReplConnecting),
       psync_steps_(
           this,
@@ -316,7 +316,7 @@ Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::fu
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
   // Clean synced checkpoint from old master because replica starts to follow new master
-  auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir_, rocksdb::Options());
+  auto s = rocksdb::DestroyDB(srv_->GetConfig()->sync_checkpoint_dir, rocksdb::Options());
   if (!s.ok()) {
     LOG(WARNING) << "Can't clean synced checkpoint from master, error: " << s.ToString();
   } else {
@@ -372,7 +372,7 @@ void ReplicationThread::run() {
 
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev, void *ctx) {
   auto self = static_cast<ReplicationThread *>(ctx);
-  send_string(bev, Redis::MultiBulkString({"AUTH", self->srv_->GetConfig()->masterauth_}));
+  send_string(bev, Redis::MultiBulkString({"AUTH", self->srv_->GetConfig()->masterauth}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   self->repl_state_.store(kReplSendAuth, std::memory_order_relaxed);
   return CBState::NEXT;
@@ -414,7 +414,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(bufferevent *bev
   }
   auto self = static_cast<ReplicationThread *>(ctx);
   std::string db_name = self->storage_->GetName();
-  if (line.length_ == db_name.size() && !strncmp(line.get(), db_name.data(), line.length_)) {
+  if (line.length == db_name.size() && !strncmp(line.get(), db_name.data(), line.length)) {
     // DB name match, we should continue to next step: TryPsync
     LOG(INFO) << "[replication] DB name is valid, continue...";
     return CBState::NEXT;
@@ -427,11 +427,11 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev, 
   auto self = static_cast<ReplicationThread *>(ctx);
   auto config = self->srv_->GetConfig();
 
-  auto port = config->replica_announce_port_ > 0 ? config->replica_announce_port_ : config->port_;
+  auto port = config->replica_announce_port > 0 ? config->replica_announce_port : config->port;
   std::vector<std::string> data_to_send{"replconf", "listening-port", std::to_string(port)};
-  if (!self->next_try_without_announce_ip_address_ && !config->replica_announce_ip_.empty()) {
+  if (!self->next_try_without_announce_ip_address_ && !config->replica_announce_ip.empty()) {
     data_to_send.emplace_back("ip-address");
-    data_to_send.emplace_back(config->replica_announce_ip_);
+    data_to_send.emplace_back(config->replica_announce_ip);
   }
   send_string(bev, Redis::MultiBulkString(data_to_send));
   self->repl_state_.store(kReplReplConf, std::memory_order_relaxed);
@@ -490,7 +490,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev, 
 
   // To adapt to old master using old PSYNC, i.e. only use next sequence id.
   // Also use old PSYNC if replica can't find replication id from WAL and DB.
-  if (!self->srv_->GetConfig()->use_rsid_psync_ || self->next_try_old_psync_ || replid.length() != kReplIdLength) {
+  if (!self->srv_->GetConfig()->use_rsid_psync || self->next_try_old_psync_ || replid.length() != kReplIdLength) {
     self->next_try_old_psync_ = false;  // Reset next_try_old_psync_
     send_string(bev, Redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
     LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
@@ -547,7 +547,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) return CBState::AGAIN;
-        self->incr_bulk_len_ = line.length_ > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
+        self->incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (self->incr_bulk_len_ == 0) {
           LOG(ERROR) << "[replication] Invalid increment data size";
           return CBState::RESTART;
@@ -601,7 +601,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
   switch (self->fullsync_state_) {
     case kFetchMetaID: {
       // New version master only sends meta file content
-      if (!self->srv_->GetConfig()->master_use_repl_port_) {
+      if (!self->srv_->GetConfig()->master_use_repl_port) {
         self->fullsync_state_ = kFetchMetaContent;
         return CBState::AGAIN;
       }
@@ -612,7 +612,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
         return CBState::RESTART;
       }
       self->fullsync_meta_id_ =
-          static_cast<rocksdb::BackupID>(line.length_ > 0 ? std::strtoul(line.get(), nullptr, 10) : 0);
+          static_cast<rocksdb::BackupID>(line.length > 0 ? std::strtoul(line.get(), nullptr, 10) : 0);
       if (self->fullsync_meta_id_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta id received";
         return CBState::RESTART;
@@ -627,7 +627,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
         LOG(ERROR) << "[replication] Failed to fetch meta size: " << line.get();
         return CBState::RESTART;
       }
-      self->fullsync_filesize_ = line.length_ > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
+      self->fullsync_filesize_ = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
       if (self->fullsync_filesize_ == 0) {
         LOG(ERROR) << "[replication] Invalid meta file size received";
         return CBState::RESTART;
@@ -639,7 +639,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
       std::string target_dir;
       Engine::Storage::ReplDataManager::MetaInfo meta;
       // Master using old version
-      if (self->srv_->GetConfig()->master_use_repl_port_) {
+      if (self->srv_->GetConfig()->master_use_repl_port) {
         if (evbuffer_get_length(input) < self->fullsync_filesize_) {
           return CBState::AGAIN;
         }
@@ -649,7 +649,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
           LOG(ERROR) << "[replication] Failed to parse meta and save: " << s.Msg();
           return CBState::AGAIN;
         }
-        target_dir = self->srv_->GetConfig()->backup_sync_dir_;
+        target_dir = self->srv_->GetConfig()->backup_sync_dir;
       } else {
         // Master using new version
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
@@ -660,10 +660,10 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
         }
         std::vector<std::string> need_files = Util::Split(std::string(line.get()), ",");
         for (const auto &f : need_files) {
-          meta.files_.emplace_back(f, 0);
+          meta.files.emplace_back(f, 0);
         }
 
-        target_dir = self->srv_->GetConfig()->sync_checkpoint_dir_;
+        target_dir = self->srv_->GetConfig()->sync_checkpoint_dir;
         // Clean invalid files of checkpoint, "CURRENT" file must be invalid
         // because we identify one file by its file number but only "CURRENT"
         // file doesn't have number.
@@ -687,13 +687,13 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
       // If 'slave-empty-db-before-fullsync' is yes, we call 'pre_fullsync_cb_'
       // just like reloading database. And we don't want slave to occupy too much
       // disk space, so we just empty entire database rudely.
-      if (self->srv_->GetConfig()->slave_empty_db_before_fullsync_) {
+      if (self->srv_->GetConfig()->slave_empty_db_before_fullsync) {
         self->pre_fullsync_cb_();
         self->storage_->EmptyDB();
       }
 
       self->repl_state_.store(kReplFetchSST, std::memory_order_relaxed);
-      auto s = self->parallelFetchFile(target_dir, meta.files_);
+      auto s = self->parallelFetchFile(target_dir, meta.files);
       if (!s.IsOK()) {
         LOG(ERROR) << "[replication] Failed to parallel fetch files while " + s.Msg();
         return CBState::RESTART;
@@ -702,9 +702,9 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev, v
 
       // Restore DB from backup
       // We already call 'pre_fullsync_cb_' if 'slave-empty-db-before-fullsync' is yes
-      if (!self->srv_->GetConfig()->slave_empty_db_before_fullsync_) self->pre_fullsync_cb_();
+      if (!self->srv_->GetConfig()->slave_empty_db_before_fullsync) self->pre_fullsync_cb_();
       // For old version, master uses rocksdb backup to implement data snapshot
-      if (self->srv_->GetConfig()->master_use_repl_port_) {
+      if (self->srv_->GetConfig()->master_use_repl_port) {
         s = self->storage_->RestoreFromBackup();
       } else {
         s = self->storage_->RestoreFromCheckpoint();
@@ -783,7 +783,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           };
           // For master using old version, it only supports to fetch a single file by one
           // command, so we need to fetch all files by multiple command interactions.
-          if (srv_->GetConfig()->master_use_repl_port_) {
+          if (srv_->GetConfig()->master_use_repl_port) {
             for (unsigned i = 0; i < fetch_files.size(); i++) {
               s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
               if (!s.IsOK()) break;
@@ -807,7 +807,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
 
 Status ReplicationThread::sendAuth(int sock_fd) {
   // Send auth when needed
-  std::string auth = srv_->GetConfig()->masterauth_;
+  std::string auth = srv_->GetConfig()->masterauth;
   if (!auth.empty()) {
     UniqueEvbuf evbuf;
     const auto auth_command = Redis::MultiBulkString({"AUTH", auth});
@@ -845,7 +845,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
       std::string msg(line.get());
       return {Status::NotOK, msg};
     }
-    file_size = line.length_ > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
+    file_size = line.length > 0 ? std::strtoull(line.get(), nullptr, 10) : 0;
     break;
   }
 
@@ -912,8 +912,8 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
     DLOG(INFO) << "[fetch] Succeed fetching file " << files[i];
 
     // Just for tests
-    if (srv_->GetConfig()->fullsync_recv_file_delay_) {
-      sleep(srv_->GetConfig()->fullsync_recv_file_delay_);
+    if (srv_->GetConfig()->fullsync_recv_file_delay) {
+      sleep(srv_->GetConfig()->fullsync_recv_file_delay);
     }
   }
   return s;
@@ -958,8 +958,8 @@ Status ReplicationThread::ParseWriteBatch(const std::string &batch_string) {
       InternalKey ikey(key, storage_->IsSlotIdEncoded());
       Slice entry_id = ikey.GetSubKey();
       Redis::StreamEntryID id;
-      GetFixed64(&entry_id, &id.ms_);
-      GetFixed64(&entry_id, &id.seq_);
+      GetFixed64(&entry_id, &id.ms);
+      GetFixed64(&entry_id, &id.seq);
       srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
       break;
     }

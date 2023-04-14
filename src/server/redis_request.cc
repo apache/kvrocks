@@ -50,13 +50,13 @@ Status Request::Tokenize(evbuffer *input) {
         // We don't use the `EVBUFFER_EOL_CRLF_STRICT` here since only LF is allowed in INLINE protocol.
         // So we need to search LF EOL and figure out current line has CR or not.
         UniqueEvbufReadln line(input, EVBUFFER_EOL_LF);
-        if (line && line.length_ > 0 && line[line.length_ - 1] == '\r') {
+        if (line && line.length > 0 && line[line.length - 1] == '\r') {
           // remove `\r` if exists
-          --line.length_;
+          --line.length;
           is_only_lf = false;
         }
 
-        if (!line || line.length_ <= 0) {
+        if (!line || line.length <= 0) {
           if (pipeline_size > 128) {
             LOG(INFO) << "Large pipeline detected: " << pipeline_size;
           }
@@ -67,9 +67,9 @@ Status Request::Tokenize(evbuffer *input) {
         }
 
         pipeline_size++;
-        svr_->stats_.IncrInbondBytes(line.length_);
+        svr_->stats.IncrInbondBytes(line.length);
         if (line[0] == '*') {
-          auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length_ - 1), 10);
+          auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
           if (!parse_result) {
             return {Status::NotOK, "Protocol error: invalid multibulk length"};
           }
@@ -86,11 +86,11 @@ Status Request::Tokenize(evbuffer *input) {
 
           state_ = BulkLen;
         } else {
-          if (line.length_ > PROTO_INLINE_MAX_SIZE) {
+          if (line.length > PROTO_INLINE_MAX_SIZE) {
             return {Status::NotOK, "Protocol error: invalid bulk length"};
           }
 
-          tokens_ = Util::Split(std::string(line.get(), line.length_), " \t");
+          tokens_ = Util::Split(std::string(line.get(), line.length), " \t");
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
         }
@@ -98,14 +98,14 @@ Status Request::Tokenize(evbuffer *input) {
       }
       case BulkLen: {
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line || line.length_ <= 0) return Status::OK();
+        if (!line || line.length <= 0) return Status::OK();
 
-        svr_->stats_.IncrInbondBytes(line.length_);
+        svr_->stats.IncrInbondBytes(line.length);
         if (line[0] != '$') {
           return {Status::NotOK, "Protocol error: expected '$'"};
         }
 
-        auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length_ - 1), 10);
+        auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
         if (!parse_result) {
           return {Status::NotOK, "Protocol error: invalid bulk length"};
         }
@@ -124,7 +124,7 @@ Status Request::Tokenize(evbuffer *input) {
         char *data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(bulk_len_ + 2)));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        svr_->stats_.IncrInbondBytes(bulk_len_ + 2);
+        svr_->stats.IncrInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
         if (multi_bulk_len_ == 0) {
           state_ = ArrayLen;

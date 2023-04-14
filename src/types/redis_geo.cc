@@ -29,9 +29,9 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
   for (const auto &geo_point : *geo_points) {
     /* Turn the coordinates into the score of the element. */
     GeoHashBits hash;
-    geohashEncodeWGS84(geo_point.longitude_, geo_point.latitude_, GEO_STEP_MAX, &hash);
+    geohashEncodeWGS84(geo_point.longitude, geo_point.latitude, GEO_STEP_MAX, &hash);
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
-    member_scores.emplace_back(MemberScore{geo_point.member_, static_cast<double>(bits)});
+    member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
   return ZSet::Add(user_key, ZAddFlags::Default(), &member_scores, ret);
 }
@@ -48,8 +48,8 @@ rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Sl
     }
   }
   *dist =
-      GeoHashHelper::GetDistance(geo_points[member_1.ToString()].longitude_, geo_points[member_1.ToString()].latitude_,
-                                 geo_points[member_2.ToString()].longitude_, geo_points[member_2.ToString()].latitude_);
+      GeoHashHelper::GetDistance(geo_points[member_1.ToString()].longitude, geo_points[member_1.ToString()].latitude,
+                                 geo_points[member_2.ToString()].longitude, geo_points[member_2.ToString()].latitude);
   return rocksdb::Status::OK();
 }
 
@@ -65,7 +65,7 @@ rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &membe
       geo_hashes->emplace_back(std::string());
       continue;
     }
-    geo_hashes->emplace_back(EncodeGeoHash(iter->second.longitude_, iter->second.latitude_));
+    geo_hashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));
   }
 
   return rocksdb::Status::OK();
@@ -114,8 +114,8 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
         if (returned_items_count-- <= 0) {
           break;
         }
-        double score = store_distance ? geo_point.dist_ / unit_conversion : geo_point.score_;
-        member_scores.emplace_back(MemberScore{geo_point.member_, score});
+        double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
+        member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
       int ret = 0;
       ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
@@ -132,7 +132,7 @@ rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, 
   auto s = Get(user_key, member, &geo_point);
   if (!s.ok()) return s;
 
-  return Radius(user_key, geo_point.longitude_, geo_point.latitude_, radius_meters, count, sort, store_key,
+  return Radius(user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
                 store_distance, unit_conversion, geo_points);
 }
 
@@ -180,10 +180,10 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
   /* Re-encode */
   GeoHashRange r[2];
   GeoHashBits hash;
-  r[0].min_ = -180;
-  r[0].max_ = 180;
-  r[1].min_ = -90;
-  r[1].max_ = 90;
+  r[0].min = -180;
+  r[0].max = 180;
+  r[1].min = -90;
+  r[1].max = 90;
   geohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
 
   std::string geo_hash;
@@ -195,7 +195,7 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
        * zero. */
       idx = 0;
     } else {
-      idx = static_cast<int>((hash.bits_ >> (52 - ((i + 1) * 5))) & 0x1f);
+      idx = static_cast<int>((hash.bits >> (52 - ((i + 1) * 5))) & 0x1f);
     }
     geo_hash += geoalphabet[idx];
   }
@@ -214,15 +214,15 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lo
   unsigned int last_processed = 0;
   int count = 0;
 
-  neighbors[0] = n.hash_;
-  neighbors[1] = n.neighbors_.north_;
-  neighbors[2] = n.neighbors_.south_;
-  neighbors[3] = n.neighbors_.east_;
-  neighbors[4] = n.neighbors_.west_;
-  neighbors[5] = n.neighbors_.north_east_;
-  neighbors[6] = n.neighbors_.north_west_;
-  neighbors[7] = n.neighbors_.south_east_;
-  neighbors[8] = n.neighbors_.south_west_;
+  neighbors[0] = n.hash;
+  neighbors[1] = n.neighbors.north;
+  neighbors[2] = n.neighbors.south;
+  neighbors[3] = n.neighbors.east;
+  neighbors[4] = n.neighbors.west;
+  neighbors[5] = n.neighbors.north_east;
+  neighbors[6] = n.neighbors.north_west;
+  neighbors[7] = n.neighbors.south_east;
+  neighbors[8] = n.neighbors.south_west;
 
   /* For each neighbor (*and* our own hashbox), get all the matching
    * members and add them to the potential result list. */
@@ -235,8 +235,8 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lo
      * adjacent neighbors can be the same, leading to duplicated
      * elements. Skip every range which is the same as the one
      * processed previously. */
-    if (last_processed && neighbors[i].bits_ == neighbors[last_processed].bits_ &&
-        neighbors[i].step_ == neighbors[last_processed].step_) {
+    if (last_processed && neighbors[i].bits == neighbors[last_processed].bits &&
+        neighbors[i].step == neighbors[last_processed].step) {
       continue;
     }
     count += membersOfGeoHashBox(user_key, neighbors[i], geo_points, lon, lat, radius);
@@ -281,7 +281,7 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
    * 1010110000000000000000000000000000000000000000000000 (excluded).
    */
   *min = GeoHashHelper::Align52Bits(hash);
-  hash.bits_++;
+  hash.bits++;
   *max = GeoHashHelper::Align52Bits(hash);
 }
 
@@ -302,16 +302,16 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, double 
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
   ZRangeSpec spec;
-  spec.min_ = min;
-  spec.max_ = max;
-  spec.maxex_ = true;
+  spec.min = min;
+  spec.max = max;
+  spec.maxex = true;
   int size = 0;
   std::vector<MemberScore> member_scores;
   rocksdb::Status s = ZSet::RangeByScore(user_key, spec, &member_scores, &size);
   if (!s.ok()) return 0;
 
   for (const auto &member_score : member_scores) {
-    appendIfWithinRadius(geo_points, lon, lat, radius, member_score.score_, member_score.member_);
+    appendIfWithinRadius(geo_points, lon, lat, radius, member_score.score, member_score.member);
   }
   return 0;
 }
@@ -335,17 +335,17 @@ bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, do
 
   /* Append the new element. */
   GeoPoint geo_point;
-  geo_point.longitude_ = xy[0];
-  geo_point.latitude_ = xy[1];
-  geo_point.dist_ = distance;
-  geo_point.member_ = member;
-  geo_point.score_ = score;
+  geo_point.longitude = xy[0];
+  geo_point.latitude = xy[1];
+  geo_point.dist = distance;
+  geo_point.member = member;
+  geo_point.score = score;
   geo_points->emplace_back(geo_point);
   return true;
 }
 
-bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist_ < gp2.dist_; }
+bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist < gp2.dist; }
 
-bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist_ >= gp2.dist_; }
+bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist >= gp2.dist; }
 
 }  // namespace Redis

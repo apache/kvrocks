@@ -33,7 +33,7 @@ namespace Redis {
 class CommandType : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
@@ -49,7 +49,7 @@ class CommandObject : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (Util::ToLower(args_[1]) == "dump") {
-      Redis::Database redis(svr->storage_, conn->GetNamespace());
+      Redis::Database redis(svr->storage, conn->GetNamespace());
       std::vector<std::string> infos;
       auto s = redis.Dump(args_[2], &infos);
       if (!s.ok()) {
@@ -70,7 +70,7 @@ class CommandObject : public Commander {
 class CommandTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
@@ -85,7 +85,7 @@ class CommandTTL : public Commander {
 class CommandPTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -104,7 +104,7 @@ class CommandExists : public Commander {
     }
 
     int cnt = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     redis.Exists(keys, &cnt);
     *output = Redis::Integer(cnt);
 
@@ -120,7 +120,7 @@ class CommandExpire : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], ttl_ * 1000 + Util::GetTimeStampMS());
     if (s.ok()) {
       *output = Redis::Integer(1);
@@ -142,7 +142,7 @@ class CommandPExpire : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
       *output = Redis::Integer(1);
@@ -170,7 +170,7 @@ class CommandExpireAt : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
       *output = Redis::Integer(1);
@@ -198,7 +198,7 @@ class CommandPExpireAt : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_);
     if (s.ok()) {
       *output = Redis::Integer(1);
@@ -216,7 +216,7 @@ class CommandPersist : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ttl = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -237,7 +237,7 @@ class CommandDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     for (size_t i = 1; i < args_.size(); i++) {
       auto s = redis.Del(args_[i]);
       if (s.ok()) cnt++;

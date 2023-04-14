@@ -187,9 +187,9 @@ TEST(Namespace, Add) {
   Config config;
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded_ = false;
+  config.slot_id_encoded = false;
   EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
-  config.requirepass_ = "foobared";
+  config.requirepass = "foobared";
 
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
@@ -224,8 +224,8 @@ TEST(Namespace, Set) {
   Config config;
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded_ = false;
-  config.requirepass_ = "foobared";
+  config.slot_id_encoded = false;
+  config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   std::vector<std::string> new_tokens = {"nt1", "nt2'", "nt3", "nt4"};
@@ -262,8 +262,8 @@ TEST(Namespace, Delete) {
   Config config;
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded_ = false;
-  config.requirepass_ = "foobared";
+  config.slot_id_encoded = false;
+  config.requirepass = "foobared";
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for (size_t i = 0; i < namespaces.size(); i++) {
@@ -292,9 +292,9 @@ TEST(Namespace, RewriteNamespaces) {
   Config config;
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
-  config.requirepass_ = "test";
-  config.backup_dir_ = "test";
-  config.slot_id_encoded_ = false;
+  config.requirepass = "test";
+  config.backup_dir = "test";
+  config.slot_id_encoded = false;
   std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
   std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
   for (size_t i = 0; i < namespaces.size(); i++) {

@@ -22,10 +22,10 @@
 
 #include <gtest/gtest.h>
 struct Counter {  // NOLINT
-  explicit Counter(int* i) : i_(i) { ++*i_; }
-  ~Counter() { --*i_; }
+  explicit Counter(int* i) : i(i) { ++*i; }
+  ~Counter() { --*i; }
 
-  int* i_;
+  int* i;
 };
 
 TEST(ObserverOrUniquePtr, Unique) {

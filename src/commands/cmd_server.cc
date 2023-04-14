@@ -35,14 +35,14 @@ enum class AuthResult {
 };
 
 AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string &user_password) {
-  auto iter = config->tokens_.find(user_password);
-  if (iter != config->tokens_.end()) {
+  auto iter = config->tokens.find(user_password);
+  if (iter != config->tokens.end()) {
     conn->SetNamespace(iter->second);
     conn->BecomeUser();
     return AuthResult::OK;
   }
 
-  const auto &requirepass = config->requirepass_;
+  const auto &requirepass = config->requirepass;
   if (!requirepass.empty() && user_password != requirepass) {
     return AuthResult::INVALID_PASSWORD;
   }
@@ -90,13 +90,13 @@ class CommandNamespace : public Commander {
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
-        auto tokens = config->tokens_;
+        auto tokens = config->tokens;
         for (auto &token : tokens) {
           namespaces.emplace_back(token.second);  // namespace
           namespaces.emplace_back(token.first);   // token
         }
         namespaces.emplace_back(kDefaultNamespace);
-        namespaces.emplace_back(config->requirepass_);
+        namespaces.emplace_back(config->requirepass);
         *output = Redis::MultiBulkString(namespaces, false);
       } else {
         std::string token;
@@ -133,7 +133,7 @@ class CommandKeys : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string prefix = args_[1];
     std::vector<std::string> keys;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     if (prefix == "*") {
       redis.Keys(std::string(), &keys);
     } else {
@@ -152,13 +152,13 @@ class CommandKeys : public Commander {
 class CommandFlushDB : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled_) {
-      if (svr->slot_migrator_->IsMigrationInProgress()) {
-        svr->slot_migrator_->SetStopMigrationFlag(true);
+    if (svr->GetConfig()->cluster_enabled) {
+      if (svr->slot_migrator->IsMigrationInProgress()) {
+        svr->slot_migrator->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushdb";
       }
     }
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.FlushDB();
     LOG(WARNING) << "DB keys in namespace: " << conn->GetNamespace() << " was flushed, addr: " << conn->GetAddr();
     if (s.ok()) {
@@ -178,14 +178,14 @@ class CommandFlushAll : public Commander {
       return Status::OK();
     }
 
-    if (svr->GetConfig()->cluster_enabled_) {
-      if (svr->slot_migrator_->IsMigrationInProgress()) {
-        svr->slot_migrator_->SetStopMigrationFlag(true);
+    if (svr->GetConfig()->cluster_enabled) {
+      if (svr->slot_migrator->IsMigrationInProgress()) {
+        svr->slot_migrator->SetStopMigrationFlag(true);
         LOG(INFO) << "Stop migration task for flushall";
       }
     }
 
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.FlushAll();
     if (s.ok()) {
       LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
@@ -283,7 +283,7 @@ class CommandDisk : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     RedisType type = kRedisNone;
-    Redis::Disk disk_db(svr->storage_, conn->GetNamespace());
+    Redis::Disk disk_db(svr->storage, conn->GetNamespace());
     auto s = disk_db.Type(args_[2], &type);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -313,7 +313,7 @@ class CommandDBSize : public Commander {
     if (args_.size() == 1) {
       KeyNumStats stats;
       svr->GetLatestKeyNumStats(ns, &stats);
-      *output = Redis::Integer(stats.n_key_);
+      *output = Redis::Integer(stats.n_key);
     } else if (args_.size() == 2 && args_[1] == "scan") {
       Status s = svr->AsyncScanDBSize(ns);
       if (s.IsOK()) {
@@ -697,7 +697,7 @@ class CommandHello final : public Commander {
 
     output_list.push_back(Redis::BulkString("mode"));
     // Note: sentinel is not supported in kvrocks.
-    if (svr->GetConfig()->cluster_enabled_) {
+    if (svr->GetConfig()->cluster_enabled) {
       output_list.push_back(Redis::BulkString("cluster"));
     } else {
       output_list.push_back(Redis::BulkString("standalone"));
@@ -748,7 +748,7 @@ class CommandScan : public CommandScanBase {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis_db(svr->storage_, conn->GetNamespace());
+    Redis::Database redis_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> keys;
     std::string end_cursor;
     auto s = redis_db.Scan(cursor_, limit_, prefix_, &keys, &end_cursor);
@@ -766,7 +766,7 @@ class CommandRandomKey : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string key;
     auto cursor = svr->GetLastRandomKeyCursor();
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    Redis::Database redis(svr->storage, conn->GetNamespace());
     redis.RandomKey(cursor, &key);
     svr->SetLastRandomKeyCursor(key);
     *output = Redis::BulkString(key);
@@ -784,7 +784,7 @@ class CommandCompact : public Commander {
       std::string prefix;
       ComposeNamespaceKey(ns, "", &prefix, false);
 
-      Redis::Database redis_db(svr->storage_, conn->GetNamespace());
+      Redis::Database redis_db(svr->storage, conn->GetNamespace());
       auto s = redis_db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key);
       if (!s.ok()) {
         if (s.IsNotFound()) {
@@ -859,11 +859,11 @@ class CommandSlaveOf : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (svr->GetConfig()->cluster_enabled_) {
+    if (svr->GetConfig()->cluster_enabled) {
       return {Status::RedisExecErr, "can't change to slave in cluster mode"};
     }
 
-    if (svr->GetConfig()->rocks_db_.write_options_.disable_wal_) {
+    if (svr->GetConfig()->rocks_db.write_options.disable_wal) {
       return {Status::RedisExecErr, "slaveof doesn't work with disable_wal option"};
     }
 
@@ -880,8 +880,8 @@ class CommandSlaveOf : public Commander {
 
       *output = Redis::SimpleString("OK");
       LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-      if (svr->GetConfig()->cluster_enabled_) {
-        svr->slot_migrator_->SetStopMigrationFlag(false);
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrator->SetStopMigrationFlag(false);
         LOG(INFO) << "Change server role to master, restart migration task";
       }
 
@@ -893,8 +893,8 @@ class CommandSlaveOf : public Commander {
       *output = Redis::SimpleString("OK");
       LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
                    << "')";
-      if (svr->GetConfig()->cluster_enabled_) {
-        svr->slot_migrator_->SetStopMigrationFlag(true);
+      if (svr->GetConfig()->cluster_enabled) {
+        svr->slot_migrator->SetStopMigrationFlag(true);
         LOG(INFO) << "Change server role to slave, stop migration task";
       }
     } else {

@@ -68,16 +68,16 @@ std::string trimRocksDBPrefix(std::string s) {
 }
 
 int configEnumGetValue(ConfigEnum *ce, const char *name) {
-  while (ce->name_ != nullptr) {
-    if (strcasecmp(ce->name_, name) == 0) return ce->val_;
+  while (ce->name != nullptr) {
+    if (strcasecmp(ce->name, name) == 0) return ce->val;
     ce++;
   }
   return INT_MIN;
 }
 
 const char *configEnumGetName(ConfigEnum *ce, int val) {
-  while (ce->name_ != nullptr) {
-    if (ce->val_ == val) return ce->name_;
+  while (ce->name != nullptr) {
+    if (ce->val == val) return ce->name;
     ce++;
   }
   return nullptr;
@@ -85,149 +85,147 @@ const char *configEnumGetName(ConfigEnum *ce, int val) {
 
 Config::Config() {
   struct FieldWrapper {
-    std::string name_;
-    bool readonly_;
-    std::unique_ptr<ConfigField> field_;
+    std::string name;
+    bool readonly;
+    std::unique_ptr<ConfigField> field;
 
     FieldWrapper(std::string name, bool readonly, ConfigField *field)
-        : name_(std::move(name)), readonly_(readonly), field_(field) {}
+        : name(std::move(name)), readonly(readonly), field(field) {}
   };
   FieldWrapper fields[] = {
-      {"daemonize", true, new YesNoField(&daemonize_, false)},
+      {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_str_, "")},
-      {"port", true, new UInt32Field(&port_, kDefaultPort, 1, PORT_LIMIT)},
+      {"port", true, new UInt32Field(&port, kDefaultPort, 1, PORT_LIMIT)},
 #ifdef ENABLE_OPENSSL
-      {"tls-port", true, new UInt32Field(&tls_port_, 0, 0, PORT_LIMIT)},
-      {"tls-cert-file", false, new StringField(&tls_cert_file_, "")},
-      {"tls-key-file", false, new StringField(&tls_key_file_, "")},
-      {"tls-key-file-pass", false, new StringField(&tls_key_file_pass_, "")},
-      {"tls-ca-cert-file", false, new StringField(&tls_ca_cert_file_, "")},
-      {"tls-ca-cert-dir", false, new StringField(&tls_ca_cert_dir_, "")},
-      {"tls-protocols", false, new StringField(&tls_protocols_, "")},
-      {"tls-auth-clients", false, new StringField(&tls_auth_clients_, "")},
-      {"tls-ciphers", false, new StringField(&tls_ciphers_, "")},
-      {"tls-ciphersuites", false, new StringField(&tls_ciphersuites_, "")},
-      {"tls-prefer-server-ciphers", false, new YesNoField(&tls_prefer_server_ciphers_, false)},
-      {"tls-session-caching", false, new YesNoField(&tls_session_caching_, true)},
-      {"tls-session-cache-size", false, new IntField(&tls_session_cache_size_, 1024 * 20, 0, INT_MAX)},
-      {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout_, 300, 0, INT_MAX)},
+      {"tls-port", true, new UInt32Field(&tls_port, 0, 0, PORT_LIMIT)},
+      {"tls-cert-file", false, new StringField(&tls_cert_file, "")},
+      {"tls-key-file", false, new StringField(&tls_key_file, "")},
+      {"tls-key-file-pass", false, new StringField(&tls_key_file_pass, "")},
+      {"tls-ca-cert-file", false, new StringField(&tls_ca_cert_file, "")},
+      {"tls-ca-cert-dir", false, new StringField(&tls_ca_cert_dir, "")},
+      {"tls-protocols", false, new StringField(&tls_protocols, "")},
+      {"tls-auth-clients", false, new StringField(&tls_auth_clients, "")},
+      {"tls-ciphers", false, new StringField(&tls_ciphers, "")},
+      {"tls-ciphersuites", false, new StringField(&tls_ciphersuites, "")},
+      {"tls-prefer-server-ciphers", false, new YesNoField(&tls_prefer_server_ciphers, false)},
+      {"tls-session-caching", false, new YesNoField(&tls_session_caching, true)},
+      {"tls-session-cache-size", false, new IntField(&tls_session_cache_size, 1024 * 20, 0, INT_MAX)},
+      {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
 #endif
-      {"workers", true, new IntField(&workers_, 8, 1, 256)},
-      {"timeout", false, new IntField(&timeout_, 0, 0, INT_MAX)},
-      {"tcp-backlog", true, new IntField(&backlog_, 511, 0, INT_MAX)},
-      {"maxclients", false, new IntField(&maxclients_, 10240, 0, INT_MAX)},
-      {"max-backup-to-keep", false, new IntField(&max_backup_to_keep_, 1, 0, 1)},
-      {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours_, 0, 0, INT_MAX)},
-      {"master-use-repl-port", false, new YesNoField(&master_use_repl_port_, false)},
-      {"requirepass", false, new StringField(&requirepass_, "")},
-      {"masterauth", false, new StringField(&masterauth_, "")},
+      {"workers", true, new IntField(&workers, 8, 1, 256)},
+      {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
+      {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
+      {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
+      {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
+      {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
+      {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
+      {"requirepass", false, new StringField(&requirepass, "")},
+      {"masterauth", false, new StringField(&masterauth, "")},
       {"slaveof", true, new StringField(&slaveof_, "")},
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
-      {"replica-announce-ip", false, new StringField(&replica_announce_ip_, "")},
-      {"replica-announce-port", false, new UInt32Field(&replica_announce_port_, 0, 0, PORT_LIMIT)},
+      {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
+      {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
-      {"force-compact-file-age", false, new Int64Field(&force_compact_file_age_, 2 * 24 * 3600, 60, INT64_MAX)},
+      {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
       {"force-compact-file-min-deleted-percentage", false,
-       new IntField(&force_compact_file_min_deleted_percentage_, 10, 1, 100)},
-      {"db-name", true, new StringField(&db_name_, "change.me.db")},
-      {"dir", true, new StringField(&dir_, "/tmp/kvrocks")},
-      {"backup-dir", false, new StringField(&backup_dir_, "")},
-      {"log-dir", true, new StringField(&log_dir_, "")},
-      {"log-level", true, new EnumField(&log_level_, log_levels, google::INFO)},
-      {"pidfile", true, new StringField(&pidfile_, "")},
-      {"max-io-mb", false, new IntField(&max_io_mb_, 500, 0, INT_MAX)},
-      {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb_, 16, 0, INT_MAX)},
-      {"max-db-size", false, new IntField(&max_db_size_, 0, 0, INT_MAX)},
-      {"max-replication-mb", false, new IntField(&max_replication_mb_, 0, 0, INT_MAX)},
-      {"supervised", true, new EnumField(&supervised_mode_, supervised_modes, kSupervisedNone)},
-      {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data_, true)},
-      {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync_, false)},
-      {"slave-priority", false, new IntField(&slave_priority_, 100, 0, INT_MAX)},
-      {"slave-read-only", false, new YesNoField(&slave_readonly_, true)},
-      {"use-rsid-psync", true, new YesNoField(&use_rsid_psync_, false)},
-      {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio_, 0, 0, 100)},
-      {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len_, 256, 0, INT_MAX)},
+       new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
+      {"db-name", true, new StringField(&db_name, "change.me.db")},
+      {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
+      {"backup-dir", false, new StringField(&backup_dir, "")},
+      {"log-dir", true, new StringField(&log_dir, "")},
+      {"log-level", true, new EnumField(&log_level, log_levels, google::INFO)},
+      {"pidfile", true, new StringField(&pidfile, "")},
+      {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
+      {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
+      {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
+      {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
+      {"supervised", true, new EnumField(&supervised_mode, supervised_modes, kSupervisedNone)},
+      {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
+      {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
+      {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
+      {"slave-read-only", false, new YesNoField(&slave_readonly, true)},
+      {"use-rsid-psync", true, new YesNoField(&use_rsid_psync, false)},
+      {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},
+      {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
       {"profiling-sample-record-threshold-ms", false,
-       new IntField(&profiling_sample_record_threshold_ms_, 100, 0, INT_MAX)},
-      {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than_, 200000, -1, INT_MAX)},
+       new IntField(&profiling_sample_record_threshold_ms, 100, 0, INT_MAX)},
+      {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX)},
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_str_, "")},
-      {"slowlog-max-len", false, new IntField(&slowlog_max_len_, 128, 0, INT_MAX)},
-      {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync_, false)},
+      {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
+      {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
-      {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst_, true)},
-      {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay_, 0, 0, INT_MAX)},
-      {"cluster-enabled", true, new YesNoField(&cluster_enabled_, false)},
-      {"migrate-speed", false, new IntField(&migrate_speed_, 4096, 0, INT_MAX)},
-      {"migrate-pipeline-size", false, new IntField(&pipeline_size_, 16, 1, INT_MAX)},
-      {"migrate-sequence-gap", false, new IntField(&sequence_gap_, 10000, 1, INT_MAX)},
-      {"unixsocket", true, new StringField(&unixsocket_, "")},
-      {"unixsocketperm", true, new OctalField(&unixsocketperm_, 0777, 1, INT_MAX)},
-      {"log-retention-days", false, new IntField(&log_retention_days_, -1, -1, INT_MAX)},
-      {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled_, true)},
+      {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
+      {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
+      {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
+      {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
+      {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
+      {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
+      {"unixsocket", true, new StringField(&unixsocket, "")},
+      {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
+      {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
+      {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
-       new EnumField(&rocks_db_.compression_, compression_types, rocksdb::CompressionType::kNoCompression)},
-      {"rocksdb.block_size", true, new IntField(&rocks_db_.block_size_, 4096, 0, INT_MAX)},
-      {"rocksdb.max_open_files", false, new IntField(&rocks_db_.max_open_files_, 4096, -1, INT_MAX)},
-      {"rocksdb.write_buffer_size", false, new IntField(&rocks_db_.write_buffer_size_, 64, 0, 4096)},
-      {"rocksdb.max_write_buffer_number", false, new IntField(&rocks_db_.max_write_buffer_number_, 4, 0, 256)},
-      {"rocksdb.target_file_size_base", false, new IntField(&rocks_db_.target_file_size_base_, 128, 1, 1024)},
-      {"rocksdb.max_background_compactions", false, new IntField(&rocks_db_.max_background_compactions_, 2, -1, 32)},
-      {"rocksdb.max_background_flushes", true, new IntField(&rocks_db_.max_background_flushes_, 2, -1, 32)},
-      {"rocksdb.max_sub_compactions", false, new IntField(&rocks_db_.max_sub_compactions_, 1, 0, 16)},
-      {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db_.delayed_write_rate_, 0, 0, INT64_MAX)},
-      {"rocksdb.wal_ttl_seconds", true, new IntField(&rocks_db_.wal_ttl_seconds_, 3 * 3600, 0, INT_MAX)},
-      {"rocksdb.wal_size_limit_mb", true, new IntField(&rocks_db_.wal_size_limit_mb_, 16384, 0, INT_MAX)},
-      {"rocksdb.max_total_wal_size", false, new IntField(&rocks_db_.max_total_wal_size_, 64 * 4 * 2, 0, INT_MAX)},
-      {"rocksdb.disable_auto_compactions", false, new YesNoField(&rocks_db_.disable_auto_compactions_, false)},
-      {"rocksdb.enable_pipelined_write", true, new YesNoField(&rocks_db_.enable_pipelined_write_, false)},
-      {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db_.stats_dump_period_sec_, 0, 0, INT_MAX)},
-      {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db_.cache_index_and_filter_blocks_, false)},
-      {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db_.subkey_block_cache_size_, 2048, 0, INT_MAX)},
-      {"rocksdb.metadata_block_cache_size", true,
-       new IntField(&rocks_db_.metadata_block_cache_size_, 2048, 0, INT_MAX)},
+       new EnumField(&rocks_db.compression, compression_types, rocksdb::CompressionType::kNoCompression)},
+      {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 4096, 0, INT_MAX)},
+      {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 4096, -1, INT_MAX)},
+      {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
+      {"rocksdb.max_write_buffer_number", false, new IntField(&rocks_db.max_write_buffer_number, 4, 0, 256)},
+      {"rocksdb.target_file_size_base", false, new IntField(&rocks_db.target_file_size_base, 128, 1, 1024)},
+      {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, 2, -1, 32)},
+      {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},
+      {"rocksdb.max_sub_compactions", false, new IntField(&rocks_db.max_sub_compactions, 1, 0, 16)},
+      {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db.delayed_write_rate, 0, 0, INT64_MAX)},
+      {"rocksdb.wal_ttl_seconds", true, new IntField(&rocks_db.wal_ttl_seconds, 3 * 3600, 0, INT_MAX)},
+      {"rocksdb.wal_size_limit_mb", true, new IntField(&rocks_db.wal_size_limit_mb, 16384, 0, INT_MAX)},
+      {"rocksdb.max_total_wal_size", false, new IntField(&rocks_db.max_total_wal_size, 64 * 4 * 2, 0, INT_MAX)},
+      {"rocksdb.disable_auto_compactions", false, new YesNoField(&rocks_db.disable_auto_compactions, false)},
+      {"rocksdb.enable_pipelined_write", true, new YesNoField(&rocks_db.enable_pipelined_write, false)},
+      {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db.stats_dump_period_sec, 0, 0, INT_MAX)},
+      {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, false)},
+      {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
+      {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
-       new YesNoField(&rocks_db_.share_metadata_and_subkey_block_cache_, true)},
-      {"rocksdb.row_cache_size", true, new IntField(&rocks_db_.row_cache_size_, 0, 0, INT_MAX)},
+       new YesNoField(&rocks_db.share_metadata_and_subkey_block_cache, true)},
+      {"rocksdb.row_cache_size", true, new IntField(&rocks_db.row_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.compaction_readahead_size", false,
-       new IntField(&rocks_db_.compaction_readahead_size_, 2 * MiB, 0, 64 * MiB)},
+       new IntField(&rocks_db.compaction_readahead_size, 2 * MiB, 0, 64 * MiB)},
       {"rocksdb.level0_slowdown_writes_trigger", false,
-       new IntField(&rocks_db_.level0_slowdown_writes_trigger_, 20, 1, 1024)},
-      {"rocksdb.level0_stop_writes_trigger", false, new IntField(&rocks_db_.level0_stop_writes_trigger_, 40, 1, 1024)},
+       new IntField(&rocks_db.level0_slowdown_writes_trigger, 20, 1, 1024)},
+      {"rocksdb.level0_stop_writes_trigger", false, new IntField(&rocks_db.level0_stop_writes_trigger, 40, 1, 1024)},
       {"rocksdb.level0_file_num_compaction_trigger", false,
-       new IntField(&rocks_db_.level0_file_num_compaction_trigger_, 4, 1, 1024)},
-      {"rocksdb.enable_blob_files", false, new YesNoField(&rocks_db_.enable_blob_files_, false)},
-      {"rocksdb.min_blob_size", false, new IntField(&rocks_db_.min_blob_size_, 4096, 0, INT_MAX)},
-      {"rocksdb.blob_file_size", false, new IntField(&rocks_db_.blob_file_size_, 268435456, 0, INT_MAX)},
-      {"rocksdb.enable_blob_garbage_collection", false,
-       new YesNoField(&rocks_db_.enable_blob_garbage_collection_, true)},
+       new IntField(&rocks_db.level0_file_num_compaction_trigger, 4, 1, 1024)},
+      {"rocksdb.enable_blob_files", false, new YesNoField(&rocks_db.enable_blob_files, false)},
+      {"rocksdb.min_blob_size", false, new IntField(&rocks_db.min_blob_size, 4096, 0, INT_MAX)},
+      {"rocksdb.blob_file_size", false, new IntField(&rocks_db.blob_file_size, 268435456, 0, INT_MAX)},
+      {"rocksdb.enable_blob_garbage_collection", false, new YesNoField(&rocks_db.enable_blob_garbage_collection, true)},
       {"rocksdb.blob_garbage_collection_age_cutoff", false,
-       new IntField(&rocks_db_.blob_garbage_collection_age_cutoff_, 25, 0, 100)},
+       new IntField(&rocks_db.blob_garbage_collection_age_cutoff, 25, 0, 100)},
       {"rocksdb.max_bytes_for_level_base", false,
-       new IntField(&rocks_db_.max_bytes_for_level_base_, 268435456, 0, INT_MAX)},
+       new IntField(&rocks_db.max_bytes_for_level_base, 268435456, 0, INT_MAX)},
       {"rocksdb.max_bytes_for_level_multiplier", false,
-       new IntField(&rocks_db_.max_bytes_for_level_multiplier_, 10, 1, 100)},
+       new IntField(&rocks_db.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes", false,
-       new YesNoField(&rocks_db_.level_compaction_dynamic_level_bytes_, false)},
-      {"rocksdb.max_background_jobs", false, new IntField(&rocks_db_.max_background_jobs_, 4, 0, 32)},
+       new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, false)},
+      {"rocksdb.max_background_jobs", false, new IntField(&rocks_db.max_background_jobs, 4, 0, 32)},
 
       /* rocksdb write options */
-      {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db_.write_options_.sync_, false)},
-      {"rocksdb.write_options.disable_wal", true, new YesNoField(&rocks_db_.write_options_.disable_wal_, false)},
-      {"rocksdb.write_options.no_slowdown", true, new YesNoField(&rocks_db_.write_options_.no_slowdown_, false)},
-      {"rocksdb.write_options.low_pri", true, new YesNoField(&rocks_db_.write_options_.low_pri_, false)},
+      {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db.write_options.sync, false)},
+      {"rocksdb.write_options.disable_wal", true, new YesNoField(&rocks_db.write_options.disable_wal, false)},
+      {"rocksdb.write_options.no_slowdown", true, new YesNoField(&rocks_db.write_options.no_slowdown, false)},
+      {"rocksdb.write_options.low_pri", true, new YesNoField(&rocks_db.write_options.low_pri, false)},
       {"rocksdb.write_options.memtable_insert_hint_per_batch", true,
-       new YesNoField(&rocks_db_.write_options_.memtable_insert_hint_per_batch_, false)},
+       new YesNoField(&rocks_db.write_options.memtable_insert_hint_per_batch, false)},
 
       /* rocksdb read options */
-      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db_.read_options_.async_io_, false)},
+      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, false)},
   };
   for (auto &wrapper : fields) {
-    auto &field = wrapper.field_;
-    field->readonly_ = wrapper.readonly_;
-    fields_.emplace(std::move(wrapper.name_), std::move(field));
+    auto &field = wrapper.field;
+    field->readonly = wrapper.readonly;
+    fields_.emplace(std::move(wrapper.name), std::move(field));
   }
   initFieldValidator();
   initFieldCallback();
@@ -239,17 +237,17 @@ void Config::initFieldValidator() {
   std::map<std::string, validate_fn> validators = {
       {"requirepass",
        [this](const std::string &k, const std::string &v) -> Status {
-         if (v.empty() && !tokens_.empty()) {
+         if (v.empty() && !tokens.empty()) {
            return {Status::NotOK, "requirepass empty not allowed while the namespace exists"};
          }
-         if (tokens_.find(v) != tokens_.end()) {
+         if (tokens.find(v) != tokens.end()) {
            return {Status::NotOK, "requirepass is duplicated with namespace tokens"};
          }
          return Status::OK();
        }},
       {"masterauth",
        [this](const std::string &k, const std::string &v) -> Status {
-         if (tokens_.find(v) != tokens_.end()) {
+         if (tokens.find(v) != tokens.end()) {
            return {Status::NotOK, "masterauth is duplicated with namespace tokens"};
          }
          return Status::OK();
@@ -257,18 +255,18 @@ void Config::initFieldValidator() {
       {"compact-cron",
        [this](const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = Util::Split(v, " \t");
-         return compact_cron_.SetScheduleTime(args);
+         return compact_cron.SetScheduleTime(args);
        }},
       {"bgsave-cron",
        [this](const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = Util::Split(v, " \t");
-         return bgsave_cron_.SetScheduleTime(args);
+         return bgsave_cron.SetScheduleTime(args);
        }},
       {"compaction-checker-range",
        [this](const std::string &k, const std::string &v) -> Status {
          if (v.empty()) {
-           compaction_checker_range_.start_ = -1;
-           compaction_checker_range_.stop_ = -1;
+           compaction_checker_range.start = -1;
+           compaction_checker_range.stop = -1;
            return Status::OK();
          }
          std::vector<std::string> args = Util::Split(v, "-");
@@ -278,8 +276,8 @@ void Config::initFieldValidator() {
          auto start = GET_OR_RET(ParseInt<int>(args[0], {0, 24}, 10)),
               stop = GET_OR_RET(ParseInt<int>(args[1], {0, 24}, 10));
          if (start > stop) return {Status::NotOK, "invalid range format, start should be smaller than stop"};
-         compaction_checker_range_.start_ = start;
-         compaction_checker_range_.stop_ = stop;
+         compaction_checker_range.start = start;
+         compaction_checker_range.stop = stop;
          return Status::OK();
        }},
       {"rename-command",
@@ -310,7 +308,7 @@ void Config::initFieldValidator() {
   for (const auto &iter : validators) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
-      field_iter->second->validate_ = iter.second;
+      field_iter->second->validate = iter.second;
     }
   }
 }
@@ -321,11 +319,11 @@ void Config::initFieldValidator() {
 void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
-    return srv->storage_->SetDBOption(trimRocksDBPrefix(k), v);
+    return srv->storage->SetDBOption(trimRocksDBPrefix(k), v);
   };
   auto set_cf_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
-    return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+    return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
   };
 #ifdef ENABLE_OPENSSL
   auto set_tls_option = [](Server *srv, const std::string &k, const std::string &v) {
@@ -334,7 +332,7 @@ void Config::initFieldCallback() {
     if (!new_ctx) {
       return Status(Status::NotOK, "Failed to configure SSL context, check server log for more details");
     }
-    srv->ssl_ctx_ = std::move(new_ctx);
+    srv->ssl_ctx = std::move(new_ctx);
     return Status::OK();
   };
 #endif
@@ -342,17 +340,17 @@ void Config::initFieldCallback() {
   std::map<std::string, callback_fn> callbacks = {
       {"dir",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         db_dir_ = dir_ + "/db";
+         db_dir = dir + "/db";
          {
-           std::lock_guard<std::mutex> lg(this->backup_mu_);
-           if (backup_dir_.empty()) {
-             backup_dir_ = dir_ + "/backup";
+           std::lock_guard<std::mutex> lg(this->backup_mu);
+           if (backup_dir.empty()) {
+             backup_dir = dir + "/backup";
            }
          }
-         if (log_dir_.empty()) log_dir_ = dir_;
-         checkpoint_dir_ = dir_ + "/checkpoint";
-         sync_checkpoint_dir_ = dir_ + "/sync_checkpoint";
-         backup_sync_dir_ = dir_ + "/backup_for_sync";
+         if (log_dir.empty()) log_dir = dir;
+         checkpoint_dir = dir + "/checkpoint";
+         sync_checkpoint_dir = dir + "/sync_checkpoint";
+         backup_sync_dir = dir + "/backup_for_sync";
          return Status::OK();
        }},
       {"backup-dir",
@@ -361,9 +359,9 @@ void Config::initFieldCallback() {
          {
            // Note: currently, backup_mu_ may block by backing up or purging,
            //  the command may wait for seconds.
-           std::lock_guard<std::mutex> lg(this->backup_mu_);
-           previous_backup = std::move(backup_dir_);
-           backup_dir_ = v;
+           std::lock_guard<std::mutex> lg(this->backup_mu);
+           previous_backup = std::move(backup_dir);
+           backup_dir = v;
          }
          if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
            // LOG(INFO) should be called after log is initialized and server is loaded.
@@ -373,13 +371,13 @@ void Config::initFieldCallback() {
        }},
       {"cluster-enabled",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (cluster_enabled_) slot_id_encoded_ = true;
+         if (cluster_enabled) slot_id_encoded = true;
          return Status::OK();
        }},
       {"bind",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = Util::Split(v, " \t");
-         binds_ = std::move(args);
+         binds = std::move(args);
          return Status::OK();
        }},
       {"maxclients",
@@ -396,85 +394,85 @@ void Config::initFieldCallback() {
          std::vector<std::string> args = Util::Split(v, " \t");
          if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
          if (args[0] != "no" && args[1] != "one") {
-           master_host_ = args[0];
+           master_host = args[0];
            auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
            if (!parse_result) {
              return {Status::NotOK, "should be between 0 and 65535"};
            }
-           master_port_ = *parse_result;
+           master_port = *parse_result;
          }
          return Status::OK();
        }},
       {"profiling-sample-commands",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> cmds = Util::Split(v, ",");
-         profiling_sample_all_commands_ = false;
-         profiling_sample_commands_.clear();
+         profiling_sample_all_commands = false;
+         profiling_sample_commands.clear();
          for (auto const &cmd : cmds) {
            if (cmd == "*") {
-             profiling_sample_all_commands_ = true;
-             profiling_sample_commands_.clear();
+             profiling_sample_all_commands = true;
+             profiling_sample_commands.clear();
              return Status::OK();
            }
            if (!Redis::IsCommandExists(cmd)) {
              return {Status::NotOK, cmd + " is not Kvrocks supported command"};
            }
            // profiling_sample_commands use command's original name, regardless of rename-command directive
-           profiling_sample_commands_.insert(cmd);
+           profiling_sample_commands.insert(cmd);
          }
          return Status::OK();
        }},
       {"slowlog-max-len",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->GetSlowLog()->SetMaxEntries(slowlog_max_len_);
+         srv->GetSlowLog()->SetMaxEntries(slowlog_max_len);
          return Status::OK();
        }},
       {"max-db-size",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->storage_->CheckDBSizeLimit();
+         srv->storage->CheckDBSizeLimit();
          return Status::OK();
        }},
       {"max-io-mb",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->storage_->SetIORateLimit(max_io_mb_);
+         srv->storage->SetIORateLimit(max_io_mb);
          return Status::OK();
        }},
       {"profiling-sample-record-max-len",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len_);
+         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
          return Status::OK();
        }},
       {"migrate-speed",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled_) srv->slot_migrator_->SetMaxMigrationSpeed(migrate_speed_);
+         if (cluster_enabled) srv->slot_migrator->SetMaxMigrationSpeed(migrate_speed);
          return Status::OK();
        }},
       {"migrate-pipeline-size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled_) srv->slot_migrator_->SetMaxPipelineSize(pipeline_size_);
+         if (cluster_enabled) srv->slot_migrator->SetMaxPipelineSize(pipeline_size);
          return Status::OK();
        }},
       {"migrate-sequence-gap",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (cluster_enabled_) srv->slot_migrator_->SetSequenceGapLimit(sequence_gap_);
+         if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
          return Status::OK();
        }},
       {"log-retention-days",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (Util::ToLower(log_dir_) == "stdout") {
+         if (Util::ToLower(log_dir) == "stdout") {
            return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
          }
 
-         if (log_retention_days_ != -1) {
-           google::EnableLogCleaner(log_retention_days_);
+         if (log_retention_days != -1) {
+           google::EnableLogCleaner(log_retention_days);
          } else {
            google::DisableLogCleaner();
          }
@@ -482,10 +480,10 @@ void Config::initFieldCallback() {
        }},
       {"persist-cluster-nodes-enabled",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv || !cluster_enabled_) return Status::OK();
+         if (!srv || !cluster_enabled) return Status::OK();
          auto nodes_file_path = NodesFilePath();
          if (v == "yes") {
-           return srv->cluster_->DumpClusterNodes(nodes_file_path);
+           return srv->cluster->DumpClusterNodes(nodes_file_path);
          }
          // Remove the cluster nodes file to avoid stale cluster nodes info
          remove(nodes_file_path.data());
@@ -494,62 +492,62 @@ void Config::initFieldCallback() {
       {"rocksdb.target_file_size_base",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
-                                                             std::to_string(rocks_db_.target_file_size_base_ * MiB));
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+                                                            std::to_string(rocks_db.target_file_size_base * MiB));
        }},
       {"rocksdb.write_buffer_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
-                                                             std::to_string(rocks_db_.write_buffer_size_ * MiB));
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+                                                            std::to_string(rocks_db.write_buffer_size * MiB));
        }},
       {"rocksdb.disable_auto_compactions",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          std::string disable_auto_compactions = v == "yes" ? "true" : "false";
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), disable_auto_compactions);
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), disable_auto_compactions);
        }},
       {"rocksdb.max_total_wal_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage_->SetDBOption(trimRocksDBPrefix(k), std::to_string(rocks_db_.max_total_wal_size_ * MiB));
+         return srv->storage->SetDBOption(trimRocksDBPrefix(k), std::to_string(rocks_db.max_total_wal_size * MiB));
        }},
       {"rocksdb.enable_blob_files",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         std::string enable_blob_files = rocks_db_.enable_blob_files_ ? "true" : "false";
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_files);
+         std::string enable_blob_files = rocks_db.enable_blob_files ? "true" : "false";
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_files);
        }},
       {"rocksdb.min_blob_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.enable_blob_files_) {
+         if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
        }},
       {"rocksdb.blob_file_size",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.enable_blob_files_) {
+         if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
-                                                             std::to_string(rocks_db_.blob_file_size_));
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+                                                            std::to_string(rocks_db.blob_file_size));
        }},
       {"rocksdb.enable_blob_garbage_collection",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.enable_blob_files_) {
+         if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
          std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_garbage_collection);
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), enable_blob_garbage_collection);
        }},
       {"rocksdb.blob_garbage_collection_age_cutoff",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.enable_blob_files_) {
+         if (!rocks_db.enable_blob_files) {
            return {Status::NotOK, errBlobDbNotEnabled};
          }
          int val = 0;
@@ -563,30 +561,30 @@ void Config::initFieldCallback() {
          }
 
          double cutoff = val / 100.0;
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), std::to_string(cutoff));
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), std::to_string(cutoff));
        }},
       {"rocksdb.level_compaction_dynamic_level_bytes",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
-         return srv->storage_->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
+         return srv->storage->SetDBOption(trimRocksDBPrefix(k), level_compaction_dynamic_level_bytes);
        }},
       {"rocksdb.max_bytes_for_level_base",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.level_compaction_dynamic_level_bytes_) {
+         if (!rocks_db.level_compaction_dynamic_level_bytes) {
            return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
          }
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
-                                                             std::to_string(rocks_db_.max_bytes_for_level_base_));
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k),
+                                                            std::to_string(rocks_db.max_bytes_for_level_base));
        }},
       {"rocksdb.max_bytes_for_level_multiplier",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         if (!rocks_db_.level_compaction_dynamic_level_bytes_) {
+         if (!rocks_db.level_compaction_dynamic_level_bytes) {
            return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
          }
-         return srv->storage_->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
+         return srv->storage->SetOptionForAllColumnFamilies(trimRocksDBPrefix(k), v);
        }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},
@@ -619,19 +617,19 @@ void Config::initFieldCallback() {
   for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {
-      field_iter->second->callback_ = iter.second;
+      field_iter->second->callback = iter.second;
     }
   }
 }
 
-std::string Config::NodesFilePath() const { return dir_ + "/nodes.conf"; }
+std::string Config::NodesFilePath() const { return dir + "/nodes.conf"; }
 
 void Config::SetMaster(const std::string &host, uint32_t port) {
-  master_host_ = host;
-  master_port_ = port;
+  master_host = host;
+  master_port = port;
   auto iter = fields_.find("slaveof");
   if (iter != fields_.end()) {
-    auto s = iter->second->Set(master_host_ + " " + std::to_string(master_port_));
+    auto s = iter->second->Set(master_host + " " + std::to_string(master_port));
     if (!s.IsOK()) {
       LOG(ERROR) << "Failed to set the value of 'slaveof' setting: " << s.Msg();
     }
@@ -639,8 +637,8 @@ void Config::SetMaster(const std::string &host, uint32_t port) {
 }
 
 void Config::ClearMaster() {
-  master_host_.clear();
-  master_port_ = 0;
+  master_host.clear();
+  master_port = 0;
   auto iter = fields_.find("slaveof");
   if (iter != fields_.end()) {
     auto s = iter->second->Set("no one");
@@ -657,12 +655,12 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
   if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
     // namespace should keep key case-sensitive
     field_key = input.first;
-    tokens_[input.second] = input.first.substr(ns_str_size);
+    tokens[input.second] = input.first.substr(ns_str_size);
   }
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto &field = iter->second;
-    field->line_number_ = line_number;
+    field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
   }
@@ -681,28 +679,28 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 }
 
 Status Config::finish() {
-  if (requirepass_.empty() && !tokens_.empty()) {
+  if (requirepass.empty() && !tokens.empty()) {
     return {Status::NotOK, "requirepass empty wasn't allowed while the namespace exists"};
   }
-  if ((cluster_enabled_) && !tokens_.empty()) {
+  if ((cluster_enabled) && !tokens.empty()) {
     return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
   }
-  if (unixsocket_.empty() && binds_.size() == 0) {
-    binds_.emplace_back(kDefaultBindAddress);
+  if (unixsocket.empty() && binds.size() == 0) {
+    binds.emplace_back(kDefaultBindAddress);
   }
-  if (cluster_enabled_ && binds_.size() == 0) {
+  if (cluster_enabled && binds.size() == 0) {
     return {Status::NotOK,
             "node is in cluster mode, but TCP listen address "
             "wasn't specified via configuration file"};
   }
-  if (master_port_ != 0 && binds_.size() == 0) {
+  if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
-  if (db_dir_.empty()) db_dir_ = dir_ + "/db";
-  if (backup_dir_.empty()) backup_dir_ = dir_ + "/backup";
-  if (log_dir_.empty()) log_dir_ = dir_;
-  if (pidfile_.empty()) pidfile_ = dir_ + "/kvrocks.pid";
-  std::vector<std::string> create_dirs = {dir_};
+  if (db_dir.empty()) db_dir = dir + "/db";
+  if (backup_dir.empty()) backup_dir = dir + "/backup";
+  if (log_dir.empty()) log_dir = dir;
+  if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
+  std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
@@ -711,13 +709,13 @@ Status Config::finish() {
 }
 
 Status Config::Load(const CLIOptions &opts) {
-  if (!opts.conf_file_.empty()) {
+  if (!opts.conf_file.empty()) {
     std::ifstream file;
     std::istream *in = nullptr;
-    if (opts.conf_file_ == "-") {
+    if (opts.conf_file == "-") {
       in = &std::cin;
     } else {
-      path_ = opts.conf_file_;
+      path_ = opts.conf_file;
       file.open(path_);
       if (!file.is_open()) {
         return {Status::NotOK, fmt::format("failed to open file '{}': {}", path_, strerror(errno))};
@@ -741,24 +739,24 @@ Status Config::Load(const CLIOptions &opts) {
               << "In order to specify a config file use 'kvrocks -c /path/to/kvrocks.conf'" << std::endl;
   }
 
-  for (const auto &opt : opts.cli_options_) {
+  for (const auto &opt : opts.cli_options) {
     GET_OR_RET(parseConfigFromPair(opt, -1).Prefixed("CLI config option error"));
   }
 
   for (const auto &iter : fields_) {
     // line_number = 0 means the user didn't specify the field value
     // on config file and would use default value, so won't validate here.
-    if (iter.second->line_number_ != 0 && iter.second->validate_) {
-      auto s = iter.second->validate_(iter.first, iter.second->ToString());
+    if (iter.second->line_number != 0 && iter.second->validate) {
+      auto s = iter.second->validate(iter.first, iter.second->ToString());
       if (!s.IsOK()) {
-        return s.Prefixed(fmt::format("at line #L{}: {} is invalid", iter.second->line_number_, iter.first));
+        return s.Prefixed(fmt::format("at line #L{}: {} is invalid", iter.second->line_number, iter.first));
       }
     }
   }
 
   for (const auto &iter : fields_) {
-    if (iter.second->callback_) {
-      auto s = iter.second->callback_(nullptr, iter.first, iter.second->ToString());
+    if (iter.second->callback) {
+      auto s = iter.second->callback(nullptr, iter.first, iter.second->ToString());
       if (!s.IsOK()) {
         return s.Prefixed(fmt::format("while changing key '{}'", iter.first));
       }
@@ -787,21 +785,21 @@ void Config::Get(const std::string &key, std::vector<std::string> *values) {
 Status Config::Set(Server *svr, std::string key, const std::string &value) {
   key = Util::ToLower(key);
   auto iter = fields_.find(key);
-  if (iter == fields_.end() || iter->second->readonly_) {
+  if (iter == fields_.end() || iter->second->readonly) {
     return {Status::NotOK, "Unsupported CONFIG parameter: " + key};
   }
 
   auto &field = iter->second;
-  if (field->validate_) {
-    auto s = field->validate_(key, value);
+  if (field->validate) {
+    auto s = field->validate(key, value);
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
-  if (field->callback_) {
-    return field->callback_(svr, key, value);
+  if (field->callback) {
+    return field->callback(svr, key, value);
   }
 
   return Status::OK();
@@ -824,7 +822,7 @@ Status Config::Rewrite() {
   }
 
   std::string namespace_prefix = "namespace.";
-  for (const auto &iter : tokens_) {
+  for (const auto &iter : tokens) {
     new_config[namespace_prefix + iter.second] = iter.first;
   }
 
@@ -875,7 +873,7 @@ Status Config::Rewrite() {
 
 Status Config::GetNamespace(const std::string &ns, std::string *token) {
   token->clear();
-  for (const auto &iter : tokens_) {
+  for (const auto &iter : tokens) {
     if (iter.second == ns) {
       *token = iter.first;
       return Status::OK();
@@ -888,23 +886,23 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
   if (ns == kDefaultNamespace) {
     return {Status::NotOK, "forbidden to update the default namespace"};
   }
-  if (tokens_.find(token) != tokens_.end()) {
+  if (tokens.find(token) != tokens.end()) {
     return {Status::NotOK, "the token has already exists"};
   }
 
-  if (token == requirepass_ || token == masterauth_) {
+  if (token == requirepass || token == masterauth) {
     return {Status::NotOK, "the token is duplicated with requirepass or masterauth"};
   }
 
-  for (const auto &iter : tokens_) {
+  for (const auto &iter : tokens) {
     if (iter.second == ns) {
-      tokens_.erase(iter.first);
-      tokens_[token] = ns;
+      tokens.erase(iter.first);
+      tokens[token] = ns;
       auto s = Rewrite();
       if (!s.IsOK()) {
         // Need to roll back the old token if fails to rewrite the config
-        tokens_.erase(token);
-        tokens_[iter.first] = ns;
+        tokens.erase(token);
+        tokens[iter.first] = ns;
       }
       return s;
     }
@@ -913,10 +911,10 @@ Status Config::SetNamespace(const std::string &ns, const std::string &token) {
 }
 
 Status Config::AddNamespace(const std::string &ns, const std::string &token) {
-  if (requirepass_.empty()) {
+  if (requirepass.empty()) {
     return {Status::NotOK, "forbidden to add namespace when requirepass was empty"};
   }
-  if (cluster_enabled_) {
+  if (cluster_enabled) {
     return {Status::NotOK, "forbidden to add namespace when cluster mode was enabled"};
   }
   if (ns == kDefaultNamespace) {
@@ -924,24 +922,24 @@ Status Config::AddNamespace(const std::string &ns, const std::string &token) {
   }
   auto s = isNamespaceLegal(ns);
   if (!s.IsOK()) return s;
-  if (tokens_.find(token) != tokens_.end()) {
+  if (tokens.find(token) != tokens.end()) {
     return {Status::NotOK, "the token has already exists"};
   }
 
-  if (token == requirepass_ || token == masterauth_) {
+  if (token == requirepass || token == masterauth) {
     return {Status::NotOK, "the token is duplicated with requirepass or masterauth"};
   }
 
-  for (const auto &iter : tokens_) {
+  for (const auto &iter : tokens) {
     if (iter.second == ns) {
       return {Status::NotOK, "the namespace has already exists"};
     }
   }
-  tokens_[token] = ns;
+  tokens[token] = ns;
 
   s = Rewrite();
   if (!s.IsOK()) {
-    tokens_.erase(token);
+    tokens.erase(token);
   }
   return s;
 }
@@ -950,12 +948,12 @@ Status Config::DelNamespace(const std::string &ns) {
   if (ns == kDefaultNamespace) {
     return {Status::NotOK, "forbidden to delete the default namespace"};
   }
-  for (const auto &iter : tokens_) {
+  for (const auto &iter : tokens) {
     if (iter.second == ns) {
-      tokens_.erase(iter.first);
+      tokens.erase(iter.first);
       auto s = Rewrite();
       if (!s.IsOK()) {
-        tokens_[iter.first] = ns;
+        tokens[iter.first] = ns;
       }
       return s;
     }

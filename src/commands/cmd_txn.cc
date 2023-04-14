@@ -81,7 +81,7 @@ class CommandExec : public Commander {
       return Status::OK();
     }
 
-    auto storage = svr->storage_;
+    auto storage = svr->storage;
     // Reply multi length first
     conn->Reply(Redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands

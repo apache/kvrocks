@@ -58,10 +58,10 @@ rocksdb::Status Stream::GetLastGeneratedID(const Slice &stream_name, StreamEntry
   }
 
   if (s.IsNotFound()) {
-    id->ms_ = 0;
-    id->seq_ = 0;
+    id->ms = 0;
+    id->seq = 0;
   } else {
-    *id = metadata.last_generated_id_;
+    *id = metadata.last_generated_id;
   }
 
   return rocksdb::Status::OK();
@@ -71,18 +71,18 @@ StreamEntryID Stream::entryIDFromInternalKey(const rocksdb::Slice &key) const {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice entry_id = ikey.GetSubKey();
   StreamEntryID id;
-  GetFixed64(&entry_id, &id.ms_);
-  GetFixed64(&entry_id, &id.seq_);
+  GetFixed64(&entry_id, &id.ms);
+  GetFixed64(&entry_id, &id.seq);
   return id;
 }
 
 std::string Stream::internalKeyFromEntryID(const std::string &ns_key, const StreamMetadata &metadata,
                                            const StreamEntryID &id) const {
   std::string sub_key;
-  PutFixed64(&sub_key, id.ms_);
-  PutFixed64(&sub_key, id.seq_);
+  PutFixed64(&sub_key, id.ms);
+  PutFixed64(&sub_key, id.seq);
   std::string entry_key;
-  InternalKey(ns_key, sub_key, metadata.version_, storage_->IsSlotIdEncoded()).Encode(&entry_key);
+  InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&entry_key);
   return entry_key;
 }
 
@@ -104,7 +104,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  if (s.IsNotFound() && options.nomkstream_) {
+  if (s.IsNotFound() && options.nomkstream) {
     return s;
   }
 
@@ -121,21 +121,21 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   bool should_add = true;
 
   // trim the stream before adding a new entry to provide atomic XADD + XTRIM
-  if (options.trim_options_.strategy_ != StreamTrimStrategy::None) {
-    StreamTrimOptions trim_options = options.trim_options_;
-    if (trim_options.strategy_ == StreamTrimStrategy::MaxLen) {
+  if (options.trim_options.strategy != StreamTrimStrategy::None) {
+    StreamTrimOptions trim_options = options.trim_options;
+    if (trim_options.strategy == StreamTrimStrategy::MaxLen) {
       // because one entry will be added, we can trim up to (MAXLEN-1) if MAXLEN was specified
-      trim_options.max_len_ = options.trim_options_.max_len_ > 0 ? options.trim_options_.max_len_ - 1 : 0;
+      trim_options.max_len = options.trim_options.max_len > 0 ? options.trim_options.max_len - 1 : 0;
     }
 
     trim(ns_key, trim_options, &metadata, batch->GetWriteBatch());
 
-    if (trim_options.strategy_ == StreamTrimStrategy::MinID && next_entry_id < trim_options.min_id_) {
+    if (trim_options.strategy == StreamTrimStrategy::MinID && next_entry_id < trim_options.min_id) {
       // there is no sense to add this element because it would be removed, so just modify metadata and return it's ID
       should_add = false;
     }
 
-    if (trim_options.strategy_ == StreamTrimStrategy::MaxLen && options.trim_options_.max_len_ == 0) {
+    if (trim_options.strategy == StreamTrimStrategy::MaxLen && options.trim_options.max_len == 0) {
       // there is no sense to add this element because it would be removed, so just modify metadata and return it's ID
       should_add = false;
     }
@@ -145,20 +145,20 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, next_entry_id);
     batch->Put(stream_cf_handle_, entry_key, entry_value);
 
-    metadata.last_generated_id_ = next_entry_id;
-    metadata.last_entry_id_ = next_entry_id;
-    metadata.size_ += 1;
+    metadata.last_generated_id = next_entry_id;
+    metadata.last_entry_id = next_entry_id;
+    metadata.size += 1;
 
-    if (metadata.size_ == 1) {
-      metadata.first_entry_id_ = next_entry_id;
-      metadata.recorded_first_entry_id_ = next_entry_id;
+    if (metadata.size == 1) {
+      metadata.first_entry_id = next_entry_id;
+      metadata.recorded_first_entry_id = next_entry_id;
     }
   } else {
-    metadata.last_generated_id_ = next_entry_id;
-    metadata.max_deleted_entry_id_ = next_entry_id;
+    metadata.last_generated_id = next_entry_id;
+    metadata.max_deleted_entry_id = next_entry_id;
   }
 
-  metadata.entries_added_ += 1;
+  metadata.entries_added += 1;
 
   std::string metadata_bytes;
   metadata.Encode(&metadata_bytes);
@@ -171,51 +171,51 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
 rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
                                        bool first_entry, StreamEntryID *next_entry_id) {
-  if (options.with_entry_id_) {
-    if (options.entry_id_.ms_ == 0 && !options.entry_id_.any_seq_number_ && options.entry_id_.seq_ == 0) {
+  if (options.with_entry_id) {
+    if (options.entry_id.ms == 0 && !options.entry_id.any_seq_number && options.entry_id.seq == 0) {
       return rocksdb::Status::InvalidArgument(errEntryIdOutOfRange);
     }
 
-    if (metadata.last_generated_id_.ms_ == UINT64_MAX && metadata.last_generated_id_.seq_ == UINT64_MAX) {
+    if (metadata.last_generated_id.ms == UINT64_MAX && metadata.last_generated_id.seq == UINT64_MAX) {
       return rocksdb::Status::InvalidArgument(errStreamExhaustedEntryId);
     }
 
     if (!first_entry) {
-      if (metadata.last_generated_id_.ms_ > options.entry_id_.ms_) {
+      if (metadata.last_generated_id.ms > options.entry_id.ms) {
         return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
       }
 
-      if (metadata.last_generated_id_.ms_ == options.entry_id_.ms_) {
-        if (!options.entry_id_.any_seq_number_ && metadata.last_generated_id_.seq_ >= options.entry_id_.seq_) {
+      if (metadata.last_generated_id.ms == options.entry_id.ms) {
+        if (!options.entry_id.any_seq_number && metadata.last_generated_id.seq >= options.entry_id.seq) {
           return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
         }
 
-        if (options.entry_id_.any_seq_number_ && metadata.last_generated_id_.seq_ == UINT64_MAX) {
+        if (options.entry_id.any_seq_number && metadata.last_generated_id.seq == UINT64_MAX) {
           return rocksdb::Status::InvalidArgument(
               "Elements are too large to be stored");  // Redis responds with exactly this message
         }
       }
 
-      if (options.entry_id_.any_seq_number_) {
-        if (options.entry_id_.ms_ == metadata.last_generated_id_.ms_) {
-          next_entry_id->seq_ = metadata.last_generated_id_.seq_ + 1;
+      if (options.entry_id.any_seq_number) {
+        if (options.entry_id.ms == metadata.last_generated_id.ms) {
+          next_entry_id->seq = metadata.last_generated_id.seq + 1;
         } else {
-          next_entry_id->seq_ = 0;
+          next_entry_id->seq = 0;
         }
       } else {
-        next_entry_id->seq_ = options.entry_id_.seq_;
+        next_entry_id->seq = options.entry_id.seq;
       }
     } else {
-      if (options.entry_id_.any_seq_number_) {
-        next_entry_id->seq_ = options.entry_id_.ms_ != 0 ? 0 : 1;
+      if (options.entry_id.any_seq_number) {
+        next_entry_id->seq = options.entry_id.ms != 0 ? 0 : 1;
       } else {
-        next_entry_id->seq_ = options.entry_id_.seq_;
+        next_entry_id->seq = options.entry_id.seq;
       }
     }
-    next_entry_id->ms_ = options.entry_id_.ms_;
+    next_entry_id->ms = options.entry_id.ms;
     return rocksdb::Status::OK();
   } else {
-    return GetNextStreamEntryID(metadata.last_generated_id_, next_entry_id);
+    return GetNextStreamEntryID(metadata.last_generated_id, next_entry_id);
   }
 }
 
@@ -238,9 +238,9 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
   batch->PutLogData(log_data.Encode());
 
   std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -261,43 +261,43 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
       *ret += 1;
       batch->Delete(stream_cf_handle_, entry_key);
 
-      if (metadata.max_deleted_entry_id_ < id) {
-        metadata.max_deleted_entry_id_ = id;
+      if (metadata.max_deleted_entry_id < id) {
+        metadata.max_deleted_entry_id = id;
       }
 
-      if (*ret == metadata.size_) {
-        metadata.first_entry_id_.Clear();
-        metadata.last_entry_id_.Clear();
-        metadata.recorded_first_entry_id_.Clear();
+      if (*ret == metadata.size) {
+        metadata.first_entry_id.Clear();
+        metadata.last_entry_id.Clear();
+        metadata.recorded_first_entry_id.Clear();
         break;
       }
 
-      if (id == metadata.first_entry_id_) {
+      if (id == metadata.first_entry_id) {
         iter->Seek(entry_key);
         iter->Next();
         if (iter->Valid()) {
-          metadata.first_entry_id_ = entryIDFromInternalKey(iter->key());
-          metadata.recorded_first_entry_id_ = metadata.first_entry_id_;
+          metadata.first_entry_id = entryIDFromInternalKey(iter->key());
+          metadata.recorded_first_entry_id = metadata.first_entry_id;
         } else {
-          metadata.first_entry_id_.Clear();
-          metadata.recorded_first_entry_id_.Clear();
+          metadata.first_entry_id.Clear();
+          metadata.recorded_first_entry_id.Clear();
         }
       }
 
-      if (id == metadata.last_entry_id_) {
+      if (id == metadata.last_entry_id) {
         iter->Seek(entry_key);
         iter->Prev();
         if (iter->Valid()) {
-          metadata.last_entry_id_ = entryIDFromInternalKey(iter->key());
+          metadata.last_entry_id = entryIDFromInternalKey(iter->key());
         } else {
-          metadata.last_entry_id_.Clear();
+          metadata.last_entry_id.Clear();
         }
       }
     }
   }
 
   if (*ret > 0) {
-    metadata.size_ -= *ret;
+    metadata.size -= *ret;
 
     std::string bytes;
     metadata.Encode(&bytes);
@@ -325,31 +325,31 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOp
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  if (!options.with_entry_id_) {
-    *ret = metadata.size_;
+  if (!options.with_entry_id) {
+    *ret = metadata.size;
     return rocksdb::Status::OK();
   }
 
-  if (options.entry_id_ > metadata.last_entry_id_) {
-    *ret = options.to_first_ ? metadata.size_ : 0;
+  if (options.entry_id > metadata.last_entry_id) {
+    *ret = options.to_first ? metadata.size : 0;
     return rocksdb::Status::OK();
   }
 
-  if (options.entry_id_ < metadata.first_entry_id_) {
-    *ret = options.to_first_ ? 0 : metadata.size_;
+  if (options.entry_id < metadata.first_entry_id) {
+    *ret = options.to_first ? 0 : metadata.size;
     return rocksdb::Status::OK();
   }
 
-  if ((!options.to_first_ && options.entry_id_ == metadata.first_entry_id_) ||
-      (options.to_first_ && options.entry_id_ == metadata.last_entry_id_)) {
-    *ret = metadata.size_ - 1;
+  if ((!options.to_first && options.entry_id == metadata.first_entry_id) ||
+      (options.to_first && options.entry_id == metadata.last_entry_id)) {
+    *ret = metadata.size - 1;
     return rocksdb::Status::OK();
   }
 
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
   std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -361,20 +361,20 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOp
   storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options, stream_cf_handle_);
-  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.entry_id_);
+  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.entry_id);
 
   iter->Seek(start_key);
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
   }
 
-  if (options.to_first_) {
+  if (options.to_first) {
     iter->Prev();
   } else if (iter->key().ToString() == start_key) {
     iter->Next();
   }
 
-  for (; iter->Valid(); options.to_first_ ? iter->Prev() : iter->Next()) {
+  for (; iter->Valid(); options.to_first ? iter->Prev() : iter->Next()) {
     *ret += 1;
   }
 
@@ -383,11 +383,11 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOp
 
 rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &metadata,
                               const StreamRangeOptions &options, std::vector<StreamEntry> *entries) const {
-  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.start_);
-  std::string end_key = internalKeyFromEntryID(ns_key, metadata, options.end_);
+  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.start);
+  std::string end_key = internalKeyFromEntryID(ns_key, metadata, options.end);
 
   if (start_key == end_key) {
-    if (options.exclude_start_ || options.exclude_end_) {
+    if (options.exclude_start || options.exclude_end) {
       return rocksdb::Status::OK();
     }
 
@@ -403,18 +403,18 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
       return rocksdb::Status::InvalidArgument(rv.Msg());
     }
 
-    entries->emplace_back(options.start_.ToString(), std::move(values));
+    entries->emplace_back(options.start.ToString(), std::move(values));
     return rocksdb::Status::OK();
   }
 
-  if ((!options.reverse_ && options.end_ < options.start_) || (options.reverse_ && options.start_ < options.end_)) {
+  if ((!options.reverse && options.end < options.start) || (options.reverse && options.start < options.end)) {
     return rocksdb::Status::OK();
   }
 
   std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -427,17 +427,17 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options, stream_cf_handle_);
   iter->Seek(start_key);
-  if (options.reverse_ && (!iter->Valid() || iter->key().ToString() != start_key)) {
+  if (options.reverse && (!iter->Valid() || iter->key().ToString() != start_key)) {
     iter->SeekForPrev(start_key);
   }
 
-  for (; iter->Valid() && (options.reverse_ ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
-       options.reverse_ ? iter->Prev() : iter->Next()) {
-    if (options.exclude_start_ && iter->key().ToString() == start_key) {
+  for (; iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
+       options.reverse ? iter->Prev() : iter->Next()) {
+    if (options.exclude_start && iter->key().ToString() == start_key) {
       continue;
     }
 
-    if (options.exclude_end_ && iter->key().ToString() == end_key) {
+    if (options.exclude_end && iter->key().ToString() == end_key) {
       break;
     }
 
@@ -449,7 +449,7 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
 
     entries->emplace_back(entryIDFromInternalKey(iter->key()).ToString(), std::move(values));
 
-    if (options.with_count_ && entries->size() == options.count_) {
+    if (options.with_count && entries->size() == options.count) {
       break;
     }
   }
@@ -472,40 +472,40 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  info->size_ = metadata.size_;
-  info->entries_added_ = metadata.entries_added_;
-  info->last_generated_id_ = metadata.last_generated_id_;
-  info->max_deleted_entry_id_ = metadata.max_deleted_entry_id_;
-  info->recorded_first_entry_id_ = metadata.recorded_first_entry_id_;
+  info->size = metadata.size;
+  info->entries_added = metadata.entries_added;
+  info->last_generated_id = metadata.last_generated_id;
+  info->max_deleted_entry_id = metadata.max_deleted_entry_id;
+  info->recorded_first_entry_id = metadata.recorded_first_entry_id;
 
-  if (metadata.size_ == 0) {
+  if (metadata.size == 0) {
     return rocksdb::Status::OK();
   }
 
   if (full) {
-    uint64_t need_entries = metadata.size_;
-    if (count != 0 && count < metadata.size_) {
+    uint64_t need_entries = metadata.size;
+    if (count != 0 && count < metadata.size) {
       need_entries = count;
     }
 
-    info->entries_.reserve(need_entries);
+    info->entries.reserve(need_entries);
 
     StreamRangeOptions options;
-    options.start_ = metadata.first_entry_id_;
-    options.end_ = metadata.last_entry_id_;
-    options.with_count_ = true;
-    options.count_ = need_entries;
-    options.reverse_ = false;
-    options.exclude_start_ = false;
-    options.exclude_end_ = false;
+    options.start = metadata.first_entry_id;
+    options.end = metadata.last_entry_id;
+    options.with_count = true;
+    options.count = need_entries;
+    options.reverse = false;
+    options.exclude_start = false;
+    options.exclude_end = false;
 
-    s = range(ns_key, metadata, options, &info->entries_);
+    s = range(ns_key, metadata, options, &info->entries);
     if (!s.ok()) {
       return s;
     }
   } else {
     std::string first_value;
-    s = getEntryRawValue(ns_key, metadata, metadata.first_entry_id_, &first_value);
+    s = getEntryRawValue(ns_key, metadata, metadata.first_entry_id, &first_value);
     if (!s.ok()) {
       return s;
     }
@@ -516,10 +516,10 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
       return rocksdb::Status::InvalidArgument(rv.Msg());
     }
 
-    info->first_entry_ = std::make_unique<StreamEntry>(metadata.first_entry_id_.ToString(), std::move(values));
+    info->first_entry = std::make_unique<StreamEntry>(metadata.first_entry_id.ToString(), std::move(values));
 
     std::string last_value;
-    s = getEntryRawValue(ns_key, metadata, metadata.last_entry_id_, &last_value);
+    s = getEntryRawValue(ns_key, metadata, metadata.last_entry_id, &last_value);
     if (!s.ok()) {
       return s;
     }
@@ -529,7 +529,7 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
       return rocksdb::Status::InvalidArgument(rv.Msg());
     }
 
-    info->last_entry_ = std::make_unique<StreamEntry>(metadata.last_entry_id_.ToString(), std::move(values));
+    info->last_entry = std::make_unique<StreamEntry>(metadata.last_entry_id.ToString(), std::move(values));
   }
 
   return rocksdb::Status::OK();
@@ -539,15 +539,15 @@ rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions
                               std::vector<StreamEntry> *entries) {
   entries->clear();
 
-  if (options.with_count_ && options.count_ == 0) {
+  if (options.with_count && options.count == 0) {
     return rocksdb::Status::OK();
   }
 
-  if (options.exclude_start_ && options.start_.IsMaximum()) {
+  if (options.exclude_start && options.start.IsMaximum()) {
     return rocksdb::Status::InvalidArgument("invalid start ID for the interval");
   }
 
-  if (options.exclude_end_ && options.end_.IsMinimum()) {
+  if (options.exclude_end && options.end.IsMinimum()) {
     return rocksdb::Status::InvalidArgument("invalid end ID for the interval");
   }
 
@@ -566,7 +566,7 @@ rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions
 rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret) {
   *ret = 0;
 
-  if (options.strategy_ == StreamTrimStrategy::None) {
+  if (options.strategy == StreamTrimStrategy::None) {
     return rocksdb::Status::OK();
   }
 
@@ -600,24 +600,24 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
 
 uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &options, StreamMetadata *metadata,
                       rocksdb::WriteBatch *batch) {
-  if (metadata->size_ == 0) {
+  if (metadata->size == 0) {
     return 0;
   }
 
-  if (options.strategy_ == StreamTrimStrategy::MaxLen && metadata->size_ <= options.max_len_) {
+  if (options.strategy == StreamTrimStrategy::MaxLen && metadata->size <= options.max_len) {
     return 0;
   }
 
-  if (options.strategy_ == StreamTrimStrategy::MinID && metadata->first_entry_id_ >= options.min_id_) {
+  if (options.strategy == StreamTrimStrategy::MinID && metadata->first_entry_id >= options.min_id) {
     return 0;
   }
 
   uint64_t ret = 0;
 
   std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata->version_ + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  InternalKey(ns_key, "", metadata->version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata->version_, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
   rocksdb::ReadOptions read_options;
   LatestSnapShot ss(storage_);
@@ -629,44 +629,44 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
   storage_->SetReadOptions(read_options);
 
   auto iter = DBUtil::UniqueIterator(storage_, read_options, stream_cf_handle_);
-  std::string start_key = internalKeyFromEntryID(ns_key, *metadata, metadata->first_entry_id_);
+  std::string start_key = internalKeyFromEntryID(ns_key, *metadata, metadata->first_entry_id);
   iter->Seek(start_key);
 
   std::string last_deleted;
-  while (iter->Valid() && metadata->size_ > 0) {
-    if (options.strategy_ == StreamTrimStrategy::MaxLen && metadata->size_ <= options.max_len_) {
+  while (iter->Valid() && metadata->size > 0) {
+    if (options.strategy == StreamTrimStrategy::MaxLen && metadata->size <= options.max_len) {
       break;
     }
 
-    if (options.strategy_ == StreamTrimStrategy::MinID && metadata->first_entry_id_ >= options.min_id_) {
+    if (options.strategy == StreamTrimStrategy::MinID && metadata->first_entry_id >= options.min_id) {
       break;
     }
 
     batch->Delete(stream_cf_handle_, iter->key());
 
     ret += 1;
-    metadata->size_ -= 1;
+    metadata->size -= 1;
     last_deleted = iter->key().ToString();
 
     iter->Next();
 
     if (iter->Valid()) {
-      metadata->first_entry_id_ = entryIDFromInternalKey(iter->key());
-      metadata->recorded_first_entry_id_ = metadata->first_entry_id_;
+      metadata->first_entry_id = entryIDFromInternalKey(iter->key());
+      metadata->recorded_first_entry_id = metadata->first_entry_id;
     } else {
-      metadata->first_entry_id_.Clear();
-      metadata->recorded_first_entry_id_.Clear();
+      metadata->first_entry_id.Clear();
+      metadata->recorded_first_entry_id.Clear();
     }
   }
 
-  if (metadata->size_ == 0) {
-    metadata->first_entry_id_.Clear();
-    metadata->last_entry_id_.Clear();
-    metadata->recorded_first_entry_id_.Clear();
+  if (metadata->size == 0) {
+    metadata->first_entry_id.Clear();
+    metadata->last_entry_id.Clear();
+    metadata->recorded_first_entry_id.Clear();
   }
 
   if (ret > 0) {
-    metadata->max_deleted_entry_id_ = entryIDFromInternalKey(last_deleted);
+    metadata->max_deleted_entry_id = entryIDFromInternalKey(last_deleted);
   }
 
   return ret;
@@ -694,7 +694,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
       return rocksdb::Status::InvalidArgument(errEntriesAddedNotSpecifiedForEmptyStream);
     }
 
-    if (!max_deleted_id || (max_deleted_id->ms_ == 0 && max_deleted_id->seq_ == 0)) {
+    if (!max_deleted_id || (max_deleted_id->ms == 0 && max_deleted_id->seq == 0)) {
       return rocksdb::Status::InvalidArgument(errMaxDeletedIdNotSpecifiedForEmptyStream);
     }
 
@@ -702,20 +702,20 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
     metadata = StreamMetadata();
   }
 
-  if (metadata.size_ > 0 && last_generated_id < metadata.last_generated_id_) {
+  if (metadata.size > 0 && last_generated_id < metadata.last_generated_id) {
     return rocksdb::Status::InvalidArgument(errSetEntryIdSmallerThanLastGenerated);
   }
 
-  if (metadata.size_ > 0 && entries_added && entries_added < metadata.size_) {
+  if (metadata.size > 0 && entries_added && entries_added < metadata.size) {
     return rocksdb::Status::InvalidArgument(errEntriesAddedSmallerThanStreamSize);
   }
 
-  metadata.last_generated_id_ = last_generated_id;
+  metadata.last_generated_id = last_generated_id;
   if (entries_added) {
-    metadata.entries_added_ = *entries_added;
+    metadata.entries_added = *entries_added;
   }
-  if (max_deleted_id && (max_deleted_id->ms_ != 0 || max_deleted_id->seq_ != 0)) {
-    metadata.max_deleted_entry_id_ = *max_deleted_id;
+  if (max_deleted_id && (max_deleted_id->ms != 0 || max_deleted_id->seq != 0)) {
+    metadata.max_deleted_entry_id = *max_deleted_id;
   }
 
   auto batch = storage_->GetWriteBatchBase();

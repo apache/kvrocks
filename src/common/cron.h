@@ -28,11 +28,11 @@
 #include "status.h"
 
 struct Scheduler {
-  int minute_;
-  int hour_;
-  int mday_;
-  int month_;
-  int wday_;
+  int minute;
+  int hour;
+  int mday;
+  int month;
+  int wday;
 
   std::string ToString() const;
 };

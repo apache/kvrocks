@@ -42,7 +42,7 @@ static std::map<RedisType, std::string> type_to_cmd = {
 };
 
 SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipeline_size, int seq_gap_limit)
-    : Database(svr->storage_, kDefaultNamespace), svr_(svr) {
+    : Database(svr->storage, kDefaultNamespace), svr_(svr) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -151,15 +151,15 @@ void SlotMigrator::Loop() {
       return;
     }
 
-    LOG(INFO) << "[migrate] Migrating slot: " << migration_job_->slot_id_ << ", dst_ip: " << migration_job_->dst_ip_
-              << ", dst_port: " << migration_job_->dst_port_ << ", max_speed: " << migration_job_->max_speed_
-              << ", max_pipeline_size: " << migration_job_->max_pipeline_size_;
+    LOG(INFO) << "[migrate] Migrating slot: " << migration_job_->slot_id << ", dst_ip: " << migration_job_->dst_ip
+              << ", dst_port: " << migration_job_->dst_port << ", max_speed: " << migration_job_->max_speed
+              << ", max_pipeline_size: " << migration_job_->max_pipeline_size;
 
-    dst_ip_ = migration_job_->dst_ip_;
-    dst_port_ = migration_job_->dst_port_;
-    max_migration_speed_ = migration_job_->max_speed_;
-    max_pipeline_size_ = migration_job_->max_pipeline_size_;
-    seq_gap_limit_ = migration_job_->seq_gap_limit_;
+    dst_ip_ = migration_job_->dst_ip;
+    dst_port_ = migration_job_->dst_port;
+    max_migration_speed_ = migration_job_->max_speed;
+    max_pipeline_size_ = migration_job_->max_pipeline_size;
+    seq_gap_limit_ = migration_job_->seq_gap_limit;
 
     RunMigrationProcess();
   }
@@ -263,7 +263,7 @@ Status SlotMigrator::StartMigration() {
   dst_fd_.Reset(*result);
 
   // Auth first
-  std::string pass = svr_->GetConfig()->requirepass_;
+  std::string pass = svr_->GetConfig()->requirepass;
   if (!pass.empty()) {
     auto s = AuthOnDstNode(*dst_fd_, pass);
     if (!s.IsOK()) {
@@ -383,7 +383,7 @@ Status SlotMigrator::FinishSuccessfulMigration() {
   }
 
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
-  s = svr_->cluster_->SetSlotMigrated(migrating_slot_, dst_ip_port);
+  s = svr_->cluster->SetSlotMigrated(migrating_slot_, dst_ip_port);
   if (!s.IsOK()) {
     return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrating_slot_, dst_ip_port));
   }
@@ -520,9 +520,9 @@ Status SlotMigrator::CheckMultipleResponses(int sock_fd, int total) {
           }
 
           if (line[0] == '-') {
-            return {Status::NotOK, fmt::format("got invalid response of length {}: {}", line.length_, line.get())};
+            return {Status::NotOK, fmt::format("got invalid response of length {}: {}", line.length, line.get())};
           } else if (line[0] == '$') {
-            auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length_ - 1), 10);
+            auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
             if (!parse_result) {
               return {Status::NotOK, "protocol error: expected integer value"};
             }
@@ -532,7 +532,7 @@ Status SlotMigrator::CheckMultipleResponses(int sock_fd, int total) {
           } else if (line[0] == '+' || line[0] == ':') {
             parser_state_ = ParserState::OneRspEnd;
           } else {
-            return {Status::NotOK, fmt::format("got unexpected response of length {}: {}", line.length_, line.get())};
+            return {Status::NotOK, fmt::format("got unexpected response of length {}: {}", line.length, line.get())};
           }
 
           break;
@@ -573,7 +573,7 @@ StatusOr<KeyMigrationResult> SlotMigrator::MigrateOneKey(const rocksdb::Slice &k
   Metadata metadata(kRedisNone, false);
   metadata.Decode(bytes);
 
-  if (metadata.Type() != kRedisString && metadata.Type() != kRedisStream && metadata.size_ == 0) {
+  if (metadata.Type() != kRedisString && metadata.Type() != kRedisStream && metadata.size == 0) {
     return KeyMigrationResult::kUnderlyingStructEmpty;
   }
 
@@ -622,9 +622,9 @@ StatusOr<KeyMigrationResult> SlotMigrator::MigrateOneKey(const rocksdb::Slice &k
 Status SlotMigrator::MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
                                       std::string *restore_cmds) {
   std::vector<std::string> command = {"SET", key.ToString(), bytes.substr(Metadata::GetOffsetAfterExpire(bytes[0]))};
-  if (metadata.expire_ > 0) {
+  if (metadata.expire > 0) {
     command.emplace_back("PXAT");
-    command.emplace_back(std::to_string(metadata.expire_));
+    command.emplace_back(std::to_string(metadata.expire));
   }
   *restore_cmds += Redis::MultiBulkString(command, false);
   current_pipeline_size_++;
@@ -653,7 +653,7 @@ Status SlotMigrator::MigrateComplexKey(const rocksdb::Slice &key, const Metadata
   // Construct key prefix to iterate values of the complex type user key
   std::string slot_key, prefix_subkey;
   AppendNamespacePrefix(key, &slot_key);
-  InternalKey(slot_key, "", metadata.version_, true).Encode(&prefix_subkey);
+  InternalKey(slot_key, "", metadata.version, true).Encode(&prefix_subkey);
   int item_count = 0;
 
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
@@ -731,8 +731,8 @@ Status SlotMigrator::MigrateComplexKey(const rocksdb::Slice &key, const Metadata
   }
 
   // Add TTL for complex key
-  if (metadata.expire_ > 0) {
-    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire_)}, false);
+  if (metadata.expire > 0) {
+    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
     current_pipeline_size_++;
   }
 
@@ -757,7 +757,7 @@ Status SlotMigrator::MigrateStream(const Slice &key, const StreamMetadata &metad
   AppendNamespacePrefix(key, &ns_key);
   // Construct key prefix to iterate values of the stream
   std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version_, true).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version, true).Encode(&prefix_key);
 
   std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
 
@@ -788,14 +788,14 @@ Status SlotMigrator::MigrateStream(const Slice &key, const StreamMetadata &metad
   // commands like XTRIM and XDEL affect stream's metadata, but we use only XADD for a slot migration
   // XSETID is used to adjust stream's info on the destination node according to the current values on the source
   *restore_cmds += Redis::MultiBulkString(
-      {"XSETID", key.ToString(), metadata.last_generated_id_.ToString(), "ENTRIESADDED",
-       std::to_string(metadata.entries_added_), "MAXDELETEDID", metadata.max_deleted_entry_id_.ToString()},
+      {"XSETID", key.ToString(), metadata.last_generated_id.ToString(), "ENTRIESADDED",
+       std::to_string(metadata.entries_added), "MAXDELETEDID", metadata.max_deleted_entry_id.ToString()},
       false);
   current_pipeline_size_++;
 
   // Add TTL
-  if (metadata.expire_ > 0) {
-    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire_)}, false);
+  if (metadata.expire > 0) {
+    *restore_cmds += Redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
     current_pipeline_size_++;
   }
 

@@ -60,13 +60,13 @@ class CommandPSync : public Commander {
               << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
               << " with next sequence: " << next_repl_seq_
               << " replication id: " << (replica_replid_.length() ? replica_replid_ : "not supported")
-              << ", and local sequence: " << svr->storage_->LatestSeqNumber();
+              << ", and local sequence: " << svr->storage->LatestSeqNumber();
 
     bool need_full_sync = false;
 
     // Check replication id of the last sequence log
-    if (new_psync_ && svr->GetConfig()->use_rsid_psync_) {
-      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
+    if (new_psync_ && svr->GetConfig()->use_rsid_psync) {
+      std::string replid_in_wal = svr->storage->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
       LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
@@ -78,13 +78,13 @@ class CommandPSync : public Commander {
     }
 
     // Check Log sequence
-    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq_).IsOK()) {
+    if (!need_full_sync && !checkWALBoundary(svr->storage, next_repl_seq_).IsOK()) {
       *output = "sequence out of range, please use fullsync";
       need_full_sync = true;
     }
 
     if (need_full_sync) {
-      svr->stats_.IncrPSyncErrCounter();
+      svr->stats.IncrPSyncErrCounter();
       return {Status::RedisExecErr, *output};
     }
 
@@ -98,7 +98,7 @@ class CommandPSync : public Commander {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
-    svr->stats_.IncrPSyncOKCounter();
+    svr->stats.IncrPSyncOKCounter();
     s = svr->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
@@ -216,7 +216,7 @@ class CommandFetchMeta : public Commander {
 
     conn->NeedNotFreeBufferEvent();
     conn->EnableFlag(Redis::Connection::kCloseAsync);
-    svr->stats_.IncrFullSyncCounter();
+    svr->stats.IncrFullSyncCounter();
 
     // Feed-replica-meta thread
     auto t = GET_OR_RET(Util::CreateThread("feed-repl-info", [svr, repl_fd, ip, bev = conn->GetBufferEvent()] {
@@ -227,7 +227,7 @@ class CommandFetchMeta : public Commander {
       });
 
       std::string files;
-      auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
+      auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage, &files);
       if (!s.IsOK()) {
         s = Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
         if (!s.IsOK()) {
@@ -243,7 +243,7 @@ class CommandFetchMeta : public Commander {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
       auto now = static_cast<time_t>(Util::GetTimeStamp());
-      svr->storage_->SetCheckpointAccessTime(now);
+      svr->storage->SetCheckpointAccessTime(now);
     }));
 
     if (auto s = Util::ThreadDetach(t); !s) {
@@ -283,11 +283,11 @@ class CommandFetchFile : public Commander {
         if (svr->IsStopped()) break;
 
         uint64_t file_size = 0, max_replication_bytes = 0;
-        if (svr->GetConfig()->max_replication_mb_ > 0) {
-          max_replication_bytes = (svr->GetConfig()->max_replication_mb_ * MiB) / svr->GetFetchFileThreadNum();
+        if (svr->GetConfig()->max_replication_mb > 0) {
+          max_replication_bytes = (svr->GetConfig()->max_replication_mb * MiB) / svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_, file, &file_size));
+        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage, file, &file_size));
         if (!fd) break;
 
         // Send file size and content
@@ -312,7 +312,7 @@ class CommandFetchFile : public Commander {
         }
       }
       auto now = static_cast<time_t>(Util::GetTimeStamp());
-      svr->storage_->SetCheckpointAccessTime(now);
+      svr->storage->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
     }));
 
@@ -332,7 +332,7 @@ class CommandDBName : public Commander {
   Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    conn->Reply(svr->storage_->GetName() + CRLF);
+    conn->Reply(svr->storage->GetName() + CRLF);
     return Status::OK();
   }
 };

@@ -124,11 +124,11 @@ class Connection {
   void ResetMultiExec();
   std::deque<Redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
-  std::unique_ptr<Commander> current_cmd_;
-  std::function<void(int)> close_cb_ = nullptr;
+  std::unique_ptr<Commander> current_cmd;
+  std::function<void(int)> close_cb = nullptr;
 
-  std::set<std::string> watched_keys_;
-  std::atomic<bool> watched_keys_modified_ = false;
+  std::set<std::string> watched_keys;
+  std::atomic<bool> watched_keys_modified = false;
 
  private:
   uint64_t id_ = 0;

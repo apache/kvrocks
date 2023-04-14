@@ -21,7 +21,7 @@
 #include "slot_import.h"
 
 SlotImport::SlotImport(Server *svr)
-    : Database(svr->storage_, kDefaultNamespace),
+    : Database(svr->storage, kDefaultNamespace),
       svr_(svr),
       import_slot_(-1),
       import_status_(kImportNone),
@@ -62,7 +62,7 @@ bool SlotImport::Success(int slot) {
     return false;
   }
 
-  Status s = svr_->cluster_->SetSlotImported(import_slot_);
+  Status s = svr_->cluster->SetSlotImported(import_slot_);
   if (!s.IsOK()) {
     LOG(ERROR) << "[import] Failed to set slot, Err: " << s.Msg();
     return false;

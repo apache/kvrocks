@@ -27,8 +27,8 @@
 
 std::string Scheduler::ToString() const {
   auto param2string = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
-  return param2string(minute_) + " " + param2string(hour_) + " " + param2string(mday_) + " " + param2string(month_) +
-         " " + param2string(wday_);
+  return param2string(minute) + " " + param2string(hour) + " " + param2string(mday) + " " + param2string(month) + " " +
+         param2string(wday);
 }
 
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
@@ -58,9 +58,9 @@ bool Cron::IsTimeMatch(struct tm *tm) {
     return false;
   }
   for (const auto &st : schedulers_) {
-    if ((st.minute_ == -1 || tm->tm_min == st.minute_) && (st.hour_ == -1 || tm->tm_hour == st.hour_) &&
-        (st.mday_ == -1 || tm->tm_mday == st.mday_) && (st.month_ == -1 || (tm->tm_mon + 1) == st.month_) &&
-        (st.wday_ == -1 || tm->tm_wday == st.wday_)) {
+    if ((st.minute == -1 || tm->tm_min == st.minute) && (st.hour == -1 || tm->tm_hour == st.hour) &&
+        (st.mday == -1 || tm->tm_mday == st.mday) && (st.month == -1 || (tm->tm_mon + 1) == st.month) &&
+        (st.wday == -1 || tm->tm_wday == st.wday)) {
       last_tm_ = *tm;
       return true;
     }
@@ -84,11 +84,11 @@ StatusOr<Scheduler> Cron::convertToScheduleTime(const std::string &minute, const
                                                 const std::string &wday) {
   Scheduler st;
 
-  st.minute_ = GET_OR_RET(convertParam(minute, 0, 59));
-  st.hour_ = GET_OR_RET(convertParam(hour, 0, 23));
-  st.mday_ = GET_OR_RET(convertParam(mday, 1, 31));
-  st.month_ = GET_OR_RET(convertParam(month, 1, 12));
-  st.wday_ = GET_OR_RET(convertParam(wday, 0, 6));
+  st.minute = GET_OR_RET(convertParam(minute, 0, 59));
+  st.hour = GET_OR_RET(convertParam(hour, 0, 23));
+  st.mday = GET_OR_RET(convertParam(mday, 1, 31));
+  st.month = GET_OR_RET(convertParam(month, 1, 12));
+  st.wday = GET_OR_RET(convertParam(wday, 0, 6));
 
   return st;
 }

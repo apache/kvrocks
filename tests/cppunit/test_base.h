@@ -30,11 +30,11 @@
 class TestBase : public testing::Test {  // NOLINT
  protected:
   explicit TestBase() : config_(new Config()) {
-    config_->db_dir_ = "testdb";
-    config_->backup_dir_ = "testdb/backup";
-    config_->rocks_db_.compression_ = rocksdb::CompressionType::kNoCompression;
-    config_->rocks_db_.write_buffer_size_ = 1;
-    config_->rocks_db_.block_size_ = 100;
+    config_->db_dir = "testdb";
+    config_->backup_dir = "testdb/backup";
+    config_->rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+    config_->rocks_db.write_buffer_size = 1;
+    config_->rocks_db.block_size = 100;
     storage_ = new Engine::Storage(config_);
     Status s = storage_->Open();
     if (!s.IsOK()) {
@@ -43,7 +43,7 @@ class TestBase : public testing::Test {  // NOLINT
     }
   }
   ~TestBase() override {
-    auto db_dir = config_->db_dir_;
+    auto db_dir = config_->db_dir;
     delete storage_;
     delete config_;
 

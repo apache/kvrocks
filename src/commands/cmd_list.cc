@@ -37,7 +37,7 @@ class CommandPush : public Commander {
 
     int ret = 0;
     rocksdb::Status s;
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     if (create_if_missing_) {
       s = list_db.Push(args_[1], elems, left_, &ret);
     } else {
@@ -106,7 +106,7 @@ class CommandPop : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     if (with_count_) {
       std::vector<std::string> elems;
       auto s = list_db.PopMulti(args_[1], left_, count_, &elems);
@@ -213,7 +213,7 @@ class CommandBPop : public Commander {
   }
 
   rocksdb::Status TryPopFromList() {
-    Redis::List list_db(svr_->storage_, conn_->GetNamespace());
+    Redis::List list_db(svr_->storage, conn_->GetNamespace());
     std::string elem;
     const std::string *last_key_ptr = nullptr;
     rocksdb::Status s;
@@ -234,7 +234,7 @@ class CommandBPop : public Commander {
       }
     } else if (!s.IsNotFound()) {
       conn_->Reply(Redis::Error("ERR " + s.ToString()));
-      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd_->GetAttributes()->name_
+      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd->GetAttributes()->name
                  << ", err: " << s.ToString();
     }
 
@@ -331,7 +331,7 @@ class CommandLRem : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Rem(args_[1], count_, args_[3], &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -360,7 +360,7 @@ class CommandLInsert : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int ret = 0;
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -389,7 +389,7 @@ class CommandLRange : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> elems;
     auto s = list_db.Range(args_[1], start_, stop_, &elems);
     if (!s.ok() && !s.IsNotFound()) {
@@ -407,7 +407,7 @@ class CommandLRange : public Commander {
 class CommandLLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     uint32_t count = 0;
     auto s = list_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
@@ -432,7 +432,7 @@ class CommandLIndex : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     std::string elem;
     auto s = list_db.Index(args_[1], index_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
@@ -464,7 +464,7 @@ class CommandLSet : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Set(args_[1], index_, args_[3]);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -494,7 +494,7 @@ class CommandLTrim : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Trim(args_[1], start_, stop_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -512,7 +512,7 @@ class CommandLTrim : public Commander {
 class CommandRPopLPUSH : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     std::string elem;
     auto s = list_db.RPopLPush(args_[1], args_[2], &elem);
     if (!s.ok() && !s.IsNotFound()) {
@@ -543,7 +543,7 @@ class CommandLMove : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::List list_db(svr->storage_, conn->GetNamespace());
+    Redis::List list_db(svr->storage, conn->GetNamespace());
     std::string elem;
     auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
     if (!s.ok() && !s.IsNotFound()) {

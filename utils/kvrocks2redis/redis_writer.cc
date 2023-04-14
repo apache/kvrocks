@@ -89,7 +89,7 @@ void RedisWriter::Stop() {
 }
 
 void RedisWriter::sync() {
-  for (const auto &iter : config_->tokens_) {
+  for (const auto &iter : config_->tokens) {
     Status s = readNextOffsetFromFile(iter.first, &next_offsets_[iter.first]);
     if (!s.IsOK()) {
       LOG(ERROR) << s.Msg();
@@ -100,14 +100,14 @@ void RedisWriter::sync() {
   size_t chunk_size = 4 * 1024 * 1024;
   char *buffer = new char[chunk_size];
   while (!stop_flag_) {
-    for (const auto &iter : config_->tokens_) {
+    for (const auto &iter : config_->tokens) {
       Status s = GetAofFd(iter.first);
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
         continue;
       }
 
-      s = getRedisConn(iter.first, iter.second.host_, iter.second.port_, iter.second.auth_, iter.second.db_number_);
+      s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
         LOG(ERROR) << s.Msg();
         continue;
@@ -253,5 +253,5 @@ Status RedisWriter::writeNextOffsetToFile(const std::string &ns, std::istream::o
 }
 
 std::string RedisWriter::getNextOffsetFilePath(const std::string &ns) {
-  return config_->output_dir_ + ns + "_" + config_->next_offset_file_name_;
+  return config_->output_dir + ns + "_" + config_->next_offset_file_name;
 }

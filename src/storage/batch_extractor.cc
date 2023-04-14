@@ -63,11 +63,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     if (metadata.Type() == kRedisString) {
       command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
       resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
-      if (metadata.expire_ > 0) {
-        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire_)};
+      if (metadata.expire > 0) {
+        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
         resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
       }
-    } else if (metadata.expire_ > 0) {
+    } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();
       if (args->size() > 0) {
         auto parse_result = ParseInt<int>((*args)[0], 10);
@@ -78,7 +78,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
         auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
-          command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire_)};
+          command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
         }
       }
@@ -97,11 +97,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
       command_args = {"XSETID",
                       user_key,
-                      stream_metadata.last_entry_id_.ToString(),
+                      stream_metadata.last_entry_id.ToString(),
                       "ENTRIESADDED",
-                      std::to_string(stream_metadata.entries_added_),
+                      std::to_string(stream_metadata.entries_added),
                       "MAXDELETEDID",
-                      stream_metadata.max_deleted_entry_id_.ToString()};
+                      stream_metadata.max_deleted_entry_id.ToString()};
       resp_commands_[ns].emplace_back(Redis::Command2RESP(command_args));
     }
 
@@ -375,8 +375,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     InternalKey ikey(key, is_slot_id_encoded_);
     Slice encoded_id = ikey.GetSubKey();
     Redis::StreamEntryID entry_id;
-    GetFixed64(&encoded_id, &entry_id.ms_);
-    GetFixed64(&encoded_id, &entry_id.seq_);
+    GetFixed64(&encoded_id, &entry_id.ms);
+    GetFixed64(&encoded_id, &entry_id.seq);
     command_args = {"XDEL", ikey.GetKey().ToString(), entry_id.ToString()};
   }
 
@@ -407,8 +407,8 @@ Status WriteBatchExtractor::ExtractStreamAddCommand(bool is_slot_id_encoded, con
 
   Slice encoded_id = ikey.GetSubKey();
   Redis::StreamEntryID entry_id;
-  GetFixed64(&encoded_id, &entry_id.ms_);
-  GetFixed64(&encoded_id, &entry_id.seq_);
+  GetFixed64(&encoded_id, &entry_id.ms);
+  GetFixed64(&encoded_id, &entry_id.seq);
 
   command_args->emplace_back(entry_id.ToString());
   command_args->insert(command_args->end(), values.begin(), values.end());

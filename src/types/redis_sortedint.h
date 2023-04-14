@@ -28,10 +28,10 @@
 #include "storage/redis_metadata.h"
 
 struct SortedintRangeSpec {
-  uint64_t min_ = std::numeric_limits<uint64_t>::lowest(), max_ = std::numeric_limits<uint64_t>::max();
-  bool minex_ = false, maxex_ = false; /* are min or max exclusive */
-  int offset_ = -1, count_ = -1;
-  bool reversed_ = false;
+  uint64_t min = std::numeric_limits<uint64_t>::lowest(), max = std::numeric_limits<uint64_t>::max();
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int offset = -1, count = -1;
+  bool reversed = false;
   SortedintRangeSpec() = default;
 };
 

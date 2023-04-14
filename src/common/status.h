@@ -222,13 +222,13 @@ struct [[nodiscard]] StatusOr {
     new (&error) ErrorType(std::move(msg));
   }
 
-  template <typename... Ts,
-            typename std::enable_if<
-                (sizeof...(Ts) > 0 &&
-                 !std::is_same_v<Status, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
-                 !std::is_same_v<Code, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
-                 !std::is_same_v<StatusOr, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>>),
-                int>::type = 0>                  // NOLINT
+  template <
+      typename... Ts,
+      typename std::enable_if<(sizeof...(Ts) > 0 &&
+                               !std::is_same_v<Status, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
+                               !std::is_same_v<Code, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
+                               !std::is_same_v<StatusOr, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>>),
+                              int>::type = 0>    // NOLINT
   StatusOr(Ts&&... args) : code_(Status::cOK) {  // NOLINT
     new (&value) ValueType(std::forward<Ts>(args)...);
   }

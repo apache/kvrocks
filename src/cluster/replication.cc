@@ -212,7 +212,7 @@ LOOP_LABEL:
       }
       // invoke the read handler (of next step) directly, as the bev might
       // have the data already.
-      goto LOOP_LABEL;
+      goto LOOP_LABEL;  // NOLINT
     case CBState::AGAIN:
       break;
     case CBState::QUIT:  // state that can not be retry, or all steps are executed.

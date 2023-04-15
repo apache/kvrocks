@@ -1097,7 +1097,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   }
 
   if (all || section == "cpu") {
-    struct rusage self_ru;
+    rusage self_ru;
     getrusage(RUSAGE_SELF, &self_ru);
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# CPU\r\n";
@@ -1583,7 +1583,7 @@ void Server::AdjustOpenFilesLimit() {
   auto max_clients = static_cast<rlim_t>(config_->maxclients);
   auto max_files = max_clients + rocksdb_max_open_file + min_reserved_fds;
 
-  struct rlimit limit;
+  rlimit limit;
   if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
     return;
   }

@@ -298,9 +298,7 @@ int64_t Metadata::TTL() const {
 
 timeval Metadata::Time() const {
   auto t = version >> VersionCounterBits;
-  struct timeval created_at {
-    static_cast<uint32_t>(t / 1000000), static_cast<int32_t>(t % 1000000)
-  };
+  timeval created_at{static_cast<uint32_t>(t / 1000000), static_cast<int32_t>(t % 1000000)};
   return created_at;
 }
 

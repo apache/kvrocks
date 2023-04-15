@@ -98,9 +98,8 @@ Status SockSetTcpKeepalive(int fd, int interval) {
 }
 
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
-  addrinfo hints, *servinfo = nullptr;
+  addrinfo hints = {}, *servinfo = nullptr;
 
-  memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
@@ -151,7 +150,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
     }
 
     if (timeout > 0) {
-      struct timeval tv;
+      timeval tv;
       tv.tv_sec = timeout / 1000;
       tv.tv_usec = (timeout % 1000) * 1000;
       if (setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {

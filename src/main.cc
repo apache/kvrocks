@@ -224,20 +224,20 @@ bool SupervisedSystemd() {
     return false;
   }
 
-  struct sockaddr_un su;
+  sockaddr_un su;
   memset(&su, 0, sizeof(su));
   su.sun_family = AF_UNIX;
   strncpy(su.sun_path, notify_socket, sizeof(su.sun_path) - 1);
   su.sun_path[sizeof(su.sun_path) - 1] = '\0';
   if (notify_socket[0] == '@') su.sun_path[0] = '\0';
 
-  struct iovec iov;
+  iovec iov;
   memset(&iov, 0, sizeof(iov));
   std::string ready = "READY=1";
   iov.iov_base = &ready[0];
   iov.iov_len = ready.size();
 
-  struct msghdr hdr;
+  msghdr hdr;
   memset(&hdr, 0, sizeof(hdr));
   hdr.msg_name = &su;
   hdr.msg_namelen = offsetof(struct sockaddr_un, sun_path) + strlen(notify_socket);

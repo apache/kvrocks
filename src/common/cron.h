@@ -49,7 +49,7 @@ class Cron {
 
  private:
   std::vector<Scheduler> schedulers_;
-  struct tm last_tm_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
+  tm last_tm_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 
   static StatusOr<Scheduler> convertToScheduleTime(const std::string &minute, const std::string &hour,
                                                    const std::string &mday, const std::string &month,

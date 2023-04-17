@@ -20,9 +20,11 @@
 
 #include "cluster.h"
 
+#include <arpa/inet.h>
 #include <config/config_util.h>
+#include <ifaddrs.h>
+#include <sys/types.h>
 
-#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <memory>
@@ -157,6 +159,33 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
 
   return Status::OK();
 }
+// Get all local IP addresses.
+std::vector<std::string> GetLocalIpAddresses() {
+  std::vector<std::string> ip_addresses;
+
+  struct ifaddrs *if_addr_struct = nullptr;
+  struct ifaddrs *ifa = nullptr;
+  void *tmp_addr_ptr = nullptr;
+
+  getifaddrs(&if_addr_struct);
+
+  for (ifa = if_addr_struct; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) {
+      continue;
+    }
+    if (ifa->ifa_addr->sa_family == AF_INET) {
+      // check it is IP4 and not a loopback address
+      tmp_addr_ptr = &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+      char address_buffer[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
+      ip_addresses.emplace_back(std::string(address_buffer));
+    }
+  }
+
+  if (if_addr_struct) freeifaddrs(if_addr_struct);
+
+  return ip_addresses;
+}
 
 // cluster setnodes $all_nodes_info $version $force
 // one line of $all_nodes: $node_id $host $port $role $master_node_id $slot_range
@@ -199,16 +228,33 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
       size_++;
     }
   }
+  // Used to check if listening on "0.0.0.0“
+  bool is_listen_all_ip = false;
 
-  // Find myself
+  std::unique_ptr<std::vector<std::string>> local_hosts(nullptr);
+  if (std::find(binds_.begin(), binds_.end(), "0.0.0.0") != binds_.end()) {
+    is_listen_all_ip = true;
+    local_hosts = std::make_unique<std::vector<std::string>>(GetLocalIpAddresses());
+  }
+
   if (myid_.empty() || force) {
     for (auto &n : nodes_) {
-      if (n.second->port == port_ && std::find(binds_.begin(), binds_.end(), n.second->host) != binds_.end()) {
-        myid_ = n.first;
-        break;
+      if (is_listen_all_ip) {
+        // If the IP being listened on is 0.0.0.0, we need to compare the node's IP address with all local IP addresses.
+        if (n.second->port == port_ &&
+            std::find(local_hosts->begin(), local_hosts->end(), n.second->host) != local_hosts->end()) {
+          myid_ = n.first;
+          break;
+        }
+      } else {
+        if (n.second->port == port_ && std::find(binds_.begin(), binds_.end(), n.second->host) != binds_.end()) {
+          myid_ = n.first;
+          break;
+        }
       }
     }
   }
+
   myself_ = nullptr;
   if (!myid_.empty() && nodes_.find(myid_) != nodes_.end()) {
     myself_ = nodes_[myid_];

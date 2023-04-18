@@ -957,7 +957,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandTime>("time", 1, "ok-loading", 0, 0, 0),
+                        MakeCmdAttr<CommandTime>("time", 1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),

@@ -25,6 +25,7 @@
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
+#include "time_util.h"
 
 namespace redis {
 
@@ -641,6 +642,21 @@ class CommandEcho : public Commander {
   }
 };
 
+class CommandTime : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    uint64_t now = util::GetTimeStampUS();
+    uint64_t ms = now / 1000 / 1000;
+    uint64_t us = now - (ms * 1000 * 1000);
+
+    *output = redis::MultiLen(2);
+    *output += redis::BulkString(std::to_string(ms));
+    *output += redis::BulkString(std::to_string(us));
+
+    return Status::OK();
+  }
+};
+
 /* HELLO [<protocol-version> [AUTH <password>] [SETNAME <name>] ] */
 class CommandHello final : public Commander {
  public:
@@ -941,6 +957,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandTime>("time", 1, "ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),

@@ -1,28 +1,28 @@
-import { MutableRefObject, useCallback, useEffect, useState } from 'react';
+import React, { MutableRefObject, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { RowType as DndTableRowType } from './DndTable';
 import { getRandomString } from '../common/util';
-import { Button, Input, Table } from 'antd';
+import { Button, Form, Input, Table } from 'antd';
 import { ColumnsType } from 'antd/es/table/interface';
 import { DeleteOutlined,PlusOutlined } from '@ant-design/icons';
-import { HashRow } from '../types/types';
+import { valueOfRow } from '../types/types';
 
 interface RowType extends DndTableRowType{
     key: string,
     value: string,
     _row_key: string,
+    errMsgOnKey: string,
+    errMsgOnValue: string,
+    validKey?: () => boolean,
+    validValue?: () => boolean,
 }
-function transformValueToRowType(values: HashRow['value'], previousDataSource?: RowType[]): RowType[] {
+function transformValueToRowType(values: valueOfRow<'hash'>, previousDataSource?: RowType[]): RowType[] {
     const result:RowType[] = [];
     const keys: string[] = [];
     values = JSON.parse(JSON.stringify(values));
     if(previousDataSource) {
         previousDataSource.forEach(data => {
             if(data.key in values && values[data.key] == data.value) {
-                result.push({
-                    key: data.key,
-                    value: values[data.key],
-                    _row_key: data._row_key
-                });
+                result.push(data);
                 delete values[data.key];
             }
         });
@@ -38,14 +38,103 @@ function transformValueToRowType(values: HashRow['value'], previousDataSource?: 
             result.push({
                 key,
                 value,
+                errMsgOnKey: '',
+                errMsgOnValue: '',
                 _row_key: uniqueKey
             });
         }
     }
     return result;
 }
+interface CellProps {
+    children: React.ReactNode,
+    isKeyColumn: boolean,
+    isValueColumn: boolean,
+    record: RowType,
+    index: number,
+    allDataSource: RowType[],
+    checkAddBtnDisable: () => void,
+    handleValueChange: (newValue: string) => void,
+    handleKeyChange: (newKey: string, ondKey: string) => void,
+}
+const Cell: React.FC<CellProps> = ({
+    children,
+    record,
+    index,
+    isKeyColumn,
+    isValueColumn,
+    handleValueChange,
+    handleKeyChange,
+    checkAddBtnDisable,
+    allDataSource,
+    ...restProps
+}) => {
+    if(!isValueColumn && !isKeyColumn) {
+        return (<td {...restProps}>
+            {children}
+        </td>);
+    }
+    const [errMsgOnKey, setErrMsgOnKey] = useState(record.errMsgOnKey);
+    const [errMsgOnValue, setErrMsgOnValue] = useState(record.errMsgOnValue);
+    const validValue = useCallback(() => {
+        if(record.value) {
+            record.errMsgOnValue = '';
+        } else {
+            record.errMsgOnValue = 'Please input value';
+        }
+        if(record.errMsgOnValue != errMsgOnValue) {
+            setErrMsgOnValue(record.errMsgOnValue);
+        }
+        return record.errMsgOnValue == '';
+    },[record.value, errMsgOnValue]);
+    const validKey = useCallback(() => {
+        if(!record.key) {
+            record.errMsgOnKey = 'Please input field';
+        } else if (allDataSource.filter(d => d.key == record.key).length > 1) {
+            record.errMsgOnKey = 'Duplicate key';
+        } else {
+            record.errMsgOnKey = '';
+        }
+        if(record.errMsgOnKey != errMsgOnKey) {
+            setErrMsgOnKey(record.errMsgOnKey);
+        }
+        return record.errMsgOnKey == '';
+    },[record.key,errMsgOnKey]);
+    isValueColumn && (record.validValue = validValue);
+    isKeyColumn && (record.validKey = validKey);
+    return (<td {...restProps}>
+        { isKeyColumn && 
+            <Form.Item 
+                style={{margin: 0}}
+                help={errMsgOnKey}
+                validateStatus={errMsgOnKey ? 'error' : ''}
+            >
+                <Input
+                    placeholder='field'
+                    key={record._row_key}
+                    defaultValue={record.key}
+                    onChange={e => handleKeyChange(e.target.value, record.key)}
+                    onBlur={checkAddBtnDisable}
+                    onMouseLeave={checkAddBtnDisable}
+                ></Input>
+            </Form.Item>}
+        { isValueColumn && 
+            <Form.Item 
+                style={{margin: 0}}
+                help={errMsgOnValue}
+                validateStatus={errMsgOnValue ? 'error' : ''}
+            >
+                <Input
+                    placeholder='value'
+                    key={record._row_key}
+                    defaultValue={record.value}
+                    onChange={e => handleValueChange(e.target.value)}
+                ></Input>
+            </Form.Item>}
+    </td>);
+};
 export function HashEditor(props: {
-    value: HashRow['value'],
+    value: valueOfRow<'hash'>,
     event?: MutableRefObject<{valid?:() => boolean}>
 }) {
     const [dataSource, setDataSource] = useState<RowType[]>([]);
@@ -53,32 +142,42 @@ export function HashEditor(props: {
     const checkAddBtnDisable = useCallback(() => {
         setDisableAddBtn('' in props.value);
     }, [props.value]);
+    useImperativeHandle(props.event, () => ({
+        valid: () => dataSource.map(d => {
+            if(!(d.key in props.value)) {
+                props.value[d.key] = d.value;
+            }
+            const keyValied = (d.validKey ? d.validKey() : true);
+            const valueValied = (d.validValue ? d.validValue() : true);
+            return keyValied && valueValied;
+        }).filter(d => !d).length == 0
+    }));
     const columns: ColumnsType<RowType>=[
         {
             dataIndex: 'key',
-            render: (key, record) => (<Input
-                placeholder='field'
-                key={record._row_key}
-                defaultValue={key}
-                onChange={e => {
-                    delete props.value[record.key];
-                    record.key = e.target.value;
-                    props.value[record.key] = record.value;
-                }}
-                onBlur={checkAddBtnDisable}
-                onMouseLeave={checkAddBtnDisable}
-            ></Input>)
+            onCell: (record: RowType, index: number | undefined) => ({
+                record: record,
+                index: index,
+                isKeyColumn: true,
+                allDataSource: dataSource,
+                checkAddBtnDisable: checkAddBtnDisable,
+                handleKeyChange: (newKey: string, oldKey: string) => {
+                    delete props.value[oldKey];
+                    record.key = newKey;
+                    props.value[newKey] = record.value;
+                }
+            } as any)
         },{
             dataIndex: 'value',
-            render: (value, record) => (<Input
-                placeholder='value'
-                key={record._row_key}
-                defaultValue={value}
-                onChange={e => {
-                    record.value = e.target.value;
+            onCell: (record: RowType, index: number | undefined) => ({
+                record: record,
+                index: index,
+                isValueColumn: true,
+                handleValueChange: (newValue: string) => {
+                    record.value = newValue;
                     props.value[record.key] = record.value;
-                }}
-            ></Input>)
+                }
+            } as any)
         },{
             width: '50px',
             render: (value, record) => (<Button 
@@ -113,6 +212,11 @@ export function HashEditor(props: {
                 dataSource={dataSource}
                 pagination={false}
                 rowKey={'_row_key'}
+                components={{
+                    body: {
+                        cell: Cell
+                    }
+                }}
             ></Table>
             : null  }
         <Button

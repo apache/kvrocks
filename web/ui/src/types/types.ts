@@ -1,25 +1,19 @@
-export interface BaseRow{
+export type typeOfRow = 'string' | 'list' | 'hash' | 'set';
+type valueOfStringRow = string;
+type valueOfListRow = string[];
+type valueOfSetRow = string[];
+type valueOfHashRow = {
+    [key in string]: string
+};
+export type valueOfRow<T extends typeOfRow> = T extends 'string' ? valueOfStringRow : 
+                                              T extends 'list' ? valueOfListRow :
+                                              T extends 'hash' ? valueOfHashRow :
+                                              T extends 'set' ? valueOfSetRow :
+                                              never;
+export interface RowData<T extends typeOfRow>{
     key: string,
-    type: string,
+    type: T,
     ttl: number,
-    value: any
+    value: valueOfRow<T>
 }
-export interface StringRow extends BaseRow{
-    type: 'string',
-    value: string
-}
-export interface ListRow extends BaseRow{
-    type: 'list',
-    value: string[]
-}
-export interface HashRow extends BaseRow{
-    type: 'hash',
-    value: {
-        [key in string]: string
-    }
-}
-export interface SetRow extends BaseRow{
-    type: 'set',
-    value: string[]
-}
-export type rowData= StringRow|ListRow|HashRow|SetRow
+export type RowDataAny = RowData<typeOfRow>;

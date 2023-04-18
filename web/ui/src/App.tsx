@@ -11,7 +11,6 @@ function App() {
         <Layout>
             <HeaderWrapper style={{backgroundColor: 'white'}}>
                 <Header></Header>
-                <div className='wrapper'></div>
             </HeaderWrapper>
             <Content style={{padding: '20px 50px', minHeight: 'calc(100vh - 64px)'}}>
                 {

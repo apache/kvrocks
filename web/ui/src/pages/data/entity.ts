@@ -1,69 +1,43 @@
-import { BaseRow, rowData } from '../../types/types';
+import { RowData, RowDataAny, typeOfRow, valueOfRow } from '../../types/types';
 
-export interface RowType {
-    key: string,
-    value: string,
-    type: rowData['type'],
-    ttl: number,
-}
-
-export class KvRow implements RowType {
-    rawValue: rowData['value'];
+export type KvRowAny = KvRow<typeOfRow>;
+export class KvRow<T extends typeOfRow> implements RowData<T> {
     key: string;
-    value: string;
-    type: rowData['type'];
+    value: valueOfRow<T>;
+    type: T;
     ttl: number;
-    constructor(row?: rowData) {
+    constructor(row?: RowData<T>) {
         if(!row) {
             this.key = '';
-            this.rawValue = '';
-            this.value = '';
-            this.type = 'string';
+            this.type = 'string' as T;
+            this.value = '' as valueOfRow<T>;
             this.ttl = -1;
             return;
         }
         this.key = row.key;
         this.type = row.type;
-        this.rawValue = row.value;
         this.ttl = row.ttl;
-        switch (row.type) {
-        case 'string':
-            this.value = row.value;
-            break;
-        case 'list':
-        case 'set':
-            this.value = row.value.join(',');
-            break;
-        case 'hash':
-            this.value = JSON.stringify(row.value);
-            break;
-        default:
-            this.value = '';
-            break;
-        }
+        this.value = row.value;
     }
-    generateDefaultRawValueForType() {
+    generateDefaultValueForType() {
         switch (this.type) {
         case 'string':
-            this.rawValue = '';
+            (this as RowData<'string'>).value = '';
             break;
         case 'list':
         case 'set':
-            this.rawValue = [];
+            (this as RowData<'list' | 'set'>).value = [];
             break;
         case 'hash':
-            this.rawValue = {};
-            break;
-        default:
-            this.value = '';
+            (this as RowData<'hash'>).value = {};
             break;
         }
     }
-    getPostBody(): BaseRow {
+    getPostBody(): RowData<T> {
         const result = {
             key: this.key,
             type: this.type,
-            value: this.rawValue,
+            value: this.value,
             ttl: this.ttl
         };
         return result;
@@ -71,8 +45,8 @@ export class KvRow implements RowType {
 }
 
 export class kvDataTable {
-    rows: KvRow[];
-    constructor(data: rowData[]) {
+    rows: KvRow<any>[];
+    constructor(data: RowDataAny[]) {
         this.rows = data.map(r => new KvRow(r));
     }
 }

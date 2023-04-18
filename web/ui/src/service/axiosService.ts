@@ -1,5 +1,5 @@
 import { Axios } from 'axios';
-import { BaseRow, rowData } from '../types/types';
+import { RowDataAny } from '../types/types';
 import { notification } from 'antd';
 class AxiosService {
     private axios: Axios;
@@ -25,7 +25,16 @@ class AxiosService {
         });
         console.error('Api error',err);
     }
-    private async post(url: string, data: object) {
+    private async _get(url: string, params:object) {
+        try {
+            const response = await this.axios.get(url, {params});
+            return JSON.parse(response.data);
+        } catch (err) {
+            this.errorHandler(err);
+            return false;
+        }
+    }
+    private async _post(url: string, data: object) {
         try {
             const {data:result}=await this.axios.post(url, JSON.stringify(data), {
                 headers: {
@@ -39,20 +48,47 @@ class AxiosService {
             return false;
         }
     }
-    private async get(url: string, params:object) {
+
+    private async _put(url: string, data: object) {
         try {
-            const response = await this.axios.get(url, {params});
-            return JSON.parse(response.data);
+            const {data:result}=await this.axios.put(url, JSON.stringify(data), {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                validateStatus: code => code == 200
+            });
+            return result;
         } catch (err) {
             this.errorHandler(err);
             return false;
         }
     }
-    async getAll(from: number, to: number): Promise<{data:rowData[], totalCount: number} | false> {
-        return await this.get('/all',{from,to});
+    private async _delete(url: string, data: object) {
+        try {
+            const {data:result}=await this.axios.delete(url, {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify(data),
+                validateStatus: code => code == 200
+            });
+            return result;
+        } catch (err) {
+            this.errorHandler(err);
+            return false;
+        }
     }
-    async create(data: BaseRow): Promise<string | false> {
-        return await this.post('/create', data);
+    async getAll(from: number, to: number): Promise<{data:RowDataAny[], totalCount: number} | false> {
+        return await this._get('/all',{from,to});
+    }
+    async create(data: RowDataAny): Promise<string | false> {
+        return await this._post('/create', data);
+    }
+    async update(data: RowDataAny): Promise<string | false> {
+        return await this._put('/update', data);
+    }
+    async delete(data: RowDataAny): Promise<string | false> {
+        return await this._delete('/delete', data);
     }
 }
 const axiosService = new AxiosService();

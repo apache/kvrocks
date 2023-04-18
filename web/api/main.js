@@ -13,51 +13,6 @@ const client = createClient({
 client.on('error', err => console.log('redis client error', err));
 client.connect().then(console.log('connected'));
 
-async function runTest(){
-    // string
-    await client.set('kstr','kkk');
-    // list
-    await client.del('klist')
-    await client.lPush('klist', 'abc');
-    await client.rPush('klist', 'xyz');
-    // hash
-    await client.hSet('khset', 'k1', 'v1');
-    await client.hSet('khset', 'k2', 'v2');
-    // set
-    await client.sAdd('kset', ['aa','bb','cc']);
-    await client.sAdd('kset2', ['xx','yy','cc', 'zz']);
-
-    const allKeys = await client.KEYS('*');
-    console.log(allKeys);
-    for (let i = 0; i < allKeys.length; i++) {
-        const key = allKeys[i];
-        const type = await client.type(key);
-        let value = null;
-        switch (type) {
-            case 'string':
-                value = await client.get(key);
-                break;
-            case 'list':
-                value = await client.lRange(key, 0, -1);
-                break;
-            case 'hash':
-                value = await client.hGetAll(key);
-                break;
-            case 'set':
-                value = await client.sMembers(key);
-                break;    
-            default:
-                value = 'unknown'
-                break;
-        }
-        console.log(key, type, value)
-    }
-    console.log('inter',await client.sInter(['kset', 'kset2']));
-    console.log('union',await client.sUnion(['kset', 'kset2']));
-    console.log('diff',await client.sDiff(['kset', 'kset2']));
-}
-// runTest();
-
 async function apiWrapper(cb, req, res, next) {
     await waitUntil(() => client.isReady, 100, 30 * 1000);
     try {
@@ -180,6 +135,68 @@ app.post('/create', function(req, res) {
             await client.expire(key, body['ttl'])
         }
         res.send('OK');
+    }, ...arguments)
+})
+
+app.put('/update', function(req, res) {
+    apiWrapper(async () => {
+        const body = req.body;
+        if(typeof body !== 'object'){
+            throw 'No body'
+        }
+        const key = body['key']
+        if(typeof key !== 'string' || key === ''){
+            throw 'No key';
+        }
+        const type = body['type'];
+        const value = body['value'];
+        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set'].includes(type)){
+            throw 'Unknown type'
+        }
+        if(type == 'string' && typeof value == 'string'){
+            // update string
+            await client.set(key, value);
+        } else if(type == 'list' && Array.isArray(value)){
+            // update list
+            await client.del(key);
+            await client.rPush(key, value);
+        } else if(type == 'hash' && typeof value === 'object' && !Array.isArray(value)){
+            // update hash
+            await client.del(key);
+            for (const field in value) {
+                if (Object.hasOwnProperty.call(value, field)) {
+                    await client.hSet(key, field, value[field]);
+                }
+            }
+        } else if(type == 'set' && Array.isArray(value)){
+            // update set
+            await client.del(key);
+            await client.sAdd(key, value);
+        } else {
+            throw 'Bad request'
+        }
+        if('ttl' in body && typeof body['ttl'] === 'number' && body['ttl'] > 0){
+            await client.expire(key, body['ttl'])
+        }
+        res.send('OK');
+    }, ...arguments)
+})
+
+app.delete('/delete', function(req, res) {
+    apiWrapper(async () => {
+        const body = req.body;
+        if(typeof body !== 'object'){
+            throw 'No body'
+        }
+        const key = body['key']
+        if(typeof key !== 'string' || key === ''){
+            throw 'No key';
+        }
+        const relatedKeys = await client.keys(`${key}*`);
+        if(Array.isArray(relatedKeys) && relatedKeys.includes(key)){
+            await client.del(key);
+        }
+        res.send('OK')
     }, ...arguments)
 })
 

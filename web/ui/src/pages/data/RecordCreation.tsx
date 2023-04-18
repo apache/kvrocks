@@ -1,55 +1,55 @@
 import { Card, Form, Input, InputNumber, Radio, Space, Switch } from 'antd';
-import { KvRow } from './entity';
+import { KvRow, KvRowAny } from './entity';
 import { MutableRefObject, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ListEditor } from '../../components/ListEditor';
-import { HashRow, ListRow, SetRow, StringRow } from '../../types/types';
+import { RowDataAny, typeOfRow, valueOfRow, RowData } from '../../types/types';
 import { HashEditor } from '../../components/HashEditor';
 
-function useBinding(record: KvRow) {
-    const [type, _setType] = useState<KvRow['type']>(record.type);
+function useBinding<T extends typeOfRow>(record: KvRow<T>) {
+    const [type, _setType] = useState<T>(record.type);
     useEffect(() => {record.type = type;}, [type]);
-    const [key, setKey] = useState<KvRow['key']>(record.key);
+    const [key, setKey] = useState<RowDataAny['key']>(record.key);
     useEffect(() => {record.key = key;}, [key]);
-    const [value, setValue] = useState<KvRow['rawValue']>(record.rawValue);
+    const [value, setValue] = useState<RowData<T>['value']>(record.value);
     useEffect(() => {
-        record.rawValue=value;
+        record.value=value;
         switch (type) {
         case 'string':
-            setCachedValueForString(value as StringRow['value']);
+            setCachedValueForString(value as valueOfRow<'string'>);
             break;
         case 'list':
-            setCachedValueForList(value as ListRow['value']);
+            setCachedValueForList(value as valueOfRow<'list'>);
             break;
         case 'hash':
-            setCachedValueForHash(value as HashRow['value']);
+            setCachedValueForHash(value as valueOfRow<'hash'>);
             break;
         case 'set':
-            setCachedValueForSet(value as SetRow['value']);
+            setCachedValueForSet(value as valueOfRow<'set'>);
             break;
         default:
             break;
         }
     }, [value]);
-    const [ttl, setTtl] = useState<KvRow['ttl']>(record.ttl);
+    const [ttl, setTtl] = useState<RowDataAny['ttl']>(record.ttl);
     useEffect(() => {record.ttl=ttl;}, [ttl]);
-    const [cachedValueForString, setCachedValueForString] = useState<StringRow['value']>(typeof value == 'string' ? value : '');
-    const [cachedValueForList, setCachedValueForList] = useState<ListRow['value']>(Array.isArray(value)?value:[]);
-    const [cachedValueForHash, setCachedValueForHash] = useState<HashRow['value']>(typeof value == 'object' && !Array.isArray(value) ? value : {});
-    const [cachedValueForSet, setCachedValueForSet] = useState<SetRow['value']>(Array.isArray(value)?value:[]);
-    function setType(v: KvRow['type']) {
+    const [cachedValueForString, setCachedValueForString] = useState<valueOfRow<'string'>>(typeof value == 'string' ? value : '');
+    const [cachedValueForList, setCachedValueForList] = useState<valueOfRow<'list'>>(Array.isArray(value)?value:[]);
+    const [cachedValueForHash, setCachedValueForHash] = useState<valueOfRow<'hash'>>(typeof value == 'object' && !Array.isArray(value) ? value : {});
+    const [cachedValueForSet, setCachedValueForSet] = useState<valueOfRow<'set'>>(Array.isArray(value)?value:[]);
+    function setType(v: T) {
         _setType(v);
         switch (v) {
         case 'string':
-            setValue(cachedValueForString);
+            setValue(cachedValueForString as valueOfRow<T>);
             break;
         case 'list':
-            setValue(cachedValueForList);
+            setValue(cachedValueForList as valueOfRow<T>);
             break;
         case 'hash':
-            setValue(cachedValueForHash);
+            setValue(cachedValueForHash as valueOfRow<T>);
             break;
         case 'set':
-            setValue(cachedValueForSet);
+            setValue(cachedValueForSet as valueOfRow<T>);
             break;
         default:
             break;
@@ -67,9 +67,13 @@ function useBinding(record: KvRow) {
     };
 }
 
-export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{valid?:() => boolean}>}) {
-    const {type, setType, key, setKey, value, setValue,ttl,setTtl} = useBinding(prop.record);
-    useImperativeHandle(prop.event,() => ({
+export function RecordCreation (props:{
+    record: KvRowAny,
+    editMode?: boolean,
+    event?:MutableRefObject<{valid?:() => boolean}>
+}) {
+    const {type, setType, key, setKey, value, setValue,ttl,setTtl} = useBinding(props.record);
+    useImperativeHandle(props.event,() => ({
         valid: () => {
             const  validedArr = [
                 validKey(),
@@ -114,14 +118,14 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                 labelCol={{span:3}}
                 wrapperCol={{span:20}}
             >
-                <Form.Item label="Type">
+                {!props.editMode && <Form.Item label="Type">
                     <Radio.Group value={type} onChange={e => setType(e.target.value)}>
                         <Radio.Button value='string'>string</Radio.Button>
                         <Radio.Button value='list'>list</Radio.Button>
                         <Radio.Button value='hash'>hash</Radio.Button>
                         <Radio.Button value='set'>set</Radio.Button>
                     </Radio.Group>
-                </Form.Item>
+                </Form.Item>}
                 <Form.Item 
                     label="Key"
                     help={keyErrorText}
@@ -132,6 +136,7 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                         onBlur={validKey}
                         value={key}
                         onChange={e => setKey(e.target.value)}
+                        disabled={props.editMode}
                     ></Input>
                 </Form.Item>
                 <Form.Item 
@@ -146,13 +151,13 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                                 return <Input
                                     placeholder='Input value...'
                                     onBlur={validValue}
-                                    value={value as string}
+                                    value={value as valueOfRow<'string'>}
                                     onChange={e => setValue(e.target.value)}
                                 ></Input>;
                             case 'list':
                                 return (<Card key={'list'}>
                                     <ListEditor 
-                                        value={value as string[]} 
+                                        value={value as valueOfRow<'list'>} 
                                         onChange={e => setValue(e)} 
                                         allowDragSorting
                                         allowReproduce
@@ -163,7 +168,7 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                             case 'set':
                                 return (<Card key={'set'}>
                                     <ListEditor
-                                        value={value as string[]}
+                                        value={value as valueOfRow<'set'>}
                                         event={listValueRef}
                                     />
                                 </Card>
@@ -171,7 +176,7 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                             case 'hash':
                                 return <Card key={'hash'}>
                                     <HashEditor
-                                        value={value as HashRow['value']}
+                                        value={value as valueOfRow<'hash'>}
                                         event={listValueRef}
                                     />
                                 </Card>;
@@ -183,7 +188,7 @@ export function RecordCreation (prop:{record: KvRow, event?:MutableRefObject<{va
                 </Form.Item>
                 <Form.Item label="TTL">
                     <Space>
-                        <Switch onChange={e => setTtl(e ? 0 : -1)}></Switch>
+                        <Switch defaultChecked={ttl != -1} onChange={e => setTtl(e ? 0 : -1)}></Switch>
                         {
                             ttl != -1 &&
                             <>

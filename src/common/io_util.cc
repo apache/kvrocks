@@ -31,6 +31,11 @@
 #include <sys/sendfile.h>
 #endif
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+
 #include "event_util.h"
 #include "fd_util.h"
 #include "scope_exit.h"
@@ -310,6 +315,40 @@ int AeWait(int fd, int mask, int timeout) {
   } else {
     return retval;
   }
+}
+
+// Get all local IP addresses.
+std::vector<std::string> GetLocalIpAddresses() {
+  std::vector<std::string> ip_addresses;
+  ifaddrs *if_addr_struct = nullptr;
+  // Use unique_ptr for if_addr_struct to avoid manually free
+  std::unique_ptr<ifaddrs, decltype(&freeifaddrs)> ifaddrs_ptr(nullptr, &freeifaddrs);
+  if (getifaddrs(&if_addr_struct) == -1) {
+    return ip_addresses;
+  }
+  ifaddrs_ptr.reset(if_addr_struct);
+
+  for (ifaddrs *ifa = if_addr_struct; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) {
+      continue;
+    }
+    void *tmp_addr_ptr = nullptr;
+    if (ifa->ifa_addr->sa_family == AF_INET) {
+      // check it is IP4 and not a loopback address
+      tmp_addr_ptr = &((sockaddr_in *)ifa->ifa_addr)->sin_addr;
+      char address_buffer[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+      // check it is IPv6 and not a loopback address
+      tmp_addr_ptr = &((sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
+      char address_buffer[INET6_ADDRSTRLEN];
+      inet_ntop(AF_INET6, tmp_addr_ptr, address_buffer, INET6_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    }
+  }
+
+  return ip_addresses;
 }
 
 template <auto syscall, typename... Args>

@@ -39,7 +39,7 @@ int GetLocalPort(int fd);
 bool IsPortInUse(uint32_t port);
 
 int AeWait(int fd, int mask, int milliseconds);
-
+std::vector<std::string> GetLocalIpAddresses();
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);
 

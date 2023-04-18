@@ -159,33 +159,7 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
 
   return Status::OK();
 }
-// Get all local IP addresses.
-std::vector<std::string> GetLocalIpAddresses() {
-  std::vector<std::string> ip_addresses;
 
-  struct ifaddrs *if_addr_struct = nullptr;
-  struct ifaddrs *ifa = nullptr;
-  void *tmp_addr_ptr = nullptr;
-
-  getifaddrs(&if_addr_struct);
-
-  for (ifa = if_addr_struct; ifa; ifa = ifa->ifa_next) {
-    if (!ifa->ifa_addr) {
-      continue;
-    }
-    if (ifa->ifa_addr->sa_family == AF_INET) {
-      // check it is IP4 and not a loopback address
-      tmp_addr_ptr = &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
-      char address_buffer[INET_ADDRSTRLEN];
-      inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
-      ip_addresses.emplace_back(std::string(address_buffer));
-    }
-  }
-
-  if (if_addr_struct) freeifaddrs(if_addr_struct);
-
-  return ip_addresses;
-}
 
 // cluster setnodes $all_nodes_info $version $force
 // one line of $all_nodes: $node_id $host $port $role $master_node_id $slot_range
@@ -230,11 +204,12 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   }
   // Used to check if listening on "0.0.0.0“
   bool is_listen_all_ip = false;
-
+  // Store all the local ip
   std::unique_ptr<std::vector<std::string>> local_hosts(nullptr);
+
   if (std::find(binds_.begin(), binds_.end(), "0.0.0.0") != binds_.end()) {
     is_listen_all_ip = true;
-    local_hosts = std::make_unique<std::vector<std::string>>(GetLocalIpAddresses());
+    local_hosts = std::make_unique<std::vector<std::string>>(util::GetLocalIpAddresses());
   }
 
   if (myid_.empty() || force) {

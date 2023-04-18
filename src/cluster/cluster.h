@@ -33,6 +33,7 @@
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"
+#include "common/io_util.h"
 
 enum {
   kClusterMaster = 1,

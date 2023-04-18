@@ -41,16 +41,16 @@ func TestIntrospection(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("TIME", func(t *testing.T) {
-		now_ms := int(time.Now().Unix())
+		nowUnix := int(time.Now().Unix())
 
 		r := rdb.Do(ctx, "TIME")
 		vs, err := r.Slice()
 		require.NoError(t, err)
 
-		ms, err := strconv.Atoi(vs[0].(string))
+		s, err := strconv.Atoi(vs[0].(string))
 		require.NoError(t, err)
-		require.Greater(t, ms, now_ms - 2)
-		require.Less(t, ms, now_ms + 2)
+		require.Greater(t, s, nowUnix - 2)
+		require.Less(t, s, nowUnix + 2)
 
 		us, err := strconv.Atoi(vs[1].(string))
 		require.NoError(t, err)

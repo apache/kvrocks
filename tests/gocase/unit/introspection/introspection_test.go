@@ -40,6 +40,24 @@ func TestIntrospection(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("TIME", func(t *testing.T) {
+		now_ms := int(time.Now().Unix())
+
+		r := rdb.Do(ctx, "TIME")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+
+		ms, err := strconv.Atoi(vs[0].(string))
+		require.NoError(t, err)
+		require.Greater(t, ms, now_ms - 2)
+		require.Less(t, ms, now_ms + 2)
+
+		us, err := strconv.Atoi(vs[1].(string))
+		require.NoError(t, err)
+		require.Greater(t, us, 0)
+		require.Less(t, us, 1000000)
+	})
+
 	t.Run("CLIENT LIST", func(t *testing.T) {
 		v := rdb.ClientList(ctx).Val()
 		require.Regexp(t, "id=.* addr=.*:.* fd=.* name=.* age=.* idle=.* flags=N namespace=.* qbuf=.* .*obuf=.* cmd=client.*", v)

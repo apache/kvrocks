@@ -17,7 +17,7 @@
  * under the License.
  *
  */
-#include "io_util.h"
+#include "common/io_util.h"
 
 #include <gtest/gtest.h>
 

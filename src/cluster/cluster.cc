@@ -20,18 +20,15 @@
 
 #include "cluster.h"
 
-#include <arpa/inet.h>
 #include <config/config_util.h>
-#include <ifaddrs.h>
-#include <sys/types.h>
 
 #include <cstring>
 #include <fstream>
 #include <memory>
 
 #include "commands/commander.h"
+#include "common/io_util.h"
 #include "fmt/format.h"
-#include "io_util.h"
 #include "parse_util.h"
 #include "replication.h"
 #include "server/server.h"

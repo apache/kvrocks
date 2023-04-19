@@ -23,9 +23,11 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <fmt/format.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <sys/poll.h>
+#include <sys/types.h>
 
 #ifdef __linux__
 #include <sys/sendfile.h>

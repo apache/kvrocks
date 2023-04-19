@@ -646,7 +646,7 @@ class CommandTime : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint64_t now = util::GetTimeStampUS();
-    uint64_t s = now / 1000 / 1000;  // unix time in seconds.
+    uint64_t s = now / 1000 / 1000;         // unix time in seconds.
     uint64_t us = now - (s * 1000 * 1000);  // microseconds.
 
     *output = redis::MultiLen(2);

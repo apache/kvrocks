@@ -20,7 +20,9 @@
 
 #pragma once
 
+#include <ifaddrs.h>
 #include <netinet/in.h>
+#include <sys/types.h>
 
 #include "status.h"
 

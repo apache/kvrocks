@@ -31,11 +31,6 @@
 #include <sys/sendfile.h>
 #endif
 
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <netinet/in.h>
-#include <sys/types.h>
-
 #include "event_util.h"
 #include "fd_util.h"
 #include "scope_exit.h"

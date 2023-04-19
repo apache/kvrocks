@@ -160,7 +160,6 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
   return Status::OK();
 }
 
-
 // cluster setnodes $all_nodes_info $version $force
 // one line of $all_nodes: $node_id $host $port $role $master_node_id $slot_range
 Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, bool force) {

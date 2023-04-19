@@ -55,7 +55,8 @@ export const Header = () => {
                 onClick={onMenuClick}
             ></Menu>
             <div className={styles.right}>
-                <Dropdown menu={{
+                {/* TODO
+                 <Dropdown menu={{
                     items: languageItems,
                     selectable: true,
                     defaultSelectedKeys: ['en-us']
@@ -66,7 +67,7 @@ export const Header = () => {
                             <DownOutlined />
                         </Space>
                     </Typography.Link>
-                </Dropdown>
+                </Dropdown> */}
             </div>
         </div>
     );

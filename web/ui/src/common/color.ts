@@ -3,4 +3,5 @@ export enum DataTypeColor{
     list= 'cyan',
     hash= 'blue',
     set= 'purple',
+    zset='orange'
 }

@@ -10,7 +10,7 @@ const client = createClient({
         host: '127.0.0.1'
     }
 });
-client.on('error', err => console.log('redis client error', err));
+client.on('error', err => console.error('redis client error', err));
 client.connect().then(console.log('connected'));
 
 async function apiWrapper(cb, req, res, next) {
@@ -18,6 +18,7 @@ async function apiWrapper(cb, req, res, next) {
     try {
         await cb();
     } catch (err) {
+        console.error(err);
         let errMsg = '';
         if(typeof err == 'string'){
             errMsg = err;
@@ -68,6 +69,12 @@ app.get('/all', function (req, res) {
                 case 'set':
                     value = await client.sMembers(key);
                     break;    
+                case 'zset':{
+                    value = {};
+                    const arr = await client.zRangeWithScores(key, 0, -1);
+                    arr.forEach(item => value[item.value] = item.score)
+                    break;
+                }
                 default:
                     value = 'unknown'
                     break;
@@ -109,7 +116,7 @@ app.post('/create', function(req, res) {
         }
         const type = body['type'];
         const value = body['value'];
-        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set'].includes(type)){
+        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set', 'zset'].includes(type)){
             throw 'Unknown type'
         }
         if(type == 'string' && typeof value == 'string'){
@@ -128,6 +135,18 @@ app.post('/create', function(req, res) {
         } else if(type == 'set' && Array.isArray(value)){
             // create set
             await client.sAdd(key, value);
+        } else if(type == 'zset' && typeof value === 'object' && !Array.isArray(value)) {
+            // create zset
+            const member = [];
+            for (const field in value) {
+                if (Object.hasOwnProperty.call(value, field) && typeof value[field] == 'number') {
+                    member.push({
+                        value: field,
+                        score: value[field]
+                    })
+                }
+            }
+            await client.zAdd(key, member);
         } else {
             throw 'Bad request'
         }
@@ -150,7 +169,7 @@ app.put('/update', function(req, res) {
         }
         const type = body['type'];
         const value = body['value'];
-        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set'].includes(type)){
+        if(typeof type !== 'string' || !['string', 'list', 'hash', 'set', 'zset'].includes(type)){
             throw 'Unknown type'
         }
         if(type == 'string' && typeof value == 'string'){
@@ -172,6 +191,19 @@ app.put('/update', function(req, res) {
             // update set
             await client.del(key);
             await client.sAdd(key, value);
+        } else if(type == 'zset' && typeof value === 'object' && !Array.isArray(value)) {
+            // update zset
+            const member = [];
+            for (const field in value) {
+                if (Object.hasOwnProperty.call(value, field) && typeof value[field] == 'number') {
+                    member.push({
+                        value: field,
+                        score: value[field]
+                    })
+                }
+            }
+            await client.del(key);
+            await client.zAdd(key, member);
         } else {
             throw 'Bad request'
         }

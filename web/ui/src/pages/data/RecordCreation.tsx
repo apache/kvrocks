@@ -26,6 +26,9 @@ function useBinding<T extends typeOfRow>(record: KvRow<T>) {
         case 'set':
             setCachedValueForSet(value as valueOfRow<'set'>);
             break;
+        case 'zset':
+            setCachedValueForZset(value as valueOfRow<'zset'>);
+            break;
         default:
             break;
         }
@@ -34,8 +37,33 @@ function useBinding<T extends typeOfRow>(record: KvRow<T>) {
     useEffect(() => {record.ttl=ttl;}, [ttl]);
     const [cachedValueForString, setCachedValueForString] = useState<valueOfRow<'string'>>(typeof value == 'string' ? value : '');
     const [cachedValueForList, setCachedValueForList] = useState<valueOfRow<'list'>>(Array.isArray(value)?value:[]);
-    const [cachedValueForHash, setCachedValueForHash] = useState<valueOfRow<'hash'>>(typeof value == 'object' && !Array.isArray(value) ? value : {});
+    const [cachedValueForHash, setCachedValueForHash] = useState<valueOfRow<'hash'>>(() => {
+        if(typeof value !== 'object' || Array.isArray(value))  {
+            return {};
+        }
+        const values = Object.values(value);
+        if(!values.length) {
+            return {};
+        }
+        if(typeof values[0] == 'string') {
+            return value as valueOfRow<'hash'>;
+        }
+        return {};
+    });
     const [cachedValueForSet, setCachedValueForSet] = useState<valueOfRow<'set'>>(Array.isArray(value)?value:[]);
+    const [cachedValueForZset, setCachedValueForZset] = useState<valueOfRow<'zset'>>(() => {
+        if(typeof value !== 'object' || Array.isArray(value))  {
+            return {};
+        }
+        const values = Object.values(value);
+        if(!values.length) {
+            return {};
+        }
+        if(typeof values[0] == 'number') {
+            return value as valueOfRow<'zset'>;
+        }
+        return {};
+    });
     function setType(v: T) {
         _setType(v);
         switch (v) {
@@ -50,6 +78,9 @@ function useBinding<T extends typeOfRow>(record: KvRow<T>) {
             break;
         case 'set':
             setValue(cachedValueForSet as valueOfRow<T>);
+            break;
+        case 'zset':
+            setValue(cachedValueForZset as valueOfRow<T>);
             break;
         default:
             break;
@@ -124,6 +155,7 @@ export function RecordCreation (props:{
                         <Radio.Button value='list'>list</Radio.Button>
                         <Radio.Button value='hash'>hash</Radio.Button>
                         <Radio.Button value='set'>set</Radio.Button>
+                        <Radio.Button value='zset'>zset</Radio.Button>
                     </Radio.Group>
                 </Form.Item>}
                 <Form.Item 
@@ -177,6 +209,14 @@ export function RecordCreation (props:{
                                 return <Card key={'hash'}>
                                     <HashEditor
                                         value={value as valueOfRow<'hash'>}
+                                        event={listValueRef}
+                                    />
+                                </Card>;
+                            case 'zset':
+                                return <Card key={'zset'}>
+                                    <HashEditor
+                                        value={value as valueOfRow<'zset'>}
+                                        numberValue
                                         event={listValueRef}
                                     />
                                 </Card>;

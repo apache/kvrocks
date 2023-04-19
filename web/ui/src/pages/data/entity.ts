@@ -31,6 +31,8 @@ export class KvRow<T extends typeOfRow> implements RowData<T> {
         case 'hash':
             (this as RowData<'hash'>).value = {};
             break;
+        case 'zset':
+            (this as RowData<'zset'>).value = {};
         }
     }
     getPostBody(): RowData<T> {

@@ -1,21 +1,21 @@
 import React, { MutableRefObject, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { RowType as DndTableRowType } from './DndTable';
 import { getRandomString } from '../common/util';
-import { Button, Form, Input, Table } from 'antd';
+import { Button, Form, Input, InputNumber, Table } from 'antd';
 import { ColumnsType } from 'antd/es/table/interface';
 import { DeleteOutlined,PlusOutlined } from '@ant-design/icons';
 import { valueOfRow } from '../types/types';
 
 interface RowType extends DndTableRowType{
     key: string,
-    value: string,
+    value: string | number,
     _row_key: string,
     errMsgOnKey: string,
     errMsgOnValue: string,
     validKey?: () => boolean,
     validValue?: () => boolean,
 }
-function transformValueToRowType(values: valueOfRow<'hash'>, previousDataSource?: RowType[]): RowType[] {
+function transformValueToRowType(values: valueOfRow<'hash' | 'zset'>, previousDataSource?: RowType[]): RowType[] {
     const result:RowType[] = [];
     const keys: string[] = [];
     values = JSON.parse(JSON.stringify(values));
@@ -54,7 +54,7 @@ interface CellProps {
     index: number,
     allDataSource: RowType[],
     checkAddBtnDisable: () => void,
-    handleValueChange: (newValue: string) => void,
+    handleValueChange: (newValue: string | number) => void,
     handleKeyChange: (newKey: string, ondKey: string) => void,
 }
 const Cell: React.FC<CellProps> = ({
@@ -77,7 +77,7 @@ const Cell: React.FC<CellProps> = ({
     const [errMsgOnKey, setErrMsgOnKey] = useState(record.errMsgOnKey);
     const [errMsgOnValue, setErrMsgOnValue] = useState(record.errMsgOnValue);
     const validValue = useCallback(() => {
-        if(record.value) {
+        if(record.value || record.value === 0) {
             record.errMsgOnValue = '';
         } else {
             record.errMsgOnValue = 'Please input value';
@@ -124,17 +124,28 @@ const Cell: React.FC<CellProps> = ({
                 help={errMsgOnValue}
                 validateStatus={errMsgOnValue ? 'error' : ''}
             >
-                <Input
-                    placeholder='value'
-                    key={record._row_key}
-                    defaultValue={record.value}
-                    onChange={e => handleValueChange(e.target.value)}
-                ></Input>
+                {typeof record.value == 'number'
+                    ?
+                    <InputNumber
+                        placeholder='score'
+                        key={record._row_key}
+                        defaultValue={record.value}
+                        onChange={newValue => handleValueChange(newValue || 0)}
+                    ></InputNumber>
+                    :
+                    <Input
+                        placeholder='value'
+                        key={record._row_key}
+                        defaultValue={record.value}
+                        onChange={e => handleValueChange(e.target.value)}
+                    ></Input>
+                }
             </Form.Item>}
     </td>);
 };
 export function HashEditor(props: {
-    value: valueOfRow<'hash'>,
+    value: valueOfRow<'hash'|'zset'>,
+    numberValue?: boolean,
     event?: MutableRefObject<{valid?:() => boolean}>
 }) {
     const [dataSource, setDataSource] = useState<RowType[]>([]);
@@ -173,7 +184,7 @@ export function HashEditor(props: {
                 record: record,
                 index: index,
                 isValueColumn: true,
-                handleValueChange: (newValue: string) => {
+                handleValueChange: (newValue: string | number) => {
                     record.value = newValue;
                     props.value[record.key] = record.value;
                 }
@@ -200,7 +211,7 @@ export function HashEditor(props: {
     }, [props.value]);
     const onAdd = useCallback(() => {
         setDisableAddBtn(true);
-        props.value[''] = '';
+        props.value[''] = props.numberValue ? 0 : '';
         updateDataSource();
     }, [props.value]);
     return (<div>

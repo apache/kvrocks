@@ -49,8 +49,8 @@ func TestIntrospection(t *testing.T) {
 
 		s, err := strconv.Atoi(vs[0].(string))
 		require.NoError(t, err)
-		require.Greater(t, s, nowUnix - 2)
-		require.Less(t, s, nowUnix + 2)
+		require.Greater(t, s, nowUnix-2)
+		require.Less(t, s, nowUnix+2)
 
 		us, err := strconv.Atoi(vs[1].(string))
 		require.NoError(t, err)

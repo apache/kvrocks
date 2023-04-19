@@ -31,6 +31,7 @@
 
 #include "commands/commander.h"
 #include "fmt/format.h"
+#include "io_util.h"
 #include "parse_util.h"
 #include "replication.h"
 #include "server/server.h"
@@ -201,30 +202,12 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
       size_++;
     }
   }
-  // Used to check if listening on "0.0.0.0“
-  bool is_listen_all_ip = false;
-  // Store all the local ip
-  std::unique_ptr<std::vector<std::string>> local_hosts(nullptr);
-
-  if (std::find(binds_.begin(), binds_.end(), "0.0.0.0") != binds_.end()) {
-    is_listen_all_ip = true;
-    local_hosts = std::make_unique<std::vector<std::string>>(util::GetLocalIpAddresses());
-  }
 
   if (myid_.empty() || force) {
     for (auto &n : nodes_) {
-      if (is_listen_all_ip) {
-        // If the IP being listened on is 0.0.0.0, we need to compare the node's IP address with all local IP addresses.
-        if (n.second->port == port_ &&
-            std::find(local_hosts->begin(), local_hosts->end(), n.second->host) != local_hosts->end()) {
-          myid_ = n.first;
-          break;
-        }
-      } else {
-        if (n.second->port == port_ && std::find(binds_.begin(), binds_.end(), n.second->host) != binds_.end()) {
-          myid_ = n.first;
-          break;
-        }
+      if (n.second->port == port_ && util::MatchListeningIP(binds_, n.second->host)) {
+        myid_ = n.first;
+        break;
       }
     }
   }

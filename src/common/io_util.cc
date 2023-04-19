@@ -312,8 +312,21 @@ int AeWait(int fd, int mask, int timeout) {
   }
 }
 
+bool MatchListeningIP(std::vector<std::string> &binds, const std::string &ip) {
+  if (std::find(binds.begin(), binds.end(), ip) != binds.end()) {
+    return true;
+  }
+
+  // If binds contains 0.0.0.0, we should resolve ip addresses and check it
+  if (std::find(binds.begin(), binds.end(), "0.0.0.0") != binds.end()) {
+    auto local_ip_addresses = GetLocalIPAddresses();
+    return std::find(local_ip_addresses.begin(), local_ip_addresses.end(), ip) != local_ip_addresses.end();
+  }
+  return false;
+}
+
 // Get all local IP addresses.
-std::vector<std::string> GetLocalIpAddresses() {
+std::vector<std::string> GetLocalIPAddresses() {
   std::vector<std::string> ip_addresses;
   ifaddrs *if_addr_struct = nullptr;
   // Use unique_ptr for if_addr_struct to avoid manually free

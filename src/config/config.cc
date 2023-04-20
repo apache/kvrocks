@@ -829,8 +829,8 @@ Status Config::Rewrite() {
   std::ifstream file(path_);
   if (file.is_open()) {
     std::string raw_line;
-    while (!file.eof()) {
-      std::getline(file, raw_line);
+    while (std::getline(file, raw_line)) {
+      if (file.eof()) break;
       auto parsed = ParseConfigLine(raw_line);
       if (!parsed || parsed->first.empty()) {
         lines.emplace_back(raw_line);

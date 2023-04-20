@@ -613,8 +613,8 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
   int64_t version = -1;
   std::string id, nodes_info;
   std::string line;
-  while (!file.eof()) {
-    std::getline(file, line);
+  while (std::getline(file, line)) {
+    if (file.eof()) break;
 
     auto parsed = ParseConfigLine(line);
     if (!parsed) return parsed.ToStatus().Prefixed("malformed line");

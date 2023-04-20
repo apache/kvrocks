@@ -726,7 +726,7 @@ Status Config::Load(const CLIOptions &opts) {
 
     std::string line;
     int line_num = 1;
-    while (in.good() && std::getline(*in, line)) {
+    while (in->good() && std::getline(*in, line)) {
       if (auto s = parseConfigFromString(line, line_num); !s.IsOK()) {
         return s.Prefixed(fmt::format("at line #L{}", line_num));
       }

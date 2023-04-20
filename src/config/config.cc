@@ -726,8 +726,7 @@ Status Config::Load(const CLIOptions &opts) {
 
     std::string line;
     int line_num = 1;
-    while (!in->eof()) {
-      std::getline(*in, line);
+    while (in->good() && std::getline(*in, line)) {
       if (auto s = parseConfigFromString(line, line_num); !s.IsOK()) {
         return s.Prefixed(fmt::format("at line #L{}", line_num));
       }
@@ -829,8 +828,7 @@ Status Config::Rewrite() {
   std::ifstream file(path_);
   if (file.is_open()) {
     std::string raw_line;
-    while (!file.eof()) {
-      std::getline(file, raw_line);
+    while (file.good() && std::getline(file, raw_line)) {
       auto parsed = ParseConfigLine(raw_line);
       if (!parsed || parsed->first.empty()) {
         lines.emplace_back(raw_line);

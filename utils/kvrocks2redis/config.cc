@@ -126,8 +126,7 @@ Status Config::Load(std::string path) {
 
   std::string line;
   int line_num = 1;
-  while (!file.eof()) {
-    std::getline(file, line);
+  while (file.good() && std::getline(file, line)) {
     Status s = parseConfigFromString(line);
     if (!s.IsOK()) {
       return s.Prefixed(fmt::format("at line #L{}", line_num));

@@ -23,9 +23,11 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <fmt/format.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <sys/poll.h>
+#include <sys/types.h>
 
 #ifdef __linux__
 #include <sys/sendfile.h>
@@ -310,6 +312,52 @@ int AeWait(int fd, int mask, int timeout) {
   } else {
     return retval;
   }
+}
+
+bool MatchListeningIP(std::vector<std::string> &binds, const std::string &ip) {
+  if (std::find(binds.begin(), binds.end(), ip) != binds.end()) {
+    return true;
+  }
+
+  // If binds contains 0.0.0.0, we should resolve ip addresses and check it
+  if (std::find(binds.begin(), binds.end(), "0.0.0.0") != binds.end() ||
+      std::find(binds.begin(), binds.end(), "::") != binds.end()) {
+    auto local_ip_addresses = GetLocalIPAddresses();
+    return std::find(local_ip_addresses.begin(), local_ip_addresses.end(), ip) != local_ip_addresses.end();
+  }
+  return false;
+}
+
+std::vector<std::string> GetLocalIPAddresses() {
+  std::vector<std::string> ip_addresses;
+  ifaddrs *if_addr_struct = nullptr;
+  std::unique_ptr<ifaddrs, decltype(&freeifaddrs)> ifaddrs_ptr(nullptr, &freeifaddrs);
+  if (getifaddrs(&if_addr_struct) == -1) {
+    return ip_addresses;
+  }
+  ifaddrs_ptr.reset(if_addr_struct);
+
+  for (ifaddrs *ifa = if_addr_struct; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) {
+      continue;
+    }
+    void *tmp_addr_ptr = nullptr;
+    if (ifa->ifa_addr->sa_family == AF_INET) {
+      // check it is IPv4
+      tmp_addr_ptr = &((sockaddr_in *)ifa->ifa_addr)->sin_addr;
+      char address_buffer[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+      // check it is IPv6
+      tmp_addr_ptr = &((sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
+      char address_buffer[INET6_ADDRSTRLEN];
+      inet_ntop(AF_INET6, tmp_addr_ptr, address_buffer, INET6_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    }
+  }
+
+  return ip_addresses;
 }
 
 template <auto syscall, typename... Args>

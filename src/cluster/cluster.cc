@@ -22,12 +22,12 @@
 
 #include <config/config_util.h>
 
-#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <memory>
 
 #include "commands/commander.h"
+#include "common/io_util.h"
 #include "fmt/format.h"
 #include "parse_util.h"
 #include "replication.h"
@@ -200,15 +200,15 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     }
   }
 
-  // Find myself
   if (myid_.empty() || force) {
     for (auto &n : nodes_) {
-      if (n.second->port == port_ && std::find(binds_.begin(), binds_.end(), n.second->host) != binds_.end()) {
+      if (n.second->port == port_ && util::MatchListeningIP(binds_, n.second->host)) {
         myid_ = n.first;
         break;
       }
     }
   }
+
   myself_ = nullptr;
   if (!myid_.empty() && nodes_.find(myid_) != nodes_.end()) {
     myself_ = nodes_[myid_];

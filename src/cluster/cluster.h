@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "commands/commander.h"
+#include "common/io_util.h"
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"

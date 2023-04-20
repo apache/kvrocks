@@ -38,8 +38,10 @@ int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
 int GetLocalPort(int fd);
 bool IsPortInUse(uint32_t port);
 
-int AeWait(int fd, int mask, int milliseconds);
+bool MatchListeningIP(std::vector<std::string> &binds, const std::string &ip);
+std::vector<std::string> GetLocalIPAddresses();
 
+int AeWait(int fd, int mask, int milliseconds);
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);
 

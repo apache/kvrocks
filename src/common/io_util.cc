@@ -320,18 +320,17 @@ bool MatchListeningIP(std::vector<std::string> &binds, const std::string &ip) {
   }
 
   // If binds contains 0.0.0.0, we should resolve ip addresses and check it
-  if (std::find(binds.begin(), binds.end(), "0.0.0.0") != binds.end()) {
+  if (std::find(binds.begin(), binds.end(), "0.0.0.0") != binds.end() ||
+      std::find(binds.begin(), binds.end(), "::") != binds.end()) {
     auto local_ip_addresses = GetLocalIPAddresses();
     return std::find(local_ip_addresses.begin(), local_ip_addresses.end(), ip) != local_ip_addresses.end();
   }
   return false;
 }
 
-// Get all local IP addresses.
 std::vector<std::string> GetLocalIPAddresses() {
   std::vector<std::string> ip_addresses;
   ifaddrs *if_addr_struct = nullptr;
-  // Use unique_ptr for if_addr_struct to avoid manually free
   std::unique_ptr<ifaddrs, decltype(&freeifaddrs)> ifaddrs_ptr(nullptr, &freeifaddrs);
   if (getifaddrs(&if_addr_struct) == -1) {
     return ip_addresses;
@@ -344,13 +343,13 @@ std::vector<std::string> GetLocalIPAddresses() {
     }
     void *tmp_addr_ptr = nullptr;
     if (ifa->ifa_addr->sa_family == AF_INET) {
-      // check it is IP4 and not a loopback address
+      // check it is IPv4
       tmp_addr_ptr = &((sockaddr_in *)ifa->ifa_addr)->sin_addr;
       char address_buffer[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
       ip_addresses.emplace_back(address_buffer);
     } else if (ifa->ifa_addr->sa_family == AF_INET6) {
-      // check it is IPv6 and not a loopback address
+      // check it is IPv6
       tmp_addr_ptr = &((sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
       char address_buffer[INET6_ADDRSTRLEN];
       inet_ntop(AF_INET6, tmp_addr_ptr, address_buffer, INET6_ADDRSTRLEN);

@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -340,12 +341,15 @@ func TestHash(t *testing.T) {
 	})
 
 	t.Run("HVALS - field with empty string as a value", func(t *testing.T) {
-		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
-		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+		testKey := "test-hash-1"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
 
-		require.Equal(t, []string{"some-value", ""}, rdb.HVals(ctx, "test-hash-1").Val())
+		require.NoError(t, rdb.HSet(ctx, testKey, "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, testKey, "field2", "").Err())
 
-		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
+		require.Equal(t, []string{"some-value", ""}, rdb.HVals(ctx, testKey).Val())
+
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
 	})
 
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
@@ -375,12 +379,15 @@ func TestHash(t *testing.T) {
 	})
 
 	t.Run("HGETALL - field with empty string as a value", func(t *testing.T) {
-		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
-		require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+		testKey := "test-hash-1"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
 
-		require.Equal(t, map[string]string{"field1": "some-value", "field2": ""}, rdb.HGetAll(ctx, "test-hash-1").Val())
+		require.NoError(t, rdb.HSet(ctx, testKey, "field1", "some-value").Err())
+		require.NoError(t, rdb.HSet(ctx, testKey, "field2", "").Err())
 
-		require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
+		require.Equal(t, map[string]string{"field1": "some-value", "field2": ""}, rdb.HGetAll(ctx, testKey).Val())
+
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
 	})
 
 	t.Run("HDEL and return value", func(t *testing.T) {
@@ -762,12 +769,54 @@ func TestHash(t *testing.T) {
 		})
 
 		t.Run("HrangeByLex - field with empty string as a value", func(t *testing.T) {
-			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field1", "some-value").Err())
-			require.NoError(t, rdb.HSet(ctx, "test-hash-1", "field2", "").Err())
+			testKey := "test-hash-1"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
 
-			require.Equal(t, []interface{}{"field1", "some-value", "field2", ""}, rdb.Do(ctx, "HrangeByLex", "test-hash-1", "[a", "[z").Val())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "some-value").Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field2", "").Err())
 
-			require.NoError(t, rdb.Del(ctx, "test-hash-1").Err())
+			require.Equal(t, []interface{}{"field1", "some-value", "field2", ""}, rdb.Do(ctx, "HrangeByLex", testKey, "[a", "[z").Val())
 		})
 	}
+}
+
+func TestHashWithAsyncIOEnabled(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"rocksdb.read_options.async_io": "yes",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	ctx := context.Background()
+
+	t.Run("Test bug with large value after compaction", func(t *testing.T) {
+		testKey := "test-hash-1"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
+
+		src := rand.NewSource(time.Now().UnixNano())
+		dd := make([]byte, 5000)
+		for i := 1; i <= 50; i++ {
+			for j := range dd {
+				dd[j] = byte(src.Int63())
+			}
+			key := util.RandString(10, 20, util.Alpha)
+			require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
+		}
+
+		require.Equal(t, int64(50), rdb.HLen(ctx, testKey).Val())
+		require.Equal(t, 50, len(rdb.HGetAll(ctx, testKey).Val()))
+		require.Equal(t, 50, len(rdb.HKeys(ctx, testKey).Val()))
+		require.Equal(t, 50, len(rdb.HVals(ctx, testKey).Val()))
+
+		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+
+		time.Sleep(5 * time.Second)
+
+		require.Equal(t, int64(50), rdb.HLen(ctx, testKey).Val())
+		require.Equal(t, 50, len(rdb.HGetAll(ctx, testKey).Val()))
+		require.Equal(t, 50, len(rdb.HKeys(ctx, testKey).Val()))
+		require.Equal(t, 50, len(rdb.HVals(ctx, testKey).Val()))
+	})
 }

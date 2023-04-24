@@ -90,6 +90,7 @@ Status ParseNewStreamEntryID(const std::string &input, NewStreamEntryID *id) {
   if (pos != std::string::npos) {
     auto ms_str = input.substr(0, pos);
     auto seq_str = input.substr(pos + 1);
+
     auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
     if (!parse_ms) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};

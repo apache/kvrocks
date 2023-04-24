@@ -805,18 +805,18 @@ func TestHashWithAsyncIOEnabled(t *testing.T) {
 			require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
 		}
 
-		require.Equal(t, int64(50), rdb.HLen(ctx, testKey).Val())
-		require.Equal(t, 50, len(rdb.HGetAll(ctx, testKey).Val()))
-		require.Equal(t, 50, len(rdb.HKeys(ctx, testKey).Val()))
-		require.Equal(t, 50, len(rdb.HVals(ctx, testKey).Val()))
+		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
 
 		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
 
 		time.Sleep(5 * time.Second)
 
-		require.Equal(t, int64(50), rdb.HLen(ctx, testKey).Val())
-		require.Equal(t, 50, len(rdb.HGetAll(ctx, testKey).Val()))
-		require.Equal(t, 50, len(rdb.HKeys(ctx, testKey).Val()))
-		require.Equal(t, 50, len(rdb.HVals(ctx, testKey).Val()))
+		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
 	})
 }

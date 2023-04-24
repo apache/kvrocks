@@ -77,7 +77,6 @@ struct NewStreamEntryID {
   uint64_t ms = 0;
   uint64_t seq = 0;
   bool any_seq_number = false;
-  bool any_ms = false;
 
   NewStreamEntryID() = default;
   explicit NewStreamEntryID(uint64_t ms) : ms(ms), any_seq_number(true) {}

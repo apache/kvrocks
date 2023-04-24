@@ -232,4 +232,22 @@ app.delete('/delete', function(req, res) {
     }, ...arguments)
 })
 
+app.get('/info', function (req, res) {
+    apiWrapper(async () => {
+        let rawInfo = await client.info();
+        const result = {};
+        rawInfo.split('\r\n\r\n# ').forEach(infoSection => {
+            const section = infoSection.split('\r\n');
+            const sectionKey = section[0].startsWith('# ') ? section[0].replace('# ', '') : section[0];
+            const resultItem = {};
+            section.filter(i => !i.startsWith('# ') && i.includes(':')).forEach(i => {
+                const kv = i.split(':');
+                resultItem[kv[0]] = kv[1];
+            })
+            result[sectionKey] = resultItem;
+        })
+        res.send(result);
+    }, ...arguments)
+})
+
 app.listen(8888, () => console.log('api on 8888'))

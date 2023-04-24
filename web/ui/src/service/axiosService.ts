@@ -1,5 +1,5 @@
 import { Axios } from 'axios';
-import { RowDataAny } from '../types/types';
+import { InfoType, RowDataAny } from '../types/types';
 import { notification } from 'antd';
 class AxiosService {
     private axios: Axios;
@@ -25,7 +25,7 @@ class AxiosService {
         });
         console.error('Api error',err);
     }
-    private async _get(url: string, params:object) {
+    private async _get(url: string, params?:object) {
         try {
             const response = await this.axios.get(url, {params});
             return JSON.parse(response.data);
@@ -89,6 +89,9 @@ class AxiosService {
     }
     async delete(data: RowDataAny): Promise<string | false> {
         return await this._delete('/delete', data);
+    }
+    async getInfo(): Promise<InfoType> {
+        return await this._get('/info');
     }
 }
 const axiosService = new AxiosService();

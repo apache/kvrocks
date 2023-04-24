@@ -21,3 +21,9 @@ export interface RowData<T extends typeOfRow>{
     value: valueOfRow<T>
 }
 export type RowDataAny = RowData<typeOfRow>;
+
+export type InfoType = {
+    [key in string] : {
+        [key in string] : string
+    }
+}

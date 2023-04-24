@@ -95,7 +95,9 @@ export const DataPage = function() {
         setColumns([
             {
                 title: 'Key',
-                dataIndex: 'key'
+                dataIndex: 'key',
+                width: '200px',
+                ellipsis: true,
             },
             {
                 title: 'Value',
@@ -136,6 +138,7 @@ export const DataPage = function() {
             {
                 title: 'TTL',
                 dataIndex: 'ttl',
+                width: '70px',
                 render: value => {
                     let displayValue = `${value}s`;
                     if(value == -1) {
@@ -147,6 +150,7 @@ export const DataPage = function() {
             {
                 title: 'Type',
                 dataIndex: 'type',
+                width: '80px',
                 render: (type:KvRowAny['type']) => {
                     const color = DataTypeColor[type] || DataTypeColor.string;
                     return <Tag color={color}>{type}</Tag>;
@@ -154,6 +158,7 @@ export const DataPage = function() {
             },
             {
                 title: 'Action',
+                width: '100px',
                 render: (value, record) => {
                     return (<div>
                         <Tooltip title='Edit'>

@@ -5,8 +5,7 @@ class AxiosService {
     private axios: Axios;
     constructor() {
         this.axios = new Axios({
-            baseURL: 'http://localhost:8888'
-            // baseURL: window.location.origin
+            baseURL: window.location.origin + '/api'
         });
     }
     private errorHandler(err: any) {

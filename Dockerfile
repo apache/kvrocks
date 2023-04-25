@@ -23,11 +23,14 @@ ARG MORE_BUILD_ARGS
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
+RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev curl
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs
 WORKDIR /kvrocks
 
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
+RUN cd ./web/api && npm install && cd ../../
+RUN cd ./web/ui && npm install && npm run build && cd ../..
 
 FROM ubuntu:focal
 
@@ -35,6 +38,7 @@ RUN apt update && apt install -y libssl-dev
 
 WORKDIR /kvrocks
 
+COPY --from=build /kvrocks/web ./web/
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 VOLUME /var/lib/kvrocks

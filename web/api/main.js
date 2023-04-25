@@ -2,8 +2,8 @@ const {createClient} = require('redis');
 const express = require('express');
 const bodyParser = require('body-parser');
 const { waitUntil } = require('./util');
+const path = require('path')
 const app = express();
-app.use(bodyParser.json());
 const client = createClient({
     socket: {
         port: 6666,
@@ -11,7 +11,7 @@ const client = createClient({
     }
 });
 client.on('error', err => console.error('redis client error', err));
-client.connect().then(console.log('connected'));
+client.connect().then(console.log('db connected'));
 
 async function apiWrapper(cb, req, res, next) {
     await waitUntil(() => client.isReady, 100, 30 * 1000);
@@ -31,14 +31,9 @@ async function apiWrapper(cb, req, res, next) {
     }
 }
 
-app.all('*', function(req, res, next){
-    res.header('Access-Control-Allow-Origin', '*');  
-    res.header('Access-Control-Allow-Headers', '*');  
-    res.header('Access-Control-Allow-Methods', 'PUT, POST, GET, DELETE, OPTIONS');
-    next();
-})
+app.use(bodyParser.json());
 
-app.get('/all', function (req, res) {
+app.get('/api/all', function (req, res) {
     apiWrapper(async () => {
         const allKeys = await client.keys('*');
         let start = parseInt(req.query.from);
@@ -93,14 +88,14 @@ app.get('/all', function (req, res) {
     }, ...arguments)
 })
 
-app.get('/allKeys', function(req, res) {
+app.get('/api/allKeys', function(req, res) {
     apiWrapper(async () => {
         const keys = await client.keys('*');
         res.send(keys);
     }, ...arguments)
 })
 
-app.post('/create', function(req, res) {
+app.post('/api/create', function(req, res) {
     apiWrapper(async () => {
         const body = req.body;
         if(typeof body !== 'object'){
@@ -157,7 +152,7 @@ app.post('/create', function(req, res) {
     }, ...arguments)
 })
 
-app.put('/update', function(req, res) {
+app.put('/api/update', function(req, res) {
     apiWrapper(async () => {
         const body = req.body;
         if(typeof body !== 'object'){
@@ -214,7 +209,7 @@ app.put('/update', function(req, res) {
     }, ...arguments)
 })
 
-app.delete('/delete', function(req, res) {
+app.delete('/api/delete', function(req, res) {
     apiWrapper(async () => {
         const body = req.body;
         if(typeof body !== 'object'){
@@ -232,7 +227,7 @@ app.delete('/delete', function(req, res) {
     }, ...arguments)
 })
 
-app.get('/info', function (req, res) {
+app.get('/api/info', function (req, res) {
     apiWrapper(async () => {
         let rawInfo = await client.info();
         const result = {};
@@ -250,4 +245,11 @@ app.get('/info', function (req, res) {
     }, ...arguments)
 })
 
-app.listen(8888, () => console.log('api on 8888'))
+app.use('/', express.static(path.join(__dirname, '../ui/build')))
+
+app.use((req, res) => {
+    res.sendFile(path.join(__dirname, '../ui/build/index.html'))
+})
+
+const port = process.env.WEB_PORT || 6677;
+app.listen(port, () => console.log(`website on ${port}`));

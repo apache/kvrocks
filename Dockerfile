@@ -24,13 +24,11 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev curl
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs
 WORKDIR /kvrocks
 
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
-RUN cd ./web/api && npm install && cd ../../
-RUN cd ./web/ui && npm install && npm run build && cd ../..
+RUN bash ./web/build.sh
 
 FROM ubuntu:focal
 
@@ -38,7 +36,8 @@ RUN apt update && apt install -y libssl-dev
 
 WORKDIR /kvrocks
 
-COPY --from=build /kvrocks/web ./web/
+COPY --from=build /usr/bin/node /usr/bin/
+COPY --from=build /kvrocks/web/api ./web/
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 VOLUME /var/lib/kvrocks
@@ -46,6 +45,8 @@ VOLUME /var/lib/kvrocks
 COPY ./LICENSE ./NOTICE ./DISCLAIMER ./
 COPY ./licenses ./licenses
 COPY ./kvrocks.conf  /var/lib/kvrocks/
+COPY ./entrypoint.sh  ./
+RUN chmod +x ./entrypoint.sh
 
 EXPOSE 6666:6666
-ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks"]
+ENTRYPOINT ["./entrypoint.sh"]

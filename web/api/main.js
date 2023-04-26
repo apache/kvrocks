@@ -7,7 +7,8 @@ const app = express();
 const client = createClient({
     socket: {
         port: 6666,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
+        reconnectStrategy: 1000,
     }
 });
 client.on('error', err => console.error('redis client error', err));
@@ -245,10 +246,10 @@ app.get('/api/info', function (req, res) {
     }, ...arguments)
 })
 
-app.use('/', express.static(path.join(__dirname, '../ui/build')))
+app.use('/', express.static(path.join(__dirname, './website')))
 
 app.use((req, res) => {
-    res.sendFile(path.join(__dirname, '../ui/build/index.html'))
+    res.sendFile(path.join(__dirname, './website/index.html'))
 })
 
 const port = process.env.WEB_PORT || 6677;

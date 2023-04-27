@@ -18,6 +18,9 @@
  *
  */
 
+#include <memory>
+#include <stdexcept>
+
 #include "commander.h"
 #include "error_constants.h"
 #include "server/server.h"
@@ -102,26 +105,20 @@ class CommandXAdd : public Commander {
         return {Status::RedisParseErr, errLimitOptionNotAllowed};
       }
 
-      if (val == "*" && !entry_id_found) {
-        entry_id_found = true;
-        ++i;
-        continue;
-      } else if (!entry_id_found) {
-        auto s = ParseNewStreamEntryID(val, &entry_id_);
-        if (!s.IsOK()) {
-          return {Status::RedisParseErr, s.Msg()};
+      if (!entry_id_found) {
+        try {
+          next_id_strategy_ = ParseNextStreamEntryIDStrategy(val);
+        } catch (const std::invalid_argument &e) {
+          return {Status::RedisParseErr, e.what()};
         }
 
         entry_id_found = true;
-        with_entry_id_ = true;
         ++i;
         continue;
       }
 
-      if (entry_id_found) {
-        name_value_pairs_.push_back(val);
-        ++i;
-      }
+      name_value_pairs_.push_back(val);
+      ++i;
     }
 
     if (name_value_pairs_.empty() || name_value_pairs_.size() % 2 != 0) {
@@ -142,10 +139,7 @@ class CommandXAdd : public Commander {
       options.trim_options.strategy = StreamTrimStrategy::MinID;
       options.trim_options.min_id = min_id_;
     }
-    if (with_entry_id_) {
-      options.with_entry_id = true;
-      options.entry_id = entry_id_;
-    }
+    options.next_id_strategy = std::move(next_id_strategy_);
 
     redis::Stream stream_db(svr->storage, conn->GetNamespace());
     StreamEntryID entry_id;
@@ -170,12 +164,11 @@ class CommandXAdd : public Commander {
   std::string stream_name_;
   uint64_t max_len_ = 0;
   redis::StreamEntryID min_id_;
-  redis::NewStreamEntryID entry_id_;
+  std::unique_ptr<redis::NextStreamEntryIDGenerationStrategy> next_id_strategy_;
   std::vector<std::string> name_value_pairs_;
   bool nomkstream_ = false;
   bool with_max_len_ = false;
   bool with_min_id_ = false;
-  bool with_entry_id_ = false;
 };
 
 class CommandXDel : public Commander {

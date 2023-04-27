@@ -59,8 +59,6 @@ class Stream : public SubKeyScanner {
   StreamEntryID entryIDFromInternalKey(const rocksdb::Slice &key) const;
   std::string internalKeyFromEntryID(const std::string &ns_key, const StreamMetadata &metadata,
                                      const StreamEntryID &id) const;
-  static rocksdb::Status getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
-                                        bool first_entry, StreamEntryID *next_entry_id);
   uint64_t trim(const std::string &ns_key, const StreamTrimOptions &options, StreamMetadata *metadata,
                 rocksdb::WriteBatch *batch);
 };

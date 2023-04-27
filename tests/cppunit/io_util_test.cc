@@ -17,35 +17,12 @@
  * under the License.
  *
  */
+#include "common/io_util.h"
 
-#include "thread_util.h"
+#include <gtest/gtest.h>
 
-#include <fmt/std.h>
-#include <pthread.h>
-
-namespace util {
-
-void ThreadSetName(const char *name) {
-#ifdef __APPLE__
-  pthread_setname_np(name);
-#else
-  pthread_setname_np(pthread_self(), name);
-#endif
+TEST(IOUtil, MatchListeningIP) {
+  // bind 0.0.0.0 should at least match 127.0.0.1
+  std::vector<std::string> binds{"0.0.0.0"};
+  ASSERT_TRUE(util::MatchListeningIP(binds, "127.0.0.1"));
 }
-
-template <void (std::thread::*F)(), typename... Args>
-Status ThreadOperationImpl(std::thread &t, const char *op, Args &&...args) {
-  try {
-    (t.*F)(std::forward<Args>(args)...);
-  } catch (const std::system_error &e) {
-    return {Status::NotOK, fmt::format("thread #{} cannot be `{}`ed: {}", t.get_id(), op, e.what())};
-  }
-
-  return Status::OK();
-}
-
-Status ThreadJoin(std::thread &t) { return ThreadOperationImpl<&std::thread::join>(t, "join"); }
-
-Status ThreadDetach(std::thread &t) { return ThreadOperationImpl<&std::thread::detach>(t, "detach"); }
-
-}  // namespace util

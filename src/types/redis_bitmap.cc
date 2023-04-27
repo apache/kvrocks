@@ -29,7 +29,7 @@
 #include "parse_util.h"
 #include "redis_bitmap_string.h"
 
-namespace Redis {
+namespace redis {
 
 const uint32_t kBitmapSegmentBits = 1024 * 8;
 const uint32_t kBitmapSegmentBytes = 1024;
@@ -71,7 +71,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (metadata.Type() == kRedisString) {
-    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.GetBit(raw_value, offset, bit);
   }
 
@@ -114,7 +114,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     auto parse_result = ParseInt<uint32_t>(ikey.GetSubKey().ToString(), 10);
@@ -172,7 +172,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   if (!s.ok() && !s.IsNotFound()) return s;
 
   if (metadata.Type() == kRedisString) {
-    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.SetBit(ns_key, &raw_value, offset, new_bit, old_bit);
   }
 
@@ -227,7 +227,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (metadata.Type() == kRedisString) {
-    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
   }
 
@@ -275,7 +275,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   }
 
   if (metadata.Type() == kRedisString) {
-    Redis::BitmapString bitmap_string_db(storage_, namespace_);
+    redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos);
   }
 
@@ -288,7 +288,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);
 
-  auto bitPosInByte = [](char byte, bool bit) -> int {
+  auto bit_pos_in_byte = [](char byte, bool bit) -> int {
     for (int i = 0; i < 8; i++) {
       if (bit && (byte & (1 << i)) != 0) return i;
       if (!bit && (byte & (1 << i)) == 0) return i;
@@ -319,8 +319,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
     for (; j < value.size(); j++) {
       if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      if (bitPosInByte(value[j], bit) != -1) {
-        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bitPosInByte(value[j], bit));
+      if (bit_pos_in_byte(value[j], bit) != -1) {
+        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bit_pos_in_byte(value[j], bit));
         return rocksdb::Status::OK();
       }
     }
@@ -540,4 +540,4 @@ bool Bitmap::IsEmptySegment(const Slice &segment) {
   static const char zero_byte_segment[kBitmapSegmentBytes] = {0};
   return !memcmp(zero_byte_segment, segment.data(), segment.size());
 }
-}  // namespace Redis
+}  // namespace redis

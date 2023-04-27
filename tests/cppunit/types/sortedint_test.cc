@@ -27,7 +27,7 @@
 
 class RedisSortedintTest : public TestBase {
  protected:
-  explicit RedisSortedintTest() { sortedint = std::make_unique<Redis::Sortedint>(storage_, "sortedint_ns"); }
+  explicit RedisSortedintTest() { sortedint_ = std::make_unique<redis::Sortedint>(storage_, "sortedint_ns"); }
   ~RedisSortedintTest() override = default;
 
   void SetUp() override {
@@ -35,34 +35,34 @@ class RedisSortedintTest : public TestBase {
     ids_ = {1, 2, 3, 4};
   }
 
-  std::unique_ptr<Redis::Sortedint> sortedint;
+  std::unique_ptr<redis::Sortedint> sortedint_;
   std::vector<uint64_t> ids_;
 };
 
 TEST_F(RedisSortedintTest, AddAndRemove) {
   int ret = 0;
-  rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
+  rocksdb::Status s = sortedint_->Add(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
-  s = sortedint->Card(key_, &ret);
+  s = sortedint_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
-  s = sortedint->Remove(key_, ids_, &ret);
+  s = sortedint_->Remove(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
-  s = sortedint->Card(key_, &ret);
+  s = sortedint_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  sortedint->Del(key_);
+  sortedint_->Del(key_);
 }
 
 TEST_F(RedisSortedintTest, Range) {
   int ret = 0;
-  rocksdb::Status s = sortedint->Add(key_, ids_, &ret);
+  rocksdb::Status s = sortedint_->Add(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
   std::vector<uint64_t> ids;
-  s = sortedint->Range(key_, 0, 0, 20, false, &ids);
+  s = sortedint_->Range(key_, 0, 0, 20, false, &ids);
   EXPECT_TRUE(s.ok() && ids_.size() == ids.size());
   for (size_t i = 0; i < ids_.size(); i++) {
     EXPECT_EQ(ids_[i], ids[i]);
   }
-  s = sortedint->Remove(key_, ids_, &ret);
+  s = sortedint_->Remove(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(ids_.size()) == ret);
-  sortedint->Del(key_);
+  sortedint_->Del(key_);
 }

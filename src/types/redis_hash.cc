@@ -30,7 +30,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
   return Database::GetMetadata(kRedisHash, ns_key, metadata);
@@ -246,12 +246,12 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
     InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
 
     if (metadata.size > 0) {
-      std::string fieldValue;
-      s = storage_->Get(rocksdb::ReadOptions(), sub_key, &fieldValue);
+      std::string field_value;
+      s = storage_->Get(rocksdb::ReadOptions(), sub_key, &field_value);
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
-        if (nx || fieldValue == fv.value) continue;
+        if (nx || field_value == fv.value) continue;
 
         exists = true;
       }
@@ -299,7 +299,7 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec
   read_options.iterate_lower_bound = &lower_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -354,7 +354,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  auto iter = DBUtil::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -375,4 +375,4 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-}  // namespace Redis
+}  // namespace redis

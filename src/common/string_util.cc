@@ -24,7 +24,7 @@
 
 #include "parse_util.h"
 
-namespace Util {
+namespace util {
 
 std::string Float2String(double d) {
   if (std::isinf(d)) {
@@ -223,21 +223,21 @@ std::string StringToHex(const std::string &input) {
   return output;
 }
 
-constexpr unsigned long long expTo1024(unsigned n) { return 1ULL << (n * 10); }
+constexpr unsigned long long ExpTo1024(unsigned n) { return 1ULL << (n * 10); }
 
 std::string BytesToHuman(uint64_t n) {
-  if (n < expTo1024(1)) {
+  if (n < ExpTo1024(1)) {
     return fmt::format("{}B", n);
-  } else if (n < expTo1024(2)) {
-    return fmt::format("{:.2f}K", static_cast<double>(n) / expTo1024(1));
-  } else if (n < expTo1024(3)) {
-    return fmt::format("{:.2f}M", static_cast<double>(n) / expTo1024(2));
-  } else if (n < expTo1024(4)) {
-    return fmt::format("{:.2f}G", static_cast<double>(n) / expTo1024(3));
-  } else if (n < expTo1024(5)) {
-    return fmt::format("{:.2f}T", static_cast<double>(n) / expTo1024(4));
-  } else if (n < expTo1024(6)) {
-    return fmt::format("{:.2f}P", static_cast<double>(n) / expTo1024(5));
+  } else if (n < ExpTo1024(2)) {
+    return fmt::format("{:.2f}K", static_cast<double>(n) / ExpTo1024(1));
+  } else if (n < ExpTo1024(3)) {
+    return fmt::format("{:.2f}M", static_cast<double>(n) / ExpTo1024(2));
+  } else if (n < ExpTo1024(4)) {
+    return fmt::format("{:.2f}G", static_cast<double>(n) / ExpTo1024(3));
+  } else if (n < ExpTo1024(5)) {
+    return fmt::format("{:.2f}T", static_cast<double>(n) / ExpTo1024(4));
+  } else if (n < ExpTo1024(6)) {
+    return fmt::format("{:.2f}P", static_cast<double>(n) / ExpTo1024(5));
   } else {
     return fmt::format("{}B", n);
   }
@@ -312,4 +312,4 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   return tokens;
 }
 
-}  // namespace Util
+}  // namespace util

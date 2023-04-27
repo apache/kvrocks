@@ -67,31 +67,31 @@ enum ZSetFlags {
 
 class ZAddFlags {
  public:
-  explicit ZAddFlags(uint8_t flags = 0) : flags(flags) {}
+  explicit ZAddFlags(uint8_t flags = 0) : flags_(flags) {}
 
-  bool HasNX() const { return (flags & kZSetNX) != 0; }
-  bool HasXX() const { return (flags & kZSetXX) != 0; }
-  bool HasLT() const { return (flags & kZSetLT) != 0; }
-  bool HasGT() const { return (flags & kZSetGT) != 0; }
-  bool HasCH() const { return (flags & kZSetCH) != 0; }
-  bool HasIncr() const { return (flags & kZSetIncr) != 0; }
-  bool HasAnyFlags() const { return flags != 0; }
+  bool HasNX() const { return (flags_ & kZSetNX) != 0; }
+  bool HasXX() const { return (flags_ & kZSetXX) != 0; }
+  bool HasLT() const { return (flags_ & kZSetLT) != 0; }
+  bool HasGT() const { return (flags_ & kZSetGT) != 0; }
+  bool HasCH() const { return (flags_ & kZSetCH) != 0; }
+  bool HasIncr() const { return (flags_ & kZSetIncr) != 0; }
+  bool HasAnyFlags() const { return flags_ != 0; }
 
-  void SetFlag(ZSetFlags setFlags) { flags |= setFlags; }
+  void SetFlag(ZSetFlags set_flags) { flags_ |= set_flags; }
 
   static ZAddFlags Incr() { return ZAddFlags{kZSetIncr}; }
 
   static ZAddFlags Default() { return ZAddFlags{0}; }
 
  private:
-  uint8_t flags = 0;
+  uint8_t flags_ = 0;
 };
 
-namespace Redis {
+namespace redis {
 
 class ZSet : public SubKeyScanner {
  public:
-  explicit ZSet(Engine::Storage *storage, const std::string &ns)
+  explicit ZSet(engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle("zset_score")) {}
   rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, std::vector<MemberScore> *mscores, int *ret);
   rocksdb::Status Card(const Slice &user_key, int *ret);
@@ -126,4 +126,4 @@ class ZSet : public SubKeyScanner {
   rocksdb::ColumnFamilyHandle *score_cf_handle_;
 };
 
-}  // namespace Redis
+}  // namespace redis

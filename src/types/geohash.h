@@ -106,18 +106,18 @@ inline constexpr bool GISNOTZERO(const GeoHashBits &s) { return (s.bits || s.ste
  * 0:success
  * -1:failed
  */
-void geohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range);
-int geohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
+void GeohashGetCoordRange(GeoHashRange *long_range, GeoHashRange *lat_range);
+int GeohashEncode(const GeoHashRange *long_range, const GeoHashRange *lat_range, double longitude, double latitude,
                   uint8_t step, GeoHashBits *hash);
-int geohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
-int geohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
-int geohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
+int GeohashEncodeType(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
+int GeohashEncodeWGS84(double longitude, double latitude, uint8_t step, GeoHashBits *hash);
+int GeohashDecode(const GeoHashRange &long_range, const GeoHashRange &lat_range, const GeoHashBits &hash,
                   GeoHashArea *area);
-int geohashDecodeType(const GeoHashBits &hash, GeoHashArea *area);
-int geohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy);
-int geohashDecodeToLongLatType(const GeoHashBits &hash, double *xy);
-int geohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy);
-void geohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors);
+int GeohashDecodeType(const GeoHashBits &hash, GeoHashArea *area);
+int GeohashDecodeAreaToLongLat(const GeoHashArea *area, double *xy);
+int GeohashDecodeToLongLatType(const GeoHashBits &hash, double *xy);
+int GeohashDecodeToLongLatWGS84(const GeoHashBits &hash, double *xy);
+void GeohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors);
 
 class GeoHashHelper {
  public:

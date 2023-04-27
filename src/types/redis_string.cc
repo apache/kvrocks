@@ -30,7 +30,7 @@
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
-namespace Redis {
+namespace redis {
 
 std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys,
                                                   std::vector<std::string> *raw_values) {
@@ -155,7 +155,7 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
 rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, uint64_t ttl) {
   uint64_t expire = 0;
   if (ttl > 0) {
-    uint64_t now = Util::GetTimeStampMS();
+    uint64_t now = util::GetTimeStampMS();
     expire = now + ttl;
   }
   std::string ns_key;
@@ -226,7 +226,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   int exists = 0;
   uint64_t expire = 0;
   if (ttl > 0) {
-    uint64_t now = Util::GetTimeStampMS();
+    uint64_t now = util::GetTimeStampMS();
     expire = now + ttl;
   }
 
@@ -360,7 +360,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
 rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl) {
   uint64_t expire = 0;
   if (ttl > 0) {
-    uint64_t now = Util::GetTimeStampMS();
+    uint64_t now = util::GetTimeStampMS();
     expire = now + ttl;
   }
 
@@ -390,7 +390,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 
   uint64_t expire = 0;
   if (ttl > 0) {
-    uint64_t now = Util::GetTimeStampMS();
+    uint64_t now = util::GetTimeStampMS();
     expire = now + ttl;
   }
 
@@ -456,7 +456,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     uint64_t expire = 0;
     Metadata metadata(kRedisString, false);
     if (ttl > 0) {
-      uint64_t now = Util::GetTimeStampMS();
+      uint64_t now = util::GetTimeStampMS();
       expire = now + ttl;
     }
     metadata.expire = expire;
@@ -494,7 +494,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
 
   if (value == current_value) {
     auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
-                                          storage_->GetCFHandle(Engine::kMetadataColumnFamilyName), ns_key);
+                                          storage_->GetCFHandle(engine::kMetadataColumnFamilyName), ns_key);
     if (!delete_status.ok()) {
       return delete_status;
     }
@@ -504,4 +504,4 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   return rocksdb::Status::OK();
 }
 
-}  // namespace Redis
+}  // namespace redis

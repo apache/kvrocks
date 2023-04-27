@@ -28,7 +28,7 @@
 #include "storage/redis_metadata.h"
 #include "type_util.h"
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
   auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
@@ -144,7 +144,7 @@ size_t BitmapString::RawPopcount(const uint8_t *p, int64_t count) {
 }
 
 template <typename T = void>
-inline int clzllWithEndian(uint64_t x) {
+inline int ClzllWithEndian(uint64_t x) {
   if constexpr (IsLittleEndian()) {
     return __builtin_clzll(__builtin_bswap64(x));
   } else if constexpr (IsBigEndian()) {
@@ -171,7 +171,7 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
     for (; count >= 8; c += 8, count -= 8) {
       uint64_t x = *reinterpret_cast<const uint64_t *>(c);
       if (x != 0) {
-        return res + clzllWithEndian(x);
+        return res + ClzllWithEndian(x);
       }
       res += 64;
     }
@@ -179,7 +179,7 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
     if (count > 0) {
       uint64_t v = 0;
       __builtin_memcpy(&v, c, count);
-      res += v == 0 ? count * 8 : clzllWithEndian(v);
+      res += v == 0 ? count * 8 : ClzllWithEndian(v);
     }
 
     if (res == ct * 8) {
@@ -189,7 +189,7 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
     for (; count >= 8; c += 8, count -= 8) {
       uint64_t x = *reinterpret_cast<const uint64_t *>(c);
       if (x != (uint64_t)-1) {
-        return res + clzllWithEndian(~x);
+        return res + ClzllWithEndian(~x);
       }
       res += 64;
     }
@@ -197,11 +197,11 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
     if (count > 0) {
       uint64_t v = -1;
       __builtin_memcpy(&v, c, count);
-      res += v == (uint64_t)-1 ? count * 8 : clzllWithEndian(~v);
+      res += v == (uint64_t)-1 ? count * 8 : ClzllWithEndian(~v);
     }
   }
 
   return res;
 }
 
-}  // namespace Redis
+}  // namespace redis

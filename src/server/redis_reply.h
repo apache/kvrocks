@@ -24,18 +24,19 @@
 #include <rocksdb/status.h>
 
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #define CRLF "\r\n"  // NOLINT
 
-namespace Redis {
+namespace redis {
 
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 std::string Error(const std::string &err);
 
-template <typename IntegerType>
-std::string Integer(IntegerType data) {
+template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+std::string Integer(T data) {
   return ":" + std::to_string(data) + CRLF;
 }
 
@@ -52,4 +53,4 @@ std::string MultiBulkString(const std::vector<std::string> &values, bool output_
 std::string MultiBulkString(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses);
 std::string Command2RESP(const std::vector<std::string> &cmd_args);
 
-}  // namespace Redis
+}  // namespace redis

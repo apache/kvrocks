@@ -34,7 +34,7 @@
 #include "redis_reply.h"
 #include "server.h"
 
-namespace Redis {
+namespace redis {
 
 const size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
 const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
@@ -46,14 +46,14 @@ Status Request::Tokenize(evbuffer *input) {
   while (true) {
     switch (state_) {
       case ArrayLen: {
-        bool isOnlyLF = true;
+        bool is_only_lf = true;
         // We don't use the `EVBUFFER_EOL_CRLF_STRICT` here since only LF is allowed in INLINE protocol.
         // So we need to search LF EOL and figure out current line has CR or not.
         UniqueEvbufReadln line(input, EVBUFFER_EOL_LF);
         if (line && line.length > 0 && line[line.length - 1] == '\r') {
           // remove `\r` if exists
           --line.length;
-          isOnlyLF = false;
+          is_only_lf = false;
         }
 
         if (!line || line.length <= 0) {
@@ -67,7 +67,7 @@ Status Request::Tokenize(evbuffer *input) {
         }
 
         pipeline_size++;
-        svr_->stats_.IncrInbondBytes(line.length);
+        svr_->stats.IncrInbondBytes(line.length);
         if (line[0] == '*') {
           auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
           if (!parse_result) {
@@ -75,7 +75,7 @@ Status Request::Tokenize(evbuffer *input) {
           }
 
           multi_bulk_len_ = *parse_result;
-          if (isOnlyLF || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
+          if (is_only_lf || multi_bulk_len_ > (int64_t)PROTO_MULTI_MAX_SIZE) {
             return {Status::NotOK, "Protocol error: invalid multibulk length"};
           }
 
@@ -90,7 +90,7 @@ Status Request::Tokenize(evbuffer *input) {
             return {Status::NotOK, "Protocol error: invalid bulk length"};
           }
 
-          tokens_ = Util::Split(std::string(line.get(), line.length), " \t");
+          tokens_ = util::Split(std::string(line.get(), line.length), " \t");
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
         }
@@ -100,7 +100,7 @@ Status Request::Tokenize(evbuffer *input) {
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line || line.length <= 0) return Status::OK();
 
-        svr_->stats_.IncrInbondBytes(line.length);
+        svr_->stats.IncrInbondBytes(line.length);
         if (line[0] != '$') {
           return {Status::NotOK, "Protocol error: expected '$'"};
         }
@@ -124,7 +124,7 @@ Status Request::Tokenize(evbuffer *input) {
         char *data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(bulk_len_ + 2)));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        svr_->stats_.IncrInbondBytes(bulk_len_ + 2);
+        svr_->stats.IncrInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
         if (multi_bulk_len_ == 0) {
           state_ = ArrayLen;
@@ -138,4 +138,4 @@ Status Request::Tokenize(evbuffer *input) {
   }
 }
 
-}  // namespace Redis
+}  // namespace redis

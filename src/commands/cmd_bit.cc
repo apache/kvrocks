@@ -23,9 +23,9 @@
 #include "server/server.h"
 #include "types/redis_bitmap.h"
 
-namespace Redis {
+namespace redis {
 
-Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
+Status GetBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
   auto parse_result = ParseInt<uint32_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
@@ -38,7 +38,7 @@ Status getBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
 class CommandGetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = getBitOffsetFromArgument(args[2], &offset_);
+    Status s = GetBitOffsetFromArgument(args[2], &offset_);
     if (!s.IsOK()) return s;
 
     return Commander::Parse(args);
@@ -46,11 +46,11 @@ class CommandGetBit : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     bool bit = false;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
     auto s = bitmap_db.GetBit(args_[1], offset_, &bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(bit ? 1 : 0);
+    *output = redis::Integer(bit ? 1 : 0);
     return Status::OK();
   }
 
@@ -61,7 +61,7 @@ class CommandGetBit : public Commander {
 class CommandSetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    Status s = getBitOffsetFromArgument(args[2], &offset_);
+    Status s = GetBitOffsetFromArgument(args[2], &offset_);
     if (!s.IsOK()) return s;
 
     if (args[3] == "0") {
@@ -77,11 +77,11 @@ class CommandSetBit : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     bool old_bit = false;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
     auto s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(old_bit ? 1 : 0);
+    *output = redis::Integer(old_bit ? 1 : 0);
     return Status::OK();
   }
 
@@ -117,11 +117,11 @@ class CommandBitCount : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     uint32_t cnt = 0;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
     auto s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(cnt);
+    *output = redis::Integer(cnt);
     return Status::OK();
   }
 
@@ -165,11 +165,11 @@ class CommandBitPos : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t pos = 0;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
     auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(pos);
+    *output = redis::Integer(pos);
     return Status::OK();
   }
 
@@ -183,7 +183,7 @@ class CommandBitPos : public Commander {
 class CommandBitOp : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    std::string opname = Util::ToLower(args[1]);
+    std::string opname = util::ToLower(args[1]);
     if (opname == "and")
       op_flag_ = kBitOpAnd;
     else if (opname == "or")
@@ -208,11 +208,11 @@ class CommandBitOp : public Commander {
     }
 
     int64_t dest_key_len = 0;
-    Redis::Bitmap bitmap_db(svr->storage_, conn->GetNamespace());
+    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
     auto s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &dest_key_len);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(dest_key_len);
+    *output = redis::Integer(dest_key_len);
     return Status::OK();
   }
 
@@ -226,4 +226,4 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1), )
 
-}  // namespace Redis
+}  // namespace redis

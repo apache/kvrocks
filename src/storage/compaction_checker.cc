@@ -29,7 +29,7 @@
 void CompactionChecker::CompactPropagateAndPubSubFiles() {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
-  std::vector<std::string> cf_names = {Engine::kPubSubColumnFamilyName, Engine::kPropagateColumnFamilyName};
+  std::vector<std::string> cf_names = {engine::kPubSubColumnFamilyName, engine::kPropagateColumnFamilyName};
   for (const auto &cf_name : cf_names) {
     LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf_name;
     auto cf_handle = storage_->GetCFHandle(cf_name);
@@ -51,11 +51,11 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   // the live files was too few, Hard code to 1 here.
   if (props.size() <= 1) return;
 
-  size_t maxFilesToCompact = 1;
-  if (props.size() / 360 > maxFilesToCompact) {
-    maxFilesToCompact = props.size() / 360;
+  size_t max_files_to_compact = 1;
+  if (props.size() / 360 > max_files_to_compact) {
+    max_files_to_compact = props.size() / 360;
   }
-  int64_t now = Util::GetTimeStamp();
+  int64_t now = util::GetTimeStamp();
 
   auto force_compact_file_age = storage_->GetConfig()->force_compact_file_age;
   auto force_compact_min_ratio =
@@ -66,7 +66,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   int64_t total_keys = 0, deleted_keys = 0;
   rocksdb::Slice start_key, stop_key, best_start_key, best_stop_key;
   for (const auto &iter : props) {
-    if (maxFilesToCompact == 0) return;
+    if (max_files_to_compact == 0) return;
 
     uint64_t file_creation_time = iter.second->file_creation_time;
     if (file_creation_time == 0) {
@@ -115,7 +115,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
       auto s = storage_->Compact(&start_key, &stop_key);
       LOG(INFO) << "[compaction checker] Compact the key in file (force compact policy): " << iter.first
                 << " finished, result: " << s.ToString();
-      maxFilesToCompact--;
+      max_files_to_compact--;
       continue;
     }
 

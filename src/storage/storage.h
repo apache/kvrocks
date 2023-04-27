@@ -51,7 +51,7 @@ enum ColumnFamilyID {
   kColumnFamilyIDStream,
 };
 
-namespace Engine {
+namespace engine {
 
 constexpr const char *kPubSubColumnFamilyName = "pubsub";
 constexpr const char *kZSetScoreColumnFamilyName = "zset_score";
@@ -213,4 +213,4 @@ class Storage {
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
 };
 
-}  // namespace Engine
+}  // namespace engine

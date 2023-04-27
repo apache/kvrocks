@@ -27,7 +27,7 @@
 
 Stats::Stats() {
   for (int i = 0; i < STATS_METRIC_COUNT; i++) {
-    struct inst_metric im;
+    InstMetric im;
     im.last_sample_time = 0;
     im.last_sample_count = 0;
     im.idx = 0;
@@ -44,7 +44,7 @@ Stats::Stats() {
 
 int64_t Stats::GetMemoryRSS() {
   task_t task = MACH_PORT_NULL;
-  struct task_basic_info t_info;
+  task_basic_info t_info;
   mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
   if (task_for_pid(current_task(), getpid(), &task) != KERN_SUCCESS) return 0;
   task_info(task, TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
@@ -92,7 +92,7 @@ void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
 }
 
 void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
-  uint64_t curr_time = Util::GetTimeStampMS();
+  uint64_t curr_time = util::GetTimeStampMS();
   uint64_t t = curr_time - inst_metrics[metric].last_sample_time;
   uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
   uint64_t ops_sec = t > 0 ? (ops * 1000 / t) : 0;

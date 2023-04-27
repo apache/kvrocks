@@ -35,7 +35,7 @@
 
 // forward declaration
 class Server;
-namespace Engine {
+namespace engine {
 class Storage;
 }
 
@@ -55,10 +55,10 @@ constexpr const char *kDefaultNamespace = "__namespace";
 
 struct CompactionCheckerRange {
  public:
-  int Start;
-  int Stop;
+  int start;
+  int stop;
 
-  bool Enabled() const { return Start != -1 || Stop != -1; }
+  bool Enabled() const { return start != -1 || stop != -1; }
 };
 
 struct CLIOptions {
@@ -170,8 +170,8 @@ struct Config {
     int64_t delayed_write_rate;
     int compaction_readahead_size;
     int target_file_size_base;
-    int WAL_ttl_seconds;
-    int WAL_size_limit_MB;
+    int wal_ttl_seconds;
+    int wal_size_limit_mb;
     int max_total_wal_size;
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
@@ -186,10 +186,11 @@ struct Config {
     int max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
+    int max_background_jobs;
 
     struct WriteOptions {
       bool sync;
-      bool disable_WAL;
+      bool disable_wal;
       bool no_slowdown;
       bool low_pri;
       bool memtable_insert_hint_per_batch;
@@ -198,9 +199,9 @@ struct Config {
     struct ReadOptions {
       bool async_io;
     } read_options;
-  } RocksDB;
+  } rocks_db;
 
-  mutable std::mutex backup_mu_;
+  mutable std::mutex backup_mu;
 
   std::string NodesFilePath() const;
   Status Rewrite();
@@ -216,12 +217,12 @@ struct Config {
 
  private:
   std::string path_;
-  std::string binds_;
+  std::string binds_str_;
   std::string slaveof_;
-  std::string compact_cron_;
-  std::string bgsave_cron_;
-  std::string compaction_checker_range_;
-  std::string profiling_sample_commands_;
+  std::string compact_cron_str_;
+  std::string bgsave_cron_str_;
+  std::string compaction_checker_range_str_;
+  std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
 

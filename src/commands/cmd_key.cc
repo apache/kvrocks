@@ -28,16 +28,16 @@
 #include "storage/redis_db.h"
 #include "time_util.h"
 
-namespace Redis {
+namespace redis {
 
 class CommandType : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
-      *output = Redis::SimpleString(RedisTypeNames[type]);
+      *output = redis::SimpleString(RedisTypeNames[type]);
       return Status::OK();
     }
 
@@ -48,20 +48,20 @@ class CommandType : public Commander {
 class CommandObject : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (Util::ToLower(args_[1]) == "dump") {
-      Redis::Database redis(svr->storage_, conn->GetNamespace());
+    if (util::ToLower(args_[1]) == "dump") {
+      redis::Database redis(svr->storage, conn->GetNamespace());
       std::vector<std::string> infos;
       auto s = redis.Dump(args_[2], &infos);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
       }
 
-      output->append(Redis::MultiLen(infos.size()));
+      output->append(redis::MultiLen(infos.size()));
       for (const auto &info : infos) {
-        output->append(Redis::BulkString(info));
+        output->append(redis::BulkString(info));
       }
     } else {
-      *output = Redis::Error("object subcommand must be dump");
+      *output = redis::Error("object subcommand must be dump");
     }
     return Status::OK();
   }
@@ -70,11 +70,11 @@ class CommandObject : public Commander {
 class CommandTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
-      *output = Redis::Integer(ttl > 0 ? ttl / 1000 : ttl);
+      *output = redis::Integer(ttl > 0 ? ttl / 1000 : ttl);
       return Status::OK();
     }
 
@@ -85,12 +85,12 @@ class CommandTTL : public Commander {
 class CommandPTTL : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(ttl);
+    *output = redis::Integer(ttl);
     return Status::OK();
   }
 };
@@ -104,9 +104,9 @@ class CommandExists : public Commander {
     }
 
     int cnt = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     redis.Exists(keys, &cnt);
-    *output = Redis::Integer(cnt);
+    *output = redis::Integer(cnt);
 
     return Status::OK();
   }
@@ -120,12 +120,12 @@ class CommandExpire : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
-    auto s = redis.Expire(args_[1], ttl_ * 1000 + Util::GetTimeStampMS());
+    redis::Database redis(svr->storage, conn->GetNamespace());
+    auto s = redis.Expire(args_[1], ttl_ * 1000 + util::GetTimeStampMS());
     if (s.ok()) {
-      *output = Redis::Integer(1);
+      *output = redis::Integer(1);
     } else {
-      *output = Redis::Integer(0);
+      *output = redis::Integer(0);
     }
     return Status::OK();
   }
@@ -137,17 +137,17 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + Util::GetTimeStampMS();
+    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + util::GetTimeStampMS();
     return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
-      *output = Redis::Integer(1);
+      *output = redis::Integer(1);
     } else {
-      *output = Redis::Integer(0);
+      *output = redis::Integer(0);
     }
     return Status::OK();
   }
@@ -170,12 +170,12 @@ class CommandExpireAt : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
-      *output = Redis::Integer(1);
+      *output = redis::Integer(1);
     } else {
-      *output = Redis::Integer(0);
+      *output = redis::Integer(0);
     }
     return Status::OK();
   }
@@ -198,12 +198,12 @@ class CommandPExpireAt : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_);
     if (s.ok()) {
-      *output = Redis::Integer(1);
+      *output = redis::Integer(1);
     } else {
-      *output = Redis::Integer(0);
+      *output = redis::Integer(0);
     }
     return Status::OK();
   }
@@ -216,19 +216,19 @@ class CommandPersist : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int64_t ttl = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     if (ttl == -1 || ttl == -2) {
-      *output = Redis::Integer(0);
+      *output = redis::Integer(0);
       return Status::OK();
     }
 
     s = redis.Expire(args_[1], 0);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = Redis::Integer(1);
+    *output = redis::Integer(1);
     return Status::OK();
   }
 };
@@ -237,12 +237,12 @@ class CommandDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int cnt = 0;
-    Redis::Database redis(svr->storage_, conn->GetNamespace());
+    redis::Database redis(svr->storage, conn->GetNamespace());
     for (size_t i = 1; i < args_.size(); i++) {
       auto s = redis.Del(args_[i]);
       if (s.ok()) cnt++;
     }
-    *output = Redis::Integer(cnt);
+    *output = redis::Integer(cnt);
     return Status::OK();
   }
 };
@@ -260,4 +260,4 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1), )
 
-}  // namespace Redis
+}  // namespace redis

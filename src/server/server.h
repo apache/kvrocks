@@ -63,8 +63,8 @@ struct StreamConsumer {
   Worker *owner;
   int fd;
   std::string ns;
-  Redis::StreamEntryID last_consumed_id;
-  StreamConsumer(Worker *w, int fd, std::string ns, Redis::StreamEntryID id)
+  redis::StreamEntryID last_consumed_id;
+  StreamConsumer(Worker *w, int fd, std::string ns, redis::StreamEntryID id)
       : owner(w), fd(fd), ns(std::move(ns)), last_consumed_id(id) {}
 };
 
@@ -115,7 +115,7 @@ class SlotMigrator;
 
 class Server {
  public:
-  explicit Server(Engine::Storage *storage, Config *config);
+  explicit Server(engine::Storage *storage, Config *config);
   ~Server();
 
   Server(const Server &) = delete;
@@ -127,37 +127,37 @@ class Server {
   bool IsStopped() { return stop_; }
   bool IsLoading() { return is_loading_; }
   Config *GetConfig() { return config_; }
-  static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<Redis::Commander> *cmd);
+  static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
-  Status AddSlave(Redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
-  void cleanupExitedSlaves();
+  void CleanupExitedSlaves();
   bool IsSlave() { return !master_host_.empty(); }
-  void FeedMonitorConns(Redis::Connection *conn, const std::vector<std::string> &tokens);
+  void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
   void IncrFetchFileThread() { fetch_file_threads_num_++; }
   void DecrFetchFileThread() { fetch_file_threads_num_--; }
   int GetFetchFileThreadNum() { return fetch_file_threads_num_; }
 
   int PublishMessage(const std::string &channel, const std::string &msg);
-  void SubscribeChannel(const std::string &channel, Redis::Connection *conn);
-  void UnsubscribeChannel(const std::string &channel, Redis::Connection *conn);
+  void SubscribeChannel(const std::string &channel, redis::Connection *conn);
+  void UnsubscribeChannel(const std::string &channel, redis::Connection *conn);
   void GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
   void ListChannelSubscribeNum(const std::vector<std::string> &channels,
                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
-  void PSubscribeChannel(const std::string &pattern, Redis::Connection *conn);
-  void PUnsubscribeChannel(const std::string &pattern, Redis::Connection *conn);
+  void PSubscribeChannel(const std::string &pattern, redis::Connection *conn);
+  void PUnsubscribeChannel(const std::string &pattern, redis::Connection *conn);
   int GetPubSubPatternSize() { return static_cast<int>(pubsub_patterns_.size()); }
 
-  void BlockOnKey(const std::string &key, Redis::Connection *conn);
-  void UnblockOnKey(const std::string &key, Redis::Connection *conn);
-  void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<Redis::StreamEntryID> &entry_ids,
-                      Redis::Connection *conn);
-  void UnblockOnStreams(const std::vector<std::string> &keys, Redis::Connection *conn);
+  void BlockOnKey(const std::string &key, redis::Connection *conn);
+  void UnblockOnKey(const std::string &key, redis::Connection *conn);
+  void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
+                      redis::Connection *conn);
+  void UnblockOnStreams(const std::vector<std::string> &keys, redis::Connection *conn);
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
-  void OnEntryAddedToStream(const std::string &ns, const std::string &key, const Redis::StreamEntryID &entry_id);
+  void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
@@ -171,6 +171,7 @@ class Server {
   void GetReplicationInfo(std::string *info);
   void GetRoleInfo(std::string *info);
   void GetCommandsStatsInfo(std::string *info);
+  void GetClusterInfo(std::string *info);
   void GetInfo(const std::string &ns, const std::string &section, std::string *info);
   std::string GetRocksDBStatsJson() const;
   ReplState GetReplicationState();
@@ -193,7 +194,7 @@ class Server {
   std::string GetClientsStr();
   uint64_t GetClientID();
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
-                  Redis::Connection *conn);
+                  redis::Connection *conn);
 
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
@@ -206,8 +207,8 @@ class Server {
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
 
-  void SetCurrentConnection(Redis::Connection *conn) { curr_connection_ = conn; }
-  Redis::Connection *GetCurrentConnection() { return curr_connection_; }
+  void SetCurrentConnection(redis::Connection *conn) { curr_connection_ = conn; }
+  redis::Connection *GetCurrentConnection() { return curr_connection_; }
 
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
@@ -216,21 +217,21 @@ class Server {
   std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
 
-  Stats stats_;
-  Engine::Storage *storage_;
-  std::unique_ptr<Cluster> cluster_;
-  static std::atomic<int> unix_time_;
-  std::unique_ptr<SlotMigrator> slot_migrator_;
-  std::unique_ptr<SlotImport> slot_import_;
+  Stats stats;
+  engine::Storage *storage;
+  std::unique_ptr<Cluster> cluster;
+  static inline std::atomic<int> unix_time = 0;
+  std::unique_ptr<SlotMigrator> slot_migrator;
+  std::unique_ptr<SlotImport> slot_import;
 
-  void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const Redis::CommandAttributes &attr);
+  void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr);
   void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
-  void WatchKey(Redis::Connection *conn, const std::vector<std::string> &keys);
-  static bool IsWatchedKeysModified(Redis::Connection *conn);
-  void ResetWatchedKeys(Redis::Connection *conn);
+  void WatchKey(redis::Connection *conn, const std::vector<std::string> &keys);
+  static bool IsWatchedKeysModified(redis::Connection *conn);
+  void ResetWatchedKeys(redis::Connection *conn);
 
 #ifdef ENABLE_OPENSSL
-  UniqueSSLContext ssl_ctx_;
+  UniqueSSLContext ssl_ctx;
 #endif
 
  private:
@@ -239,7 +240,7 @@ class Server {
   void delConnContext(ConnContext *c);
   static void updateCachedTime();
   Status autoResizeBlockAndSST();
-  void updateWatchedKeysFromRange(const std::vector<std::string> &args, const Redis::CommandKeyRange &range);
+  void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
   void updateAllWatchedKeys();
 
   std::atomic<bool> stop_ = false;
@@ -254,7 +255,7 @@ class Server {
 
   std::atomic<lua_State *> lua_;
 
-  Redis::Connection *curr_connection_ = nullptr;
+  redis::Connection *curr_connection_ = nullptr;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};
@@ -302,7 +303,7 @@ class Server {
 
   // transaction
   std::atomic<size_t> watched_key_size_ = 0;
-  std::map<std::string, std::set<Redis::Connection *>> watched_key_map_;
+  std::map<std::string, std::set<redis::Connection *>> watched_key_map_;
   std::shared_mutex watched_key_mutex_;
 };
 

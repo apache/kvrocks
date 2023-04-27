@@ -27,26 +27,26 @@
 class CronTest : public testing::Test {
  protected:
   explicit CronTest() {
-    cron = std::make_unique<Cron>();
+    cron_ = std::make_unique<Cron>();
     std::vector<std::string> schedule{"*", "3", "*", "*", "*"};
-    auto s = cron->SetScheduleTime(schedule);
+    auto s = cron_->SetScheduleTime(schedule);
     EXPECT_TRUE(s.IsOK());
   }
   ~CronTest() override = default;
 
-  std::unique_ptr<Cron> cron;
+  std::unique_ptr<Cron> cron_;
 };
 
 TEST_F(CronTest, IsTimeMatch) {
   std::time_t t = std::time(nullptr);
   std::tm *now = std::localtime(&t);
   now->tm_hour = 3;
-  ASSERT_TRUE(cron->IsTimeMatch(now));
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
   now->tm_hour = 4;
-  ASSERT_FALSE(cron->IsTimeMatch(now));
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
 }
 
 TEST_F(CronTest, ToString) {
-  std::string got = cron->ToString();
+  std::string got = cron_->ToString();
   ASSERT_EQ("* 3 * * *", got);
 }

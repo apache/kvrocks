@@ -22,14 +22,14 @@
 
 #include <algorithm>
 
-namespace Redis {
+namespace redis {
 
 rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, int *ret) {
   std::vector<MemberScore> member_scores;
   for (const auto &geo_point : *geo_points) {
     /* Turn the coordinates into the score of the element. */
     GeoHashBits hash;
-    geohashEncodeWGS84(geo_point.longitude, geo_point.latitude, GEO_STEP_MAX, &hash);
+    GeohashEncodeWGS84(geo_point.longitude, geo_point.latitude, GEO_STEP_MAX, &hash);
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
     member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
@@ -54,7 +54,7 @@ rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Sl
 }
 
 rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &members,
-                          std::vector<std::string> *geoHashes) {
+                          std::vector<std::string> *geo_hashes) {
   std::map<std::string, GeoPoint> geo_points;
   auto s = MGet(user_key, members, &geo_points);
   if (!s.ok()) return s;
@@ -62,10 +62,10 @@ rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &membe
   for (const auto &member : members) {
     auto iter = geo_points.find(member.ToString());
     if (iter == geo_points.end()) {
-      geoHashes->emplace_back(std::string());
+      geo_hashes->emplace_back(std::string());
       continue;
     }
-    geoHashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));
+    geo_hashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));
   }
 
   return rocksdb::Status::OK();
@@ -184,9 +184,9 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
   r[0].max = 180;
   r[1].min = -90;
   r[1].max = 90;
-  geohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
+  GeohashEncode(&r[0], &r[1], longitude, latitude, 26, &hash);
 
-  std::string geoHash;
+  std::string geo_hash;
   for (int i = 0; i < 11; i++) {
     int idx = 0;
     if (i == 10) {
@@ -197,14 +197,14 @@ std::string Geo::EncodeGeoHash(double longitude, double latitude) {
     } else {
       idx = static_cast<int>((hash.bits >> (52 - ((i + 1) * 5))) & 0x1f);
     }
-    geoHash += geoalphabet[idx];
+    geo_hash += geoalphabet[idx];
   }
-  return geoHash;
+  return geo_hash;
 }
 
 int Geo::decodeGeoHash(double bits, double *xy) {
   GeoHashBits hash = {(uint64_t)bits, GEO_STEP_MAX};
-  return geohashDecodeToLongLatWGS84(hash, xy);
+  return GeohashDecodeToLongLatWGS84(hash, xy);
 }
 
 /* Search all eight neighbors + self geohash box */
@@ -348,4 +348,4 @@ bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1
 
 bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist >= gp2.dist; }
 
-}  // namespace Redis
+}  // namespace redis

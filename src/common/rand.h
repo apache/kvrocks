@@ -36,7 +36,7 @@
 
 #include <stdint.h>
 
-int32_t redisLrand48();
-void redisSrand48(int32_t seedval);
+int32_t RedisLrand48();
+void RedisSrand48(int32_t seedval);
 
 constexpr const int32_t REDIS_LRAND48_MAX = INT32_MAX;

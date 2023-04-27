@@ -25,24 +25,24 @@
 // ref to https://en.cppreference.com/w/cpp/experimental/scope_exit
 template <typename F>
 struct ScopeExit {
-  explicit ScopeExit(F f, bool enabled) : enabled_(enabled), f_(std::move(f)) {}
-  explicit ScopeExit(F f) : enabled_(true), f_(std::move(f)) {}
+  explicit ScopeExit(F f, bool enabled) : enabled(enabled), f(std::move(f)) {}
+  explicit ScopeExit(F f) : enabled(true), f(std::move(f)) {}
 
   ScopeExit(const ScopeExit&) = delete;
-  ScopeExit(ScopeExit&& se) : enabled_(se.enabled_), f_(std::move(se.f_)) {}
+  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) {}
 
   ScopeExit& operator=(const ScopeExit&) = delete;
 
   ~ScopeExit() {
-    if (enabled_) f_();
+    if (enabled) f();
   }
 
-  void Enable() { enabled_ = true; }
+  void Enable() { enabled = true; }
 
-  void Disable() { enabled_ = false; }
+  void Disable() { enabled = false; }
 
-  bool enabled_;
-  F f_;
+  bool enabled;
+  F f;
 };
 
 // use CTAD in C++17 or above

@@ -27,7 +27,7 @@
 #include "thread_util.h"
 #include "time_util.h"
 
-namespace Redis {
+namespace redis {
 
 class CommandPSync : public Commander {
  public:
@@ -35,7 +35,7 @@ class CommandPSync : public Commander {
     size_t seq_arg = 1;
     if (args.size() == 3) {
       seq_arg = 2;
-      new_psync = true;
+      new_psync_ = true;
     }
 
     auto parse_result = ParseInt<uint64_t>(args[seq_arg], 10);
@@ -43,11 +43,11 @@ class CommandPSync : public Commander {
       return {Status::RedisParseErr, "value is not an unsigned long long or out of range"};
     }
 
-    next_repl_seq = static_cast<rocksdb::SequenceNumber>(*parse_result);
-    if (new_psync) {
+    next_repl_seq_ = static_cast<rocksdb::SequenceNumber>(*parse_result);
+    if (new_psync_) {
       assert(args.size() == 3);
-      replica_replid = args[1];
-      if (replica_replid.size() != kReplIdLength) {
+      replica_replid_ = args[1];
+      if (replica_replid_.size() != kReplIdLength) {
         return {Status::RedisParseErr, "Wrong replication id length"};
       }
     }
@@ -58,55 +58,55 @@ class CommandPSync : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     LOG(INFO) << "Slave " << conn->GetAddr() << ", listening port: " << conn->GetListeningPort()
               << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
-              << " with next sequence: " << next_repl_seq
-              << " replication id: " << (replica_replid.length() ? replica_replid : "not supported")
-              << ", and local sequence: " << svr->storage_->LatestSeqNumber();
+              << " with next sequence: " << next_repl_seq_
+              << " replication id: " << (replica_replid_.length() ? replica_replid_ : "not supported")
+              << ", and local sequence: " << svr->storage->LatestSeqNumber();
 
     bool need_full_sync = false;
 
     // Check replication id of the last sequence log
-    if (new_psync && svr->GetConfig()->use_rsid_psync) {
-      std::string replid_in_wal = svr->storage_->GetReplIdFromWalBySeq(next_repl_seq - 1);
+    if (new_psync_ && svr->GetConfig()->use_rsid_psync) {
+      std::string replid_in_wal = svr->storage->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
       LOG(INFO) << "Replication id in WAL: " << replid_in_wal;
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
       // Or WAL may have nothing when starting from db of old version kvrocks.
-      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid) {
+      if (replid_in_wal.length() == kReplIdLength && replid_in_wal != replica_replid_) {
         *output = "wrong replication id of the last log";
         need_full_sync = true;
       }
     }
 
     // Check Log sequence
-    if (!need_full_sync && !checkWALBoundary(svr->storage_, next_repl_seq).IsOK()) {
+    if (!need_full_sync && !checkWALBoundary(svr->storage, next_repl_seq_).IsOK()) {
       *output = "sequence out of range, please use fullsync";
       need_full_sync = true;
     }
 
     if (need_full_sync) {
-      svr->stats_.IncrPSyncErrCounter();
+      svr->stats.IncrPSyncErrCounter();
       return {Status::RedisExecErr, *output};
     }
 
     // Server would spawn a new thread to sync the batch, and connection would
     // be taken over, so should never trigger any event in worker thread.
     conn->Detach();
-    conn->EnableFlag(Redis::Connection::kSlave);
-    auto s = Util::SockSetBlocking(conn->GetFD(), 1);
+    conn->EnableFlag(redis::Connection::kSlave);
+    auto s = util::SockSetBlocking(conn->GetFD(), 1);
     if (!s.IsOK()) {
-      conn->EnableFlag(Redis::Connection::kCloseAsync);
+      conn->EnableFlag(redis::Connection::kCloseAsync);
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
-    svr->stats_.IncrPSyncOKCounter();
-    s = svr->AddSlave(conn, next_repl_seq);
+    svr->stats.IncrPSyncOKCounter();
+    s = svr->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      s = Util::SockSend(conn->GetFD(), err);
+      s = util::SockSend(conn->GetFD(), err);
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
       }
-      conn->EnableFlag(Redis::Connection::kCloseAsync);
+      conn->EnableFlag(redis::Connection::kCloseAsync);
       LOG(WARNING) << "Failed to add replica: " << conn->GetAddr() << " to start incremental syncing";
     } else {
       LOG(INFO) << "New replica: " << conn->GetAddr() << " was added, start incremental syncing";
@@ -115,12 +115,12 @@ class CommandPSync : public Commander {
   }
 
  private:
-  rocksdb::SequenceNumber next_repl_seq = 0;
-  bool new_psync = false;
-  std::string replica_replid;
+  rocksdb::SequenceNumber next_repl_seq_ = 0;
+  bool new_psync_ = false;
+  std::string replica_replid_;
 
   // Return OK if the seq is in the range of the current WAL
-  static Status checkWALBoundary(Engine::Storage *storage, rocksdb::SequenceNumber seq) {
+  static Status checkWALBoundary(engine::Storage *storage, rocksdb::SequenceNumber seq) {
     if (seq == storage->LatestSeqNumber() + 1) {
       return Status::OK();
     }
@@ -156,7 +156,7 @@ class CommandReplConf : public Commander {
     }
 
     for (size_t i = 1; i < args.size(); i += 2) {
-      Status s = ParseParam(Util::ToLower(args[i]), args[i + 1]);
+      Status s = ParseParam(util::ToLower(args[i]), args[i + 1]);
       if (!s.IsOK()) {
         return s;
       }
@@ -192,7 +192,7 @@ class CommandReplConf : public Commander {
     if (!ip_address_.empty()) {
       conn->SetAnnounceIP(ip_address_);
     }
-    *output = Redis::SimpleString("OK");
+    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
@@ -209,17 +209,17 @@ class CommandFetchMeta : public Commander {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetAnnounceIP();
 
-    auto s = Util::SockSetBlocking(repl_fd, 1);
+    auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
     conn->NeedNotFreeBufferEvent();
-    conn->EnableFlag(Redis::Connection::kCloseAsync);
-    svr->stats_.IncrFullSyncCounter();
+    conn->EnableFlag(redis::Connection::kCloseAsync);
+    svr->stats.IncrFullSyncCounter();
 
     // Feed-replica-meta thread
-    auto t = GET_OR_RET(Util::CreateThread("feed-repl-info", [svr, repl_fd, ip, bev = conn->GetBufferEvent()] {
+    auto t = GET_OR_RET(util::CreateThread("feed-repl-info", [svr, repl_fd, ip, bev = conn->GetBufferEvent()] {
       svr->IncrFetchFileThread();
       auto exit = MakeScopeExit([svr, bev] {
         bufferevent_free(bev);
@@ -227,9 +227,9 @@ class CommandFetchMeta : public Commander {
       });
 
       std::string files;
-      auto s = Engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage_, &files);
+      auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage, &files);
       if (!s.IsOK()) {
-        s = Util::SockSend(repl_fd, "-ERR can't create db checkpoint");
+        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint");
         if (!s.IsOK()) {
           LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
         }
@@ -237,16 +237,16 @@ class CommandFetchMeta : public Commander {
         return;
       }
       // Send full data file info
-      if (Util::SockSend(repl_fd, files + CRLF).IsOK()) {
+      if (util::SockSend(repl_fd, files + CRLF).IsOK()) {
         LOG(INFO) << "[replication] Succeed sending full data file info to " << ip;
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      auto now = static_cast<time_t>(Util::GetTimeStamp());
-      svr->storage_->SetCheckpointAccessTime(now);
+      auto now = static_cast<time_t>(util::GetTimeStamp());
+      svr->storage->SetCheckpointAccessTime(now);
     }));
 
-    if (auto s = Util::ThreadDetach(t); !s) {
+    if (auto s = util::ThreadDetach(t); !s) {
       return s;
     }
 
@@ -262,20 +262,20 @@ class CommandFetchFile : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    std::vector<std::string> files = Util::Split(files_str_, ",");
+    std::vector<std::string> files = util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetAnnounceIP();
 
-    auto s = Util::SockSetBlocking(repl_fd, 1);
+    auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
     conn->NeedNotFreeBufferEvent();  // Feed-replica-file thread will close the replica bufferevent
-    conn->EnableFlag(Redis::Connection::kCloseAsync);
+    conn->EnableFlag(redis::Connection::kCloseAsync);
 
-    auto t = GET_OR_RET(Util::CreateThread("feed-repl-file", [svr, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
+    auto t = GET_OR_RET(util::CreateThread("feed-repl-file", [svr, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
       auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
       svr->IncrFetchFileThread();
 
@@ -287,12 +287,12 @@ class CommandFetchFile : public Commander {
           max_replication_bytes = (svr->GetConfig()->max_replication_mb * MiB) / svr->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
-        auto fd = UniqueFD(Engine::Storage::ReplDataManager::OpenDataFile(svr->storage_, file, &file_size));
+        auto fd = UniqueFD(engine::Storage::ReplDataManager::OpenDataFile(svr->storage, file, &file_size));
         if (!fd) break;
 
         // Send file size and content
-        if (Util::SockSend(repl_fd, std::to_string(file_size) + CRLF).IsOK() &&
-            Util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
+        if (util::SockSend(repl_fd, std::to_string(file_size) + CRLF).IsOK() &&
+            util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
           LOG(INFO) << "[replication] Succeed sending file " << file << " to " << ip;
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to " << ip << ", error: " << strerror(errno);
@@ -311,12 +311,12 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
-      auto now = static_cast<time_t>(Util::GetTimeStamp());
-      svr->storage_->SetCheckpointAccessTime(now);
+      auto now = static_cast<time_t>(util::GetTimeStamp());
+      svr->storage->SetCheckpointAccessTime(now);
       svr->DecrFetchFileThread();
     }));
 
-    if (auto s = Util::ThreadDetach(t); !s) {
+    if (auto s = util::ThreadDetach(t); !s) {
       return s;
     }
 
@@ -332,7 +332,7 @@ class CommandDBName : public Commander {
   Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    conn->Reply(svr->storage_->GetName() + CRLF);
+    conn->Reply(svr->storage->GetName() + CRLF);
     return Status::OK();
   }
 };
@@ -345,4 +345,4 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only 
                                                       0, 0),
                         MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0), )
 
-}  // namespace Redis
+}  // namespace redis

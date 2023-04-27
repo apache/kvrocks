@@ -47,7 +47,7 @@
 #include "table_properties_collector.h"
 #include "time_util.h"
 
-namespace Engine {
+namespace engine {
 
 constexpr const char *kReplicationIdKey = "replication_id_";
 
@@ -56,9 +56,9 @@ const int64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 Storage::Storage(Config *config)
-    : backup_creating_time_(Util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
+    : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
   Metadata::InitVersionCounter();
-  SetWriteOptions(config->RocksDB.write_options);
+  SetWriteOptions(config->rocks_db.write_options);
 }
 
 Storage::~Storage() {
@@ -80,7 +80,7 @@ void Storage::CloseDB() {
 
 void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   write_opts_.sync = config.sync;
-  write_opts_.disableWAL = config.disable_WAL;
+  write_opts_.disableWAL = config.disable_wal;
   write_opts_.no_slowdown = config.no_slowdown;
   write_opts_.low_pri = config.low_pri;
   write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
@@ -88,7 +88,7 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
 
 void Storage::SetReadOptions(rocksdb::ReadOptions &read_options) {
   read_options.fill_cache = false;
-  read_options.async_io = config_->RocksDB.read_options.async_io;
+  read_options.async_io = config_->rocks_db.read_options.async_io;
 }
 
 rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
@@ -101,18 +101,18 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
   table_options.metadata_block_size = 4096;
   table_options.data_block_index_type = rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
   table_options.data_block_hash_table_util_ratio = 0.75;
-  table_options.block_size = static_cast<size_t>(config_->RocksDB.block_size);
+  table_options.block_size = static_cast<size_t>(config_->rocks_db.block_size);
   return table_options;
 }
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
-  cf_options->enable_blob_files = config_->RocksDB.enable_blob_files;
-  cf_options->min_blob_size = config_->RocksDB.min_blob_size;
-  cf_options->blob_file_size = config_->RocksDB.blob_file_size;
-  cf_options->blob_compression_type = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
-  cf_options->enable_blob_garbage_collection = config_->RocksDB.enable_blob_garbage_collection;
+  cf_options->enable_blob_files = config_->rocks_db.enable_blob_files;
+  cf_options->min_blob_size = config_->rocks_db.min_blob_size;
+  cf_options->blob_file_size = config_->rocks_db.blob_file_size;
+  cf_options->blob_compression_type = static_cast<rocksdb::CompressionType>(config_->rocks_db.compression);
+  cf_options->enable_blob_garbage_collection = config_->rocks_db.enable_blob_garbage_collection;
   // Use 100.0 to force converting blob_garbage_collection_age_cutoff to double
-  cf_options->blob_garbage_collection_age_cutoff = config_->RocksDB.blob_garbage_collection_age_cutoff / 100.0;
+  cf_options->blob_garbage_collection_age_cutoff = config_->rocks_db.blob_garbage_collection_age_cutoff / 100.0;
 }
 
 rocksdb::Options Storage::InitRocksDBOptions() {
@@ -123,15 +123,15 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   // NOTE: the overhead of statistics is 5%-10%, so it should be configurable in prod env
   // See: https://github.com/facebook/rocksdb/wiki/Statistics
   options.statistics = rocksdb::CreateDBStatistics();
-  options.stats_dump_period_sec = config_->RocksDB.stats_dump_period_sec;
-  options.max_open_files = config_->RocksDB.max_open_files;
+  options.stats_dump_period_sec = config_->rocks_db.stats_dump_period_sec;
+  options.max_open_files = config_->rocks_db.max_open_files;
   options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleLevel;
-  options.max_subcompactions = static_cast<uint32_t>(config_->RocksDB.max_sub_compactions);
-  options.max_background_flushes = config_->RocksDB.max_background_flushes;
-  options.max_background_compactions = config_->RocksDB.max_background_compactions;
-  options.max_write_buffer_number = config_->RocksDB.max_write_buffer_number;
+  options.max_subcompactions = static_cast<uint32_t>(config_->rocks_db.max_sub_compactions);
+  options.max_background_flushes = config_->rocks_db.max_background_flushes;
+  options.max_background_compactions = config_->rocks_db.max_background_compactions;
+  options.max_write_buffer_number = config_->rocks_db.max_write_buffer_number;
   options.min_write_buffer_number_to_merge = 2;
-  options.write_buffer_size = config_->RocksDB.write_buffer_size * MiB;
+  options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = 7;
   options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
@@ -139,20 +139,20 @@ rocksdb::Options Storage::InitRocksDBOptions() {
     if (i < 2) {
       options.compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
     } else {
-      options.compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->RocksDB.compression);
+      options.compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->rocks_db.compression);
     }
   }
-  if (config_->RocksDB.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->RocksDB.row_cache_size * MiB);
+  if (config_->rocks_db.row_cache_size) {
+    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
   }
-  options.enable_pipelined_write = config_->RocksDB.enable_pipelined_write;
-  options.target_file_size_base = config_->RocksDB.target_file_size_base * MiB;
+  options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
+  options.target_file_size_base = config_->rocks_db.target_file_size_base * MiB;
   options.max_manifest_file_size = 64 * MiB;
   options.max_log_file_size = 256 * MiB;
   options.keep_log_file_num = 12;
-  options.WAL_ttl_seconds = static_cast<uint64_t>(config_->RocksDB.WAL_ttl_seconds);
-  options.WAL_size_limit_MB = static_cast<uint64_t>(config_->RocksDB.WAL_size_limit_MB);
-  options.max_total_wal_size = static_cast<uint64_t>(config_->RocksDB.max_total_wal_size * MiB);
+  options.WAL_ttl_seconds = static_cast<uint64_t>(config_->rocks_db.wal_ttl_seconds);
+  options.WAL_size_limit_MB = static_cast<uint64_t>(config_->rocks_db.wal_size_limit_mb);
+  options.max_total_wal_size = static_cast<uint64_t>(config_->rocks_db.max_total_wal_size * MiB);
   options.listeners.emplace_back(new EventListener(this));
   options.dump_malloc_stats = true;
   sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
@@ -162,14 +162,15 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   rate_limiter_ =
       std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * static_cast<int64_t>(MiB)));
   options.rate_limiter = rate_limiter_;
-  options.delayed_write_rate = static_cast<uint64_t>(config_->RocksDB.delayed_write_rate);
-  options.compaction_readahead_size = static_cast<size_t>(config_->RocksDB.compaction_readahead_size);
-  options.level0_slowdown_writes_trigger = config_->RocksDB.level0_slowdown_writes_trigger;
-  options.level0_stop_writes_trigger = config_->RocksDB.level0_stop_writes_trigger;
-  options.level0_file_num_compaction_trigger = config_->RocksDB.level0_file_num_compaction_trigger;
-  options.max_bytes_for_level_base = config_->RocksDB.max_bytes_for_level_base;
-  options.max_bytes_for_level_multiplier = config_->RocksDB.max_bytes_for_level_multiplier;
-  options.level_compaction_dynamic_level_bytes = config_->RocksDB.level_compaction_dynamic_level_bytes;
+  options.delayed_write_rate = static_cast<uint64_t>(config_->rocks_db.delayed_write_rate);
+  options.compaction_readahead_size = static_cast<size_t>(config_->rocks_db.compaction_readahead_size);
+  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger;
+  options.level0_stop_writes_trigger = config_->rocks_db.level0_stop_writes_trigger;
+  options.level0_file_num_compaction_trigger = config_->rocks_db.level0_file_num_compaction_trigger;
+  options.max_bytes_for_level_base = config_->rocks_db.max_bytes_for_level_base;
+  options.max_bytes_for_level_multiplier = config_->rocks_db.max_bytes_for_level_multiplier;
+  options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
+  options.max_background_jobs = config_->rocks_db.max_background_jobs;
 
   return options;
 }
@@ -219,8 +220,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     // When goes wrong, we need to check whether it's caused by column families NOT being opened or not.
     // If the status message contains `Column families not opened` means that we have created the column
     // families, let's ignore the error.
-    std::string notOpenedPrefix = "Column families not opened";
-    if (s.IsInvalidArgument() && s.ToString().find(notOpenedPrefix) != std::string::npos) {
+    std::string not_opened_prefix = "Column families not opened";
+    if (s.IsInvalidArgument() && s.ToString().find(not_opened_prefix) != std::string::npos) {
       return Status::OK();
     }
 
@@ -234,9 +235,9 @@ Status Storage::Open(bool read_only) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
 
-  bool cache_index_and_filter_blocks = config_->RocksDB.cache_index_and_filter_blocks;
-  size_t metadata_block_cache_size = config_->RocksDB.metadata_block_cache_size * MiB;
-  size_t subkey_block_cache_size = config_->RocksDB.subkey_block_cache_size * MiB;
+  bool cache_index_and_filter_blocks = config_->rocks_db.cache_index_and_filter_blocks;
+  size_t metadata_block_cache_size = config_->rocks_db.metadata_block_cache_size * MiB;
+  size_t subkey_block_cache_size = config_->rocks_db.subkey_block_cache_size * MiB;
 
   rocksdb::Options options = InitRocksDBOptions();
   if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
@@ -244,7 +245,7 @@ Status Storage::Open(bool read_only) {
   }
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  if (config_->RocksDB.share_metadata_and_subkey_block_cache) {
+  if (config_->rocks_db.share_metadata_and_subkey_block_cache) {
     size_t shared_block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
     shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
   }
@@ -259,7 +260,7 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions metadata_opts(options);
   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
   metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
-  metadata_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  metadata_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   // Enable whole key bloom filter in memtable
   metadata_opts.memtable_whole_key_filtering = true;
   metadata_opts.memtable_prefix_bloom_size_ratio = 0.1;
@@ -276,7 +277,7 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions subkey_opts(options);
   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
-  subkey_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  subkey_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
   SetBlobDB(&subkey_opts);
@@ -285,14 +286,14 @@ Status Storage::Open(bool read_only) {
   rocksdb::ColumnFamilyOptions pubsub_opts(options);
   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
   pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
-  pubsub_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  pubsub_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&pubsub_opts);
 
   rocksdb::BlockBasedTableOptions propagate_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions propagate_opts(options);
   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
   propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
-  propagate_opts.disable_auto_compactions = config_->RocksDB.disable_auto_compactions;
+  propagate_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&propagate_opts);
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
@@ -327,7 +328,7 @@ Status Storage::Open(bool read_only) {
 
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
-  std::lock_guard<std::mutex> lg(config_->backup_mu_);
+  std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
 
   std::string tmpdir = task_backup_dir + ".tmp";
@@ -343,7 +344,7 @@ Status Storage::CreateBackup() {
   }
 
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  s = checkpoint->CreateCheckpoint(tmpdir, config_->RocksDB.write_buffer_size * MiB);
+  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to create checkpoint (snapshot) for backup. Error: " << s.ToString();
     return {Status::DBBackupErr, s.ToString()};
@@ -366,7 +367,7 @@ Status Storage::CreateBackup() {
   }
 
   // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
-  backup_creating_time_ = static_cast<time_t>(Util::GetTimeStamp());
+  backup_creating_time_ = static_cast<time_t>(util::GetTimeStamp());
 
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
@@ -476,8 +477,8 @@ void Storage::EmptyDB() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  time_t now = Util::GetTimeStamp();
-  std::lock_guard<std::mutex> lg(config_->backup_mu_);
+  time_t now = util::GetTimeStamp();
+  std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
 
   // Return if there is no backup
@@ -649,7 +650,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   std::string prefix, begin_key, end_key;
   ComposeNamespaceKey(ns, "", &prefix, false);
 
-  Redis::Database db(this, ns);
+  redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;
   rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
@@ -839,9 +840,9 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
     // Create checkpoint of rocksdb
     uint64_t checkpoint_latest_seq = 0;
-    s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->RocksDB.write_buffer_size * MiB,
+    s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->rocks_db.write_buffer_size * MiB,
                                      &checkpoint_latest_seq);
-    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    auto now = static_cast<time_t>(util::GetTimeStamp());
     storage->checkpoint_info_.create_time = now;
     storage->checkpoint_info_.access_time = now;
     storage->checkpoint_info_.latest_seq = checkpoint_latest_seq;
@@ -853,11 +854,11 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     LOG(INFO) << "[storage] Create checkpoint successfully";
   } else {
     // Replicas can share checkpoint to replication if the checkpoint existing time is less than a half of WAL TTL.
-    int64_t can_shared_time = storage->config_->RocksDB.WAL_ttl_seconds / 2;
+    int64_t can_shared_time = storage->config_->rocks_db.wal_ttl_seconds / 2;
     if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
     if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
 
-    auto now = static_cast<time_t>(Util::GetTimeStamp());
+    auto now = static_cast<time_t>(util::GetTimeStamp());
     if (now - storage->GetCheckpointCreateTime() > can_shared_time) {
       LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
       return {Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint"};
@@ -1102,4 +1103,4 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   return crc == tmp_crc;
 }
 
-}  // namespace Engine
+}  // namespace engine

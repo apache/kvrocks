@@ -35,8 +35,8 @@
 // forward declaration
 class Server;
 
-using validate_fn = std::function<Status(const std::string &, const std::string &)>;
-using callback_fn = std::function<Status(Server *, const std::string &, const std::string &)>;
+using ValidateFn = std::function<Status(const std::string &, const std::string &)>;
+using CallbackFn = std::function<Status(Server *, const std::string &, const std::string &)>;
 
 // forward declaration
 template <typename>
@@ -46,15 +46,15 @@ using IntField = IntegerField<int>;
 using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
-struct configEnum {
+struct ConfigEnum {
   const char *name;
   const int val;
 };
 
-enum configType { SingleConfig, MultiConfig };
+enum ConfigType { SingleConfig, MultiConfig };
 
-int configEnumGetValue(configEnum *ce, const char *name);
-const char *configEnumGetName(configEnum *ce, int val);
+int ConfigEnumGetValue(ConfigEnum *ce, const char *name);
+const char *ConfigEnumGetName(ConfigEnum *ce, int val);
 
 class ConfigField {
  public:
@@ -64,15 +64,15 @@ class ConfigField {
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) { return {Status::NotOK, "not supported"}; }
   virtual Status ToBool(bool *b) { return {Status::NotOK, "not supported"}; }
-  virtual configType GetConfigType() { return config_type; }
-  virtual bool IsMultiConfig() { return config_type == configType::MultiConfig; }
-  virtual bool IsSingleConfig() { return config_type == configType::SingleConfig; }
+  virtual ConfigType GetConfigType() { return config_type; }
+  virtual bool IsMultiConfig() { return config_type == ConfigType::MultiConfig; }
+  virtual bool IsSingleConfig() { return config_type == ConfigType::SingleConfig; }
 
   int line_number = 0;
   bool readonly = true;
-  validate_fn validate = nullptr;
-  callback_fn callback = nullptr;
-  configType config_type = configType::SingleConfig;
+  ValidateFn validate = nullptr;
+  CallbackFn callback = nullptr;
+  ConfigType config_type = ConfigType::SingleConfig;
 };
 
 class StringField : public ConfigField {
@@ -93,7 +93,7 @@ class MultiStringField : public ConfigField {
  public:
   MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input) : receiver_(receiver) {
     *receiver_ = std::move(input);
-    this->config_type = configType::MultiConfig;
+    this->config_type = ConfigType::MultiConfig;
   }
   ~MultiStringField() override = default;
   std::string ToString() override {
@@ -186,15 +186,15 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, configEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
+  EnumField(int *receiver, ConfigEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
   ~EnumField() override = default;
-  std::string ToString() override { return configEnumGetName(enums_, *receiver_); }
+  std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int e = configEnumGetValue(enums_, v.c_str());
+    int e = ConfigEnumGetValue(enums_, v.c_str());
     if (e == INT_MIN) {
       return {Status::NotOK, "invalid enum option"};
     }
@@ -204,5 +204,5 @@ class EnumField : public ConfigField {
 
  private:
   int *receiver_;
-  configEnum *enums_ = nullptr;
+  ConfigEnum *enums_ = nullptr;
 };

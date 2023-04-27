@@ -50,6 +50,8 @@
 
 #include <stdint.h>
 
+namespace redis_rand_impl {
+
 constexpr const int N = 16;
 constexpr const int MASK = ((1 << (N - 1)) + (1 << (N - 1)) - 1);
 template <typename T>
@@ -105,22 +107,11 @@ constexpr void SEED(const T x0, const T x1, const T x2) {
 }
 
 template <typename T>
-constexpr T HI_BIT(const T x) {
+constexpr T HiBit(const T x) {
   return (1L << (2 * N - 1));
 }
 
-static void next();
-
-int32_t redisLrand48() {
-  next();
-  return static_cast<int32_t>(x[2] << (N - 1)) + static_cast<int32_t>(x[1] >> 1);
-}
-
-void redisSrand48(int32_t seedval) {
-  SEED(X0, static_cast<uint32_t>(LOW(seedval)), static_cast<uint32_t>(HIGH(seedval)));
-}
-
-static void next() {
+static void Next() {
   uint32_t p[2], q[2], r[2], carry0 = 0, carry1 = 0;
 
   MUL(a[0], x[0], p);
@@ -132,4 +123,17 @@ static void next() {
   x[2] = LOW(carry0 + carry1 + CARRY(p[1], r[0]) + q[1] + r[1] + a[0] * x[2] + a[1] * x[1] + a[2] * x[0]);
   x[1] = LOW(p[1] + r[0]);
   x[0] = LOW(p[0]);
+}
+
+}  // namespace redis_rand_impl
+
+int32_t RedisLrand48() {
+  using namespace redis_rand_impl;
+  Next();
+  return static_cast<int32_t>(x[2] << (N - 1)) + static_cast<int32_t>(x[1] >> 1);
+}
+
+void RedisSrand48(int32_t seedval) {
+  using namespace redis_rand_impl;
+  SEED(X0, static_cast<uint32_t>(LOW(seedval)), static_cast<uint32_t>(HIGH(seedval)));
 }

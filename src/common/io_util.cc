@@ -23,9 +23,11 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <fmt/format.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <sys/poll.h>
+#include <sys/types.h>
 
 #ifdef __linux__
 #include <sys/sendfile.h>
@@ -49,7 +51,7 @@
 #define AE_ERROR 4     // NOLINT
 #define AE_HUP 8       // NOLINT
 
-namespace Util {
+namespace util {
 
 Status SockSetTcpNoDelay(int fd, int val) {
   if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) == -1) {
@@ -98,9 +100,8 @@ Status SockSetTcpKeepalive(int fd, int interval) {
 }
 
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
-  addrinfo hints, *servinfo = nullptr;
+  addrinfo hints = {}, *servinfo = nullptr;
 
-  memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
@@ -125,7 +126,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
         continue;
       }
 
-      auto retmask = Util::aeWait(*cfd, AE_WRITABLE, conn_timeout);
+      auto retmask = util::AeWait(*cfd, AE_WRITABLE, conn_timeout);
       if ((retmask & AE_WRITABLE) == 0 || (retmask & AE_ERROR) != 0 || (retmask & AE_HUP) != 0) {
         return Status::FromErrno();
       }
@@ -151,7 +152,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
     }
 
     if (timeout > 0) {
-      struct timeval tv;
+      timeval tv;
       tv.tv_sec = timeout / 1000;
       tv.tv_usec = (timeout % 1000) * 1000;
       if (setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char *>(&tv), sizeof(tv)) < 0) {
@@ -293,7 +294,7 @@ bool IsPortInUse(uint32_t port) {
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
-int aeWait(int fd, int mask, int timeout) {
+int AeWait(int fd, int mask, int timeout) {
   pollfd pfd;
   int retmask = 0;
 
@@ -313,6 +314,52 @@ int aeWait(int fd, int mask, int timeout) {
   }
 }
 
+bool MatchListeningIP(std::vector<std::string> &binds, const std::string &ip) {
+  if (std::find(binds.begin(), binds.end(), ip) != binds.end()) {
+    return true;
+  }
+
+  // If binds contains 0.0.0.0, we should resolve ip addresses and check it
+  if (std::find(binds.begin(), binds.end(), "0.0.0.0") != binds.end() ||
+      std::find(binds.begin(), binds.end(), "::") != binds.end()) {
+    auto local_ip_addresses = GetLocalIPAddresses();
+    return std::find(local_ip_addresses.begin(), local_ip_addresses.end(), ip) != local_ip_addresses.end();
+  }
+  return false;
+}
+
+std::vector<std::string> GetLocalIPAddresses() {
+  std::vector<std::string> ip_addresses;
+  ifaddrs *if_addr_struct = nullptr;
+  std::unique_ptr<ifaddrs, decltype(&freeifaddrs)> ifaddrs_ptr(nullptr, &freeifaddrs);
+  if (getifaddrs(&if_addr_struct) == -1) {
+    return ip_addresses;
+  }
+  ifaddrs_ptr.reset(if_addr_struct);
+
+  for (ifaddrs *ifa = if_addr_struct; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) {
+      continue;
+    }
+    void *tmp_addr_ptr = nullptr;
+    if (ifa->ifa_addr->sa_family == AF_INET) {
+      // check it is IPv4
+      tmp_addr_ptr = &((sockaddr_in *)ifa->ifa_addr)->sin_addr;
+      char address_buffer[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, tmp_addr_ptr, address_buffer, INET_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+      // check it is IPv6
+      tmp_addr_ptr = &((sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
+      char address_buffer[INET6_ADDRSTRLEN];
+      inet_ntop(AF_INET6, tmp_addr_ptr, address_buffer, INET6_ADDRSTRLEN);
+      ip_addresses.emplace_back(address_buffer);
+    }
+  }
+
+  return ip_addresses;
+}
+
 template <auto syscall, typename... Args>
 Status WriteImpl(int fd, std::string_view data, Args &&...args) {
   ssize_t n = 0;
@@ -330,4 +377,4 @@ Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
 
-}  // namespace Util
+}  // namespace util

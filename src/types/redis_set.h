@@ -26,11 +26,11 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-namespace Redis {
+namespace redis {
 
 class Set : public SubKeyScanner {
  public:
-  explicit Set(Engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  explicit Set(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status IsMember(const Slice &user_key, const Slice &member, int *ret);
@@ -54,4 +54,4 @@ class Set : public SubKeyScanner {
   rocksdb::Status GetMetadata(const Slice &ns_key, SetMetadata *metadata);
 };
 
-}  // namespace Redis
+}  // namespace redis

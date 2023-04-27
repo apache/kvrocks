@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "commands/commander.h"
+#include "common/io_util.h"
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"
@@ -46,15 +47,15 @@ class ClusterNode {
  public:
   explicit ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
                        std::bitset<kClusterSlots> slots);
-  std::string id_;
-  std::string host_;
-  int port_;
-  int role_;
-  std::string master_id_;
-  std::string slots_info_;
-  std::bitset<kClusterSlots> slots_;
+  std::string id;
+  std::string host;
+  int port;
+  int role;
+  std::string master_id;
+  std::string slots_info;
+  std::bitset<kClusterSlots> slots;
   std::vector<std::string> replicas;
-  int importing_slot_ = -1;
+  int importing_slot = -1;
 };
 
 struct SlotInfo {
@@ -87,11 +88,11 @@ class Cluster {
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot);
-  Status CanExecByMySelf(const Redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                         Redis::Connection *conn);
+  Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                         redis::Connection *conn);
   Status SetMasterSlaveRepl();
   Status MigrateSlot(int slot, const std::string &dst_node_id);
-  Status ImportSlot(Redis::Connection *conn, int slot, int state);
+  Status ImportSlot(redis::Connection *conn, int slot, int state);
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);
@@ -99,11 +100,11 @@ class Cluster {
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
  private:
-  std::string GenNodesDescription();
-  std::string GenNodesInfo();
-  void UpdateSlotsInfo();
-  SlotInfo GenSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
-  static Status ParseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
+  std::string genNodesDescription();
+  std::string genNodesInfo();
+  void updateSlotsInfo();
+  SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
+  static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);
   Server *svr_;
   std::vector<std::string> binds_;

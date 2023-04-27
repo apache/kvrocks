@@ -34,7 +34,7 @@
 
 class Worker;
 
-namespace Redis {
+namespace redis {
 
 class Connection {
  public:
@@ -61,14 +61,14 @@ class Connection {
   void SendFile(int fd);
   std::string ToString();
 
-  using unsubscribe_callback = std::function<void(std::string, int)>;
+  using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
   void UnsubscribeChannel(const std::string &channel);
-  void UnsubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void UnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int SubscriptionsCount();
   void PSubscribeChannel(const std::string &pattern);
   void PUnsubscribeChannel(const std::string &pattern);
-  void PUnsubscribeAll(const unsubscribe_callback &reply = nullptr);
+  void PUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int PSubscriptionsCount();
 
   uint64_t GetAge() const;
@@ -112,8 +112,8 @@ class Connection {
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
   void ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
-  bool isProfilingEnabled(const std::string &cmd);
-  void recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
+  bool IsProfilingEnabled(const std::string &cmd);
+  void RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }
   bool IsImporting() const { return importing_; }
 
@@ -122,13 +122,13 @@ class Connection {
   bool IsInExec() const { return in_exec_; }
   bool IsMultiError() const { return multi_error_; }
   void ResetMultiExec();
-  std::deque<Redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
+  std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
-  std::unique_ptr<Commander> current_cmd_;
-  std::function<void(int)> close_cb_ = nullptr;
+  std::unique_ptr<Commander> current_cmd;
+  std::function<void(int)> close_cb = nullptr;
 
-  std::set<std::string> watched_keys_;
-  std::atomic<bool> watched_keys_modified_ = false;
+  std::set<std::string> watched_keys;
+  std::atomic<bool> watched_keys_modified = false;
 
  private:
   uint64_t id_ = 0;
@@ -155,9 +155,9 @@ class Connection {
   Server *svr_;
   bool in_exec_ = false;
   bool multi_error_ = false;
-  std::deque<Redis::CommandTokens> multi_cmds_;
+  std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;
 };
 
-}  // namespace Redis
+}  // namespace redis

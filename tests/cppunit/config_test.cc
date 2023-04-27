@@ -63,7 +63,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.write_buffer_size", "1234"},
       {"rocksdb.max_write_buffer_number", "1"},
       {"rocksdb.target_file_size_base", "100"},
-      {"rocksdb.max_background_compactions", "2"},
+      {"rocksdb.max_background_compactions", "-1"},
       {"rocksdb.max_sub_compactions", "3"},
       {"rocksdb.delayed_write_rate", "1234"},
       {"rocksdb.stats_dump_period_sec", "600"},
@@ -78,6 +78,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_bytes_for_level_base", "268435456"},
       {"rocksdb.max_bytes_for_level_multiplier", "10"},
       {"rocksdb.level_compaction_dynamic_level_bytes", "yes"},
+      {"rocksdb.max_background_jobs", "4"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {
@@ -115,7 +116,7 @@ TEST(Config, GetAndSet) {
       {"pidfile", "test.pid"},
       {"supervised", "no"},
       {"rocksdb.block_size", "1234"},
-      {"rocksdb.max_background_flushes", "16"},
+      {"rocksdb.max_background_flushes", "-1"},
       {"rocksdb.wal_ttl_seconds", "10000"},
       {"rocksdb.wal_size_limit_mb", "16"},
       {"rocksdb.enable_pipelined_write", "no"},
@@ -142,7 +143,7 @@ TEST(Config, GetRenameCommand) {
   output_file << "rename-command SET SET_NEW"
               << "\n";
   output_file.close();
-  Redis::ResetCommands();
+  redis::ResetCommands();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   std::vector<std::string> values;
@@ -168,12 +169,12 @@ TEST(Config, Rewrite) {
               << "\n";
   output_file.close();
 
-  Redis::ResetCommands();
+  redis::ResetCommands();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite().IsOK());
   // Need to re-populate the command table since it has renamed by the previous
-  Redis::ResetCommands();
+  redis::ResetCommands();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);

@@ -24,7 +24,7 @@
 #include "error_constants.h"
 #include "parse_util.h"
 
-namespace Redis {
+namespace redis {
 
 inline constexpr const char *kCursorPrefix = "_";
 
@@ -32,9 +32,9 @@ class CommandScanBase : public Commander {
  public:
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {
     if (type == "match") {
-      prefix = std::move(value);
-      if (!prefix.empty() && prefix[prefix.size() - 1] == '*') {
-        prefix = prefix.substr(0, prefix.size() - 1);
+      prefix_ = std::move(value);
+      if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
+        prefix_ = prefix_.substr(0, prefix_.size() - 1);
         return Status::OK();
       }
 
@@ -45,8 +45,8 @@ class CommandScanBase : public Commander {
         return {Status::RedisParseErr, "count param should be type int"};
       }
 
-      limit = *parse_result;
-      if (limit <= 0) {
+      limit_ = *parse_result;
+      if (limit_ <= 0) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
@@ -55,31 +55,31 @@ class CommandScanBase : public Commander {
   }
 
   void ParseCursor(const std::string &param) {
-    cursor = param;
-    if (cursor == "0") {
-      cursor = std::string();
+    cursor_ = param;
+    if (cursor_ == "0") {
+      cursor_ = std::string();
     } else {
-      cursor = cursor.find(kCursorPrefix) == 0 ? cursor.substr(strlen(kCursorPrefix)) : cursor;
+      cursor_ = cursor_.find(kCursorPrefix) == 0 ? cursor_.substr(strlen(kCursorPrefix)) : cursor_;
     }
   }
 
   std::string GenerateOutput(const std::vector<std::string> &keys) const {
     std::vector<std::string> list;
-    if (keys.size() == static_cast<size_t>(limit)) {
-      list.emplace_back(Redis::BulkString(keys.back()));
+    if (keys.size() == static_cast<size_t>(limit_)) {
+      list.emplace_back(redis::BulkString(keys.back()));
     } else {
-      list.emplace_back(Redis::BulkString("0"));
+      list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(Redis::MultiBulkString(keys, false));
+    list.emplace_back(redis::MultiBulkString(keys, false));
 
-    return Redis::Array(list);
+    return redis::Array(list);
   }
 
  protected:
-  std::string cursor;
-  std::string prefix;
-  int limit = 20;
+  std::string cursor_;
+  std::string prefix_;
+  int limit_ = 20;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {
@@ -91,17 +91,17 @@ class CommandSubkeyScanBase : public CommandScanBase {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    key = args[1];
+    key_ = args[1];
     ParseCursor(args[2]);
     if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[3]), args_[4]);
+      Status s = ParseMatchAndCountParam(util::ToLower(args[3]), args_[4]);
       if (!s.IsOK()) {
         return s;
       }
     }
 
     if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(Util::ToLower(args[5]), args_[6]);
+      Status s = ParseMatchAndCountParam(util::ToLower(args[5]), args_[6]);
       if (!s.IsOK()) {
         return s;
       }
@@ -112,10 +112,10 @@ class CommandSubkeyScanBase : public CommandScanBase {
   std::string GenerateOutput(const std::vector<std::string> &fields, const std::vector<std::string> &values) {
     std::vector<std::string> list;
     auto items_count = fields.size();
-    if (items_count == static_cast<size_t>(limit)) {
-      list.emplace_back(Redis::BulkString(fields.back()));
+    if (items_count == static_cast<size_t>(limit_)) {
+      list.emplace_back(redis::BulkString(fields.back()));
     } else {
-      list.emplace_back(Redis::BulkString("0"));
+      list.emplace_back(redis::BulkString("0"));
     }
     std::vector<std::string> fvs;
     if (items_count > 0) {
@@ -124,12 +124,12 @@ class CommandSubkeyScanBase : public CommandScanBase {
         fvs.emplace_back(values[i]);
       }
     }
-    list.emplace_back(Redis::MultiBulkString(fvs, false));
-    return Redis::Array(list);
+    list.emplace_back(redis::MultiBulkString(fvs, false));
+    return redis::Array(list);
   }
 
  protected:
-  std::string key;
+  std::string key_;
 };
 
-}  // namespace Redis
+}  // namespace redis

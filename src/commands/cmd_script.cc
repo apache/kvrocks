@@ -24,14 +24,14 @@
 #include "server/server.h"
 #include "storage/scripting.h"
 
-namespace Redis {
+namespace redis {
 
 template <bool evalsha, bool read_only>
 class CommandEvalImpl : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (evalsha && args_[1].size() != 40) {
-      *output = Redis::Error(errNoMatchingScript);
+      *output = redis::Error(errNoMatchingScript);
       return Status::OK();
     }
 
@@ -42,7 +42,7 @@ class CommandEvalImpl : public Commander {
       return {Status::NotOK, "Number of keys can't be negative"};
     }
 
-    return Lua::evalGenericCommand(
+    return lua::EvalGenericCommand(
         conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
         std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), evalsha, output, read_only);
   }
@@ -59,7 +59,7 @@ class CommandEvalSHARO : public CommandEvalImpl<true, true> {};
 class CommandScript : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    subcommand_ = Util::ToLower(args[1]);
+    subcommand_ = util::ToLower(args[1]);
     return Status::OK();
   }
 
@@ -73,29 +73,29 @@ class CommandScript : public Commander {
 
     if (args_.size() == 2 && subcommand_ == "flush") {
       svr->ScriptFlush();
-      auto s = svr->Propagate(Engine::kPropagateScriptCommand, args_);
+      auto s = svr->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s.IsOK()) {
         LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
         return s;
       }
-      *output = Redis::SimpleString("OK");
+      *output = redis::SimpleString("OK");
     } else if (args_.size() >= 2 && subcommand_ == "exists") {
-      *output = Redis::MultiLen(args_.size() - 2);
+      *output = redis::MultiLen(args_.size() - 2);
       for (size_t j = 2; j < args_.size(); j++) {
         if (svr->ScriptExists(args_[j]).IsOK()) {
-          *output += Redis::Integer(1);
+          *output += redis::Integer(1);
         } else {
-          *output += Redis::Integer(0);
+          *output += redis::Integer(0);
         }
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = Lua::createFunction(svr, args_[2], &sha, svr->Lua(), true);
+      auto s = lua::CreateFunction(svr, args_[2], &sha, svr->Lua(), true);
       if (!s.IsOK()) {
         return s;
       }
 
-      *output = Redis::BulkString(sha);
+      *output = redis::BulkString(sha);
     } else {
       return {Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args"};
     }
@@ -120,4 +120,4 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no
                                                       GetScriptEvalKeyRange),
                         MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
 
-}  // namespace Redis
+}  // namespace redis

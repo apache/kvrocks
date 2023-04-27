@@ -34,12 +34,12 @@
 #include "io_util.h"
 #include "server/redis_reply.h"
 
-void send_string_to_event(bufferevent *bev, const std::string &data) {
+void SendStringToEvent(bufferevent *bev, const std::string &data) {
   auto output = bufferevent_get_output(bev);
   evbuffer_add(output, data.c_str(), data.length());
 }
 
-Sync::Sync(Engine::Storage *storage, Writer *writer, Parser *parser, Kvrocks2redis::Config *config)
+Sync::Sync(engine::Storage *storage, Writer *writer, Parser *parser, kvrocks2redis::Config *config)
     : storage_(storage), writer_(writer), parser_(parser), config_(config) {}
 
 Sync::~Sync() {
@@ -64,7 +64,7 @@ void Sync::Start() {
 
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    auto sock_fd = Util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
+    auto sock_fd = util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
     if (!sock_fd) {
       LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host,
                                 config_->kvrocks_port, sock_fd.Msg());
@@ -107,10 +107,10 @@ void Sync::Stop() {
 Status Sync::auth() {
   // Send auth when needed
   if (!config_->kvrocks_auth.empty()) {
-    const auto auth_command = Redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
-    auto s = Util::SockSend(sock_fd_, auth_command);
+    const auto auth_command = redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
+    auto s = util::SockSend(sock_fd_, auth_command);
     if (!s) return s.Prefixed("send auth command err");
-    std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
+    std::string line = GET_OR_RET(util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
     if (line.compare(0, 3, "+OK") != 0) {
       return {Status::NotOK, "auth got invalid response"};
     }
@@ -123,10 +123,10 @@ Status Sync::tryPSync() {
   const auto seq_str = std::to_string(next_seq_);
   const auto seq_len_str = std::to_string(seq_str.length());
   const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
-  auto s = Util::SockSend(sock_fd_, cmd_str);
+  auto s = util::SockSend(sock_fd_, cmd_str);
   LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
   if (!s) return s.Prefixed("send psync command err");
-  std::string line = GET_OR_RET(Util::SockReadLine(sock_fd_).Prefixed("read psync response err"));
+  std::string line = GET_OR_RET(util::SockReadLine(sock_fd_).Prefixed("read psync response err"));
 
   if (line.compare(0, 3, "+OK") != 0) {
     if (next_seq_ > 0) {
@@ -182,7 +182,7 @@ Status Sync::incrementBatchLoop() {
           int count = static_cast<int>(bat.Count());
           auto s = parser_->ParseWriteBatch(bulk_data_str);
           if (!s.IsOK()) {
-            return s.Prefixed(fmt::format("failed to parse write batch '{}'", Util::StringToHex(bulk_data_str)));
+            return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(bulk_data_str)));
           }
 
           s = updateNextSeq(next_seq_ + count);
@@ -254,5 +254,5 @@ Status Sync::writeNextSeqToFile(rocksdb::SequenceNumber seq) const {
     seq_string += " ";
   }
   seq_string += '\0';
-  return Util::Pwrite(next_seq_fd_, seq_string, 0);
+  return util::Pwrite(next_seq_fd_, seq_string, 0);
 }

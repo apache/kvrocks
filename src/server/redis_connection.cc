@@ -37,11 +37,11 @@
 #include "tls_util.h"
 #include "worker.h"
 
-namespace Redis {
+namespace redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
-    : need_free_bev_(true), bev_(bev), req_(owner->svr_), owner_(owner), svr_(owner->svr_) {
-  int64_t now = Util::GetTimeStamp();
+    : need_free_bev_(true), bev_(bev), req_(owner->svr), owner_(owner), svr_(owner->svr) {
+  int64_t now = util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
 }
@@ -67,7 +67,7 @@ std::string Connection::ToString() {
 }
 
 void Connection::Close() {
-  if (close_cb_) close_cb_(GetFD());
+  if (close_cb) close_cb(GetFD());
   owner_->FreeConnection(this);
 }
 
@@ -80,8 +80,8 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
   conn->SetLastInteraction();
   auto s = conn->req_.Tokenize(conn->Input());
   if (!s.IsOK()) {
-    conn->EnableFlag(Redis::Connection::kCloseAfterReply);
-    conn->Reply(Redis::Error(s.Msg()));
+    conn->EnableFlag(redis::Connection::kCloseAfterReply);
+    conn->Reply(redis::Error(s.Msg()));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -125,8 +125,8 @@ void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->svr_->stats_.IncrOutbondBytes(msg.size());
-  Redis::Reply(bufferevent_get_output(bev_), msg);
+  owner_->svr->stats.IncrOutbondBytes(msg.size());
+  redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
 void Connection::SendFile(int fd) {
@@ -141,11 +141,11 @@ void Connection::SetAddr(std::string ip, uint32_t port) {
   addr_ = ip_ + ":" + std::to_string(port_);
 }
 
-uint64_t Connection::GetAge() const { return static_cast<uint64_t>(Util::GetTimeStamp() - create_time_); }
+uint64_t Connection::GetAge() const { return static_cast<uint64_t>(util::GetTimeStamp() - create_time_); }
 
-void Connection::SetLastInteraction() { last_interaction_ = Util::GetTimeStamp(); }
+void Connection::SetLastInteraction() { last_interaction_ = util::GetTimeStamp(); }
 
-uint64_t Connection::GetIdleTime() const { return static_cast<uint64_t>(Util::GetTimeStamp() - last_interaction_); }
+uint64_t Connection::GetIdleTime() const { return static_cast<uint64_t>(util::GetTimeStamp() - last_interaction_); }
 
 // Currently, master connection is not handled in connection
 // but in replication thread.
@@ -184,20 +184,20 @@ void Connection::SubscribeChannel(const std::string &channel) {
   }
 
   subscribe_channels_.emplace_back(channel);
-  owner_->svr_->SubscribeChannel(channel, this);
+  owner_->svr->SubscribeChannel(channel, this);
 }
 
 void Connection::UnsubscribeChannel(const std::string &channel) {
   for (auto iter = subscribe_channels_.begin(); iter != subscribe_channels_.end(); iter++) {
     if (*iter == channel) {
       subscribe_channels_.erase(iter);
-      owner_->svr_->UnsubscribeChannel(channel, this);
+      owner_->svr->UnsubscribeChannel(channel, this);
       return;
     }
   }
 }
 
-void Connection::UnsubscribeAll(const unsubscribe_callback &reply) {
+void Connection::UnsubscribeAll(const UnsubscribeCallback &reply) {
   if (subscribe_channels_.empty()) {
     if (reply) reply("", static_cast<int>(subscribe_patterns_.size()));
     return;
@@ -205,7 +205,7 @@ void Connection::UnsubscribeAll(const unsubscribe_callback &reply) {
 
   int removed = 0;
   for (const auto &chan : subscribe_channels_) {
-    owner_->svr_->UnsubscribeChannel(chan, this);
+    owner_->svr->UnsubscribeChannel(chan, this);
     removed++;
     if (reply) {
       reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subscribe_patterns_.size()));
@@ -221,20 +221,20 @@ void Connection::PSubscribeChannel(const std::string &pattern) {
     if (pattern == p) return;
   }
   subscribe_patterns_.emplace_back(pattern);
-  owner_->svr_->PSubscribeChannel(pattern, this);
+  owner_->svr->PSubscribeChannel(pattern, this);
 }
 
 void Connection::PUnsubscribeChannel(const std::string &pattern) {
   for (auto iter = subscribe_patterns_.begin(); iter != subscribe_patterns_.end(); iter++) {
     if (*iter == pattern) {
       subscribe_patterns_.erase(iter);
-      owner_->svr_->PUnsubscribeChannel(pattern, this);
+      owner_->svr->PUnsubscribeChannel(pattern, this);
       return;
     }
   }
 }
 
-void Connection::PUnsubscribeAll(const unsubscribe_callback &reply) {
+void Connection::PUnsubscribeAll(const UnsubscribeCallback &reply) {
   if (subscribe_patterns_.empty()) {
     if (reply) reply("", static_cast<int>(subscribe_channels_.size()));
     return;
@@ -242,7 +242,7 @@ void Connection::PUnsubscribeAll(const unsubscribe_callback &reply) {
 
   int removed = 0;
   for (const auto &pattern : subscribe_patterns_) {
-    owner_->svr_->PUnsubscribeChannel(pattern, this);
+    owner_->svr->PUnsubscribeChannel(pattern, this);
     removed++;
     if (reply) {
       reply(pattern, static_cast<int>(subscribe_patterns_.size() - removed + subscribe_channels_.size()));
@@ -253,7 +253,7 @@ void Connection::PUnsubscribeAll(const unsubscribe_callback &reply) {
 
 int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patterns_.size()); }
 
-bool Connection::isProfilingEnabled(const std::string &cmd) {
+bool Connection::IsProfilingEnabled(const std::string &cmd) {
   auto config = svr_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;
 
@@ -272,7 +272,7 @@ bool Connection::isProfilingEnabled(const std::string &cmd) {
   return false;
 }
 
-void Connection::recordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
+void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
   int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
   if (threshold > 0 && static_cast<int>(duration / 1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
@@ -300,19 +300,19 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();
 
-    if (IsFlagEnabled(Redis::Connection::kCloseAfterReply) && !IsFlagEnabled(Connection::kMultiExec)) break;
+    if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !IsFlagEnabled(Connection::kMultiExec)) break;
 
-    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
+    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR unknown command " + cmd_tokens.front()));
+      Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
       continue;
     }
 
     if (GetNamespace().empty()) {
-      if (!password.empty() && Util::ToLower(cmd_tokens.front()) != "auth" &&
-          Util::ToLower(cmd_tokens.front()) != "hello") {
-        Reply(Redis::Error("NOAUTH Authentication required."));
+      if (!password.empty() && util::ToLower(cmd_tokens.front()) != "auth" &&
+          util::ToLower(cmd_tokens.front()) != "hello") {
+        Reply(redis::Error("NOAUTH Authentication required."));
         continue;
       }
 
@@ -322,7 +322,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
     }
 
-    const auto attributes = current_cmd_->GetAttributes();
+    const auto attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
@@ -333,7 +333,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
-    } else if (attributes->is_exclusive() ||
+    } else if (attributes->IsExclusive() ||
                (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
                (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") &&
                 cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
@@ -351,8 +351,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       svr_->SetCurrentConnection(this);
     }
 
-    if (svr_->IsLoading() && !attributes->is_ok_loading()) {
-      Reply(Redis::Error("LOADING kvrocks is restoring the db from backup"));
+    if (svr_->IsLoading() && !attributes->IsOkLoading()) {
+      Reply(redis::Error("LOADING kvrocks is restoring the db from backup"));
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
       continue;
     }
@@ -361,66 +361,66 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR wrong number of arguments"));
+      Reply(redis::Error("ERR wrong number of arguments"));
       continue;
     }
 
-    current_cmd_->SetArgs(cmd_tokens);
-    s = current_cmd_->Parse();
+    current_cmd->SetArgs(cmd_tokens);
+    s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-      Reply(Redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error("ERR " + s.Msg()));
       continue;
     }
 
-    if (IsFlagEnabled(Connection::kMultiExec) && attributes->is_no_multi()) {
+    if (IsFlagEnabled(Connection::kMultiExec) && attributes->IsNoMulti()) {
       std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
-      Reply(Redis::Error(no_multi_err));
+      Reply(redis::Error(no_multi_err));
       multi_error_ = true;
       continue;
     }
 
     if (config->cluster_enabled) {
-      s = svr_->cluster_->CanExecByMySelf(attributes, cmd_tokens, this);
+      s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-        Reply(Redis::Error(s.Msg()));
+        Reply(redis::Error(s.Msg()));
         continue;
       }
     }
 
     // We don't execute commands, but queue them, ant then execute in EXEC command
-    if (IsFlagEnabled(Connection::kMultiExec) && !in_exec_ && !attributes->is_multi()) {
+    if (IsFlagEnabled(Connection::kMultiExec) && !in_exec_ && !attributes->IsMulti()) {
       multi_cmds_.emplace_back(cmd_tokens);
-      Reply(Redis::SimpleString("QUEUED"));
+      Reply(redis::SimpleString("QUEUED"));
       continue;
     }
 
-    if (config->slave_readonly && svr_->IsSlave() && attributes->is_write()) {
-      Reply(Redis::Error("READONLY You can't write against a read only slave."));
+    if (config->slave_readonly && svr_->IsSlave() && attributes->IsWrite()) {
+      Reply(redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
 
     if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         svr_->GetReplicationState() != kReplConnected) {
       Reply(
-          Redis::Error("MASTERDOWN Link with MASTER is down "
+          redis::Error("MASTERDOWN Link with MASTER is down "
                        "and slave-serve-stale-data is set to 'no'."));
       continue;
     }
 
     SetLastCmd(cmd_name);
-    svr_->stats_.IncrCalls(cmd_name);
+    svr_->stats.IncrCalls(cmd_name);
 
     auto start = std::chrono::high_resolution_clock::now();
-    bool is_profiling = isProfilingEnabled(cmd_name);
-    s = current_cmd_->Execute(svr_, this, &reply);
+    bool is_profiling = IsProfilingEnabled(cmd_name);
+    s = current_cmd->Execute(svr_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    if (is_profiling) recordProfilingSampleIfNeed(cmd_name, duration);
+    if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
 
     svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration);
-    svr_->stats_.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+    svr_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
@@ -431,7 +431,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Reply for MULTI
     if (!s.IsOK()) {
-      Reply(Redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error("ERR " + s.Msg()));
       continue;
     }
 
@@ -449,4 +449,4 @@ void Connection::ResetMultiExec() {
   DisableFlag(Connection::kMultiExec);
 }
 
-}  // namespace Redis
+}  // namespace redis

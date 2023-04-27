@@ -26,17 +26,17 @@
 #include "rocksdb/iterator.h"
 #include "storage/storage.h"
 
-namespace DBUtil {
+namespace util {
 
 struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
-  using base_type = std::unique_ptr<rocksdb::Iterator>;
+  using BaseType = std::unique_ptr<rocksdb::Iterator>;
 
-  explicit UniqueIterator(rocksdb::Iterator* iter) : base_type(iter) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options,
+  explicit UniqueIterator(rocksdb::Iterator* iter) : BaseType(iter) {}
+  UniqueIterator(engine::Storage* storage, const rocksdb::ReadOptions& options,
                  rocksdb::ColumnFamilyHandle* column_family)
-      : base_type(storage->NewIterator(options, column_family)) {}
-  UniqueIterator(Engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : base_type(storage->NewIterator(options)) {}
+      : BaseType(storage->NewIterator(options, column_family)) {}
+  UniqueIterator(engine::Storage* storage, const rocksdb::ReadOptions& options)
+      : BaseType(storage->NewIterator(options)) {}
 };
 
-}  // namespace DBUtil
+}  // namespace util

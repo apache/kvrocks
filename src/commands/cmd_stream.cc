@@ -106,11 +106,12 @@ class CommandXAdd : public Commander {
       }
 
       if (!entry_id_found) {
-        try {
-          next_id_strategy_ = ParseNextStreamEntryIDStrategy(val);
-        } catch (const std::invalid_argument &e) {
-          return {Status::RedisParseErr, e.what()};
+        auto result = ParseNextStreamEntryIDStrategy(val);
+        if (!result.IsOK()) {
+          return {Status::RedisParseErr, result.Msg()};
         }
+
+        next_id_strategy_ = std::move(*result);
 
         entry_id_found = true;
         ++i;

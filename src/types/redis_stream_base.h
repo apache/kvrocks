@@ -176,7 +176,7 @@ struct StreamReadResult {
 
 Status IncrementStreamEntryID(StreamEntryID *id);
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id);
-std::unique_ptr<NextStreamEntryIDGenerationStrategy> ParseNextStreamEntryIDStrategy(const std::string &input);
+StatusOr<std::unique_ptr<NextStreamEntryIDGenerationStrategy>> ParseNextStreamEntryIDStrategy(const std::string &input);
 
 Status ParseRangeStart(const std::string &input, StreamEntryID *id);
 Status ParseRangeEnd(const std::string &input, StreamEntryID *id);

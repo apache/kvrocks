@@ -190,7 +190,7 @@ TEST_F(RedisDiskTest, StreamDisk) {
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_stream");
   key_ = "streamdisk_key";
   redis::StreamAddOptions options;
-  options.with_entry_id = false;
+  options.next_id_strategy = *redis::ParseNextStreamEntryIDStrategy("*");
   redis::StreamEntryID id;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {

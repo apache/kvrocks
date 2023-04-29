@@ -32,10 +32,6 @@ namespace redis {
 
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
-const char *errEntryIdOutOfRange = "The ID specified in XADD must be greater than 0-0";
-const char *errStreamExhaustedEntryId = "The stream has exhausted the last possible ID, unable to add more items";
-const char *errAddEntryIdSmallerThanLastGenerated =
-    "The ID specified in XADD is equal or smaller than the target stream top item";
 const char *errEntriesAddedSmallerThanStreamSize =
     "The entries_added specified in XSETID is smaller than the target stream length";
 const char *errMaxDeletedIdGreaterThanLastGenerated =
@@ -108,11 +104,9 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
     return s;
   }
 
-  bool first_entry = s.IsNotFound();
-
   StreamEntryID next_entry_id;
-  s = getNextEntryID(metadata, options, first_entry, &next_entry_id);
-  if (!s.ok()) return s;
+  auto status = options.next_id_strategy->GenerateID(metadata.last_generated_id, &next_entry_id);
+  if (!status.IsOK()) return rocksdb::Status::InvalidArgument(status.Msg());
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
@@ -167,56 +161,6 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   *id = next_entry_id;
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-}
-
-rocksdb::Status Stream::getNextEntryID(const StreamMetadata &metadata, const StreamAddOptions &options,
-                                       bool first_entry, StreamEntryID *next_entry_id) {
-  if (options.with_entry_id) {
-    if (options.entry_id.ms == 0 && !options.entry_id.any_seq_number && options.entry_id.seq == 0) {
-      return rocksdb::Status::InvalidArgument(errEntryIdOutOfRange);
-    }
-
-    if (metadata.last_generated_id.ms == UINT64_MAX && metadata.last_generated_id.seq == UINT64_MAX) {
-      return rocksdb::Status::InvalidArgument(errStreamExhaustedEntryId);
-    }
-
-    if (!first_entry) {
-      if (metadata.last_generated_id.ms > options.entry_id.ms) {
-        return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
-      }
-
-      if (metadata.last_generated_id.ms == options.entry_id.ms) {
-        if (!options.entry_id.any_seq_number && metadata.last_generated_id.seq >= options.entry_id.seq) {
-          return rocksdb::Status::InvalidArgument(errAddEntryIdSmallerThanLastGenerated);
-        }
-
-        if (options.entry_id.any_seq_number && metadata.last_generated_id.seq == UINT64_MAX) {
-          return rocksdb::Status::InvalidArgument(
-              "Elements are too large to be stored");  // Redis responds with exactly this message
-        }
-      }
-
-      if (options.entry_id.any_seq_number) {
-        if (options.entry_id.ms == metadata.last_generated_id.ms) {
-          next_entry_id->seq = metadata.last_generated_id.seq + 1;
-        } else {
-          next_entry_id->seq = 0;
-        }
-      } else {
-        next_entry_id->seq = options.entry_id.seq;
-      }
-    } else {
-      if (options.entry_id.any_seq_number) {
-        next_entry_id->seq = options.entry_id.ms != 0 ? 0 : 1;
-      } else {
-        next_entry_id->seq = options.entry_id.seq;
-      }
-    }
-    next_entry_id->ms = options.entry_id.ms;
-    return rocksdb::Status::OK();
-  } else {
-    return GetNextStreamEntryID(metadata.last_generated_id, next_entry_id);
-  }
 }
 
 rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const std::vector<StreamEntryID> &ids,

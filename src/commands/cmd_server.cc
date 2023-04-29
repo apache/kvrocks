@@ -657,7 +657,11 @@ class CommandTime : public Commander {
   }
 };
 
-/* HELLO [<protocol-version> [AUTH <password>] [SETNAME <name>] ] */
+/*
+ * HELLO [<protocol-version> [AUTH [<password>|<username> <password>]] [SETNAME <name>] ]
+ *   Note that the <username> should always be `default` if provided otherwise AUTH fails.
+ *   And it is only meant to be aligning syntax with Redis HELLO.
+ */
 class CommandHello final : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -683,7 +687,13 @@ class CommandHello final : public Commander {
     for (; next_arg < args_.size(); ++next_arg) {
       size_t more_args = args_.size() - next_arg - 1;
       const std::string &opt = args_[next_arg];
-      if (opt == "AUTH" && more_args != 0) {
+      if (util::ToLower(opt) == "auth" && more_args != 0) {
+        if (more_args == 2 || more_args == 4) {
+          if (args_[next_arg + 1] != "default") {
+            return {Status::NotOK, "invalid password"};
+          }
+          next_arg++;
+        }
         const auto &user_password = args_[next_arg + 1];
         auto auth_result = AuthenticateUser(conn, svr->GetConfig(), user_password);
         switch (auth_result) {
@@ -695,7 +705,7 @@ class CommandHello final : public Commander {
             break;
         }
         next_arg += 1;
-      } else if (opt == "SETNAME" && more_args != 0) {
+      } else if (util::ToLower(opt) == "setname" && more_args != 0) {
         const std::string &name = args_[next_arg + 1];
         conn->SetName(name);
         next_arg += 1;

@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/go-redis/redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,6 +91,11 @@ func TestHelloWithAuth(t *testing.T) {
 		require.ErrorContains(t, r.Err(), "invalid password")
 	})
 
+	t.Run("AUTH fails when a wrong username is given", func(t *testing.T) {
+		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "wrong!", "foobar")
+		require.ErrorContains(t, r.Err(), "invalid password")
+	})
+
 	t.Run("Arbitrary command gives an error when AUTH is required", func(t *testing.T) {
 		r := rdb.Set(ctx, "foo", "bar", 0)
 		require.ErrorContains(t, r.Err(), "NOAUTH Authentication required.")
@@ -97,6 +103,11 @@ func TestHelloWithAuth(t *testing.T) {
 
 	t.Run("AUTH succeeds when the right password is given", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "foobar")
+		t.Log(r)
+	})
+
+	t.Run("AUTH succeeds when the right username and password are given", func(t *testing.T) {
+		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "default", "foobar")
 		t.Log(r)
 	})
 
@@ -113,5 +124,31 @@ func TestHelloWithAuth(t *testing.T) {
 
 		r = rdb.Do(ctx, "CLIENT", "GETNAME")
 		require.EqualValues(t, r.Val(), "kvrocks")
+	})
+
+	t.Run("hello with non protocol", func(t *testing.T) {
+		r := rdb.Do(ctx, "HELLO", "2", "AUTH", "default", "foobar", "SETNAME", "kvrocks")
+		rList := r.Val().([]interface{})
+		require.EqualValues(t, rList[2], "proto")
+		require.EqualValues(t, rList[3], 2)
+
+		r = rdb.Do(ctx, "CLIENT", "GETNAME")
+		require.EqualValues(t, r.Val(), "kvrocks")
+	})
+}
+
+func TestHelloWithAuthByGoRedis(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "foobar",
+	})
+	defer srv.Close()
+
+	t.Run("hello with auth sent by go-redis", func(t *testing.T) {
+		rdb := srv.NewClientWithOption(&redis.Options{
+			Password: "foobar",
+		})
+		defer func() { require.NoError(t, rdb.Close()) }()
+
+		require.Equal(t, "PONG", rdb.Ping(context.Background()).Val())
 	})
 }

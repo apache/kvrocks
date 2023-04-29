@@ -199,7 +199,9 @@ if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
 endif()
 if(ENABLE_NEW_ENCODING)
-    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_NEW_ENCODING)
+    target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=1)
+else()
+    target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=0)
 endif()
 
 # disable LTO on GCC <= 9 due to an ICE

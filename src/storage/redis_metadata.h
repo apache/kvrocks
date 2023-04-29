@@ -29,7 +29,7 @@
 #include "encoding.h"
 #include "types/redis_stream_base.h"
 
-constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = KVROCKS_ENCODING_VERSION != 0;
+constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
 enum RedisType {
   kRedisNone,

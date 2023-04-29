@@ -836,4 +836,33 @@ func TestStreamOffset(t *testing.T) {
 		r = rdb.XInfoStreamFull(ctx, "x", 0).Val()
 		require.Equal(t, "2-0", r.MaxDeletedEntryID)
 	})
+
+	t.Run("XADD with custom sequence number and timestamp set by the server", func(t *testing.T) {
+		streamName := "test-stream-1"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+
+		now := time.Now().UTC().UnixMilli()
+		providedSeqNum := 123456789
+		r, err := rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     fmt.Sprintf("*-%d", providedSeqNum),
+			Values: []string{"data", fmt.Sprintf("value-%d", providedSeqNum)},
+		}).Result()
+
+		require.NoError(t, err)
+
+		ts, seqNum := parseStreamEntryID(r)
+		require.GreaterOrEqual(t, ts, now)
+		require.Less(t, ts, now+5_000)
+		require.EqualValues(t, providedSeqNum, seqNum)
+	})
+}
+
+func parseStreamEntryID(id string) (ts int64, seqNum int64) {
+	values := strings.Split(id, "-")
+
+	ts, _ = strconv.ParseInt(values[0], 10, 64)
+	seqNum, _ = strconv.ParseInt(values[1], 10, 64)
+
+	return
 }

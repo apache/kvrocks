@@ -37,6 +37,10 @@ WORKDIR /kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
+ARG TARGETARCH
+COPY tools/redis-cli-${TARGETARCH} /usr/bin/redis-cli
+RUN chmod a+x /usr/bin/redis-cli
+
 VOLUME /var/lib/kvrocks
 
 COPY ./LICENSE ./NOTICE ./DISCLAIMER ./

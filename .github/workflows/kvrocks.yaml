@@ -265,6 +265,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      - name: Mock redis-cli
+        run: mkdir tools && touch tools/redis-cli-amd64  
       - uses: docker/build-push-action@v3
         with:
           context: .

@@ -24,63 +24,12 @@ on:
     paths: ['.github/workflows/nightly.yaml']
 
 jobs:
-  build-redis-cli:
-    name: build redis cli for ${{ matrix.arch }}
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    steps:
-      - name: Cache redis-cli
-        id: cache-redis-cli
-        uses: actions/cache@v3
-        with:
-          path: |
-            ${{ github.workspace }}/redis-cli-${{ matrix.arch }}
-          key: redis-cli-${{ matrix.arch }}
-
-      - name: Install redis-cli
-        if: steps.cache-redis-cli.outputs.cache-hit != 'true'
-        run: |
-          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
-          tar -xzvf redis-6.2.7.tar.gz
-          mkdir -p $HOME/local/bin
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-            pushd redis-6.2.7 && make CC=aarch64-linux-gnu-gcc MALLOC=libc -j$NPROC redis-cli && mv src/redis-cli ${{ github.workspace }}/redis-cli-${{ matrix.arch }} && popd
-          fi
-          if [ "${{ matrix.arch }}" == "amd64" ]; then
-            pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli ${{ github.workspace }}/redis-cli-${{ matrix.arch }} && popd
-          fi
-
-      - name: Upload redis-cli artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: redis-cli-${{ matrix.arch }}
-          path: ${{ github.workspace }}/redis-cli-${{ matrix.arch }}
-
   publish-nightly-docker-image:
     name: Publish nightly Docker image
-    needs: build-redis-cli
     runs-on: ubuntu-20.04
     steps:
+
       - uses: actions/checkout@v3
-      - name: Make tools directory
-        run: |
-          mkdir tools
-
-      - name: Download redis-cli-arm64 artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: redis-cli-arm64
-          path: tools
-
-      - name: Download redis-cli-amd64 artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: redis-cli-amd64
-          path: tools
-
       - name: Login Docker Hub
         if: (github.event_name != 'pull_request')
         uses: docker/login-action@v1
@@ -97,7 +46,7 @@ jobs:
 
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
-
+      
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 

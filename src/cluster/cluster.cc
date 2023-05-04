@@ -291,7 +291,8 @@ Status Cluster::SetSlotImported(int slot) {
   return Status::OK();
 }
 
-Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
+Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id,
+                            const std::shared_ptr<SyncMigrateContext> &blocking_ctx) {
   if (nodes_.find(dst_node_id) == nodes_.end()) {
     return {Status::NotOK, "Can't find the destination node id"};
   }
@@ -316,10 +317,8 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
     return {Status::NotOK, "Can't migrate slot to myself"};
   }
 
-  const auto dst = nodes_[dst_node_id];
-  Status s = svr_->slot_migrator->PerformSlotMigration(
-      dst_node_id, dst->host, dst->port, slot, svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
-      svr_->GetConfig()->sequence_gap);
+  const auto &dst = nodes_[dst_node_id];
+  Status s = svr_->slot_migrator->PerformSlotMigration(dst_node_id, dst->host, dst->port, slot, blocking_ctx);
   return s;
 }
 

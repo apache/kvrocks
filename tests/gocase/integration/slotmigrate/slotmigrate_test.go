@@ -418,8 +418,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, util.SlotTable[slot]).Val())
 	})
 
-	t.Run("MIGRATE - Slot migrate all types of existing data", func(t *testing.T) {
-		slot := 1
+	migrateAllTypes := func(t *testing.T, sync bool, slot int) {
 		keys := make(map[string]string, 0)
 		for _, typ := range []string{"string", "expired_string", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {
 			keys[typ] = fmt.Sprintf("%s_{%s}", typ, util.SlotTable[slot])
@@ -494,8 +493,12 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, 19, streamInfo.Length)
 
 		// migrate slot 1, all keys above are belong to slot 1
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
-		waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
+		if !sync {
+			require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
+			waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
+		} else {
+			require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync").Val())
+		}
 
 		// check destination data
 		// type string
@@ -540,6 +543,14 @@ func TestSlotMigrateDataType(t *testing.T) {
 		for _, typ := range []string{"string", "list", "hash", "set", "zset", "bitmap", "sortint", "stream"} {
 			require.ErrorContains(t, rdb0.Exists(ctx, keys[typ]).Err(), "MOVED")
 		}
+	}
+
+	t.Run("MIGRATE - Slot migrate all types of existing data", func(t *testing.T) {
+		migrateAllTypes(t, false, 1)
+	})
+
+	t.Run("MIGRATE - Slot migrate all types of existing data (sync)", func(t *testing.T) {
+		migrateAllTypes(t, true, 2)
 	})
 
 	t.Run("MIGRATE - increment sync stream from WAL", func(t *testing.T) {

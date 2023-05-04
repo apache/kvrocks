@@ -19,6 +19,7 @@
  */
 
 #include "cluster/slot_import.h"
+#include "cluster/sync_migrate_context.h"
 #include "commander.h"
 #include "error_constants.h"
 
@@ -126,11 +127,28 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "setnodeid" && args_.size() == 3 && args_[2].size() == kClusterNodeIdLen) return Status::OK();
 
     if (subcommand_ == "migrate") {
-      if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
+      if (args.size() < 4) return {Status::RedisParseErr, errWrongNumOfArguments};
 
       slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
       dst_node_id_ = args[3];
+
+      if (args.size() >= 5) {
+        auto sync_flag = util::ToLower(args[4]);
+        if (sync_flag == "async") {
+          sync_migrate_ = false;
+        } else if (sync_flag == "sync") {
+          sync_migrate_ = true;
+
+          if (args.size() == 6) {
+            sync_migrate_timeout_ = GET_OR_RET(ParseInt<int64_t>(args[5], 10));
+          } else if (args.size() > 6) {
+            return {Status::RedisParseErr, "Wrong number of arguments for MIGRATE SYNC option"};
+          }
+        } else {
+          return {Status::RedisParseErr, "Invalid sync flag"};
+        }
+      }
       return Status::OK();
     }
 
@@ -230,8 +248,15 @@ class CommandClusterX : public Commander {
       int64_t v = svr->cluster->GetVersion();
       *output = redis::BulkString(std::to_string(v));
     } else if (subcommand_ == "migrate") {
-      Status s = svr->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_);
+      if (sync_migrate_) {
+        sync_migrate_ctx_ = std::make_shared<SyncMigrateContext>(svr, conn, sync_migrate_timeout_);
+      }
+
+      Status s = svr->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_, sync_migrate_ctx_);
       if (s.IsOK()) {
+        if (sync_migrate_) {
+          return {Status::BlockingCmd};
+        }
         *output = redis::SimpleString("OK");
       } else {
         *output = redis::Error(s.Msg());
@@ -253,6 +278,10 @@ class CommandClusterX : public Commander {
   int64_t slot_ = -1;
   int slot_id_ = -1;
   bool force_ = false;
+
+  bool sync_migrate_ = false;
+  int sync_migrate_timeout_ = 0;
+  std::shared_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0),

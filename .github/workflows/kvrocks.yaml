@@ -284,10 +284,12 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
+      - name: Get core numbers
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
       - uses: docker/build-push-action@v3
         with:
           context: .
-          build-args: MORE_BUILD_ARGS=-j$(nproc)
+          build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
 
   required:
     if: always()

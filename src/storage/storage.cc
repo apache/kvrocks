@@ -39,13 +39,13 @@
 #include "compact_filter.h"
 #include "event_listener.h"
 #include "event_util.h"
-#include "fd_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
 #include "time_util.h"
+#include "unique_fd.h"
 
 namespace engine {
 

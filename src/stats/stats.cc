@@ -56,7 +56,7 @@ int64_t Stats::GetMemoryRSS() {
 #include <cstring>
 #include <string>
 
-#include "fd_util.h"
+#include "unique_fd.h"
 
 int64_t Stats::GetMemoryRSS() {
   char buf[4096];

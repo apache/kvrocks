@@ -34,7 +34,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/fd_util.h"
 #include "config.h"
 #include "encoding.h"
 #include "parse_util.h"
@@ -44,6 +43,7 @@
 #include "stats/stats.h"
 #include "status.h"
 #include "storage/redis_db.h"
+#include "unique_fd.h"
 
 enum class MigrationState { kNone = 0, kStarted, kSuccess, kFailed };
 

@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "event_util.h"
 #include "server/redis_connection.h"
 #include "status.h"
 #include "storage/storage.h"
@@ -90,13 +91,15 @@ class FeedSlaveThread {
   void checkLivenessIfNeed();
 };
 
-class ReplicationThread {
+class ReplicationThread : private EventCallbackBase<ReplicationThread> {
  public:
   explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
   Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
   time_t LastIOTime() { return last_io_time_.load(std::memory_order_relaxed); }
+
+  void TimerCB(int, int16_t);
 
  protected:
   event_base *base_ = nullptr;
@@ -200,8 +203,6 @@ class ReplicationThread {
   static bool isRestoringError(const char *err);
   static bool isWrongPsyncNum(const char *err);
   static bool isUnknownOption(const char *err);
-
-  static void eventTimerCb(int, int16_t, void *ctx);
 
   Status parseWriteBatch(const std::string &batch_string);
 };

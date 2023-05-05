@@ -20,12 +20,12 @@
 
 #include "commander.h"
 #include "error_constants.h"
-#include "fd_util.h"
 #include "io_util.h"
 #include "scope_exit.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"
+#include "unique_fd.h"
 
 namespace redis {
 

@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "event_util.h"
 #include "server/server.h"
 #include "types/redis_list.h"
 
@@ -152,19 +153,16 @@ class CommandRPop : public CommandPop {
   CommandRPop() : CommandPop(false) {}
 };
 
-class CommandBPop : public Commander {
+class CommandBPop : public Commander,
+                    private EvbufCallbackBase<CommandBPop, false>,
+                    private EventCallbackBase<CommandBPop> {
  public:
   explicit CommandBPop(bool left) : left_(left) {}
 
   CommandBPop(const CommandBPop &) = delete;
   CommandBPop &operator=(const CommandBPop &) = delete;
 
-  ~CommandBPop() override {
-    if (timer_) {
-      event_free(timer_);
-      timer_ = nullptr;
-    }
-  }
+  ~CommandBPop() override = default;
 
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
@@ -201,12 +199,12 @@ class CommandBPop : public Commander {
       svr_->BlockOnKey(key, conn_);
     }
 
-    bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
+    SetCB(bev);
 
     if (timeout_) {
-      timer_ = evtimer_new(bufferevent_get_base(bev), TimerCB, this);
+      timer_.reset(NewTimer(bufferevent_get_base(bev)));
       timeval tm = {timeout_, 0};
-      evtimer_add(timer_, &tm);
+      evtimer_add(timer_.get(), &tm);
     }
 
     return {Status::BlockingCmd};
@@ -241,9 +239,8 @@ class CommandBPop : public Commander {
     return s;
   }
 
-  static void WriteCB(bufferevent *bev, void *ctx) {
-    auto self = reinterpret_cast<CommandBPop *>(ctx);
-    auto s = self->TryPopFromList();
+  void OnWrite(bufferevent *bev) {
+    auto s = TryPopFromList();
     if (s.IsNotFound()) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
@@ -253,14 +250,12 @@ class CommandBPop : public Commander {
       return;
     }
 
-    if (self->timer_) {
-      event_free(self->timer_);
-      self->timer_ = nullptr;
+    if (timer_) {
+      timer_.reset();
     }
 
-    self->unBlockingAll();
-    bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                      self->conn_);
+    unBlockingAll();
+    conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
     // in connection after the blocking command, so there may have some commands to be processed.
@@ -268,27 +263,22 @@ class CommandBPop : public Commander {
     bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 
-  static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
-    auto self = static_cast<CommandBPop *>(ctx);
+  void OnEvent(bufferevent *bev, int16_t events) {
     if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      if (self->timer_ != nullptr) {
-        event_free(self->timer_);
-        self->timer_ = nullptr;
+      if (timer_ != nullptr) {
+        timer_.reset();
       }
-      self->unBlockingAll();
+      unBlockingAll();
     }
-    redis::Connection::OnEvent(bev, events, self->conn_);
+    conn_->OnEvent(bev, events);
   }
 
-  static void TimerCB(int, int16_t events, void *ctx) {
-    auto self = reinterpret_cast<CommandBPop *>(ctx);
-    self->conn_->Reply(redis::NilString());
-    event_free(self->timer_);
-    self->timer_ = nullptr;
-    self->unBlockingAll();
-    auto bev = self->conn_->GetBufferEvent();
-    bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                      self->conn_);
+  void TimerCB(int, int16_t events) {
+    conn_->Reply(redis::NilString());
+    timer_.reset();
+    unBlockingAll();
+    auto bev = conn_->GetBufferEvent();
+    conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
   }
 
@@ -298,7 +288,7 @@ class CommandBPop : public Commander {
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
-  event *timer_ = nullptr;
+  UniqueEvent timer_;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {

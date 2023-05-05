@@ -34,8 +34,8 @@
 #endif
 
 #include "event_util.h"
-#include "fd_util.h"
 #include "scope_exit.h"
+#include "unique_fd.h"
 
 #ifndef POLLIN
 #define POLLIN 0x0001   /* There is data to read */

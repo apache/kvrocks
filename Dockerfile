@@ -45,7 +45,7 @@ WORKDIR /kvrocks
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 
 COPY --from=build /kvrocks/tools/redis-cli ./bin/
-RUN ln -s /kvrocks/bin/redis-cli /usr/bin/redis-cli
+ENV PATH="$PATH:/kvrocks/bin"
 
 VOLUME /var/lib/kvrocks
 

@@ -23,11 +23,18 @@ ARG MORE_BUILD_ARGS
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
+RUN apt update && apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev curl
 WORKDIR /kvrocks
 
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON $MORE_BUILD_ARGS
+
+RUN curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz && \
+    tar -xzvf redis-6.2.7.tar.gz && \
+    mkdir tools && \
+    cd redis-6.2.7 && \
+    make redis-cli && \
+    mv src/redis-cli /kvrocks/tools/redis-cli
 
 FROM ubuntu:focal
 
@@ -36,6 +43,9 @@ RUN apt update && apt install -y libssl-dev
 WORKDIR /kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks ./bin/
+
+COPY --from=build /kvrocks/tools/redis-cli ./bin/
+ENV PATH="$PATH:/kvrocks/bin"
 
 VOLUME /var/lib/kvrocks
 

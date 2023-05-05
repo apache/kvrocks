@@ -54,6 +54,7 @@ jobs:
     name: Lint and check code
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
+    needs: [precondition]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3

@@ -196,8 +196,6 @@ class Server {
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                   redis::Connection *conn);
 
-  Status VerifyClusterMode() const;
-
   lua_State *Lua() { return lua_; }
   Status ScriptExists(const std::string &sha);
   Status ScriptGet(const std::string &sha, std::string *body) const;

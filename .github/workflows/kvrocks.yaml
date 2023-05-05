@@ -33,8 +33,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  precondition:
+    name: Precondition
+    runs-on: ubuntu-22.04
+    outputs:
+      docs_only: ${{ steps.result.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: .github/config/changes.yml
+          list-files: csv
+      - name: Calculate changes
+        id: result
+        run: |
+          echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
+
   check-and-lint:
     name: Lint and check code
+    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -72,6 +90,7 @@ jobs:
 
   build-and-test:
     name: Build and test
+    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     needs: [check-and-lint]
     strategy:
       fail-fast: false
@@ -259,17 +278,15 @@ jobs:
 
   check-docker:
     name: Check Docker image
+    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     needs: [check-and-lint]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
-      - name: Get core numbers
-        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
       - uses: docker/build-push-action@v3
         with:
           context: .
-          build-args: |
-            MORE_BUILD_ARGS=-j${{ env.NPROC }}
+          build-args: MORE_BUILD_ARGS=-j$(nproc)
 
   required:
     if: always()
@@ -280,6 +297,7 @@ jobs:
       - check-docker
     steps:
       - name: Merge requirement checking
+        if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
           if [[ ! ( \
                    "${{ needs.build-and-test.result }}" == "success" \
@@ -288,3 +306,5 @@ jobs:
             echo "Required jobs haven't been completed successfully."
             exit 1
           fi
+      - name: Sentinel
+        run: true

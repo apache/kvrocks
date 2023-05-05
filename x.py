@@ -216,16 +216,18 @@ def write_version(release_version: str) -> str:
     return version
 
 
-def package_source(release_version: str) -> None:
+def package_source(release_version: str, release_candidate_number: Optional[int]) -> None:
     # 0. Write input version to VERSION file
     version = write_version(release_version)
 
     # 1. Git commit and tag
     git = find_command('git', msg='git is required for source packaging')
     run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
-    run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
-
-
+    if release_candidate_number is None:
+        run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
+    else:
+        run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')
+    
     # 2. Create the source tarball
     folder = f'apache-kvrocks-{version}-incubating-src'
     tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
@@ -354,6 +356,7 @@ if __name__ == '__main__':
     )
     parser_package_source.add_argument('-v', '--release-version', required=True, metavar='VERSION',
                                        help='current releasing version')
+    parser_package_source.add_argument('-rc', '--release-candidate-number',required=False, type=int, help='current releasing candidate number')
     parser_package_source.set_defaults(func=package_source)
 
     parser_test = subparsers.add_parser(

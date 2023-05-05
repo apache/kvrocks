@@ -55,9 +55,9 @@
 Worker::Worker(Server *svr, Config *config) : svr(svr), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
-  timer_ = event_new(base_, -1, EV_PERSIST, timerCb, this);
+  timer_.reset(NewEvent(base_, -1, EV_PERSIST));
   timeval tm = {10, 0};
-  evtimer_add(timer_, &tm);
+  evtimer_add(timer_.get(), &tm);
 
   uint32_t ports[3] = {config->port, config->tls_port, 0};
   auto binds = config->binds;
@@ -89,7 +89,7 @@ Worker::~Worker() {
     iter->Close();
   }
 
-  event_free(timer_);
+  timer_.reset();
   if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
   }
@@ -100,11 +100,10 @@ Worker::~Worker() {
   lua::DestroyState(lua_);
 }
 
-void Worker::timerCb(int, int16_t events, void *ctx) {
-  auto worker = static_cast<Worker *>(ctx);
-  auto config = worker->svr->GetConfig();
+void Worker::TimerCB(int, int16_t events) {
+  auto config = svr->GetConfig();
   if (config->timeout == 0) return;
-  worker->KickoutIdleClients(config->timeout);
+  KickoutIdleClients(config->timeout);
 }
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
@@ -164,7 +163,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   }
 #endif
   auto conn = new redis::Connection(bev, worker);
-  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent, conn);
+  conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
   s = worker->AddConnection(conn);
@@ -200,7 +199,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   bufferevent *bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 
   auto conn = new redis::Connection(bev, worker);
-  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent, conn);
+  conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
   auto s = worker->AddConnection(conn);

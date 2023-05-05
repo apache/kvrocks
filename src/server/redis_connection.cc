@@ -73,53 +73,50 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(struct bufferevent *bev, void *ctx) {
+void Connection::OnRead(struct bufferevent *bev) {
   DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
-  auto conn = static_cast<Connection *>(ctx);
 
-  conn->SetLastInteraction();
-  auto s = conn->req_.Tokenize(conn->Input());
+  SetLastInteraction();
+  auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
-    conn->EnableFlag(redis::Connection::kCloseAfterReply);
-    conn->Reply(redis::Error(s.Msg()));
+    EnableFlag(redis::Connection::kCloseAfterReply);
+    Reply(redis::Error(s.Msg()));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
 
-  conn->ExecuteCommands(conn->req_.GetCommands());
-  if (conn->IsFlagEnabled(kCloseAsync)) {
-    conn->Close();
+  ExecuteCommands(req_.GetCommands());
+  if (IsFlagEnabled(kCloseAsync)) {
+    Close();
   }
 }
 
-void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
-  auto conn = static_cast<Connection *>(ctx);
-  if (conn->IsFlagEnabled(kCloseAfterReply) || conn->IsFlagEnabled(kCloseAsync)) {
-    conn->Close();
+void Connection::OnWrite(struct bufferevent *bev) {
+  if (IsFlagEnabled(kCloseAfterReply) || IsFlagEnabled(kCloseAsync)) {
+    Close();
   }
 }
 
-void Connection::OnEvent(bufferevent *bev, int16_t events, void *ctx) {
-  auto conn = static_cast<Connection *>(ctx);
+void Connection::OnEvent(bufferevent *bev, int16_t events) {
   if (events & BEV_EVENT_ERROR) {
-    LOG(ERROR) << "[connection] Going to remove the client: " << conn->GetAddr()
+    LOG(ERROR) << "[connection] Going to remove the client: " << GetAddr()
                << ", while encounter error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
 #ifdef ENABLE_OPENSSL
                << ", SSL Error: " << SSLError(bufferevent_get_openssl_error(bev))  // NOLINT
 #endif
         ;  // NOLINT
-    conn->Close();
+    Close();
     return;
   }
 
   if (events & BEV_EVENT_EOF) {
-    DLOG(INFO) << "[connection] Going to remove the client: " << conn->GetAddr() << ", while closed by client";
-    conn->Close();
+    DLOG(INFO) << "[connection] Going to remove the client: " << GetAddr() << ", while closed by client";
+    Close();
     return;
   }
 
   if (events & BEV_EVENT_TIMEOUT) {
-    DLOG(INFO) << "[connection] The client: " << conn->GetAddr() << "] reached timeout";
+    DLOG(INFO) << "[connection] The client: " << GetAddr() << "] reached timeout";
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }

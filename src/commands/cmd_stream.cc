@@ -23,6 +23,7 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "event_util.h"
 #include "server/server.h"
 #include "types/redis_stream.h"
 
@@ -523,7 +524,9 @@ class CommandXRevRange : public Commander {
   bool with_count_ = false;
 };
 
-class CommandXRead : public Commander {
+class CommandXRead : public Commander,
+                     private EvbufCallbackBase<CommandXRead, false>,
+                     private EventCallbackBase<CommandXRead> {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     size_t streams_word_idx = 0;
@@ -693,10 +696,10 @@ class CommandXRead : public Commander {
     svr_->BlockOnStreams(streams_, ids_, conn_);
 
     auto bev = conn->GetBufferEvent();
-    bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
+    SetCB(bev);
 
     if (block_timeout_ > 0) {
-      timer_ = evtimer_new(bufferevent_get_base(bev), TimerCB, this);
+      timer_.reset(NewTimer(bufferevent_get_base(bev)));
       timeval tm;
       if (block_timeout_ > 1000) {
         tm.tv_sec = block_timeout_ / 1000;
@@ -706,58 +709,53 @@ class CommandXRead : public Commander {
         tm.tv_usec = block_timeout_ * 1000;
       }
 
-      evtimer_add(timer_, &tm);
+      evtimer_add(timer_.get(), &tm);
     }
 
     return {Status::BlockingCmd};
   }
 
-  static void WriteCB(bufferevent *bev, void *ctx) {
-    auto command = reinterpret_cast<CommandXRead *>(ctx);
-
-    if (command->timer_ != nullptr) {
-      event_free(command->timer_);
-      command->timer_ = nullptr;
+  void OnWrite(bufferevent *bev) {
+    if (timer_ != nullptr) {
+      timer_.reset();
     }
 
-    command->unblockAll();
-    bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                      command->conn_);
+    unblockAll();
+    conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
 
-    redis::Stream stream_db(command->svr_->storage, command->conn_->GetNamespace());
+    redis::Stream stream_db(svr_->storage, conn_->GetNamespace());
 
     std::vector<StreamReadResult> results;
 
-    for (size_t i = 0; i < command->streams_.size(); ++i) {
+    for (size_t i = 0; i < streams_.size(); ++i) {
       redis::StreamRangeOptions options;
       options.reverse = false;
-      options.start = command->ids_[i];
+      options.start = ids_[i];
       options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
-      options.with_count = command->with_count_;
-      options.count = command->count_;
+      options.with_count = with_count_;
+      options.count = count_;
       options.exclude_start = true;
       options.exclude_end = false;
 
       std::vector<StreamEntry> result;
-      auto s = stream_db.Range(command->streams_[i], options, &result);
+      auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok()) {
-        command->conn_->Reply(redis::MultiLen(-1));
-        LOG(ERROR) << "ERR executing XRANGE for stream " << command->streams_[i] << " from "
-                   << command->ids_[i].ToString() << " to " << options.end.ToString() << " with count "
-                   << command->count_ << ": " << s.ToString();
+        conn_->Reply(redis::MultiLen(-1));
+        LOG(ERROR) << "ERR executing XRANGE for stream " << streams_[i] << " from " << ids_[i].ToString() << " to "
+                   << options.end.ToString() << " with count " << count_ << ": " << s.ToString();
       }
 
       if (result.size() > 0) {
-        results.emplace_back(command->streams_[i], result);
+        results.emplace_back(streams_[i], result);
       }
     }
 
     if (results.empty()) {
-      command->conn_->Reply(redis::MultiLen(-1));
+      conn_->Reply(redis::MultiLen(-1));
     }
 
-    command->SendReply(results);
+    SendReply(results);
   }
 
   void SendReply(const std::vector<StreamReadResult> &results) {
@@ -779,32 +777,25 @@ class CommandXRead : public Commander {
     conn_->Reply(output);
   }
 
-  static void EventCB(bufferevent *bev, int16_t events, void *ctx) {
-    auto command = static_cast<CommandXRead *>(ctx);
-
+  void OnEvent(bufferevent *bev, int16_t events) {
     if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      if (command->timer_ != nullptr) {
-        event_free(command->timer_);
-        command->timer_ = nullptr;
+      if (timer_ != nullptr) {
+        timer_.reset();
       }
-      command->unblockAll();
+      unblockAll();
     }
-    redis::Connection::OnEvent(bev, events, command->conn_);
+    conn_->OnEvent(bev, events);
   }
 
-  static void TimerCB(int, int16_t events, void *ctx) {
-    auto command = reinterpret_cast<CommandXRead *>(ctx);
+  void TimerCB(int, int16_t events) {
+    conn_->Reply(redis::NilString());
 
-    command->conn_->Reply(redis::NilString());
+    timer_.reset();
 
-    event_free(command->timer_);
-    command->timer_ = nullptr;
+    unblockAll();
 
-    command->unblockAll();
-
-    auto bev = command->conn_->GetBufferEvent();
-    bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                      command->conn_);
+    auto bev = conn_->GetBufferEvent();
+    conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
   }
 
@@ -814,7 +805,7 @@ class CommandXRead : public Commander {
   std::vector<bool> latest_marks_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
-  event *timer_ = nullptr;
+  UniqueEvent timer_;
   uint64_t count_ = 0;
   int64_t block_timeout_ = 0;
   int blocked_default_count_ = 1000;

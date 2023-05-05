@@ -30,13 +30,14 @@
 #include <vector>
 
 #include "commands/commander.h"
+#include "event_util.h"
 #include "redis_request.h"
 
 class Worker;
 
 namespace redis {
 
-class Connection {
+class Connection : public EvbufCallbackBase<Connection> {
  public:
   enum Flag {
     kSlave = 1 << 4,
@@ -54,9 +55,9 @@ class Connection {
 
   void Close();
   void Detach();
-  static void OnRead(struct bufferevent *bev, void *ctx);
-  static void OnWrite(struct bufferevent *bev, void *ctx);
-  static void OnEvent(bufferevent *bev, int16_t events, void *ctx);
+  void OnRead(struct bufferevent *bev);
+  void OnWrite(struct bufferevent *bev);
+  void OnEvent(bufferevent *bev, int16_t events);
   void Reply(const std::string &msg);
   void SendFile(int fd);
   std::string ToString();

@@ -20,8 +20,10 @@ all:
 docs:
   - '*.md'
   - '**/*.md'
-  - '.asf.yaml'
-  - '.github/changes.yaml'
   - '.github/ISSUE_TEMPLATE/**'
   - 'assets/**'
   - 'licenses/**'
+  - '.asf.yaml'
+  - '.github/changes.yaml'
+  - '.gitignore'
+  - 'NOTICE'

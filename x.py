@@ -223,7 +223,7 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
     # 1. Git commit and tag
     git = find_command('git', msg='git is required for source packaging')
     run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
-    if release_candidate_number == None:
+    if release_candidate_number is None:
         run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
     else:
         run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')

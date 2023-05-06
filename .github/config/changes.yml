@@ -24,6 +24,7 @@ docs:
   - 'assets/**'
   - 'licenses/**'
   - '.asf.yaml'
-  - '.github/changes.yaml'
+  - '.github/config/changes.yml'
+  - '.github/workflows/kvrocks.yaml' # TODO REVERT BEFORE MERGE
   - '.gitignore'
   - 'NOTICE'

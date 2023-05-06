@@ -17,10 +17,6 @@
  under the License.
 -->
 
-
-
-
-
 <img src="https://kvrocks.apache.org/img/kvrocks-featured.png" alt="kvrocks_logo" width="350"/>
 
 [![kvrocks ci actions](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml/badge.svg)](https://github.com/apache/incubator-kvrocks/actions/workflows/kvrocks.yaml)

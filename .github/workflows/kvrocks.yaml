@@ -52,9 +52,9 @@ jobs:
 
   check-and-lint:
     name: Lint and check code
+    needs: [precondition]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
-    needs: [precondition]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -91,8 +91,8 @@ jobs:
 
   build-and-test:
     name: Build and test
+    needs: [precondition, check-and-lint]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    needs: [check-and-lint]
     strategy:
       fail-fast: false
       matrix:
@@ -279,8 +279,8 @@ jobs:
 
   check-docker:
     name: Check Docker image
+    needs: [precondition, check-and-lint]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    needs: [check-and-lint]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -296,6 +296,7 @@ jobs:
     name: Required
     runs-on: ubuntu-latest
     needs:
+      - precondition
       - build-and-test
       - check-docker
     steps:

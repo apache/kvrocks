@@ -24,6 +24,6 @@ docs:
   - 'assets/**'
   - 'licenses/**'
   - '.asf.yaml'
-  - '.github/changes.yaml'
+  - '.github/config/changes.yml'
   - '.gitignore'
   - 'NOTICE'

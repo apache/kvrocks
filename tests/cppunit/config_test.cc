@@ -79,7 +79,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_bytes_for_level_multiplier", "10"},
       {"rocksdb.level_compaction_dynamic_level_bytes", "yes"},
       {"rocksdb.max_background_jobs", "4"},
-      {"rocksdb.rate_limiter_auto_tuned", "yes"},
+
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {
@@ -125,6 +125,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.metadata_block_cache_size", "100"},
       {"rocksdb.subkey_block_cache_size", "100"},
       {"rocksdb.row_cache_size", "100"},
+      {"rocksdb.rate_limiter_auto_tuned", "yes"},
   };
   for (const auto &iter : immutable_cases) {
     s = config.Set(nullptr, iter.first, iter.second);

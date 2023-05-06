@@ -103,7 +103,7 @@ TEST_F(RedisZSetTest, Range) {
   int count = static_cast<int>(mscores.size() - 1);
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset_->Range(key_, 0, -2, 0, &mscores);
+  zset_->RangeByRank(key_, 0, -2, 0, &mscores);
   EXPECT_EQ(mscores.size(), count);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[i].ToString());
@@ -121,7 +121,7 @@ TEST_F(RedisZSetTest, RevRange) {
   int count = static_cast<int>(mscores.size() - 1);
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  zset_->Range(key_, 0, -2, kZSetReversed, &mscores);
+  zset_->RangeByRank(key_, 0, -2, kZSetReversed, &mscores);
   EXPECT_EQ(mscores.size(), count);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[count - i].ToString());

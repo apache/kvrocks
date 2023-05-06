@@ -220,8 +220,8 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::Range(const Slice &user_key, int start, int stop, uint8_t flags,
-                            std::vector<MemberScore> *mscores) {
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, int start, int stop, uint8_t flags,
+                                  std::vector<MemberScore> *mscores) {
   mscores->clear();
 
   std::string ns_key;
@@ -570,7 +570,7 @@ rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, CommonRangeLexSpec
 rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret) {
   uint8_t flags = kZSetRemoved;
   std::vector<MemberScore> mscores;
-  rocksdb::Status s = Range(user_key, start, stop, flags, &mscores);
+  rocksdb::Status s = RangeByRank(user_key, start, stop, flags, &mscores);
   *ret = static_cast<int>(mscores.size());
   return s;
 }

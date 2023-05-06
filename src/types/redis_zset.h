@@ -31,10 +31,10 @@
 
 enum AggregateMethod { kAggregateSum, kAggregateMin, kAggregateMax };
 
-const double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
-                                                                : std::numeric_limits<double>::lowest());
-const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
-                                                                : std::numeric_limits<double>::max());
+constexpr double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
+                                                                    : std::numeric_limits<double>::lowest());
+constexpr double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
+                                                                    : std::numeric_limits<double>::max());
 
 struct ZRangeSpec {
   double min = kMinScore, max = kMaxScore;
@@ -97,7 +97,7 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Card(const Slice &user_key, int *ret);
   rocksdb::Status Count(const Slice &user_key, const ZRangeSpec &spec, int *ret);
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
-  rocksdb::Status Range(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
+  rocksdb::Status RangeByRank(const Slice &user_key, int start, int stop, uint8_t flags, std::vector<MemberScore> *mscores);
   rocksdb::Status RangeByScore(const Slice &user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores, int *size);
   rocksdb::Status RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec, std::vector<std::string> *members,
                              int *size);

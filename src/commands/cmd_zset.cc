@@ -289,7 +289,7 @@ class CommandZRange : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
     uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-    auto s = zset_db.Range(args_[1], start_, stop_, flags, &member_scores);
+    auto s = zset_db.RangeByRank(args_[1], start_, stop_, flags, &member_scores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

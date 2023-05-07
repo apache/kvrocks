@@ -265,6 +265,21 @@ class CommandZPopMax : public CommandZPop {
   CommandZPopMax() : CommandZPop(false) {}
 };
 
+class CommandZRangeGeneric : public Commander {
+ public:
+  explicit CommandZRangeGeneric(ZRangeType range_type = kZRangeAuto, ZRangeDirection direction = kZRangeDirectionAuto)
+      : range_type_(range_type), direction_(direction) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    key_ = args[1];
+    
+  }
+ private:
+  std::string key_;
+  ZRangeType range_type_;
+  ZRangeDirection direction_;
+};
+
 class CommandZRange : public Commander {
  public:
   explicit CommandZRange(bool reversed = false) : reversed_(reversed) {}

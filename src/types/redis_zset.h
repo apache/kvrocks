@@ -54,6 +54,19 @@ struct MemberScore {
   double score;
 };
 
+enum ZRangeType {
+  kZRangeAuto,
+  kZRangeRank,
+  kZRangeScore,
+  kZRangeLex,
+};
+
+enum ZRangeDirection {
+  kZRangeDirectionAuto,
+  kZRangeDirectionForward,
+  kZRangeDirectionReverse,
+};
+
 enum ZSetFlags {
   kZSetIncr = 1,
   kZSetNX = 1 << 1,

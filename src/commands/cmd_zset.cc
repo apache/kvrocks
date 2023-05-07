@@ -276,7 +276,6 @@ class CommandZRangeGeneric : public Commander {
 
     int64_t offset = 0;
     int64_t count = -1;
-    bool limit = false;
     // skip the <CMD> <src> <min> <max> args and parse remaining optional arguments
     CommandParser parser(args, 4);
     while (parser.Good()) {
@@ -288,7 +287,6 @@ class CommandZRangeGeneric : public Commander {
         if (!parse_offset || !parse_count) {
           return {Status::RedisParseErr, errValueNotInteger};
         }
-        limit = true;
         offset = *parse_offset;
         count = *parse_count;
       } else if (range_type_ == kZRangeAuto && parser.EatEqICase("bylex")) {
@@ -314,7 +312,7 @@ class CommandZRangeGeneric : public Commander {
     if (with_scores_ && range_type_ == kZRangeLex) {
       return {Status::RedisParseErr, "syntax error, WITHSCORES not supported in combination with BYLEX"};
     }
-    if (limit && range_type_ == kZRangeRank) {
+    if (count != -1 && range_type_ == kZRangeRank) {
       return {Status::RedisParseErr,
               "syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"};
     }
@@ -338,20 +336,16 @@ class CommandZRangeGeneric : public Commander {
         break;
       case kZRangeLex:
         GET_OR_RET(ParseRangeLexSpec(args[min_idx], args[max_idx], &lex_spec_));
-        if (limit) {
-          lex_spec_.offset = offset;
-          lex_spec_.count = count;
-        }
+        lex_spec_.offset = offset;
+        lex_spec_.count = count;
         if (direction_ == kZRangeDirectionReverse) {
           lex_spec_.reversed = true;
         }
         break;
       case kZRangeScore:
         GET_OR_RET(ParseRangeScoreSpec(args[min_idx], args[max_idx], &score_spec_));
-        if (limit) {
-          score_spec_.offset = offset;
-          score_spec_.count = count;
-        }
+        score_spec_.offset = offset;
+        score_spec_.count = count;
         if (direction_ == kZRangeDirectionReverse) {
           score_spec_.reversed = true;
         }

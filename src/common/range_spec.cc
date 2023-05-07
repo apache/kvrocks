@@ -23,7 +23,7 @@
 #include "commands/error_constants.h"
 #include "parse_util.h"
 
-Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec) {
+Status ParseRangeLexSpec(const std::string &min, const std::string &max, RangeLexSpec *spec) {
   if (min == "+" || max == "-") {
     return {Status::NotOK, "min > max"};
   }
@@ -56,7 +56,7 @@ Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonR
   return Status::OK();
 }
 
-Status ParseRangeRankSpec(const std::string &min, const std::string &max, CommonRangeRankSpec *spec) {
+Status ParseRangeRankSpec(const std::string &min, const std::string &max, RangeRankSpec *spec) {
   auto parse_start = ParseInt<int>(min, 10);
   auto parse_stop = ParseInt<int>(max, 10);
   if (!parse_start || !parse_stop) {
@@ -67,7 +67,7 @@ Status ParseRangeRankSpec(const std::string &min, const std::string &max, Common
   return Status::OK();
 }
 
-Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec *spec) {
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, RangeScoreSpec *spec) {
   char *eptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {

@@ -268,6 +268,22 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{3, "c"},
 			{4, "d"},
 		}, rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
+
+		// extend zrange commands
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1}).Val())
+		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
+		require.Equal(t, []redis.Z{
+			{1, "a"},
+			{2, "b"},
+			{3, "c"},
+			{4, "d"},
+		}, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1}).Val())
+		require.Equal(t, []redis.Z{
+			{4, "d"},
+			{3, "c"},
+			{2, "b"},
+			{1, "a"},
+		}, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
 	})
 
 	t.Run(fmt.Sprintf("ZREVRANGE basics - %s", encoding), func(t *testing.T) {
@@ -363,6 +379,15 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{"f", "e", "d"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "6", Min: "3"}).Val())
 		require.Equal(t, []string{"g", "f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "4"}).Val())
 		require.Equal(t, int64(3), rdb.ZCount(ctx, "zset", "0", "3").Val())
+		// .. in zrange extension syntax
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "-inf", Stop: "2", ByScore: true}).Val())
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "0", Stop: "3", ByScore: true}).Val())
+		require.Equal(t, []string{"d", "e", "f"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "3", Stop: "6", ByScore: true}).Val())
+		require.Equal(t, []string{"e", "f", "g"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "4", Stop: "+inf", ByScore: true}).Val())
+		require.Equal(t, []string{"c", "b", "a"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "2", Start: "-inf", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "3", Start: "0", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"f", "e", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "6", Start: "3", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"g", "f", "e"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "+inf", Start: "4", ByScore: true, Rev: true}).Val())
 
 		// exclusive range
 		require.Equal(t, []string{"b"}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(2"}).Val())
@@ -374,6 +399,15 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{"f", "e"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(6", Min: "(3"}).Val())
 		require.Equal(t, []string{"f"}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(4"}).Val())
 		require.Equal(t, int64(2), rdb.ZCount(ctx, "zset", "(0", "(3").Val())
+		// .. in zrange extension syntax
+		require.Equal(t, []string{"b"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(-inf", Stop: "(2", ByScore: true}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(0", Stop: "(3", ByScore: true}).Val())
+		require.Equal(t, []string{"e", "f"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(3", Stop: "(6", ByScore: true}).Val())
+		require.Equal(t, []string{"f"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(4", Stop: "(+inf", ByScore: true}).Val())
+		require.Equal(t, []string{"b"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(2", Start: "(-inf", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"c", "b"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(3", Start: "(0", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"f", "e"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(6", Start: "(3", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{"f"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(+inf", Start: "(4", ByScore: true, Rev: true}).Val())
 
 		// test empty ranges
 		rdb.ZRem(ctx, "zset", "a")
@@ -385,6 +419,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: "-6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "+inf", Min: "6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "-6", Min: "-inf"}).Val())
+		// .. in zrange extension syntax
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "4", Stop: "2", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "6", Stop: "+inf", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "-inf", Stop: "-6", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "+inf", Start: "6", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "-6", Start: "-inf", ByScore: true, Rev: true}).Val())
 
 		// exclusive range
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(4", Max: "(2"}).Val())
@@ -394,12 +434,25 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(-inf", Max: "(-6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(+inf", Min: "(6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRevRangeByScore(ctx, "zset", &redis.ZRangeBy{Max: "(-6", Min: "(-inf"}).Val())
+		// .. in zrange extension syntax
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(4", Stop: "(2", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "2", Stop: "(2", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(2", Stop: "2", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(6", Stop: "(+inf", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(-inf", Stop: "(-6", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(+inf", Start: "(6", ByScore: true, Rev: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Stop: "(-6", Start: "(-inf", ByScore: true, Rev: true}).Val())
 
 		// empty inner range
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "2.6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "2.6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "2.4", Max: "(2.6"}).Val())
 		require.Equal(t, []string{}, rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "(2.4", Max: "(2.6"}).Val())
+		// .. in zrange extension syntax
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "2.4", Stop: "2.6", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(2.4", Stop: "2.6", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "2.4", Stop: "(2.6", ByScore: true}).Val())
+		require.Equal(t, []string{}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "zset", Start: "(2.4", Stop: "(2.6", ByScore: true}).Val())
 	})
 
 	t.Run("ZRANGEBYSCORE with WITHSCORES", func(t *testing.T) {

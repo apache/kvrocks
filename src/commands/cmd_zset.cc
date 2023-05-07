@@ -385,7 +385,7 @@ class CommandZRangeGeneric : public Commander {
       case kZRangeAuto:
       case kZRangeRank:
       case kZRangeScore:
-        output->append(redis::MultiLen(member_scores.size() * (1 << with_scores_)));
+        output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
         for (const auto &ms : member_scores) {
           output->append(redis::BulkString(ms.member));
           if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
@@ -501,15 +501,15 @@ class CommandZRemRangeByRank : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int ret = 0;
+    int cnt = 0;
     spec_.removed = true;
 
-    auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &ret);
+    auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(cnt);
     return Status::OK();
   }
 
@@ -530,15 +530,15 @@ class CommandZRemRangeByScore : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int ret = 0;
+    int cnt = 0;
     spec_.removed = true;
 
-    auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &ret);
+    auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(cnt);
     return Status::OK();
   }
 
@@ -559,15 +559,15 @@ class CommandZRemRangeByLex : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int ret = 0;
+    int cnt = 0;
     spec_.removed = true;
 
-    auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &ret);
+    auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(cnt);
     return Status::OK();
   }
 

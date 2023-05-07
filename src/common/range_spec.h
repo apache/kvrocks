@@ -36,7 +36,7 @@ struct RangeLexSpec {
 Status ParseRangeLexSpec(const std::string &min, const std::string &max, RangeLexSpec *spec);
 
 struct RangeRankSpec {
-  int start, stop;
+  int start = 0, stop = -1;
   bool removed = false, reversed = false;
   explicit RangeRankSpec() = default;
 };

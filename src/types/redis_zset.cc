@@ -285,9 +285,9 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
       } else {
         if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
       }
+      *ret += 1;
     }
-    *ret += 1;
-    if (*ret >= stop) break;
+    if (*ret > stop) break;
   }
 
   if (removed_subkey) {

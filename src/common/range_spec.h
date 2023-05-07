@@ -23,7 +23,6 @@
 #include <string>
 
 #include "status.h"
-#include "types/redis_zset.h"
 
 struct CommonRangeLexSpec {
   std::string min, max;
@@ -43,6 +42,12 @@ struct CommonRangeRankSpec {
 };
 
 Status ParseRangeRankSpec(const std::string &min, const std::string &max, CommonRangeRankSpec *spec);
+
+constexpr double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
+                                                                    : std::numeric_limits<double>::lowest());
+constexpr double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
+                                                                    : std::numeric_limits<double>::max());
+
 
 struct CommonRangeScoreSpec {
   double min = kMinScore, max = kMaxScore;

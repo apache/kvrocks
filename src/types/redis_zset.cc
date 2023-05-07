@@ -568,7 +568,6 @@ rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, CommonRangeLexSpec
 }
 
 rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret) {
-  uint8_t flags = kZSetRemoved;
   CommonRangeRankSpec rank_spec;
   rank_spec.start = start;
   rank_spec.stop = stop;

@@ -31,11 +31,6 @@
 
 enum AggregateMethod { kAggregateSum, kAggregateMin, kAggregateMax };
 
-constexpr double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
-                                                                    : std::numeric_limits<double>::lowest());
-constexpr double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
-                                                                    : std::numeric_limits<double>::max());
-
 struct KeyWeight {
   std::string key;
   double weight;

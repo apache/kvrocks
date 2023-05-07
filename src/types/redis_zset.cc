@@ -271,11 +271,12 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
     iter->SeekForPrev(start_key);
   }
 
+  int count = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); !(spec.reversed) ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
-    if (*ret >= start) {
+    if (count >= start) {
       if (spec.removed) {
         std::string sub_key;
         InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
@@ -287,7 +288,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
       }
       *ret += 1;
     }
-    if (*ret > stop) break;
+    if (count++ >= stop) break;
   }
 
   if (removed_subkey) {

@@ -146,7 +146,7 @@ class CommandZCount : public Commander {
   }
 
  private:
-  CommonRangeScoreSpec spec_;
+  RangeScoreSpec spec_;
 };
 
 class CommandZCard : public Commander {
@@ -215,7 +215,7 @@ class CommandZLexCount : public Commander {
   }
 
  private:
-  CommonRangeLexSpec spec_;
+  RangeLexSpec spec_;
 };
 
 class CommandZPop : public Commander {
@@ -356,59 +356,50 @@ class CommandZRangeGeneric : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (range_type_ == kZRangeAuto || range_type_ == kZRangeRank) {
-      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-      std::vector<MemberScore> member_scores;
-      auto s = zset_db.RangeByRank(args_[1], rank_spec_, &member_scores);
-      if (!s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-      if (!with_scores_) {
-        output->append(redis::MultiLen(member_scores.size()));
-      } else {
-        output->append(redis::MultiLen(member_scores.size() * 2));
-      }
+    std::vector<MemberScore> member_scores;
+    std::vector<std::string> members;
 
-      for (const auto &ms : member_scores) {
-        output->append(redis::BulkString(ms.member));
-        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-      }
+    rocksdb::Status s;
+    int size = 0;
 
-      return Status::OK();
-    } else if (range_type_ == kZRangeLex) {
-      int size = 0;
-      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-      std::vector<std::string> members;
-      auto s = zset_db.RangeByLex(args_[1], lex_spec_, &members, &size);
-      if (!s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        s = zset_db.RangeByRank(key_, rank_spec_, &member_scores);
+        break;
+      case kZRangeScore:
+        s = zset_db.RangeByScore(key_, score_spec_, &member_scores, &size);
+        break;
+      case kZRangeLex:
+        s = zset_db.RangeByLex(key_, lex_spec_, &members, &size);
+        break;
+    }
 
-      *output = redis::MultiBulkString(members, false);
-      return Status::OK();
-    } else {  // range_type == kZRangeScore
-      int size = 0;
-      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-      std::vector<MemberScore> member_scores;
-      auto s = zset_db.RangeByScore(args_[1], score_spec_, &member_scores, &size);
-      if (!s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
 
-      if (!with_scores_) {
-        output->append(redis::MultiLen(member_scores.size()));
-      } else {
-        output->append(redis::MultiLen(member_scores.size() * 2));
-      }
-
-      for (const auto &ms : member_scores) {
-        output->append(redis::BulkString(ms.member));
-        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-      }
-
+    if (!members.empty()) {
+      output->append(redis::MultiBulkString(members, false));
       return Status::OK();
     }
+
+    if (!member_scores.empty()) {
+      if (with_scores_) {
+        output->append(redis::MultiLen(member_scores.size() * 2));
+      } else {
+        output->append(redis::MultiLen(member_scores.size()));
+      }
+
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+    }
+
+    return Status::OK();
   }
 
  private:
@@ -417,9 +408,9 @@ class CommandZRangeGeneric : public Commander {
   ZRangeDirection direction_;
   bool with_scores_ = false;
 
-  CommonRangeRankSpec rank_spec_;
-  CommonRangeLexSpec lex_spec_;
-  CommonRangeScoreSpec score_spec_;
+  RangeRankSpec rank_spec_;
+  RangeLexSpec lex_spec_;
+  RangeScoreSpec score_spec_;
 };
 
 class CommandZRange : public CommandZRangeGeneric {
@@ -555,7 +546,7 @@ class CommandZRemRangeByScore : public Commander {
   }
 
  private:
-  CommonRangeScoreSpec spec_;
+  RangeScoreSpec spec_;
 };
 
 class CommandZRemRangeByLex : public Commander {
@@ -581,7 +572,7 @@ class CommandZRemRangeByLex : public Commander {
   }
 
  private:
-  CommonRangeLexSpec spec_;
+  RangeLexSpec spec_;
 };
 
 class CommandZScore : public Commander {

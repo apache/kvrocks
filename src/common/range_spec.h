@@ -24,36 +24,36 @@
 
 #include "status.h"
 
-struct CommonRangeLexSpec {
+struct RangeLexSpec {
   std::string min, max;
   bool minex = false, maxex = false; /* are min or max exclusive */
   bool max_infinite = false;         /* are max infinite */
   int64_t offset = -1, count = -1;
   bool removed = false, reversed = false;
-  explicit CommonRangeLexSpec() = default;
+  explicit RangeLexSpec() = default;
 };
 
-Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
+Status ParseRangeLexSpec(const std::string &min, const std::string &max, RangeLexSpec *spec);
 
-struct CommonRangeRankSpec {
+struct RangeRankSpec {
   int start, stop;
   bool removed = false, reversed = false;
-  explicit CommonRangeRankSpec() = default;
+  explicit RangeRankSpec() = default;
 };
 
-Status ParseRangeRankSpec(const std::string &min, const std::string &max, CommonRangeRankSpec *spec);
+Status ParseRangeRankSpec(const std::string &min, const std::string &max, RangeRankSpec *spec);
 
 const double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
                                                                 : std::numeric_limits<double>::lowest());
 const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
                                                                 : std::numeric_limits<double>::max());
 
-struct CommonRangeScoreSpec {
+struct RangeScoreSpec {
   double min = kMinScore, max = kMaxScore;
   bool minex = false, maxex = false; /* are min or max exclusive */
   int64_t offset = -1, count = -1;
   bool removed = false, reversed = false;
-  explicit CommonRangeScoreSpec() = default;
+  explicit RangeScoreSpec() = default;
 };
 
-Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec *spec);
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, RangeScoreSpec *spec);

@@ -362,7 +362,59 @@ class CommandZRangeGeneric : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (range_type_ == kZRangeAuto || range_type_ == kZRangeRank) {
+      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+      std::vector<MemberScore> member_scores;
+      auto s = zset_db.RangeByRank(args_[1], rank_spec_, &member_scores);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
 
+      if (!with_scores_) {
+        output->append(redis::MultiLen(member_scores.size()));
+      } else {
+        output->append(redis::MultiLen(member_scores.size() * 2));
+      }
+
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+
+      return Status::OK();
+    } else if (range_type_ == kZRangeLex) {
+      int size = 0;
+      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+      std::vector<std::string> members;
+      auto s = zset_db.RangeByLex(args_[1], lex_spec_, &members, &size);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::MultiBulkString(members, false);
+      return Status::OK();
+    } else { // range_type == kZRangeScore
+      int size = 0;
+      redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+      std::vector<MemberScore> member_scores;
+      auto s = zset_db.RangeByScore(args_[1], score_spec_, &member_scores, &size);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      if (!with_scores_) {
+        output->append(redis::MultiLen(member_scores.size()));
+      } else {
+        output->append(redis::MultiLen(member_scores.size() * 2));
+      }
+
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+
+      return Status::OK();
+    }
   }
 
  private:
@@ -373,108 +425,27 @@ class CommandZRangeGeneric : public Commander {
 
   CommonRangeRankSpec rank_spec_;
   CommonRangeLexSpec lex_spec_;
-  CommandRangeScoreSpec score_spec_;
+  CommonRangeScoreSpec score_spec_;
 };
 
-class CommandZRange : public Commander {
+class CommandZRange : public CommandZRangeGeneric {
  public:
-  explicit CommandZRange(bool reversed = false) : reversed_(reversed) {}
-
-  Status Parse(const std::vector<std::string> &args) override {
-    auto parse_start = ParseInt<int>(args[2], 10);
-    auto parse_stop = ParseInt<int>(args[3], 10);
-    if (!parse_start || !parse_stop) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-
-    start_ = *parse_start;
-    stop_ = *parse_stop;
-    if (args.size() > 4 && (util::ToLower(args[4]) == "withscores")) {
-      with_scores_ = true;
-    }
-
-    return Commander::Parse(args);
-  }
-
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    std::vector<MemberScore> member_scores;
-    uint8_t flags = !reversed_ ? 0 : kZSetReversed;
-    auto s = zset_db.RangeByRank(args_[1], start_, stop_, flags, &member_scores);
-    if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
-    }
-
-    if (!with_scores_) {
-      output->append(redis::MultiLen(member_scores.size()));
-    } else {
-      output->append(redis::MultiLen(member_scores.size() * 2));
-    }
-
-    for (const auto &ms : member_scores) {
-      output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-    }
-
-    return Status::OK();
-  }
-
- private:
-  int start_ = 0;
-  int stop_ = 0;
-  bool reversed_;
-  bool with_scores_ = false;
+  explicit CommandZRange() : CommandZRangeGeneric() {}
 };
 
-class CommandZRevRange : public CommandZRange {
+class CommandZRevRange : public CommandZRangeGeneric {
  public:
-  CommandZRevRange() : CommandZRange(true) {}
+  CommandZRevRange() : CommandZRangeGeneric(kZRangeRank, kZRangeDirectionReverse) {}
 };
 
-class CommandZRangeByLex : public Commander {
+class CommandZRangeByLex : public CommandZRangeGeneric {
  public:
-  explicit CommandZRangeByLex(bool reversed = false) { spec_.reversed = reversed; }
+  explicit CommandZRangeByLex(): CommandZRangeGeneric(kZRangeLex, kZRangeDirectionForward) {}
+};
 
-  Status Parse(const std::vector<std::string> &args) override {
-    Status s;
-    if (spec_.reversed) {
-      s = ParseRangeLexSpec(args[3], args[2], &spec_);
-    } else {
-      s = ParseRangeLexSpec(args[2], args[3], &spec_);
-    }
-
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
-
-    if (args.size() == 7 && util::ToLower(args[4]) == "limit") {
-      auto parse_offset = ParseInt<int>(args[5], 10);
-      auto parse_count = ParseInt<int>(args[6], 10);
-      if (!parse_offset || !parse_count) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
-
-      spec_.offset = *parse_offset;
-      spec_.count = *parse_count;
-    }
-    return Commander::Parse(args);
-  }
-
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
-    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    std::vector<std::string> members;
-    auto s = zset_db.RangeByLex(args_[1], spec_, &members, &size);
-    if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
-    }
-
-    *output = redis::MultiBulkString(members, false);
-    return Status::OK();
-  }
-
- private:
-  CommonRangeLexSpec spec_;
+class CommandZRevRangeByLex : public CommandZRangeGeneric {
+ public:
+  CommandZRevRangeByLex() : CommandZRangeGeneric(kZRangeLex, kZRangeDirectionReverse) {}
 };
 
 class CommandZRangeByScore : public Commander {
@@ -573,11 +544,6 @@ class CommandZRevRank : public CommandZRank {
 class CommandZRevRangeByScore : public CommandZRangeByScore {
  public:
   CommandZRevRangeByScore() : CommandZRangeByScore(true) {}
-};
-
-class CommandZRevRangeByLex : public CommandZRangeByLex {
- public:
-  CommandZRevRangeByLex() : CommandZRangeByLex(true) {}
 };
 
 class CommandZRem : public Commander {

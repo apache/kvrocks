@@ -144,7 +144,7 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Count(const Slice &user_key, const ZRangeSpec &spec, int *ret) {
+rocksdb::Status ZSet::Count(const Slice &user_key, const CommonRangeScoreSpec &spec, int *ret) {
   *ret = 0;
   return RangeByScore(user_key, spec, nullptr, ret);
 }
@@ -220,21 +220,21 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RangeByRank(const Slice &user_key, int start, int stop, uint8_t flags,
-                                  std::vector<MemberScore> *mscores) {
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const CommonRangeRankSpec &spec, std::vector<MemberScore> *mscores) {
   mscores->clear();
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  bool removed = (flags & (uint8_t)kZSetRemoved) != 0;
-  bool reversed = (flags & (uint8_t)kZSetReversed) != 0;
-
   std::unique_ptr<LockGuard> lock_guard;
-  if (removed) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+  if (spec.removed) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  int start = spec.start;
+  int stop = spec.stop;
+
   if (start < 0) start += static_cast<int>(metadata.size);
   if (stop < 0) stop += static_cast<int>(metadata.size);
   if (start < 0) start = 0;
@@ -243,7 +243,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, int start, int stop, ui
   }
 
   std::string score_bytes;
-  double score = !reversed ? kMinScore : kMaxScore;
+  double score = !(spec.reversed) ? kMinScore : kMaxScore;
   PutDouble(&score_bytes, score);
   std::string start_key, prefix_key, next_verison_prefix_key;
   InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
@@ -265,16 +265,16 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, int start, int stop, ui
   auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in rangebyscore()
-  if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
+  if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
 
-  for (; iter->Valid() && iter->key().starts_with(prefix_key); !reversed ? iter->Next() : iter->Prev()) {
+  for (; iter->Valid() && iter->key().starts_with(prefix_key); !(spec.reversed) ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
     if (count >= start) {
-      if (removed) {
+      if (spec.removed) {
         std::string sub_key;
         InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
         batch->Delete(sub_key);
@@ -296,8 +296,8 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, int start, int stop, ui
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByScore(const Slice &user_key, ZRangeSpec spec, std::vector<MemberScore> *mscores,
-                                   int *size) {
+rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const CommonRangeScoreSpec &spec,
+                                   std::vector<MemberScore> *mscores, int *size) {
   if (size) *size = 0;
   if (mscores) mscores->clear();
 
@@ -557,7 +557,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RemoveRangeByScore(const Slice &user_key, ZRangeSpec spec, int *ret) {
+rocksdb::Status ZSet::RemoveRangeByScore(const Slice &user_key, CommonRangeScoreSpec &spec, int *ret) {
   spec.removed = true;
   return RangeByScore(user_key, spec, nullptr, ret);
 }
@@ -569,8 +569,12 @@ rocksdb::Status ZSet::RemoveRangeByLex(const Slice &user_key, CommonRangeLexSpec
 
 rocksdb::Status ZSet::RemoveRangeByRank(const Slice &user_key, int start, int stop, int *ret) {
   uint8_t flags = kZSetRemoved;
+  CommonRangeRankSpec rank_spec;
+  rank_spec.start = start;
+  rank_spec.stop = stop;
+  rank_spec.removed = true;
   std::vector<MemberScore> mscores;
-  rocksdb::Status s = RangeByRank(user_key, start, stop, flags, &mscores);
+  rocksdb::Status s = RangeByRank(user_key, rank_spec, &mscores);
   *ret = static_cast<int>(mscores.size());
   return s;
 }
@@ -659,7 +663,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
   int target_size = 0;
-  ZRangeSpec spec;
+  CommonRangeScoreSpec spec;
   auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
   if (!s.ok() || target_mscores.empty()) return s;
 
@@ -719,7 +723,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   std::map<std::string, double> dst_zset;
   std::vector<MemberScore> target_mscores;
   int target_size = 0;
-  ZRangeSpec spec;
+  CommonRangeScoreSpec spec;
   for (const auto &key_weight : keys_weights) {
     // get all member
     auto s = RangeByScore(key_weight.key, spec, &target_mscores, &target_size);
@@ -762,7 +766,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   return rocksdb::Status::OK();
 }
 
-Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRangeSpec *spec) {
+Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec &spec) {
   char *eptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {
@@ -770,29 +774,29 @@ Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, ZRan
   }
 
   if (min == "-inf") {
-    spec->min = kMinScore;
+    spec.min = kMinScore;
   } else {
     const char *sptr = min.data();
     if (!min.empty() && min[0] == '(') {
-      spec->minex = true;
+      spec.minex = true;
       sptr++;
     }
-    spec->min = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || std::isnan(spec->min)) {
+    spec.min = strtod(sptr, &eptr);
+    if ((eptr && eptr[0] != '\0') || std::isnan(spec.min)) {
       return {Status::NotOK, "the min isn't double"};
     }
   }
 
   if (max == "+inf") {
-    spec->max = kMaxScore;
+    spec.max = kMaxScore;
   } else {
     const char *sptr = max.data();
     if (!max.empty() && max[0] == '(') {
-      spec->maxex = true;
+      spec.maxex = true;
       sptr++;
     }
-    spec->max = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || std::isnan(spec->max)) {
+    spec.max = strtod(sptr, &eptr);
+    if ((eptr && eptr[0] != '\0') || std::isnan(spec.max)) {
       return {Status::NotOK, "the max isn't double"};
     }
   }

@@ -67,7 +67,7 @@ Status ParseRangeRankSpec(const std::string &min, const std::string &max, Common
   return Status::OK();
 }
 
-Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommandRangeScoreSpec *spec) {
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec *spec) {
   char *eptr = nullptr;
 
   if (min == "+inf" || max == "-inf") {

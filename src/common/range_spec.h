@@ -44,12 +44,12 @@ struct CommonRangeRankSpec {
 
 Status ParseRangeRankSpec(const std::string &min, const std::string &max, CommonRangeRankSpec *spec);
 
-struct CommandRangeScoreSpec {
+struct CommonRangeScoreSpec {
   double min = kMinScore, max = kMaxScore;
   bool minex = false, maxex = false; /* are min or max exclusive */
   int64_t offset = -1, count = -1;
   bool removed = false, reversed = false;
-  explicit CommandRangeScoreSpec() = default;
+  explicit CommonRangeScoreSpec() = default;
 };
 
-Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommandRangeScoreSpec *spec);
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec *spec);

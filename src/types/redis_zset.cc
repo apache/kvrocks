@@ -766,43 +766,6 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   return rocksdb::Status::OK();
 }
 
-Status ZSet::ParseRangeSpec(const std::string &min, const std::string &max, CommonRangeScoreSpec &spec) {
-  char *eptr = nullptr;
-
-  if (min == "+inf" || max == "-inf") {
-    return {Status::NotOK, "min > max"};
-  }
-
-  if (min == "-inf") {
-    spec.min = kMinScore;
-  } else {
-    const char *sptr = min.data();
-    if (!min.empty() && min[0] == '(') {
-      spec.minex = true;
-      sptr++;
-    }
-    spec.min = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || std::isnan(spec.min)) {
-      return {Status::NotOK, "the min isn't double"};
-    }
-  }
-
-  if (max == "+inf") {
-    spec.max = kMaxScore;
-  } else {
-    const char *sptr = max.data();
-    if (!max.empty() && max[0] == '(') {
-      spec.maxex = true;
-      sptr++;
-    }
-    spec.max = strtod(sptr, &eptr);
-    if ((eptr && eptr[0] != '\0') || std::isnan(spec.max)) {
-      return {Status::NotOK, "the max isn't double"};
-    }
-  }
-  return Status::OK();
-}
-
 rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                            const std::string &member_prefix, std::vector<std::string> *members,
                            std::vector<double> *scores) {

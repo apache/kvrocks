@@ -52,8 +52,7 @@ class Hash : public SubKeyScanner {
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *ret);
   rocksdb::Status IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret);
   rocksdb::Status MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret);
-  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec,
-                             std::vector<FieldValue> *field_values);
+  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, std::vector<FieldValue> *field_values);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values,
                        std::vector<rocksdb::Status> *statuses);
   rocksdb::Status GetAll(const Slice &user_key, std::vector<FieldValue> *field_values,

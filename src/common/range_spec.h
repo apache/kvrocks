@@ -23,15 +23,33 @@
 #include <string>
 
 #include "status.h"
+#include "types/redis_zset.h"
 
 struct CommonRangeLexSpec {
   std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int64_t offset, count;
-  bool removed, reversed;
-  CommonRangeLexSpec()
-      : minex(false), maxex(false), max_infinite(false), offset(-1), count(-1), removed(false), reversed(false) {}
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  bool max_infinite = false; /* are max infinite */
+  int64_t offset = -1, count = -1;
+  bool removed = false, reversed = false;
+  explicit CommonRangeLexSpec() = default;
 };
 
 Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
+
+struct CommonRangeRankSpec {
+  int start, stop;
+  bool removed = false, reversed = false;
+  explicit CommonRangeRankSpec() = default;
+};
+
+Status ParseRangeRankSpec(const std::string &min, const std::string &max, CommonRangeRankSpec *spec);
+
+struct CommandRangeScoreSpec {
+  double min = kMinScore, max = kMaxScore;
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int64_t offset = -1, count = -1;
+  bool removed = false, reversed = false;
+  explicit CommandRangeScoreSpec() = default;
+};
+
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, CommandRangeScoreSpec *spec);

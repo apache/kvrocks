@@ -327,9 +327,42 @@ class CommandZRangeGeneric : public Commander {
       max_idx = 2;
     }
 
-    switch (range_type_) {}
+    // parse range spec
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        GET_OR_RET(ParseRangeRankSpec(args[min_idx], args[max_idx], &rank_spec_));
+        if (direction_ == kZRangeDirectionReverse) {
+          rank_spec_.reversed = true;
+        }
+        break;
+      case kZRangeLex:
+        GET_OR_RET(ParseRangeLexSpec(args[min_idx], args[max_idx], &lex_spec_));
+        if (limit) {
+          lex_spec_.offset = offset;
+          lex_spec_.count = count;
+        }
+        if (direction_ == kZRangeDirectionReverse) {
+          lex_spec_.reversed = true;
+        }
+        break;
+      case kZRangeScore:
+        GET_OR_RET(ParseRangeScoreSpec(args[min_idx], args[max_idx], &score_spec_));
+        if (limit) {
+          score_spec_.offset = offset;
+          score_spec_.count = count;
+        }
+        if (direction_ == kZRangeDirectionReverse) {
+          score_spec_.reversed = true;
+        }
+        break;
+    }
 
     return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+
   }
 
  private:
@@ -337,6 +370,10 @@ class CommandZRangeGeneric : public Commander {
   ZRangeType range_type_;
   ZRangeDirection direction_;
   bool with_scores_ = false;
+
+  CommonRangeRankSpec rank_spec_;
+  CommonRangeLexSpec lex_spec_;
+  CommandRangeScoreSpec score_spec_;
 };
 
 class CommandZRange : public Commander {

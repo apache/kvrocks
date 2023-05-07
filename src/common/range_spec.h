@@ -29,7 +29,7 @@ struct RangeLexSpec {
   bool minex = false, maxex = false; /* are min or max exclusive */
   bool max_infinite = false;         /* are max infinite */
   int64_t offset = -1, count = -1;
-  bool removed = false, reversed = false;
+  bool with_deletion = false, reversed = false;
   explicit RangeLexSpec() = default;
 };
 
@@ -37,7 +37,7 @@ Status ParseRangeLexSpec(const std::string &min, const std::string &max, RangeLe
 
 struct RangeRankSpec {
   int start = 0, stop = -1;
-  bool removed = false, reversed = false;
+  bool with_deletion = false, reversed = false;
   explicit RangeRankSpec() = default;
 };
 
@@ -52,7 +52,7 @@ struct RangeScoreSpec {
   double min = kMinScore, max = kMaxScore;
   bool minex = false, maxex = false; /* are min or max exclusive */
   int64_t offset = -1, count = -1;
-  bool removed = false, reversed = false;
+  bool with_deletion = false, reversed = false;
   explicit RangeScoreSpec() = default;
 };
 

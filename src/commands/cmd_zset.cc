@@ -502,7 +502,7 @@ class CommandZRemRangeByRank : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     int cnt = 0;
-    spec_.removed = true;
+    spec_.with_deletion = true;
 
     auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {
@@ -531,7 +531,7 @@ class CommandZRemRangeByScore : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     int cnt = 0;
-    spec_.removed = true;
+    spec_.with_deletion = true;
 
     auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {
@@ -560,7 +560,7 @@ class CommandZRemRangeByLex : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     int cnt = 0;
-    spec_.removed = true;
+    spec_.with_deletion = true;
 
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &cnt);
     if (!s.ok()) {

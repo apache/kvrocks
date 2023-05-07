@@ -230,7 +230,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   AppendNamespacePrefix(user_key, &ns_key);
 
   std::unique_ptr<LockGuard> lock_guard;
-  if (spec.removed) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+  if (spec.with_deletion) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -277,7 +277,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
     Slice score_key = ikey.GetSubKey();
     GetDouble(&score_key, &score);
     if (count >= start) {
-      if (spec.removed) {
+      if (spec.with_deletion) {
         std::string sub_key;
         InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
         batch->Delete(sub_key);
@@ -312,7 +312,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   AppendNamespacePrefix(user_key, &ns_key);
 
   std::unique_ptr<LockGuard> lock_guard;
-  if (spec.removed) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+  if (spec.with_deletion) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -397,7 +397,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
       if ((spec.maxex && score == spec.max) || score > spec.max) break;
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    if (spec.removed) {
+    if (spec.with_deletion) {
       std::string sub_key;
       InternalKey(ns_key, score_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
       batch->Delete(sub_key);
@@ -409,7 +409,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
     if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
-  if (spec.removed && *ret > 0) {
+  if (spec.with_deletion && *ret > 0) {
     metadata.size -= *ret;
     std::string bytes;
     metadata.Encode(&bytes);
@@ -434,7 +434,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   AppendNamespacePrefix(user_key, &ns_key);
 
   std::unique_ptr<LockGuard> lock_guard;
-  if (spec.removed) {
+  if (spec.with_deletion) {
     lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
   }
   ZSetMetadata metadata(false);
@@ -487,7 +487,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
       if ((spec.maxex && member == spec.max) || (!spec.max_infinite && member.ToString() > spec.max)) break;
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
-    if (spec.removed) {
+    if (spec.with_deletion) {
       std::string score_bytes = iter->value().ToString();
       score_bytes.append(member.data(), member.size());
       std::string score_key;
@@ -501,7 +501,7 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
     if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
-  if (spec.removed && *ret > 0) {
+  if (spec.with_deletion && *ret > 0) {
     metadata.size -= *ret;
     std::string bytes;
     metadata.Encode(&bytes);

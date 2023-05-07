@@ -307,7 +307,7 @@ TEST_F(RedisZSetTest, RemRangeByScore) {
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   RangeScoreSpec spec;
-  spec.removed = true;
+  spec.with_deletion = true;
 
   spec.min = scores_[0];
   spec.max = scores_[scores_.size() - 2];
@@ -330,7 +330,7 @@ TEST_F(RedisZSetTest, RemoveRangeByRank) {
   EXPECT_EQ(fields_.size(), ret);
 
   RangeRankSpec spec;
-  spec.removed = true;
+  spec.with_deletion = true;
 
   spec.start = 0;
   spec.stop = static_cast<int>(fields_.size() - 2);
@@ -353,7 +353,7 @@ TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
   EXPECT_EQ(fields_.size(), ret);
 
   RangeRankSpec spec;
-  spec.removed = true;
+  spec.with_deletion = true;
 
   spec.start = 0;
   spec.stop = static_cast<int>(fields_.size() - 2);

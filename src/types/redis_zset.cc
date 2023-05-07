@@ -220,7 +220,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
 }
 
 rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores, int *ret) {
-  mscores->clear();
+  if (mscores) mscores->clear();
 
   int cnt = 0;
   if (!ret) ret = &cnt;
@@ -282,8 +282,9 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
         batch->Delete(sub_key);
         batch->Delete(score_cf_handle_, iter->key());
         removed_subkey++;
+      } else {
+        if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
       }
-      mscores->emplace_back(MemberScore{score_key.ToString(), score});
     }
     *ret += 1;
     if (*ret >= stop) break;

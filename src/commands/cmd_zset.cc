@@ -362,18 +362,17 @@ class CommandZRangeGeneric : public Commander {
     std::vector<std::string> members;
 
     rocksdb::Status s;
-    int size = 0;
 
     switch (range_type_) {
       case kZRangeAuto:
       case kZRangeRank:
-        s = zset_db.RangeByRank(key_, rank_spec_, &member_scores);
+        s = zset_db.RangeByRank(key_, rank_spec_, &member_scores, nullptr);
         break;
       case kZRangeScore:
-        s = zset_db.RangeByScore(key_, score_spec_, &member_scores, &size);
+        s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
-        s = zset_db.RangeByLex(key_, lex_spec_, &members, &size);
+        s = zset_db.RangeByLex(key_, lex_spec_, &members, nullptr);
         break;
     }
 
@@ -500,16 +499,19 @@ class CommandZRemRangeByRank : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
-    start_ = *parse_start;
-    stop_ = *parse_stop;
+    spec_.start = *parse_start;
+    spec_.stop = *parse_stop;
 
     return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    auto s = zset_db.RemoveRangeByRank(args_[1], start_, stop_, &ret);
+
+    int ret = 0;
+    spec_.removed = true;
+
+    auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -519,8 +521,7 @@ class CommandZRemRangeByRank : public Commander {
   }
 
  private:
-  int start_ = 0;
-  int stop_ = 0;
+  RangeRankSpec spec_;
 };
 
 class CommandZRemRangeByScore : public Commander {
@@ -534,14 +535,17 @@ class CommandZRemRangeByScore : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    auto s = zset_db.RemoveRangeByScore(args_[1], spec_, &size);
+
+    int ret = 0;
+    spec_.removed = true;
+
+    auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(size);
+    *output = redis::Integer(ret);
     return Status::OK();
   }
 
@@ -560,14 +564,17 @@ class CommandZRemRangeByLex : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    auto s = zset_db.RemoveRangeByLex(args_[1], spec_, &size);
+
+    int ret = 0;
+    spec_.removed = true;
+
+    auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(size);
+    *output = redis::Integer(ret);
     return Status::OK();
   }
 

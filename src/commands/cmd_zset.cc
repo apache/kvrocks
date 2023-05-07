@@ -362,7 +362,6 @@ class CommandZRangeGeneric : public Commander {
     std::vector<std::string> members;
 
     rocksdb::Status s;
-
     switch (range_type_) {
       case kZRangeAuto:
       case kZRangeRank:
@@ -375,30 +374,24 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByLex(key_, lex_spec_, &members, nullptr);
         break;
     }
-
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (!members.empty()) {
-      output->append(redis::MultiBulkString(members, false));
-      return Status::OK();
+    switch (range_type_) {
+      case kZRangeLex:
+        output->append(redis::MultiBulkString(members, false));
+        return Status::OK();
+      case kZRangeAuto:
+      case kZRangeRank:
+      case kZRangeScore:
+        output->append(redis::MultiLen(member_scores.size() * (1 << with_scores_)));
+        for (const auto &ms : member_scores) {
+          output->append(redis::BulkString(ms.member));
+          if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+        }
+        return Status::OK();
     }
-
-    if (!member_scores.empty()) {
-      if (with_scores_) {
-        output->append(redis::MultiLen(member_scores.size() * 2));
-      } else {
-        output->append(redis::MultiLen(member_scores.size()));
-      }
-
-      for (const auto &ms : member_scores) {
-        output->append(redis::BulkString(ms.member));
-        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-      }
-    }
-
-    return Status::OK();
   }
 
  private:

@@ -182,7 +182,7 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     options = ['-p', dir, '-clang-tidy-binary', tidy_command]
     if jobs is not None:
         options.append(f'-j{jobs}')
-    
+
     options.extend(['-fix'] if fix else [])
 
     regexes = ['kvrocks/src/', 'utils/kvrocks2redis/', 'tests/cppunit/']
@@ -227,7 +227,7 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
         run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
     else:
         run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')
-    
+
     # 2. Create the source tarball
     folder = f'apache-kvrocks-{version}-incubating-src'
     tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'

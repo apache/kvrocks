@@ -220,7 +220,8 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, std::vecto
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const CommonRangeRankSpec &spec, std::vector<MemberScore> *mscores) {
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const CommonRangeRankSpec &spec,
+                                  std::vector<MemberScore> *mscores) {
   mscores->clear();
 
   std::string ns_key;

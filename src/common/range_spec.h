@@ -27,7 +27,7 @@
 struct CommonRangeLexSpec {
   std::string min, max;
   bool minex = false, maxex = false; /* are min or max exclusive */
-  bool max_infinite = false; /* are max infinite */
+  bool max_infinite = false;         /* are max infinite */
   int64_t offset = -1, count = -1;
   bool removed = false, reversed = false;
   explicit CommonRangeLexSpec() = default;
@@ -47,7 +47,6 @@ constexpr double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::nume
                                                                     : std::numeric_limits<double>::lowest());
 constexpr double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
                                                                     : std::numeric_limits<double>::max());
-
 
 struct CommonRangeScoreSpec {
   double min = kMinScore, max = kMaxScore;

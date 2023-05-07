@@ -18,6 +18,7 @@
  *
  */
 
+#include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
@@ -272,12 +273,70 @@ class CommandZRangeGeneric : public Commander {
 
   Status Parse(const std::vector<std::string> &args) override {
     key_ = args[1];
-    
+
+    int64_t offset = 0;
+    int64_t count = -1;
+    bool limit = false;
+    // skip the <CMD> <src> <min> <max> args and parse remaining optional arguments
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICase("withscores")) {
+        with_scores_ = true;
+      } else if (parser.EatEqICase("limit")) {
+        auto parse_offset = parser.TakeInt<int64_t>();
+        auto parse_count = parser.TakeInt<int64_t>();
+        if (!parse_offset || !parse_count) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        limit = true;
+        offset = *parse_offset;
+        count = *parse_count;
+      } else if (range_type_ == kZRangeAuto && parser.EatEqICase("bylex")) {
+        range_type_ = kZRangeLex;
+      } else if (range_type_ == kZRangeAuto && parser.EatEqICase("byscore")) {
+        range_type_ = kZRangeScore;
+      } else if (direction_ == kZRangeDirectionAuto && parser.EatEqICase("rev")) {
+        direction_ = kZRangeDirectionReverse;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    // use defaults if not overridden by arguments
+    if (range_type_ == kZRangeAuto) {
+      range_type_ = kZRangeRank;
+    }
+    if (direction_ == kZRangeDirectionAuto) {
+      direction_ = kZRangeDirectionForward;
+    }
+
+    // check for conflicting arguments
+    if (with_scores_ && range_type_ == kZRangeLex) {
+      return {Status::RedisParseErr, "syntax error, WITHSCORES not supported in combination with BYLEX"};
+    }
+    if (limit && range_type_ == kZRangeRank) {
+      return {Status::RedisParseErr,
+              "syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"};
+    }
+
+    // resolve index of <min> <max>
+    int min_idx = 2;
+    int max_idx = 3;
+    if (direction_ == kZRangeDirectionReverse && (range_type_ == kZRangeLex || range_type_ == kZRangeScore)) {
+      min_idx = 3;
+      max_idx = 2;
+    }
+
+    switch (range_type_) {}
+
+    return Status::OK();
   }
+
  private:
   std::string key_;
   ZRangeType range_type_;
   ZRangeDirection direction_;
+  bool with_scores_ = false;
 };
 
 class CommandZRange : public Commander {

@@ -392,6 +392,8 @@ class CommandZRangeGeneric : public Commander {
         }
         return Status::OK();
     }
+
+    return {Status::RedisParseErr, "unexpected range type"};
   }
 
  private:

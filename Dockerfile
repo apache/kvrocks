@@ -67,4 +67,4 @@ COPY ./kvrocks.conf /var/lib/kvrocks/
 
 EXPOSE 6666:6666
 
-ENTRYPOINT ["/bin/kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]
+ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]

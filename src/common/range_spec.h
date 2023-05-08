@@ -24,14 +24,36 @@
 
 #include "status.h"
 
-struct CommonRangeLexSpec {
+struct RangeLexSpec {
   std::string min, max;
-  bool minex, maxex; /* are min or max exclusive */
-  bool max_infinite; /* are max infinite */
-  int64_t offset, count;
-  bool removed, reversed;
-  CommonRangeLexSpec()
-      : minex(false), maxex(false), max_infinite(false), offset(-1), count(-1), removed(false), reversed(false) {}
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  bool max_infinite = false;         /* are max infinite */
+  int64_t offset = -1, count = -1;
+  bool with_deletion = false, reversed = false;
+  explicit RangeLexSpec() = default;
 };
 
-Status ParseRangeLexSpec(const std::string &min, const std::string &max, CommonRangeLexSpec *spec);
+Status ParseRangeLexSpec(const std::string &min, const std::string &max, RangeLexSpec *spec);
+
+struct RangeRankSpec {
+  int start = 0, stop = -1;
+  bool with_deletion = false, reversed = false;
+  explicit RangeRankSpec() = default;
+};
+
+Status ParseRangeRankSpec(const std::string &min, const std::string &max, RangeRankSpec *spec);
+
+const double kMinScore = (std::numeric_limits<float>::is_iec559 ? -std::numeric_limits<double>::infinity()
+                                                                : std::numeric_limits<double>::lowest());
+const double kMaxScore = (std::numeric_limits<float>::is_iec559 ? std::numeric_limits<double>::infinity()
+                                                                : std::numeric_limits<double>::max());
+
+struct RangeScoreSpec {
+  double min = kMinScore, max = kMaxScore;
+  bool minex = false, maxex = false; /* are min or max exclusive */
+  int64_t offset = -1, count = -1;
+  bool with_deletion = false, reversed = false;
+  explicit RangeScoreSpec() = default;
+};
+
+Status ParseRangeScoreSpec(const std::string &min, const std::string &max, RangeScoreSpec *spec);

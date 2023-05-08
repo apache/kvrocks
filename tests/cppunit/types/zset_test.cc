@@ -103,7 +103,10 @@ TEST_F(RedisZSetTest, Range) {
   int count = static_cast<int>(mscores.size() - 1);
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset_->Range(key_, 0, -2, 0, &mscores);
+  RangeRankSpec rank_spec;
+  rank_spec.start = 0;
+  rank_spec.stop = -2;
+  zset_->RangeByRank(key_, rank_spec, &mscores, nullptr);
   EXPECT_EQ(mscores.size(), count);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[i].ToString());
@@ -121,7 +124,11 @@ TEST_F(RedisZSetTest, RevRange) {
   int count = static_cast<int>(mscores.size() - 1);
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  zset_->Range(key_, 0, -2, kZSetReversed, &mscores);
+  RangeRankSpec rank_spec;
+  rank_spec.start = 0;
+  rank_spec.stop = -2;
+  rank_spec.reversed = true;
+  zset_->RangeByRank(key_, rank_spec, &mscores, nullptr);
   EXPECT_EQ(mscores.size(), count);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[count - i].ToString());
@@ -175,7 +182,7 @@ TEST_F(RedisZSetTest, RangeByLex) {
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
-  CommonRangeLexSpec spec;
+  RangeLexSpec spec;
   spec.min = fields_[0].ToString();
   spec.max = fields_[fields_.size() - 1].ToString();
   std::vector<std::string> members;
@@ -232,7 +239,7 @@ TEST_F(RedisZSetTest, RangeByScore) {
   EXPECT_EQ(fields_.size(), ret);
 
   // test case: inclusive the min and max score
-  ZRangeSpec spec;
+  RangeScoreSpec spec;
   spec.min = scores_[0];
   spec.max = scores_[scores_.size() - 2];
   zset_->RangeByScore(key_, spec, &mscores, nullptr);
@@ -279,7 +286,7 @@ TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
 
-  ZRangeSpec spec;
+  RangeScoreSpec spec;
   spec.offset = 1;
   spec.count = 2;
   zset_->RangeByScore(key_, spec, &mscores, nullptr);
@@ -299,14 +306,17 @@ TEST_F(RedisZSetTest, RemRangeByScore) {
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  ZRangeSpec spec;
+  RangeScoreSpec spec;
+  spec.with_deletion = true;
+
   spec.min = scores_[0];
   spec.max = scores_[scores_.size() - 2];
-  zset_->RemoveRangeByScore(key_, spec, &ret);
+  zset_->RangeByScore(key_, spec, nullptr, &ret);
   EXPECT_EQ(scores_.size() - 1, ret);
+
   spec.min = scores_[scores_.size() - 1];
   spec.max = spec.min;
-  zset_->RemoveRangeByScore(key_, spec, &ret);
+  zset_->RangeByScore(key_, spec, nullptr, &ret);
   EXPECT_EQ(1, ret);
 }
 
@@ -318,9 +328,18 @@ TEST_F(RedisZSetTest, RemoveRangeByRank) {
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset_->RemoveRangeByRank(key_, 0, static_cast<int>(fields_.size() - 2), &ret);
+
+  RangeRankSpec spec;
+  spec.with_deletion = true;
+
+  spec.start = 0;
+  spec.stop = static_cast<int>(fields_.size() - 2);
+  zset_->RangeByRank(key_, spec, nullptr, &ret);
   EXPECT_EQ(fields_.size() - 1, ret);
-  zset_->RemoveRangeByRank(key_, 0, 2, &ret);
+
+  spec.start = 0;
+  spec.stop = 2;
+  zset_->RangeByRank(key_, spec, nullptr, &ret);
   EXPECT_EQ(1, ret);
 }
 
@@ -332,9 +351,18 @@ TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
-  zset_->RemoveRangeByRank(key_, 0, static_cast<int>(fields_.size() - 2), &ret);
-  EXPECT_EQ(static_cast<int>(fields_.size() - 1), ret);
-  zset_->RemoveRangeByRank(key_, 0, 2, &ret);
+
+  RangeRankSpec spec;
+  spec.with_deletion = true;
+
+  spec.start = 0;
+  spec.stop = static_cast<int>(fields_.size() - 2);
+  zset_->RangeByRank(key_, spec, nullptr, &ret);
+  EXPECT_EQ(fields_.size() - 1, ret);
+
+  spec.start = 0;
+  spec.stop = 2;
+  zset_->RangeByRank(key_, spec, nullptr, &ret);
   EXPECT_EQ(1, ret);
 }
 

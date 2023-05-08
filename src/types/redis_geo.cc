@@ -301,7 +301,7 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, double 
                           std::vector<GeoPoint> *geo_points) {
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
-  ZRangeSpec spec;
+  RangeScoreSpec spec;
   spec.min = min;
   spec.max = max;
   spec.maxex = true;

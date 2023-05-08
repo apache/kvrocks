@@ -34,7 +34,6 @@
 #include <thread>
 
 #include "event_util.h"
-#include "fd_util.h"
 #include "fmt/format.h"
 #include "io_util.h"
 #include "rocksdb_crc32c.h"
@@ -44,6 +43,7 @@
 #include "storage/batch_debugger.h"
 #include "thread_util.h"
 #include "time_util.h"
+#include "unique_fd.h"
 
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
@@ -361,12 +361,12 @@ void ReplicationThread::run() {
   }
   psync_steps_.Start();
 
-  auto timer = event_new(base_, -1, EV_PERSIST, eventTimerCb, this);
+  auto timer = UniqueEvent(NewEvent(base_, -1, EV_PERSIST));
   timeval tmo{0, 100000};  // 100 ms
-  evtimer_add(timer, &tmo);
+  evtimer_add(timer.get(), &tmo);
 
   event_base_dispatch(base_);
-  event_free(timer);
+  timer.reset();
   event_base_free(base_);
 }
 
@@ -920,14 +920,13 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 }
 
 // Check if stop_flag_ is set, when do, tear down replication
-void ReplicationThread::eventTimerCb(int, int16_t, void *ctx) {
+void ReplicationThread::TimerCB(int, int16_t) {
   // DLOG(INFO) << "[replication] timer";
-  auto self = static_cast<ReplicationThread *>(ctx);
-  if (self->stop_flag_) {
+  if (stop_flag_) {
     LOG(INFO) << "[replication] Stop ev loop";
-    event_base_loopbreak(self->base_);
-    self->psync_steps_.Stop();
-    self->fullsync_steps_.Stop();
+    event_base_loopbreak(base_);
+    psync_steps_.Stop();
+    fullsync_steps_.Stop();
   }
 }
 

@@ -29,6 +29,13 @@ WORKDIR /kvrocks
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
+RUN curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz && \
+    tar -xzvf redis-6.2.7.tar.gz && \
+    mkdir tools && \
+    cd redis-6.2.7 && \
+    make redis-cli && \
+    mv src/redis-cli /kvrocks/tools/redis-cli
+
 FROM alpine:3.16
 
 RUN apk upgrade && apk add openssl libexecinfo
@@ -45,7 +52,10 @@ RUN chown kvrocks:kvrocks /var/run/kvrocks && chown kvrocks:kvrocks /var/lib/kvr
 
 USER kvrocks
 
-COPY --from=build /kvrocks/build/kvrocks /bin/
+COPY --from=build /kvrocks/build/kvrocks ./bin/
+COPY --from=build /kvrocks/tools/redis-cli ./bin/
+
+ENV PATH="$PATH:/kvrocks/bin"
 
 VOLUME /var/lib/kvrocks
 

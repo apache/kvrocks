@@ -42,8 +42,6 @@ RUN apk upgrade && apk add openssl libexecinfo
 
 WORKDIR /kvrocks
 
-HEALTHCHECK --interval=5s --timeout=1s --start-period=120s --retries=3 CMD echo PING | nc 127.0.0.1 6666 || exit 1
-
 RUN mkdir /var/run/kvrocks && mkdir /var/lib/kvrocks
 
 RUN addgroup -S kvrocks && adduser -D -H -S -G kvrocks kvrocks
@@ -54,6 +52,8 @@ USER kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 COPY --from=build /kvrocks/tools/redis-cli ./bin/
+
+HEALTHCHECK --interval=5s --timeout=1s --start-period=120s --retries=3 CMD ./bin/redis-cli -p 6666 PING | grep PONG || exit 1
 
 ENV PATH="$PATH:/kvrocks/bin"
 

@@ -83,7 +83,7 @@ class SlotMigrator : public redis::Database {
 
   Status CreateMigrationThread();
   Status PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
-                              const std::shared_ptr<SyncMigrateContext> &blocking_ctx = nullptr);
+                              SyncMigrateContext *blocking_ctx = nullptr);
   void ReleaseForbiddenSlot();
   void SetMaxMigrationSpeed(int value) {
     if (value >= 0) max_migration_speed_ = value;
@@ -178,5 +178,5 @@ class SlotMigrator : public redis::Database {
   uint64_t wal_begin_seq_ = 0;
 
   std::mutex blocking_mutex_;
-  std::shared_ptr<SyncMigrateContext> blocking_context_;
+  SyncMigrateContext *blocking_context_;
 };

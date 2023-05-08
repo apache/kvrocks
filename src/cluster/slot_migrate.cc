@@ -77,7 +77,7 @@ SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipelin
 }
 
 Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
-                                          const std::shared_ptr<SyncMigrateContext> &blocking_ctx) {
+                                          SyncMigrateContext *blocking_ctx) {
   // Only one slot migration job at the same time
   int16_t no_slot = -1;
   if (!migrating_slot_.compare_exchange_strong(no_slot, static_cast<int16_t>(slot_id))) {
@@ -1110,6 +1110,6 @@ void SlotMigrator::wakeupBlocking(const Status &migrate_result) {
   if (blocking_context_) {
     blocking_context_->Wakeup(migrate_result);
 
-    blocking_context_.reset();
+    blocking_context_ = nullptr;
   }
 }

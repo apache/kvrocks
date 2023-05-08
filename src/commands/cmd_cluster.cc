@@ -249,10 +249,10 @@ class CommandClusterX : public Commander {
       *output = redis::BulkString(std::to_string(v));
     } else if (subcommand_ == "migrate") {
       if (sync_migrate_) {
-        sync_migrate_ctx_ = std::make_shared<SyncMigrateContext>(svr, conn, sync_migrate_timeout_);
+        sync_migrate_ctx_ = std::make_unique<SyncMigrateContext>(svr, conn, sync_migrate_timeout_);
       }
 
-      Status s = svr->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_, sync_migrate_ctx_);
+      Status s = svr->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_, sync_migrate_ctx_.get());
       if (s.IsOK()) {
         if (sync_migrate_) {
           return {Status::BlockingCmd};
@@ -281,7 +281,7 @@ class CommandClusterX : public Commander {
 
   bool sync_migrate_ = false;
   int sync_migrate_timeout_ = 0;
-  std::shared_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
+  std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0),

@@ -292,7 +292,7 @@ Status Cluster::SetSlotImported(int slot) {
 }
 
 Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id,
-                            const std::shared_ptr<SyncMigrateContext> &blocking_ctx) {
+                            SyncMigrateContext *blocking_ctx) {
   if (nodes_.find(dst_node_id) == nodes_.end()) {
     return {Status::NotOK, "Can't find the destination node id"};
   }

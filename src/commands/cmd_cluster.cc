@@ -127,7 +127,7 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "setnodeid" && args_.size() == 3 && args_[2].size() == kClusterNodeIdLen) return Status::OK();
 
     if (subcommand_ == "migrate") {
-      if (args.size() < 4) return {Status::RedisParseErr, errWrongNumOfArguments};
+      if (args.size() < 4 || args.size() > 6) return {Status::RedisParseErr, errWrongNumOfArguments};
 
       slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
 
@@ -137,13 +137,15 @@ class CommandClusterX : public Commander {
         auto sync_flag = util::ToLower(args[4]);
         if (sync_flag == "async") {
           sync_migrate_ = false;
+
+          if (args.size() == 6) {
+            return {Status::RedisParseErr, "Async migration does not support timeout"};
+          }
         } else if (sync_flag == "sync") {
           sync_migrate_ = true;
 
           if (args.size() == 6) {
             sync_migrate_timeout_ = GET_OR_RET(ParseInt<int64_t>(args[5], 10));
-          } else if (args.size() > 6) {
-            return {Status::RedisParseErr, "Wrong number of arguments for MIGRATE SYNC option"};
           }
         } else {
           return {Status::RedisParseErr, "Invalid sync flag"};

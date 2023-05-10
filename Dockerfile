@@ -27,7 +27,7 @@ RUN apk update && apk add git gcc g++ make cmake ninja autoconf automake libtool
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build -DENABLE_OPENSSL=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
+RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
 FROM alpine:3.16
 

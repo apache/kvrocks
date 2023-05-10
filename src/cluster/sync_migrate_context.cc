@@ -20,21 +20,15 @@
 
 #include "cluster/sync_migrate_context.h"
 
-SyncMigrateContext::~SyncMigrateContext() {
-  if (timer_) {
-    event_free(timer_);
-    timer_ = nullptr;
-  }
-}
-
 void SyncMigrateContext::StartBlock() {
   auto bev = conn_->GetBufferEvent();
-  bufferevent_setcb(bev, nullptr, WriteCB, EventCB, this);
+  SetCB(bev);
 
-  if (timeout_) {
-    timer_ = evtimer_new(bufferevent_get_base(bev), TimerCB, this);
-    timeval tm = {timeout_, 0};
-    evtimer_add(timer_, &tm);
+  if (timeout_ > 0) {
+    timer_.reset(NewTimer(bufferevent_get_base(bev)));
+    int sec = static_cast<int>(timeout_);
+    timeval tm = {sec, static_cast<int>((timeout_ - static_cast<float>(sec)) * 1000000)};
+    evtimer_add(timer_.get(), &tm);
   }
 }
 
@@ -47,53 +41,40 @@ void SyncMigrateContext::Wakeup(const Status &migrate_result) {
   }
 }
 
-void SyncMigrateContext::EventCB(bufferevent *bev, int16_t events, void *ctx) {
-  auto self = reinterpret_cast<SyncMigrateContext *>(ctx);
-  auto &&slot_migrator = self->svr_->slot_migrator;
+void SyncMigrateContext::OnEvent(bufferevent *bev, int16_t events) {
+  auto &&slot_migrator = svr_->slot_migrator;
 
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-    if (self->timer_ != nullptr) {
-      event_free(self->timer_);
-      self->timer_ = nullptr;
-    }
+    timer_.reset();
 
     slot_migrator->CancelBlocking();
   }
-  redis::Connection::OnEvent(bev, events, self->conn_);
+  conn_->OnEvent(bev, events);
 }
 
-void SyncMigrateContext::TimerCB(int, int16_t events, void *ctx) {
-  auto self = reinterpret_cast<SyncMigrateContext *>(ctx);
-  auto &&slot_migrator = self->svr_->slot_migrator;
+void SyncMigrateContext::TimerCB(int, int16_t events) {
+  auto &&slot_migrator = svr_->slot_migrator;
 
-  self->conn_->Reply(redis::NilString());
-  event_free(self->timer_);
-  self->timer_ = nullptr;
+  conn_->Reply(redis::NilString());
+  timer_.reset();
 
   slot_migrator->CancelBlocking();
 
-  auto bev = self->conn_->GetBufferEvent();
-  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                    self->conn_);
+  auto bev = conn_->GetBufferEvent();
+  conn_->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 }
 
-void SyncMigrateContext::WriteCB(bufferevent *bev, void *ctx) {
-  auto self = reinterpret_cast<SyncMigrateContext *>(ctx);
-
-  if (self->migrate_result_) {
-    self->conn_->Reply(redis::SimpleString("OK"));
+void SyncMigrateContext::OnWrite(bufferevent *bev) {
+  if (migrate_result_) {
+    conn_->Reply(redis::SimpleString("OK"));
   } else {
-    self->conn_->Reply(redis::Error("ERR " + self->migrate_result_.Msg()));
+    conn_->Reply(redis::Error("ERR " + migrate_result_.Msg()));
   }
 
-  if (self->timer_) {
-    event_free(self->timer_);
-    self->timer_ = nullptr;
-  }
+  timer_.reset();
 
-  bufferevent_setcb(bev, redis::Connection::OnRead, redis::Connection::OnWrite, redis::Connection::OnEvent,
-                    self->conn_);
+  conn_->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
   bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);

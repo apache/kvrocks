@@ -145,7 +145,7 @@ class CommandClusterX : public Commander {
           sync_migrate_ = true;
 
           if (args.size() == 6) {
-            sync_migrate_timeout_ = GET_OR_RET(ParseInt<int64_t>(args[5], 10));
+            sync_migrate_timeout_ = GET_OR_RET(ParseFloat<float>(args[5]));
           }
         } else {
           return {Status::RedisParseErr, "Invalid sync flag"};
@@ -282,7 +282,7 @@ class CommandClusterX : public Commander {
   bool force_ = false;
 
   bool sync_migrate_ = false;
-  int sync_migrate_timeout_ = 0;
+  float sync_migrate_timeout_ = 0;
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 

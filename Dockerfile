@@ -23,22 +23,18 @@ ARG MORE_BUILD_ARGS
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apk update && apk add git gcc g++ make cmake autoconf automake libtool python3 linux-headers curl openssl openssl-dev libexecinfo-dev
+RUN apk update && apk add git gcc g++ make cmake ninja autoconf automake libtool python3 linux-headers curl openssl3-dev libexecinfo-dev redis
 WORKDIR /kvrocks
 
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
-RUN curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz && \
-    tar -xzvf redis-6.2.7.tar.gz && \
-    mkdir tools && \
-    cd redis-6.2.7 && \
-    make redis-cli && \
-    mv src/redis-cli /kvrocks/tools/redis-cli
+FROM alpine:3.18
 
-FROM alpine:3.16
+ENV TZ=Etc/UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apk upgrade && apk add openssl libexecinfo
+RUN apk upgrade && apk add libexecinfo --update-cache --repository http://dl-cdn.alpinelinux.org/alpine/v3.16/main/ --allow-untrusted
 
 WORKDIR /kvrocks
 
@@ -51,7 +47,7 @@ RUN chown kvrocks:kvrocks /var/run/kvrocks && chown kvrocks:kvrocks /var/lib/kvr
 USER kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks ./bin/
-COPY --from=build /kvrocks/tools/redis-cli ./bin/
+COPY --from=build /usr/bin/redis-cli ./bin/
 
 HEALTHCHECK --interval=5s --timeout=1s --start-period=120s --retries=3 CMD ./bin/redis-cli -p 6666 PING | grep PONG || exit 1
 

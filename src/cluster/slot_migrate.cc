@@ -109,9 +109,9 @@ Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::strin
   }
 
   if (blocking_ctx) {
-    auto lock = blockingLock();
+    std::unique_lock<std::mutex> lock(blocking_mutex_);
     blocking_context_ = blocking_ctx;
-    blocking_context_->StartBlock();
+    blocking_context_->Suspend();
   }
 
   dst_node_ = node_id;
@@ -195,7 +195,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to start migrating slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
-          wakeupBlocking(s);
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -206,7 +206,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to send snapshot of slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
-          wakeupBlocking(s);
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -218,7 +218,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to sync from WAL for a slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
-          wakeupBlocking(s);
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -228,12 +228,12 @@ void SlotMigrator::runMigrationProcess() {
           LOG(INFO) << "[migrate] Succeed to migrate slot " << migrating_slot_;
           current_stage_ = SlotMigrationStage::kClean;
           migration_state_ = MigrationState::kSuccess;
-          wakeupBlocking(s);
+          resumeSyncCtx(s);
         } else {
           LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot " << migrating_slot_
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
-          wakeupBlocking(s);
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -1100,15 +1100,15 @@ void SlotMigrator::GetMigrationInfo(std::string *info) const {
       fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot, dst_node_, task_state);
 }
 
-void SlotMigrator::CancelBlocking() {
-  auto lock = blockingLock();
+void SlotMigrator::CancelSyncCtx() {
+  std::unique_lock<std::mutex> lock(blocking_mutex_);
   blocking_context_ = nullptr;
 }
 
-void SlotMigrator::wakeupBlocking(const Status &migrate_result) {
-  auto lock = blockingLock();
+void SlotMigrator::resumeSyncCtx(const Status &migrate_result) {
+  std::unique_lock<std::mutex> lock(blocking_mutex_);
   if (blocking_context_) {
-    blocking_context_->Wakeup(migrate_result);
+    blocking_context_->Resume(migrate_result);
 
     blocking_context_ = nullptr;
   }

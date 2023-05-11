@@ -20,7 +20,7 @@
 
 #include "cluster/sync_migrate_context.h"
 
-void SyncMigrateContext::StartBlock() {
+void SyncMigrateContext::Suspend() {
   auto bev = conn_->GetBufferEvent();
   SetCB(bev);
 
@@ -32,7 +32,7 @@ void SyncMigrateContext::StartBlock() {
   }
 }
 
-void SyncMigrateContext::Wakeup(const Status &migrate_result) {
+void SyncMigrateContext::Resume(const Status &migrate_result) {
   migrate_result_ = migrate_result;
   auto s = conn_->Owner()->EnableWriteEvent(conn_->GetFD());
   if (!s.IsOK()) {
@@ -47,7 +47,7 @@ void SyncMigrateContext::OnEvent(bufferevent *bev, int16_t events) {
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
     timer_.reset();
 
-    slot_migrator->CancelBlocking();
+    slot_migrator->CancelSyncCtx();
   }
   conn_->OnEvent(bev, events);
 }
@@ -58,7 +58,7 @@ void SyncMigrateContext::TimerCB(int, int16_t events) {
   conn_->Reply(redis::NilString());
   timer_.reset();
 
-  slot_migrator->CancelBlocking();
+  slot_migrator->CancelSyncCtx();
 
   auto bev = conn_->GetBufferEvent();
   conn_->SetCB(bev);

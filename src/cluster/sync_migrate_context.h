@@ -27,8 +27,8 @@ class SyncMigrateContext : private EvbufCallbackBase<SyncMigrateContext, false>,
  public:
   SyncMigrateContext(Server *svr, redis::Connection *conn, float timeout) : svr_(svr), conn_(conn), timeout_(timeout){};
 
-  void StartBlock();
-  void Wakeup(const Status &migrate_result);
+  void Suspend();
+  void Resume(const Status &migrate_result);
   void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
   void TimerCB(int, int16_t events);

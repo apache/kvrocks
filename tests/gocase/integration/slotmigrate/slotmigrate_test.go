@@ -441,7 +441,7 @@ func TestSlotMigrateSync(t *testing.T) {
 
 		require.Nil(t, rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout).Val())
 
-        // check the following command on the same connection
+		// check the following command on the same connection
 		require.Equal(t, "PONG", rdb0.Ping(ctx).Val())
 	})
 }

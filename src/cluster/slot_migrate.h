@@ -100,7 +100,7 @@ class SlotMigrator : public redis::Database {
   int16_t GetForbiddenSlot() const { return forbidden_slot_; }
   int16_t GetMigratingSlot() const { return migrating_slot_; }
   void GetMigrationInfo(std::string *info) const;
-  void CancelBlocking();
+  void CancelSyncCtx();
 
  private:
   void loop();
@@ -136,7 +136,7 @@ class SlotMigrator : public redis::Database {
   void setForbiddenSlot(int16_t slot);
   std::unique_lock<std::mutex> blockingLock() { return std::unique_lock<std::mutex>(blocking_mutex_); }
 
-  void wakeupBlocking(const Status &migrate_result);
+  void resumeSyncCtx(const Status &migrate_result);
 
   enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };

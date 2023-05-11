@@ -20,7 +20,7 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(lua
-  KvrocksLabs/lua f458c3d797db31155fa0c156d5301716df48cb8c
+  RocksLabs/lua f458c3d797db31155fa0c156d5301716df48cb8c
   MD5=c7c4deb9f750d8f2bef0044a701df85c
 )
 

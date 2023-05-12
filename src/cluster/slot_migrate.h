@@ -178,5 +178,5 @@ class SlotMigrator : public redis::Database {
   uint64_t wal_begin_seq_ = 0;
 
   std::mutex blocking_mutex_;
-  SyncMigrateContext *blocking_context_;
+  SyncMigrateContext *blocking_context_ = nullptr;
 };

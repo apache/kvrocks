@@ -49,7 +49,7 @@ USER kvrocks
 COPY --from=build /kvrocks/build/kvrocks ./bin/
 COPY --from=build /usr/bin/redis-cli ./bin/
 
-HEALTHCHECK --interval=5s --timeout=1s --start-period=5s --retries=3 CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
+HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
 
 ENV PATH="$PATH:/kvrocks/bin"
 

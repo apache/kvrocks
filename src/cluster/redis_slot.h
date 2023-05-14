@@ -19,6 +19,7 @@
  */
 
 #pragma once
+#include <cstdint>
 #include <string>
 
 // crc16

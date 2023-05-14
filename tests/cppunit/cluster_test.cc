@@ -20,11 +20,15 @@
 
 #include "cluster/cluster.h"
 
+#include <fmt/core.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
+#include "cluster/cluster_defs.h"
+#include "commands/commander.h"
 #include "server/server.h"
 
 TEST(Cluster, CluseterSetNodes) {
@@ -194,4 +198,130 @@ TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
   ASSERT_EQ("17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1", slot1_info.nodes[0].id);
 
   unlink(nodes_filename.c_str());
+}
+
+TEST(Cluster, ClusterParseSlotRanges) {
+  Status s;
+  Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
+  const std::string node_id = "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1";
+  int64_t version = 1;
+
+  const std::string right_nodes = node_id +
+                                  " 127.0.0.1 30002 "
+                                  "master - 0 123-456 789 831 8192-16381 16382 16383";
+  s = cluster.SetClusterNodes(right_nodes, version, false);
+  ASSERT_TRUE(s.IsOK());
+  ASSERT_TRUE(cluster.GetVersion() == version);
+  version++;
+
+  std::vector<SlotRange> slots;
+
+  const std::string t_single_slot = "1234";
+  s = redis::CommanderHelper::ParseSlotRanges(t_single_slot, slots);
+  ASSERT_TRUE(s.IsOK());
+  s = cluster.SetSlotRanges(slots, node_id, version);
+  ASSERT_TRUE(s.IsOK());
+  version++;
+  slots.clear();
+
+  const std::string t_single_ranges = "1234-1236";
+  s = redis::CommanderHelper::ParseSlotRanges(t_single_ranges, slots);
+  ASSERT_TRUE(s.IsOK());
+  s = cluster.SetSlotRanges(slots, node_id, version);
+  ASSERT_TRUE(s.IsOK());
+  version++;
+  slots.clear();
+
+  const std::string t_mixed_slot = "10229  16301 4710 3557-8559 ";
+  s = redis::CommanderHelper::ParseSlotRanges(t_mixed_slot, slots);
+  ASSERT_TRUE(s.IsOK());
+  s = cluster.SetSlotRanges(slots, node_id, version);
+  ASSERT_TRUE(s.IsOK());
+  version++;
+  slots.clear();
+
+  std::string empty_slots;
+  s = redis::CommanderHelper::ParseSlotRanges(empty_slots, slots);
+  ASSERT_FALSE(s.IsOK());
+  ASSERT_TRUE(s.Msg() == "No slots to parse.");
+  slots.clear();
+
+  std::string space_slots = "    ";
+  s = redis::CommanderHelper::ParseSlotRanges(space_slots, slots);
+  ASSERT_FALSE(s.IsOK());
+  ASSERT_TRUE(s.Msg() == fmt::format("Invalid slots: `{}`. No slots to parse. "
+                                     "Please use spaces to separate slots.",
+                                     space_slots));
+
+  std::vector<std::string> error_slots;
+  std::string invalid_single_slot = "830849ad";
+  std::string unbound_single_slot = "1683093429";
+  std::string front_slot_ranges = "-1234-3456";
+  std::string back_slot_ranges = "1234-3456-";
+  std::string f_single_slot = "-6351";
+  std::string overmuch_slot_ranges = "12-34-56";
+  std::string f_cond_slot_ranges = "3456-1234";
+
+  error_slots.emplace_back(invalid_single_slot);
+  error_slots.emplace_back(unbound_single_slot);
+  error_slots.emplace_back(front_slot_ranges);
+  error_slots.emplace_back(back_slot_ranges);
+  error_slots.emplace_back(f_single_slot);
+  error_slots.emplace_back(overmuch_slot_ranges);
+  error_slots.emplace_back(f_cond_slot_ranges);
+
+  slots.clear();
+  for (int i = 0; i < 2; i++) {
+    if (i == 1) {
+      for (auto &slot_str : error_slots) {
+        slot_str = t_mixed_slot + slot_str;
+      }
+    }
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[0], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() == "Invalid slot id: encounter non-integer characters");
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[1], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() == "Invalid slot id: out of numeric range");
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[2], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() == fmt::format("Invalid slot range: `{}`. The character '-' can't appear "
+                                       "in the first or last position.",
+                                       front_slot_ranges));
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[3], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() ==
+                fmt::format("Invalid slot range: `{}`. The character '-' can't appear in the first or last position.",
+                            back_slot_ranges));
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[4], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() ==
+                fmt::format("Invalid slot range: `{}`. The character '-' can't appear in the first or last position.",
+                            f_single_slot));
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[5], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(s.Msg() == fmt::format("Invalid slot range: `{}`. The slot range should be of the form `int1-int2`.",
+                                       overmuch_slot_ranges));
+    slots.clear();
+
+    s = redis::CommanderHelper::ParseSlotRanges(error_slots[6], slots);
+    ASSERT_FALSE(s.IsOK());
+    ASSERT_TRUE(
+        s.Msg() ==
+        fmt::format(
+            "Invalid slot range: `{}`. The slot range `int1-int2` needs to satisfy the condition (int1 <= int2).",
+            f_cond_slot_ranges));
+    slots.clear();
+  }
 }

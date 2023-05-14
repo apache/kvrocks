@@ -23,6 +23,7 @@
 #include <rocksdb/slice.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <string>
 
 enum class Endian {

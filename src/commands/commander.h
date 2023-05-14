@@ -37,6 +37,8 @@
 #include <utility>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "status.h"
 #include "string_util.h"
@@ -85,6 +87,11 @@ class CommanderWithParseMove : Commander {
  public:
   Status Parse() override { return ParseMove(std::move(args_)); }
   virtual Status ParseMove(std::vector<std::string> &&args) { return Status::OK(); }
+};
+
+class CommanderHelper {
+ public:
+  static Status ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots);
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;

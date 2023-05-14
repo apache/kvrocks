@@ -401,7 +401,7 @@ Status SlotMigrator::finishSuccessfulMigration() {
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
   s = svr_->cluster->SetSlotMigrated(migrating_slot_, dst_ip_port);
   if (!s.IsOK()) {
-    return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrating_slot_, dst_ip_port));
+    return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrating_slot_.load(), dst_ip_port));
   }
 
   migrate_failed_slot_ = -1;

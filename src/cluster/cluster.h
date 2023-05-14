@@ -29,19 +29,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
 #include "commands/commander.h"
 #include "common/io_util.h"
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"
-
-enum {
-  kClusterMaster = 1,
-  kClusterSlave = 2,
-  kClusterNodeIdLen = 40,
-  kClusterPortIncr = 10000,
-  kClusterSlots = HASH_SLOTS_SIZE,
-};
 
 class ClusterNode {
  public:
@@ -80,7 +73,7 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(const std::string &node_id);
-  Status SetSlot(int slot, const std::string &node_id, int64_t version);
+  Status SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const std::string &node_id, int64_t version);
   Status SetSlotMigrated(int slot, const std::string &ip_port);
   Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);

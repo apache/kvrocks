@@ -18,6 +18,7 @@
  *
  */
 
+#include "cluster/cluster_defs.h"
 #include "cluster/slot_import.h"
 #include "cluster/sync_migrate_context.h"
 #include "commander.h"
@@ -176,15 +177,9 @@ class CommandClusterX : public Commander {
 
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
-      auto parse_id = ParseInt<int>(args[2], 10);
-      if (!parse_id) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
-
-      slot_id_ = *parse_id;
-
-      if (!Cluster::IsValidSlot(slot_id_)) {
-        return {Status::RedisParseErr, "Invalid slot id"};
+      Status s = CommanderHelper::ParseSlotRanges(args_[2], slot_ranges_);
+      if (!s.IsOK()) {
+        return s;
       }
 
       if (strcasecmp(args_[3].c_str(), "node") != 0) {
@@ -239,7 +234,7 @@ class CommandClusterX : public Commander {
         *output = redis::Error(s.Msg());
       }
     } else if (subcommand_ == "setslot") {
-      Status s = svr->cluster->SetSlot(slot_id_, args_[4], set_version_);
+      Status s = svr->cluster->SetSlotRanges(slot_ranges_, args_[4], set_version_);
       if (s.IsOK()) {
         need_persist_nodes_info = true;
         *output = redis::SimpleString("OK");
@@ -278,7 +273,7 @@ class CommandClusterX : public Commander {
   std::string dst_node_id_;
   int64_t set_version_ = 0;
   int64_t slot_ = -1;
-  int slot_id_ = -1;
+  std::vector<SlotRange> slot_ranges_;
   bool force_ = false;
 
   bool sync_migrate_ = false;

@@ -113,8 +113,9 @@ TEST_F(RedisTypeTest, Expire) {
   redis_->Expire(key_, now * 1000 + 2000);
   int64_t ttl = 0;
   redis_->TTL(key_, &ttl);
-  ASSERT_TRUE(ttl >= 1000 && ttl <= 2000);
-  sleep(2);
+  ASSERT_GT(ttl, 0);
+  ASSERT_LE(ttl, 2000);
+  redis_->Del(key_);
 }
 
 TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {

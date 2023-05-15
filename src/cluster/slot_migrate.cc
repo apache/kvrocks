@@ -28,6 +28,7 @@
 #include "fmt/format.h"
 #include "io_util.h"
 #include "storage/batch_extractor.h"
+#include "sync_migrate_context.h"
 #include "thread_util.h"
 #include "time_util.h"
 #include "types/redis_stream_base.h"
@@ -76,7 +77,7 @@ SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipelin
 }
 
 Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
-                                          int speed, int pipeline_size, int seq_gap) {
+                                          SyncMigrateContext *blocking_ctx) {
   // Only one slot migration job at the same time
   int16_t no_slot = -1;
   if (!migrating_slot_.compare_exchange_strong(no_slot, static_cast<int16_t>(slot_id))) {
@@ -91,6 +92,10 @@ Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::strin
 
   migration_state_ = MigrationState::kStarted;
 
+  auto speed = svr_->GetConfig()->migrate_speed;
+  auto seq_gap = svr_->GetConfig()->sequence_gap;
+  auto pipeline_size = svr_->GetConfig()->pipeline_size;
+
   if (speed <= 0) {
     speed = 0;
   }
@@ -101,6 +106,12 @@ Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::strin
 
   if (seq_gap <= 0) {
     seq_gap = kDefaultSequenceGapLimit;
+  }
+
+  if (blocking_ctx) {
+    std::unique_lock<std::mutex> lock(blocking_mutex_);
+    blocking_context_ = blocking_ctx;
+    blocking_context_->Suspend();
   }
 
   dst_node_ = node_id;
@@ -184,6 +195,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to start migrating slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -194,6 +206,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to send snapshot of slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -205,6 +218,7 @@ void SlotMigrator::runMigrationProcess() {
         } else {
           LOG(ERROR) << "[migrate] Failed to sync from WAL for a slot " << migrating_slot_ << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -214,10 +228,12 @@ void SlotMigrator::runMigrationProcess() {
           LOG(INFO) << "[migrate] Succeed to migrate slot " << migrating_slot_;
           current_stage_ = SlotMigrationStage::kClean;
           migration_state_ = MigrationState::kSuccess;
+          resumeSyncCtx(s);
         } else {
           LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot " << migrating_slot_
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
+          resumeSyncCtx(s);
         }
         break;
       }
@@ -1082,4 +1098,18 @@ void SlotMigrator::GetMigrationInfo(std::string *info) const {
 
   *info =
       fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot, dst_node_, task_state);
+}
+
+void SlotMigrator::CancelSyncCtx() {
+  std::unique_lock<std::mutex> lock(blocking_mutex_);
+  blocking_context_ = nullptr;
+}
+
+void SlotMigrator::resumeSyncCtx(const Status &migrate_result) {
+  std::unique_lock<std::mutex> lock(blocking_mutex_);
+  if (blocking_context_) {
+    blocking_context_->Resume(migrate_result);
+
+    blocking_context_ = nullptr;
+  }
 }

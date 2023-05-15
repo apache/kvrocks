@@ -71,6 +71,8 @@ struct SlotMigrationJob {
   int seq_gap_limit;
 };
 
+class SyncMigrateContext;
+
 class SlotMigrator : public redis::Database {
  public:
   explicit SlotMigrator(Server *svr, int max_migration_speed = kDefaultMaxMigrationSpeed,
@@ -80,8 +82,8 @@ class SlotMigrator : public redis::Database {
   ~SlotMigrator();
 
   Status CreateMigrationThread();
-  Status PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id, int speed,
-                              int pipeline_size, int seq_gap);
+  Status PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
+                              SyncMigrateContext *blocking_ctx = nullptr);
   void ReleaseForbiddenSlot();
   void SetMaxMigrationSpeed(int value) {
     if (value >= 0) max_migration_speed_ = value;
@@ -98,6 +100,7 @@ class SlotMigrator : public redis::Database {
   int16_t GetForbiddenSlot() const { return forbidden_slot_; }
   int16_t GetMigratingSlot() const { return migrating_slot_; }
   void GetMigrationInfo(std::string *info) const;
+  void CancelSyncCtx();
 
  private:
   void loop();
@@ -131,6 +134,9 @@ class SlotMigrator : public redis::Database {
   Status syncWalBeforeForbiddingSlot();
   Status syncWalAfterForbiddingSlot();
   void setForbiddenSlot(int16_t slot);
+  std::unique_lock<std::mutex> blockingLock() { return std::unique_lock<std::mutex>(blocking_mutex_); }
+
+  void resumeSyncCtx(const Status &migrate_result);
 
   enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };
@@ -170,4 +176,7 @@ class SlotMigrator : public redis::Database {
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
   uint64_t wal_begin_seq_ = 0;
+
+  std::mutex blocking_mutex_;
+  SyncMigrateContext *blocking_context_ = nullptr;
 };

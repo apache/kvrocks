@@ -65,6 +65,7 @@ struct SlotInfo {
 using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;
 
 class Server;
+class SyncMigrateContext;
 
 class Cluster {
  public:
@@ -84,7 +85,7 @@ class Cluster {
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          redis::Connection *conn);
   Status SetMasterSlaveRepl();
-  Status MigrateSlot(int slot, const std::string &dst_node_id);
+  Status MigrateSlot(int slot, const std::string &dst_node_id, SyncMigrateContext *blocking_ctx = nullptr);
   Status ImportSlot(redis::Connection *conn, int slot, int state);
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);

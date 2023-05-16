@@ -30,3 +30,7 @@ FetchContent_MakeAvailableWithArgs(tbb
   TBBMALLOC_BUILD=OFF
   BUILD_SHARED_LIBS=OFF
 )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+    target_compile_options(tbb PRIVATE "-Wno-error=stringop-overflow")
+endif()

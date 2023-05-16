@@ -26,6 +26,7 @@
 #include <fstream>
 #include <memory>
 
+#include "cluster/cluster_defs.h"
 #include "commands/commander.h"
 #include "common/io_util.h"
 #include "fmt/format.h"
@@ -34,16 +35,6 @@
 #include "server/server.h"
 #include "string_util.h"
 #include "time_util.h"
-
-const char *errInvalidNodeID = "Invalid cluster node id";
-const char *errInvalidSlotID = "Invalid slot id";
-const char *errSlotOutOfRange = "Slot is out of range";
-const char *errInvalidClusterVersion = "Invalid cluster version";
-const char *errSlotOverlapped = "Slot distribution is overlapped";
-const char *errNoMasterNode = "The node isn't a master";
-const char *errClusterNoInitialized = "CLUSTERDOWN The cluster is not initialized";
-const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
-const char *errInvalidImportState = "Invalid import state";
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
                          std::bitset<kClusterSlots> slots)
@@ -93,10 +84,6 @@ Status Cluster::SetNodeId(const std::string &node_id) {
   return Status::OK();
 }
 
-// Set the slot to the node if new version is current version +1. It is useful
-// when we scale cluster avoid too many big messages, since we only update one
-// slot distribution and there are 16384 slot in our design.
-//
 // The reason why the new version MUST be +1 of current version is that,
 // the command changes topology based on specific topology (also means specific
 // version), we must guarantee current topology is exactly expected, otherwise,
@@ -104,21 +91,17 @@ Status Cluster::SetNodeId(const std::string &node_id) {
 // This is different with CLUSTERX SETNODES commands because it uses new version
 // topology to cover current version, it allows kvrocks nodes lost some topology
 // updates since of network failure, it is state instead of operation.
-Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_version) {
-  // Parameters check
+Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const std::string &node_id,
+                              int64_t new_version) {
   if (new_version <= 0 || new_version != version_ + 1) {
     return {Status::NotOK, errInvalidClusterVersion};
-  }
-
-  if (!IsValidSlot(slot)) {
-    return {Status::NotOK, errInvalidSlotID};
   }
 
   if (node_id.size() != kClusterNodeIdLen) {
     return {Status::NotOK, errInvalidNodeID};
   }
 
-  // Get the node which we want to assign a slot into it
+  // Get the node which we want to assign slots into it
   std::shared_ptr<ClusterNode> to_assign_node = nodes_[node_id];
   if (to_assign_node == nullptr) {
     return {Status::NotOK, "No this node in the cluster"};
@@ -135,23 +118,29 @@ Status Cluster::SetSlot(int slot, const std::string &node_id, int64_t new_versio
   //  1. Remove the slot from old node if existing
   //  2. Add the slot into to-assign node
   //  3. Update the map of slots to nodes.
-  std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
-  if (old_node != nullptr) {
-    old_node->slots[slot] = false;
-  }
-  to_assign_node->slots[slot] = true;
-  slots_nodes_[slot] = to_assign_node;
+  // remember: The atomicity of the process is based on
+  // the transactionality of ClearKeysOfSlot().
+  for (auto [s_start, s_end] : slot_ranges) {
+    for (int slot = s_start; slot <= s_end; slot++) {
+      std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
+      if (old_node != nullptr) {
+        old_node->slots[slot] = false;
+      }
+      to_assign_node->slots[slot] = true;
+      slots_nodes_[slot] = to_assign_node;
 
-  // Clear data of migrated slot or record of imported slot
-  if (old_node == myself_ && old_node != to_assign_node) {
-    // If slot is migrated from this node
-    if (migrated_slots_.count(slot) > 0) {
-      svr_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
-      migrated_slots_.erase(slot);
-    }
-    // If slot is imported into this node
-    if (imported_slots_.count(slot) > 0) {
-      imported_slots_.erase(slot);
+      // Clear data of migrated slot or record of imported slot
+      if (old_node == myself_ && old_node != to_assign_node) {
+        // If slot is migrated from this node
+        if (migrated_slots_.count(slot) > 0) {
+          svr_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
+          migrated_slots_.erase(slot);
+        }
+        // If slot is imported into this node
+        if (imported_slots_.count(slot) > 0) {
+          imported_slots_.erase(slot);
+        }
+      }
     }
   }
 
@@ -291,7 +280,7 @@ Status Cluster::SetSlotImported(int slot) {
   return Status::OK();
 }
 
-Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
+Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id, SyncMigrateContext *blocking_ctx) {
   if (nodes_.find(dst_node_id) == nodes_.end()) {
     return {Status::NotOK, "Can't find the destination node id"};
   }
@@ -316,10 +305,8 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id) {
     return {Status::NotOK, "Can't migrate slot to myself"};
   }
 
-  const auto dst = nodes_[dst_node_id];
-  Status s = svr_->slot_migrator->PerformSlotMigration(
-      dst_node_id, dst->host, dst->port, slot, svr_->GetConfig()->migrate_speed, svr_->GetConfig()->pipeline_size,
-      svr_->GetConfig()->sequence_gap);
+  const auto &dst = nodes_[dst_node_id];
+  Status s = svr_->slot_migrator->PerformSlotMigration(dst_node_id, dst->host, dst->port, slot, blocking_ctx);
   return s;
 }
 

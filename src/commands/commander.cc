@@ -20,6 +20,8 @@
 
 #include "commander.h"
 
+#include "cluster/cluster_defs.h"
+
 namespace redis {
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
@@ -106,6 +108,54 @@ Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int
 
 bool IsCommandExists(const std::string &name) {
   return command_details::original_commands.find(util::ToLower(name)) != command_details::original_commands.end();
+}
+
+Status CommanderHelper::ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots) {
+  if (slots_str.empty()) {
+    return {Status::NotOK, "No slots to parse."};
+  }
+
+  std::vector<std::string> slot_ranges = util::Split(slots_str, " ");
+  if (slot_ranges.empty()) {
+    return {Status::NotOK,
+            fmt::format("Invalid slots: `{}`. No slots to parse. Please use spaces to separate slots.", slots_str)};
+  }
+
+  auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
+  // Parse all slots (include slot ranges)
+  for (auto &slot_range : slot_ranges) {
+    if (slot_range.find('-') == std::string::npos) {
+      auto parse_result = ParseInt<int>(slot_range, valid_range, 10);
+      if (!parse_result) {
+        return std::move(parse_result).Prefixed(errInvalidSlotID);
+      }
+      slots.emplace_back(*parse_result, *parse_result);
+      continue;
+    }
+
+    // parse slot range: "int1-int2" (satisfy: int1 <= int2 )
+    if (slot_range.front() == '-' || slot_range.back() == '-') {
+      return {Status::NotOK,
+              fmt::format("Invalid slot range: `{}`. The character '-' can't appear in the first or last position.",
+                          slot_range)};
+    }
+    std::vector<std::string> fields = util::Split(slot_range, "-");
+    if (fields.size() != 2) {
+      return {Status::NotOK,
+              fmt::format("Invalid slot range: `{}`. The slot range should be of the form `int1-int2`.", slot_range)};
+    }
+    auto parse_start = ParseInt<int>(fields[0], valid_range, 10);
+    auto parse_end = ParseInt<int>(fields[1], valid_range, 10);
+    if (!parse_start || !parse_end || *parse_start > *parse_end) {
+      return {Status::NotOK,
+              fmt::format(
+                  "Invalid slot range: `{}`. The slot range `int1-int2` needs to satisfy the condition (int1 <= int2).",
+                  slot_range)};
+    }
+    slots.emplace_back(*parse_start, *parse_end);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace redis

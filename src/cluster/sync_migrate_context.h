@@ -19,14 +19,25 @@
  */
 
 #pragma once
-#include <cstdint>
-#include <string>
+#include "event_util.h"
+#include "server/server.h"
 
-// crc16
-constexpr const uint16_t HASH_SLOTS_MASK = 0x3fff;
-constexpr const uint16_t HASH_SLOTS_SIZE = HASH_SLOTS_MASK + 1;  // 16384
-constexpr const uint16_t HASH_SLOTS_MAX_ITERATIONS = 50;
+class SyncMigrateContext : private EvbufCallbackBase<SyncMigrateContext, false>,
+                           private EventCallbackBase<SyncMigrateContext> {
+ public:
+  SyncMigrateContext(Server *svr, redis::Connection *conn, float timeout) : svr_(svr), conn_(conn), timeout_(timeout){};
 
-uint16_t Crc16(const char *buf, size_t len);
-uint16_t GetSlotIdFromKey(const std::string &key);
-std::string GetTagFromKey(const std::string &key);
+  void Suspend();
+  void Resume(const Status &migrate_result);
+  void OnWrite(bufferevent *bev);
+  void OnEvent(bufferevent *bev, int16_t events);
+  void TimerCB(int, int16_t events);
+
+ private:
+  Server *svr_;
+  redis::Connection *conn_;
+  float timeout_ = 0;
+  UniqueEvent timer_;
+
+  Status migrate_result_;
+};

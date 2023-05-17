@@ -210,6 +210,7 @@ Config::Config() {
       {"rocksdb.level_compaction_dynamic_level_bytes", false,
        new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, false)},
       {"rocksdb.max_background_jobs", false, new IntField(&rocks_db.max_background_jobs, 4, 0, 32)},
+      {"rocksdb.rate_limiter_auto_tuned", true, new YesNoField(&rocks_db.rate_limiter_auto_tuned, true)},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db.write_options.sync, false)},

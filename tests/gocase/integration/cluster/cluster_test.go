@@ -102,6 +102,12 @@ func TestClusterNodes(t *testing.T) {
 		srv.Restart(nil)
 		require.EqualValues(t, "-1", rdb.Do(ctx, "clusterx", "version").Val())
 
+		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "no").Err())
+		srv.Restart(map[string]string{
+			"cluster-enabled": "no",
+		})
+		require.EqualValues(t, "-1", rdb.Do(ctx, "clusterx", "version").Val())
+
 		// reset the cluster topology to avoid breaking other test cases
 		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
 		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())

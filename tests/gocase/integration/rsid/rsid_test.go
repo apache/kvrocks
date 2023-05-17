@@ -96,7 +96,7 @@ func TestRSIDMasterAndReplicaYes(t *testing.T) {
 	t.Run("replica can partially re-sync again after restarting", func(t *testing.T) {
 		require.NoError(t, rdbC.ConfigRewrite(ctx).Err())
 
-		srvC.Restart()
+		srvC.Restart(nil)
 		rdbC := srvC.NewClient()
 		defer func() { require.NoError(t, rdbC.Close()) }()
 		util.WaitForSync(t, rdbC)

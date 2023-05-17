@@ -258,7 +258,7 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 
 		// Restart master server, let the slave try to full sync with master again,
 		// because slave already received some SST files, so we will skip them.
-		master.Restart()
+		master.Restart(nil)
 		masterClient.Close()
 		masterClient = master.NewClient()
 

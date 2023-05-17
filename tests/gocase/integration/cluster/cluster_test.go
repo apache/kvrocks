@@ -95,11 +95,11 @@ func TestClusterNodes(t *testing.T) {
 
 	t.Run("enable/disable the persist cluster nodes", func(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "yes").Err())
-		srv.Restart()
+		srv.Restart(nil)
 		require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
 
 		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "no").Err())
-		srv.Restart()
+		srv.Restart(nil)
 		require.EqualValues(t, "-1", rdb.Do(ctx, "clusterx", "version").Val())
 
 		// reset the cluster topology to avoid breaking other test cases
@@ -159,7 +159,7 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
-	srv1.Restart()
+	srv1.Restart(nil)
 	slots := rdb1.ClusterSlots(ctx).Val()
 	require.Len(t, slots, 5)
 	require.EqualValues(t, 10000, slots[2].Start)
@@ -170,7 +170,7 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 
 	newNodeID := "0123456789012345678901234567890123456789"
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODEID", newNodeID).Err())
-	srv1.Restart()
+	srv1.Restart(nil)
 	slots = rdb1.ClusterSlots(ctx).Val()
 	require.EqualValues(t, 10000, slots[2].Start)
 	require.EqualValues(t, 10000, slots[2].End)
@@ -180,8 +180,8 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "2").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "2").Err())
 
-	srv1.Restart()
-	srv2.Restart()
+	srv1.Restart(nil)
+	srv2.Restart(nil)
 	nodes = rdb1.ClusterNodes(ctx).Val()
 
 	require.Regexp(t, ".*myself,master.*1-2 4-8193 10000 10002-11002 16381-16383.*", nodes)

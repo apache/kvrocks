@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -113,7 +114,7 @@ func (s *KvrocksServer) close(keepDir bool) {
 	s.clean(keepDir)
 }
 
-func (s *KvrocksServer) Restart() {
+func (s *KvrocksServer) Restart(configs map[string]string) {
 	s.close(true)
 
 	b := *binPath
@@ -124,6 +125,20 @@ func (s *KvrocksServer) Restart() {
 	f, err := os.Open(filepath.Join(dir, "kvrocks.conf"))
 	require.NoError(s.t, err)
 	defer func() { require.NoError(s.t, f.Close()) }()
+
+	if configs != nil {
+		tempFile, err := ioutil.TempFile(dir, "kvrocks-conf-tmp-*")
+		require.NoError(s.t, err)
+
+		for k, v := range configs {
+			s.configs[k] = v
+			_, err := tempFile.WriteString(fmt.Sprintf("%s %s\n", k, v))
+			require.NoError(s.t, err)
+		}
+
+		tempFile.Close()
+		os.Rename(tempFile.Name(), "kvrocks.conf")
+	}
 
 	cmd.Args = append(cmd.Args, "-c", f.Name())
 

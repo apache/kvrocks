@@ -124,6 +124,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.metadata_block_cache_size", "100"},
       {"rocksdb.subkey_block_cache_size", "100"},
       {"rocksdb.row_cache_size", "100"},
+      {"rocksdb.rate_limiter_auto_tuned", "yes"},
   };
   for (const auto &iter : immutable_cases) {
     s = config.Set(nullptr, iter.first, iter.second);

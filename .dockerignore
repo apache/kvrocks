@@ -1,1 +1,5 @@
+**/.git
+**/.gitignore
+**/.github
+**/tests
 Dockerfile

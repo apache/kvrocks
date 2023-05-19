@@ -22,7 +22,6 @@
 
 #include <cstdlib>
 #include <memory>
-#include <type_traits>
 #include <utility>
 
 #include "event2/buffer.h"
@@ -80,37 +79,32 @@ struct EvbufCallbackBase {
 
   static void eventCB(bufferevent *bev, short what, void *ctx) { static_cast<Derived *>(ctx)->OnEvent(bev, what); }
 
-  template <bool Enabled, std::enable_if_t<Enabled, int> = 0>
   static auto getReadCB() {
-    return readCB;
+    if constexpr (ReadCB) {
+      return readCB;
+    } else {
+      return nullptr;
+    }
   }
-  template <bool Enabled, std::enable_if_t<!Enabled, int> = 0>
-  static auto getReadCB() {
-    return nullptr;
-  };
-
-  template <bool Enabled, std::enable_if_t<Enabled, int> = 0>
   static auto getWriteCB() {
-    return writeCB;
+    if constexpr (WriteCB) {
+      return writeCB;
+    } else {
+      return nullptr;
+    }
   }
-  template <bool Enabled, std::enable_if_t<!Enabled, int> = 0>
-  static auto getWriteCB() {
-    return nullptr;
-  };
 
-  template <bool Enabled, std::enable_if_t<Enabled, int> = 0>
   static auto getEventCB() {
-    return eventCB;
+    if constexpr (EventCB) {
+      return eventCB;
+    } else {
+      return nullptr;
+    }
   }
-  template <bool Enabled, std::enable_if_t<!Enabled, int> = 0>
-  static auto getEventCB() {
-    return nullptr;
-  };
 
  public:
   void SetCB(bufferevent *bev) {
-    bufferevent_setcb(bev, getReadCB<ReadCB>(), getWriteCB<WriteCB>(), getEventCB<EventCB>(),
-                      reinterpret_cast<void *>(this));
+    bufferevent_setcb(bev, getReadCB(), getWriteCB(), getEventCB(), reinterpret_cast<void *>(this));
   }
 };
 

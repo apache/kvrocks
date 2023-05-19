@@ -32,7 +32,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"

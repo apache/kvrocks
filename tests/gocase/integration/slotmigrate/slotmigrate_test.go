@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )

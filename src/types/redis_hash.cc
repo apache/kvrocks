@@ -192,7 +192,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   storage_->MultiGet(read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
                      values_vector.data(), statuses_vector.data());
   for (size_t i = 0; i < keys.size(); i++) {
-    if (!statuses_vector[i].ok() && statuses_vector[i].IsNotFound()) return statuses_vector[i];
+    if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
     values->emplace_back(values_vector[i].ToString());
     statuses->emplace_back(statuses_vector[i]);
   }

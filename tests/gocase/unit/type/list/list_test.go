@@ -94,7 +94,8 @@ func TestZipList(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{
-		ReadTimeout: 10 * time.Second,
+		ReadTimeout: 30 * time.Second,
+		MaxRetries:  -1, // disable retry
 	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 

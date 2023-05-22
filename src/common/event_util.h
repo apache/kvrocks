@@ -25,6 +25,8 @@
 #include <utility>
 
 #include "event2/buffer.h"
+#include "event2/bufferevent.h"
+#include "event2/event.h"
 
 template <typename F, F *f>
 struct StaticFunction {
@@ -57,4 +59,64 @@ struct UniqueEvbuf : std::unique_ptr<evbuffer, StaticEvbufFree> {
 
   UniqueEvbuf() : BaseType(evbuffer_new()) {}
   explicit UniqueEvbuf(evbuffer *buffer) : BaseType(buffer) {}
+};
+
+using StaticEventFree = StaticFunction<decltype(event_free), event_free>;
+
+struct UniqueEvent : std::unique_ptr<event, StaticEventFree> {
+  using BaseType = std::unique_ptr<event, StaticEventFree>;
+
+  UniqueEvent() : BaseType(nullptr) {}
+  explicit UniqueEvent(event *buffer) : BaseType(buffer) {}
+};
+
+template <typename Derived, bool ReadCB = true, bool WriteCB = true, bool EventCB = true>
+struct EvbufCallbackBase {
+ private:
+  static void readCB(bufferevent *bev, void *ctx) { static_cast<Derived *>(ctx)->OnRead(bev); }
+
+  static void writeCB(bufferevent *bev, void *ctx) { static_cast<Derived *>(ctx)->OnWrite(bev); }
+
+  static void eventCB(bufferevent *bev, short what, void *ctx) { static_cast<Derived *>(ctx)->OnEvent(bev, what); }
+
+  static auto getReadCB() {
+    if constexpr (ReadCB) {
+      return readCB;
+    } else {
+      return nullptr;
+    }
+  }
+  static auto getWriteCB() {
+    if constexpr (WriteCB) {
+      return writeCB;
+    } else {
+      return nullptr;
+    }
+  }
+
+  static auto getEventCB() {
+    if constexpr (EventCB) {
+      return eventCB;
+    } else {
+      return nullptr;
+    }
+  }
+
+ public:
+  void SetCB(bufferevent *bev) {
+    bufferevent_setcb(bev, getReadCB(), getWriteCB(), getEventCB(), reinterpret_cast<void *>(this));
+  }
+};
+
+template <typename Derived>
+struct EventCallbackBase {
+ private:
+  static void timerCB(evutil_socket_t fd, short events, void *ctx) { static_cast<Derived *>(ctx)->TimerCB(fd, events); }
+
+ public:
+  event *NewEvent(event_base *base, evutil_socket_t fd, short events) {
+    return event_new(base, fd, events, timerCB, reinterpret_cast<void *>(this));
+  }
+
+  event *NewTimer(event_base *base) { return evtimer_new(base, timerCB, reinterpret_cast<void *>(this)); }
 };

@@ -36,12 +36,13 @@
 #include <utility>
 #include <vector>
 
+#include "event_util.h"
 #include "redis_connection.h"
 #include "storage/storage.h"
 
 class Server;
 
-class Worker {
+class Worker : EventCallbackBase<Worker> {
  public:
   Worker(Server *svr, Config *config);
   ~Worker();
@@ -68,6 +69,8 @@ class Worker {
 
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);
 
+  void TimerCB(int, int16_t events);
+
   lua_State *Lua() { return lua_; }
   Server *svr;
 
@@ -76,11 +79,10 @@ class Worker {
   static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx);
   static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
                                       void *ctx);
-  static void timerCb(int, int16_t events, void *ctx);
   redis::Connection *removeConnection(int fd);
 
   event_base *base_;
-  event *timer_;
+  UniqueEvent timer_;
   std::thread::id tid_;
   std::vector<evconnlistener *> listen_events_;
   std::mutex conns_mu_;

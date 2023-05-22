@@ -356,7 +356,7 @@ class CommandHRangeByLex : public Commander {
   }
 
  private:
-  CommonRangeLexSpec spec_;
+  RangeLexSpec spec_;
 };
 
 class CommandHScan : public CommandSubkeyScanBase {

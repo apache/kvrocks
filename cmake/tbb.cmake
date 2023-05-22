@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(tbb
-  oneapi-src/oneTBB v2021.8.0
-  MD5=3bf3d3b25a97f5bd2ad172e8b2bbd548
+  oneapi-src/oneTBB v2021.9.0
+  MD5=341fd0408cc0230e8d6121096b1d827a
 )
 
 FetchContent_MakeAvailableWithArgs(tbb
@@ -30,3 +30,7 @@ FetchContent_MakeAvailableWithArgs(tbb
   TBBMALLOC_BUILD=OFF
   BUILD_SHARED_LIBS=OFF
 )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+    target_compile_options(tbb PRIVATE "-Wno-error=stringop-overflow")
+endif()

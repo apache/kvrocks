@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"modernc.org/mathutil"
 )
@@ -168,8 +168,8 @@ func TestZipList(t *testing.T) {
 
 	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
 		iterations := 100
-		key := "l"
 		for j := 0; j < iterations; j++ {
+			key := fmt.Sprintf("l1-%d", j)
 			require.NoError(t, rdb.Del(ctx, key).Err())
 			var lis []string
 			for i := 0; i < 200; i++ {
@@ -212,8 +212,8 @@ func TestZipList(t *testing.T) {
 	})
 
 	t.Run("ziplist implementation: encoding stress testing", func(t *testing.T) {
-		key := "l"
 		for j := 0; j < 200; j++ {
+			key := fmt.Sprintf("l2-%d", j)
 			require.NoError(t, rdb.Del(ctx, key).Err())
 			var lis []string
 			l := int(rand.Int63n(400))

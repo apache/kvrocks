@@ -39,13 +39,13 @@
 #include "compact_filter.h"
 #include "event_listener.h"
 #include "event_util.h"
-#include "fd_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
 #include "time_util.h"
+#include "unique_fd.h"
 
 namespace engine {
 
@@ -159,8 +159,12 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.sst_file_manager = sst_file_manager_;
   int64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
-  rate_limiter_ =
-      std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(max_io_mb * static_cast<int64_t>(MiB)));
+
+  rate_limiter_ = std::shared_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
+      max_io_mb * static_cast<int64_t>(MiB), 100 * 1000, /* default */
+      10,                                                /* default */
+      rocksdb::RateLimiter::Mode::kWritesOnly, config_->rocks_db.rate_limiter_auto_tuned));
+
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->rocks_db.delayed_write_rate);
   options.compaction_readahead_size = static_cast<size_t>(config_->rocks_db.compaction_readahead_size);

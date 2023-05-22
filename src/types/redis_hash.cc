@@ -273,7 +273,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Hash::RangeByLex(const Slice &user_key, const CommonRangeLexSpec &spec,
+rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec,
                                  std::vector<FieldValue> *field_values) {
   field_values->clear();
   if (spec.count == 0) {

@@ -29,19 +29,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
 #include "commands/commander.h"
 #include "common/io_util.h"
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"
-
-enum {
-  kClusterMaster = 1,
-  kClusterSlave = 2,
-  kClusterNodeIdLen = 40,
-  kClusterPortIncr = 10000,
-  kClusterSlots = HASH_SLOTS_SIZE,
-};
 
 class ClusterNode {
  public:
@@ -72,6 +65,7 @@ struct SlotInfo {
 using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;
 
 class Server;
+class SyncMigrateContext;
 
 class Cluster {
  public:
@@ -79,7 +73,7 @@ class Cluster {
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(const std::string &node_id);
-  Status SetSlot(int slot, const std::string &node_id, int64_t version);
+  Status SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const std::string &node_id, int64_t version);
   Status SetSlotMigrated(int slot, const std::string &ip_port);
   Status SetSlotImported(int slot);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
@@ -91,7 +85,7 @@ class Cluster {
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          redis::Connection *conn);
   Status SetMasterSlaveRepl();
-  Status MigrateSlot(int slot, const std::string &dst_node_id);
+  Status MigrateSlot(int slot, const std::string &dst_node_id, SyncMigrateContext *blocking_ctx = nullptr);
   Status ImportSlot(redis::Connection *conn, int slot, int state);
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);

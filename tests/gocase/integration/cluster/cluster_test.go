@@ -26,7 +26,7 @@ import (
 	"testing"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -261,21 +261,21 @@ func TestClusterSlotSet(t *testing.T) {
 
 	require.NoError(t, rdb2.Set(ctx, slotKey, 0, 0).Err())
 	util.ErrorRegexp(t, rdb1.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv2.Port()))
-	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "1", "node", nodeID2, "4").Err())
-	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "1", "node", nodeID2, "4").Err())
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
 	slots = rdb2.ClusterSlots(ctx).Val()
 	require.EqualValues(t, slots, rdb1.ClusterSlots(ctx).Val())
 	require.Len(t, slots, 2)
 	require.EqualValues(t, 0, slots[0].Start)
-	require.EqualValues(t, 1, slots[0].End)
+	require.EqualValues(t, 4, slots[0].End)
 	require.EqualValues(t, []redis.ClusterNode{{ID: nodeID2, Addr: srv2.HostPort()}}, slots[0].Nodes)
-	require.EqualValues(t, 2, slots[1].Start)
+	require.EqualValues(t, 5, slots[1].Start)
 	require.EqualValues(t, 16383, slots[1].End)
 	require.EqualValues(t, []redis.ClusterNode{{ID: nodeID1, Addr: srv1.HostPort()}}, slots[1].Nodes)
 
 	// wrong version can't update slot distribution
-	require.ErrorContains(t, rdb2.Do(ctx, "clusterx", "setslot", "2", "node", nodeID2, "6").Err(), "version")
-	require.ErrorContains(t, rdb2.Do(ctx, "clusterx", "setslot", "2", "node", nodeID2, "4").Err(), "version")
+	require.ErrorContains(t, rdb2.Do(ctx, "clusterx", "setslot", "4", "node", nodeID2, "6").Err(), "version")
+	require.ErrorContains(t, rdb2.Do(ctx, "clusterx", "setslot", "4", "node", nodeID2, "4").Err(), "version")
 	require.EqualValues(t, "4", rdb2.Do(ctx, "clusterx", "version").Val())
 	require.EqualValues(t, "4", rdb1.Do(ctx, "clusterx", "version").Val())
 }

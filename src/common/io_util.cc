@@ -26,7 +26,7 @@
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/types.h>
 
 #ifdef __linux__
@@ -34,8 +34,8 @@
 #endif
 
 #include "event_util.h"
-#include "fd_util.h"
 #include "scope_exit.h"
+#include "unique_fd.h"
 
 #ifndef POLLIN
 #define POLLIN 0x0001   /* There is data to read */

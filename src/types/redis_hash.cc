@@ -174,16 +174,27 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   storage_->SetReadOptions(read_options);
+  std::vector<rocksdb::Slice> keys;
 
-  std::string sub_key, value;
+  keys.reserve(fields.size());
+  std::vector<std::string> sub_keys;
+  sub_keys.resize(fields.size());
+  int i = 0;
   for (const auto &field : fields) {
-    InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
-    value.clear();
-    s = storage_->Get(read_options, sub_key, &value);
-    if (!s.ok() && !s.IsNotFound()) return s;
+    InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&(sub_keys[i]));
+    keys.emplace_back(sub_keys[i++]);
+  }
 
-    values->emplace_back(value);
-    statuses->emplace_back(s);
+  std::vector<rocksdb::PinnableSlice> values_vector;
+  values_vector.resize(keys.size());
+  std::vector<rocksdb::Status> statuses_vector;
+  statuses_vector.resize(keys.size());
+  storage_->MultiGet(read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
+                     values_vector.data(), statuses_vector.data());
+  for (size_t i = 0; i < keys.size(); i++) {
+    if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
+    values->emplace_back(values_vector[i].ToString());
+    statuses->emplace_back(statuses_vector[i]);
   }
   return rocksdb::Status::OK();
 }

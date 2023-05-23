@@ -412,7 +412,7 @@ func TestSlotMigrateSync(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Migrate sync with (or without) all kinds of timeouts", func(t *testing.T) {
-		slot++
+		slot := 1024
 		// migrate sync without explicitly specify the timeout
 		result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync")
 		require.NoError(t, result.Err())

@@ -422,8 +422,8 @@ func TestSlotMigrateSync(t *testing.T) {
 		for _, timeout := range timeouts {
 			slot++
 			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
-			require.NoError(t, result.Err(), "without timeout: %v", timeout)
-			require.Equal(t, "OK", result.Val())
+			require.NoError(t, result.Err(), "with timeout: %v", timeout)
+			require.Equal(t, "OK", result.Val(), "with timeout: %v", timeout)
 		}
 	})
 

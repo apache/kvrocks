@@ -151,7 +151,7 @@ class CommandClusterX : public Commander {
               return {Status::RedisParseErr, "timeout is not an integer or out of range"};
             }
             if (*parse_result < 0) {
-              return {Status::RedisParseErr, "timeout should not be negative"};
+              return {Status::RedisParseErr, errTimeoutIsNegative};
             }
             sync_migrate_timeout_ = *parse_result;
           }

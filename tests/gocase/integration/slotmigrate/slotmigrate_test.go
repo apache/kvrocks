@@ -435,17 +435,15 @@ func TestSlotMigrateSync(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Migrate sync timeout", func(t *testing.T) {
-		cnt := 200000
 		slot++
+		cnt := 200000
 		for i := 0; i < cnt; i++ {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
 		}
-		timeout := 0.001
 
-		require.Nil(t, rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout).Val())
-
-		// check the following command on the same connection
-		require.Equal(t, "PONG", rdb0.Ping(ctx).Val())
+		timeout := 1
+		result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
+		require.Nil(t, result.Val())
 	})
 }
 

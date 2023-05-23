@@ -418,12 +418,19 @@ func TestSlotMigrateSync(t *testing.T) {
 		require.NoError(t, result.Err())
 		require.Equal(t, "OK", result.Val())
 
-		timeouts := []interface{}{-1, 0, 20, 10.5, -3.14}
-		for _, timeout := range timeouts {
+		invalidTimeouts := []interface{}{-2, -1, "abc"}
+		for _, timeout := range invalidTimeouts {
+			slot++
+			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
+			require.Error(t, result.Err(), "with timeout: %v", timeout)
+		}
+
+		validTimeouts := []int{0, 10, 20, 30}
+		for _, timeout := range validTimeouts {
 			slot++
 			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
 			require.NoError(t, result.Err(), "with timeout: %v", timeout)
-			require.Equal(t, "OK", result.Val(), "with timeout: %v", timeout)
+			require.Equal(t, "OK", result.Val(), "with timeout: %d", timeout)
 		}
 	})
 

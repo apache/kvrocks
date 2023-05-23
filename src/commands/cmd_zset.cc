@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -264,6 +266,80 @@ class CommandZPopMin : public CommandZPop {
 class CommandZPopMax : public CommandZPop {
  public:
   CommandZPopMax() : CommandZPop(false) {}
+};
+
+class CommandZMPop : public Commander {
+ public:
+  CommandZMPop() = default;
+
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    if (auto parse_int = parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}); !parse_int) {
+      return parse_int.ToStatus();
+    } else {
+      numkeys_ = *parse_int;
+    }
+    for (int i = 0; i < numkeys_; ++i) {
+      if (!parser.Good()) {
+        return parser.InvalidSyntax();
+      }
+      keys_.emplace_back(*parser.TakeStr());
+    }
+    bool has_min_flag = false;
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("min")) {
+        min_ = true;
+        has_min_flag = true;
+      } else if (parser.EatEqICase("max")) {
+        min_ = false;
+        has_min_flag = true;
+      } else if (parser.EatEqICase("count")) {
+        auto parse_int = parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()});
+        if (!parse_int) {
+          return parse_int.ToStatus();
+        }
+        count_ = *parse_int;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    if (!has_min_flag) {
+      return parser.InvalidSyntax();
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    for (auto &user_key : keys_) {
+      std::vector<MemberScore> member_scores;
+      auto s = zset_db.Pop(user_key, count_, min_, &member_scores);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      if (member_scores.empty()) {
+        continue;
+      }
+
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(user_key));
+      output->append(redis::MultiLen(member_scores.size() * 2));
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+      return Status::OK();
+    }
+    *output = redis::MultiLen(0);
+    return Status::OK();
+  }
+
+ private:
+  int numkeys_;
+  std::vector<std::string> keys_;
+  bool min_;
+  int count_ = 1;
 };
 
 class CommandZRangeGeneric : public Commander {
@@ -745,6 +821,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),

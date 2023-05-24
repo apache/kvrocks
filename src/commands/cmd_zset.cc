@@ -24,6 +24,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_zset.h"
 
@@ -331,7 +332,7 @@ class CommandZMPop : public Commander {
       }
       return Status::OK();
     }
-    *output = redis::MultiLen(0);
+    *output = redis::NilString();
     return Status::OK();
   }
 

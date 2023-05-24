@@ -220,10 +220,10 @@ class CommandBitOp : public Commander {
   BitOpFlags op_flag_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1), )
+                        MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1), )
 
 }  // namespace redis

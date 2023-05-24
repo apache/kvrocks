@@ -360,20 +360,20 @@ class CommandSScan : public CommandSubkeyScanBase {
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
                         MakeCmdAttr<CommandSIsMember>("sismember", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSMIsMember>("smismember", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSMove>("smove", 4, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSPop>("spop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSRandMember>("srandmember", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandSMove>("smove", 4, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandSRem>("srem", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1), )
 
 }  // namespace redis

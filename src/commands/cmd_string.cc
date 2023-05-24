@@ -595,23 +595,29 @@ class CommandCAD : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(
-    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
-    MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1), MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write exclusive", 1, -1, 2),
-    MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2), MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), )
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1),      //
+                        MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),    //
+                        MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2),
+                        MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write exclusive", 1, -1, 2),
+                        MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
+
+                        MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), )
 
 }  // namespace redis

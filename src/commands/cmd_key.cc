@@ -247,17 +247,17 @@ class CommandDel : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+                        MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1), )
 
 }  // namespace redis

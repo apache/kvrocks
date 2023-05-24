@@ -376,21 +376,22 @@ class CommandHScan : public CommandSubkeyScanBase {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHMGet>("hmget", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hmset", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
+
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1), )
 
 }  // namespace redis

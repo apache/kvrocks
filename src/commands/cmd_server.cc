@@ -946,8 +946,13 @@ class CommandStats : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
+                        MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
+
                         MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0),
@@ -958,19 +963,18 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
+
                         MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi", 0, 0, 0),
                         MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
+
                         MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),
+
                         MakeCmdAttr<CommandTime>("time", 1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),

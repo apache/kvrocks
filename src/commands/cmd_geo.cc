@@ -393,8 +393,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoHash>("geohash", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoPos>("geopos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1,
                                                                       1), )
 

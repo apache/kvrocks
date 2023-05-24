@@ -275,16 +275,9 @@ class CommandZMPop : public Commander {
 
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
-    if (auto parse_int = parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}); !parse_int) {
-      return parse_int.ToStatus();
-    } else {
-      numkeys_ = *parse_int;
-    }
+    numkeys_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
     for (int i = 0; i < numkeys_; ++i) {
-      if (!parser.Good()) {
-        return parser.InvalidSyntax();
-      }
-      keys_.emplace_back(*parser.TakeStr());
+      keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
     }
     bool has_min_flag = false;
 
@@ -296,11 +289,7 @@ class CommandZMPop : public Commander {
         min_ = false;
         has_min_flag = true;
       } else if (parser.EatEqICase("count")) {
-        auto parse_int = parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()});
-        if (!parse_int) {
-          return parse_int.ToStatus();
-        }
-        count_ = *parse_int;
+        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
       }
@@ -334,6 +323,14 @@ class CommandZMPop : public Commander {
     }
     *output = redis::NilString();
     return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    if (static_cast<int>(args.size()) > num_key + 3) {
+      return {2, 1 + num_key, 1};
+    }
+    return {2, -2, 1};
   }
 
  private:
@@ -822,7 +819,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),

@@ -23,6 +23,7 @@
 #include "commands/scan_base.h"
 #include "error_constants.h"
 #include "server/server.h"
+#include "string_util.h"
 #include "types/redis_zset.h"
 
 namespace redis {
@@ -162,6 +163,93 @@ class CommandZCard : public Commander {
     *output = redis::Integer(ret);
     return Status::OK();
   }
+};
+
+/*
+ * description:
+ *    syntax:   `ZDIFF numkeys key [key ...] [WITHSCORES]`
+ */
+class CommandZDiff : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_numkey = ParseInt<int>(args[1], 10);
+    if (!parse_numkey) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    numkeys_ = *parse_numkey;
+    // for example: ZDIFF 2 zset1 zset2 WITHSCORES
+    if (args.size() == numkeys_ + 3 && util::ToLower(args.back()) == "withscores") {
+      with_scores_ = true;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for (size_t i = 2; i < numkeys_ + 2; i++) {
+      keys.emplace_back(args_[i]);
+    }
+
+    std::vector<std::string> members;
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    auto s = zset_db.Diff(key, &members);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::MultiBulkString(members, false);
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    if (bool with_score = util::ToLower(args.back()) == "withscores"; with_score) {
+      return {2, -2, 1};
+    }
+    return {2, -1, 1};
+  }
+
+ private:
+  uint64_t numkeys_ = 0;
+  bool with_scores_ = false;
+};
+
+/*
+ * description:
+ *    syntax:   `ZDIFFSTORE destination numkeys key [key ...]`
+ */
+class CommandZDiffStore : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_num = ParseInt<int>(args[2], 10);
+    if (!parse_num) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    numkeys_ = *parse_numkey;
+    if (args.size() != numkeys_ + 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for (size_t i = 3; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+
+    int ret = 0;
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    if (auto s = zset_db.DiffStore(args_[1], keys, &ret); !s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t numkeys_ = 0;
 };
 
 class CommandZIncrBy : public Commander {
@@ -740,6 +828,8 @@ class CommandZScan : public CommandSubkeyScanBase {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandZDiff>("zdiff", -4, "read-only", CommandZDiff::Range),
+                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -4, "read-only", 3, -1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),

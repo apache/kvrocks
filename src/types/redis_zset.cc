@@ -34,7 +34,7 @@ rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
   return Database::GetMetadata(kRedisZSet, ns_key, metadata);
 }
 
-rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, int *ret) {
+rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScoresTy *mscores, int *ret) {
   *ret = 0;
 
   std::string ns_key;
@@ -158,7 +158,51 @@ rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double 
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScores *mscores) {
+rocksdb::Status ZSet::MemberScores(const Slice &user_key, MemberScoresTy *mscores) {
+  mscores->clear();
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  SetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  std::string prefix, next_version_prefix;
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapshot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
+  storage_->SetReadOptions(read_options);
+
+  auto iter = util::UniqueIterator(storage_, read_options);
+  for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
+    InternalKeys ikey(iter->key(), storage_->IsSlotIdEncoded());
+    // mscores->emplace_back();
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscores, bool with_score) {
+  mscores->clear();
+  std::vector<std::string> source_members;
+  // auto s = MembersTy(keys[0],&source_members);
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
+  *ret = 0;
+  std::vector<MemberScore> mscores;
+  auto s = Diff(keys, &members);
+  *ret = static_cast<int>(mscores.size());
+  return Overwrite(dst, mscores);
+}
+
+rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScoresTy *mscores) {
   mscores->clear();
 
   std::string ns_key;
@@ -219,7 +263,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores, int *ret) {
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScoresTy *mscores, int *ret) {
   if (mscores) mscores->clear();
 
   int cnt = 0;
@@ -301,7 +345,8 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores, int *ret) {
+rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScoresTy *mscores,
+                                   int *ret) {
   if (mscores) mscores->clear();
 
   int cnt = 0;
@@ -419,7 +464,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, Members *members, int *ret) {
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MembersTy *members, int *ret) {
   if (members) members->clear();
 
   int cnt = 0;
@@ -618,7 +663,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Overwrite(const Slice &user_key, const MemberScores &mscores) {
+rocksdb::Status ZSet::Overwrite(const Slice &user_key, const MemberScoresTy &mscores) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 

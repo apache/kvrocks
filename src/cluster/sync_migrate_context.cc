@@ -26,8 +26,7 @@ void SyncMigrateContext::Suspend() {
 
   if (timeout_ > 0) {
     timer_.reset(NewTimer(bufferevent_get_base(bev)));
-    int sec = static_cast<int>(timeout_);
-    timeval tm = {sec, static_cast<int>((timeout_ - static_cast<float>(sec)) * 1000000)};
+    timeval tm = {timeout_, 0};
     evtimer_add(timer_.get(), &tm);
   }
 }

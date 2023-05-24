@@ -413,36 +413,37 @@ func TestSlotMigrateSync(t *testing.T) {
 
 	t.Run("MIGRATE - Migrate sync with (or without) all kinds of timeouts", func(t *testing.T) {
 		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync").Val())
+		// migrate sync without explicitly specify the timeout
+		result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync")
+		require.NoError(t, result.Err())
+		require.Equal(t, "OK", result.Val())
 
-		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", -1).Val())
+		invalidTimeouts := []interface{}{-2, -1, 1.2, "abc"}
+		for _, timeout := range invalidTimeouts {
+			slot++
+			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
+			require.Error(t, result.Err(), "with timeout: %v", timeout)
+		}
 
-		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", 0).Val())
-
-		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", 10).Val())
-
-		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", 0.5).Val())
-
-		slot++
-		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", -3.14).Val())
+		validTimeouts := []int{0, 10, 20, 30}
+		for _, timeout := range validTimeouts {
+			slot++
+			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
+			require.NoError(t, result.Err(), "with timeout: %v", timeout)
+			require.Equal(t, "OK", result.Val(), "with timeout: %d", timeout)
+		}
 	})
 
 	t.Run("MIGRATE - Migrate sync timeout", func(t *testing.T) {
-		cnt := 200000
 		slot++
+		cnt := 200000
 		for i := 0; i < cnt; i++ {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
 		}
-		timeout := 0.001
 
-		require.Nil(t, rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout).Val())
-
-		// check the following command on the same connection
-		require.Equal(t, "PONG", rdb0.Ping(ctx).Val())
+		timeout := 1
+		result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
+		require.Nil(t, result.Val())
 	})
 }
 

@@ -24,7 +24,6 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
-#include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_zset.h"
 
@@ -327,10 +326,7 @@ class CommandZMPop : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[1], 10);
-    if (static_cast<int>(args.size()) > num_key + 3) {
-      return {2, 1 + num_key, 1};
-    }
-    return {2, -2, 1};
+    return {2, 1 + num_key, 1};
   }
 
  private:

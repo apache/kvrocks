@@ -272,6 +272,12 @@ func TestHash(t *testing.T) {
 		util.ErrorRegexp(t, rdb.HMGet(ctx, "wrongtype", "field1", "field2").Err(), pattern)
 	})
 
+	t.Run("HMGET succeed field return with missing middle field", func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.HSet(ctx, "successreturn", "name", "1", "age", "2").Val())
+		actual := rdb.HMGet(ctx, "successreturn", "name", "a", "age", "name").Val()
+		require.Equal(t, []interface{}{"1", nil, "2", "1"}, actual)
+	})
+
 	t.Run("HMGET - small hash", func(t *testing.T) {
 		var keys []string
 		var vals []string

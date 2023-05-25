@@ -1,0 +1,22 @@
+version: '3'
+services:
+  kvrocks:
+    image: apache/kvrocks:nightly
+    restart: always
+    container_name: kvrocks
+    # mem_limit: 96G
+    environment:
+      KVROCKS_ARGS: |
+        --log /log
+        --dir /data
+        --port 16666
+        --workers 6
+        --timeout 360
+        --rocksdb.compression zstd
+        --rocksdb.enable_blob_files yes
+        --rocksdb.read_options.async_io yes
+    volumes:
+      - ./data:/data
+      - ./log:/log
+    ports:
+      - 16666:16666

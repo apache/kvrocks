@@ -103,6 +103,8 @@ $ docker run -it -p 6666:6666 apache/kvrocks
 $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```
 
+Can set environment variables `KVROCKS_ARGS` for configuration, see [docker/docker-compose.yml](./docker/docker-compose.yml) for more .
+
 ### Connect Kvrocks service
 
 ```

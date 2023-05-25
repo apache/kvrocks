@@ -57,10 +57,9 @@ VOLUME /var/lib/kvrocks
 
 RUN chown kvrocks:kvrocks /var/lib/kvrocks
 
-COPY ./LICENSE ./NOTICE ./DISCLAIMER ./
+COPY ./docker/run.sh ./LICENSE ./NOTICE ./DISCLAIMER ./
 COPY ./licenses ./licenses
 COPY ./kvrocks.conf /var/lib/kvrocks/
-
 EXPOSE 6666:6666
 
-ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]
+ENTRYPOINT ["./run.sh"]

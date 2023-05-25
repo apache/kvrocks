@@ -140,13 +140,22 @@ func TestBitmap(t *testing.T) {
 	})
 
 	t.Run("SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type bitmap)", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "b0").Err())
+		cmd := rdb.Del(ctx, "b0")
+		require.NoError(t, cmd.Err())
 		var maxOffset int64 = math.MaxUint32
-		util.ErrorRegexp(t, rdb.SetBit(ctx, "b0", maxOffset+1, 1).Err(), ".*out of range.*")
-		require.NoError(t, rdb.SetBit(ctx, "b0", maxOffset, 1).Err())
-		require.EqualValues(t, 1, rdb.GetBit(ctx, "b0", maxOffset).Val())
-		require.EqualValues(t, 1, rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: maxOffset / 8}).Val())
-		require.EqualValues(t, maxOffset, rdb.BitPos(ctx, "b0", 1).Val())
+		cmd = rdb.SetBit(ctx, "b0", maxOffset+1, 1)
+		util.ErrorRegexp(t, cmd.Err(), ".*out of range.*")
+		cmd = rdb.SetBit(ctx, "b0", maxOffset, 1)
+		require.NoError(t, cmd.Err())
+		cmd = rdb.GetBit(ctx, "b0", maxOffset)
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		cmd = rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: maxOffset / 8})
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		cmd = rdb.BitPos(ctx, "b0", 1)
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, maxOffset, cmd.Val())
 	})
 
 	t.Run("BITOP NOT (known string)", func(t *testing.T) {

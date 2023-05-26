@@ -287,7 +287,10 @@ class Server {
   std::mutex pubsub_channels_mu_;
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;
+
   std::atomic<int> blocked_clients_{0};
+
+  std::mutex blocked_stream_consumers_mu_;
   std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
 
   // threads

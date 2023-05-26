@@ -198,9 +198,55 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		util.ErrorRegexp(t, rdb.Do(ctx, "zadd", "myzset", 10, "a", 20, "b", 30, "c", 40).Err(), ".*syntax.*")
 	})
 
+	t.Run("ZADD - invalid score will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zadd", "myzet", "one", "one").Err(), "is not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "zadd", "myzet", "3.3.3", "one").Err(), "is not a valid float")
+	})
+
 	t.Run("ZINCRBY does not work variadic even if shares ZADD implementation", func(t *testing.T) {
 		rdb.Del(ctx, "myzset")
 		util.ErrorRegexp(t, rdb.Do(ctx, "zincrby", "myzset", 10, "a", 20, "b", 30, "c").Err(), ".*ERR.*wrong.*number.*arg.*")
+	})
+
+	t.Run("ZINCRBY - invalid increment will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.NoError(t, rdb.ZIncrBy(ctx, "myzet", 1, "one").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "zincrby", "myzet", "one", "one").Err(), "is not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "zincrby", "myzet", "3.3.3", "one").Err(), "is not a valid float")
+	})
+
+	t.Run("ZLEXCOUNT - invalid range will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "+", "-").Err(), "min > max")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "x", "[y").Err(), "the min is illegal")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "[x", "y").Err(), "the max is illegal")
+	})
+
+	t.Run("ZPOP - the num of arguments is not 2 or 3", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zpopmin", "myzet", "1", "1").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "zpopmax", "myzet", "1", "1").Err(), "wrong number of arguments")
+	})
+
+	t.Run("ZUNIONSTORE - invalid numkeys will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "one", "myzet").Err(), "value is not an integer or out of range")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
+	})
+
+	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "weights", "one").Err(), "weight is not a double or out of range")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "weights", "3.3.3").Err(), "weight is not a double or out of range")
+	})
+
+	t.Run("ZUNIONSTORE - invalid aggregate will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "aggregate", "xxx").Err(), "aggregate param error")
 	})
 
 	t.Run(fmt.Sprintf("ZCARD basics - %s", encoding), func(t *testing.T) {

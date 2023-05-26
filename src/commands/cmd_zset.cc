@@ -278,22 +278,19 @@ class CommandZMPop : public Commander {
     for (int i = 0; i < numkeys_; ++i) {
       keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
     }
-    bool has_min_flag = false;
 
     while (parser.Good()) {
       if (parser.EatEqICase("min")) {
-        min_ = true;
-        has_min_flag = true;
+        flag_ = ZSET_MIN;
       } else if (parser.EatEqICase("max")) {
-        min_ = false;
-        has_min_flag = true;
+        flag_ = ZSET_MAX;
       } else if (parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
       }
     }
-    if (!has_min_flag) {
+    if (flag_ == ZSET_NONE) {
       return parser.InvalidSyntax();
     }
     return Commander::Parse(args);
@@ -303,7 +300,7 @@ class CommandZMPop : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     for (auto &user_key : keys_) {
       std::vector<MemberScore> member_scores;
-      auto s = zset_db.Pop(user_key, count_, min_, &member_scores);
+      auto s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
       }
@@ -332,7 +329,7 @@ class CommandZMPop : public Commander {
  private:
   int numkeys_;
   std::vector<std::string> keys_;
-  bool min_;
+  enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
   int count_ = 1;
 };
 

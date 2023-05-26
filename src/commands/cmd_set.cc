@@ -142,10 +142,16 @@ class CommandSMIsMember : public Commander {
 class CommandSPop : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
+      }
+      if (*parse_result < 0) {
+        return {Status::RedisParseErr, errValueMustBePositive};
       }
 
       count_ = *parse_result;
@@ -182,6 +188,9 @@ class CommandSPop : public Commander {
 class CommandSRandMember : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
     if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {

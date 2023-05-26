@@ -225,7 +225,11 @@ class CommandZPop : public Commander {
   explicit CommandZPop(bool min) : min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 2) {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};

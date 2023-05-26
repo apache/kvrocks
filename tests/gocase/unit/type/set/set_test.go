@@ -550,8 +550,41 @@ func TestSet(t *testing.T) {
 		require.EqualValues(t, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "2", "20", "3", "4", "5", "6", "7", "8", "9"}, array)
 	})
 
+	t.Run("SPOP with <count> not integer", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		require.ErrorContains(t, rdb.Do(ctx, "spop", "myset", 3.5).Err(), "is not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "spop", "myset", -5.5).Err(), "is not an integer")
+	})
+
+	t.Run("SPOP with <count> not positive", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		require.ErrorContains(t, rdb.Do(ctx, "spop", "myset", -5.5).Err(), "is not an integer")
+		require.ErrorContains(t, rdb.SPopN(ctx, "myset", -2).Err(), "must be positive")
+
+		// 0 is an exception, although it is not a positive number, it will not return error, just like redis
+		cmd := rdb.SPopN(ctx, "myset", 0)
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []string{}, cmd.Val())
+	})
+
+	t.Run("SPOP the num of arguments is not 2 or 3", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		require.ErrorContains(t, rdb.Do(ctx, "spop").Err(), "wrong number of arguments")
+		require.NoError(t, rdb.Do(ctx, "spop", "myset").Err())
+		require.NoError(t, rdb.Do(ctx, "spop", "myset", 1).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "spop", "myset", 1, 1).Err(), "wrong number of arguments")
+	})
+
 	t.Run("SRANDMEMBER with <count> against non existing key", func(t *testing.T) {
 		require.EqualValues(t, "", rdb.SRandMember(ctx, "nonexisting_key").Val())
+	})
+
+	t.Run("SRANDMEMBER the num of arguments is not 2 or 3", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "myset", []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+		require.ErrorContains(t, rdb.Do(ctx, "srandmember").Err(), "wrong number of arguments")
+		require.NoError(t, rdb.Do(ctx, "srandmember", "myset").Err())
+		require.NoError(t, rdb.Do(ctx, "srandmember", "myset", 1).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "srandmember", "myset", 1, 1).Err(), "wrong number of arguments")
 	})
 
 	SetupMove := func() {

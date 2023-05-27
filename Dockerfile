@@ -19,10 +19,6 @@ FROM alpine:3.16 as build
 
 ARG MORE_BUILD_ARGS
 
-# workaround tzdata install hanging
-ENV TZ=Etc/UTC
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
 RUN apk update && apk add git gcc g++ make cmake ninja autoconf automake libtool python3 linux-headers curl openssl-dev libexecinfo-dev redis
 WORKDIR /kvrocks
 
@@ -31,36 +27,23 @@ RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON -DCMAKE_BUILD_TYPE=Release -j
 
 FROM alpine:3.16
 
-ENV TZ=Etc/UTC
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
 RUN apk upgrade && apk add libexecinfo
-
-WORKDIR /kvrocks
-
 RUN mkdir /var/run/kvrocks && mkdir /var/lib/kvrocks
-
 RUN addgroup -S kvrocks && adduser -D -H -S -G kvrocks kvrocks
-
 RUN chown kvrocks:kvrocks /var/run/kvrocks && chown kvrocks:kvrocks /var/lib/kvrocks
 
 USER kvrocks
-
-COPY --from=build /kvrocks/build/kvrocks ./bin/
-COPY --from=build /usr/bin/redis-cli ./bin/
-
-HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
-
-ENV PATH="$PATH:/kvrocks/bin"
-
 VOLUME /var/lib/kvrocks
 
-RUN chown kvrocks:kvrocks /var/lib/kvrocks
+COPY --from=build /kvrocks/build/kvrocks /bin/
+COPY --from=build /usr/bin/redis-cli /bin/
 
-COPY ./LICENSE ./NOTICE ./DISCLAIMER ./
-COPY ./licenses ./licenses
+HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 \
+    CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
+
+COPY ./LICENSE ./NOTICE ./DISCLAIMER ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/
 
 EXPOSE 6666:6666
 
-ENTRYPOINT ["./bin/kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]
+ENTRYPOINT ["kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]

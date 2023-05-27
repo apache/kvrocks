@@ -20,6 +20,7 @@
 
 #include "string_util.h"
 
+#include <string>
 #include <fmt/format.h>
 
 #include "parse_util.h"
@@ -310,6 +311,39 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   }
 
   return tokens;
+}
+
+/* convert string to an escaped representation where
+ * all the non-printable characters (tested with isprint()) are turned into
+ * escapes in the form "\n\r\a...." or "\x<hex-number>". */
+std::string StringRepr(const std::string &s) {
+    std::string str;
+    str.reserve(s.size());
+
+    for (auto ch : s) {
+        switch (ch) {
+        case '\\':
+        case '"':
+            str += "\\";
+            str += ch;
+            break;
+        case '\n': str += "\\n"; break;
+        case '\r': str += "\\r"; break;
+        case '\t': str += "\\t"; break;
+        case '\a': str += "\\a"; break;
+        case '\b': str += "\\b"; break;
+        default:
+            if (isprint(ch)) {
+                str += ch;
+            } else {
+                char buffer[16];
+                snprintf(buffer, sizeof(buffer), "\\x%02x", ch);
+                str += buffer;
+            }
+        }
+    }
+
+    return str;
 }
 
 }  // namespace util

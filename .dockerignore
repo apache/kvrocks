@@ -1,5 +1,54 @@
-**/.git
-**/.gitignore
-**/.github
-**/tests
-Dockerfile
+/.git
+/.gitignore
+/.github
+/tests
+/Dockerfile
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+*.pyc
+*.swp
+*.swo
+.DS_Store
+version.h
+
+.idea
+.vscode
+.cache
+
+compactdb
+testdb
+
+build
+cmake-build-*

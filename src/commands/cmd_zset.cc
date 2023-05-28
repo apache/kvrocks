@@ -154,7 +154,7 @@ class CommandZCount : public Commander {
 class CommandZCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {

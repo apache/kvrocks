@@ -131,8 +131,8 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
-  *ret = 0;
+rocksdb::Status ZSet::Card(const Slice &user_key, uint64_t *size) {
+  *size = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -140,7 +140,7 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = metadata.size;
+  *size = metadata.size;
   return rocksdb::Status::OK();
 }
 

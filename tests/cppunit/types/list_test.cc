@@ -80,7 +80,7 @@ class RedisListLMoveTest : public RedisListTest {
 };
 
 TEST_F(RedisListTest, PushAndPop) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, true, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (auto &field : fields_) {
@@ -99,7 +99,7 @@ TEST_F(RedisListTest, PushAndPop) {
 }
 
 TEST_F(RedisListTest, Pushx) {
-  int ret = 0;
+  uint64_t ret = 0;
   Slice pushx_key("test-pushx-key");
   rocksdb::Status s = list_->PushX(pushx_key, fields_, true, &ret);
   EXPECT_TRUE(s.ok());
@@ -112,7 +112,7 @@ TEST_F(RedisListTest, Pushx) {
 }
 
 TEST_F(RedisListTest, Index) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::string elem;
@@ -130,7 +130,7 @@ TEST_F(RedisListTest, Index) {
 }
 
 TEST_F(RedisListTest, Set) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   Slice new_elem("new_elem");
@@ -145,7 +145,7 @@ TEST_F(RedisListTest, Set) {
 }
 
 TEST_F(RedisListTest, Range) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> elems;
@@ -163,7 +163,7 @@ TEST_F(RedisListTest, Range) {
 }
 
 TEST_F(RedisListTest, Rem) {
-  int ret = 0;
+  uint64_t ret = 0;
   uint64_t len = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
@@ -236,7 +236,7 @@ TEST_F(RedisListTest, Rem) {
 }
 
 TEST_F(RedisListSpecificTest, Rem) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   Slice del_elem("9");
@@ -274,7 +274,7 @@ TEST_F(RedisListSpecificTest, Rem) {
 }
 
 TEST_F(RedisListTest, Trim) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Trim(key_, 1, 2000);
@@ -290,7 +290,7 @@ TEST_F(RedisListTest, Trim) {
 }
 
 TEST_F(RedisListSpecificTest, Trim) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   // ltrim key_ 3 -3 then linsert 2 3 and lrem key_ 5 3
@@ -314,7 +314,7 @@ TEST_F(RedisListSpecificTest, Trim) {
 }
 
 TEST_F(RedisListTest, RPopLPush) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, true, &ret);
   EXPECT_EQ(fields_.size(), ret);
   Slice dst("test-list-rpoplpush-key");
@@ -341,7 +341,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcNotExist) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameSingleElem) {
-  int ret = 0;
+  uint64_t ret = 0;
   Slice element = fields_[0];
   list_->Push(key_, {element}, false, &ret);
   EXPECT_EQ(1, ret);
@@ -353,7 +353,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameSingleElem) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsLeftRight) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::string elem;
@@ -365,7 +365,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsLeftRight) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsRightLeft) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::string elem;
@@ -377,7 +377,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcAndDstAreTheSameManyElemsRightLeft) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveDstNotExist) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::string elem;
@@ -389,7 +389,7 @@ TEST_F(RedisListLMoveTest, LMoveDstNotExist) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcLeftDstLeft) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Push(dst_key_, dst_fields_, false, &ret);
@@ -404,7 +404,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcLeftDstLeft) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcLeftDstRight) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Push(dst_key_, dst_fields_, false, &ret);
@@ -419,7 +419,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcLeftDstRight) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcRightDstLeft) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Push(dst_key_, dst_fields_, false, &ret);
@@ -434,7 +434,7 @@ TEST_F(RedisListLMoveTest, LMoveSrcRightDstLeft) {
 }
 
 TEST_F(RedisListLMoveTest, LMoveSrcRightDstRight) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Push(dst_key_, dst_fields_, false, &ret);
@@ -460,7 +460,7 @@ TEST_F(RedisListTest, LPopEmptyList) {
 }
 
 TEST_F(RedisListTest, LPopOneElement) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (auto &field : fields_) {
@@ -475,7 +475,7 @@ TEST_F(RedisListTest, LPopOneElement) {
 }
 
 TEST_F(RedisListTest, LPopMulti) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> elems;
@@ -490,7 +490,7 @@ TEST_F(RedisListTest, LPopMulti) {
 }
 
 TEST_F(RedisListTest, LPopMultiCountGreaterThanListSize) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> elems;
@@ -515,7 +515,7 @@ TEST_F(RedisListTest, RPopEmptyList) {
 }
 
 TEST_F(RedisListTest, RPopOneElement) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   for (size_t i = 0; i < fields_.size(); i++) {
@@ -530,7 +530,7 @@ TEST_F(RedisListTest, RPopOneElement) {
 }
 
 TEST_F(RedisListTest, RPopMulti) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> elems;
@@ -545,7 +545,7 @@ TEST_F(RedisListTest, RPopMulti) {
 }
 
 TEST_F(RedisListTest, RPopMultiCountGreaterThanListSize) {
-  int ret = 0;
+  uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> elems;

@@ -434,7 +434,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  -1 if the user_key does not exist
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                            uint64_t ttl, bool *flag) {
+                            uint64_t ttl, int *flag) {
   *flag = 0;
 
   std::string ns_key, current_value;
@@ -475,7 +475,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
 // Delete a specified user_key if the current value of the user_key matches a specified value.
 // For ret, same as CAS.
-rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, bool *flag) {
+rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *flag) {
   *flag = 0;
 
   std::string ns_key, current_value;

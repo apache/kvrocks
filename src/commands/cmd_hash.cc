@@ -93,7 +93,7 @@ class CommandHDel : public Commander {
       fields.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     auto s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {

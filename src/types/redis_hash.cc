@@ -203,8 +203,8 @@ rocksdb::Status Hash::Set(const Slice &user_key, const Slice &field, const Slice
   return MSet(user_key, {{field.ToString(), value.ToString()}}, false, added_cnt);
 }
 
-rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, int *ret) {
-  *ret = 0;
+rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -221,14 +221,14 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
-      *ret += 1;
+      *deleted_cnt += 1;
       batch->Delete(sub_key);
     }
   }
-  if (*ret == 0) {
+  if (*deleted_cnt == 0) {
     return rocksdb::Status::OK();
   }
-  metadata.size -= *ret;
+  metadata.size -= *deleted_cnt;
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);

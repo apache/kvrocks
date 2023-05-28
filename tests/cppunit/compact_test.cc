@@ -37,7 +37,7 @@ TEST(Compact, Filter) {
   Status s = storage->Open();
   assert(s.IsOK());
 
-  int ret = 0;
+  uint64_t ret = 0;
   std::string ns = "test_compact";
   auto hash = std::make_unique<redis::Hash>(storage.get(), ns);
   std::string expired_hash_key = "expire_hash_key";

@@ -566,7 +566,7 @@ class CommandCAS : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::String string_db(svr->storage, conn->GetNamespace());
-    bool ret = 0;
+    int ret = 0;
     auto s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -584,7 +584,7 @@ class CommandCAD : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::String string_db(svr->storage, conn->GetNamespace());
-    bool ret = 0;
+    int ret = 0;
     auto s = string_db.CAD(args_[1], args_[2], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

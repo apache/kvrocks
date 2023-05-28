@@ -53,8 +53,8 @@ class String : public Database {
   rocksdb::Status MSet(const std::vector<StringPair> &pairs, uint64_t ttl = 0);
   rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag);
   rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                      uint64_t ttl, bool *flag);
-  rocksdb::Status CAD(const std::string &user_key, const std::string &value, bool *flag);
+                      uint64_t ttl, int *flag);
+  rocksdb::Status CAD(const std::string &user_key, const std::string &value, int *flag);
 
  private:
   rocksdb::Status getValue(const std::string &ns_key, std::string *value);

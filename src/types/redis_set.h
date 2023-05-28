@@ -33,7 +33,7 @@ class Set : public SubKeyScanner {
   explicit Set(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Card(const Slice &user_key, int *ret);
-  rocksdb::Status IsMember(const Slice &user_key, const Slice &member, int *ret);
+  rocksdb::Status IsMember(const Slice &user_key, const Slice &member, bool *flag);
   rocksdb::Status MIsMember(const Slice &user_key, const std::vector<Slice> &members, std::vector<int> *exists);
   rocksdb::Status Add(const Slice &user_key, const std::vector<Slice> &members, int *ret);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret);

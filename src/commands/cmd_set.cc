@@ -100,7 +100,7 @@ class CommandSIsMember : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Set set_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    bool ret = 0;
     auto s = set_db.IsMember(args_[1], args_[2], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

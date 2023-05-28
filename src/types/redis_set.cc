@@ -161,11 +161,11 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, int *ret) {
+rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, bool *flag) {
   std::vector<int> exists;
   rocksdb::Status s = MIsMember(user_key, {member}, &exists);
   if (!s.ok()) return s;
-  *ret = exists[0];
+  *flag = exists[0];
   return s;
 }
 

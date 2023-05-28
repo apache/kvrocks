@@ -69,14 +69,15 @@ TEST_F(RedisSetTest, Members) {
 
 TEST_F(RedisSetTest, IsMember) {
   int ret = 0;
+  bool flag = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   for (auto &field : fields_) {
-    s = set_->IsMember(key_, field, &ret);
-    EXPECT_TRUE(s.ok() && ret == 1);
+    s = set_->IsMember(key_, field, &flag);
+    EXPECT_TRUE(s.ok() && flag);
   }
-  set_->IsMember(key_, "foo", &ret);
-  EXPECT_TRUE(s.ok() && ret == 0);
+  set_->IsMember(key_, "foo", &flag);
+  EXPECT_TRUE(s.ok() && !ret);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
   set_->Del(key_);

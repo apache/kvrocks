@@ -84,7 +84,7 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   metadata.size += elems.size();
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  *new_size = static_cast<int>(metadata.size);
+  *new_size = metadata.size;
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
@@ -256,7 +256,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  *removed_cnt = static_cast<int>(to_delete_indexes.size());
+  *removed_cnt = to_delete_indexes.size();
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
@@ -336,7 +336,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  *new_size = static_cast<int>(metadata.size);
+  *new_size = metadata.size;
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

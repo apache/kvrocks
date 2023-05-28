@@ -32,8 +32,8 @@ rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *m
   return Database::GetMetadata(kRedisSortedint, ns_key, metadata);
 }
 
-rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
-  *ret = 0;
+rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *added_cnt) {
+  *added_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -55,10 +55,10 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
-    *ret += 1;
+    *added_cnt += 1;
   }
-  if (*ret > 0) {
-    metadata.size += *ret;
+  if (*added_cnt > 0) {
+    metadata.size += *added_cnt;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -66,8 +66,8 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, int *ret) {
-  *ret = 0;
+rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *removed_cnt) {
+  *removed_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -88,25 +88,25 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
-    *ret += 1;
+    *removed_cnt += 1;
   }
-  if (*ret == 0) return rocksdb::Status::OK();
-  metadata.size -= *ret;
+  if (*removed_cnt == 0) return rocksdb::Status::OK();
+  metadata.size -= *removed_cnt;
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Sortedint::Card(const Slice &user_key, int *ret) {
-  *ret = 0;
+rocksdb::Status Sortedint::Card(const Slice &user_key, uint64_t *size) {
+  *size = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
   SortedintMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = static_cast<int>(metadata.size);
+  *size = metadata.size;
   return rocksdb::Status::OK();
 }
 

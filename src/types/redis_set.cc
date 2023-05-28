@@ -128,7 +128,7 @@ rocksdb::Status Set::Card(const Slice &user_key, uint64_t *size) {
   SetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *size = static_cast<int>(metadata.size);
+  *size = metadata.size;
   return rocksdb::Status::OK();
 }
 
@@ -363,7 +363,7 @@ rocksdb::Status Set::DiffStore(const Slice &dst, const std::vector<Slice> &keys,
   std::vector<std::string> members;
   auto s = Diff(keys, &members);
   if (!s.ok()) return s;
-  *saved_cnt = static_cast<int>(members.size());
+  *saved_cnt = members.size();
   return Overwrite(dst, members);
 }
 
@@ -372,7 +372,7 @@ rocksdb::Status Set::UnionStore(const Slice &dst, const std::vector<Slice> &keys
   std::vector<std::string> members;
   auto s = Union(keys, &members);
   if (!s.ok()) return s;
-  *save_cnt = static_cast<int>(members.size());
+  *save_cnt = members.size();
   return Overwrite(dst, members);
 }
 
@@ -381,7 +381,7 @@ rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys
   std::vector<std::string> members;
   auto s = Inter(keys, &members);
   if (!s.ok()) return s;
-  *saved_cnt = static_cast<int>(members.size());
+  *saved_cnt = members.size();
   return Overwrite(dst, members);
 }
 }  // namespace redis

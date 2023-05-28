@@ -140,7 +140,7 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = static_cast<int>(metadata.size);
+  *ret = metadata.size;
   return rocksdb::Status::OK();
 }
 
@@ -700,7 +700,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
       if (member_counters[iter.first] != keys_weights.size()) continue;
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = static_cast<int>(mscores.size());
+    if (saved_cnt) *saved_cnt = mscores.size();
     Overwrite(dst, mscores);
   }
 
@@ -750,7 +750,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
     for (const auto &iter : dst_zset) {
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = static_cast<int>(mscores.size());
+    if (saved_cnt) *saved_cnt = mscores.size();
     Overwrite(dst, mscores);
   }
 

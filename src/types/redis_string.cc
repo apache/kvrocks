@@ -126,7 +126,7 @@ rocksdb::Status String::Append(const std::string &user_key, const std::string &v
     metadata.Encode(&raw_value);
   }
   raw_value.append(value);
-  *new_size = static_cast<int>(raw_value.size() - Metadata::GetOffsetAfterExpire(raw_value[0]));
+  *new_size = raw_value.size() - Metadata::GetOffsetAfterExpire(raw_value[0]);
   return updateRawValue(ns_key, raw_value);
 }
 
@@ -282,7 +282,7 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
       raw_value[offset + i] = value[i];
     }
   }
-  *new_size = static_cast<int>(raw_value.size() - header_offset);
+  *new_size = raw_value.size() - header_offset;
   return updateRawValue(ns_key, raw_value);
 }
 
